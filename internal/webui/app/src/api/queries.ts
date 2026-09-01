@@ -3,16 +3,19 @@ import type { InfiniteData } from "@tanstack/react-query";
 import type { ForecastSample } from "../lib/forecastSamples";
 import {
   type WebUIConfig as GeneratedWebUIConfig,
+  type GetTaskRunsParams,
   getGetRouteGeometryQueryOptions,
   getGetRouteQueryOptions,
   getGetRoutesQueryOptions,
   getGetSettingsQueryOptions,
   getGetStatusQueryOptions,
   getGetSyncRunsInfiniteQueryKey,
+  getGetTaskRunsInfiniteQueryKey,
   getGetWeatherQueryOptions,
   getGetWebUIConfigQueryOptions,
   getListTasksQueryOptions,
   useGetSyncRunsInfinite,
+  useGetTaskRunsInfinite,
 } from "./generated";
 import {
   type GeoJSONFeature,
@@ -23,6 +26,7 @@ import {
   type Status,
   type SyncRunPage,
   type TaskList,
+  type TaskRunPage,
   type WeatherForecast,
   webUIConfig,
 } from "./types";
@@ -66,10 +70,17 @@ export const routeGeometryQuery = (provider: string, sourceRouteId: number, stag
     },
   });
 
-/** Each registered task's schedule state. Read on demand rather than polled. */
+/** Each registered task's schedule state, polled while any attempt is in flight. */
 export const tasksQuery = () =>
   getListTasksQueryOptions({
-    query: { select: (response) => payload<TaskList>(response) },
+    query: {
+      select: (response) => payload<TaskList>(response),
+      refetchInterval: (query) => {
+        const tasks = query.state.data && payload<TaskList>(query.state.data).tasks;
+
+        return tasks?.some((task) => task.running > 0) ? ACTIVE_POLL_MS : false;
+      },
+    },
   });
 
 export const statusQuery = () =>
@@ -157,5 +168,32 @@ export const syncRunsQueryKey = (limit = HISTORY_PAGE_SIZE) =>
 export function useSyncRunLookup(reference: string | null) {
   return useSyncRuns(LOOKUP_PAGE_SIZE, reference !== null);
 }
+
+/** `task` omitted rather than `undefined`: `exactOptionalPropertyTypes` treats the two differently. */
+function taskRunsParams(task: string | undefined, limit: number): GetTaskRunsParams {
+  return task === undefined ? { limit } : { task, limit };
+}
+
+/** Uses Orval's generated cursor hook while keeping the UI's page sizes local. */
+export function useTaskRuns(task?: string, limit = HISTORY_PAGE_SIZE, enabled = true) {
+  return useGetTaskRunsInfinite(taskRunsParams(task, limit), {
+    query: {
+      enabled,
+      initialPageParam: undefined,
+      getNextPageParam: (page) => payload<TaskRunPage>(page).next,
+      select: (data) =>
+        ({
+          pages: data.pages.map((page) => payload<TaskRunPage>(page) as TaskRunPage),
+          pageParams: data.pageParams,
+        }) as InfiniteData<TaskRunPage, string | undefined>,
+    },
+  });
+}
+
+export const taskRunsQueryKey = (task?: string, limit = HISTORY_PAGE_SIZE) =>
+  getGetTaskRunsInfiniteQueryKey(taskRunsParams(task, limit));
+
+/** Every task-run page there is, whatever it is filtered or sized to. */
+export const taskRunsQueryPrefix = () => getGetTaskRunsInfiniteQueryKey();
 
 export { HISTORY_PAGE_SIZE, LOOKUP_PAGE_SIZE };

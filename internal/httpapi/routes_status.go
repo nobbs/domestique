@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"time"
@@ -243,24 +244,35 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 // The recorded history is served a page at a time. The ceiling keeps one request
 // from reading the whole retained window.
 const (
-	defaultSyncRunPage = 20
-	maximumSyncRunPage = 100
+	defaultRunPage = 20
+	maximumRunPage = 100
 )
+
+// pageLimit reads the page size one request asks for, answering the caller
+// itself when the number is one this service will not serve.
+func (h *Handler) pageLimit(writer http.ResponseWriter, query url.Values) (int, bool) {
+	raw := query.Get("limit")
+	if raw == "" {
+		return defaultRunPage, true
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit < 1 || limit > maximumRunPage {
+		h.error(writer, http.StatusBadRequest, "invalid_request",
+			"limit must be between 1 and "+strconv.Itoa(maximumRunPage))
+
+		return 0, false
+	}
+
+	return limit, true
+}
 
 // GetSyncRuns serves one page of the recorded run history, newest first, with the
 // cursor for the next. Local records only: no route names, no provider calls.
 func (h *Handler) GetSyncRuns(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
-	limit := defaultSyncRunPage
-	if raw := query.Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 || parsed > maximumSyncRunPage {
-			h.error(writer, http.StatusBadRequest, "invalid_request",
-				"limit must be between 1 and "+strconv.Itoa(maximumSyncRunPage))
-
-			return
-		}
-		limit = parsed
+	limit, ok := h.pageLimit(writer, query)
+	if !ok {
+		return
 	}
 	// An empty history is an empty list rather than a null one: the page is the
 	// answer either way.

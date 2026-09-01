@@ -153,7 +153,7 @@ export interface Task {
   running: number;
   /** The gap between runs for a task on a fixed schedule. Absent for a task with no schedule, or a calendar one, whose gap changes with the wall clock. */
   intervalSeconds?: number;
-  /** When the first scheduled run is due. Absent once it has started, and for a task nothing schedules. */
+  /** When the next scheduled run is due. Absent for a task nothing schedules, and while the task's own scheduled run is under way. A run somebody asked for does not disturb the schedule, so this stays put during one. */
   nextRunAt?: string;
 }
 
@@ -164,6 +164,29 @@ export interface TaskList {
 export interface TaskScheduleUpdate {
   /** Whether the schedule may start this task. It governs unattended runs only. */
   enabled: boolean;
+}
+
+/**
+ * One recorded attempt. It carries the aggregate record and nothing about what the attempt touched.
+ */
+export interface TaskRun {
+  task: string;
+  /** What the attempt was over, such as a target slot. Absent for a task that covers only one thing. */
+  argument?: string;
+  /** What started the attempt: `schedule`, `manual`, or `chain`. Absent for an attempt recorded before this was written down. */
+  trigger?: string;
+  startedAt: string;
+  finishedAt: string;
+  outcome: string;
+  /** A stable, safe-to-display reason for the outcome. Never provider text, a route name, or an upstream identifier. */
+  detail?: string;
+  /** The name an alert about this attempt carries. */
+  reference: string;
+}
+
+export interface TaskRunPage {
+  runs: TaskRun[];
+  next?: string;
 }
 
 export type SyncRunPhase = (typeof SyncRunPhase)[keyof typeof SyncRunPhase];
@@ -555,6 +578,19 @@ export type SettingsStoredResponse = Settings;
  * Provider request failed without exposing provider detail.
  */
 export type ProviderUnavailableResponse = Error;
+
+export type GetTaskRunsParams = {
+  /**
+   * Narrows the page to one registered task. A name this build does not register is refused rather than answered with an empty page.
+   */
+  task?: string;
+  after?: string;
+  /**
+   * @minimum 1
+   * @maximum 100
+   */
+  limit?: number;
+};
 
 export type GetSyncRunsParams = {
   after?: string;
@@ -1268,6 +1304,348 @@ export const useRunTaskArgument = <
 > => {
   return useMutation(getRunTaskArgumentMutationOptions(options), queryClient);
 };
+
+export type getTaskRunsResponse200 = {
+  data: TaskRunPage;
+  status: 200;
+};
+
+export type getTaskRunsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getTaskRunsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getTaskRunsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getTaskRunsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getTaskRunsResponseSuccess = getTaskRunsResponse200 & {
+  headers: Headers;
+};
+export type getTaskRunsResponseError = (
+  | getTaskRunsResponse400
+  | getTaskRunsResponse401
+  | getTaskRunsResponse403
+  | getTaskRunsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetTaskRunsUrl = (params?: GetTaskRunsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/tasks/runs?${stringifiedParams}` : `/v1/tasks/runs`;
+};
+
+/**
+ * What the background activities have been doing, newest first: one page of the recorded history, over every task or over one named task.
+ */
+export const getTaskRuns = async (
+  params?: GetTaskRunsParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getTaskRunsResponseSuccess> => {
+  return domestiqueRequest<getTaskRunsResponseSuccess>(getGetTaskRunsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetTaskRunsInfiniteQueryKey = (params?: GetTaskRunsParams) => {
+  return ["infinite", `/v1/tasks/runs`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTaskRunsQueryKey = (params?: GetTaskRunsParams) => {
+  return [`/v1/tasks/runs`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetTaskRunsInfiniteQueryOptions = <
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTaskRunsInfiniteQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getTaskRuns>>,
+    QueryKey,
+    GetTaskRunsParams["after"]
+  > = ({ signal, pageParam }) =>
+    getTaskRuns(
+      { ...params, after: (pageParam ?? params?.after) as string },
+      { signal, ...requestOptions },
+    );
+
+  return { queryKey, queryFn, ...queryOptions } as UseInfiniteQueryOptions<
+    Awaited<ReturnType<typeof getTaskRuns>>,
+    TError,
+    TData,
+    QueryKey,
+    GetTaskRunsParams["after"]
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetTaskRunsInfiniteQueryResult = NonNullable<Awaited<ReturnType<typeof getTaskRuns>>>;
+export type GetTaskRunsInfiniteQueryError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params: undefined | GetTaskRunsParams,
+  options: {
+    query: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          QueryKey
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          QueryKey
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetTaskRunsInfinite<
+  TData = InfiniteData<Awaited<ReturnType<typeof getTaskRuns>>, GetTaskRunsParams["after"]>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getTaskRuns>>,
+        TError,
+        TData,
+        QueryKey,
+        GetTaskRunsParams["after"]
+      >
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetTaskRunsInfiniteQueryOptions(params, options);
+
+  const query = useInfiniteQuery(queryOptions, queryClient) as UseInfiniteQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export const getGetTaskRunsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTaskRuns>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTaskRuns>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTaskRunsQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTaskRuns>>> = ({ signal }) =>
+    getTaskRuns(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTaskRuns>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetTaskRunsQueryResult = NonNullable<Awaited<ReturnType<typeof getTaskRuns>>>;
+export type GetTaskRunsQueryError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+
+export function useGetTaskRuns<
+  TData = Awaited<ReturnType<typeof getTaskRuns>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params: undefined | GetTaskRunsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTaskRuns>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getTaskRuns>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTaskRuns<
+  TData = Awaited<ReturnType<typeof getTaskRuns>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTaskRuns>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTaskRuns>>,
+          TError,
+          Awaited<ReturnType<typeof getTaskRuns>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTaskRuns<
+  TData = Awaited<ReturnType<typeof getTaskRuns>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTaskRuns>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetTaskRuns<
+  TData = Awaited<ReturnType<typeof getTaskRuns>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+>(
+  params?: GetTaskRunsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTaskRuns>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetTaskRunsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export type getSyncRunsResponse200 = {
   data: SyncRunPage;

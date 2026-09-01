@@ -422,7 +422,7 @@ func TestIndexResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
 type countingStore struct{ runs int }
 
 func (s *countingStore) RecordTaskRun(
-	context.Context, string, string, time.Time, time.Time, string, string, string, int,
+	context.Context, string, string, string, time.Time, time.Time, string, string, string, int,
 ) error {
 	s.runs++
 

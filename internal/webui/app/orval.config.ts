@@ -19,6 +19,7 @@ export default defineConfig({
         mutator: { name: "domestiqueRequest", path: "./src/api/request.ts" },
         operations: {
           getSyncRuns: { query: { useInfinite: true, useInfiniteQueryParam: "after" } },
+          getTaskRuns: { query: { useInfinite: true, useInfiniteQueryParam: "after" } },
         },
       },
     },

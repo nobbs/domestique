@@ -663,5 +663,13 @@ func schemaMigrations() [][]string {
 			// hash is what makes the next run refill the new column once.
 			`UPDATE stage_geometry SET content_hash = ''`,
 		},
+		{
+			// What started an attempt: its own schedule, an operator, or the
+			// attempt it followed. Rows written before this read as unknown.
+			`ALTER TABLE task_runs ADD COLUMN trigger TEXT NOT NULL DEFAULT ''`,
+			// The per-task index cannot serve a feed over every task, which reads
+			// the same recency tuple without naming one.
+			`CREATE INDEX task_runs_recency_index ON task_runs(finished_at_unix DESC, id DESC)`,
+		},
 	}
 }

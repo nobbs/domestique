@@ -215,13 +215,127 @@ func TestRunHoldsTheFirstRunAndReportsWhenItIsDue(t *testing.T) {
 	due, _ := manager.NextRunAt("a")
 	assert.Equal(t, reference().Add(5*time.Minute), due, "NextRunAt()")
 
+	cancel()
+	<-stopped
+	assert.Zero(t, runner.runs(), "a run happened before the initial delay fired")
+}
+
+func TestNextRunAtReportsTheNextTickOnceTheFirstRunHasCompleted(t *testing.T) {
+	t.Parallel()
+
+	runner := countingRunner()
+	manager, _ := newTestManager(t)
+	manager.now = reference
+	fired, waits := make(chan time.Time), make(chan time.Duration, 4)
+	manager.after = func(delay time.Duration) <-chan time.Time { waits <- delay; return fired }
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "a",
+		Run:          runner,
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+
+	assert.Equal(t, time.Minute, <-waits, "the first wait is the initial delay")
 	fired <- reference()
-	require.Eventually(t, func() bool { return runner.runs() == 1 }, time.Second, time.Millisecond, "the first run never happened")
-	_, holding := manager.NextRunAt("a")
-	assert.False(t, holding, "a run that has started is still reported as held back")
+
+	// The loop asking for the gap from the first run's due instant is proof the
+	// first run has already completed and the next tick has been published.
+	assert.Equal(t, 61*time.Minute, <-waits, "the wait after the first run")
+	require.Equal(t, 1, runner.runs(), "the first run")
+	due, holding := manager.NextRunAt("a")
+	assert.True(t, holding, "NextRunAt() after the first run")
+	assert.Equal(t, reference().Add(61*time.Minute), due, "NextRunAt() reports the next tick, not the first")
 
 	cancel()
 	<-stopped
+}
+
+func TestNextRunAtIsZeroWhileTheScheduledAttemptIsInFlight(t *testing.T) {
+	t.Parallel()
+
+	runner := blockOn()
+	manager, _ := newTestManager(t)
+	fired := make(chan time.Time)
+	manager.after = func(time.Duration) <-chan time.Time { return fired }
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "a",
+		Run:          runner,
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		_, holding := manager.NextRunAt("a")
+
+		return holding
+	}, time.Second, time.Millisecond, "the initial delay was never reported")
+
+	fired <- reference()
+	<-runner.started
+
+	_, holding := manager.NextRunAt("a")
+	assert.False(t, holding, "NextRunAt() while the run is in flight")
+
+	close(runner.release)
+	cancel()
+	<-stopped
+}
+
+// An operator asking for a task does not reset its cadence: the schedule is
+// still waiting out the gap it was already waiting out.
+func TestNextRunAtSurvivesAnAttemptNobodyScheduled(t *testing.T) {
+	t.Parallel()
+
+	runner := blockOn()
+	manager, _ := newTestManager(t)
+	manager.now = reference
+	manager.after = func(time.Duration) <-chan time.Time { return make(chan time.Time) }
+	require.NoError(t, manager.Register(&Definition{
+		Name:         "a",
+		Run:          runner,
+		Schedule:     Every(func() time.Duration { return time.Hour }),
+		InitialDelay: func() time.Duration { return time.Minute },
+	}), "Register()")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan struct{})
+	go func() { defer close(stopped); manager.Run(ctx) }()
+
+	require.Eventually(t, func() bool {
+		_, holding := manager.NextRunAt("a")
+
+		return holding
+	}, time.Second, time.Millisecond, "the initial delay was never reported")
+
+	require.True(t, manager.Trigger(ctx, "a", ""), "Trigger()")
+	<-runner.started
+
+	due, holding := manager.NextRunAt("a")
+	assert.True(t, holding, "NextRunAt() while a triggered attempt is in flight")
+	assert.Equal(t, reference().Add(time.Minute), due, "NextRunAt() during a triggered attempt")
+
+	close(runner.release)
+	cancel()
+	<-stopped
+	manager.Wait()
+}
+
+func TestNextRunAtIsZeroForATaskNothingSchedules(t *testing.T) {
+	t.Parallel()
+
+	manager, _ := newTestManager(t)
+	require.NoError(t, manager.Register(&Definition{Name: "a", Run: succeeds()}), "Register()")
+
+	_, holding := manager.NextRunAt("a")
+	assert.False(t, holding, "NextRunAt()")
 }
 
 func TestNextRunAtIsSilentAboutATaskNobodyRegistered(t *testing.T) {
@@ -635,7 +749,10 @@ func TestAnAttemptIsRecordedWithWhatItCameTo(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "a", "slot"), "Trigger()")
 	manager.Wait()
 	assert.Equal(t, []recordedRun{
-		{task: "a", argument: "slot", outcome: string(Blocked), detail: "deletion_limit", retain: 12},
+		{
+			task: "a", argument: "slot", trigger: string(TriggerManual),
+			outcome: string(Blocked), detail: "deletion_limit", retain: 12,
+		},
 	}, store.recorded(), "recorded runs")
 }
 
@@ -670,7 +787,7 @@ func TestARefusedAttemptIsRecordedAsSkipped(t *testing.T) {
 	}, time.Second, time.Millisecond, "the refusal was never recorded")
 	assert.Equal(t, []recordedRun{
 		{
-			task: "other", argument: "slot", outcome: string(Skipped),
+			task: "other", argument: "slot", trigger: string(TriggerManual), outcome: string(Skipped),
 			detail: string(DetailHeld), retain: defaultRetainedRuns,
 		},
 	}, store.recorded(), "recorded runs")
@@ -707,7 +824,7 @@ func TestARefusedScheduledRunIsRecorded(t *testing.T) {
 
 	assert.Contains(t, store.recorded(),
 		recordedRun{
-			task: "scheduled", outcome: string(Skipped),
+			task: "scheduled", trigger: string(TriggerSchedule), outcome: string(Skipped),
 			detail: string(DetailHeld), retain: defaultRetainedRuns,
 		},
 		"a refused scheduled run was not recorded")
@@ -818,6 +935,7 @@ func (n *fakeNotifier) messages() []sentAlert {
 type recordedRun struct {
 	task     string
 	argument string
+	trigger  string
 	outcome  string
 	detail   string
 	retain   int
@@ -843,7 +961,7 @@ type recordingStore struct {
 }
 
 func (s *recordingStore) RecordTaskRun(
-	_ context.Context, task, argument string, startedAt, finishedAt time.Time,
+	_ context.Context, task, argument, trigger string, startedAt, finishedAt time.Time,
 	outcome, detail, reference string, retain int,
 ) error {
 	s.mutex.Lock()
@@ -854,7 +972,7 @@ func (s *recordingStore) RecordTaskRun(
 	}
 	s.reference = reference
 	s.runs = append(s.runs, recordedRun{
-		task: task, argument: argument, outcome: outcome, detail: detail, retain: retain,
+		task: task, argument: argument, trigger: trigger, outcome: outcome, detail: detail, retain: retain,
 	})
 
 	return s.err
@@ -1020,7 +1138,7 @@ func TestASuccessorRefusedByAnotherHolderIsRecorded(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		return slices.Contains(store.recorded(), recordedRun{
-			task: "child", outcome: string(Skipped),
+			task: "child", trigger: string(TriggerChain), outcome: string(Skipped),
 			detail: string(DetailHeld), retain: defaultRetainedRuns,
 		})
 	}, time.Second, time.Millisecond, "a refused successor was not recorded")
@@ -1141,7 +1259,7 @@ func TestATaskWithNothingFollowingItRecordsOnlyItself(t *testing.T) {
 	require.True(t, manager.Trigger(t.Context(), "parent", ""), "Trigger()")
 	manager.Wait()
 	assert.Equal(t, []recordedRun{
-		{task: "parent", outcome: string(Succeeded), retain: defaultRetainedRuns},
+		{task: "parent", trigger: string(TriggerManual), outcome: string(Succeeded), retain: defaultRetainedRuns},
 	}, store.recorded(), "recorded runs")
 }
 
@@ -1262,8 +1380,14 @@ func TestARefusalSaysWhichKindOfBusyStoppedIt(t *testing.T) {
 		return len(store.recorded()) >= 2
 	}, time.Second, time.Millisecond, "both refusals were never recorded")
 	assert.ElementsMatch(t, []recordedRun{
-		{task: "a", argument: "slot", outcome: string(Skipped), detail: string(DetailWorking), retain: defaultRetainedRuns},
-		{task: "b", outcome: string(Skipped), detail: string(DetailHeld), retain: defaultRetainedRuns},
+		{
+			task: "a", argument: "slot", trigger: string(TriggerManual), outcome: string(Skipped),
+			detail: string(DetailWorking), retain: defaultRetainedRuns,
+		},
+		{
+			task: "b", trigger: string(TriggerManual), outcome: string(Skipped),
+			detail: string(DetailHeld), retain: defaultRetainedRuns,
+		},
 	}, store.recorded(), "recorded refusals")
 
 	close(held.release)

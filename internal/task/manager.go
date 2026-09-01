@@ -23,7 +23,7 @@ type Store interface {
 	// recent attempt over each argument whatever its age.
 	RecordTaskRun(
 		ctx context.Context,
-		task, argument string,
+		task, argument, trigger string,
 		startedAt, finishedAt time.Time,
 		outcome, detail, reference string,
 		retain int,
@@ -85,9 +85,9 @@ type registered struct {
 	// successors are the tasks whose Follows name this one, worked out afresh by
 	// each Resolve and settled before anything runs.
 	successors []string
-	// startsAt holds the instant the first scheduled run is due, and only while
-	// it is still due.
-	startsAt   startsAt
+	// nextDueAt holds the instant the next scheduled run is due, cleared while
+	// the schedule's own attempt runs: one overrunning its gap moves it.
+	nextDueAt  nextDueAt
 	definition Definition
 	inFlight   int
 }
@@ -252,22 +252,21 @@ func (m *Manager) Wait() {
 	m.triggered.Wait()
 }
 
-// NextRunAt reports when a task's first scheduled run is being held until,
-// while it is still being held. Only the initial delay answers: the gap between
-// runs is the task's cadence rather than work held back.
+// NextRunAt reports when a task's next scheduled run is due. A manual or chain
+// attempt leaves it standing: only the schedule's own run resets the gap.
 func (m *Manager) NextRunAt(name string) (time.Time, bool) {
 	entry, known := m.tasks[name]
 	if !known {
 		return time.Time{}, false
 	}
 
-	return entry.startsAt.load()
+	return entry.nextDueAt.load()
 }
 
 // Registered is one task as a surface outside this package reads it.
 type Registered struct {
-	// NextRunAt is when the first scheduled run is due, and is zero once it has
-	// started or for a task nothing schedules.
+	// NextRunAt is when the next scheduled run is due, zero for a task nothing
+	// schedules and while the schedule's own attempt runs.
 	NextRunAt time.Time
 	// Name is what a trigger asks for.
 	Name string
@@ -290,7 +289,7 @@ func (m *Manager) Tasks() []Registered {
 	tasks := make([]Registered, 0, len(m.order))
 	for _, name := range m.order {
 		entry := m.tasks[name]
-		nextRunAt, _ := entry.startsAt.load()
+		nextRunAt, _ := entry.nextDueAt.load()
 		var interval time.Duration
 		if every, ok := entry.definition.Schedule.(Every); ok {
 			interval = every()
@@ -343,9 +342,9 @@ func (m *Manager) Holding(resource string) bool {
 func (m *Manager) follow(ctx context.Context, entry *registered) {
 	delay := entry.definition.InitialDelay()
 	due := m.now().UTC().Add(delay)
-	entry.startsAt.store(due)
+	entry.nextDueAt.store(due)
 	started := wait(ctx, m.after(delay))
-	entry.startsAt.clear()
+	entry.nextDueAt.clear()
 	if !started {
 		return
 	}
@@ -359,12 +358,20 @@ func (m *Manager) follow(ctx context.Context, entry *registered) {
 	for {
 		next, scheduled := nextDue(entry.definition.Schedule, due, m.now().UTC())
 		if !scheduled {
+			entry.nextDueAt.clear()
+
 			return
 		}
+		entry.nextDueAt.store(next)
 		if !wait(ctx, m.after(next.Sub(m.now().UTC()))) {
+			entry.nextDueAt.clear()
+
 			return
 		}
 		due = next
+		// Cleared before the attempt starts: an attempt overrunning its own gap is
+		// due again the moment it finishes, so a stored instant would be past.
+		entry.nextDueAt.clear()
 		m.scheduled(ctx, entry)
 	}
 }
@@ -575,6 +582,7 @@ func (m *Manager) record(
 		ctx,
 		invocation.Task,
 		invocation.Argument,
+		string(invocation.Trigger),
 		startedAt,
 		finishedAt,
 		string(result.Outcome),
@@ -894,17 +902,17 @@ func wait(ctx context.Context, signal <-chan time.Time) bool {
 	}
 }
 
-// startsAt is when a first scheduled run is due, and holds a value only while
-// it is still due. Each store keeps its own copy rather than rewriting a value
-// a reader may already hold.
-type startsAt struct {
+// nextDueAt is when a task's next scheduled run is due, holding a value only
+// while one is known. Each store keeps its own copy rather than rewriting a
+// value a reader may already hold.
+type nextDueAt struct {
 	due atomic.Pointer[time.Time]
 }
 
-func (s *startsAt) store(due time.Time) { s.due.Store(&due) }
-func (s *startsAt) clear()              { s.due.Store(nil) }
+func (s *nextDueAt) store(due time.Time) { s.due.Store(&due) }
+func (s *nextDueAt) clear()              { s.due.Store(nil) }
 
-func (s *startsAt) load() (time.Time, bool) {
+func (s *nextDueAt) load() (time.Time, bool) {
 	due := s.due.Load()
 	if due == nil {
 		return time.Time{}, false

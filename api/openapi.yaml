@@ -181,6 +181,48 @@ paths:
           $ref: '#/components/responses/NotFound'
         "409":
           $ref: '#/components/responses/TaskInProgress'
+  /v1/tasks/runs:
+    get:
+      tags:
+        - browser-api
+      operationId: getTaskRuns
+      description: >-
+        What the background activities have been doing, newest first: one page
+        of the recorded history, over every task or over one named task.
+      parameters:
+        - name: task
+          in: query
+          description: >-
+            Narrows the page to one registered task. A name this build does not
+            register is refused rather than answered with an empty page.
+          schema:
+            type: string
+        - name: after
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: A newest-first cursor page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskRunPage'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/sync/runs:
     get:
       tags:
@@ -1684,8 +1726,63 @@ components:
           type: string
           format: date-time
           description: >-
-            When the first scheduled run is due. Absent once it has started, and
-            for a task nothing schedules.
+            When the next scheduled run is due. Absent for a task nothing
+            schedules, and while the task's own scheduled run is under way. A
+            run somebody asked for does not disturb the schedule, so this stays
+            put during one.
+    TaskRun:
+      type: object
+      additionalProperties: false
+      description: >-
+        One recorded attempt. It carries the aggregate record and nothing about
+        what the attempt touched.
+      required:
+        - task
+        - startedAt
+        - finishedAt
+        - outcome
+        - reference
+      properties:
+        task:
+          type: string
+        argument:
+          type: string
+          description: >-
+            What the attempt was over, such as a target slot. Absent for a task
+            that covers only one thing.
+        trigger:
+          type: string
+          description: >-
+            What started the attempt: `schedule`, `manual`, or `chain`. Absent
+            for an attempt recorded before this was written down.
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        outcome:
+          type: string
+        detail:
+          type: string
+          description: >-
+            A stable, safe-to-display reason for the outcome. Never provider
+            text, a route name, or an upstream identifier.
+        reference:
+          type: string
+          description: The name an alert about this attempt carries.
+    TaskRunPage:
+      type: object
+      additionalProperties: false
+      required:
+        - runs
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskRun'
+        next:
+          type: string
     TimezoneUpdate:
       type: object
       additionalProperties: false

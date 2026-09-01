@@ -58,8 +58,8 @@ type Tasks interface {
 
 // RegisteredTask is one background activity and what is true of it now.
 type RegisteredTask struct {
-	// NextRunAt is when the first scheduled run is due, zero once it has started
-	// and for a task nothing schedules.
+	// NextRunAt is when the next scheduled run is due, zero for a task nothing
+	// schedules and while the schedule's own attempt runs.
 	NextRunAt time.Time
 	Name      string
 	// Interval is the gap between runs for a task on a fixed schedule, zero for
@@ -166,6 +166,7 @@ type State interface {
 	TargetState
 	StageState
 	RunState
+	TaskRunState
 }
 
 // TargetState is what is known locally about each configured Wahoo account.
@@ -200,6 +201,16 @@ type RunState interface {
 	// LastSuccessfulPhaseCompletion returns when a phase last recorded a success,
 	// which the trusted inventory's reported age is measured against.
 	LastSuccessfulPhaseCompletion(ctx context.Context, phase string) (completedAt time.Time, found bool, err error)
+}
+
+// TaskRunState is what the background task layer recorded about its own
+// attempts. Read a page at a time, because the retained history spans every
+// registered task.
+type TaskRunState interface {
+	// ForEachTaskRunPage visits one page of recorded attempts, newest first, and
+	// returns the cursor for the page after it. An empty task is every task; a
+	// cursor this store did not issue is unusable rather than a failure.
+	ForEachTaskRunPage(ctx context.Context, task, after string, limit int, visit func(task, argument, trigger string, startedAt, finishedAt time.Time, outcome, detail, reference string) error) (next string, usable bool, err error)
 }
 
 // SettingsState is the settings an operator edits while the service runs, held

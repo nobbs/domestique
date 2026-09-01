@@ -52,6 +52,12 @@ History is bounded per task, so a task running every few minutes cannot evict
 the history of one running weekly. The most recent attempt over each argument is
 kept whatever its age: it is what that argument last came to.
 
+What started an attempt is written down with it — its own schedule, an operator,
+or the attempt it followed. It is the difference between a run somebody asked for
+and one nobody was watching, which is the first thing a reader of the history
+wants to know. An attempt recorded before this was written down carries none, and
+reads as unknown rather than as scheduled.
+
 A history that cannot be written is logged and does not change what the attempt
 came to. Losing a row costs a stale line on a status page.
 
@@ -175,9 +181,17 @@ attempt they ask for is also the way out: a success ends the streak.
 
 `GET /v1/tasks` lists every background activity this build registers, in
 registration order, with what is known about each right now: whether it runs
-unasked, how many attempts are in flight, and when the first scheduled run is
-due. A task nothing schedules reports no due time, which reads as absent rather
-than as the zero instant.
+unasked, how many attempts are in flight, and when the next scheduled run is
+due. A task nothing schedules reports no due time, and neither does one whose
+own scheduled run is under way — an attempt that overruns its gap is due again
+the moment it finishes, so nothing said beforehand would still be true. Both
+read as absent rather than as the zero instant.
+
+A task running because somebody asked for it, or because it follows something
+that finished, still reports its due time. That run did not disturb the
+schedule, which is still waiting out the gap it was already waiting out, so the
+instant is as true during it as it was before. Attempts in flight and the next
+due time answer different questions, and a page may well show both.
 
 `POST /v1/tasks/{name}/run`, and `POST /v1/tasks/{name}/run/{argument}` for one
 over an argument, start a single attempt on exactly the terms a schedule starts
@@ -185,8 +199,23 @@ one. `202` means the attempt was accepted and continues independently of the
 request. `409` means it was refused, which is not a fault: either this exact
 work is already happening, or something it needs is held by another run.
 
-A name this build does not register is refused as not found, so a page built
-against a different build asks for nothing that silently does nothing.
+`GET /v1/tasks/runs` serves what the activities have been doing: one page of the
+recorded history, newest first, over every task or over the one a `task` filter
+names. Each attempt carries what started it, what it was over, what it came to
+and why, and the reference an alert about it quotes — the aggregate it was
+recorded as, and nothing about what it touched.
+
+A page ends with the cursor for the one after it, absent where the history ends.
+The cursor is a position rather than a name, so it still resolves after the
+attempt it was taken from has been pruned, and it carries the whole recency
+tuple: a refusal recorded off the caller's goroutine can commit its row after a
+later attempt's, so a position by insertion order alone would page straight past
+it. One this service did not issue is refused rather than answered with the
+newest page, which would silently restart the walk.
+
+A name this build does not register is refused, whether it names the task a run
+was asked for or the filter a page was asked over, so a page built against a
+different build asks for nothing that silently does nothing.
 
 ## The service timezone
 

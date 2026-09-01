@@ -234,6 +234,7 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 		"/v1/status",
 		"/v1/routes",
 		"/v1/sync/runs",
+		"/v1/tasks/runs",
 		"/v1/webui/config",
 		"/v1/settings",
 		"/v1/providers/veloplanner/sourceRoutes/12/routes/1",

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"slices"
+	"time"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
@@ -94,4 +95,56 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	}
 	argument := request.PathValue("argument")
 	h.accepted(writer, func() bool { return h.tasks.Run(name, argument) })
+}
+
+// GetTaskRuns serves one page of what the background activities have been doing,
+// newest first, with the cursor for the next. Local records only: the aggregate
+// each attempt was recorded as, and nothing about what it touched.
+func (h *Handler) GetTaskRuns(writer http.ResponseWriter, request *http.Request) {
+	query := request.URL.Query()
+	// A name this build does not register is refused rather than answered with an
+	// empty page, which reads as a task that has never run.
+	if task := query.Get("task"); task != "" && !h.registers(task) {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "no task of that name is registered")
+
+		return
+	}
+	limit, ok := h.pageLimit(writer, query)
+	if !ok {
+		return
+	}
+	// An empty history is an empty list rather than a null one: the page is the
+	// answer either way.
+	view := openapi.TaskRunPage{Runs: []openapi.TaskRun{}}
+	next, usable, err := h.state.ForEachTaskRunPage(
+		request.Context(), query.Get("task"), query.Get("after"), limit,
+		func(
+			task, argument, trigger string, startedAt, finishedAt time.Time, outcome, detail, reference string,
+		) error {
+			view.Runs = append(view.Runs, openapi.TaskRun{
+				Task:       task,
+				Argument:   optionalString(argument),
+				Trigger:    optionalString(trigger),
+				StartedAt:  wireTime(startedAt),
+				FinishedAt: wireTime(finishedAt),
+				Outcome:    outcome,
+				Detail:     optionalString(detail),
+				Reference:  reference,
+			})
+
+			return nil
+		})
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !usable {
+		h.error(writer, http.StatusBadRequest, "invalid_request",
+			"the history cursor is not one this service could have issued")
+
+		return
+	}
+	view.Next = optionalString(next)
+	h.writeJSON(writer, http.StatusOK, view)
 }
