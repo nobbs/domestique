@@ -38,6 +38,11 @@ encoder boundary and to Wahoo, never to the browser UI.
 own inputs (ride model, "Ride start"), never a stored entity and never a
 duration: a duration is *moving time*.
 
+**activity** — a ride a rider's device recorded and Wahoo holds, read back as a
+summary and, later, its FIT record stream. It is stored against the target
+whose account recorded it; Wahoo's own word for one, *workout*, stays inside
+the `wahoo` adapter and never crosses into the service or the UI.
+
 ## Where routes come from and go
 
 **provider** — the upstream service a route was read from: VeloPlanner or

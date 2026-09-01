@@ -64,7 +64,7 @@ func New(options *Options) (*Client, error) {
 		ClientID:     options.ClientID,
 		ClientSecret: string(options.ClientSecret),
 		RedirectURL:  options.RedirectURL,
-		Scopes:       []string{"routes_read", "routes_write", "user_read"},
+		Scopes:       []string{"routes_read", "routes_write", "user_read", "workouts_read", "offline_data"},
 		Endpoint: oauth2.Endpoint{
 			AuthURL:   client.endpoint(oauthBaseURL, "/oauth/authorize").String(),
 			TokenURL:  client.endpoint(oauthBaseURL, "/oauth/token").String(),

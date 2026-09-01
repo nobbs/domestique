@@ -44,7 +44,7 @@ func TestClientCompletesOAuthAndFindsAuthenticatedUser(t *testing.T) {
 	parsed, err := url.Parse(authorizationURL)
 	require.NoError(t, err, "parsing the authorization URL")
 	assert.Equal(t, "/oauth/authorize", parsed.Path, "authorization path")
-	assert.Equal(t, "routes_read routes_write user_read", parsed.Query().Get("scope"), "authorization scope")
+	assert.Equal(t, "routes_read routes_write user_read workouts_read offline_data", parsed.Query().Get("scope"), "authorization scope")
 	assert.Equal(t, "state-value", parsed.Query().Get("state"), "authorization state")
 
 	accessToken, refreshToken, err := client.ExchangeAuthorizationCode(t.Context(), "authorization-code")

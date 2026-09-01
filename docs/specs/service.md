@@ -757,7 +757,9 @@ provider-agnostic and applies to any future source.
 ## Wahoo synchronisation
 
 Wahoo is the only destination. The service uses the approved confidential Wahoo
-Cloud application with `routes_read`, `routes_write`, and `user_read` scopes.
+Cloud application with `routes_read`, `routes_write`, `user_read`, `workouts_read`,
+and `offline_data` scopes. Changing the requested scopes requires every configured
+target to complete OAuth again.
 The configured Wahoo environment may be sandbox; it is valid for this service
 within its lower rate limits.
 
