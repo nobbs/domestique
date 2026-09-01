@@ -47,6 +47,9 @@ importers:
       recharts:
         specifier: ^3.10.1
         version: 3.10.1(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react-is@17.0.2)(react@19.2.8)(redux@5.0.1)
+      shadcn:
+        specifier: ^4.19.0
+        version: 4.19.0(supports-color@7.2.0)(typescript@7.0.2)
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
@@ -114,9 +117,6 @@ importers:
       playwright:
         specifier: 1.62.1
         version: 1.62.1
-      shadcn:
-        specifier: ^4.19.0
-        version: 4.19.0(supports-color@7.2.0)(typescript@7.0.2)
       storybook:
         specifier: 10.5.10
         version: 10.5.10(@types/react@19.2.18)(react@19.2.8)
