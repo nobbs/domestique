@@ -84,6 +84,11 @@ type Story = StoryObj<typeof meta>;
 
 export const Connected: Story = { render: () => <Held /> };
 
+/** Owner is admin-only on the wire: only an admin's view names whose target this is. */
+export const OwnedByAnotherSubject: Story = {
+  render: () => <Held target={{ ...connected, owner: "rider-a" }} />,
+};
+
 export const Behind: Story = {
   render: () => (
     <Held target={{ ...connected, convergence: "lagging", routes: { current: 2, pending: 2 } }} />

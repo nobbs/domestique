@@ -33,19 +33,10 @@ DELETE FROM runtime_source;
 -- name: InsertRuntimeSource :exec
 INSERT INTO runtime_source (position, provider, base_url) VALUES (?, ?, ?);
 
--- name: DeleteRuntimeTargets :exec
-DELETE FROM runtime_target;
-
--- name: InsertRuntimeTarget :exec
-INSERT INTO runtime_target (position, target_id) VALUES (?, ?);
-
 -- name: ListRuntimeBasemaps :many
 SELECT name, style_url, style_url_dark, dark_cartography
 FROM runtime_basemap
 ORDER BY position;
-
--- name: ListRuntimeTargets :many
-SELECT target_id FROM runtime_target ORDER BY position;
 
 -- name: ListRuntimeSources :many
 SELECT provider, base_url FROM runtime_source ORDER BY position;

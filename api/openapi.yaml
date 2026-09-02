@@ -509,36 +509,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
-  /v1/settings/targets:
-    put:
-      tags:
-        - browser-api
-      operationId: setTargets
-      security:
-        - session: []
-          browserOrigin: []
-      description: >-
-        Replaces the destination slots whole, in the order they are offered. A
-        slot name is the identity every stored authorization, target route and
-        recorded run already carries, so renaming one abandons that slot's state
-        rather than moving it.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TargetsUpdate'
-      responses:
-        "200":
-          $ref: '#/components/responses/SettingsStored'
-        "400":
-          $ref: '#/components/responses/InvalidRequest'
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "503":
-          $ref: '#/components/responses/Unavailable'
   /v1/settings/sources/{provider}:
     put:
       tags:
@@ -820,6 +790,27 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "502":
           $ref: '#/components/responses/ProviderUnavailable'
+  /oauth/wahoo/start:
+    get:
+      tags:
+        - oauth
+      operationId: startOwnOAuth
+      description: >-
+        Starts the flow for the caller's own target, creating it on first use.
+        The bare path exists because the browser is never told its own
+        subject, so it cannot name a target the way an admin starting
+        another's does.
+      responses:
+        "302":
+          $ref: '#/components/responses/OAuthRedirect'
+        "400":
+          $ref: '#/components/responses/AuthorizationFailed'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /oauth/wahoo/start/{target}:
     get:
       tags:
@@ -1121,6 +1112,12 @@ components:
       properties:
         id:
           type: string
+        owner:
+          type: string
+          description: >-
+            The subject that owns this target. Present only for an admin
+            caller: a non-admin's own target is already known to be theirs,
+            and never sees another's here at all.
         authorisation:
           type: string
         convergence:
@@ -1540,22 +1537,6 @@ components:
             Left out it keeps the stored value, which is how a page that was
             never told the secret can save the rest of the application; sent
             empty it removes the credential.
-    TargetsUpdate:
-      type: object
-      additionalProperties: false
-      required:
-        - targets
-      properties:
-        targets:
-          type: array
-          maxItems: 2
-          items:
-            type: string
-          description: >-
-            The destination slots, in the order they are offered. A slot name is
-            the identity every stored authorization, target route and recorded
-            run already carries, so renaming one abandons that slot's state
-            rather than moving it.
     SourceUpdate:
       type: object
       additionalProperties: false
@@ -1847,7 +1828,6 @@ components:
         - apiBaseUrl
         - oauthBaseUrl
         - clientId
-        - targets
       properties:
         apiBaseUrl:
           type: string
@@ -1863,16 +1843,6 @@ components:
           description: >-
             The registered application's public identifier. Its secret is not
             here: it is written through secrets and read back only as set.
-        targets:
-          type: array
-          maxItems: 2
-          items:
-            type: string
-          description: >-
-            The destination slots, in the order they are offered. A slot name is
-            the identity every stored authorization, target route and recorded
-            run already carries, so renaming one abandons that slot's state
-            rather than moving it.
     SourceSettings:
       type: object
       additionalProperties: false

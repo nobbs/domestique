@@ -16,8 +16,8 @@ import (
 // The background activities this service runs.
 const (
 	taskSyncSource      = httpapi.TaskSyncSource
-	taskSyncTarget      = "sync:target"
-	taskSyncClear       = "sync:clear"
+	taskSyncTarget      = httpapi.TaskSyncTarget
+	taskSyncClear       = httpapi.TaskSyncClear
 	taskSurfaceAnnotate = "surface:annotate"
 	taskSurfaceIndex    = "surface:index"
 )

@@ -283,17 +283,23 @@ The state-changing HTTP surface is sign-in, sign-out, and the Wahoo OAuth flow:
 - `GET /auth/callback` validates the returned authorisation code and issues a
   session, on the terms described above.
 - `POST /auth/logout` revokes the caller's session and always answers `204`.
-- `GET /oauth/wahoo/start/{target}` starts authorisation for a configured target
-  slot.
+- `GET /oauth/wahoo/start` starts authorisation for the caller's own target,
+  creating it on first use. The browser is never told its own subject, so this
+  bare path is the only way a caller with no target yet can start one at all.
+- `GET /oauth/wahoo/start/{target}` starts authorisation for a named target: a
+  non-admin may only name their own subject, which the bare path above already
+  covers; an admin may name any target that already exists. Either way a name
+  this rule refuses is answered not found, so a non-admin cannot learn which
+  other targets exist.
 - `GET /oauth/wahoo/callback` validates a one-time, expiring OAuth state and
   stores the resulting refresh token.
 
 The Wahoo pair is limited to a session belonging to an allowed subject. The
-state binds the calling identity and target slot and prevents cross-account or
-CSRF callbacks. The service rejects an attempt to authorise the same Wahoo
-account for two target slots. The Wahoo callback joins the Auth0 callback as
-the surface's other documented exception to the `Origin` rule, for the same
-reason: both are a cross-site GET the browser is redirected into.
+state binds the calling identity and target and prevents cross-account or CSRF
+callbacks. The service rejects an attempt to authorise the same Wahoo account
+for two targets. The Wahoo callback joins the Auth0 callback as the surface's
+other documented exception to the `Origin` rule, for the same reason: both are
+a cross-site GET the browser is redirected into.
 
 Alongside it are the operator controls over synchronisation: the manual
 triggers, the two switches that decide what the timer is allowed to start, the
@@ -344,7 +350,10 @@ The read-only JSON surface is small:
   whether every stored route at its current revision has reached every configured
   target: one convergence word, safe aggregate current and pending counts, and
   the last reconciliation result per target, plus one overall answer that is true
-  only when every target is current. Those are derived from stored revisions
+  only when every target is current. A non-admin subject's answer names only
+  their own target — zero or one, never another's — and the overall answer is
+  computed over that same, scoped set; an admin's names every target that
+  exists, each carrying who owns it. Those are derived from stored revisions
   alone, never by asking Wahoo what it holds, and they describe the Wahoo
   accounts rather than what any physical head unit has downloaded. It also names
   the build that is running: the full public source commit the binary was
@@ -385,9 +394,11 @@ The read-only JSON surface is small:
   name, else the bare `sub`.
 - `GET /v1/settings` returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
-  the basemap list, the surface settings, the Wahoo application and its target
-  slots, the source libraries, and the ride model. It is one document and the
-  whole of it every time, whichever section is about to be edited.
+  the basemap list, the surface settings, the Wahoo application, the source
+  libraries, and the ride model. It is one document and the whole of it every
+  time, whichever section is about to be edited. Which targets exist is not
+  among these settings: each is created by its own owning subject, on their own
+  first connection, not written here.
 
   It carries **no credential value**. It reports, per stored credential, whether
   one is set at all, and it names what is still to be entered: everything a run
@@ -417,16 +428,21 @@ it.
   needs is held by another run. A name this build does not register is refused
   as `404`.
 
-  An argument is the task's own to interpret, not this surface's: an
-  unconfigured target slot is accepted and recorded as `skipped` rather than
-  refused as `404`. The refusal that matters is in the service — a clear or a
-  reconciliation of a slot that is not configured does no work. The attempt is
-  recorded in `task_runs`, but nothing on this surface reads it back; an
-  operator learns of a typo'd slot only by the reconciliation it never
-  produces.
+  An argument is the task's own to interpret, not this surface's — except for
+  `sync:target` and `sync:clear`, where it names a target and this surface
+  refuses it before the task layer ever sees it: a non-admin's argument must be
+  their own subject (or, for `sync:target`, empty, meaning every target — which
+  only an admin may ask for), anything else answered `404` the same as a name
+  that does not exist, so a non-admin cannot learn which other targets exist.
+  Past that gate, a target that does not exist is accepted and recorded as
+  `skipped` rather than refused: the refusal that matters is in the service — a
+  clear or a reconciliation of a target that does not exist does no work. The
+  attempt is recorded in `task_runs`, but nothing on this surface reads it
+  back; an operator learns of a typo'd target only by the reconciliation it
+  never produces.
 
-  `sync:clear` deletes every route this service owns from one configured slot
-  and forgets that slot's route mappings. It is the one deletion the per-target
+  `sync:clear` deletes every route this service owns from one target and
+  forgets that target's route mappings. It is the one deletion the per-target
   deletion limit does not bound, and nothing schedules it. It still deletes only
   routes carrying an external ID this service issued, and leaves the stored
   library untouched, so the next reconciliation rebuilds the target.
@@ -443,7 +459,6 @@ it.
   route that is not in the stored inventory.
 - The settings are written one section at a time, over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,
-  `/v1/settings/targets` for the slots it writes to,
   `/v1/settings/sources/{provider}` for one library and the account it is read
   with, and `/v1/settings/notifications`, `/v1/settings/basemaps`,
   `/v1/settings/surface`, `/v1/settings/ridemodel` and `/v1/settings/sync` for
@@ -515,12 +530,14 @@ The service has a provider-neutral configuration contract:
   the state database's path and key file. Who may sign in is not among them —
   that is the tenant's own Action, not this file.
 - Everything that decides what work the service does is not in that file. The
-  provider endpoints, target slots, source libraries, ride model, schedule and
-  credentials are held in the state database, edited over the settings
-  endpoints, and in force without a restart; the
+  provider endpoints, source libraries, ride model, schedule and credentials
+  are held in the state database, edited over the settings endpoints, and in
+  force without a restart; the
   [configuration specification](configuration.md#runtime-settings) defines them.
   A deployment that has configured none of them starts, serves the settings
-  page, and runs nothing.
+  page, and runs nothing. Targets are held in the same database but are not
+  among these settings: each is created by its own owning subject connecting,
+  not written by an operator.
 - Two sensitive static values are loaded by Koanf from a Docker-style file or
   the documented direct environment variables: the 32-byte state-encryption
   key and the Auth0 client secret. Every other credential — the source
@@ -705,8 +722,8 @@ all configured targets: API calls are serial, obey advertised limits, and resume
 when safe to do so.
 
 Domestique deletes only Wahoo routes it owns through its `external_id`. A
-route deletion removes the corresponding owned Wahoo route from both
-targets. It never deletes manually created Wahoo routes.
+route deletion removes the corresponding owned Wahoo route from every
+target. It never deletes manually created Wahoo routes.
 
 ## Sync lifecycle and safety
 
@@ -716,7 +733,7 @@ The detailed state transitions and safety gates are defined in the
 The service attempts one sync shortly after a healthy startup and then hourly.
 At most one sync may run at a time. It fetches the source inventory once, then
 processes configured Wahoo targets serially so one account's failure does not stop
-an attempted update of the other. The overall run is failed if either target
+an attempted update of the rest. The overall run is failed if any target
 fails.
 
 No automatic run may delete more than five owned Wahoo routes from a target.
@@ -801,7 +818,8 @@ secret files remain outside Git.
   page, and runs nothing until an operator has finished configuring it there.
 - A credential entered on the settings page is stored encrypted and is never
   served back, in any form, to any caller.
-- Two Wahoo accounts can be authorised through the session-gated OAuth flow.
+- Any signed-in subject can self-service authorise their own Wahoo account
+  through the session-gated OAuth flow, one target per subject.
 - An hourly run mirrors every valid VeloPlanner route to every configured target as FIT.
 - Edits preserve the route's `external_id`; source deletions remove only owned
   destination routes and respect the deletion guard.

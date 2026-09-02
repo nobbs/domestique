@@ -4,12 +4,12 @@ Guidance for AI coding agents. Humans start at
 [CONTRIBUTING.md](CONTRIBUTING.md). Rules here state the command; the linked
 specs hold the reasons.
 
-`domestique` mirrors one private VeloPlanner route library to one or two Wahoo
-accounts as device-ready FIT courses, plus a read-only browser UI (library map,
-per-route pages, settings). Single-tenant, CGO-free, `linux/amd64` Docker
-workload on a Tailnet host; no CLI. State-changing HTTP is limited to sign-in
-and sign-out, Wahoo OAuth onboarding, manual run triggers, and
-`PUT /v1/settings/*`.
+`domestique` mirrors one private VeloPlanner route library to each signed-in
+rider's own self-service Wahoo account as device-ready FIT courses, plus a
+read-only browser UI (library map, per-route pages, settings). Single-tenant,
+CGO-free, `linux/amd64` Docker workload on a Tailnet host; no CLI.
+State-changing HTTP is limited to sign-in and sign-out, Wahoo OAuth onboarding,
+manual run triggers, and `PUT /v1/settings/*`.
 
 ## Commands
 

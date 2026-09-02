@@ -192,6 +192,7 @@ type Target struct {
 	RefreshToken       []byte
 	AuthorizationState string
 	UpdatedAtUnix      int64
+	OwnerSubject       sql.NullString
 }
 
 type TargetRun struct {

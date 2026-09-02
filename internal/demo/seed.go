@@ -19,7 +19,7 @@ type State interface {
 	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Route) error
 	StoreStageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
 	StoreStageDuration(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, surfaceGeneration, coefficientFingerprint string, movingSeconds *float64, cumulativeSeconds []byte) error
-	EnsureTargets(ctx context.Context, targetIDs []string) error
+	EnsureTargetOwner(ctx context.Context, subject string) error
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
 	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
 	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
@@ -136,12 +136,10 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 		return err
 	}
 
-	targetIDs := make([]string, 0, len(slots))
 	for _, slot := range slots {
-		targetIDs = append(targetIDs, slot.ID)
-	}
-	if err := state.EnsureTargets(ctx, targetIDs); err != nil {
-		return fmt.Errorf("demo: ensuring targets: %w", err)
+		if err := state.EnsureTargetOwner(ctx, slot.ID); err != nil {
+			return fmt.Errorf("demo: ensuring target owner %s: %w", slot.ID, err)
+		}
 	}
 	for _, slot := range slots {
 		if err := seedSlot(ctx, state, slot, stages, now); err != nil {

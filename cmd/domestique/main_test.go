@@ -94,12 +94,11 @@ func TestSourceForBuildsOneLibraryWhateverTheOthersAreMissing(t *testing.T) {
 func TestWahooProviderOffersNoTargetsUntilItsApplicationIsConfigured(t *testing.T) {
 	t.Parallel()
 
-	current := testSettings(t, testStore(t, t.TempDir()))
-	values := current.Values()
-	values.Wahoo.Targets = []string{"rider"}
-	storeSettings(t, current, values)
+	store := testStore(t, t.TempDir())
+	current := testSettings(t, store)
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider"), "EnsureTargetOwner()")
 
-	provider := newWahooProvider(current, "https://domestique.example.test")
+	provider := newWahooProvider(current, store, "https://domestique.example.test")
 	assert.Empty(t, provider.targetIDs(), "a target was offered before the Wahoo application was configured")
 	_, err := provider.current()
 	require.ErrorIs(t, err, errNotConfigured, "current()")
@@ -117,9 +116,10 @@ func TestWahooProviderOffersNoTargetsUntilItsApplicationIsConfigured(t *testing.
 func TestWahooProviderRebuildsOnlyWhenItsSettingsChange(t *testing.T) {
 	t.Parallel()
 
-	current := testSettings(t, testStore(t, t.TempDir()))
+	store := testStore(t, t.TempDir())
+	current := testSettings(t, store)
 	configureWahoo(t, current)
-	provider := newWahooProvider(current, "https://domestique.example.test")
+	provider := newWahooProvider(current, store, "https://domestique.example.test")
 
 	first, err := provider.current()
 	require.NoError(t, err, "current()")
@@ -188,7 +188,8 @@ func TestNoSourceIsBuiltFromSettingsNoClientAccepts(t *testing.T) {
 func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing.T) {
 	t.Parallel()
 
-	provider := newWahooProvider(testSettings(t, testStore(t, t.TempDir())), "https://domestique.example.test")
+	store := testStore(t, t.TempDir())
+	provider := newWahooProvider(testSettings(t, store), store, "https://domestique.example.test")
 	calls := map[string]func() error{
 		"AuthorizationURL":          func() error { _, err := provider.AuthorizationURL("state"); return err },
 		"ExchangeAuthorizationCode": func() error { _, _, err := provider.ExchangeAuthorizationCode(t.Context(), "code"); return err },

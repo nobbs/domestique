@@ -50,20 +50,24 @@ service says provider; a sentence about *reading* says source.
 
 **target** — a Wahoo destination that routes are written to. This is the word on
 the wire, in types, and in the interface. It is not a *slot* and not, on its
-own, an *account*.
+own, an *account*. Belongs to exactly one subject — see *rider* — except a
+target authorised before ownership existed, which belongs to none until an
+admin assigns one by hand.
 
-**slot** — one entry in the configured `wahoo.targets` list, which is a name
-rather than a Wahoo identity. Naming a slot creates a target's durable record,
-and removing it leaves that record standing; a slot and the target it names are
-not the same thing (see [configuration.md](specs/configuration.md)). This is
-configuration's word alone; the wire and the interface say *target*.
+**slot** — a target's own identity: the value every stored authorisation,
+target route, and recorded run is keyed by. For a self-service target this is
+the same value as the owning subject's, not a name an operator chose (see
+[configuration.md](specs/configuration.md)); a slot with no matching subject is
+one authorised before ownership existed. This is configuration and storage's
+word; the wire and the interface say *target*.
 
 **account** — a set of credentials, and only that. A source has one (a library
 is read with a login of its own) and a target has one (an authorised Wahoo
-connection). "Account" alone never identifies which side is meant: say *source
-account* or *target account*, or name the side directly. The destination itself
-is a *target*, in the interface as on the wire — "what the targets hold", not
-"what the accounts hold".
+connection, belonging to whichever subject owns that target). "Account" alone
+never identifies which side is meant: say *source account* or *target
+account*, or name the side directly. The destination itself is a *target*, in
+the interface as on the wire — "what the targets hold", not "what the accounts
+hold".
 
 ## The library
 
@@ -168,6 +172,11 @@ shares the state database's fate with.
 **operator** — the person running the service and holding its configuration.
 They are the same person here, but not the same role, and a sentence usually
 means one of them.
+
+**rider** — a signed-in subject who owns a Wahoo target, self-service created
+by their own first "Connect." Every reader with an authorised Wahoo account is
+a rider; not every reader has connected one yet, and an admin sees every
+rider's target where a rider sees only their own.
 
 ## Spelling
 

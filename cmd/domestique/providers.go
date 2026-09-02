@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -71,6 +72,7 @@ var errNotConfigured = errors.New("the Wahoo application is not configured yet")
 // daily quota and spends real requests finding out otherwise.
 type wahooProvider struct {
 	settings    *runtimeconfig.Current
+	store       *sqlite.Store
 	client      *wahoo.Client
 	redirectURL string
 	built       wahooApplication
@@ -93,8 +95,8 @@ type wahooApplication struct {
 // is derived rather than configured: it is this service's own callback path on
 // the origin a browser reaches it at, which is the only URL Wahoo may send an
 // authorization back to.
-func newWahooProvider(settings *runtimeconfig.Current, browserOriginURL string) *wahooProvider {
-	return &wahooProvider{settings: settings, redirectURL: browserOriginURL + oauthCallbackPath}
+func newWahooProvider(settings *runtimeconfig.Current, store *sqlite.Store, browserOriginURL string) *wahooProvider {
+	return &wahooProvider{settings: settings, store: store, redirectURL: browserOriginURL + oauthCallbackPath}
 }
 
 func (p *wahooProvider) current() (*wahoo.Client, error) {
@@ -138,16 +140,33 @@ func (p *wahooProvider) current() (*wahoo.Client, error) {
 	return client, nil
 }
 
-// targetIDs are the destination slots a run may reconcile: none at all until the
-// Wahoo application itself is configured, so an incomplete setup makes runs
-// report they are not ready rather than fail against an application that does
-// not exist.
+// targetIDs are every self-service target's slot, unfiltered by owner: none
+// at all until the Wahoo application itself is configured, so an incomplete
+// setup makes runs report they are not ready rather than fail against an
+// application that does not exist. Background reconciliation has no notion
+// of ownership — it reconciles whatever rows exist, the same as it always
+// has; only the HTTP surface a rider or admin actually sees is scoped.
 func (p *wahooProvider) targetIDs() []string {
 	if _, err := p.current(); err != nil {
 		return nil
 	}
 
-	return p.settings.Values().Wahoo.Targets
+	// Best effort: the sync service's own targetIDs has no error channel, so a
+	// read failure here is reported as no targets — the "not ready" state a
+	// caller already handles — but logged first, so it is not read as the
+	// ordinary "nothing configured yet" case an operator need not act on.
+	ids := []string{}
+	if err := p.store.ForEachTarget(context.Background(), func(id, _, _ string) error {
+		ids = append(ids, id)
+
+		return nil
+	}); err != nil {
+		slog.Error("reading target IDs", "error", err)
+
+		return nil
+	}
+
+	return ids
 }
 
 func (p *wahooProvider) AuthorizationURL(state string) (string, error) {

@@ -61,7 +61,10 @@ func (h *Handler) targetRouteCounts(ctx context.Context) (map[string]openapi.Tar
 		return nil, fmt.Errorf("read stored routes: %w", err)
 	}
 
-	targetIDs := h.targetIDs()
+	targetIDs, err := h.targetIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
 	counts := make(map[string]openapi.TargetRoutes, len(targetIDs))
 	for _, targetID := range targetIDs {
 		var current, orphaned int
@@ -100,7 +103,10 @@ func (h *Handler) targetRouteCounts(ctx context.Context) (map[string]openapi.Tar
 // no row has never been reconciled, and is reported as absent rather than as a
 // run that succeeded with nothing to do.
 func (h *Handler) targetRuns(ctx context.Context) (map[string]openapi.TargetRun, error) {
-	targetIDs := h.targetIDs()
+	targetIDs, err := h.targetIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
 	runs := make(map[string]openapi.TargetRun, len(targetIDs))
 	if err := h.state.ForEachTargetRun(
 		ctx,

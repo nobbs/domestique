@@ -25,7 +25,7 @@ const stateTimeout = 3 * time.Second
 // whole of this package's dependencies: readiness proves that the process can
 // read what it was configured with, and nothing more.
 type State interface {
-	ForEachTarget(ctx context.Context, visit func(id, authorizationState string) error) error
+	ForEachTarget(ctx context.Context, visit func(id, authorizationState, ownerSubject string) error) error
 }
 
 // Handler answers the readiness probe and nothing else.
@@ -80,7 +80,7 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 
 	targetIDs := h.targetIDs()
 	known := make(map[string]struct{}, len(targetIDs))
-	if err := h.state.ForEachTarget(ctx, func(id, _ string) error {
+	if err := h.state.ForEachTarget(ctx, func(id, _, _ string) error {
 		if slices.Contains(targetIDs, id) {
 			known[id] = struct{}{}
 		}

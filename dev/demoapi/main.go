@@ -98,7 +98,9 @@ func run(ctx context.Context, sessionFile, states, callbackURL string) error {
 		return seedErr
 	}
 
-	slots, err := slotsFor(runtimeSettings.Values().Wahoo.Targets, states)
+	// Fixed rather than read from settings: a self-service target exists because
+	// its owning subject connected, not because an operator configured a slot.
+	slots, err := slotsFor([]string{"rider-a", "rider-b"}, states)
 	if err != nil {
 		return err
 	}
@@ -394,7 +396,6 @@ func seedSettings(ctx context.Context, current *runtimeconfig.Current, origin st
 		APIBaseURL:   origin,
 		OAuthBaseURL: origin,
 		ClientID:     "demo-placeholder",
-		Targets:      []string{"rider-a", "rider-b"},
 	}
 	values.Sources = []runtimeconfig.Source{
 		{Provider: route.ProviderVeloPlanner, BaseURL: origin},
