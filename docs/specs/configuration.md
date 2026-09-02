@@ -59,7 +59,6 @@ browser_origin_url = "https://domestique.example.com"
 domain = "yourtenant.eu.auth0.com"
 client_id = "the application's client ID"
 client_secret_file = "/run/secrets/auth0_client_secret"
-allowed_subjects = ["github|123456"]
 
 [state]
 database_path = "/var/lib/domestique/state.db"
@@ -152,25 +151,20 @@ application dependency.
   fixed by where the container is published, it gates the write path the
   settings page itself uses, and a wrong value edited through that page would
   lock the operator out of the page that could correct it.
-- `auth.auth0` is required in full: `domain`, `client_id`,
-  `client_secret_file`, and `allowed_subjects` must all be present. It is the
-  only gate the service has, and a missing or partly filled section is a
-  startup error, because a service that cannot verify a session cannot
-  authenticate anyone.
+- `auth.auth0` is required in full: `domain` and `client_id` must both be
+  present, alongside a client secret (below). It is the only gate the service
+  has, and a missing or partly filled section is a startup error, because a
+  service that cannot verify a session cannot authenticate anyone.
   - `domain` is the tenant host, `host[:port]` with no scheme and no path.
   - `client_id` and `domain` are not secrets: the tenant host and the client
     ID are public identifiers, and verification uses Auth0's published signing
     keys, so they are ordinary configuration values rather than secret files.
-  - `allowed_subjects` is a non-empty list of OIDC `sub` values — the exact
-    identity Auth0 asserts, such as `github|123456`. It is **file-only**: it
-    has no environment form at all, because the environment layer can carry a
-    single value per key and not a list.
-- `auth.auth0.allowed_subjects` is the list of identities allowed to use normal
-  or OAuth endpoints; each carries the same full operator rights, and the
-  service stays single-tenant in the sense that this is one short,
-  deliberately configured list rather than open registration. The `sub` claim
-  is matched exactly, with no normalisation, because it is an opaque
-  provider-issued identifier rather than a human-typed address.
+- Who may sign in, and who among them holds cross-subject rights, is not a
+  file setting: a post-login Action in the tenant asserts two namespaced ID
+  token claims, and this service does no more than read them. The `sub` claim
+  itself is still matched exactly, with no normalisation, because it is an
+  opaque provider-issued identifier rather than a human-typed address — there
+  is simply nothing left in this file to match it against.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
 - The interval between scheduled runs and the per-target deletion limit are not
@@ -215,12 +209,14 @@ staleness bound, a one-minute delay before the first run, notifications on with
 nothing yet ruled on in the alert matrix, Pushover's own origin, a single
 keyless basemap, no surface regions, and a weekly index rebuild.
 
-The settings that name an upstream have no default. An OAuth application, a
-target slot name, and a library account belong to one operator. They are seeded
-**unconfigured**, and a service holding those seeds starts, passes its readiness
-probe, serves the settings page, and runs nothing. A scheduled run finds nothing
-configured and no-ops rather than failing, and the page names which settings are
-still missing. That is the state every new deployment begins in.
+The settings that name an upstream have no default. An OAuth application and a
+library account belong to one operator. They are seeded **unconfigured**, and a
+service holding those seeds starts, passes its readiness probe, serves the
+settings page, and runs nothing. A scheduled run finds nothing configured and
+no-ops rather than failing, and the page names which settings are still
+missing. That is the state every new deployment begins in. A target is not
+among these settings at all: it belongs to the subject who created it by
+connecting, not to an operator, and none exists until someone does.
 
 ### Credentials
 
@@ -274,16 +270,12 @@ without a path, matching what the adapter itself requires, and
 OAuth application. The service builds no Wahoo client until all four are set,
 and an unconfigured application makes runs report they are not ready.
 
-`wahoo.targets` holds up to two destination slots. Each is a non-empty name,
-unique within the list, and stable across deployments. It is a configured slot,
-not a Wahoo user identifier, and it is the identity every stored authorization,
-target route, and recorded run carries. Naming a slot creates its durable record
-on the save rather than at the next startup, so the one-time OAuth onboarding
-that follows has a row to authorise. Removing a slot from the list keeps that
-record, and nothing reads a record whose slot is not configured.
-
-An empty list is a deployment with nowhere to publish yet. The readiness probe
-still reports ready.
+Which destinations exist is not a setting: each target is a signed-in
+subject's own value, created the moment that subject starts their first Wahoo
+authorisation, not entered on this page. It is the identity every stored
+authorization, target route, and recorded run carries. A deployment with no
+target yet — because no application is configured, or because nobody has
+connected — still passes its readiness probe.
 
 The endpoint values must match the chosen Wahoo environment. The callback the
 application is registered with is derived from `http.browser_origin_url` and is
@@ -541,6 +533,5 @@ Outside the contract:
   the settings surface. What an operator may change while the service runs is
   the list above and nothing else, and the three things the file holds are
   exactly the three a wrong value would lock them out of the page with;
-- a stored credential read back out of the settings surface in any form;
-- secret rotation without a controlled migration; and
-- a third or dynamically created Wahoo target.
+- a stored credential read back out of the settings surface in any form; and
+- secret rotation without a controlled migration.

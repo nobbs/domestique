@@ -16,16 +16,41 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useRunTaskArgument } from "../../api/generated";
-import { statusQuery } from "../../api/queries";
+import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatCount, formatTimestamp } from "../../lib/format";
 import { TargetRow } from "./TargetRow";
 
+/**
+ * A rider with no target yet: the one way to get one is to connect their own
+ * Wahoo account, and the flow needs no target identifier to start — the
+ * browser is never told its own subject.
+ */
+function ConnectPrompt() {
+  return (
+    <p className="text-sm text-[var(--ink-2)]">
+      Your Wahoo account is not connected yet.{" "}
+      <a
+        className="font-semibold text-[var(--accent)] underline-offset-4 hover:underline"
+        href="/oauth/wahoo/start"
+      >
+        Connect it
+      </a>{" "}
+      to start writing routes to it.
+    </p>
+  );
+}
+
 /** The body of the "What the targets hold" card: one row per target. */
 export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
+  const {
+    data: config,
+    isPending: configIsPending,
+    isError: configIsError,
+  } = useQuery(webUIConfigQuery());
   const reconcile = useRunTaskArgument({
     mutation: {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
@@ -53,6 +78,32 @@ export function TargetConvergenceCard() {
   if (isError) {
     return (
       <p className="text-sm text-[var(--alert)]">The service did not say what the targets hold.</p>
+    );
+  }
+  // Nothing to reconcile before there is a target, and no target before its
+  // owner connects — an admin sees every rider's, so an empty list here means
+  // none exist yet rather than that this caller's own is missing. Which of
+  // the two empty states to show depends on identity.admin, so this waits on
+  // that query too: deciding from a still-loading config would flash the
+  // wrong one at an admin for a moment, and a failed config must not be read
+  // as "not admin" either — an admin whose identity failed to load would see
+  // the self-service prompt instead of the truth, that this page cannot tell.
+  if (data.targets.length === 0) {
+    if (configIsPending) {
+      return <Skeleton className="h-24 w-full" role="status" aria-label="Loading targets" />;
+    }
+    if (configIsError) {
+      return (
+        <p className="text-sm text-[var(--alert)]">
+          The service did not say who is signed in, so it cannot say whether a target is missing.
+        </p>
+      );
+    }
+
+    return config?.identity.admin ? (
+      <p className="text-sm text-[var(--ink-2)]">No target has connected yet.</p>
+    ) : (
+      <ConnectPrompt />
     );
   }
 

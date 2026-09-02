@@ -10,6 +10,21 @@ import (
 	"database/sql"
 )
 
+const claimUnownedTarget = `-- name: ClaimUnownedTarget :exec
+UPDATE targets SET owner_subject = ? WHERE owner_subject IS NULL AND slot = ?
+`
+
+type ClaimUnownedTargetParams struct {
+	OwnerSubject sql.NullString
+	Slot         string
+}
+
+// Claims a slot that predates ownership; a no-op otherwise.
+func (q *Queries) ClaimUnownedTarget(ctx context.Context, arg ClaimUnownedTargetParams) error {
+	_, err := q.db.ExecContext(ctx, claimUnownedTarget, arg.OwnerSubject, arg.Slot)
+	return err
+}
+
 const countStageEnrichmentFailures = `-- name: CountStageEnrichmentFailures :one
 SELECT COUNT(*) FROM (
   SELECT 1 FROM stage_enrichment_failure GROUP BY provider, route_id, stage_order
@@ -113,20 +128,29 @@ func (q *Queries) DeleteTargetStage(ctx context.Context, arg DeleteTargetStagePa
 	)
 }
 
-const ensureTarget = `-- name: EnsureTarget :exec
-INSERT INTO targets (slot, authorization_state, updated_at_unix)
-VALUES (?, ?, ?)
+const ensureTargetOwner = `-- name: EnsureTargetOwner :exec
+INSERT INTO targets (slot, owner_subject, authorization_state, updated_at_unix)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(slot) DO NOTHING
 `
 
-type EnsureTargetParams struct {
+type EnsureTargetOwnerParams struct {
 	Slot               string
+	OwnerSubject       sql.NullString
 	AuthorizationState string
 	UpdatedAtUnix      int64
 }
 
-func (q *Queries) EnsureTarget(ctx context.Context, arg EnsureTargetParams) error {
-	_, err := q.db.ExecContext(ctx, ensureTarget, arg.Slot, arg.AuthorizationState, arg.UpdatedAtUnix)
+// A self-service target's slot is its owning subject's own value, so this is
+// the one creation path: idempotent, safe on a rider's first "Connect" click
+// and every one after.
+func (q *Queries) EnsureTargetOwner(ctx context.Context, arg EnsureTargetOwnerParams) error {
+	_, err := q.db.ExecContext(ctx, ensureTargetOwner,
+		arg.Slot,
+		arg.OwnerSubject,
+		arg.AuthorizationState,
+		arg.UpdatedAtUnix,
+	)
 	return err
 }
 
@@ -259,7 +283,8 @@ func (q *Queries) GetSurfaceIndexBuild(ctx context.Context) (GetSurfaceIndexBuil
 }
 
 const getTarget = `-- name: GetTarget :one
-SELECT slot, COALESCE(wahoo_user_id, '') AS wahoo_user_id, authorization_state
+SELECT slot, COALESCE(wahoo_user_id, '') AS wahoo_user_id, authorization_state,
+  COALESCE(owner_subject, '') AS owner_subject
 FROM targets
 WHERE slot = ?
 `
@@ -268,12 +293,18 @@ type GetTargetRow struct {
 	Slot               string
 	WahooUserID        string
 	AuthorizationState string
+	OwnerSubject       string
 }
 
 func (q *Queries) GetTarget(ctx context.Context, slot string) (GetTargetRow, error) {
 	row := q.db.QueryRowContext(ctx, getTarget, slot)
 	var i GetTargetRow
-	err := row.Scan(&i.Slot, &i.WahooUserID, &i.AuthorizationState)
+	err := row.Scan(
+		&i.Slot,
+		&i.WahooUserID,
+		&i.AuthorizationState,
+		&i.OwnerSubject,
+	)
 	return i, err
 }
 
@@ -423,12 +454,14 @@ func (q *Queries) ListTargetStages(ctx context.Context, targetSlot string) ([]Li
 }
 
 const listTargetStates = `-- name: ListTargetStates :many
-SELECT slot, authorization_state FROM targets ORDER BY slot
+SELECT slot, authorization_state, COALESCE(owner_subject, '') AS owner_subject
+FROM targets ORDER BY slot
 `
 
 type ListTargetStatesRow struct {
 	Slot               string
 	AuthorizationState string
+	OwnerSubject       string
 }
 
 func (q *Queries) ListTargetStates(ctx context.Context) ([]ListTargetStatesRow, error) {
@@ -440,42 +473,7 @@ func (q *Queries) ListTargetStates(ctx context.Context) ([]ListTargetStatesRow, 
 	items := []ListTargetStatesRow{}
 	for rows.Next() {
 		var i ListTargetStatesRow
-		if err := rows.Scan(&i.Slot, &i.AuthorizationState); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listTargets = `-- name: ListTargets :many
-SELECT slot, COALESCE(wahoo_user_id, '') AS wahoo_user_id, authorization_state
-FROM targets
-ORDER BY slot
-`
-
-type ListTargetsRow struct {
-	Slot               string
-	WahooUserID        string
-	AuthorizationState string
-}
-
-func (q *Queries) ListTargets(ctx context.Context) ([]ListTargetsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTargets)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListTargetsRow{}
-	for rows.Next() {
-		var i ListTargetsRow
-		if err := rows.Scan(&i.Slot, &i.WahooUserID, &i.AuthorizationState); err != nil {
+		if err := rows.Scan(&i.Slot, &i.AuthorizationState, &i.OwnerSubject); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

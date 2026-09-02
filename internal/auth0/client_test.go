@@ -352,6 +352,51 @@ func TestExchange(t *testing.T) {
 	assert.Equal(t, "Rider Example", identity.Name)
 }
 
+// The access and admin claims are read only when a post-login Action actually
+// sets them; a token from a tenant with no Action configured carries neither,
+// and both must be read as false rather than causing an error.
+func TestExchangeReadsTheAccessAndAdminClaims(t *testing.T) {
+	for name, overrides := range map[string]struct {
+		claims     map[string]any
+		wantAccess bool
+		wantAdmin  bool
+	}{
+		"both set": {
+			claims: map[string]any{
+				"nonce":                             "nonce-1",
+				"https://domestique.invalid/access": true,
+				"https://domestique.invalid/admin":  true,
+			},
+			wantAccess: true, wantAdmin: true,
+		},
+		"access only": {
+			claims: map[string]any{
+				"nonce":                             "nonce-1",
+				"https://domestique.invalid/access": true,
+			},
+			wantAccess: true, wantAdmin: false,
+		},
+		"neither claim present": {
+			claims:     map[string]any{"nonce": "nonce-1"},
+			wantAccess: false, wantAdmin: false,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			issuer := newFakeIssuer(t)
+			now := time.Now()
+			issuer.setIDToken(signRS256(t, issuer.key, testKeyID,
+				tokenClaims(issuer.domain, testClientID, "user-1", now, overrides.claims)))
+
+			client := newClient(t, issuer, issuer.server.Client(), time.Now)
+
+			identity, err := client.Exchange(context.Background(), testCode, testVerifier, "nonce-1")
+			require.NoError(t, err)
+			assert.Equal(t, overrides.wantAccess, identity.Access, "Access")
+			assert.Equal(t, overrides.wantAdmin, identity.Admin, "Admin")
+		})
+	}
+}
+
 func TestExchangeRefusesNonceMismatch(t *testing.T) {
 	issuer := newFakeIssuer(t)
 	now := time.Now()

@@ -1,5 +1,9 @@
-h1:81ydDzX4JS/nqkc8s0qv7qtgRKYCUpFSvAp/C7X9FYc=
+h1:xoze6haUofHz/EXSQjt4laFJKEAOa3W3kMFFEv9qJZg=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
 000028_web_sessions.up.sql h1:V6ItqUhTuY+9jaZRSqFm0vhv/lZhgUWJAP3V9X53Ywk=
+000029_fixed_session_lifetime.down.sql h1:eFZuf+xVP/lOiLN31DBO4ytiTe2DpM2INwADqUs6J00=
+000029_fixed_session_lifetime.up.sql h1:cAD91ScqNfv0SjeIcNn6dZ2ntAA5thjiDfiAEs/y8O0=
+000030_target_ownership.down.sql h1:a/f6o2TzKTnakbtWiNy83HwKSXuSHryJBu8wazblj3M=
+000030_target_ownership.up.sql h1:GsL+uNI0CjTTY4WtKujSdGldv1SkjsqV1dvh5nT++H8=

@@ -15,9 +15,9 @@ import (
 
 func TestBeginStoresDigestAndPassesStateToProvider(t *testing.T) {
 	store := newFakeStore()
-	provider := &fakeProvider{}
+	provider := &fakeProvider{access: true}
 	clock := newFakeClock()
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	service, err := New(store, provider, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -40,7 +40,7 @@ func TestBeginStoresDigestAndPassesStateToProvider(t *testing.T) {
 
 func TestBeginStoresNothingWhenTheAuthorizationURLFails(t *testing.T) {
 	store := newFakeStore()
-	service, err := New(store, &fakeProvider{authURLErr: errors.New("issuer misconfigured")}, []string{"rider"}, newFakeClock().now)
+	service, err := New(store, &fakeProvider{authURLErr: errors.New("issuer misconfigured")}, newFakeClock().now)
 	require.NoError(t, err)
 
 	_, err = service.Begin(t.Context())
@@ -50,7 +50,7 @@ func TestBeginStoresNothingWhenTheAuthorizationURLFails(t *testing.T) {
 
 func TestCompleteRejectsMismatchedCookieState(t *testing.T) {
 	store := newFakeStore()
-	service, err := New(store, &fakeProvider{}, []string{"rider"}, newFakeClock().now)
+	service, err := New(store, &fakeProvider{}, newFakeClock().now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -65,7 +65,7 @@ func TestCompleteRejectsMismatchedCookieState(t *testing.T) {
 // rejection comes from the comparison rather than from decoding.
 func TestCompleteRejectsADifferentValidState(t *testing.T) {
 	store := newFakeStore()
-	service, err := New(store, &fakeProvider{}, []string{"rider"}, newFakeClock().now)
+	service, err := New(store, &fakeProvider{}, newFakeClock().now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -81,9 +81,9 @@ func TestCompleteRejectsADifferentValidState(t *testing.T) {
 
 func TestCompleteHappyPath(t *testing.T) {
 	store := newFakeStore()
-	provider := &fakeProvider{subject: "rider", email: "rider@example.ts.net"}
+	provider := &fakeProvider{subject: "rider", email: "rider@example.ts.net", access: true}
 	clock := newFakeClock()
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	service, err := New(store, provider, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -97,6 +97,7 @@ func TestCompleteHappyPath(t *testing.T) {
 	assert.Equal(t, wantVerifier, provider.exchangedVerifier, "Complete should exchange with the stored verifier")
 	assert.Equal(t, "rider", completion.Identity.Subject)
 	assert.Equal(t, "rider@example.ts.net", completion.Identity.Display)
+	assert.False(t, completion.Identity.Admin)
 
 	sum := sha256.Sum256(mustDecode(t, completion.Token))
 	session, ok := store.sessions[string(sum[:])]
@@ -104,12 +105,32 @@ func TestCompleteHappyPath(t *testing.T) {
 	assert.Equal(t, "rider", session.subject)
 }
 
+// The admin claim round-trips through CreateSession and back out of Session,
+// not just through the value Complete happens to return in the same call.
+func TestCompleteAndVerifyRoundTripTheAdminClaim(t *testing.T) {
+	store := newFakeStore()
+	provider := &fakeProvider{subject: "rider", access: true, admin: true}
+	clock := newFakeClock()
+	service, err := New(store, provider, clock.now)
+	require.NoError(t, err)
+
+	login, err := service.Begin(t.Context())
+	require.NoError(t, err)
+	completion, err := service.Complete(t.Context(), login.State, login.State, "code")
+	require.NoError(t, err)
+	assert.True(t, completion.Identity.Admin)
+
+	identity, err := service.Verify(t.Context(), completion.Token)
+	require.NoError(t, err)
+	assert.True(t, identity.Admin)
+}
+
 func TestCompleteDisplayFallsBackToNameThenSubject(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
 
-	provider := &fakeProvider{subject: "rider", name: "Rider Name"}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	provider := &fakeProvider{subject: "rider", name: "Rider Name", access: true}
+	service, err := New(store, provider, clock.now)
 	require.NoError(t, err)
 	login, err := service.Begin(t.Context())
 	require.NoError(t, err)
@@ -117,8 +138,8 @@ func TestCompleteDisplayFallsBackToNameThenSubject(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Rider Name", completion.Identity.Display)
 
-	provider2 := &fakeProvider{subject: "rider"}
-	service2, err := New(store, provider2, []string{"rider"}, clock.now)
+	provider2 := &fakeProvider{subject: "rider", access: true}
+	service2, err := New(store, provider2, clock.now)
 	require.NoError(t, err)
 	login2, err := service2.Begin(t.Context())
 	require.NoError(t, err)
@@ -130,7 +151,7 @@ func TestCompleteDisplayFallsBackToNameThenSubject(t *testing.T) {
 func TestCompleteReuseOfStateFails(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
-	service, err := New(store, &fakeProvider{subject: "rider"}, []string{"rider"}, clock.now)
+	service, err := New(store, &fakeProvider{subject: "rider", access: true}, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -145,7 +166,7 @@ func TestCompleteReuseOfStateFails(t *testing.T) {
 func TestCompleteExpiredLoginFails(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
-	service, err := New(store, &fakeProvider{subject: "rider"}, []string{"rider"}, clock.now)
+	service, err := New(store, &fakeProvider{subject: "rider", access: true}, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -160,7 +181,7 @@ func TestCompleteProviderErrorCreatesNoSession(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
 	provider := &fakeProvider{exchangeErr: errors.New("nonce mismatch")}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	service, err := New(store, provider, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -170,11 +191,13 @@ func TestCompleteProviderErrorCreatesNoSession(t *testing.T) {
 	assert.Empty(t, store.sessions)
 }
 
-func TestCompleteDisallowedSubject(t *testing.T) {
+// A subject Auth0 authenticated but did not assert the access claim for is
+// refused, whatever its own display name would have been.
+func TestCompleteRefusesASubjectWithoutTheAccessClaim(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
-	provider := &fakeProvider{subject: "intruder"}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	provider := &fakeProvider{subject: "intruder", access: false}
+	service, err := New(store, provider, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -189,67 +212,25 @@ func TestCompleteDisallowedSubject(t *testing.T) {
 	assert.Empty(t, store.sessions)
 }
 
-func TestVerifyRenewsOnlyPastInterval(t *testing.T) {
+func TestVerifyRejectsGarbageAndUnknownTokens(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
-	provider := &fakeProvider{subject: "rider", email: "rider@example.ts.net"}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	service, err := New(store, &fakeProvider{}, clock.now)
 	require.NoError(t, err)
 
-	login, err := service.Begin(t.Context())
-	require.NoError(t, err)
-	completion, err := service.Complete(t.Context(), login.State, login.State, "code")
-	require.NoError(t, err)
-
-	identity, renewedUntil, err := service.Verify(t.Context(), completion.Token)
-	require.NoError(t, err)
-	assert.Equal(t, "rider", identity.Subject)
-	assert.True(t, renewedUntil.IsZero())
-
-	clock.advance(renewInterval + time.Second)
-	beforeRenewCalls := store.renewCalls
-	_, renewedUntil, err = service.Verify(t.Context(), completion.Token)
-	require.NoError(t, err)
-	assert.False(t, renewedUntil.IsZero())
-	assert.Equal(t, beforeRenewCalls+1, store.renewCalls)
-	assert.Equal(t, clock.now().Add(sessionLifetime), renewedUntil)
-
-	_, renewedUntil, err = service.Verify(t.Context(), completion.Token)
-	require.NoError(t, err)
-	assert.True(t, renewedUntil.IsZero())
-	assert.Equal(t, beforeRenewCalls+1, store.renewCalls, "should not renew again within the interval")
-}
-
-func TestVerifyRejectsGarbageUnknownAndDisallowedTokens(t *testing.T) {
-	store := newFakeStore()
-	clock := newFakeClock()
-	provider := &fakeProvider{subject: "rider", email: "rider@example.ts.net"}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
-	require.NoError(t, err)
-
-	_, _, err = service.Verify(t.Context(), "not-valid-base64!!")
+	_, err = service.Verify(t.Context(), "not-valid-base64!!")
 	require.Error(t, err)
 	assert.Zero(t, store.sessionCalls, "garbage token must not reach the store")
 
-	_, _, err = service.Verify(t.Context(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	_, err = service.Verify(t.Context(), "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	require.Error(t, err, "unknown token")
-
-	login, err := service.Begin(t.Context())
-	require.NoError(t, err)
-	completion, err := service.Complete(t.Context(), login.State, login.State, "code")
-	require.NoError(t, err)
-
-	otherService, err := New(store, provider, []string{"someone-else"}, clock.now)
-	require.NoError(t, err)
-	_, _, err = otherService.Verify(t.Context(), completion.Token)
-	require.Error(t, err, "subject removed from the allowlist")
 }
 
 func TestRevokeDeletesSession(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
-	provider := &fakeProvider{subject: "rider", email: "rider@example.ts.net"}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	provider := &fakeProvider{subject: "rider", email: "rider@example.ts.net", access: true}
+	service, err := New(store, provider, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -258,13 +239,13 @@ func TestRevokeDeletesSession(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, service.Revoke(t.Context(), completion.Token))
-	_, _, err = service.Verify(t.Context(), completion.Token)
+	_, err = service.Verify(t.Context(), completion.Token)
 	require.Error(t, err)
 }
 
 func TestNewDefaultsClockToTimeNow(t *testing.T) {
 	store := newFakeStore()
-	service, err := New(store, &fakeProvider{}, []string{"rider"}, nil)
+	service, err := New(store, &fakeProvider{}, nil)
 	require.NoError(t, err)
 
 	before := time.Now()
@@ -280,7 +261,7 @@ func TestNewDefaultsClockToTimeNow(t *testing.T) {
 func TestBeginPropagatesStoreError(t *testing.T) {
 	store := newFakeStore()
 	store.beginLoginErr = errors.New("disk full")
-	service, err := New(store, &fakeProvider{}, []string{"rider"}, newFakeClock().now)
+	service, err := New(store, &fakeProvider{}, newFakeClock().now)
 	require.NoError(t, err)
 
 	_, err = service.Begin(t.Context())
@@ -290,7 +271,7 @@ func TestBeginPropagatesStoreError(t *testing.T) {
 func TestBeginPropagatesProviderError(t *testing.T) {
 	store := newFakeStore()
 	provider := &fakeProvider{authURLErr: errors.New("issuer unreachable")}
-	service, err := New(store, provider, []string{"rider"}, newFakeClock().now)
+	service, err := New(store, provider, newFakeClock().now)
 	require.NoError(t, err)
 
 	_, err = service.Begin(t.Context())
@@ -299,7 +280,7 @@ func TestBeginPropagatesProviderError(t *testing.T) {
 
 func TestCompleteRejectsInvalidState(t *testing.T) {
 	store := newFakeStore()
-	service, err := New(store, &fakeProvider{}, []string{"rider"}, newFakeClock().now)
+	service, err := New(store, &fakeProvider{}, newFakeClock().now)
 	require.NoError(t, err)
 
 	_, err = service.Complete(t.Context(), "not-valid-base64!!", "not-valid-base64!!", "code")
@@ -309,8 +290,8 @@ func TestCompleteRejectsInvalidState(t *testing.T) {
 
 func TestCompleteCreateSessionErrorPropagates(t *testing.T) {
 	store := newFakeStore()
-	provider := &fakeProvider{subject: "rider"}
-	service, err := New(store, provider, []string{"rider"}, newFakeClock().now)
+	provider := &fakeProvider{subject: "rider", access: true}
+	service, err := New(store, provider, newFakeClock().now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -321,28 +302,9 @@ func TestCompleteCreateSessionErrorPropagates(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestVerifyRenewSessionErrorPropagates(t *testing.T) {
-	store := newFakeStore()
-	clock := newFakeClock()
-	provider := &fakeProvider{subject: "rider"}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
-	require.NoError(t, err)
-
-	login, err := service.Begin(t.Context())
-	require.NoError(t, err)
-	completion, err := service.Complete(t.Context(), login.State, login.State, "code")
-	require.NoError(t, err)
-
-	clock.advance(renewInterval + time.Second)
-	store.renewSessionErr = errors.New("disk full")
-
-	_, _, err = service.Verify(t.Context(), completion.Token)
-	require.Error(t, err)
-}
-
 func TestRevokeRejectsGarbageTokenWithoutStoreCall(t *testing.T) {
 	store := newFakeStore()
-	service, err := New(store, &fakeProvider{}, []string{"rider"}, newFakeClock().now)
+	service, err := New(store, &fakeProvider{}, newFakeClock().now)
 	require.NoError(t, err)
 
 	err = service.Revoke(t.Context(), "not-valid-base64!!")
@@ -353,8 +315,8 @@ func TestRevokeRejectsGarbageTokenWithoutStoreCall(t *testing.T) {
 func TestRevokePropagatesStoreError(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
-	provider := &fakeProvider{subject: "rider"}
-	service, err := New(store, provider, []string{"rider"}, clock.now)
+	provider := &fakeProvider{subject: "rider", access: true}
+	service, err := New(store, provider, clock.now)
 	require.NoError(t, err)
 
 	login, err := service.Begin(t.Context())
@@ -371,17 +333,11 @@ func TestNewRejectsMissingDependencies(t *testing.T) {
 	store := newFakeStore()
 	provider := &fakeProvider{}
 
-	_, err := New(nil, provider, []string{"rider"}, newFakeClock().now)
+	_, err := New(nil, provider, newFakeClock().now)
 	require.Error(t, err)
 
-	_, err = New(store, nil, []string{"rider"}, newFakeClock().now)
+	_, err = New(store, nil, newFakeClock().now)
 	require.Error(t, err)
-
-	_, err = New(store, provider, nil, newFakeClock().now)
-	require.Error(t, err, "empty allowlist")
-
-	_, err = New(store, provider, []string{"  "}, newFakeClock().now)
-	require.Error(t, err, "allowlist with only whitespace")
 }
 
 func mustDecode(t *testing.T, s string) []byte {
@@ -407,9 +363,9 @@ type fakeLogin struct {
 }
 
 type fakeSession struct {
-	renewedAt        time.Time
 	expiresAt        time.Time
 	subject, display string
+	admin            bool
 }
 
 type fakeStore struct {
@@ -417,11 +373,9 @@ type fakeStore struct {
 	sessions         map[string]*fakeSession
 	beginLoginErr    error
 	createSessionErr error
-	renewSessionErr  error
 	deleteSessionErr error
 	consumeCalls     int
 	sessionCalls     int
-	renewCalls       int
 	deleteCalls      int
 }
 
@@ -450,38 +404,24 @@ func (f *fakeStore) ConsumeLogin(_ context.Context, stateDigest []byte, now time
 	return login.nonce, login.verifier, nil
 }
 
-func (f *fakeStore) CreateSession(_ context.Context, tokenDigest []byte, subject, display string, now, expiresAt time.Time) error {
+func (f *fakeStore) CreateSession(_ context.Context, tokenDigest []byte, subject, display string, admin bool, _, expiresAt time.Time) error {
 	if f.createSessionErr != nil {
 		return f.createSessionErr
 	}
-	f.sessions[string(tokenDigest)] = &fakeSession{subject: subject, display: display, renewedAt: now, expiresAt: expiresAt}
+	f.sessions[string(tokenDigest)] = &fakeSession{subject: subject, display: display, admin: admin, expiresAt: expiresAt}
 	return nil
 }
 
-func (f *fakeStore) Session(_ context.Context, tokenDigest []byte, now time.Time) (subject, display string, renewedAt, expiresAt time.Time, err error) {
+func (f *fakeStore) Session(_ context.Context, tokenDigest []byte, now time.Time) (subject, display string, admin bool, expiresAt time.Time, err error) {
 	f.sessionCalls++
 	session, ok := f.sessions[string(tokenDigest)]
 	if !ok {
-		return "", "", time.Time{}, time.Time{}, errors.New("session not found")
+		return "", "", false, time.Time{}, errors.New("session not found")
 	}
 	if !session.expiresAt.After(now) {
-		return "", "", time.Time{}, time.Time{}, errors.New("session expired")
+		return "", "", false, time.Time{}, errors.New("session expired")
 	}
-	return session.subject, session.display, session.renewedAt, session.expiresAt, nil
-}
-
-func (f *fakeStore) RenewSession(_ context.Context, tokenDigest []byte, now, expiresAt time.Time) error {
-	f.renewCalls++
-	if f.renewSessionErr != nil {
-		return f.renewSessionErr
-	}
-	session, ok := f.sessions[string(tokenDigest)]
-	if !ok {
-		return errors.New("session not found")
-	}
-	session.renewedAt = now
-	session.expiresAt = expiresAt
-	return nil
+	return session.subject, session.display, session.admin, session.expiresAt, nil
 }
 
 func (f *fakeStore) DeleteSession(_ context.Context, tokenDigest []byte) error {
@@ -500,6 +440,8 @@ type fakeProvider struct {
 
 	gotState, gotNonce, gotVerifier   string
 	exchangedNonce, exchangedVerifier string
+
+	access, admin bool
 }
 
 func (p *fakeProvider) AuthorizationURL(_ context.Context, state, nonce, codeVerifier string) (string, error) {
@@ -510,12 +452,17 @@ func (p *fakeProvider) AuthorizationURL(_ context.Context, state, nonce, codeVer
 	return "https://issuer.example.test/authorize?state=" + state, nil
 }
 
-func (p *fakeProvider) Exchange(_ context.Context, _, codeVerifier, nonce string) (subject, email, name string, err error) {
+func (p *fakeProvider) Exchange(
+	_ context.Context, _, codeVerifier, nonce string,
+) (ExchangedIdentity, error) {
 	if p.exchangeErr != nil {
-		return "", "", "", p.exchangeErr
+		return ExchangedIdentity{}, p.exchangeErr
 	}
 	p.exchangedNonce, p.exchangedVerifier = nonce, codeVerifier
-	return p.subject, p.email, p.name, nil
+	return ExchangedIdentity{
+		Subject: p.subject, Email: p.email, Name: p.name,
+		Access: p.access, Admin: p.admin,
+	}, nil
 }
 
 func TestTokenDigestRejectsAnythingButAWellFormedToken(t *testing.T) {

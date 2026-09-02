@@ -28,9 +28,9 @@ func (h *Handler) GetSettings(writer http.ResponseWriter, _ *http.Request) {
 // with their section and only the ones typed in: one left out keeps its stored
 // value, one sent empty is removed.
 
-// SetWahooApplication replaces the registered application. The slots it writes
-// to are their own section: an application is edited when it is registered or
-// rotated, and a slot when a rider is added.
+// SetWahooApplication replaces the registered application every self-service
+// target authorizes against. Which targets exist is not part of this
+// section: each rider creates their own by connecting their own account.
 func (h *Handler) SetWahooApplication(writer http.ResponseWriter, request *http.Request) {
 	body, ok := settingsBody[openapi.WahooApplicationUpdate](h, writer, request)
 	if !ok {
@@ -45,19 +45,6 @@ func (h *Handler) SetWahooApplication(writer http.ResponseWriter, request *http.
 	}, submitted(map[runtimeconfig.SecretName]*string{
 		runtimeconfig.SecretWahooClientSecret: body.ClientSecret,
 	}))
-}
-
-// SetTargets replaces the destination slots.
-func (h *Handler) SetTargets(writer http.ResponseWriter, request *http.Request) {
-	body, ok := settingsBody[openapi.TargetsUpdate](h, writer, request)
-	if !ok {
-		return
-	}
-	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
-		values.Wahoo.Targets = slices.Clone(body.Targets)
-
-		return values
-	}, nil)
 }
 
 // SetSource replaces one library and the account it is read with, leaving the
@@ -350,7 +337,6 @@ func (h *Handler) settingsView() openapi.Settings {
 			APIBaseURL:   values.Wahoo.APIBaseURL,
 			OauthBaseURL: values.Wahoo.OAuthBaseURL,
 			ClientID:     values.Wahoo.ClientID,
-			Targets:      append([]string{}, values.Wahoo.Targets...),
 		},
 		RideModel: openapi.RideModelSettings{CoefficientsFile: values.RideModel.CoefficientsFile},
 		Basemaps:  make([]openapi.BrowserBasemap, len(values.Basemaps)),

@@ -252,21 +252,25 @@ is checked rather than inferred.
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 
 The read takes a library the same way the targets take a slot: none is every
-configured one, a name is that one alone. One task rather than one per library,
-for the reason the targets are one task — the configured set is a runtime
-setting and tasks are registered at startup, so a library added through the
-settings page would otherwise wait for a restart.
+one that exists, a name is that one alone. One task rather than one per
+library, because the library list is a runtime setting and tasks are
+registered at startup, so a library added through the settings page would
+otherwise wait for a restart. Targets are one task for a related but
+different reason: which targets exist is not a setting at all, so a fixed set
+of per-target tasks could never be registered for one — a rider connecting
+mid-run has to reach the schedule's next tick, not a restart, the same as
+a library would.
 
 `sync:target` follows the read. `surface:annotate` follows both the read and the
 index rebuild, and runs after each: either alone leaves stages wanting it.
 `sync:target`'s own schedule is a backstop behind its edge — what it catches is a
 slot that failed on its own, and an operator who has the read switched off.
 
-`sync:target` takes a slot name or nothing. Nothing is every configured slot,
-which is what both the schedule and a source read ask for; a name is that slot
-alone. It is one task rather than one per slot because slots are a runtime
-setting and tasks are registered at startup — per-slot tasks would leave a newly
-onboarded slot doing nothing until a restart.
+`sync:target` takes a slot name or nothing. Nothing is every target that
+exists, which is what both the schedule and a source read ask for; a name is
+that slot alone. It is one task rather than one per slot because which
+targets exist is not fixed at startup — per-slot tasks could never be
+registered for a rider who connects mid-run.
 
 ## What follows what
 
@@ -284,8 +288,9 @@ is waiting on the other.
 An edge carries no argument, with one exception: a task may fan a chain out
 over its own arguments instead, one invocation each, rather than the single
 empty-argument invocation every other successor gets. `sync:target` does this
-over its configured slots, so a slot that keeps faulting backs only that slot
-off — not every slot a later successful source read would otherwise reach.
+over every target that exists, so a slot that keeps faulting backs only that
+slot off — not every slot a later successful source read would otherwise
+reach.
 
 ## Switching a task off
 

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
+	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/sqlite"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/veloplanner"
@@ -37,14 +39,30 @@ func (p signInProvider) AuthorizationURL(ctx context.Context, state, nonce, code
 	return p.client.AuthorizationURL(ctx, state, nonce, codeVerifier) //nolint:wrapcheck // forwarding to the client this holds
 }
 
-func (p signInProvider) Exchange(ctx context.Context, code, codeVerifier, nonce string) (subject, email, name string, err error) {
+func (p signInProvider) Exchange(
+	ctx context.Context, code, codeVerifier, nonce string,
+) (session.ExchangedIdentity, error) {
 	identity, err := p.client.Exchange(ctx, code, codeVerifier, nonce)
 	if err != nil {
-		return "", "", "", err //nolint:wrapcheck // forwarding to the client this holds
+		return session.ExchangedIdentity{}, err //nolint:wrapcheck // forwarding to the client this holds
 	}
 
-	return identity.Subject, identity.Email, identity.Name, nil
+	return exchangedIdentityFrom(identity), nil
 }
+
+// exchangedIdentityFrom narrows an Auth0 identity to what session.Provider
+// needs, split out from Exchange so the field mapping is directly testable
+// without a live or fake token exchange.
+func exchangedIdentityFrom(identity auth0.Identity) session.ExchangedIdentity {
+	return session.ExchangedIdentity{
+		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
+		Access: identity.Access, Admin: identity.Admin,
+	}
+}
+
+// targetIDsTimeout bounds the one local read targetIDs performs. A stuck read
+// must not stall whatever task-scheduling path asked for the target list.
+const targetIDsTimeout = 3 * time.Second
 
 // errNotConfigured reports that the settings an upstream client is built from
 // have not been entered yet. It is deliberately not an upstream failure: a
@@ -58,6 +76,7 @@ var errNotConfigured = errors.New("the Wahoo application is not configured yet")
 // daily quota and spends real requests finding out otherwise.
 type wahooProvider struct {
 	settings    *runtimeconfig.Current
+	store       *sqlite.Store
 	client      *wahoo.Client
 	redirectURL string
 	built       wahooApplication
@@ -80,8 +99,8 @@ type wahooApplication struct {
 // is derived rather than configured: it is this service's own callback path on
 // the origin a browser reaches it at, which is the only URL Wahoo may send an
 // authorization back to.
-func newWahooProvider(settings *runtimeconfig.Current, browserOriginURL string) *wahooProvider {
-	return &wahooProvider{settings: settings, redirectURL: browserOriginURL + oauthCallbackPath}
+func newWahooProvider(settings *runtimeconfig.Current, store *sqlite.Store, browserOriginURL string) *wahooProvider {
+	return &wahooProvider{settings: settings, store: store, redirectURL: browserOriginURL + oauthCallbackPath}
 }
 
 func (p *wahooProvider) current() (*wahoo.Client, error) {
@@ -125,16 +144,36 @@ func (p *wahooProvider) current() (*wahoo.Client, error) {
 	return client, nil
 }
 
-// targetIDs are the destination slots a run may reconcile: none at all until the
-// Wahoo application itself is configured, so an incomplete setup makes runs
-// report they are not ready rather than fail against an application that does
-// not exist.
+// targetIDs are every self-service target's slot, unfiltered by owner: none
+// at all until the Wahoo application itself is configured, so an incomplete
+// setup makes runs report they are not ready rather than fail against an
+// application that does not exist. Background reconciliation has no notion
+// of ownership — it reconciles whatever rows exist, the same as it always
+// has; only the HTTP surface a rider or admin actually sees is scoped.
 func (p *wahooProvider) targetIDs() []string {
 	if _, err := p.current(); err != nil {
 		return nil
 	}
 
-	return p.settings.Values().Wahoo.Targets
+	// Best effort: the sync service's own targetIDs has no error channel, so a
+	// read failure here is reported as no targets — the "not ready" state a
+	// caller already handles — but logged first, so it is not read as the
+	// ordinary "nothing configured yet" case an operator need not act on. The
+	// read is bounded so a stuck store cannot stall this call forever.
+	ctx, cancel := context.WithTimeout(context.Background(), targetIDsTimeout)
+	defer cancel()
+	ids := []string{}
+	if err := p.store.ForEachTarget(ctx, func(id, _, _ string) error {
+		ids = append(ids, id)
+
+		return nil
+	}); err != nil {
+		slog.Error("reading target IDs", "error", err)
+
+		return nil
+	}
+
+	return ids
 }
 
 func (p *wahooProvider) AuthorizationURL(state string) (string, error) {

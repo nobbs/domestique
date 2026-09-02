@@ -274,7 +274,6 @@ browser_origin_url = %q
 domain = %q
 client_id = "client-id"
 client_secret_file = %q
-allowed_subjects = ["github|123456"]
 
 [state]
 database_path = %q
@@ -354,7 +353,6 @@ func TestLoadReadsAuth0(t *testing.T) {
 	assert.Equal(t, testAuth0Domain, settings.Auth.Auth0.Domain, "Domain")
 	assert.Equal(t, "client-id", settings.Auth.Auth0.ClientID, "ClientID")
 	assert.Equal(t, []byte(testClientSecret), settings.Auth.Auth0.ClientSecret(), "ClientSecret()")
-	assert.Equal(t, []string{"github|123456"}, settings.Auth.Auth0.AllowedSubjects, "AllowedSubjects")
 }
 
 // The sign-in provider is the only gate this service has, so a half-configured
@@ -364,7 +362,6 @@ func TestLoadRejectsPartialAuth0(t *testing.T) {
 	for prefix, want := range map[string]string{
 		"domain = ":             "auth.auth0.domain",
 		"client_id = ":          "auth.auth0.client_id",
-		"allowed_subjects = ":   "auth.auth0.allowed_subjects",
 		"client_secret_file = ": "auth0 client secret is not configured",
 	} {
 		t.Run(prefix, func(t *testing.T) {
@@ -376,34 +373,6 @@ func TestLoadRejectsPartialAuth0(t *testing.T) {
 			require.ErrorContains(t, err, want)
 		})
 	}
-}
-
-// The allowlist is what stands between an authenticated stranger and a
-// session, so a list that names nobody is not a list.
-func TestLoadRejectsAnEmptyAllowedSubjectList(t *testing.T) {
-	for name, value := range map[string]string{
-		"empty":       `[]`,
-		"blank entry": `["   "]`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			configPath, _ := writeValidConfiguration(t, t.TempDir())
-			replaceInFile(t, configPath, `["github|123456"]`, value)
-			t.Setenv(configFileEnv, configPath)
-
-			_, err := Load()
-			require.ErrorContains(t, err, "auth.auth0.allowed_subjects")
-		})
-	}
-}
-
-func TestLoadDeduplicatesAllowedSubjects(t *testing.T) {
-	configPath, _ := writeValidConfiguration(t, t.TempDir())
-	replaceInFile(t, configPath, `["github|123456"]`, `["github|123456", " github|123456 ", "github|7"]`)
-	t.Setenv(configFileEnv, configPath)
-
-	settings, err := Load()
-	require.NoError(t, err)
-	assert.Equal(t, []string{"github|123456", "github|7"}, settings.Auth.Auth0.AllowedSubjects, "AllowedSubjects")
 }
 
 // The SDK builds `https://<domain>`, so anything but a bare host would name a

@@ -12,6 +12,14 @@ import (
 // libraries, also used by the reprocess route in routes_library.go.
 const TaskSyncSource = "sync:source"
 
+// TaskSyncTarget and TaskSyncClear are the registered names of the tasks that
+// write to and clear a target. RunTask checks their argument against the
+// caller's own subject: unlike TaskSyncSource, these name one rider's target.
+const (
+	TaskSyncTarget = "sync:target"
+	TaskSyncClear  = "sync:clear"
+)
+
 const (
 	// codeTaskInProgress is what a refused attempt is told.
 	codeTaskInProgress = "task_in_progress"
@@ -85,7 +93,12 @@ func (h *Handler) registers(name string) bool {
 }
 
 // RunTask starts one attempt of a named task, over an argument when the path
-// carries one.
+// carries one. For sync:target/sync:clear, a non-admin caller must name
+// exactly their own subject; an admin may name any target. sync:target alone
+// also accepts an empty argument, meaning every target — admin-only, since a
+// non-admin naming nothing is already refused above. sync:clear has no such
+// meaning: it always requires a target, refused as invalid otherwise, even
+// for an admin.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {
@@ -94,6 +107,19 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	argument := request.PathValue("argument")
+	if name == TaskSyncTarget || name == TaskSyncClear {
+		identity := identityOf(request.Context())
+		if !identity.Admin && argument != identity.Subject {
+			h.notFound(writer)
+
+			return
+		}
+		if name == TaskSyncClear && argument == "" {
+			h.error(writer, http.StatusBadRequest, "invalid_request", "sync:clear requires a target")
+
+			return
+		}
+	}
 	h.accepted(writer, func() bool { return h.tasks.Run(name, argument) })
 }
 

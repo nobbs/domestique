@@ -37,7 +37,7 @@ public client-side code of its own.
   It is the identity provider this deployment signs in through; the
   application accepts whatever connections are enabled for it, so enabling a
   second one widens who can attempt to sign in, not who is let in — the
-  allowlist is the actual gate.
+  post-login Action below is the actual gate.
 - **Disable the username/password database connection** for this application
   unless you actually want it. Left on, it is a second way to attempt
   sign-in with no policy this service imposes over it; GitHub alone keeps the
@@ -45,8 +45,8 @@ public client-side code of its own.
 - The identity this service checks is the ID token's `sub` claim, not an
   email address or a username. For the GitHub connection it reads
   `github|<github-user-id>`, a stable numeric ID rather than the account's
-  current login name, so a GitHub username change never invalidates
-  `allowed_subjects`.
+  current login name, so a GitHub username change never invalidates the
+  Action's own list.
 
 ## The reverse proxy
 
@@ -126,27 +126,63 @@ out of the picture entirely can put a read-only socket proxy in front of it, or
 move to Traefik's file provider and drop the socket mount; neither changes
 anything about how domestique is reached.
 
-## First-time setup
+## Who may sign in: the post-login Action
 
-A freshly deployed service has no way to be told a subject before one has
-signed in, because the subject **is** what a sign-in reveals. The loop that
-resolves that:
+Domestique holds no roster of its own. A post-login Action in the tenant
+decides who may sign in at all, and separately, who among them holds
+cross-subject rights — asserted as two namespaced claims on the ID token this
+service reads and nothing more:
 
-1. Put a placeholder value in `allowed_subjects` — anything syntactically
-   valid — and start the service. Every real sign-in attempt will be refused;
-   that is expected.
-2. Sign in as the account that should hold operator rights.
-3. The service refuses the placeholder subject and answers with its own 403
-   page, which names the `sub` value it just refused. That page exists for
-   exactly this: it is the one place this service will ever show a subject
-   value, and it never writes that value to a log.
-4. Copy that `sub` into `allowed_subjects`, replacing the placeholder, and
-   restart. The allowlist is re-checked on every request, so the next sign-in
-   attempt from that subject succeeds immediately.
+```js
+exports.onExecutePostLogin = async (event, api) => {
+  const ACCESS = ["github|123456"];
+  const ADMIN = ["github|123456"];
+  if (!ACCESS.includes(event.user.user_id)) {
+    api.access.deny("not_allowed", "This account is not allowed to sign in.");
+    return;
+  }
+  const ns = "https://domestique.invalid/";
+  api.idToken.setCustomClaim(`${ns}access`, true);
+  api.idToken.setCustomClaim(`${ns}admin`, ADMIN.includes(event.user.user_id));
+};
+```
 
-Adding a second operator, or replacing the first, is the same loop: a
-placeholder or an already-known `sub` goes in the list, and any subject not in
-it is told its own value on refusal.
+`https://domestique.invalid/` names the claims: Auth0 requires custom claims
+to be namespaced URIs, and `.invalid` is the TLD RFC 2606 reserves so it can
+never resolve or imply a domain this project doesn't own. `api.access.deny`
+refuses the sign-in at Auth0 itself — the browser lands back on
+`/auth/callback?error=access_denied` without a code ever being issued, and
+this service never sees the attempt. The `access` claim is asserted anyway,
+as a fail-closed fallback: if the Action is ever disabled or removed, no
+token carries it, and every subject is refused rather than every subject
+being admitted.
+
+Attach the Action to the tenant's **Login** flow (Actions → Flows → Login),
+after any other Actions that need to run first.
+
+### First-time setup
+
+A freshly created tenant has no way to be told a subject before one has
+signed in, because the subject **is** what a sign-in reveals:
+
+1. Deploy the Action with a placeholder in `ACCESS` — anything syntactically
+   valid. Every real sign-in attempt will be refused; that is expected.
+2. Sign in as the account that should hold access.
+3. Denied at the Action, the callback carries no subject to read — but this
+   service's own fallback check (`access` claim absent) is not what fires
+   here; nothing reaches it. Read the refused subject from the Auth0 tenant's
+   own login logs instead (Monitoring → Logs, a **Failed Login** entry naming
+   the `user_id`), or temporarily comment out the `deny` call to let the
+   sign-in complete and read the `sub` from this service's own 403 page —
+   the one place it will ever show a subject value, and it never writes one
+   to a log.
+4. Add that `sub` to `ACCESS` (and `ADMIN`, if this operator should hold
+   cross-subject rights) in place of the placeholder, and deploy the Action
+   again. It takes effect on the next sign-in — no restart of this service is
+   needed, since nothing here holds a copy of the list.
+
+Adding a second subject, or changing who holds admin, is the same edit: update
+the arrays and deploy.
 
 ## Migrating from the Cloudflare Access path
 

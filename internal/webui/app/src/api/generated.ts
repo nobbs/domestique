@@ -62,6 +62,8 @@ export interface TargetRun {
 
 export interface TargetStatus {
   id: string;
+  /** The subject that owns this target. Present only for an admin caller: a non-admin's own target is already known to be theirs, and never sees another's here at all. */
+  owner?: string;
   authorisation: string;
   convergence: TargetStatusConvergence;
   routes: TargetRoutes;
@@ -357,11 +359,6 @@ export interface WahooSettings {
   oauthBaseUrl: string;
   /** The registered application's public identifier. Its secret is not here: it is written through secrets and read back only as set. */
   clientId: string;
-  /**
-   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
-   * @maxItems 2
-   */
-  targets: string[];
 }
 
 export type SourceSettingsProvider =
@@ -431,14 +428,6 @@ export interface WahooApplicationUpdate {
   clientSecret?: string;
 }
 
-export interface TargetsUpdate {
-  /**
-   * The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
-   * @maxItems 2
-   */
-  targets: string[];
-}
-
 /**
  * One library, and the account it is read with.
  */
@@ -495,6 +484,8 @@ export interface SourceBaseUrls {
  */
 export interface BrowserIdentity {
   display: string;
+  /** Whether this subject holds cross-subject rights. Asserted by the same Auth0 Action that separately decides whether this subject may sign in at all — that decision is what admits the session in the first place, and holds regardless of this field's value. */
+  admin: boolean;
 }
 
 export interface WebUIConfig {
@@ -3008,140 +2999,6 @@ export const useSetWahooApplication = <
   TContext
 > => {
   return useMutation(getSetWahooApplicationMutationOptions(options), queryClient);
-};
-
-export type setTargetsResponse200 = {
-  data: SettingsStoredResponse;
-  status: 200;
-};
-
-export type setTargetsResponse400 = {
-  data: InvalidRequestResponse;
-  status: 400;
-};
-
-export type setTargetsResponse401 = {
-  data: UnauthorizedResponse;
-  status: 401;
-};
-
-export type setTargetsResponse403 = {
-  data: ForbiddenResponse;
-  status: 403;
-};
-
-export type setTargetsResponse503 = {
-  data: UnavailableResponse;
-  status: 503;
-};
-
-export type setTargetsResponseSuccess = setTargetsResponse200 & {
-  headers: Headers;
-};
-export type setTargetsResponseError = (
-  | setTargetsResponse400
-  | setTargetsResponse401
-  | setTargetsResponse403
-  | setTargetsResponse503
-) & {
-  headers: Headers;
-};
-
-export const getSetTargetsUrl = () => {
-  return `/v1/settings/targets`;
-};
-
-/**
- * Replaces the destination slots whole, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
- */
-export const setTargets = async (
-  targetsUpdate: TargetsUpdate,
-  options?: Parameters<typeof domestiqueRequest>[1],
-): Promise<setTargetsResponseSuccess> => {
-  const getHeaders = (
-    h?: NonNullable<RequestInit["headers"]>,
-  ): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-  return domestiqueRequest<setTargetsResponseSuccess>(getSetTargetsUrl(), {
-    ...options,
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
-    body: JSON.stringify(targetsUpdate),
-  });
-};
-
-export const getSetTargetsMutationOptions = <
-  TError = ErrorType<
-    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
-  >,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof setTargets>>,
-    TError,
-    SetTargetsMutationVariables,
-    TContext
-  >;
-  request?: SecondParameter<typeof domestiqueRequest>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof setTargets>>,
-  TError,
-  SetTargetsMutationVariables,
-  TContext
-> => {
-  const mutationKey = ["setTargets"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof setTargets>>,
-    SetTargetsMutationVariables
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return setTargets(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type SetTargetsMutationResult = NonNullable<Awaited<ReturnType<typeof setTargets>>>;
-export type SetTargetsMutationBody = TargetsUpdate;
-export type SetTargetsMutationError = ErrorType<
-  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
->;
-export type SetTargetsMutationVariables = { data: TargetsUpdate };
-
-export const useSetTargets = <
-  TError = ErrorType<
-    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
-  >,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof setTargets>>,
-      TError,
-      SetTargetsMutationVariables,
-      TContext
-    >;
-    request?: SecondParameter<typeof domestiqueRequest>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof setTargets>>,
-  TError,
-  SetTargetsMutationVariables,
-  TContext
-> => {
-  return useMutation(getSetTargetsMutationOptions(options), queryClient);
 };
 
 export type setSourceResponse200 = {

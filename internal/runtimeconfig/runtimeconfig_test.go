@@ -418,21 +418,18 @@ func TestSameOriginRejectsWhatItCannotParse(t *testing.T) {
 func TestValidateWahoo(t *testing.T) {
 	// Every part empty is the state a deployment starts in, and is accepted
 	// here so it can be reported as missing rather than refused as invalid.
-	empty, err := ValidateWahoo(Wahoo{})
+	_, err := ValidateWahoo(Wahoo{})
 	require.NoError(t, err)
-	assert.Empty(t, empty.Targets, "an unconfigured application has no slots")
 
 	valid := Wahoo{
 		APIBaseURL:   " https://api.wahooligan.com ",
 		OAuthBaseURL: "https://api.wahooligan.com",
 		ClientID:     " client-id ",
-		Targets:      []string{" rider-a ", "rider-b"},
 	}
 	normalised, err := ValidateWahoo(valid)
 	require.NoError(t, err)
 	assert.Equal(t, "https://api.wahooligan.com", normalised.APIBaseURL, "APIBaseURL")
 	assert.Equal(t, "client-id", normalised.ClientID, "ClientID")
-	assert.Equal(t, []string{"rider-a", "rider-b"}, normalised.Targets, "Targets")
 
 	tests := []struct {
 		mutate  func(*Wahoo)
@@ -447,13 +444,6 @@ func TestValidateWahoo(t *testing.T) {
 			name:    "an API address carrying a path",
 			mutate:  func(w *Wahoo) { w.APIBaseURL = "https://api.wahooligan.com/v1" },
 			wantErr: "wahoo.api_base_url must be an origin",
-		},
-		{name: "a slot with no name", mutate: func(w *Wahoo) { w.Targets = []string{" "} }, wantErr: "is required"},
-		{name: "the same slot twice", mutate: func(w *Wahoo) { w.Targets = []string{"rider-a", "rider-a"} }, wantErr: "duplicated"},
-		{
-			name:    "more slots than a run reconciles",
-			mutate:  func(w *Wahoo) { w.Targets = []string{"a", "b", "c"} },
-			wantErr: "more than 2",
 		},
 	}
 
@@ -672,7 +662,6 @@ func TestMissingNamesEverySettingARunNeeds(t *testing.T) {
 		"wahoo.oauth_base_url",
 		"wahoo.client_id",
 		"wahoo.client_secret",
-		"wahoo.targets",
 		"sources",
 		"notifications.pushover.application_token",
 		"notifications.pushover.user_key",
@@ -685,7 +674,6 @@ func TestMissingIsEmptyOnceEverythingIsConfigured(t *testing.T) {
 		APIBaseURL:   "https://api.wahooligan.com",
 		OAuthBaseURL: "https://api.wahooligan.com",
 		ClientID:     "client-id",
-		Targets:      []string{"rider-a"},
 	}
 	values.Sources = []Source{{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"}}
 

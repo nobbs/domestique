@@ -129,7 +129,6 @@ browser_origin_url = "${BROWSER_ORIGIN}"
 domain = "127.0.0.1:${AUTH_PORT}"
 client_id = "demo-client"
 client_secret_file = "${DEMO_SECRETS}/auth0_client_secret"
-allowed_subjects = ["demo|rider"]
 
 [state]
 database_path = "${DATABASE}"

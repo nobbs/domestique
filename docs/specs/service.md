@@ -152,24 +152,34 @@ service is correct whether or not the proxy does. Everything else requires a
 session: a page request without one is redirected to `/auth/login`, and an
 API request without one answers JSON `401`.
 
-The service is still single-tenant. A short configured list of subjects is
-authorised, each with the same full operator rights, and there is exactly one
-way to prove membership in it: a session this service itself issued.
+Every subject Auth0 lets sign in shares the route library and its
+synchronisation: what the source read holds and what it writes to Wahoo are
+the same for everyone signed in. Wahoo targets are not shared the same way — a
+non-admin subject sees and controls only their own target, created by their
+own "Connect," while an admin subject sees and controls every target that
+exists. That split is a separate namespaced claim the same Action asserts (see
+below), not a second sign-in decision; every admitted subject proves
+membership the same one way: a session this service itself issued.
 
 A session is created only by an authorisation-code flow with PKCE (S256) and a
 nonce, run against the configured Auth0 tenant through its own SDK. The
 service validates the ID token Auth0 returns itself — signature (RS256),
 issuer, audience equal to the configured client ID, expiry, and nonce — and
-matches its `sub` claim exactly against `allowed_subjects`. The allowlist is
-re-checked on every request, so removing a subject from it and restarting
-revokes that subject's live sessions immediately, without waiting for the
-session to expire.
+then reads one namespaced claim the tenant's post-login Action asserts: whether
+this subject may hold a session at all. Who that Action admits, and on what
+terms, is the tenant's own configuration, not something this file holds; a
+subject the Action does not admit is refused before Auth0 ever issues a code,
+answering the callback with `error=access_denied` instead.
 
-The gate is a session cookie, `__Host-domestique_session`, carrying an opaque
-256-bit token; only its SHA-256 is stored, in `web_sessions`. It is `Secure`,
-`HttpOnly`, `SameSite=Lax`, scoped to `Path=/` with no `Domain`, and slides
-forward on use — a 30-day expiry renewed at most once an hour. Signing out
-revokes it server-side. Sessions live in the state database and share its
+Whether a subject may still sign in is decided at sign-in time, not re-checked
+against anything live on every later request, so the session itself has to
+bound how long a revoked subject's access can keep working: the gate is a
+session cookie, `__Host-domestique_session`, carrying an opaque 256-bit token;
+only its SHA-256 is stored, in `web_sessions`. It is `Secure`, `HttpOnly`,
+`SameSite=Lax`, scoped to `Path=/` with no `Domain`, and fixed at a 24-hour
+expiry — not renewed on use, so a subject is forced back through a real Auth0
+round-trip within a day of any change to the Action's own decision. Signing
+out revokes it server-side. Sessions live in the state database and share its
 fate: a lost database signs every subject out, which is a sign-in problem
 rather than a recovery one. No identity header — `Cf-Access-Jwt-Assertion`,
 `Cf-Access-Authenticated-User-Email`, or `Tailscale-User-Login` — is ever read.
@@ -190,10 +200,13 @@ exceptions to that rule. Both are a cross-site GET the browser is redirected
 into rather than a request the page itself issues, and each carries its own
 one-time, expiring, identity-bound state instead: the Auth0 callback's state
 must also be presented back in a `__Host-domestique_login` cookie the same
-browser was given when it started. A subject the allowlist refuses is shown
-their own `sub` on the resulting 403 page, so a first deployment can copy it
-into `allowed_subjects`; that subject is never written to a log, which carries
-a stable category only.
+browser was given when it started. Most refusals never reach this service at
+all — the Action denies them before Auth0 issues a code, and the callback
+answers `error=access_denied`. A subject that does complete the exchange
+without the access claim — the Action disabled or misconfigured, say — is
+shown their own `sub` on the resulting 403 page instead, the one place this
+service will ever display a subject value; it is never written to a log,
+which carries a stable category only.
 
 The map view is one documented exception to the otherwise session-gated
 posture.
@@ -275,17 +288,23 @@ The state-changing HTTP surface is sign-in, sign-out, and the Wahoo OAuth flow:
 - `GET /auth/callback` validates the returned authorisation code and issues a
   session, on the terms described above.
 - `POST /auth/logout` revokes the caller's session and always answers `204`.
-- `GET /oauth/wahoo/start/{target}` starts authorisation for a configured target
-  slot.
+- `GET /oauth/wahoo/start` starts authorisation for the caller's own target,
+  creating it on first use. The browser is never told its own subject, so this
+  bare path is the only way a caller with no target yet can start one at all.
+- `GET /oauth/wahoo/start/{target}` starts authorisation for a named target: a
+  non-admin may only name their own subject, which the bare path above already
+  covers; an admin may name any target that already exists. Either way a name
+  this rule refuses is answered not found, so a non-admin cannot learn which
+  other targets exist.
 - `GET /oauth/wahoo/callback` validates a one-time, expiring OAuth state and
   stores the resulting refresh token.
 
 The Wahoo pair is limited to a session belonging to an allowed subject. The
-state binds the calling identity and target slot and prevents cross-account or
-CSRF callbacks. The service rejects an attempt to authorise the same Wahoo
-account for two target slots. The Wahoo callback joins the Auth0 callback as
-the surface's other documented exception to the `Origin` rule, for the same
-reason: both are a cross-site GET the browser is redirected into.
+state binds the calling identity and target and prevents cross-account or CSRF
+callbacks. The service rejects an attempt to authorise the same Wahoo account
+for two targets. The Wahoo callback joins the Auth0 callback as the surface's
+other documented exception to the `Origin` rule, for the same reason: both are
+a cross-site GET the browser is redirected into.
 
 Alongside it are the operator controls over synchronisation: the manual
 triggers, the two switches that decide what the timer is allowed to start, the
@@ -336,7 +355,10 @@ The read-only JSON surface is small:
   whether every stored route at its current revision has reached every configured
   target: one convergence word, safe aggregate current and pending counts, and
   the last reconciliation result per target, plus one overall answer that is true
-  only when every target is current. Those are derived from stored revisions
+  only when every target is current. A non-admin subject's answer names only
+  their own target — zero or one, never another's — and the overall answer is
+  computed over that same, scoped set; an admin's names every target that
+  exists, each carrying who owns it. Those are derived from stored revisions
   alone, never by asking Wahoo what it holds, and they describe the Wahoo
   accounts rather than what any physical head unit has downloaded. It also names
   the build that is running: the full public source commit the binary was
@@ -377,9 +399,11 @@ The read-only JSON surface is small:
   name, else the bare `sub`.
 - `GET /v1/settings` returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
-  the basemap list, the surface settings, the Wahoo application and its target
-  slots, the source libraries, and the ride model. It is one document and the
-  whole of it every time, whichever section is about to be edited.
+  the basemap list, the surface settings, the Wahoo application, the source
+  libraries, and the ride model. It is one document and the whole of it every
+  time, whichever section is about to be edited. Which targets exist is not
+  among these settings: each is created by its own owning subject, on their own
+  first connection, not written here.
 
   It carries **no credential value**. It reports, per stored credential, whether
   one is set at all, and it names what is still to be entered: everything a run
@@ -409,16 +433,21 @@ it.
   needs is held by another run. A name this build does not register is refused
   as `404`.
 
-  An argument is the task's own to interpret, not this surface's: an
-  unconfigured target slot is accepted and recorded as `skipped` rather than
-  refused as `404`. The refusal that matters is in the service — a clear or a
-  reconciliation of a slot that is not configured does no work. The attempt is
-  recorded in `task_runs`, but nothing on this surface reads it back; an
-  operator learns of a typo'd slot only by the reconciliation it never
-  produces.
+  An argument is the task's own to interpret, not this surface's — except for
+  `sync:target` and `sync:clear`, where it names a target and this surface
+  refuses it before the task layer ever sees it: a non-admin's argument must be
+  their own subject (or, for `sync:target`, empty, meaning every target — which
+  only an admin may ask for), anything else answered `404` the same as a name
+  that does not exist, so a non-admin cannot learn which other targets exist.
+  Past that gate, a target that does not exist is accepted and recorded as
+  `skipped` rather than refused: the refusal that matters is in the service — a
+  clear or a reconciliation of a target that does not exist does no work. The
+  attempt is recorded in `task_runs`, but nothing on this surface reads it
+  back; an operator learns of a typo'd target only by the reconciliation it
+  never produces.
 
-  `sync:clear` deletes every route this service owns from one configured slot
-  and forgets that slot's route mappings. It is the one deletion the per-target
+  `sync:clear` deletes every route this service owns from one target and
+  forgets that target's route mappings. It is the one deletion the per-target
   deletion limit does not bound, and nothing schedules it. It still deletes only
   routes carrying an external ID this service issued, and leaves the stored
   library untouched, so the next reconciliation rebuilds the target.
@@ -435,7 +464,6 @@ it.
   route that is not in the stored inventory.
 - The settings are written one section at a time, over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,
-  `/v1/settings/targets` for the slots it writes to,
   `/v1/settings/sources/{provider}` for one library and the account it is read
   with, and `/v1/settings/notifications`, `/v1/settings/basemaps`,
   `/v1/settings/surface`, `/v1/settings/ridemodel` and `/v1/settings/sync` for
@@ -503,15 +531,18 @@ The service has a provider-neutral configuration contract:
 
 - One read-only static configuration file holds what the host has to know
   before the process can serve anything: the two listener addresses, the origin
-  a browser reaches the service at, the Auth0 tenant domain, client id and
-  allowed subjects, and the state database's path and key file.
+  a browser reaches the service at, the Auth0 tenant domain and client id, and
+  the state database's path and key file. Who may sign in is not among them —
+  that is the tenant's own Action, not this file.
 - Everything that decides what work the service does is not in that file. The
-  provider endpoints, target slots, source libraries, ride model, schedule and
-  credentials are held in the state database, edited over the settings
-  endpoints, and in force without a restart; the
+  provider endpoints, source libraries, ride model, schedule and credentials
+  are held in the state database, edited over the settings endpoints, and in
+  force without a restart; the
   [configuration specification](configuration.md#runtime-settings) defines them.
   A deployment that has configured none of them starts, serves the settings
-  page, and runs nothing.
+  page, and runs nothing. Targets are held in the same database but are not
+  among these settings: each is created by its own owning subject connecting,
+  not written by an operator.
 - Two sensitive static values are loaded by Koanf from a Docker-style file or
   the documented direct environment variables: the 32-byte state-encryption
   key and the Auth0 client secret. Every other credential — the source
@@ -696,8 +727,8 @@ all configured targets: API calls are serial, obey advertised limits, and resume
 when safe to do so.
 
 Domestique deletes only Wahoo routes it owns through its `external_id`. A
-route deletion removes the corresponding owned Wahoo route from both
-targets. It never deletes manually created Wahoo routes.
+route deletion removes the corresponding owned Wahoo route from every
+target. It never deletes manually created Wahoo routes.
 
 ## Sync lifecycle and safety
 
@@ -707,7 +738,7 @@ The detailed state transitions and safety gates are defined in the
 The service attempts one sync shortly after a healthy startup and then hourly.
 At most one sync may run at a time. It fetches the source inventory once, then
 processes configured Wahoo targets serially so one account's failure does not stop
-an attempted update of the other. The overall run is failed if either target
+an attempted update of the rest. The overall run is failed if any target
 fails.
 
 No automatic run may delete more than five owned Wahoo routes from a target.
@@ -792,7 +823,8 @@ secret files remain outside Git.
   page, and runs nothing until an operator has finished configuring it there.
 - A credential entered on the settings page is stored encrypted and is never
   served back, in any form, to any caller.
-- Two Wahoo accounts can be authorised through the session-gated OAuth flow.
+- Any signed-in subject can self-service authorise their own Wahoo account
+  through the session-gated OAuth flow, one target per subject.
 - An hourly run mirrors every valid VeloPlanner route to every configured target as FIT.
 - Edits preserve the route's `external_id`; source deletions remove only owned
   destination routes and respect the deletion guard.
@@ -803,10 +835,11 @@ secret files remain outside Git.
   service's own browser UI.
 - Every HTTP interaction is identity-gated to an allowed subject, by a session
   this service issued from an ID token it verified itself; a subject the
-  allowlist does not name reaches nothing, is told that the account is not
-  allowed rather than that the service failed, and appears in no log. Which
-  subject was refused is not shown: the refusal travels as a query parameter
-  on the sign-in page's own address, which outlives the answer it was part of. Beyond OAuth, the only ones that change anything are
+  tenant's Action does not admit reaches nothing, is told that the account is
+  not allowed rather than that the service failed, and appears in no log.
+  Which subject was refused is not shown: the refusal travels as a query
+  parameter on the sign-in page's own address, which outlives the answer it
+  was part of. Beyond OAuth, the only ones that change anything are
   the task triggers and their switches, the reprocess request,
   which discards derived answers so they are worked out again, the
   surface-enrichment retry, which reclassifies stored routes without reading

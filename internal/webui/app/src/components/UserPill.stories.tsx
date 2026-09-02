@@ -64,7 +64,7 @@ function config(): WebUIConfig {
   return {
     basemaps: [],
     sourceBaseUrls: {},
-    identity: { display: "alexej.disterhoft@example.test" },
+    identity: { display: "alexej.disterhoft@example.test", admin: false },
   };
 }
 

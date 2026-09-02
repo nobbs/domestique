@@ -83,10 +83,6 @@ type Auth0 struct {
 	// ClientID names the application registered for this service.
 	ClientID string
 
-	// AllowedSubjects are the `sub` claims that may hold a session. An
-	// authenticated subject outside this list is refused.
-	AllowedSubjects []string
-
 	// clientSecret authenticates this confidential client. Held as a Secret so
 	// no formatting verb reaching this struct can print it.
 	clientSecret runtimeconfig.Secret
@@ -126,11 +122,10 @@ type rawAuth struct {
 }
 
 type rawAuth0 struct {
-	Domain           string   `koanf:"domain"`
-	ClientID         string   `koanf:"client_id"`
-	ClientSecret     string   `koanf:"client_secret"`
-	ClientSecretFile string   `koanf:"client_secret_file"`
-	AllowedSubjects  []string `koanf:"allowed_subjects"`
+	Domain           string `koanf:"domain"`
+	ClientID         string `koanf:"client_id"`
+	ClientSecret     string `koanf:"client_secret"`
+	ClientSecretFile string `koanf:"client_secret_file"`
 }
 
 type rawState struct {
@@ -285,15 +280,14 @@ func hasPath(values map[string]any, path []string) bool {
 	return false
 }
 
-// validateAuth0 requires the section whole and returns the deduplicated subject
-// allowlist. It is the only gate the service has, so anything less than all of
-// domain, client id, and allowlist leaves no way to authenticate anyone.
-func validateAuth0(raw *rawAuth0) ([]string, error) {
-	subjects := trimmedSubjects(raw.AllowedSubjects)
+// validateAuth0 requires the section whole. It is the only gate the service
+// has, so anything less than both domain and client id leaves no way to
+// authenticate anyone; who that gate then admits is an Auth0 Action's claim,
+// not something this file holds.
+func validateAuth0(raw *rawAuth0) error {
 	values := map[string]bool{
-		"auth.auth0.domain":           strings.TrimSpace(raw.Domain) == "",
-		"auth.auth0.client_id":        strings.TrimSpace(raw.ClientID) == "",
-		"auth.auth0.allowed_subjects": len(subjects) == 0,
+		"auth.auth0.domain":    strings.TrimSpace(raw.Domain) == "",
+		"auth.auth0.client_id": strings.TrimSpace(raw.ClientID) == "",
 	}
 
 	missing := make([]string, 0, len(values))
@@ -305,13 +299,10 @@ func validateAuth0(raw *rawAuth0) ([]string, error) {
 	if len(missing) > 0 {
 		slices.Sort(missing)
 
-		return nil, fmt.Errorf("auth.auth0 is required; missing %s", strings.Join(missing, ", "))
-	}
-	if err := validateAuth0Domain(strings.TrimSpace(raw.Domain)); err != nil {
-		return nil, err
+		return fmt.Errorf("auth.auth0 is required; missing %s", strings.Join(missing, ", "))
 	}
 
-	return subjects, nil
+	return validateAuth0Domain(strings.TrimSpace(raw.Domain))
 }
 
 // validateAuth0Domain accepts a bare host, optionally with a port: the SDK
@@ -340,19 +331,6 @@ func validateAuth0Domain(domain string) error {
 	return nil
 }
 
-// trimmedSubjects is the allowlist as it is compared: trimmed, blanks dropped,
-// duplicates removed.
-func trimmedSubjects(values []string) []string {
-	subjects := make([]string, 0, len(values))
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" && !slices.Contains(subjects, trimmed) {
-			subjects = append(subjects, trimmed)
-		}
-	}
-
-	return subjects
-}
-
 func build(raw *rawSettings) (*Settings, error) {
 	if err := validateListenAddress(raw.HTTP.ListenAddress); err != nil {
 		return nil, err
@@ -364,8 +342,7 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err := runtimeconfig.ValidateHTTPSOrigin("http.browser_origin_url", browserOrigin); err != nil {
 		return nil, fmt.Errorf("configuration file: %w", err)
 	}
-	subjects, err := validateAuth0(&raw.Auth.Auth0)
-	if err != nil {
+	if err := validateAuth0(&raw.Auth.Auth0); err != nil {
 		return nil, err
 	}
 	clientSecret, err := resolveSecret(secretInput{
@@ -403,10 +380,9 @@ func build(raw *rawSettings) (*Settings, error) {
 		},
 		Auth: Auth{
 			Auth0: Auth0{
-				Domain:          strings.TrimSpace(raw.Auth.Auth0.Domain),
-				ClientID:        strings.TrimSpace(raw.Auth.Auth0.ClientID),
-				AllowedSubjects: subjects,
-				clientSecret:    clientSecret,
+				Domain:       strings.TrimSpace(raw.Auth.Auth0.Domain),
+				ClientID:     strings.TrimSpace(raw.Auth.Auth0.ClientID),
+				clientSecret: clientSecret,
 			},
 		},
 		State: State{

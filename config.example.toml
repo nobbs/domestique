@@ -34,18 +34,18 @@ browser_origin_url = "https://domestique.example.com"
 # from an ID token it verified itself against this tenant. The section is
 # required in full: a service that cannot verify a session cannot authenticate
 # anyone, so an incomplete section is refused at startup rather than left
-# answering every request with a 401.
+# answering every request with a 401. Who may sign in at all, and who among
+# them holds cross-subject rights, is decided by a post-login Action in the
+# tenant itself — this file holds nothing about either.
 #
-# None of domain, client_id or allowed_subjects is a secret: verification uses
-# Auth0's published signing keys, and allowed_subjects names identities rather
-# than holding anything that authenticates on its own. The client secret is
-# the one part of this section that is secret, so it names a file rather than
-# carrying a value here, the same way the state encryption key below does.
+# Neither domain nor client_id is a secret: verification uses Auth0's
+# published signing keys. The client secret is the one part of this section
+# that is secret, so it names a file rather than carrying a value here, the
+# same way the state encryption key below does.
 [auth.auth0]
 domain = "yourtenant.eu.auth0.com"
 client_id = "the application's client ID"
 client_secret_file = "/run/secrets/auth0_client_secret"
-allowed_subjects = ["github|123456"]
 
 # The database every runtime setting and every credential is stored in, and the
 # key the credentials are encrypted with. Losing the key means re-entering the

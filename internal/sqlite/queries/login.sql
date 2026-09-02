@@ -21,14 +21,13 @@ DELETE FROM login_transactions WHERE state_digest = ?;
 DELETE FROM web_sessions WHERE expires_at_unix <= ?;
 
 -- name: InsertWebSession :exec
-INSERT INTO web_sessions (token_digest, subject, display, created_at_unix, renewed_at_unix, expires_at_unix)
-VALUES (?, ?, ?, ?, ?, ?);
+-- renewed_at_unix is unused, superseded by the fixed 24-hour lifetime; NOT
+-- NULL with no default, so dropping it needs a rebuild.
+INSERT INTO web_sessions (token_digest, subject, display, admin, created_at_unix, renewed_at_unix, expires_at_unix)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetWebSession :one
-SELECT subject, display, renewed_at_unix, expires_at_unix FROM web_sessions WHERE token_digest = ?;
-
--- name: RenewWebSession :execresult
-UPDATE web_sessions SET renewed_at_unix = ?, expires_at_unix = ? WHERE token_digest = ?;
+SELECT subject, display, admin, expires_at_unix FROM web_sessions WHERE token_digest = ?;
 
 -- name: DeleteWebSession :exec
 DELETE FROM web_sessions WHERE token_digest = ?;

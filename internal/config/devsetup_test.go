@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,7 +26,6 @@ func TestDevSetupGeneratesALoadableConfiguration(t *testing.T) {
 		"DEV_DIR":          directory,
 		"DEV_SECRETS":      directory,
 		"DEPLOYED_SECRETS": directory,
-		"DEV_SUBJECT":      "github|123456",
 	}
 	writeSecretFile(t, directory, "state_encryption_key", base64.RawURLEncoding.EncodeToString(key[:]))
 	writeSecretFile(t, directory, "auth0_client_secret", "development-placeholder")
@@ -36,10 +34,8 @@ func TestDevSetupGeneratesALoadableConfiguration(t *testing.T) {
 	require.NoError(t, os.WriteFile(configPath, []byte(devSetupConfiguration(t, values)), 0o600))
 	t.Setenv(configFileEnv, configPath)
 
-	settings, err := Load()
+	_, err := Load()
 	require.NoError(t, err)
-
-	assert.Equal(t, []string{values["DEV_SUBJECT"]}, settings.Auth.Auth0.AllowedSubjects, "AllowedSubjects")
 }
 
 // devSetupConfiguration renders the configuration dev/setup.sh writes, taking

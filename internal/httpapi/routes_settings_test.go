@@ -23,7 +23,6 @@ import (
 const (
 	settingsPath              = "/v1/settings"
 	settingsWahooPath         = "/v1/settings/wahoo"
-	settingsTargetsPath       = "/v1/settings/targets"
 	settingsKomootPath        = "/v1/settings/sources/komoot"
 	settingsVeloPlannerPath   = "/v1/settings/sources/veloplanner"
 	settingsNotificationsPath = "/v1/settings/notifications"
@@ -44,7 +43,6 @@ const (
 		"clientId": "client-id",
 		"clientSecret": "client-secret"
 	}`
-	targetsSubmission       = `{"targets": ["rider-b"]}`
 	notificationsSubmission = `{
 		"enabled": false,
 		"pushoverBaseUrl": "https://pushover.example.test",
@@ -133,16 +131,6 @@ func TestEachSectionIsStoredByItsOwnEndpoint(t *testing.T) {
 				t.Helper()
 				assert.Equal(t, "client-id", values.Wahoo.ClientID, "the application")
 				assert.Equal(t, "https://api.wahoo.example.test", values.Wahoo.APIBaseURL, "the api origin")
-				assert.Equal(t, []string{"rider-a"}, values.Wahoo.Targets, "the slots it writes to")
-			},
-		},
-		{
-			name: "the destination slots",
-			path: settingsTargetsPath,
-			body: targetsSubmission,
-			stored: func(t *testing.T, values runtimeconfig.Values) {
-				t.Helper()
-				assert.Equal(t, []string{"rider-b"}, values.Wahoo.Targets, "the slots")
 			},
 		},
 		{
@@ -235,8 +223,8 @@ func TestASectionLeavesEveryOtherSectionAsItWas(t *testing.T) {
 func TestASavedSectionIsAnsweredWithEverySetting(t *testing.T) {
 	handler, _ := settingsHandler(t)
 
-	view := saveSection(t, handler, settingsTargetsPath, targetsSubmission)
-	assert.Equal(t, []string{"rider-b"}, view.Wahoo.Targets, "the section that was written")
+	view := saveSection(t, handler, settingsSurfacePath, surfaceSubmission)
+	assert.Equal(t, []string{"europe/germany"}, view.Surface.Regions, "the section that was written")
 	assert.Equal(t, int((26 * time.Hour).Seconds()), view.Sync.StaleAfterSeconds, "a section that was not")
 }
 

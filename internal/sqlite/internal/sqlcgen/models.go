@@ -192,6 +192,7 @@ type Target struct {
 	RefreshToken       []byte
 	AuthorizationState string
 	UpdatedAtUnix      int64
+	OwnerSubject       sql.NullString
 }
 
 type TargetRun struct {
@@ -249,4 +250,5 @@ type WebSession struct {
 	CreatedAtUnix int64
 	RenewedAtUnix int64
 	ExpiresAtUnix int64
+	Admin         int64
 }

@@ -82,9 +82,24 @@ func (h *Handler) StartLogin(writer http.ResponseWriter, request *http.Request) 
 	http.Redirect(writer, request, location.String(), http.StatusSeeOther)
 }
 
-// CompleteLogin finishes a sign-in and issues the session cookie.
+// CompleteLogin finishes a sign-in and issues the session cookie. Where the
+// Action itself refuses a subject, Auth0 never issues a code at all — the
+// browser lands here with `error=access_denied` instead, so that is checked
+// before state and code are ever required. error_description is tenant
+// text and is never rendered; only the fixed category matters to a reader.
 func (h *Handler) CompleteLogin(writer http.ResponseWriter, request *http.Request) {
 	query := request.URL.Query()
+	if errorCode := query.Get("error"); errorCode != "" {
+		reason, logReason := signInFailed, "authorization_denied"
+		if errorCode == "access_denied" {
+			reason, logReason = signInNotAllowed, "subject_not_allowed"
+		}
+		slog.Warn("sign-in refused", "reason", logReason)
+		h.clearCookie(writer, loginCookie)
+		h.refuse(writer, request, reason)
+
+		return
+	}
 	state, code := query.Get("state"), query.Get("code")
 	cookie, cookieErr := request.Cookie(loginCookie)
 	if cookieErr != nil || state == "" || code == "" || cookie.Value == "" {

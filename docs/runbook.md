@@ -87,15 +87,20 @@ host can reach the configured Auth0 tenant at all, and that `auth.auth0.domain`
 in `config.toml` is the tenant host with no scheme and no path. This is a host
 problem, not a browser one.
 
-**The subject signed in is not allowed.** The 403 page itself is the
-diagnostic: it names the exact `sub` value Auth0 asserted for that sign-in,
-and it is the only place this service ever shows that value — it is never
-written to a log. Compare it against `allowed_subjects` in `config.toml`. A
-value that is not there yet is exactly [first-time setup](auth0.md#first-time-setup):
-copy it in and restart. A value that looks like it should already be there
-means the list and the running configuration have drifted — confirm the file
-that was actually deployed, and that the service restarted after it changed,
-since this section is a file setting rather than a runtime one.
+**The subject signed in is not allowed.** Two different pages can say this,
+depending on where the refusal happened. Most of the time the tenant's
+post-login Action denies the sign-in itself: the browser lands on this
+service's `/auth/callback?error=access_denied`, and the page it renders never
+had a subject to show — an ID token was never issued. Read the Auth0 tenant's
+own login logs (Monitoring → Logs, a **Failed Login** entry) for the `user_id`
+that was refused. Less often, a token is issued without the access claim — the
+Action disabled, removed, or errored without denying — and this service's own
+403 page fires instead, naming the exact `sub` value Auth0 asserted; it is the
+only place this service ever shows that value, and it is never written to a
+log. Either way, the fix is the same: add the subject to the Action's `ACCESS`
+list (see [who may sign in](auth0.md#who-may-sign-in-the-post-login-action))
+and deploy it — no restart of this service is needed, since it holds no copy
+of that list.
 
 **The callback URL does not match.** A sign-in that returns from the identity
 provider to an error page, or to the wrong host entirely, usually means the
@@ -132,7 +137,7 @@ connected reads **Not connected** instead. Both are fixed by the same visit, and
 the page says which it is. `authorisation` in `GET /v1/status` is
 `needs_reauthorization` for the first and `not_authorized` for the second.
 
-**What already held.** Only that slot is affected: the other target is still
+**What already held.** Only that slot is affected: every other target is still
 attempted in the same run, and a rejected token deletes nothing anywhere. The
 refresh token stays encrypted at rest, and access tokens never leave memory.
 
@@ -145,6 +150,11 @@ page itself will not load:
 ```text
 https://<your-public-hostname>/oauth/wahoo/start/<target-id>
 ```
+
+A rider reconnecting their own account uses the bare path instead —
+`https://<your-public-hostname>/oauth/wahoo/start`, with no target named — since
+the browser is never told its own subject; the named form is for an admin
+reconnecting someone else's.
 
 That link needs a signed-in Domestique session first: the Wahoo flow's
 one-time state is bound to the subject that started it, so opening it from a
@@ -177,9 +187,10 @@ page saying what is still missing, with no run in its history and no
 notification of any kind. That is a deployment that has not been configured yet
 rather than one that broke, and it is the state every new deployment starts in.
 The host's file carries only the listeners, the identity gate and the state, and
-everything a run needs — the source libraries and their accounts, the Wahoo
-application and its client secret, and at least one target slot — is entered on
-the settings page.
+everything a run needs — the source libraries and their accounts, and the
+Wahoo application and its client secret — is entered on the settings page. At
+least one target is also needed, but that is not entered there: it exists once
+a signed-in rider connects their own Wahoo account.
 
 **What the service has already guaranteed.** A scheduled run finds nothing
 configured and does nothing, rather than reaching an upstream as nobody or
@@ -188,9 +199,10 @@ deletion gate is never approached. The readiness probe reports ready throughout.
 
 **The way forward** is the settings page, which names each missing setting.
 Filling them in takes effect on the next run: there is no restart, and nothing
-to edit on the host. A target slot named there is ready for the one-time OAuth
-onboarding immediately; see [Reconnect a Wahoo account](#reconnect-a-wahoo-account)
-for what that looks like.
+to edit on the host. Once the Wahoo application is entered, a rider connecting
+their own account is ready for the one-time OAuth onboarding immediately; see
+[Reconnect a Wahoo account](#reconnect-a-wahoo-account) for what that looks
+like.
 
 ## A deletion was blocked
 
@@ -220,7 +232,7 @@ One target's reconciliation would have removed more than five owned routes,
 which is the per-run limit. It is a constant rather than a setting and cannot be
 raised. The gate is checked before any create or update, so **that target was
 not written to at all** in that run; it stays behind until the situation is
-resolved. The other target is reconciled independently.
+resolved. Every other target is reconciled independently.
 
 Satisfy yourself that the removals are intended. If they are not — routes
 vanished from the library by accident — restore them at the source and run the
@@ -379,8 +391,8 @@ There is also no HTTP or CLI path to delete a route. Everything in this guide is
 either a browser action the service already offers — including the settings
 page, which reaches the deletion gate, the staleness bound, the notification
 settings, the basemap list, the surface regions, the source libraries, the Wahoo
-application and its target slots, the ride model, and every credential those
-reach their upstreams with — or a change to the host's configuration file, which
+application, the ride model, and every credential those reach their upstreams
+with — or a change to the host's configuration file, which
 holds only the listeners, the identity gate and the state, followed by a
 restart.
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"time"
 
@@ -58,26 +57,40 @@ func liveSyncState(activity SyncActivityState) (string, bool) {
 func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	// One snapshot for the whole response, so the list of targets and the count of
 	// them cannot disagree mid-assembly.
-	targetIDs := h.targetIDs()
+	targetIDs, err := h.targetIDs(request.Context())
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	admin := identityOf(request.Context()).Admin
+	// A set rather than a repeated slices.Contains scan: self-service targets
+	// are unbounded, so this membership check has to stay O(1) per row.
+	wanted := make(map[string]struct{}, len(targetIDs))
+	for _, id := range targetIDs {
+		wanted[id] = struct{}{}
+	}
 	authorizations := make(map[string]string, len(targetIDs))
-	if err := h.state.ForEachTarget(request.Context(), func(id, authorizationState string) error {
-		if slices.Contains(targetIDs, id) {
+	owners := make(map[string]string, len(targetIDs))
+	if targetErr := h.state.ForEachTarget(request.Context(), func(id, authorizationState, ownerSubject string) error {
+		if _, found := wanted[id]; found {
 			authorizations[id] = authorizationState
+			owners[id] = ownerSubject
 		}
 
 		return nil
-	}); err != nil {
+	}); targetErr != nil {
 		h.unavailable(writer)
 
 		return
 	}
 
 	inFlight := make(map[string]bool, len(targetIDs))
-	if err := h.state.ForEachPendingAuthorization(request.Context(), func(targetID string) error {
+	if pendingErr := h.state.ForEachPendingAuthorization(request.Context(), func(targetID string) error {
 		inFlight[targetID] = true
 
 		return nil
-	}); err != nil {
+	}); pendingErr != nil {
 		h.unavailable(writer)
 
 		return
@@ -115,13 +128,19 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			lastRun = &run
 		}
 		convergence := convergenceState(authorization, routes, lastRun)
-		targets = append(targets, openapi.TargetStatus{
+		status := openapi.TargetStatus{
 			ID:            targetID,
 			Authorisation: authorization,
 			Convergence:   convergence,
 			Routes:        routes,
 			LastRun:       lastRun,
-		})
+		}
+		// Only an admin sees who owns a target: a non-admin's own is already
+		// known to be theirs, and never sees another's here at all.
+		if admin {
+			status.Owner = optionalString(owners[targetID])
+		}
+		targets = append(targets, status)
 		allRoutes.Current += routes.Current
 		allRoutes.Pending += routes.Pending
 		ready = ready && authorization == authorizedState

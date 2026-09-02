@@ -41,7 +41,7 @@ import (
 const (
 	// sessionLifetime matches internal/session's own, so the pre-minted row
 	// expires the way one created by a real sign-in does.
-	sessionLifetime = 30 * 24 * time.Hour
+	sessionLifetime = 24 * time.Hour
 
 	httpIdleTimeout       = 60 * time.Second
 	httpReadHeaderTimeout = 10 * time.Second
@@ -98,7 +98,9 @@ func run(ctx context.Context, sessionFile, states, callbackURL string) error {
 		return seedErr
 	}
 
-	slots, err := slotsFor(runtimeSettings.Values().Wahoo.Targets, states)
+	// Fixed rather than read from settings: a self-service target exists because
+	// its owning subject connected, not because an operator configured a slot.
+	slots, err := slotsFor([]string{"rider-a", "rider-b"}, states)
 	if err != nil {
 		return err
 	}
@@ -121,8 +123,7 @@ func run(ctx context.Context, sessionFile, states, callbackURL string) error {
 	if err != nil {
 		return err
 	}
-	sessions, err := session.New(store, signInProvider{client: provider},
-		settings.Auth.Auth0.AllowedSubjects, nil)
+	sessions, err := session.New(store, signInProvider{client: provider}, nil)
 	if err != nil {
 		return fmt.Errorf("creating the session service: %w", err)
 	}
@@ -357,7 +358,7 @@ func mintSession(ctx context.Context, store *sqlite.Store, path string) error {
 	}
 	digest := sha256.Sum256(raw)
 	now := time.Now().UTC()
-	if err := store.CreateSession(ctx, digest[:], demoSubject, demoDisplay, now, now.Add(sessionLifetime)); err != nil {
+	if err := store.CreateSession(ctx, digest[:], demoSubject, demoDisplay, true, now, now.Add(sessionLifetime)); err != nil {
 		return fmt.Errorf("storing the demo session: %w", err)
 	}
 	if path == "" {
@@ -395,7 +396,6 @@ func seedSettings(ctx context.Context, current *runtimeconfig.Current, origin st
 		APIBaseURL:   origin,
 		OAuthBaseURL: origin,
 		ClientID:     "demo-placeholder",
-		Targets:      []string{"rider-a", "rider-b"},
 	}
 	values.Sources = []runtimeconfig.Source{
 		{Provider: route.ProviderVeloPlanner, BaseURL: origin},

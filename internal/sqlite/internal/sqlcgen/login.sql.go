@@ -7,7 +7,6 @@ package sqlcgen
 
 import (
 	"context"
-	"database/sql"
 )
 
 const capLoginTransactions = `-- name: CapLoginTransactions :exec
@@ -76,13 +75,13 @@ func (q *Queries) GetLoginTransaction(ctx context.Context, stateDigest []byte) (
 }
 
 const getWebSession = `-- name: GetWebSession :one
-SELECT subject, display, renewed_at_unix, expires_at_unix FROM web_sessions WHERE token_digest = ?
+SELECT subject, display, admin, expires_at_unix FROM web_sessions WHERE token_digest = ?
 `
 
 type GetWebSessionRow struct {
 	Subject       string
 	Display       string
-	RenewedAtUnix int64
+	Admin         int64
 	ExpiresAtUnix int64
 }
 
@@ -92,7 +91,7 @@ func (q *Queries) GetWebSession(ctx context.Context, tokenDigest []byte) (GetWeb
 	err := row.Scan(
 		&i.Subject,
 		&i.Display,
-		&i.RenewedAtUnix,
+		&i.Admin,
 		&i.ExpiresAtUnix,
 	)
 	return i, err
@@ -121,41 +120,31 @@ func (q *Queries) InsertLoginTransaction(ctx context.Context, arg InsertLoginTra
 }
 
 const insertWebSession = `-- name: InsertWebSession :exec
-INSERT INTO web_sessions (token_digest, subject, display, created_at_unix, renewed_at_unix, expires_at_unix)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO web_sessions (token_digest, subject, display, admin, created_at_unix, renewed_at_unix, expires_at_unix)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertWebSessionParams struct {
 	TokenDigest   []byte
 	Subject       string
 	Display       string
+	Admin         int64
 	CreatedAtUnix int64
 	RenewedAtUnix int64
 	ExpiresAtUnix int64
 }
 
+// renewed_at_unix is unused, superseded by the fixed 24-hour lifetime; NOT
+// NULL with no default, so dropping it needs a rebuild.
 func (q *Queries) InsertWebSession(ctx context.Context, arg InsertWebSessionParams) error {
 	_, err := q.db.ExecContext(ctx, insertWebSession,
 		arg.TokenDigest,
 		arg.Subject,
 		arg.Display,
+		arg.Admin,
 		arg.CreatedAtUnix,
 		arg.RenewedAtUnix,
 		arg.ExpiresAtUnix,
 	)
 	return err
-}
-
-const renewWebSession = `-- name: RenewWebSession :execresult
-UPDATE web_sessions SET renewed_at_unix = ?, expires_at_unix = ? WHERE token_digest = ?
-`
-
-type RenewWebSessionParams struct {
-	RenewedAtUnix int64
-	ExpiresAtUnix int64
-	TokenDigest   []byte
-}
-
-func (q *Queries) RenewWebSession(ctx context.Context, arg RenewWebSessionParams) (sql.Result, error) {
-	return q.db.ExecContext(ctx, renewWebSession, arg.RenewedAtUnix, arg.ExpiresAtUnix, arg.TokenDigest)
 }

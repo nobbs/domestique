@@ -174,9 +174,10 @@ func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 		{ID: "rider-c", State: demo.SlotUnauthorized},
 	})
 
-	authorizations := map[string]string{}
-	require.NoError(t, store.ForEachTarget(t.Context(), func(id, authorizationState string) error {
+	authorizations, owners := map[string]string{}, map[string]string{}
+	require.NoError(t, store.ForEachTarget(t.Context(), func(id, authorizationState, ownerSubject string) error {
 		authorizations[id] = authorizationState
+		owners[id] = ownerSubject
 
 		return nil
 	}))
@@ -184,6 +185,8 @@ func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 	assert.Equal(t, "authorized", authorizations["rider-b"])
 	assert.Equal(t, "not_authorized", authorizations["rider-c"],
 		"an un-onboarded slot is what the browser onboarding path is demonstrated from")
+	assert.Equal(t, "rider-a", owners["rider-a"], "a seeded slot is owned by its own subject")
+	assert.Equal(t, "rider-c", owners["rider-c"], "even one that has not onboarded")
 
 	stages, err := demo.Routes()
 	require.NoError(t, err)
@@ -236,4 +239,32 @@ func TestSeedRefusesAnEmptySlotList(t *testing.T) {
 	t.Parallel()
 
 	require.Error(t, demo.Seed(context.Background(), nil, nil, seededAt()))
+}
+
+// failingOwnerState is a real store wrapped to fail only at the one call
+// Seed makes after every write that does not involve a target's ownership,
+// so the failure it returns can only have come from there.
+type failingOwnerState struct {
+	*sqlite.Store
+}
+
+func (f failingOwnerState) EnsureTargetOwner(context.Context, string) error {
+	return assert.AnError
+}
+
+func TestSeedReportsAFailureToRecordATargetsOwner(t *testing.T) {
+	t.Parallel()
+
+	var key [32]byte
+	for index := range key {
+		key[index] = byte(index)
+	}
+	store, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "state.db"), key)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, store.Close()) })
+
+	err = demo.Seed(
+		t.Context(), failingOwnerState{store}, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}}, seededAt(),
+	)
+	require.ErrorIs(t, err, assert.AnError)
 }

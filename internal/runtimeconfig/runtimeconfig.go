@@ -35,15 +35,13 @@ type Values struct {
 	Sync    Sync
 }
 
-// Wahoo configures the OAuth application and the destination slots it writes.
+// Wahoo configures the shared OAuth application every self-service target
+// authorizes against. Which targets exist is not a setting: each is created
+// by its own owning subject, on their own first connection.
 type Wahoo struct {
 	APIBaseURL   string
 	OAuthBaseURL string
 	ClientID     string
-
-	// Targets are the destination slot names, in order. Stored authorizations and
-	// runs carry the name, so renaming a slot abandons its state.
-	Targets []string
 }
 
 // SourceProviders lists the libraries a run can read, in the order it reads them
@@ -320,7 +318,6 @@ func (v Values) clone() Values {
 	v.Basemaps = slices.Clone(v.Basemaps)
 	v.Sources = slices.Clone(v.Sources)
 	v.Surface.Regions = slices.Clone(v.Surface.Regions)
-	v.Wahoo.Targets = slices.Clone(v.Wahoo.Targets)
 
 	return v
 }
@@ -342,9 +339,6 @@ func (c *Current) Missing() []string {
 	}
 	if !snapshot.Secret(SecretWahooClientSecret).IsSet() {
 		missing = append(missing, string(SecretWahooClientSecret))
-	}
-	if len(values.Wahoo.Targets) == 0 {
-		missing = append(missing, "wahoo.targets")
 	}
 	if len(values.Sources) == 0 {
 		missing = append(missing, "sources")

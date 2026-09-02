@@ -50,20 +50,24 @@ service says provider; a sentence about *reading* says source.
 
 **target** — a Wahoo destination that routes are written to. This is the word on
 the wire, in types, and in the interface. It is not a *slot* and not, on its
-own, an *account*.
+own, an *account*. Belongs to exactly one subject — see *rider* — except a
+target authorised before ownership existed, which belongs to none until an
+admin assigns one by hand.
 
-**slot** — one entry in the configured `wahoo.targets` list, which is a name
-rather than a Wahoo identity. Naming a slot creates a target's durable record,
-and removing it leaves that record standing; a slot and the target it names are
-not the same thing (see [configuration.md](specs/configuration.md)). This is
-configuration's word alone; the wire and the interface say *target*.
+**slot** — a target's own identity: the value every stored authorisation,
+target route, and recorded run is keyed by. For a self-service target this is
+the same value as the owning subject's, not a name an operator chose (see
+[configuration.md](specs/configuration.md)); a slot with no matching subject is
+one authorised before ownership existed. This is configuration and storage's
+word; the wire and the interface say *target*.
 
 **account** — a set of credentials, and only that. A source has one (a library
 is read with a login of its own) and a target has one (an authorised Wahoo
-connection). "Account" alone never identifies which side is meant: say *source
-account* or *target account*, or name the side directly. The destination itself
-is a *target*, in the interface as on the wire — "what the targets hold", not
-"what the accounts hold".
+connection, belonging to whichever subject owns that target). "Account" alone
+never identifies which side is meant: say *source account* or *target
+account*, or name the side directly. The destination itself is a *target*, in
+the interface as on the wire — "what the targets hold", not "what the accounts
+hold".
 
 ## The library
 
@@ -140,18 +144,26 @@ library: `current`, `lagging`, `failed` or `unauthorized`. See
 ## Sign-in
 
 **subject** — the OIDC `sub` claim Auth0 asserts for a signed-in identity, such
-as `github|123456`. It is the wire word (`allowed_subjects`) and the code word
-alike; it is never called a *principal*, a *user*, or an *account* — those
-name other things this project already uses those words for.
+as `github|123456`. It is the wire word and the code word alike; it is never
+called a *principal*, a *user*, or an *account* — those name other things this
+project already uses those words for.
 
-**allowed subject** — a subject named in `allowed_subjects`, and therefore
-authorised. The allowlist is re-checked on every request, so being an allowed
-subject is a live fact about the current configuration, not a stored role.
+**allowed subject** — a subject the tenant's post-login Action asserted the
+access claim for, and therefore authorised. That decision is made once, at
+sign-in, not re-checked against anything live on every later request; the
+fixed session lifetime below is what bounds how long it can go stale.
+
+**admin** — a subject the tenant's post-login Action asserted the admin claim
+for. Distinct from *operator*: an admin holds cross-subject rights within the
+running service, asserted the same way *allowed subject* is; an operator runs
+the service and holds its configuration. The two are often the same person,
+but a sentence meaning one does not mean the other.
 
 **session** — the browser's proof of a subject's sign-in: the
 `__Host-domestique_session` cookie and the `web_sessions` row its hash
-identifies. See [configuration.md](specs/configuration.md#runtime-state) for
-what a session shares the state database's fate with.
+identifies. Fixed at a 24-hour lifetime, not renewed on use. See
+[configuration.md](specs/configuration.md#runtime-state) for what a session
+shares the state database's fate with.
 
 ## People
 
@@ -160,6 +172,11 @@ what a session shares the state database's fate with.
 **operator** — the person running the service and holding its configuration.
 They are the same person here, but not the same role, and a sentence usually
 means one of them.
+
+**rider** — a signed-in subject who owns a Wahoo target, self-service created
+by their own first "Connect." Every reader with an authorised Wahoo account is
+a rider; not every reader has connected one yet, and an admin sees every
+rider's target where a rider sees only their own.
 
 ## Spelling
 

@@ -42,8 +42,8 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
 fi
 
 # The development service never reaches the sign-in provider: it mints a session
-# row directly, below. The subject that session belongs to is the operator's own
-# `sub` claim, so the allowlist here is the one the deployment uses.
+# row directly, below, with cross-subject rights, so every admin-only surface is
+# reachable locally regardless of the operator's own Auth0 role.
 DEV_SUBJECT="${DOMESTIQUE_DEV_SUBJECT:-}"
 if [[ -z "${DEV_SUBJECT}" ]]; then
   read -r -p "Auth0 subject (sub claim) to sign in as: " DEV_SUBJECT
@@ -102,7 +102,6 @@ browser_origin_url = "https://127.0.0.1:9"
 domain = "127.0.0.1:9"
 client_id = "development-placeholder"
 client_secret_file = "${DEV_SECRETS}/auth0_client_secret"
-allowed_subjects = ["${DEV_SUBJECT}"]
 
 [state]
 database_path = "${DEV_DIR}/state.db"
@@ -114,7 +113,7 @@ EOF
 # printed once, here, and stored nowhere.
 DEV_SESSION="$(
   CGO_ENABLED=0 "${GO:-go}" run "${ROOT}/dev/session" \
-    -database "${DEV_DIR}/state.db" -subject "${DEV_SUBJECT}"
+    -database "${DEV_DIR}/state.db" -subject "${DEV_SUBJECT}" -admin
 )"
 
 stages=$(sqlite3 "${DEV_DIR}/state.db" "SELECT COUNT(*) FROM stage_geometry;" 2>/dev/null || echo "?")
