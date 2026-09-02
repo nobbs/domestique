@@ -119,6 +119,6 @@ func (h *Handler) page(writer http.ResponseWriter, status int, name string, valu
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(status)
 	if err := h.pages.ExecuteTemplate(writer, name, values); err != nil {
-		slog.Error("rendering a sign-in page", "page", name)
+		slog.Error("rendering a sign-in page", "page", name, "error", err)
 	}
 }
