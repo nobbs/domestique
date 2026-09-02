@@ -291,6 +291,10 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	// Reads only: nothing else about these paths is served without a session.
 	if (request.Method == http.MethodGet || request.Method == http.MethodHead) &&
 		publicAsset(request.URL.Path) {
+		// One answer for every caller, so the blanket Vary above is not true of
+		// these: leaving it makes a cache re-fetch the whole bundle whenever the
+		// cookie appears or goes, which is exactly at sign-in and sign-out.
+		header.Del("Vary")
 		h.mux.ServeHTTP(writer, request)
 
 		return

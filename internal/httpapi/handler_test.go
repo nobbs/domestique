@@ -239,6 +239,9 @@ func TestBuildArtefactsAreServedWithoutASession(t *testing.T) {
 			// The header travels with the artefact, so it must not name the
 			// configured map to a caller that has proved nothing.
 			assert.NotContains(t, response.Header().Get("Content-Security-Policy"), "tiles.example.test")
+			// One answer for every caller: a cache told otherwise re-fetches the
+			// whole bundle at every sign-in and sign-out.
+			assert.Empty(t, response.Header().Get("Vary"))
 
 			// Reads only. Anything else about the same path meets the gate.
 			written := httptest.NewRecorder()
