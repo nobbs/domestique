@@ -161,7 +161,7 @@ it from the deployment directory:
 docker compose --env-file .env up -d
 curl --fail http://127.0.0.1:8080/healthz
 curl --fail http://127.0.0.1:8081/readyz
-ss -tlnp | grep -E '8080|8081|:443'
+ss -tlnp
 ```
 
 The readiness probe is the second port, published to loopback like the first and
@@ -170,8 +170,11 @@ it was configured with, while `/healthz` reports only that the process answers
 HTTP. Readiness contacts nothing outside this host, and a target still waiting
 for its one-time authorisation does not make it unready.
 
-The last command must show `127.0.0.1:8080` and `127.0.0.1:8081` bound to
-loopback, and `:443` — Traefik — as the only listener on a public address. The named state volume is initialised from the image
+Read the last command's output whole rather than grepping it: the point is not
+only that `127.0.0.1:8080`, `127.0.0.1:8081` and `:443` are there, but that
+nothing else is. Traefik on 443 must be the single listener on a public
+address; both domestique ports belong to loopback, and anything else bound to
+`0.0.0.0` or `[::]` is a finding. The named state volume is initialised from the image
 with the unprivileged runtime ownership; replacing it with a host bind mount
 means making the target writable by UID and GID `65532` first. Do not remove or
 recreate it during a routine update. The service writes no log line on a healthy

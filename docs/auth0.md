@@ -166,8 +166,10 @@ previously:
    cannot complete — and open 443 on the host firewall. Certificate issuance
    needs the record to resolve here before Traefik first starts.
 5. `docker compose --env-file .env up -d` brings up both services. Confirm the
-   certificate was issued before going further: `docker compose logs traefik`
-   is silent on success, and `curl -sI https://<host>/healthz` answers 200.
+   certificate was issued before going further: `curl -sI https://<host>/healthz`
+   answering 200 is the proof. Traefik logs its startup and configuration at
+   INFO either way, so read `docker compose logs traefik` for an ACME error
+   rather than for silence.
 6. Complete first-time setup above, then stop `cloudflared` and remove its
    compose service.
 7. Confirm with `ss -tlnp`, as [the Linux VM guide](hetzner.md) describes,
@@ -181,5 +183,34 @@ previously:
 
 Rolling back across this migration needs the previous `[access.cloudflare]`
 configuration restored **and** the Cloudflare Access application and tunnel
-still in place — removing them in step 7 above forecloses a same-day
+still in place — removing them in step 8 above forecloses a same-day
 rollback. Keep them until the Auth0 path has run long enough to trust.
+
+### The deploy script cannot roll this one back on its own
+
+`config.toml` and the image have to move together, in one step. The release
+that introduces `[auth.auth0]` refuses `[access]` as an unknown key, and the
+release before it refuses `[auth.auth0]` for the same reason, so whichever file
+changes first leaves the service unable to start.
+
+That matters because `domestique-deploy.sh` restores the **image** when its
+health gate fails and leaves `config.toml` exactly where it found it. Deploying
+this release against a host still holding `[access]` therefore does the right
+thing — the new image fails to start, the previous digest comes back, and the
+host stays up on Cloudflare Access:
+
+```text
+loading configuration: decoding configuration:
+'config.rawSettings' has invalid keys: access
+```
+
+Migrating `config.toml` first and *then* letting CI deploy does not. The new
+image would start, but any later rollback — automatic or by hand — would put
+the previous image back underneath a config it cannot parse, and the host would
+stay down until someone restored the file too.
+
+So run the cutover as one operation that owns both files: back up `config.toml`,
+write the new one, deploy the digest, and on any failure restore the file
+*before* returning the host to the previous image. Verify with `GET /`
+answering `302` to `/auth/login`; the health probe alone cannot tell the two
+releases apart, because both answer it.
