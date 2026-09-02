@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/nobbs/domestique/internal/readiness/contract"
@@ -79,9 +78,15 @@ func (h *Handler) ready(writer http.ResponseWriter, request *http.Request) {
 	defer cancel()
 
 	targetIDs := h.targetIDs()
+	// A set rather than a repeated slices.Contains scan: self-service targets
+	// are unbounded, so this membership check has to stay O(1) per row.
+	wanted := make(map[string]struct{}, len(targetIDs))
+	for _, id := range targetIDs {
+		wanted[id] = struct{}{}
+	}
 	known := make(map[string]struct{}, len(targetIDs))
 	if err := h.state.ForEachTarget(ctx, func(id, _, _ string) error {
-		if slices.Contains(targetIDs, id) {
+		if _, found := wanted[id]; found {
 			known[id] = struct{}{}
 		}
 
