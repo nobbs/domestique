@@ -106,6 +106,20 @@ func TestStartOAuthCreatesAndAllowsTheCallersOwnTarget(t *testing.T) {
 	assert.Contains(t, state.ensuredOwners, "rider-a", "the target was created on first connect")
 }
 
+// A target whose slot matches the caller's own subject but whose recorded
+// owner is someone else — reachable only by an operator editing state by
+// hand — must not let self-service quietly start writing to it anyway.
+func TestStartOAuthRefusesTheCallersOwnSlotWhenItIsOwnedBySomeoneElse(t *testing.T) {
+	state := &fakeState{targets: []fakeTarget{{id: "rider-a", authorization: "authorized", owner: "rider-b"}}}
+	oauthService := &fakeOAuth{location: "https://wahoo.example.test/oauth/authorize"}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), oauthService, state, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/oauth/wahoo/start"))
+	assert.Equal(t, http.StatusNotFound, response.Code, "start status")
+	assert.Empty(t, oauthService.targetID, "a misassigned target must not have been started")
+}
+
 // A non-admin cannot start a Wahoo authorization for another subject's
 // target: refused as not found, the same as a target that does not exist,
 // so a rider cannot probe which other targets are configured.
