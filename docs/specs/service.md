@@ -35,7 +35,8 @@ read is carried in the address, and the view is linkable.
 
 [`api/openapi.yaml`](../../api/openapi.yaml) is the normative API contract for
 the browser API, OAuth flow, and loopback probes: JSON properties, response
-codes, media types, headers, redirects, and the Access and Origin requirements.
+codes, media types, headers, redirects, and the session and Origin
+requirements.
 The browser document, static assets, and client-side navigation are application
 routes, not API operations. The prose specifications retain lifecycle, safety,
 and operating rules; they do not define a competing JSON shape.
@@ -125,59 +126,70 @@ revising this document first.
 ## Deployment and access model
 
 Docker publishes the service port only to the host's `127.0.0.1`; the
-container has no public host port. The Tailnet host exposes it privately through
-`tailscale serve`; it is never directly published to the Internet. All service
-endpoints require the configured sole identity, apart from two loopback probes:
-a liveness probe on the served listener, and a readiness probe on a second
-listener of its own. Tailscale Serve and the tunnel front the served listener
-only. The readiness listener is reachable from host-local health checking and
-not from the authenticated public surface, and must never be given to
-`tailscale serve`. The HTTP server trusts Tailnet identity headers only from
-that local proxy.
+container has no public host port. A TLS-terminating reverse proxy — Caddy is
+the documented example — is what makes the service reachable at all: it
+terminates TLS, forwards only to `127.0.0.1:8080`, must never forward the
+readiness listener, and must never add or trust an identity header of its own.
+The service is therefore publicly reachable, and `GET /healthz` along with it;
+[the Auth0 guide](../auth0.md) covers the proxy in full.
 
-The service is single-tenant. One person is authorised, and there is exactly one
-way to prove it.
+All service endpoints require a session, apart from the unauthenticated
+surface below and the readiness probe on its own loopback listener, which is
+reachable from host-local health checking alone.
 
-Every request must carry a `Cf-Access-Jwt-Assertion` the service verifies
-itself: RS256 signature against the team's published keys, matching issuer,
-unexpired, and an `aud` equal to the configured application's audience tag. The
-`email` claim must equal `access.cloudflare.allowed_email`. The unsigned
-`Cf-Access-Authenticated-User-Email` header is never consulted, and neither is
-`Tailscale-User-Login`.
+The unauthenticated surface is exactly `GET /healthz`, `GET /auth/login` — a
+static sign-in page that writes nothing — `POST /auth/start`, `GET
+/auth/callback`, and `POST /auth/logout`. `GET /healthz` reads nothing and
+answers static fields; the proxy example refuses it with `404`, but the
+service is correct whether or not the proxy does. Everything else requires a
+session: a page request without one is redirected to `/auth/login`, and an
+API request without one answers JSON `401`.
+
+The service is still single-tenant. A short configured list of subjects is
+authorised, each with the same full operator rights, and there is exactly one
+way to prove membership in it: a session this service itself issued.
+
+A session is created only by an authorisation-code flow with PKCE (S256) and a
+nonce, run against the configured Auth0 tenant through its own SDK. The
+service validates the ID token Auth0 returns itself — signature (RS256),
+issuer, audience equal to the configured client ID, expiry, and nonce — and
+matches its `sub` claim exactly against `allowed_subjects`. The allowlist is
+re-checked on every request, so removing a subject from it and restarting
+revokes that subject's live sessions immediately, without waiting for the
+session to expire.
+
+The gate is a session cookie, `__Host-domestique_session`, carrying an opaque
+256-bit token; only its SHA-256 is stored, in `web_sessions`. It is `Secure`,
+`HttpOnly`, `SameSite=Lax`, scoped to `Path=/` with no `Domain`, and slides
+forward on use — a 30-day expiry renewed at most once an hour. Signing out
+revokes it server-side. Sessions live in the state database and share its
+fate: a lost database signs every subject out, which is a sign-in problem
+rather than a recovery one. No identity header — `Cf-Access-Jwt-Assertion`,
+`Cf-Access-Authenticated-User-Email`, or `Tailscale-User-Login` — is ever read.
 
 Every state-changing endpoint additionally requires an `Origin` header exactly
 equal to the origin the browser UI is served from — `http.browser_origin_url`,
 which is by declaration the hostname a browser reaches this service at, and from
-which the Wahoo callback is derived. A missing, malformed, `null`, or cross-site
-origin is refused with 403 before any trigger runs or any state is written. A
-browser attaches `Origin` to every request whose method is not GET or HEAD,
-including a same-origin one. This is a security requirement, not an
-implementation detail.
+which the Wahoo callback and the Auth0 callback are both derived. A missing,
+malformed, `null`, or cross-site origin is refused with 403 before any trigger
+runs or any state is written. A browser attaches `Origin` to every request
+whose method is not GET or HEAD, including a same-origin one. This is a
+security requirement, not an implementation detail. Sign-in start
+(`POST /auth/start`) and sign-out (`POST /auth/logout`) join the
+state-changing surface on those terms.
 
-The OAuth start and callback are outside that check. The callback is a
-cross-site GET the browser is redirected into, and its state is one-time,
-identity-bound, and expiring.
+The Wahoo OAuth callback and `GET /auth/callback` are the two documented
+exceptions to that rule. Both are a cross-site GET the browser is redirected
+into rather than a request the page itself issues, and each carries its own
+one-time, expiring, identity-bound state instead: the Auth0 callback's state
+must also be presented back in a `__Host-domestique_login` cookie the same
+browser was given when it started. A subject the allowlist refuses is shown
+their own `sub` on the resulting 403 page, so a first deployment can copy it
+into `allowed_subjects`; that subject is never written to a log, which carries
+a stable category only.
 
-Requests reach the service through Cloudflare Access and a Cloudflare Tunnel
-whose origin is this service's **Tailscale Service name**. `cloudflared` runs on
-a tagged node, and Serve never populates identity headers for a tagged device,
-so such a request carries no Tailnet identity to consult.
-
-Tailscale Serve still fronts the listener, and Tailnet members can still reach
-it directly. Such a request is refused like any other without an assertion.
-`Tailscale-User-Login` is not read at all. This is a security requirement, not an
-implementation detail.
-
-This adds no public listener: the container still publishes to loopback only,
-and the tunnel is an outbound connection. One principal is authorised.
-
-The tunnel's origin must be the Tailscale Service name rather than a node
-address or loopback. This is a security requirement. It keeps Tailscale Serve in
-the path, and Serve strips client-supplied `Tailscale-*` headers, which prevents
-a public caller from asserting a Tailnet identity. The `[access.cloudflare]`
-section is all-or-nothing; a partly configured one is rejected at startup.
-
-The map view is one documented exception to the otherwise Tailnet-only posture.
+The map view is one documented exception to the otherwise session-gated
+posture.
 The operator's **browser** fetches basemap tiles from a configured third-party
 tile origin, and the area those tiles cover is the viewport on screen: a viewed
 route's, or, once the reader presses the map's locate button, an area centred on
@@ -237,14 +249,8 @@ declares, and that credit is read from the provider rather than held here, so it
 is shown when the style can be read. A style this service cannot reach or parse
 leaves the map uncredited, and costs no other credit on the page.
 
-The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to. Without the
-public path it is the service's Tailnet URL:
-
-```text
-https://<service>.<tailnet>.ts.net/oauth/wahoo/callback
-```
-
-With the public path deployed it is the public hostname instead:
+The Wahoo OAuth redirect URI is the HTTPS URL a browser returns to, the public
+hostname plus `/oauth/wahoo/callback`:
 
 ```text
 https://<hostname>/oauth/wahoo/callback
@@ -252,19 +258,27 @@ https://<hostname>/oauth/wahoo/callback
 
 It must exactly match the URI registered with Wahoo and configured in the
 service. The authorisation redirect is followed by the user's browser; Wahoo
-does not need a public connection to the host.
+does not need a public connection to the host. The Auth0 callback is derived
+from the same origin the same way, as `/auth/callback`, and must be registered
+with Auth0 exactly.
 
-The state-changing HTTP surface is the OAuth flow:
+The state-changing HTTP surface is sign-in, sign-out, and the Wahoo OAuth flow:
 
+- `POST /auth/start` begins a sign-in against the configured Auth0 tenant.
+- `GET /auth/callback` validates the returned authorisation code and issues a
+  session, on the terms described above.
+- `POST /auth/logout` revokes the caller's session and always answers `204`.
 - `GET /oauth/wahoo/start/{target}` starts authorisation for a configured target
   slot.
 - `GET /oauth/wahoo/callback` validates a one-time, expiring OAuth state and
   stores the resulting refresh token.
 
-Both are limited to the configured principal. The state binds the
-calling identity and target slot and prevents cross-account or CSRF callbacks.
-The service rejects an attempt to authorise the same Wahoo account for two
-target slots.
+The Wahoo pair is limited to a session belonging to an allowed subject. The
+state binds the calling identity and target slot and prevents cross-account or
+CSRF callbacks. The service rejects an attempt to authorise the same Wahoo
+account for two target slots. The Wahoo callback joins the Auth0 callback as
+the surface's other documented exception to the `Origin` rule, for the same
+reason: both are a cross-site GET the browser is redirected into.
 
 Alongside it are the operator controls over synchronisation: the manual
 triggers, the two switches that decide what the timer is allowed to start, the
@@ -274,7 +288,7 @@ triggered run is the same run through the same gates as a scheduled one. The
 enrichment retry is narrower still: it never reads VeloPlanner or writes a Wahoo
 target, only reclassifying routes already stored, and it shares the same
 single-flight guard as the other four triggers. Every one of them is limited to
-the same principal as the rest of the surface.
+a session belonging to an allowed subject, as the rest of the surface is.
 
 Beside those is the one write that changes what the service *is* rather than
 what it does next: the settings write stores the runtime settings an operator
@@ -299,10 +313,12 @@ not the timer is allowed to. Neither switch stops a run already in flight.
 
 The read-only JSON surface is small:
 
-- `GET /healthz` reports local process health, on the served listener.
+- `GET /healthz` reports local process health, on the served listener, to any
+  caller including one off the reverse proxy — it reads nothing and returns
+  static fields.
 - `GET /readyz`, on the readiness listener alone, reports whether local
   configuration and the state the process needs are usable. It verifies nothing
-  else: no VeloPlanner, Wahoo, Pushover, Cloudflare, Tailscale, or tile provider
+  else: no VeloPlanner, Wahoo, Pushover, Auth0, or tile provider
   call, and no judgement about whether a target has completed its one-time
   authorisation. It reports a fixed category when it is not ready, never a path,
   key, or upstream detail.
@@ -349,7 +365,9 @@ The read-only JSON surface is small:
   base URL. The list is never empty, and its first entry is what a browser that
   has chosen nothing loads. The base URL is the whole of what is sent about the
   provider; the page builds a route's link back to its source route from it. It
-  is omitted when unconfigured, and the page then shows no such link.
+  is omitted when unconfigured, and the page then shows no such link. It also
+  reports the signed-in subject's display name: the ID token's email, else its
+  name, else the bare `sub`.
 - `GET /v1/settings` returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
   the basemap list, the surface settings, the Wahoo application and its target
@@ -442,10 +460,10 @@ it.
   setting now in force, not only the section the request replaced — and nothing
   that was submitted as a credential appears in it.
 
-The browser UI is served from the same origin and the same authenticated
-listener: an application entry document and immutable hashed static assets.
-`/`, `/catalogue`, `/sync`, and `/settings` are authenticated browser entry
-routes. The catalogue reads the same inventory listing `/` does and asks the
+The browser UI is served from the same origin and the same listener: an
+application entry document and immutable hashed static assets. `/auth/login`
+is the one unauthenticated browser entry route; `/`, `/catalogue`, `/sync`,
+and `/settings` require a session. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
 ordering, searching and narrowing it offers all happen in the browser. Settings
 holds two kinds of preference and keeps them apart, and lists the data sources
@@ -460,9 +478,9 @@ The response schemas are defined in
 secrets, tokens, or raw upstream response bodies.
 
 Route geometry is served **only** on the dedicated geometry endpoint, only to
-the configured principal, and only from local stored state. It must never
-appear in logs, notifications, error messages, the status endpoint, or the
-inventory listing.
+a session belonging to an allowed subject, and only from local stored state.
+It must never appear in logs, notifications, error messages, the status
+endpoint, or the inventory listing.
 
 The concrete OAuth, sync, persistence, and JSON contracts are defined in the
 [sync lifecycle specification](sync-lifecycle.md).
@@ -476,8 +494,8 @@ The service has a provider-neutral configuration contract:
 
 - One read-only static configuration file holds what the host has to know
   before the process can serve anything: the two listener addresses, the origin
-  a browser reaches the service at, the Access team domain, application audience
-  tag and allowed address, and the state database's path and key file.
+  a browser reaches the service at, the Auth0 tenant domain, client id and
+  allowed subjects, and the state database's path and key file.
 - Everything that decides what work the service does is not in that file. The
   provider endpoints, target slots, source libraries, ride model, schedule and
   credentials are held in the state database, edited over the settings
@@ -485,11 +503,11 @@ The service has a provider-neutral configuration contract:
   [configuration specification](configuration.md#runtime-settings) defines them.
   A deployment that has configured none of them starts, serves the settings
   page, and runs nothing.
-- One sensitive static value is loaded by Koanf from a Docker-style file or the
-  documented direct environment variables: the 32-byte state-encryption key.
-  Every other credential — the source accounts, the Wahoo client secret, and
-  the Pushover pair — is entered on the settings page and encrypted under that
-  key.
+- Two sensitive static values are loaded by Koanf from a Docker-style file or
+  the documented direct environment variables: the 32-byte state-encryption
+  key and the Auth0 client secret. Every other credential — the source
+  accounts, the Wahoo client secret, and the Pushover pair — is entered on the
+  settings page and encrypted under the state key.
 - Dynamic Wahoo refresh tokens are not static configuration. They are encrypted
   at rest in the local state database with an authenticated cipher and the
   state-encryption key. Access tokens are held only in memory.
@@ -765,7 +783,7 @@ secret files remain outside Git.
   page, and runs nothing until an operator has finished configuring it there.
 - A credential entered on the settings page is stored encrypted and is never
   served back, in any form, to any caller.
-- Two Wahoo accounts can be authorised through the Tailnet-only OAuth flow.
+- Two Wahoo accounts can be authorised through the session-gated OAuth flow.
 - An hourly run mirrors every valid VeloPlanner route to every configured target as FIT.
 - Edits preserve the route's `external_id`; source deletions remove only owned
   destination routes and respect the deletion guard.
@@ -774,8 +792,10 @@ secret files remain outside Git.
 - The service logs and notifications do not reveal secrets or route details.
 - Every state-changing HTTP interaction additionally proves it came from this
   service's own browser UI.
-- Every HTTP interaction is identity-gated, to one principal, by a signature the
-  service verifies itself. Beyond OAuth, the only ones that change anything are
+- Every HTTP interaction is identity-gated to an allowed subject, by a session
+  this service issued from an ID token it verified itself; a subject the
+  allowlist does not name reaches nothing, is told which subject was refused,
+  and appears in no log. Beyond OAuth, the only ones that change anything are
   the task triggers and their switches, the reprocess request,
   which discards derived answers so they are worked out again, the
   surface-enrichment retry, which reclassifies stored routes without reading

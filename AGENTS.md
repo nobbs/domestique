@@ -7,8 +7,9 @@ specs hold the reasons.
 `domestique` mirrors one private VeloPlanner route library to one or two Wahoo
 accounts as device-ready FIT courses, plus a read-only browser UI (library map,
 per-route pages, settings). Single-tenant, CGO-free, `linux/amd64` Docker
-workload on a Tailnet host; no CLI. State-changing HTTP is limited to Wahoo
-OAuth onboarding, manual run triggers, and `PUT /v1/settings/*`.
+workload on a Tailnet host; no CLI. State-changing HTTP is limited to sign-in
+and sign-out, Wahoo OAuth onboarding, manual run triggers, and
+`PUT /v1/settings/*`.
 
 ## Commands
 
@@ -50,8 +51,8 @@ mise run -q quick > .local/quick.log 2>&1 && echo OK || tail -40 .local/quick.lo
   uncovered lines ([details](docs/specs/delivery.md#coverage)).
 - **Tests must survive `-shuffle=on`** (always on, `CGO_ENABLED=0`).
   `test-race` needs cgo; run it after touching the sync service/reporter,
-  Wahoo client, Access verifier, or composition root.
-- **`ui-dev` needs `DOMESTIQUE_DEV_ASSERTION`** or every proxied request
+  Wahoo client, session gate or Auth0 adapter, or composition root.
+- **`ui-dev` needs `DOMESTIQUE_DEV_SESSION`** or every proxied request
   answers 401; there is deliberately no way to switch the identity gate off.
   Image builds need `docker login dhi.io`.
 - **The dev service cannot reach Wahoo** by design. Never weaken those guards
@@ -152,10 +153,10 @@ statements live in the linked specs.
 - **Refresh tokens are encrypted at rest**; access tokens in memory only;
   settings-page credentials are write-only
   ([configuration.md](docs/specs/configuration.md)).
-- **All non-OAuth HTTP is read-only and identity-gated** to one
-  self-verified `Cf-Access-Jwt-Assertion` principal. No public listener, no
-  trust in `Tailscale-User-Login`
-  ([cloudflare-access.md](docs/cloudflare-access.md)).
+- **All non-OAuth HTTP is read-only and identity-gated** to a session issued
+  for an allowed subject. The container still publishes to loopback only,
+  behind a TLS-terminating reverse proxy; the service never reads an identity
+  header ([auth0.md](docs/auth0.md)).
 
 ## Testing
 
@@ -184,9 +185,10 @@ statements live in the linked specs.
 `internal/webui/app/dist/` are gitignored; the first four may hold real
 credentials and private route data. Do not read them for context or commit
 them. [`config.example.toml`](config.example.toml) is the tracked reference —
-it names one secret **file** (the state encryption key) and never embeds a
-value. Never commit credentials, OAuth tokens, personal route fixtures,
-generated FIT files, SQLite state, or host deployment files.
+it names two secret **files** (the state encryption key and the Auth0 client
+secret) and never embeds a value. Never commit credentials, OAuth tokens,
+personal route fixtures, generated FIT files, SQLite state, or host deployment
+files.
 
 ## Commits and pull requests
 

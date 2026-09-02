@@ -10,11 +10,11 @@
  *
  * Two things the Vite dev server does on the way through have to be done here
  * instead, because there is no proxy in this arrangement: every request carries
- * the identity assertion, and a state-changing one carries the configured browser
- * origin. The gate itself is untouched — it is the production verifier, checking
- * a real signature, audience, expiry and address — and the assertion is the
- * throwaway one `dev/demoapi` mints for itself at start-up. What the gate refuses
- * is asserted directly, by a request that presents the wrong origin.
+ * the session cookie, and a state-changing one carries the configured browser
+ * origin. The gate itself is untouched — it is the production gate, reading a
+ * real session row — and the token is the throwaway one `dev/demoapi` mints for
+ * itself at start-up. What the gate refuses is asserted directly, by a request
+ * that presents the wrong origin.
  */
 
 import { readFile } from "node:fs/promises";
@@ -23,32 +23,37 @@ import { expect, type Page, test as playwrightTest } from "@playwright/test";
 import { installOfflineBasemap, pinRendering } from "../fixtures";
 
 /**
- * Where `dev/demo.sh` leaves the assertion it minted.
+ * Where `dev/demo.sh` leaves the session it minted.
  *
  * Read from disk rather than passed in, because the demo mints it at start-up:
- * the suite's own web server is what produced the file, it holds a token signed
- * by a key that existed only for that process, and it is deleted when the demo
- * stops. Resolved against this file rather than the working directory, so it does
- * not depend on where the suite was started from.
+ * the suite's own web server is what produced the file, it holds a token for a
+ * row in that process's own database, and it is deleted when the demo stops.
+ * Resolved against this file rather than the working directory, so it does not
+ * depend on where the suite was started from.
  */
-const ASSERTION_FILE =
-  process.env.DOMESTIQUE_DEMO_ASSERTION_FILE ??
-  fileURLToPath(new URL("../../../../../.local/demo/assertion", import.meta.url));
+const SESSION_FILE =
+  process.env.DOMESTIQUE_DEMO_SESSION_FILE ??
+  fileURLToPath(new URL("../../../../../.local/demo/session", import.meta.url));
 
 /** The origin `dev/demo.sh` configures the service to serve its UI at. */
 const BROWSER_ORIGIN = process.env.DOMESTIQUE_DEV_ORIGIN ?? "https://127.0.0.1:9";
 
-async function identityHeaders(): Promise<Record<string, string>> {
-  const assertion = (await readFile(ASSERTION_FILE, "utf8")).trim();
-  expect(assertion, `the demo minted an assertion into ${ASSERTION_FILE}`).not.toBe("");
+/** The cookie the sign-in flow issues and the gate reads. */
+const SESSION_COOKIE = "__Host-domestique_session";
 
+async function sessionToken(): Promise<string> {
+  const token = (await readFile(SESSION_FILE, "utf8")).trim();
+  expect(token, `the demo minted a session into ${SESSION_FILE}`).not.toBe("");
+
+  return token;
+}
+
+async function identityHeaders(): Promise<Record<string, string>> {
   return {
-    // The header Cloudflare Access sets and the service verifies. Lower-cased
-    // because that is how a request carries it over HTTP/1.1 either way.
-    "cf-access-jwt-assertion": assertion,
-    // A state-changing request must come from the origin the service is
-    // configured to serve at, which is not the loopback address this test reaches
-    // it on. The dev proxy rewrites it for the same reason.
+    cookie: `${SESSION_COOKIE}=${await sessionToken()}`,
+    // Sent on every request, though only a state-changing one is checked: the
+    // origin the service is configured to serve at is not the loopback address
+    // this test reaches it on. The dev proxy rewrites it for the same reason.
     origin: BROWSER_ORIGIN,
   };
 }
@@ -83,6 +88,20 @@ export const test = playwrightTest.extend<{
 
   bundlePage: async ({ page, baseURL, apiCalls, identity }, use) => {
     const served = baseURL ?? "";
+    // A Cookie header set on the route is dropped by the browser, so the session
+    // goes into the jar. By domain rather than url: a url of http would force
+    // secure off, and the __Host- prefix needs it on; 127.0.0.1 is a secure context.
+    await page.context().addCookies([
+      {
+        name: SESSION_COOKIE,
+        value: await sessionToken(),
+        domain: new URL(served).hostname,
+        path: "/",
+        secure: true,
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
     const leaks = await installOfflineBasemap(page, served, { headers: identity });
     await pinRendering(page);
 

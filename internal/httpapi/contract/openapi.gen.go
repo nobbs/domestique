@@ -451,11 +451,9 @@ type WebUIConfig struct {
 	Identity       BrowserIdentity  `json:"identity"`
 }
 
-// BrowserIdentity Who the gate let through. There is one authorised address, so this names the reader rather than identifying them: it is how a session can be seen to be the one intended, and where the way out of it lives.
+// BrowserIdentity Who the gate let through. It names the reader rather than identifying them: it is how a session can be seen to be the one intended.
 type BrowserIdentity struct {
-	Email string `json:"email"`
-	// SignOutURL Where to end the session, served by whatever fronts this service rather than by the service itself. Absent when nothing does, so the page offers no way out instead of a link that answers 404.
-	SignOutURL *string `json:"signOutUrl,omitempty"`
+	Display string `json:"display"`
 }
 
 type SourceBaseUrls struct {

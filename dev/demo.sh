@@ -19,9 +19,10 @@
 #   * dev/demoapi wires no scheduler, no source client and no reporter. A manual
 #     synchronisation re-seeds the synthetic library instead of contacting
 #     anything, so the run it reports is real and its data still is not.
-#   * The identity gate is the production one. The demo signs an assertion with
-#     a key it generates at start-up and verifies it against that key, so the
-#     gate runs in full rather than being switched off.
+#   * The identity gate is the production one. The demo stands up an
+#     Auth0-shaped issuer on a loopback port and pre-mints one browser session
+#     against its own database, so the gate runs in full rather than being
+#     switched off.
 #
 set -euo pipefail
 
@@ -46,8 +47,8 @@ WITH_BUNDLE=false
 # through the extension and dials loopback, so the firewall never sees a
 # connection to the dev server at all and needs no exception for one.
 #
-# Whoever opens it is the demo rider, because the dev server signs every request
-# it proxies with the demo's own assertion. Everything behind that is synthetic
+# Whoever opens it is the demo rider, because the dev server attaches the demo's
+# own session cookie to every request it proxies. Everything behind that is synthetic
 # and no provider is reachable, so what a tailnet peer is being handed is the
 # invented library and the button that re-seeds it. Serve keeps that inside a
 # set of devices already admitted; Funnel would not, which is why this is Serve.
@@ -76,7 +77,7 @@ DEMO_DIR="${ROOT}/.local/demo"
 DEMO_SECRETS="${DEMO_DIR}/secrets"
 CONFIG="${DEMO_DIR}/config.toml"
 DATABASE="${DEMO_DIR}/state.db"
-ASSERTION_FILE="${DEMO_DIR}/assertion"
+SESSION_FILE="${DEMO_DIR}/session"
 
 # Not :8081, so a demo can run beside `mise run dev-api` without either of them
 # wondering why the other's routes are missing.
@@ -90,6 +91,9 @@ PNPM="${PNPM:-pnpm}"
 # on one machine from proxying into each other's identity gate.
 API_PORT="${DOMESTIQUE_DEMO_PORT:-$(( ${PORT:-8081} + 1 ))}"
 API_URL="http://127.0.0.1:${API_PORT}"
+# The fake sign-in provider, on its own port beside the API. Loopback only, and
+# the only thing that ever answers on it is dev/demoapi's own issuer.
+AUTH_PORT="${DOMESTIQUE_DEMO_AUTH_PORT:-$(( API_PORT + 1 ))}"
 # Where the dev server answers. vite.config.ts reads the same PORT variable
 # and pins the result with `strictPort`, so this names that port, not chooses.
 UI_PORT="${PORT:-5173}"
@@ -107,6 +111,7 @@ chmod 700 "${DEMO_DIR}" "${DEMO_SECRETS}"
 # in a demo: 32 bytes of base64url. Every other credential is a setting now, and
 # dev/demoapi seeds those as placeholders too.
 printf 'A%.0s' $(seq 43) > "${DEMO_SECRETS}/state_encryption_key"
+printf 'demo-placeholder' > "${DEMO_SECRETS}/auth0_client_secret"
 chmod 600 "${DEMO_SECRETS}"/*
 
 cat > "${CONFIG}" <<EOF
@@ -117,12 +122,14 @@ cat > "${CONFIG}" <<EOF
 listen_address = ":${API_PORT}"
 browser_origin_url = "${BROWSER_ORIGIN}"
 
-[access.cloudflare]
-# A local team: dev/demoapi generates the signing key and publishes it to the
-# production verifier in process. There is no Cloudflare account behind this.
-team_domain = "demo"
-application_aud = "demo-application"
-allowed_email = "rider@example.test"
+[auth.auth0]
+# A local tenant: dev/demoapi serves /authorize, /oauth/token and the key set
+# on this loopback port under a certificate it generates. There is no Auth0
+# account behind this.
+domain = "127.0.0.1:${AUTH_PORT}"
+client_id = "demo-client"
+client_secret_file = "${DEMO_SECRETS}/auth0_client_secret"
+allowed_subjects = ["demo|rider"]
 
 [state]
 database_path = "${DATABASE}"
@@ -154,9 +161,9 @@ mkdir -p "${BIN_DIR}"
 
 # A fresh database every run, so the demo is the fixture and not whatever last
 # week's session left behind.
-rm -f "${DATABASE}" "${DATABASE}-wal" "${DATABASE}-shm" "${ASSERTION_FILE}"
+rm -f "${DATABASE}" "${DATABASE}-wal" "${DATABASE}-shm" "${SESSION_FILE}"
 
-"${BIN_DIR}/demoapi" -assertion-file "${ASSERTION_FILE}" -states "${SLOT_STATES}" &
+"${BIN_DIR}/demoapi" -session-file "${SESSION_FILE}" -states "${SLOT_STATES}" &
 API_PID=$!
 
 SERVE_PID=""
@@ -170,12 +177,12 @@ cleanup() {
     kill "${API_PID}" 2>/dev/null || true
     wait "${API_PID}" 2>/dev/null || true
   fi
-  rm -f "${ASSERTION_FILE}"
+  rm -f "${SESSION_FILE}"
 }
 trap cleanup EXIT INT TERM
 
 for _ in $(seq 100); do
-  if [[ -s "${ASSERTION_FILE}" ]] && curl -fsS "${API_URL}/healthz" >/dev/null 2>&1; then
+  if [[ -s "${SESSION_FILE}" ]] && curl -fsS "${API_URL}/healthz" >/dev/null 2>&1; then
     break
   fi
   if ! kill -0 "${API_PID}" 2>/dev/null; then
@@ -184,7 +191,7 @@ for _ in $(seq 100); do
   fi
   sleep 0.2
 done
-if [[ ! -s "${ASSERTION_FILE}" ]]; then
+if [[ ! -s "${SESSION_FILE}" ]]; then
   echo "error: the demo API did not become ready" >&2
   exit 1
 fi
@@ -219,7 +226,7 @@ fi
 
 echo "Demo API on ${API_URL}; starting the UI dev server on http://127.0.0.1:${UI_PORT}"
 DOMESTIQUE_DEV_API="${API_URL}" \
-  DOMESTIQUE_DEV_ASSERTION="$(cat "${ASSERTION_FILE}")" \
+  DOMESTIQUE_DEV_SESSION="$(cat "${SESSION_FILE}")" \
   DOMESTIQUE_DEV_ORIGIN="${BROWSER_ORIGIN}" \
   DOMESTIQUE_DEV_TAILNET="${TAILNET}" \
   "${PNPM}" --dir "${ROOT}/internal/webui/app" run dev

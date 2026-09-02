@@ -3,9 +3,10 @@
  * Do not edit manually.
  * Domestique API
  * The API contract served by Domestique. JSON property names are camelCase.
- * All routes except `GET /healthz` require the signed Cloudflare Access
- * assertion; state-changing routes also require the same-origin `Origin`
- * header.
+ * All routes except `GET /healthz` require the browser session cookie;
+ * state-changing routes also require the same-origin `Origin` header. The
+ * sign-in routes under `/auth/` are browser navigation rather than API
+ * operations, and are not described here.
  *
  * OpenAPI spec version: 2.0.0
  */
@@ -490,12 +491,10 @@ export interface SourceBaseUrls {
 }
 
 /**
- * Who the gate let through. There is one authorised address, so this names the reader rather than identifying them: it is how a session can be seen to be the one intended, and where the way out of it lives.
+ * Who the gate let through. It names the reader rather than identifying them: it is how a session can be seen to be the one intended.
  */
 export interface BrowserIdentity {
-  email: string;
-  /** Where to end the session, served by whatever fronts this service rather than by the service itself. Absent when nothing does, so the page offers no way out instead of a link that answers 404. */
-  signOutUrl?: string;
+  display: string;
 }
 
 export interface WebUIConfig {
@@ -535,12 +534,12 @@ export const AcceptedValue = {
 export type Accepted = typeof AcceptedValue;
 
 /**
- * Missing or invalid Access assertion.
+ * Missing or invalid browser session.
  */
 export type UnauthorizedResponse = Error;
 
 /**
- * Assertion identity or origin is not permitted.
+ * Session identity or origin is not permitted.
  */
 export type ForbiddenResponse = Error;
 

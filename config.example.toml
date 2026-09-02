@@ -1,5 +1,6 @@
 # Copy this file outside the repository, then replace every placeholder and
-# provide the referenced secret file. The file itself contains no secret value.
+# provide the two referenced secret files. The file itself contains no secret
+# value.
 #
 # This is the whole of it: where to listen, who may call, and where the state
 # lives. Every provider, credential and schedule the service works with is a
@@ -12,36 +13,39 @@ listen_address = ":8080"
 
 # The readiness probe's own listener. Optional; this is the default. It is a
 # second port rather than a second path so that only the served one is given to
-# `tailscale serve`, which keeps readiness reachable from host-local health
-# checking and off the authenticated public surface. Its port must differ from
+# the reverse proxy, which keeps readiness reachable from host-local health
+# checking and off the public surface. Its port must differ from
 # listen_address above.
 readiness_address = ":8081"
 
-# The address a browser reaches this service at. Use the public hostname when
-# the Cloudflare path is deployed, because the OAuth redirect lands in an
-# ordinary browser that may not be on the Tailnet; use the Tailnet URL
-# otherwise. It must be an absolute HTTPS origin with no path.
+# The address a browser reaches this service at, behind the reverse proxy.
+# The OAuth and Auth0 redirects both land in an ordinary browser, so this has
+# to be the address that browser can reach. It must be an absolute HTTPS
+# origin with no path.
 #
 # It is the one origin a state-changing request may come from, and the Wahoo
-# callback is derived from it. A request to a sync trigger, the schedule switch,
-# or a stage reprocess that names any other origin — or none — is refused, so
-# that an authenticated session cannot be driven from another site.
+# callback and the Auth0 callback are both derived from it. A request to a
+# sync trigger, the schedule switch, a stage reprocess, sign-in start, or
+# sign-out that names any other origin — or none — is refused, so that a
+# session cannot be driven from another site.
 browser_origin_url = "https://domestique.example.com"
 
-# Cloudflare Access is the only way in. Every request must carry an assertion
-# this service can verify, including requests that reach Tailscale Serve from
-# inside the Tailnet. The section is required in full: a service that cannot
-# verify an assertion cannot authenticate anyone, so an incomplete section is
-# refused at startup rather than left answering every request with a 401.
+# Auth0 is the only way in. Every request needs a session this service issued
+# from an ID token it verified itself against this tenant. The section is
+# required in full: a service that cannot verify a session cannot authenticate
+# anyone, so an incomplete section is refused at startup rather than left
+# answering every request with a 401.
 #
-# None of these is a secret. The team domain and the audience tag are public
-# identifiers, and verification uses Cloudflare's published signing keys. The
-# audience tag is what confines an assertion to this one application: without
-# it, a token minted for any other application of the same team would verify.
-[access.cloudflare]
-team_domain = "yourteam.cloudflareaccess.com"
-application_aud = "the AUD tag of the Access application"
-allowed_email = "you@example.com"
+# None of domain, client_id or allowed_subjects is a secret: verification uses
+# Auth0's published signing keys, and allowed_subjects names identities rather
+# than holding anything that authenticates on its own. The client secret is
+# the one part of this section that is secret, so it names a file rather than
+# carrying a value here, the same way the state encryption key below does.
+[auth.auth0]
+domain = "yourtenant.eu.auth0.com"
+client_id = "the application's client ID"
+client_secret_file = "/run/secrets/auth0_client_secret"
+allowed_subjects = ["github|123456"]
 
 # The database every runtime setting and every credential is stored in, and the
 # key the credentials are encrypted with. Losing the key means re-entering the

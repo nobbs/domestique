@@ -24,14 +24,13 @@ func TestDevSetupGeneratesALoadableConfiguration(t *testing.T) {
 	}
 
 	values := map[string]string{
-		"DEV_DIR":            directory,
-		"DEV_SECRETS":        directory,
-		"DEPLOYED_SECRETS":   directory,
-		"CF_TEAM_DOMAIN":     "example.cloudflareaccess.com",
-		"CF_APPLICATION_AUD": "aud-tag",
-		"CF_ALLOWED_EMAIL":   "rider@example.test",
+		"DEV_DIR":          directory,
+		"DEV_SECRETS":      directory,
+		"DEPLOYED_SECRETS": directory,
+		"DEV_SUBJECT":      "github|123456",
 	}
 	writeSecretFile(t, directory, "state_encryption_key", base64.RawURLEncoding.EncodeToString(key[:]))
+	writeSecretFile(t, directory, "auth0_client_secret", "development-placeholder")
 
 	configPath := filepath.Join(directory, "config.toml")
 	require.NoError(t, os.WriteFile(configPath, []byte(devSetupConfiguration(t, values)), 0o600))
@@ -40,9 +39,7 @@ func TestDevSetupGeneratesALoadableConfiguration(t *testing.T) {
 	settings, err := Load()
 	require.NoError(t, err)
 
-	assert.Equal(t, values["CF_TEAM_DOMAIN"], settings.Access.Cloudflare.TeamDomain, "TeamDomain")
-	assert.Equal(t, values["CF_APPLICATION_AUD"], settings.Access.Cloudflare.ApplicationAUD, "ApplicationAUD")
-	assert.Equal(t, values["CF_ALLOWED_EMAIL"], settings.Access.Cloudflare.AllowedEmail, "AllowedEmail")
+	assert.Equal(t, []string{values["DEV_SUBJECT"]}, settings.Auth.Auth0.AllowedSubjects, "AllowedSubjects")
 }
 
 // devSetupConfiguration renders the configuration dev/setup.sh writes, taking

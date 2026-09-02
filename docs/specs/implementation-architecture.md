@@ -40,8 +40,9 @@ private to this service.
 │   ├── sync/                       reconciliation use case and its interfaces
 │   ├── oauth/                      Wahoo OAuth use case and its interfaces
 │   ├── schedule/                   delayed-start and hourly execution
-│   ├── httpapi/                    Tailnet-gated handlers and JSON mapping
-│   ├── cfaccess/                   Cloudflare Access assertion verification
+│   ├── httpapi/                    session-gated handlers and JSON mapping
+│   ├── session/                    sign-in flow, sessions, revocation, allowlist
+│   ├── auth0/                      Auth0 authorisation, exchange, ID token check
 │   ├── readiness/                  loopback readiness probe, local state only
 │   ├── elevation/                  device-export elevation normalization
 │   ├── surface/                    OSM surface classification and snapping
@@ -64,6 +65,7 @@ private to this service.
 │   └── spec.go                     the embedded document the service serves
 ├── dev/
 │   ├── demoapi/                    the demo service, over internal/demo
+│   ├── session/                    mints a session row for a dev-setup snapshot
 │   ├── fitter/                     offline ride-model calibration
 │   ├── gatecheck/                  asserts what `quick` defers against `check`
 │   ├── patchcoverage/              grades a patch the way Codecov will
@@ -94,7 +96,7 @@ owns a distinct responsibility in this tree.
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
-| httpapi | Tailnet identity gate, routing, request parsing, JSON status and error mapping, per-target convergence derived from stored revisions, serving and writing the runtime settings, response security and cache headers | OAuth exchange, sync logic, how a course is encoded, or how the UI is built |
+| httpapi | routing, request parsing, JSON status and error mapping, per-target convergence derived from stored revisions, serving and writing the runtime settings, response security and cache headers, redirecting an unauthenticated page request and answering an unauthenticated API request | Wahoo or Auth0 exchange, sync logic, session issuance or storage, how a course is encoded, or how the UI is built |
 | readiness | the loopback readiness probe: whether local configuration and state are usable | any upstream call, identity, routing of the served surface, or authorisation state |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
@@ -107,7 +109,8 @@ owns a distinct responsibility in this tree.
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |
 | pushover | delivery of an already safe notification | run aggregation or secret resolution |
-| cfaccess | verifying a Cloudflare Access assertion against the issuer's keys, and the one identity it accepts | routing, what a verified caller may then do, or any other identity source |
+| session | the sign-in flow's one-time state, nonce, and PKCE verifier; the sessions it issues; sliding expiry; revocation; the allowed-subject check | HTTP routing, SQL, how the issuer is spoken to |
+| auth0 | building the authorisation URL, exchanging the code, validating the ID token Auth0 returns | routing, sessions, who is allowed |
 | openmeteo | the forecast HTTP adapter: requesting points along a route and decoding the reply | which points are worth asking about, caching, or what the UI draws |
 | demo | the synthetic library and the state it seeds, for development against no data | anything the shipped binary links: it is reached only from `dev/demoapi` |
 | build | the revision and image digest stamped in at link time | reading them from anywhere but the linker, or deciding what they are used for |
@@ -178,6 +181,14 @@ Content-Security-Policy header together.
 `runtimeconfig` declares its own one-pair store interface, satisfied by
 `*sqlite.Store`: the settings package owns the rules, and the adapter owns the
 rows.
+
+`httpapi` declares its own `Sessions` interface — start a sign-in, complete a
+callback, look up the caller's session, sign out — and imports `session`'s
+three value types rather than the other way round: `httpapi` consumes the use
+case, it does not own it. `session` in turn consumes `auth0` as a narrow
+interface of its own, for the same reason the OAuth package does not reuse the
+sync interfaces: an adapter boundary earns an interface, a coincidence of
+implementation does not.
 
 Read models that cross the persistence boundary — the route summary served by
 the routes endpoints — are declared in `route`, not exported from `sqlite`. The
@@ -293,10 +304,13 @@ flowchart LR
 
     HTTP["httpapi"] --> Sync["sync"]
     HTTP --> OAuth["oauth"]
+    HTTP --> Session["session"]
     Schedule["schedule"] --> Sync
 
     Main --> WebUI["webui"]
     Main --> Readiness["readiness"]
+    Main --> Session
+    Session --> Auth0["auth0"]
 
     Sync --> Route["route"]
 
@@ -314,8 +328,9 @@ flowchart LR
 Only main imports an application use case and its concrete adapters together.
 The readiness probe has one dependency, the local state it reads; nothing it is
 given can reach a provider. No adapter imports sync, oauth, schedule, httpapi,
-or readiness. Dependency arrows stay one-way, and adapters do not couple to each
-other.
+session, or readiness. Dependency arrows stay one-way, and adapters do not
+couple to each other. `auth0` is an adapter and imports no use case; `session`
+is the one package that imports it.
 
 ## Composition and lifecycle
 
@@ -340,8 +355,12 @@ Main performs the following in order:
    one spends real requests rediscovering it. A provider whose settings are not
    filled in yet builds nothing and reports the run not ready. That is not a
    startup failure.
-5. Construct concrete sync and OAuth services from their consumer interfaces.
-6. Construct the scheduler and Tailnet-gated HTTP handler.
+5. Construct concrete sync and OAuth services from their consumer interfaces,
+   and the session service over the Auth0 adapter. The Auth0 adapter's
+   constructor is inert: its underlying SDK builds its own JWKS client
+   eagerly, which would violate the no-upstream-call rule below, so the SDK
+   itself is built lazily, on first use, rather than at construction.
+6. Construct the scheduler and the session-gated HTTP handler.
 7. Start the HTTP server and scheduler under one signal-derived context.
 8. On cancellation, stop scheduling new runs, let bounded in-flight work observe
    context cancellation, shut down HTTP, and close SQLite.
@@ -378,13 +397,15 @@ Tests live with the package under test:
 | komoot | httptest servers with malformed listing, pagination, and authentication-failure cases, and an assertion that no request uses a method other than GET |
 | sqlite | temporary database and migration/recovery tests |
 | httpapi | handler tests for identity on every route, JSON shape, safe errors, and the security and cache headers |
+| auth0 | an `httptest` TLS issuer standing in for the tenant, including an algorithm-confusion case against the ID token check |
+| session | in-memory fakes for its consumer interfaces plus a clock seam, no wall-clock sleeping |
 | readiness | handler tests for the ready, unreadable-state, and incomplete-state answers, and container tests that the image, the compose example, and the deploy gate still name the probe's own port |
 | webui | serving the embedded bundle, and reporting an unbuilt one |
 | webui/app | Vitest and Testing Library over reusable components and the API client's parsing and error paths |
 | schedule | deterministic clock or trigger seam, no wall-clock sleeping |
 | pushover | HTTP request shape and redaction tests |
 
-No normal test contacts VeloPlanner, Komoot, Wahoo, Pushover, Tailscale, or a
+No normal test contacts VeloPlanner, Komoot, Wahoo, Pushover, Auth0, or a
 secret provider. The sandbox FIT/Wahoo acceptance test is separate from normal
 CI.
 

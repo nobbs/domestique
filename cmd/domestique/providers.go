@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nobbs/domestique/internal/auth0"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/komoot"
 	"github.com/nobbs/domestique/internal/ridemodel"
@@ -23,6 +24,27 @@ import (
 // fixed rather than configurable because the Wahoo application registers one
 // redirect URL and this binary serves exactly this path.
 const oauthCallbackPath = "/oauth/wahoo/callback"
+
+// signInCallbackPath is where the sign-in provider returns a browser. Fixed for
+// the same reason: the Auth0 application registers one redirect URL.
+const signInCallbackPath = "/auth/callback"
+
+// signInProvider adapts the Auth0 client to session.Provider, which is kept to
+// primitives so that package never imports this adapter.
+type signInProvider struct{ client *auth0.Client }
+
+func (p signInProvider) AuthorizationURL(ctx context.Context, state, nonce, codeVerifier string) (string, error) {
+	return p.client.AuthorizationURL(ctx, state, nonce, codeVerifier) //nolint:wrapcheck // forwarding to the client this holds
+}
+
+func (p signInProvider) Exchange(ctx context.Context, code, codeVerifier, nonce string) (subject, email, name string, err error) {
+	identity, err := p.client.Exchange(ctx, code, codeVerifier, nonce)
+	if err != nil {
+		return "", "", "", err //nolint:wrapcheck // forwarding to the client this holds
+	}
+
+	return identity.Subject, identity.Email, identity.Name, nil
+}
 
 // errNotConfigured reports that the settings an upstream client is built from
 // have not been entered yet. It is deliberately not an upstream failure: a

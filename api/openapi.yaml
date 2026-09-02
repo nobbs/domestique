@@ -4,13 +4,14 @@ info:
   version: 2.0.0
   description: |
     The API contract served by Domestique. JSON property names are camelCase.
-    All routes except `GET /healthz` require the signed Cloudflare Access
-    assertion; state-changing routes also require the same-origin `Origin`
-    header.
+    All routes except `GET /healthz` require the browser session cookie;
+    state-changing routes also require the same-origin `Origin` header. The
+    sign-in routes under `/auth/` are browser navigation rather than API
+    operations, and are not described here.
 servers:
   - url: /
 security:
-  - accessAssertion: []
+  - session: []
 x-domestique-unmatched-path:
   status: 404
   content:
@@ -79,7 +80,7 @@ paths:
         - browser-api
       operationId: listTasks
       security:
-        - accessAssertion: []
+        - session: []
       description: >-
         Every background activity this build registers, in the order a status
         page reads best.
@@ -100,7 +101,7 @@ paths:
         - browser-api
       operationId: setTaskSchedule
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Sets whether the schedule may start this task. It governs unattended
@@ -136,7 +137,7 @@ paths:
         - browser-api
       operationId: runTask
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Starts one attempt of a task and reports whether it was accepted. An
@@ -160,7 +161,7 @@ paths:
         - browser-api
       operationId: runTaskArgument
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Starts one attempt of a task over one argument, such as a single target
@@ -335,7 +336,7 @@ paths:
         - $ref: '#/components/parameters/SourceRouteId'
         - $ref: '#/components/parameters/StageOrder'
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       responses:
         "202":
@@ -394,7 +395,7 @@ paths:
         - $ref: '#/components/parameters/LegacyRouteId'
         - $ref: '#/components/parameters/LegacyStage'
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       responses:
         "308":
@@ -448,7 +449,7 @@ paths:
         - $ref: '#/components/parameters/LegacyRouteId'
         - $ref: '#/components/parameters/LegacyStage'
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       responses:
         "308":
@@ -485,7 +486,7 @@ paths:
         - browser-api
       operationId: setWahooApplication
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Replaces the registered Wahoo application. The target slots are written
@@ -514,7 +515,7 @@ paths:
         - browser-api
       operationId: setTargets
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Replaces the destination slots whole, in the order they are offered. A
@@ -544,7 +545,7 @@ paths:
         - browser-api
       operationId: setSource
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Replaces one library and the account it is read with, leaving the other
@@ -584,7 +585,7 @@ paths:
         - browser-api
       operationId: setNotifications
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: Replaces the notification settings and the Pushover credentials.
       requestBody:
@@ -610,7 +611,7 @@ paths:
         - browser-api
       operationId: setAlerts
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Records which alerts are delivered. Deciding is what creates a record,
@@ -638,7 +639,7 @@ paths:
         - browser-api
       operationId: setBasemaps
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Replaces the basemap list whole, in the order it is offered. The first
@@ -666,7 +667,7 @@ paths:
         - browser-api
       operationId: setSurface
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: Replaces the surface index's regions and rebuild cadence.
       requestBody:
@@ -692,7 +693,7 @@ paths:
         - browser-api
       operationId: setRideModel
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: Replaces the coefficient file predicted moving time is computed from.
       requestBody:
@@ -718,7 +719,7 @@ paths:
         - browser-api
       operationId: setTimezone
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Replaces the zone this service reads local time in. A zone it cannot
@@ -747,7 +748,7 @@ paths:
         - browser-api
       operationId: setSync
       security:
-        - accessAssertion: []
+        - session: []
           browserOrigin: []
       description: >-
         Replaces the settings a run reads when it starts, including the gate
@@ -862,11 +863,11 @@ paths:
           $ref: '#/components/responses/Forbidden'
 components:
   securitySchemes:
-    accessAssertion:
+    session:
       type: apiKey
-      in: header
-      name: Cf-Access-Jwt-Assertion
-      description: Signed Cloudflare Access assertion for the configured principal.
+      in: cookie
+      name: __Host-domestique_session
+      description: Browser session cookie issued by the sign-in flow.
     browserOrigin:
       type: apiKey
       in: header
@@ -957,13 +958,13 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
     Unauthorized:
-      description: Missing or invalid Access assertion.
+      description: Missing or invalid browser session.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
     Forbidden:
-      description: Assertion identity or origin is not permitted.
+      description: Session identity or origin is not permitted.
       content:
         application/json:
           schema:
@@ -1960,21 +1961,13 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        Who the gate let through. There is one authorised address, so this
-        names the reader rather than identifying them: it is how a session can
-        be seen to be the one intended, and where the way out of it lives.
+        Who the gate let through. It names the reader rather than identifying
+        them: it is how a session can be seen to be the one intended.
       required:
-        - email
+        - display
       properties:
-        email:
+        display:
           type: string
-          format: email
-        signOutUrl:
-          type: string
-          description: >-
-            Where to end the session, served by whatever fronts this service
-            rather than by the service itself. Absent when nothing does, so
-            the page offers no way out instead of a link that answers 404.
     SourceBaseUrls:
       type: object
       additionalProperties: false

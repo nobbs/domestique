@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,52 +10,59 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/demo"
 )
 
-func demoTeam(t *testing.T) *team {
+// freeAddress reserves a loopback port and hands it back. The issuer needs its
+// own address before it listens: the address is in the `iss` claim the SDK
+// checks and in the certificate it verifies.
+func freeAddress(t *testing.T) string {
 	t.Helper()
 
-	local, err := newTeam(&config.CloudflareAccess{
-		TeamDomain:     "demo",
-		ApplicationAUD: "demo-application",
-		AllowedEmail:   "rider@example.test",
-	})
+	var config net.ListenConfig
+	listener, err := config.Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
+	address := listener.Addr().String()
+	require.NoError(t, listener.Close())
 
-	return local
+	return address
 }
 
-// The demo is only usable if the assertion it hands the dev server passes the
-// production gate, so that round trip is the thing worth asserting: a signature
-// the real verifier accepts, over the identity the configuration allows.
-func TestMintedAssertionPassesTheProductionGate(t *testing.T) {
-	local := demoTeam(t)
+// The demo is only usable if what its issuer mints passes the production
+// adapter, so that round trip is the thing worth asserting: a token the real
+// SDK verifies, naming the subject the demo configuration allows.
+func TestDemoIssuerSatisfiesTheProductionAdapter(t *testing.T) {
+	tenant, err := newIssuer(freeAddress(t), "demo-client")
+	require.NoError(t, err)
+	stop, err := tenant.serve()
+	require.NoError(t, err)
+	t.Cleanup(stop)
 
-	assertion, err := local.mint()
+	client, err := tenant.client([]byte("demo-secret"), "https://127.0.0.1:9/auth/callback")
 	require.NoError(t, err)
 
-	email, err := local.Verify(t.Context(), assertion)
+	const nonce = "demo-nonce"
+	identity, err := client.Exchange(t.Context(),
+		base64.RawURLEncoding.EncodeToString([]byte(nonce)), "demo-verifier", nonce)
 	require.NoError(t, err)
-	assert.Equal(t, "rider@example.test", email)
+	assert.Equal(t, demoSubject, identity.Subject)
 }
 
-// A demo that could be talked into fetching keys from a real team would be a
-// demo that reaches a provider, which is the one thing it must not do.
-func TestKeySetTransportServesOnlyTheLocalTeam(t *testing.T) {
-	local := demoTeam(t)
+// The nonce the authorization request carried has to come back in the ID
+// token, or a replayed code would verify.
+func TestDemoIssuerBindsTheNonceToTheCode(t *testing.T) {
+	tenant, err := newIssuer(freeAddress(t), "demo-client")
+	require.NoError(t, err)
+	stop, err := tenant.serve()
+	require.NoError(t, err)
+	t.Cleanup(stop)
 
-	_, err := local.Verify(t.Context(), "not.a.token")
-	require.Error(t, err, "a malformed assertion must be rejected")
-
-	other := demoTeam(t)
-	other.issuer = "https://elsewhere.example.test"
-	assertion, err := local.mint()
+	client, err := tenant.client([]byte("demo-secret"), "https://127.0.0.1:9/auth/callback")
 	require.NoError(t, err)
 
-	_, err = other.Verify(t.Context(), assertion)
-	require.Error(t, err, "a key set fetched from another origin must fail")
+	_, err = client.Exchange(t.Context(),
+		base64.RawURLEncoding.EncodeToString([]byte("minted-for")), "demo-verifier", "asked-for")
+	require.Error(t, err, "a token minted for another nonce must be refused")
 }
 
 func TestSlotsForPairsConfiguredTargetsWithRequestedStates(t *testing.T) {
@@ -78,18 +87,6 @@ func TestSlotsForRejectsAMismatchedRequest(t *testing.T) {
 
 	_, err = slotsFor(targets, "lagging")
 	require.Error(t, err, "an unknown state must be rejected")
-}
-
-func TestIssuerMatchesHowTheVerifierDerivesIt(t *testing.T) {
-	tests := map[string]string{
-		"demo":                       "https://demo.cloudflareaccess.com",
-		"demo.cloudflareaccess.com":  "https://demo.cloudflareaccess.com",
-		"https://demo.example.test/": "https://demo.example.test",
-	}
-
-	for domain, want := range tests {
-		assert.Equal(t, want, issuerFor(domain), "issuerFor(%q)", domain)
-	}
 }
 
 // A demo built without a bundle still serves the API, and says why the UI is not

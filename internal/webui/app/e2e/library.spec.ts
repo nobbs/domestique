@@ -317,9 +317,8 @@ test("pointing at a line on the map picks that route out, twice to open it", asy
 test("the bar names the session the gate admitted", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  // The demo configures one authorised address and mints its own assertion for
-  // it, so what the gate admitted here is what a deployment's gate admits: the
-  // one address in the configuration.
+  // The demo mints its own session, so what the gate admitted here is what a
+  // deployment's gate admits: the account the session names.
   const pill = page.getByRole("button", { name: "Signed in as rider@example.test" });
   await expect(pill).toBeVisible();
   await expect(pill).toHaveText("R");
@@ -328,9 +327,6 @@ test("the bar names the session the gate admitted", async ({ offlinePage: page }
 
   const session = page.getByRole("dialog", { name: "Session" });
   await expect(session).toContainText("rider@example.test");
-  // Nothing stands in front of the demo, so there is nowhere to sign out to and
-  // the menu offers no way out rather than a link that would answer 404.
-  await expect(page.getByRole("link", { name: /Sign out/ })).toHaveCount(0);
 });
 
 test("the menu bar says what sync is doing and is the way to it", async ({ offlinePage: page }) => {

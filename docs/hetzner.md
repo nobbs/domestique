@@ -15,26 +15,24 @@ host, outside this repository.
 
 ```mermaid
 flowchart LR
-  browser["Your Tailnet browser"] --> serve["Host Tailscale Serve\nHTTPS + identity header"]
-  serve --> loopback["127.0.0.1:8080"]
+  browser["Any browser"] --> proxy["Host reverse proxy\nTLS terminated here"]
+  proxy --> loopback["127.0.0.1:8080"]
   loopback --> app["Domestique container\nread-only root filesystem"]
   app --> state["Named Docker volume\nSQLite state"]
-  app --> providers["VeloPlanner, Wahoo, Pushover"]
+  app --> providers["VeloPlanner, Wahoo, Auth0, Pushover"]
 ```
 
 On a VM with a public IP, the container must publish to `127.0.0.1` only, never
-to `0.0.0.0`. Confirm it after every start with `ss -tlnp`. Do not use Tailscale
-Funnel, and do not put a general-purpose reverse proxy in front of the service.
-The application authenticates every request by verifying a Cloudflare Access
-assertion, so a proxy cannot hand over the API by forwarding a header, but it
-can still expose an unauthenticated listener to the Internet.
+to `0.0.0.0`. Confirm it after every start with `ss -tlnp`.
 
-Reaching the service from outside the Tailnet has one supported form, described
-in [the Cloudflare Access guide](cloudflare-access.md). The proxy's origin is
-the Tailscale Service name, so Tailscale Serve stays in the path and strips the
-client-supplied header, and the application independently verifies a signed
-Cloudflare Access assertion. Any other proxy, or that same proxy pointed at
-`127.0.0.1`, hands over the API.
+Reaching the service is a supported, TLS-terminating reverse proxy in front of
+it — [the Auth0 guide](auth0.md) documents a Caddy example. The proxy forwards
+only to `127.0.0.1:8080`, never to the readiness listener, and never adds or
+trusts an identity header of its own: the service reads no identity header at
+all, and authenticates every request by verifying a session it issued itself
+from an ID token it validated against the configured Auth0 tenant. A proxy
+therefore cannot hand over the API by forwarding a header, but a proxy pointed
+at an unintended port, or a second unproxied listener, can still expose one.
 
 Wahoo never connects to this host. The browser follows Wahoo's authorisation
 redirect back to the callback URL after the user signs in, so the OAuth flow
@@ -63,7 +61,8 @@ Create a directory owned by the operator, for example `/srv/domestique`:
 ├── compose.yml   # docs/compose.example.yml, unmodified
 ├── .env          # DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
 ├── config.toml   # config.example.toml with every placeholder replaced
-├── secrets/      # the state key, and the deploy script's own Pushover pair
+├── secrets/      # the state key, the Auth0 client secret, and the deploy
+│                 # script's own Pushover pair
 └── src/          # optional checkout, for development against real data
 ```
 
@@ -71,10 +70,11 @@ Copy [`config.example.toml`](../config.example.toml) to `config.toml` and
 replace all placeholders. `http.browser_origin_url` must be the HTTPS URL this
 host serves, with no path.
 
-Create `secrets/state_encryption_key`, containing base64url of 32 random bytes.
-It is the only secret the service reads from the host: every credential it
-reaches an upstream with is entered on its settings page after it is running,
-and stored encrypted under this key.
+Create `secrets/state_encryption_key`, containing base64url of 32 random bytes,
+and `secrets/auth0_client_secret`, holding the Auth0 application's client
+secret. Those are the only two secrets the service reads from the host: every
+other credential it reaches an upstream with is entered on its settings page
+after it is running, and stored encrypted under the state key.
 
 Add `secrets/pushover_application_token` and `secrets/pushover_user_key` too if
 this host should alert on a failed deployment. Those two are the deploy
@@ -165,7 +165,7 @@ ss -tlnp | grep -E '8080|8081'
 ```
 
 The readiness probe is the second port, published to loopback like the first and
-never given to `tailscale serve`. It reports that the service can read the state
+never given to the reverse proxy. It reports that the service can read the state
 it was configured with, while `/healthz` reports only that the process answers
 HTTP. Readiness contacts nothing outside this host, and a target still waiting
 for its one-time authorisation does not make it unready.
@@ -186,40 +186,31 @@ older `compose.yml` needs the current `compose.example.yml` copied over it, or
 the one line added, and the service recreated once with
 `docker compose --env-file .env up -d`.
 
-## Publish it through Tailscale
+## Publish it through the reverse proxy
 
-Configure the host as the proxy for the managed Tailnet Service:
+Deploy a TLS-terminating reverse proxy on the host, forwarding only to
+`127.0.0.1:8080` and never to the readiness listener — [the Auth0
+guide](auth0.md) documents a Caddy example. Point DNS for the public hostname
+at this host.
 
-```sh
-tailscale serve --service=svc:<service> --https=443 127.0.0.1:8080
-tailscale serve advertise svc:<service>
-tailscale serve status
-```
+Put that hostname into `http.browser_origin_url`, and the URLs it derives —
+that hostname plus `/oauth/wahoo/callback`, and plus `/auth/callback` — into
+the Wahoo application's registered callback and the Auth0 application's
+Allowed Callback URLs respectively. Open the host firewall to the reverse
+proxy's port only.
 
-A **new** host advertising an existing service needs admin approval before the
-service name resolves. Until it is approved, `tailscale serve status` shows the
-configuration but the Tailnet DNS name does not resolve and `Self.Services`
-stays empty in `tailscale status --json`. Approve the host for the service in
-the admin console, then re-check.
-
-Put the exact served URL into `http.browser_origin_url`, and that URL plus
-`/oauth/wahoo/callback` into the Wahoo application's registered callback. Ensure
-the Tailnet policy permits only the configured user to reach the host.
-
-Open the service URL in the configured user's browser. A host reaching this
-point has a running service that is not configured yet: fill in the source
-libraries and their accounts, the Wahoo application and its client secret, and
-the target slots on the settings page, which names what is still missing. Then
-authorise each slot from `/oauth/wahoo/start/<target-id>` and check `/v1/status`
-after each one. A tagged device is not a member identity and cannot complete the
-protected OAuth flow.
+Open the service URL in a browser and complete first-time sign-in as [the
+Auth0 guide](auth0.md) describes. A host reaching this point has a running
+service that is not configured yet: fill in the source libraries and their
+accounts, the Wahoo application and its client secret, and the target slots on
+the settings page, which names what is still missing. Then authorise each slot
+from `/oauth/wahoo/start/<target-id>` and check `/v1/status` after each one.
 
 ## Move an existing deployment to this host
 
-Keeping the same Tailnet service name means the served URL, and therefore
-`http.browser_origin_url`, does not change, so no Wahoo slot needs reauthorising
-if the state and its key travel together. The settings travel with the state, so
-nothing is retyped either.
+Keeping the same public hostname means `http.browser_origin_url` does not
+change, so no Wahoo slot needs reauthorising if the state and its key travel
+together. The settings travel with the state, so nothing is retyped either.
 
 1. Stop the container on the old host with `docker compose down` — **never**
    `-v`. A clean stop checkpoints the SQLite WAL into the database file.
@@ -238,10 +229,9 @@ nothing is retyped either.
    that reports otherwise means the key and the database no longer match, and
    the run should be stopped rather than left to reconcile against half the
    state.
-4. Withdraw the service from the old host with `tailscale serve drain` followed
-   by `tailscale serve clear`, then advertise it here. Only one host should
-   advertise the service; two would run the sync loop against the same Wahoo
-   accounts.
+4. Repoint DNS for the public hostname at this host, and stop the reverse
+   proxy on the old one. Only one host should ever serve the hostname at once;
+   two would run the sync loop against the same Wahoo accounts.
 
 Leave the old host's volume in place until the new host has completed a sync.
 It is the rollback path.
@@ -304,7 +294,7 @@ printf '%s\n' \
   > /etc/sudoers.d/domestique-deploy
 chmod 0440 /etc/sudoers.d/domestique-deploy && visudo -c
 mkdir -p /var/lib/domestique-deploy
-chmod 600 .env   # it carries the tunnel's Tailscale auth key
+chmod 600 .env
 tailscale set --ssh
 ```
 

@@ -231,7 +231,7 @@ func TestWeatherIsNotSameOriginWrapped(t *testing.T) {
 
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet,
 		"/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z", http.NoBody)
-	request.Header.Set(assertionHeader, testAssertion)
+	withSession(request)
 	// Deliberately no Origin header: a GET never carries one from a browser,
 	// and this route must not require it the way a state-changing one does.
 	response := httptest.NewRecorder()

@@ -12,7 +12,7 @@ import (
 // rather than one: the reader's choice and their colour scheme both belong to
 // the browser, and this response is cached across the session. Each source's
 // base URL rides along so the page can link a stage back to its source route.
-func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
+func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, request *http.Request) {
 	// An unset dark style and an unset dark-cartography flag are both absent
 	// from the response rather than sent as an empty string or false, which is
 	// how the page tells "keep this entry's one style in both colour schemes"
@@ -28,14 +28,11 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	// The one authorised address, which the gate has already proved this caller to
-	// be. Sent so a reader can see which session they are in and leave it. The way
-	// out is omitted where nothing in front of this service would serve one.
+	// Who the gate admitted, so a reader can see which session they are in.
 	config := openapi.WebUIConfig{
 		Basemaps: basemaps,
 		Identity: openapi.BrowserIdentity{
-			Email:      h.allowedEmail,
-			SignOutURL: optionalString(h.signOutURL),
+			Display: identityOf(request.Context()).Display,
 		},
 	}
 	// Omitted entirely when no source named one, so the page offers no link at

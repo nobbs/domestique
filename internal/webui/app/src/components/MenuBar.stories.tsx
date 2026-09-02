@@ -86,7 +86,7 @@ function withStatus(value?: Status): NonNullable<Meta<typeof MenuBar>["decorator
 const CONFIG: WebUIConfig = {
   basemaps: [],
   sourceBaseUrls: {},
-  identity: { email: "rider@example.test" },
+  identity: { display: "rider@example.test" },
 };
 
 /** The three destinations, and the way to the sync page among them. */

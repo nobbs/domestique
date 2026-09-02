@@ -262,9 +262,11 @@ test result decides a merge.
 `mise run dev-setup` prepares an environment that shows real route data without
 risking the deployment. It copies the deployed SQLite state into `.local/dev`
 and writes a configuration beside it; the development service and the deployed
-container never share a database file. That configuration names the deployed
-Cloudflare Access application, read out of the running container at setup time,
-so the identity gate behaves there exactly as it does in production.
+container never share a database file. `dev/session` mints a session row
+against that copied database for the account the snapshot was taken for, and
+`DOMESTIQUE_DEV_SESSION` carries it: the Vite proxy injects it as the session
+cookie on every proxied request, so the identity gate behaves there exactly as
+it does in production without a browser ever visiting Auth0.
 
 That environment may read VeloPlanner, so a manual `POST /v1/tasks/sync:source/run`
 refreshes real routes and geometry. It must never reach Wahoo, which is enforced in depth:
@@ -285,11 +287,11 @@ synchronisation re-seeds the synthetic library at the current instant instead of
 contacting anything. The run it reports is a real one, and its data comes from
 nowhere.
 
-The identity gate is not switched off there. `dev/demoapi` generates a signing
-key at start-up, publishes it to the production verifier through an in-process
-key-set endpoint, and mints one assertion for the dev server to present. The
-real signature, audience, expiry and allowed-email checks all run, against a
-team that exists only inside that process.
+The identity gate is not switched off there. `dev/demoapi` runs a fake
+Auth0-shaped issuer in-process and mints a real session against it, and it is
+that session `DOMESTIQUE_DEV_SESSION` carries. The real ID-token signature,
+issuer, audience, expiry and nonce checks all run, and the allowlist check
+runs against a tenant that exists only inside that process.
 
 Both of these apply to the development environment only. Neither is a substitute
 for the sandbox acceptance check, and neither runs in CI.
@@ -328,14 +330,14 @@ the stack with. Without it the demo still runs, and the listener says that no
 bundle is embedded rather than serving a blank page.
 
 There is no proxy in front of the service in that project, so two things the dev
-server does on the way through are done by the harness instead: the identity
-assertion is added to every request, and state-changing requests are forwarded
+server does on the way through are done by the harness instead: the session
+cookie is added to every request, and state-changing requests are forwarded
 with the configured browser origin. `Origin` is browser-managed — Chromium keeps
 the page's own origin whatever a test asks for — so those requests are made from
 outside the browser and their answer handed back to it. That is the same hop the
-dev proxy is, and the gate itself is untouched: the production verifier checks a
-real signature, audience, expiry and address, and the origin check is asserted
-directly by a request that presents the wrong one and is refused.
+dev proxy is, and the gate itself is untouched: the production session check
+looks the cookie up and re-checks the allowlist, and the origin check is
+asserted directly by a request that presents the wrong one and is refused.
 
 It is hermetic. The only third-party request the application makes is the basemap
 style the service names, and the suite answers both the light and the dark
@@ -604,7 +606,7 @@ The runtime image:
   SQLite database;
 - accepts secret files only at runtime under `/run/secrets`, never during the
   image build;
-- has no bundled Tailscale daemon, SSH service, shell requirement, or default
+- has no bundled reverse proxy, SSH service, shell requirement, or default
   credentials; and
 - is usable with a read-only root filesystem plus a temporary writable mount if
   the selected runtime needs one.
@@ -612,10 +614,10 @@ The runtime image:
 The host runs the container with a loopback-only publication such as
 `127.0.0.1:8080:8080`, plus the readiness listener on the same terms
 (`127.0.0.1:8081:8081`). Both are loopback-only; only the served one is given to
-`tailscale serve`, which keeps the readiness probe available to host-local
-health checking and unreachable from the authenticated public surface. The
-host's Tailscale process owns `tailscale serve` and the identity header
-boundary; Tailscale is not embedded in the application container. The compose
+the host's TLS-terminating reverse proxy, which keeps the readiness probe
+available to host-local health checking and unreachable from the public
+surface. The proxy owns TLS termination and never adds or trusts an identity
+header of its own; it is not embedded in the application container. The compose
 file, static configuration, Docker secret files, and pinned image digest are
 operator-managed deployment state outside Git.
 
@@ -635,7 +637,9 @@ asserts that
   headers every answer on that listener carries;
 - the readiness probe answers ready on its own listener, with `no-store`, over a
   state directory that run created, and serves nothing else;
-- an unauthenticated request to the gated surface is refused;
+- an unauthenticated API request answers `401`, `GET /` redirects `302` to
+  `/auth/login`, and `GET /auth/login` itself answers `200` — all without the
+  issuer being contacted;
 - the running process is that unprivileged user and not root, which is asked of
   the container runtime because the runtime image ships no shell to ask from
   inside;
@@ -652,10 +656,10 @@ filtered rather than trusted.
 The smoke test contacts nothing. Every credential it mounts is a placeholder it
 wrote itself, each provider points at an unroutable address, no region is
 configured so no map extract is downloaded and no surface index is built, the
-first scheduled synchronisation is a year away, and no request presents an
-Access assertion, so the lazy fetch of Cloudflare's signing keys never happens.
-Its state directory and published ports are its own, so a host already running
-the deployment is untouched.
+first scheduled synchronisation is a year away, and no request presents a
+session, so the lazy construction of the Auth0 SDK — and the JWKS fetch that
+follows from it — never happens. Its state directory and published ports are
+its own, so a host already running the deployment is untouched.
 
 The image is an input rather than something the script builds. A local build
 needs the `dhi.io` credential above, and the local gate must not require one.

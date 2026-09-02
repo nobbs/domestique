@@ -111,7 +111,7 @@ export interface OfflineOptions {
   /**
    * Headers added to every same-origin request.
    *
-   * The Vite dev server injects the identity assertion and the configured origin
+   * The Vite dev server injects the session cookie and the configured origin
    * on its way through, so a page talking to it needs none. A page talking
    * straight to the Go service does: the gate is the production one, and a
    * browser holds no credential. Injecting them here is the same arrangement as

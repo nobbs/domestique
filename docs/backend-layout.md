@@ -19,11 +19,11 @@ commit this was written against and will drift; the shapes will not.
 
 ~~~text
 internal/
-├── core/            route, sync, oauth, schedule,
+├── core/            route, sync, oauth, session, schedule,
 │                    elevation, surface, ridemodel, readiness
 ├── upstream/        veloplanner, komoot, wahoo,
 │                    openmeteo, pushover, osmindex
-├── adapter/         sqlite, fit, cfaccess
+├── adapter/         sqlite, fit, auth0
 ├── serve/           httpapi, webui
 ├── config/          runtimeconfig/
 └── build/           demo/

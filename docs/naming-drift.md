@@ -87,6 +87,24 @@ specification](specs/sync-lifecycle.md#errors) calls served messages stable, so
 respelling it is a wire-visible change: it moves with the six assertions that
 read it, and it is worth deciding on rather than folding into a comment sweep.
 
+## 17. `caller_login` now carries a subject, not a login
+
+The `oauth_transactions.caller_login` column and `oauth.Service`'s
+`callerLogin` parameter predate sign-in through Auth0: they bound a Wahoo
+OAuth transaction to the Cloudflare Access email address that started it, back
+when that address was the only identity this service had. They now carry an
+OIDC `sub` — the glossary's *subject* — asserted by the signed-in session that
+started the transaction, and neither name says so.
+
+**Proposed:** *subject* in the column name, the Go identifier, and the
+surrounding comments. This is deliberately recorded rather than renamed in the
+same change that introduced sign-in through Auth0: the column is read by a
+migration-ordering rule ([implementation-architecture.md](specs/implementation-architecture.md)
+and [service.md](specs/service.md#persistent-state-and-recovery)) that a
+rename would have to satisfy on its own terms, and folding it into the auth
+cutover would obscure which part of that change was the rename and which was
+the behaviour.
+
 ## Suggested order
 
 1. Item 16's comments, which touch no contract and need no compiler.
@@ -95,3 +113,4 @@ read it, and it is worth deciding on rather than folding into a comment sweep.
 4. Item 11, a prose fix in Go comments, whenever somebody separates the
    sync-phase sense of *half* from the ordinary English one the rest of the
    tree uses.
+5. Item 17, a migration and a rename together, on its own terms.

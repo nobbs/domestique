@@ -23,8 +23,8 @@ start** with a sentence about what to do.
 The wire words below — the categories, the authorisation values, the run results
 — are what `GET /v1/status` itself returns, which is where to look when the page
 does not distinguish two situations that need different answers. Fetching it
-needs the same Cloudflare Access assertion the page carries, so it is read most
-easily from the browser at `/v1/status`.
+needs the same session the page carries, so it is read most easily from the
+browser at `/v1/status`.
 
 **Pushover.** What a task can be announced for is a fixed list it declares, and
 each entry has its own switch on the settings page: the failure categories, a
@@ -74,6 +74,47 @@ working correctly: nothing was written, nothing was removed, and the way past it
 is a deliberate decision. Re-running a blocked half without making that decision
 reaches the same gate again.
 
+## I cannot sign in
+
+**You will have seen** a browser stuck at `/auth/login`, redirected straight
+back to it after choosing an identity provider, or shown the service's own 403
+page instead of the site. Nothing here is a run outcome, so none of it reaches
+Pushover or `GET /v1/status`; the answer is on screen.
+
+**The issuer is unreachable.** `/auth/login` loads but choosing GitHub (or
+whichever connection is enabled) hangs or errors before returning. Confirm the
+host can reach the configured Auth0 tenant at all, and that `auth.auth0.domain`
+in `config.toml` is the tenant host with no scheme and no path. This is a host
+problem, not a browser one.
+
+**The subject signed in is not allowed.** The 403 page itself is the
+diagnostic: it names the exact `sub` value Auth0 asserted for that sign-in,
+and it is the only place this service ever shows that value — it is never
+written to a log. Compare it against `allowed_subjects` in `config.toml`. A
+value that is not there yet is exactly [first-time setup](auth0.md#first-time-setup):
+copy it in and restart. A value that looks like it should already be there
+means the list and the running configuration have drifted — confirm the file
+that was actually deployed, and that the service restarted after it changed,
+since this section is a file setting rather than a runtime one.
+
+**The callback URL does not match.** A sign-in that returns from the identity
+provider to an error page, or to the wrong host entirely, usually means the
+Auth0 application's Allowed Callback URLs does not hold
+`https://<host>/auth/callback` for the host actually in front of the service,
+or that `http.browser_origin_url` names a different host than the one the
+browser is actually on. The two must agree exactly, including scheme; a
+Tailnet URL left over from a previous deployment is a common cause of this
+one.
+
+**The cookie is refused.** `__Host-` cookies are a browser rule, not a
+service one: they are refused outright over plain HTTP, on any origin that is
+not exactly the one that set them, and if the response tries to set a
+`Domain` attribute at all. If sign-in appears to succeed and then immediately
+looks signed out again, confirm the reverse proxy is actually terminating TLS
+for the request that reaches the browser — a proxy silently falling back to
+plain HTTP, or a load balancer in front of it that terminates TLS a second
+time and forwards plain HTTP, both produce exactly this symptom.
+
 ## Reconnect a Wahoo account
 
 **You will have seen** `targets failed: authorization`, and that account reading
@@ -96,7 +137,13 @@ page itself will not load:
 https://<your-public-hostname>/oauth/wahoo/start/<target-id>
 ```
 
-Sign in as the account that slot belongs to. Wahoo returns to the callback URL
+That link needs a signed-in Domestique session first: the Wahoo flow's
+one-time state is bound to the subject that started it, so opening it from a
+browser that has not signed in redirects to `/auth/login` instead. See [I
+cannot sign in](#i-cannot-sign-in) if that is what happens.
+
+Sign in as the Wahoo account that slot belongs to — a separate sign-in, at
+Wahoo's own login page. Wahoo returns to the callback URL
 and the service redirects back to the status page. Confirm that the account has
 stopped asking to be connected, then press **Write to Wahoo** rather than
 waiting for the hour: the run reconciles from what the account actually holds,

@@ -29,7 +29,7 @@ function Seeded({ basemaps }: { basemaps: WebUIConfig["basemaps"] }): ReactNode 
     next.setQueryData(webUIConfigQuery().queryKey, {
       basemaps,
       sourceBaseUrls: {},
-      identity: { email: "rider@example.test" },
+      identity: { display: "rider@example.test" },
     } as WebUIConfig);
     for (const basemap of basemaps) {
       next.setQueryData(

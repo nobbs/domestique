@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nobbs/domestique/internal/auth0"
 	"github.com/nobbs/domestique/internal/build"
-	"github.com/nobbs/domestique/internal/cfaccess"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/fit"
@@ -27,6 +27,7 @@ import (
 	"github.com/nobbs/domestique/internal/readiness"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
+	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
 	syncservice "github.com/nobbs/domestique/internal/sync"
@@ -183,25 +184,21 @@ func run(ctx context.Context) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	// Cloudflare Access is the only gate, so this is not conditional: a service
-	// that cannot verify an assertion has no way to authenticate anyone.
-	verifier, err := cfaccess.New(&cfaccess.Options{
-		TeamDomain: settings.Access.Cloudflare.TeamDomain,
-		Audience:   settings.Access.Cloudflare.ApplicationAUD,
+	// The sign-in provider is the only gate, so this is not conditional: a
+	// service that cannot authenticate anyone has no way in.
+	provider, err := auth0.New(&auth0.Options{
+		Domain:       settings.Auth.Auth0.Domain,
+		ClientID:     settings.Auth.Auth0.ClientID,
+		ClientSecret: settings.Auth.Auth0.ClientSecret(),
+		RedirectURL:  settings.HTTP.BrowserOriginURL + signInCallbackPath,
 	})
 	if err != nil {
-		return fmt.Errorf("configuring Cloudflare Access verification: %w", err)
+		return fmt.Errorf("configuring the sign-in provider: %w", err)
 	}
-	accessVerifier := httpapi.AccessVerifierFunc(
-		func(ctx context.Context, assertion string) (string, error) {
-			identity, identityErr := verifier.Verify(ctx, assertion)
-			if identityErr != nil {
-				return "", identityErr //nolint:wrapcheck // the gate discards the detail rather than reflecting it
-			}
-
-			return identity.Email, nil
-		},
-	)
+	sessions, err := session.New(store, signInProvider{client: provider}, settings.Auth.Auth0.AllowedSubjects, nil)
+	if err != nil {
+		return fmt.Errorf("creating the session service: %w", err)
+	}
 
 	// Which source produced this binary, and which image carries it. The revision
 	// is compiled in by CI; the image reference is what the deploying host pinned,
@@ -216,13 +213,7 @@ func run(ctx context.Context) error {
 			Tasks:            taskSurface{ctx: runCtx, manager: tasks, switches: switches},
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
-			AccessVerifier:   accessVerifier,
-			AccessEmail:      settings.Access.Cloudflare.AllowedEmail,
-			// Cloudflare Access serves this path on the hostname it fronts, and
-			// this binary is the one that is only ever deployed behind it — so
-			// this is where knowing that belongs. It is relative because the
-			// session being ended is the one on the origin the page came from.
-			AccessSignOutURL: "/cdn-cgi/access/logout",
+			Sessions:         sessions,
 			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
 			// What the page reports is the map build classifications are
 			// actually being read from, not the one the state database last

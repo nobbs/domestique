@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sign in &middot; Domestique</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        font: 16px/1.5 system-ui, sans-serif;
+      }
+      main { padding: 1.5rem; text-align: center; }
+      h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 1.5rem; }
+      button {
+        font: inherit;
+        font-weight: 600;
+        padding: 0.6rem 1.4rem;
+        border: 1px solid currentColor;
+        border-radius: 0.5rem;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Domestique</h1>
+      <form method="post" action="/auth/start">
+        <button type="submit">Sign in</button>
+      </form>
+    </main>
+  </body>
+</html>

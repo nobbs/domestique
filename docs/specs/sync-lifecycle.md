@@ -475,9 +475,9 @@ unauthorised slot leaves the service ready.
 
 The two probes answer different questions on different sockets. Liveness reports
 that the process is answering HTTP; readiness reports that it can do its job with
-what the host gave it. The readiness listener is never fronted by Tailscale Serve
-or the tunnel. It is reachable by Docker and host-local health checking and not
-by the authenticated public surface.
+what the host gave it. The readiness listener is never fronted by the reverse
+proxy. It is reachable by Docker and host-local health checking and not by the
+public surface.
 
 ### GET /v1/status
 
