@@ -70,8 +70,11 @@ func newIssuer(address, clientID, callbackURL string) (*issuer, error) {
 		return nil, err
 	}
 	callback, err := url.Parse(callbackURL)
-	if err != nil || callback.Host == "" {
+	if err != nil {
 		return nil, fmt.Errorf("reading the demo issuer callback url %q: %w", callbackURL, err)
+	}
+	if callback.Scheme == "" || callback.Host == "" {
+		return nil, fmt.Errorf("the demo issuer callback url %q must be absolute", callbackURL)
 	}
 
 	return &issuer{

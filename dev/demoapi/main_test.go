@@ -97,6 +97,21 @@ func TestDemoIssuerAuthorizeRedirectsToItsOwnCallback(t *testing.T) {
 	assert.Equal(t, base64.RawURLEncoding.EncodeToString([]byte("demo-nonce")), location.Query().Get("code"))
 }
 
+func TestNewIssuerRefusesACallbackURLThatIsNotAbsolute(t *testing.T) {
+	for name, callbackURL := range map[string]string{
+		"empty":     "",
+		"relative":  "/auth/callback",
+		"no scheme": "127.0.0.1:9999/auth/callback",
+		"not a url": "http://[::1/auth/callback",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := newIssuer(freeAddress(t), "demo-client", callbackURL)
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "<nil>", "a validation failure reported a nil cause")
+		})
+	}
+}
+
 func TestDefaultCallbackURLUsesLoopback(t *testing.T) {
 	value, err := defaultCallbackURL(":8082")
 	require.NoError(t, err)

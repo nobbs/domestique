@@ -56,7 +56,7 @@ func main() {
 	states := flag.String("states", "current,unauthorized",
 		"comma-separated state per configured target slot: current, failed, or unauthorized")
 	callbackURL := flag.String("callback-url", "",
-		"browser-reachable URL for /auth/callback; defaults to http://<listen address>/auth/callback")
+		"browser-reachable URL for /auth/callback; defaults to http://127.0.0.1:<listen port>/auth/callback")
 	flag.Parse()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
