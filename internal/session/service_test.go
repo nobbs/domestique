@@ -38,6 +38,16 @@ func TestBeginStoresDigestAndPassesStateToProvider(t *testing.T) {
 	assert.Equal(t, store.logins[digestKey].verifier, provider.gotVerifier)
 }
 
+func TestBeginStoresNothingWhenTheAuthorizationURLFails(t *testing.T) {
+	store := newFakeStore()
+	service, err := New(store, &fakeProvider{authURLErr: errors.New("issuer misconfigured")}, []string{"rider"}, newFakeClock().now)
+	require.NoError(t, err)
+
+	_, err = service.Begin(t.Context())
+	require.Error(t, err)
+	assert.Empty(t, store.logins, "a login nobody can return for must not be left behind")
+}
+
 func TestCompleteRejectsMismatchedCookieState(t *testing.T) {
 	store := newFakeStore()
 	service, err := New(store, &fakeProvider{}, []string{"rider"}, newFakeClock().now)

@@ -103,13 +103,16 @@ func (s *Service) Begin(ctx context.Context) (Login, error) {
 		return Login{}, fmt.Errorf("minting code verifier: %w", err)
 	}
 
-	now := s.now()
-	if beginErr := s.store.BeginLogin(ctx, digest, nonce, verifier, now, now.Add(loginLifetime)); beginErr != nil {
-		return Login{}, fmt.Errorf("storing login: %w", beginErr)
-	}
+	// The URL is built first: it is pure, and a failure there would otherwise
+	// leave a pending login behind that no browser will ever return for.
 	url, err := s.provider.AuthorizationURL(ctx, state, nonce, verifier)
 	if err != nil {
 		return Login{}, fmt.Errorf("building authorization url: %w", err)
+	}
+
+	now := s.now()
+	if beginErr := s.store.BeginLogin(ctx, digest, nonce, verifier, now, now.Add(loginLifetime)); beginErr != nil {
+		return Login{}, fmt.Errorf("storing login: %w", beginErr)
 	}
 
 	return Login{AuthorizationURL: url, State: state}, nil
