@@ -152,7 +152,7 @@ func (c *Client) Exchange(ctx context.Context, code, codeVerifier, nonce string)
 		return Identity{}, errors.New("auth0: code, code verifier, and nonce are required")
 	}
 
-	sdk, err := c.authentication(ctx)
+	sdk, err := c.authentication()
 	if err != nil {
 		return Identity{}, err
 	}
@@ -186,7 +186,7 @@ func (c *Client) Exchange(ctx context.Context, code, codeVerifier, nonce string)
 
 // authentication returns the cached SDK client, building it on first use. Not
 // sync.Once: that would cache a transient issuer failure for the process lifetime.
-func (c *Client) authentication(ctx context.Context) (*authentication.Authentication, error) {
+func (c *Client) authentication() (*authentication.Authentication, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -198,10 +198,12 @@ func (c *Client) authentication(ctx context.Context) (*authentication.Authentica
 	}
 	c.lastAttempt = c.now()
 
-	// The cache the SDK builds its JWKS refresher on must outlive this
-	// request: it is reused by every later Exchange, not just this one.
+	// The JWKS refresher the SDK builds outlives every request, so it gets a
+	// process-scoped context rather than a detached copy of a request's: a
+	// request context would leave its values reachable for the process's life.
+	// The initial fetch stays bounded by the HTTP client's timeout.
 	sdk, err := authentication.New(
-		context.WithoutCancel(ctx),
+		context.Background(),
 		c.domain,
 		authentication.WithClientID(c.clientID),
 		authentication.WithClientSecret(c.clientSecret),
