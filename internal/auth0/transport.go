@@ -24,7 +24,9 @@ func boundedHTTPClient(client *http.Client) *http.Client {
 	if client != nil {
 		copied := *client
 		bounded = &copied
-		if bounded.Timeout <= 0 {
+		// A shorter timeout is a caller's to choose; a longer one is not, or the
+		// public callback handler waits past the bound this package promises.
+		if bounded.Timeout <= 0 || bounded.Timeout > defaultTimeout {
 			bounded.Timeout = defaultTimeout
 		}
 		if bounded.Transport == nil {

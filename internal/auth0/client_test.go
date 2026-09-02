@@ -531,6 +531,28 @@ func TestExchangeRefusesOversizedTokenResponse(t *testing.T) {
 	assert.ErrorIs(t, err, errResponseTooLarge)
 }
 
+func TestBoundedHTTPClientBoundsTheTimeout(t *testing.T) {
+	cases := map[string]struct {
+		given *http.Client
+		want  time.Duration
+	}{
+		"no client":       {given: nil, want: defaultTimeout},
+		"no timeout":      {given: &http.Client{}, want: defaultTimeout},
+		"longer timeout":  {given: &http.Client{Timeout: time.Minute}, want: defaultTimeout},
+		"shorter timeout": {given: &http.Client{Timeout: time.Second}, want: time.Second},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			bounded := boundedHTTPClient(test.given)
+			assert.Equal(t, test.want, bounded.Timeout)
+			assert.IsType(t, &boundedTransport{}, bounded.Transport)
+			if test.given != nil {
+				assert.NotSame(t, test.given, bounded, "the caller's client must not be mutated")
+			}
+		})
+	}
+}
+
 func TestLimitedBodyStopsAtTheCap(t *testing.T) {
 	cases := map[string]struct {
 		size    int
