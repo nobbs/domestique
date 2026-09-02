@@ -61,7 +61,9 @@ const (
 )
 
 type TargetStatus struct {
-	ID            string                   `json:"id"`
+	ID string `json:"id"`
+	// Owner The subject that owns this target. Present only for an admin caller: a non-admin's own target is already known to be theirs, and never sees another's here at all.
+	Owner         *string                  `json:"owner,omitempty"`
 	Authorisation string                   `json:"authorisation"`
 	Convergence   TargetStatus_Convergence `json:"convergence"`
 	Routes        TargetRoutes             `json:"routes"`
@@ -282,11 +284,6 @@ type WahooApplicationUpdate struct {
 	ClientSecret *string `json:"clientSecret,omitempty"`
 }
 
-type TargetsUpdate struct {
-	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
-	Targets []string `json:"targets"`
-}
-
 // SourceUpdate One library, and the account it is read with.
 type SourceUpdate struct {
 	// Read Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with.
@@ -409,8 +406,6 @@ type WahooSettings struct {
 	OauthBaseURL string `json:"oauthBaseUrl"`
 	// ClientID The registered application's public identifier. Its secret is not here: it is written through secrets and read back only as set.
 	ClientID string `json:"clientId"`
-	// Targets The destination slots, in the order they are offered. A slot name is the identity every stored authorization, target route and recorded run already carries, so renaming one abandons that slot's state rather than moving it.
-	Targets []string `json:"targets"`
 }
 
 type SourceSettings_Provider string

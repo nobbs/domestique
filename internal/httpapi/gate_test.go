@@ -35,17 +35,19 @@ type fakeSessions struct {
 }
 
 // newFakeSessions is a session service that admits testSessionToken and
-// nothing else.
+// nothing else. The default identity is admin: most of these tests are about
+// behavior ownership scoping does not touch, and only the tests that are about
+// scoping itself set a non-admin identity of their own.
 func newFakeSessions() *fakeSessions {
 	return &fakeSessions{
-		identity: session.Identity{Subject: testSubject, Display: testDisplay},
+		identity: session.Identity{Subject: testSubject, Display: testDisplay, Admin: true},
 		login: session.Login{
 			AuthorizationURL: "https://tenant.example.test/authorize?state=login-state",
 			State:            "login-state",
 		},
 		completion: session.Completion{
 			Token:     testSessionToken,
-			Identity:  session.Identity{Subject: testSubject, Display: testDisplay},
+			Identity:  session.Identity{Subject: testSubject, Display: testDisplay, Admin: true},
 			ExpiresAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
 		},
 	}

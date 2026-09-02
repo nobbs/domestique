@@ -234,7 +234,6 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.RedirectLegacyReprocess)
 	h.mux.HandleFunc("GET /v1/settings", h.GetSettings)
 	h.mux.HandleFunc("PUT /v1/settings/wahoo", h.SetWahooApplication)
-	h.mux.HandleFunc("PUT /v1/settings/targets", h.SetTargets)
 	h.mux.HandleFunc("PUT /v1/settings/sources/{provider}", h.SetSource)
 	h.mux.HandleFunc("PUT /v1/settings/notifications", h.SetNotifications)
 	h.mux.HandleFunc("PUT /v1/settings/alerts", h.SetAlerts)
@@ -254,6 +253,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /auth/start", h.StartLogin)
 	h.mux.HandleFunc("GET /auth/callback", h.CompleteLogin)
 	h.mux.HandleFunc("POST /auth/logout", h.Logout)
+	// The bare path is a rider connecting their own account: the browser is
+	// never told its own subject, so this is the only way a caller with no
+	// target yet can start one at all.
+	h.mux.HandleFunc("GET /oauth/wahoo/start", h.StartOAuth)
 	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
 	h.mux.HandleFunc("GET /oauth/wahoo/callback", h.CompleteOAuth)
 	h.mux.HandleFunc("GET /assets/{asset}", h.GetAsset)
@@ -551,10 +554,24 @@ func isLowerHex(value string) bool {
 	return true
 }
 
-// targetIDs are the destination slots configured right now. They are read per
-// request rather than held, because the list is a setting an operator edits.
-func (h *Handler) targetIDs() []string {
-	return h.settings.Values().Wahoo.Targets
+// targetIDs are the targets this caller may see: every one for an admin, or
+// the caller's own — at most one — for anyone else. Read per request against
+// the store rather than held, since a target can appear the moment its
+// owner first connects.
+func (h *Handler) targetIDs(ctx context.Context) ([]string, error) {
+	identity := identityOf(ctx)
+	ids := []string{}
+	if err := h.state.ForEachTarget(ctx, func(id, _, ownerSubject string) error {
+		if identity.Admin || ownerSubject == identity.Subject {
+			ids = append(ids, id)
+		}
+
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("listing targets: %w", err)
+	}
+
+	return ids, nil
 }
 
 // sourceBaseURL is one provider's own web application, or empty when that

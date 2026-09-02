@@ -41,17 +41,12 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 	if err != nil {
 		return runtimeconfig.Values{}, err
 	}
-	targets, err := s.runtimeTargets(ctx)
-	if err != nil {
-		return runtimeconfig.Values{}, err
-	}
 	sources, err := s.runtimeSources(ctx)
 	if err != nil {
 		return runtimeconfig.Values{}, err
 	}
 	values.Basemaps = basemaps
 	values.Surface.Regions = regions
-	values.Wahoo.Targets = targets
 	values.Sources = sources
 
 	return values, nil
@@ -117,25 +112,6 @@ func (s *Store) writeRuntimeSettings(ctx context.Context, queries *sqlcgen.Queri
 		}
 	}
 
-	if err := queries.DeleteRuntimeTargets(ctx); err != nil {
-		return fmt.Errorf("clearing the targets: %w", err)
-	}
-	for position, targetID := range values.Wahoo.Targets {
-		if err := queries.InsertRuntimeTarget(ctx, sqlcgen.InsertRuntimeTargetParams{
-			Position: int64(position), TargetID: targetID,
-		}); err != nil {
-			return fmt.Errorf("storing a target: %w", err)
-		}
-		// A newly named slot gets its durable record here rather than at the next
-		// startup, so the OAuth onboarding that follows has a row to authorize. A
-		// removed slot keeps its record, and nothing reads an unconfigured one.
-		if err := queries.EnsureTarget(ctx, sqlcgen.EnsureTargetParams{
-			Slot: targetID, AuthorizationState: string(AuthorizationNotAuthorized), UpdatedAtUnix: time.Now().Unix(),
-		}); err != nil {
-			return fmt.Errorf("creating target slot: %w", err)
-		}
-	}
-
 	return nil
 }
 
@@ -153,14 +129,6 @@ func (s *Store) runtimeBasemaps(ctx context.Context) ([]runtimeconfig.Basemap, e
 	}
 
 	return basemaps, nil
-}
-
-func (s *Store) runtimeTargets(ctx context.Context) ([]string, error) {
-	rows, err := s.queries.ListRuntimeTargets(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("reading the targets: %w", err)
-	}
-	return rows, nil
 }
 
 func (s *Store) runtimeSources(ctx context.Context) ([]runtimeconfig.Source, error) {

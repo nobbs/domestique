@@ -301,7 +301,8 @@ func readSyncRunPage(t *testing.T, store *Store, after string, limit int) (refer
 // reads.
 func TestStoreKeepsOnlyTheLastRunOfEachTarget(t *testing.T) {
 	store := openTestStore(t, testKey(9))
-	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a", "rider-b"}))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
 
 	first := time.Date(2026, time.August, 18, 6, 0, 0, 0, time.UTC)
 	second := first.Add(time.Hour)
@@ -334,7 +335,7 @@ func TestStoreKeepsOnlyTheLastRunOfEachTarget(t *testing.T) {
 // that succeeded with nothing to do.
 func TestStoreReportsNoRunForAnUnreconciledTarget(t *testing.T) {
 	store := openTestStore(t, testKey(10))
-	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
 	visits := 0
 	require.NoError(t, store.ForEachTargetRun(t.Context(), func(string, time.Time, string, string) error {
@@ -347,7 +348,7 @@ func TestStoreReportsNoRunForAnUnreconciledTarget(t *testing.T) {
 
 func TestStoreRefusesAnIncompleteTargetRun(t *testing.T) {
 	store := openTestStore(t, testKey(11))
-	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	finishedAt := time.Date(2026, time.August, 18, 6, 0, 0, 0, time.UTC)
 
 	require.Error(t, store.RecordTargetRun(t.Context(), " ", finishedAt, "succeeded", ""))

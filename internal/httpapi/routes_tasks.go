@@ -12,6 +12,14 @@ import (
 // libraries, also used by the reprocess route in routes_library.go.
 const TaskSyncSource = "sync:source"
 
+// TaskSyncTarget and TaskSyncClear are the registered names of the tasks that
+// write to and clear a target. RunTask checks their argument against the
+// caller's own subject: unlike TaskSyncSource, these name one rider's target.
+const (
+	TaskSyncTarget = "sync:target"
+	TaskSyncClear  = "sync:clear"
+)
+
 const (
 	// codeTaskInProgress is what a refused attempt is told.
 	codeTaskInProgress = "task_in_progress"
@@ -85,7 +93,9 @@ func (h *Handler) registers(name string) bool {
 }
 
 // RunTask starts one attempt of a named task, over an argument when the path
-// carries one.
+// carries one. For a task that writes to or clears one rider's target, a
+// non-admin caller may only name their own subject — including leaving the
+// argument empty, which for those two tasks means "every target."
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {
@@ -94,6 +104,14 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	argument := request.PathValue("argument")
+	if name == TaskSyncTarget || name == TaskSyncClear {
+		identity := identityOf(request.Context())
+		if !identity.Admin && argument != identity.Subject {
+			h.notFound(writer)
+
+			return
+		}
+	}
 	h.accepted(writer, func() bool { return h.tasks.Run(name, argument) })
 }
 

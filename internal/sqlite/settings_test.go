@@ -45,7 +45,6 @@ func TestStoreSeedsNoUpstreamAtAll(t *testing.T) {
 	assert.Empty(t, values.Wahoo.APIBaseURL, "Wahoo.APIBaseURL")
 	assert.Empty(t, values.Wahoo.OAuthBaseURL, "Wahoo.OAuthBaseURL")
 	assert.Empty(t, values.Wahoo.ClientID, "Wahoo.ClientID")
-	assert.Empty(t, values.Wahoo.Targets, "Wahoo.Targets")
 	assert.Empty(t, values.Sources, "Sources")
 
 	secrets, err := store.RuntimeSecrets(t.Context())
@@ -66,7 +65,6 @@ func TestStoreKeepsTheRuntimeSettingsItWasGiven(t *testing.T) {
 			APIBaseURL:   "https://api.wahooligan.com",
 			OAuthBaseURL: "https://api.wahooligan.com",
 			ClientID:     "client-id",
-			Targets:      []string{"rider-a", "rider-b"},
 		},
 		Sources: []runtimeconfig.Source{
 			{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
@@ -105,7 +103,6 @@ func TestStoreReplacesTheRuntimeListsWhole(t *testing.T) {
 		StyleURL: "https://imagery.example.test/style.json",
 	})
 	values.Surface.Regions = []string{"europe/germany", "europe/france"}
-	values.Wahoo.Targets = []string{"rider-a", "rider-b"}
 	values.Sources = []runtimeconfig.Source{
 		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
 		{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.com"},
@@ -114,7 +111,6 @@ func TestStoreReplacesTheRuntimeListsWhole(t *testing.T) {
 
 	values.Basemaps = values.Basemaps[:1]
 	values.Surface.Regions = nil
-	values.Wahoo.Targets = values.Wahoo.Targets[:1]
 	values.Sources = nil
 	require.NoError(t, store.SetRuntimeSettings(t.Context(), values), "SetRuntimeSettings() with shorter lists")
 
@@ -122,7 +118,6 @@ func TestStoreReplacesTheRuntimeListsWhole(t *testing.T) {
 	require.NoError(t, err, "RuntimeSettings() after the second write")
 	assert.Len(t, stored.Basemaps, 1, "the removed basemap is gone")
 	assert.Empty(t, stored.Surface.Regions, "the removed regions are gone")
-	assert.Equal(t, []string{"rider-a"}, stored.Wahoo.Targets, "the removed slot is gone")
 	assert.Empty(t, stored.Sources, "the removed sources are gone")
 }
 

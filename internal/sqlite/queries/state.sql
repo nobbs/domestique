@@ -8,21 +8,21 @@ ON CONFLICT (task, scope, alert) DO UPDATE SET
   enabled = excluded.enabled,
   updated_at_unix = excluded.updated_at_unix;
 
--- name: EnsureTarget :exec
-INSERT INTO targets (slot, authorization_state, updated_at_unix)
-VALUES (?, ?, ?)
+-- name: EnsureTargetOwner :exec
+-- A self-service target's slot is its owning subject's own value, so this is
+-- the one creation path: idempotent, safe on a rider's first "Connect" click
+-- and every one after.
+INSERT INTO targets (slot, owner_subject, authorization_state, updated_at_unix)
+VALUES (?, ?, ?, ?)
 ON CONFLICT(slot) DO NOTHING;
 
--- name: ListTargets :many
-SELECT slot, COALESCE(wahoo_user_id, '') AS wahoo_user_id, authorization_state
-FROM targets
-ORDER BY slot;
-
 -- name: ListTargetStates :many
-SELECT slot, authorization_state FROM targets ORDER BY slot;
+SELECT slot, authorization_state, COALESCE(owner_subject, '') AS owner_subject
+FROM targets ORDER BY slot;
 
 -- name: GetTarget :one
-SELECT slot, COALESCE(wahoo_user_id, '') AS wahoo_user_id, authorization_state
+SELECT slot, COALESCE(wahoo_user_id, '') AS wahoo_user_id, authorization_state,
+  COALESCE(owner_subject, '') AS owner_subject
 FROM targets
 WHERE slot = ?;
 

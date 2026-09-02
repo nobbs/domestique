@@ -49,3 +49,48 @@ func TestMigration029DownRebuildsWebSessions(t *testing.T) {
 
 	require.NoError(t, migration.Migrate(29), "must be able to re-migrate up after rolling back")
 }
+
+// 030's down uses ALTER TABLE ... DROP COLUMN rather than 029's rebuild
+// pattern — targets is referenced by foreign key from oauth_transactions and
+// target_stages, and a rebuild's DROP TABLE fails against any row those
+// still reference. Exercised with exactly such a referencing row present, so
+// a regression here would be the FK violation a rebuild would hit for real.
+func TestMigration030DownDropsOwnerSubjectWithReferencingRowsPresent(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "target-ownership-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(30))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, owner_subject, authorization_state, updated_at_unix) VALUES (?, ?, ?, ?)`,
+		"github|123", "github|123", "authorized", 1700000000)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO oauth_transactions (id, target_slot, state_digest, code_verifier, expires_at_unix, caller_login) VALUES (?, ?, ?, ?, ?, ?)`,
+		"tx-1", "github|123", loginDigest(1), "verifier", 1700086400, "github|123")
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(29), "must roll back cleanly despite the referencing oauth_transactions row")
+
+	var slot, state string
+	err = database.QueryRowContext(t.Context(), `SELECT slot, authorization_state FROM targets`).Scan(&slot, &state)
+	require.NoError(t, err, "the target row must survive the rollback")
+	require.Equal(t, "github|123", slot)
+	require.Equal(t, "authorized", state)
+
+	var referencingRows int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM oauth_transactions WHERE target_slot = ?`, "github|123").Scan(&referencingRows))
+	require.Equal(t, 1, referencingRows, "the referencing row must survive the rollback")
+
+	var ownerColumnCount int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM pragma_table_info('targets') WHERE name='owner_subject'`).Scan(&ownerColumnCount))
+	require.Zero(t, ownerColumnCount, "owner_subject column must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(30), "must be able to re-migrate up after rolling back")
+}

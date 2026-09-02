@@ -170,13 +170,13 @@ type fakeState struct {
 	authorizations map[string]string
 }
 
-func (s *fakeState) ForEachTarget(ctx context.Context, visit func(string, string) error) error {
+func (s *fakeState) ForEachTarget(ctx context.Context, visit func(string, string, string) error) error {
 	s.seen = ctx
 	if s.err != nil {
 		return s.err
 	}
 	for id, authorization := range s.authorizations {
-		if err := visit(id, authorization); err != nil {
+		if err := visit(id, authorization, ""); err != nil {
 			return err
 		}
 	}

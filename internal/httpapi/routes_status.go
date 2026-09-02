@@ -58,26 +58,34 @@ func liveSyncState(activity SyncActivityState) (string, bool) {
 func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 	// One snapshot for the whole response, so the list of targets and the count of
 	// them cannot disagree mid-assembly.
-	targetIDs := h.targetIDs()
+	targetIDs, err := h.targetIDs(request.Context())
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	admin := identityOf(request.Context()).Admin
 	authorizations := make(map[string]string, len(targetIDs))
-	if err := h.state.ForEachTarget(request.Context(), func(id, authorizationState string) error {
+	owners := make(map[string]string, len(targetIDs))
+	if targetErr := h.state.ForEachTarget(request.Context(), func(id, authorizationState, ownerSubject string) error {
 		if slices.Contains(targetIDs, id) {
 			authorizations[id] = authorizationState
+			owners[id] = ownerSubject
 		}
 
 		return nil
-	}); err != nil {
+	}); targetErr != nil {
 		h.unavailable(writer)
 
 		return
 	}
 
 	inFlight := make(map[string]bool, len(targetIDs))
-	if err := h.state.ForEachPendingAuthorization(request.Context(), func(targetID string) error {
+	if pendingErr := h.state.ForEachPendingAuthorization(request.Context(), func(targetID string) error {
 		inFlight[targetID] = true
 
 		return nil
-	}); err != nil {
+	}); pendingErr != nil {
 		h.unavailable(writer)
 
 		return
@@ -115,13 +123,19 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 			lastRun = &run
 		}
 		convergence := convergenceState(authorization, routes, lastRun)
-		targets = append(targets, openapi.TargetStatus{
+		status := openapi.TargetStatus{
 			ID:            targetID,
 			Authorisation: authorization,
 			Convergence:   convergence,
 			Routes:        routes,
 			LastRun:       lastRun,
-		})
+		}
+		// Only an admin sees who owns a target: a non-admin's own is already
+		// known to be theirs, and never sees another's here at all.
+		if admin {
+			status.Owner = optionalString(owners[targetID])
+		}
+		targets = append(targets, status)
 		allRoutes.Current += routes.Current
 		allRoutes.Pending += routes.Pending
 		ready = ready && authorization == authorizedState

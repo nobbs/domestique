@@ -104,15 +104,8 @@ func (s *staticSettings) SetSecrets(_ context.Context, secrets map[runtimeconfig
 
 func (s *staticSettings) Missing() []string { return s.missing }
 
-// withTargets and withSources name the destination slots and the libraries a
-// test is about. Both are settings now, so this is where a handler is told
-// about them.
-func withTargets(settings *staticSettings, targetIDs ...string) *staticSettings {
-	settings.values.Wahoo.Targets = targetIDs
-
-	return settings
-}
-
+// withSources names the libraries a test is about, which is a setting.
+// Targets are not: a handler reads them from state, per caller, not settings.
 func withSources(settings *staticSettings, sources ...runtimeconfig.Source) *staticSettings {
 	settings.values.Sources = sources
 
@@ -130,7 +123,6 @@ func settingsWith(basemaps []runtimeconfig.Basemap) *staticSettings {
 			PushoverBaseURL: "https://api.pushover.net",
 		},
 		Basemaps: basemaps,
-		Wahoo:    runtimeconfig.Wahoo{Targets: []string{"rider-a"}},
 		Surface:  runtimeconfig.Surface{RebuildInterval: 7 * 24 * time.Hour},
 	}}
 }
@@ -1815,15 +1807,17 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 	return handler
 }
 
-// newHandlerWithTargets builds a handler configured for more than one slot, which
-// is what a partial target failure needs to be visible at all.
-func newHandlerWithTargets(t *testing.T, state State, targetIDs ...string) *Handler {
+// newHandlerWithTargets builds a handler over state carrying the given slots,
+// which is what a partial target failure needs to be visible at all. The
+// slots themselves come from state, per caller, not from settings; targetIDs
+// exists only so a call site reads as naming the fixture's own targets.
+func newHandlerWithTargets(t *testing.T, state State, _ ...string) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
-			Settings:         withTargets(settingsWith(testBasemaps()), targetIDs...),
+			Settings:         settingsWith(testBasemaps()),
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
@@ -1842,7 +1836,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 		&Options{
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
-			Settings:         withTargets(settingsWith(testBasemaps()), "rider-a", "rider-b"),
+			Settings:         settingsWith(testBasemaps()),
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
@@ -2062,44 +2056,48 @@ type phaseRun struct {
 }
 
 type fakeState struct {
-	reprocessErr      error
-	pendingAuthErr    error
-	historyErr        error
-	taskHistoryErr    error
-	coverageErr       error
-	enrichmentErr     error
-	surfaceErr        error
-	phaseRunErr       error
-	targetStageErr    error
-	lastSuccessErr    error
-	targetRunErr      error
-	sourceStageErr    error
-	lastRun           *phaseRun
-	lastSuccessAt     map[string]time.Time
-	targetStages      map[string][]storedStage
-	surfaceHash       string
-	reprocessed       [][2]int64
-	cumulativeSeconds json.RawMessage
-	sourceStages      []storedStage
-	targetRuns        []fakeTargetRun
-	targets           []fakeTarget
-	history           []recordedRun
-	taskHistory       []recordedTaskRun
-	coordinates       json.RawMessage
-	pendingAuth       []string
-	surfaceRanges     json.RawMessage
-	summaries         []route.Summary
-	phaseRuns         []phaseRun
-	enrichmentFailed  int
-	surfaceMetres     float64
-	surfaceClassified int
-	surfaceTotal      int
+	reprocessErr         error
+	pendingAuthErr       error
+	historyErr           error
+	taskHistoryErr       error
+	coverageErr          error
+	enrichmentErr        error
+	surfaceErr           error
+	phaseRunErr          error
+	targetStageErr       error
+	lastSuccessErr       error
+	targetRunErr         error
+	ensureTargetOwnerErr error
+	ensuredOwners        []string
+	sourceStageErr       error
+	lastRun              *phaseRun
+	lastSuccessAt        map[string]time.Time
+	targetStages         map[string][]storedStage
+	surfaceHash          string
+	reprocessed          [][2]int64
+	cumulativeSeconds    json.RawMessage
+	sourceStages         []storedStage
+	targetRuns           []fakeTargetRun
+	targets              []fakeTarget
+	history              []recordedRun
+	taskHistory          []recordedTaskRun
+	coordinates          json.RawMessage
+	pendingAuth          []string
+	surfaceRanges        json.RawMessage
+	summaries            []route.Summary
+	phaseRuns            []phaseRun
+	enrichmentFailed     int
+	surfaceMetres        float64
+	surfaceClassified    int
+	surfaceTotal         int
 }
 
-// fakeTarget is one configured slot and the authorisation state it is in.
+// fakeTarget is one configured slot, the authorisation state it is in, and
+// who owns it. An empty owner is a target authorized before ownership existed.
 type fakeTarget struct {
 	id            string
 	authorization string
+	owner         string
 }
 
 // storedStage is one row of either stage table: which stage, and the source
@@ -2123,15 +2121,32 @@ type fakeTargetRun struct {
 // authorised slot the older tests were written against. The value is the one
 // the store actually holds, so a test cannot pass on a state production can
 // never produce.
-func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string) error) error {
+func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string, string) error) error {
 	if len(s.targets) == 0 {
-		return visit("rider-a", "authorized")
+		return visit("rider-a", "authorized", "")
 	}
 	for _, target := range s.targets {
-		if err := visit(target.id, target.authorization); err != nil {
+		if err := visit(target.id, target.authorization, target.owner); err != nil {
 			return err
 		}
 	}
+
+	return nil
+}
+
+// EnsureTargetOwner records a self-service target the way the real store
+// would, so a test can assert on what a handler created.
+func (s *fakeState) EnsureTargetOwner(_ context.Context, subject string) error {
+	if s.ensureTargetOwnerErr != nil {
+		return s.ensureTargetOwnerErr
+	}
+	for _, target := range s.targets {
+		if target.id == subject {
+			return nil
+		}
+	}
+	s.targets = append(s.targets, fakeTarget{id: subject, authorization: "not_authorized", owner: subject})
+	s.ensuredOwners = append(s.ensuredOwners, subject)
 
 	return nil
 }

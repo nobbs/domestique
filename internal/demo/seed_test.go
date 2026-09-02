@@ -174,9 +174,10 @@ func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 		{ID: "rider-c", State: demo.SlotUnauthorized},
 	})
 
-	authorizations := map[string]string{}
-	require.NoError(t, store.ForEachTarget(t.Context(), func(id, authorizationState string) error {
+	authorizations, owners := map[string]string{}, map[string]string{}
+	require.NoError(t, store.ForEachTarget(t.Context(), func(id, authorizationState, ownerSubject string) error {
 		authorizations[id] = authorizationState
+		owners[id] = ownerSubject
 
 		return nil
 	}))
@@ -184,6 +185,8 @@ func TestSeedLeavesEachSlotInTheStateItWasAskedFor(t *testing.T) {
 	assert.Equal(t, "authorized", authorizations["rider-b"])
 	assert.Equal(t, "not_authorized", authorizations["rider-c"],
 		"an un-onboarded slot is what the browser onboarding path is demonstrated from")
+	assert.Equal(t, "rider-a", owners["rider-a"], "a seeded slot is owned by its own subject")
+	assert.Equal(t, "rider-c", owners["rider-c"], "even one that has not onboarded")
 
 	stages, err := demo.Routes()
 	require.NoError(t, err)

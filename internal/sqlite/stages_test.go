@@ -12,7 +12,7 @@ import (
 // keeps the one that says which Wahoo route it already owns.
 func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 	store := openTestStore(t, testKey(1))
-	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
 		{Longitude: 8.4, Latitude: 49.0},
 		{Longitude: 8.5, Latitude: 49.2},

@@ -22,7 +22,6 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	{method: http.MethodPut, target: "/v1/tasks/sync%3Asource/schedule", body: `{"enabled":true}`},
 	{method: http.MethodPost, target: "/v1/routes/12/stages/1/reprocess"},
 	{method: http.MethodPut, target: settingsWahooPath, body: wahooSubmission},
-	{method: http.MethodPut, target: settingsTargetsPath, body: targetsSubmission},
 	{method: http.MethodPut, target: settingsKomootPath, body: komootSubmission},
 	{method: http.MethodPut, target: settingsNotificationsPath, body: notificationsSubmission},
 	{method: http.MethodPut, target: basemapsPath, body: basemapsSubmission},

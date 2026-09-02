@@ -170,10 +170,17 @@ type State interface {
 	TaskRunState
 }
 
-// TargetState is what is known locally about each configured Wahoo account.
+// TargetState is what is known locally about each self-service Wahoo target.
 // Every read is local: a status request never asks Wahoo what it holds.
 type TargetState interface {
-	ForEachTarget(ctx context.Context, visit func(id, authorizationState string) error) error
+	// EnsureTargetOwner creates a subject's own target if this is the first
+	// time they have been seen, and leaves an existing one alone. The one
+	// self-service creation point: a target's identity is its owning
+	// subject's own value, so this is safe on every "Connect" attempt.
+	EnsureTargetOwner(ctx context.Context, subject string) error
+	// ForEachTarget visits every target, unfiltered by owner — scoping to what
+	// one caller may see is this package's job, not the store's.
+	ForEachTarget(ctx context.Context, visit func(id, authorizationState, ownerSubject string) error) error
 	// ForEachPendingAuthorization visits the slots with an authorization in
 	// flight. Stored state holds what a slot durably is, which this is not.
 	ForEachPendingAuthorization(ctx context.Context, visit func(targetID string) error) error

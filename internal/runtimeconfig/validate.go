@@ -20,11 +20,6 @@ import (
 // whole seconds, so anything shorter is written as zero and then refused.
 const minimumInterval = time.Second
 
-// maxTargets bounds the destination slots one deployment reconciles onto. Two
-// is what internal/sync accepts, and the number exists so a mistyped list
-// cannot quietly become a fleet.
-const maxTargets = 2
-
 // Validate checks every rule and returns the normalised settings: lists trimmed
 // of whitespace and repeats, so what is stored is exactly what was checked.
 //
@@ -92,9 +87,9 @@ func ValidateTimezone(timezone string) (string, error) {
 	return timezone, nil
 }
 
-// ValidateWahoo checks the OAuth application and the destination slots, and
-// returns them trimmed. Every part of it may be empty: a service that has not
-// been configured yet is a state this validation accepts and a run refuses.
+// ValidateWahoo checks the shared OAuth application and returns it trimmed.
+// Every part of it may be empty: a service that has not been configured yet
+// is a state this validation accepts and a run refuses.
 func ValidateWahoo(wahoo Wahoo) (Wahoo, error) {
 	wahoo.APIBaseURL = strings.TrimSpace(wahoo.APIBaseURL)
 	wahoo.OAuthBaseURL = strings.TrimSpace(wahoo.OAuthBaseURL)
@@ -110,22 +105,6 @@ func ValidateWahoo(wahoo Wahoo) (Wahoo, error) {
 			return Wahoo{}, err
 		}
 	}
-	if len(wahoo.Targets) > maxTargets {
-		return Wahoo{}, fmt.Errorf("wahoo.targets must not contain more than %d entries", maxTargets)
-	}
-
-	targets := make([]string, 0, len(wahoo.Targets))
-	for index, target := range wahoo.Targets {
-		target = strings.TrimSpace(target)
-		if target == "" {
-			return Wahoo{}, fmt.Errorf("wahoo.targets[%d] is required", index)
-		}
-		if slices.Contains(targets, target) {
-			return Wahoo{}, fmt.Errorf("wahoo.targets[%d] is duplicated", index)
-		}
-		targets = append(targets, target)
-	}
-	wahoo.Targets = targets
 
 	return wahoo, nil
 }

@@ -45,15 +45,6 @@ func (q *Queries) DeleteRuntimeSurfaceRegions(ctx context.Context) error {
 	return err
 }
 
-const deleteRuntimeTargets = `-- name: DeleteRuntimeTargets :exec
-DELETE FROM runtime_target
-`
-
-func (q *Queries) DeleteRuntimeTargets(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, deleteRuntimeTargets)
-	return err
-}
-
 const getRuntimeSettings = `-- name: GetRuntimeSettings :one
 SELECT allow_empty_source_deletion, stale_after_seconds, sync_initial_delay_seconds,
   notifications_enabled, pushover_base_url, surface_rebuild_interval_seconds,
@@ -146,20 +137,6 @@ type InsertRuntimeSurfaceRegionParams struct {
 
 func (q *Queries) InsertRuntimeSurfaceRegion(ctx context.Context, arg InsertRuntimeSurfaceRegionParams) error {
 	_, err := q.db.ExecContext(ctx, insertRuntimeSurfaceRegion, arg.Position, arg.Region)
-	return err
-}
-
-const insertRuntimeTarget = `-- name: InsertRuntimeTarget :exec
-INSERT INTO runtime_target (position, target_id) VALUES (?, ?)
-`
-
-type InsertRuntimeTargetParams struct {
-	Position int64
-	TargetID string
-}
-
-func (q *Queries) InsertRuntimeTarget(ctx context.Context, arg InsertRuntimeTargetParams) error {
-	_, err := q.db.ExecContext(ctx, insertRuntimeTarget, arg.Position, arg.TargetID)
 	return err
 }
 
@@ -285,33 +262,6 @@ func (q *Queries) ListRuntimeSurfaceRegions(ctx context.Context) ([]string, erro
 			return nil, err
 		}
 		items = append(items, region)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRuntimeTargets = `-- name: ListRuntimeTargets :many
-SELECT target_id FROM runtime_target ORDER BY position
-`
-
-func (q *Queries) ListRuntimeTargets(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listRuntimeTargets)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var target_id string
-		if err := rows.Scan(&target_id); err != nil {
-			return nil, err
-		}
-		items = append(items, target_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

@@ -80,7 +80,7 @@ func run(ctx context.Context) error {
 		slog.Warn("settings are still needed before anything will run", "settings", missing)
 	}
 
-	destination := newWahooProvider(runtimeSettings, settings.HTTP.BrowserOriginURL)
+	destination := newWahooProvider(runtimeSettings, store, settings.HTTP.BrowserOriginURL)
 	oauthService, err := oauth.New(store, destination)
 	if err != nil {
 		return fmt.Errorf("creating oauth service: %w", err)

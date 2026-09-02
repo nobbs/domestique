@@ -11,7 +11,7 @@ import (
 
 func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
 	store := openTestStore(t, testKey(1))
-	require.NoError(t, store.EnsureTargets(t.Context(), []string{"rider-a"}), "EnsureTargets()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
 	count, err := store.TrustedInventoryCount(t.Context(), route.ProviderVeloPlanner)
