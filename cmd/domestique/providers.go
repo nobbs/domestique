@@ -46,10 +46,17 @@ func (p signInProvider) Exchange(
 		return session.ExchangedIdentity{}, err //nolint:wrapcheck // forwarding to the client this holds
 	}
 
+	return exchangedIdentityFrom(identity), nil
+}
+
+// exchangedIdentityFrom narrows an Auth0 identity to what session.Provider
+// needs, split out from Exchange so the field mapping is directly testable
+// without a live or fake token exchange.
+func exchangedIdentityFrom(identity auth0.Identity) session.ExchangedIdentity {
 	return session.ExchangedIdentity{
 		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
 		Access: identity.Access, Admin: identity.Admin,
-	}, nil
+	}
 }
 
 // errNotConfigured reports that the settings an upstream client is built from
