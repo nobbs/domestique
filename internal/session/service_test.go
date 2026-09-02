@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -505,4 +506,28 @@ func (p *fakeProvider) Exchange(_ context.Context, _, codeVerifier, nonce string
 	}
 	p.exchangedNonce, p.exchangedVerifier = nonce, codeVerifier
 	return p.subject, p.email, p.name, nil
+}
+
+func TestTokenDigestRejectsAnythingButAWellFormedToken(t *testing.T) {
+	encoded := base64.RawURLEncoding.EncodedLen(tokenBytes)
+	cases := map[string]string{
+		"empty":                    "",
+		"too short":                "abc",
+		"too long":                 strings.Repeat("a", encoded+1),
+		"much too long":            strings.Repeat("a", 1<<20),
+		"right length, not base64": strings.Repeat("!", encoded),
+	}
+	for name, wire := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := tokenDigest(wire)
+			assert.Error(t, err)
+		})
+	}
+
+	wire, digest, err := randomToken()
+	require.NoError(t, err)
+	require.Len(t, wire, encoded)
+	got, err := tokenDigest(wire)
+	require.NoError(t, err)
+	assert.Equal(t, digest, got)
 }

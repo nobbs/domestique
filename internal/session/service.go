@@ -211,9 +211,13 @@ func display(email, name, subject string) string {
 	return subject
 }
 
-// randomToken mints 32 random bytes as a wire value and its storage digest.
+// tokenBytes is how much randomness a state or session token carries.
+const tokenBytes = 32
+
+// randomToken mints tokenBytes of randomness as a wire value and its storage
+// digest.
 func randomToken() (wire string, digest []byte, err error) {
-	raw := make([]byte, 32)
+	raw := make([]byte, tokenBytes)
 	if _, err := rand.Read(raw); err != nil {
 		return "", nil, fmt.Errorf("reading randomness: %w", err)
 	}
@@ -222,9 +226,14 @@ func randomToken() (wire string, digest []byte, err error) {
 	return base64.RawURLEncoding.EncodeToString(raw), sum[:], nil
 }
 
+// tokenDigest checks the encoded length before decoding: these values arrive
+// from a browser, and nothing should be allocated to the caller's measure.
 func tokenDigest(wire string) ([]byte, error) {
+	if len(wire) != base64.RawURLEncoding.EncodedLen(tokenBytes) {
+		return nil, errors.New("value is invalid")
+	}
 	raw, err := base64.RawURLEncoding.DecodeString(wire)
-	if err != nil || len(raw) != 32 {
+	if err != nil || len(raw) != tokenBytes {
 		return nil, errors.New("value is invalid")
 	}
 	sum := sha256.Sum256(raw)
