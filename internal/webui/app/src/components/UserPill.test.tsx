@@ -16,6 +16,13 @@ describe("initialsOf", () => {
     expect(initialsOf("rider+wahoo@example.test")).toBe("RW");
   });
 
+  // The provider hands over a name when the account has one and no email, so
+  // the display value is not always an address.
+  it("reads a plain name as two names", () => {
+    expect(initialsOf("Demo Rider")).toBe("DR");
+    expect(initialsOf("Rider")).toBe("R");
+  });
+
   it("takes only the first two, however many parts there are", () => {
     expect(initialsOf("one.two.three.four@example.test")).toBe("OT");
   });

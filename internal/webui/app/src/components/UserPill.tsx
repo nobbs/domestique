@@ -25,11 +25,12 @@ import { Button } from "./Button";
  * deployment ever shows shares its domain with itself, so the half that could
  * tell two of them apart is the half in front of the `@`. A separator inside
  * it usually parts a given name from a family one, and where it does the two
- * initials are worth more than the first two letters of the first name.
+ * initials are worth more than the first two letters of the first name. The
+ * provider may hand over a plain name instead, so a space parts it too.
  */
 export function initialsOf(display: string): string {
   const local = display.trim().split("@")[0] ?? "";
-  const parts = local.split(/[.\-_+]+/).filter(Boolean);
+  const parts = local.split(/[\s.\-_+]+/).filter(Boolean);
   const letters = parts.length > 1 ? [parts[0], parts[1]] : [parts[0]];
 
   return letters
