@@ -1972,9 +1972,10 @@ components:
         admin:
           type: boolean
           description: >-
-            Whether this subject holds cross-subject rights, asserted by the
-            Auth0 Action that decided it as well as whether this subject may
-            sign in at all.
+            Whether this subject holds cross-subject rights. Asserted by the
+            same Auth0 Action that separately decides whether this subject
+            may sign in at all — that decision is what admits the session in
+            the first place, and holds regardless of this field's value.
     SourceBaseUrls:
       type: object
       additionalProperties: false
