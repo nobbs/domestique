@@ -60,6 +60,10 @@ func exchangedIdentityFrom(identity auth0.Identity) session.ExchangedIdentity {
 	}
 }
 
+// targetIDsTimeout bounds the one local read targetIDs performs. A stuck read
+// must not stall whatever task-scheduling path asked for the target list.
+const targetIDsTimeout = 3 * time.Second
+
 // errNotConfigured reports that the settings an upstream client is built from
 // have not been entered yet. It is deliberately not an upstream failure: a
 // service that has never been configured is doing exactly what it was deployed
@@ -154,9 +158,12 @@ func (p *wahooProvider) targetIDs() []string {
 	// Best effort: the sync service's own targetIDs has no error channel, so a
 	// read failure here is reported as no targets — the "not ready" state a
 	// caller already handles — but logged first, so it is not read as the
-	// ordinary "nothing configured yet" case an operator need not act on.
+	// ordinary "nothing configured yet" case an operator need not act on. The
+	// read is bounded so a stuck store cannot stall this call forever.
+	ctx, cancel := context.WithTimeout(context.Background(), targetIDsTimeout)
+	defer cancel()
 	ids := []string{}
-	if err := p.store.ForEachTarget(context.Background(), func(id, _, _ string) error {
+	if err := p.store.ForEachTarget(ctx, func(id, _, _ string) error {
 		ids = append(ids, id)
 
 		return nil

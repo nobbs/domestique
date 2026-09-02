@@ -152,9 +152,14 @@ service is correct whether or not the proxy does. Everything else requires a
 session: a page request without one is redirected to `/auth/login`, and an
 API request without one answers JSON `401`.
 
-Every subject Auth0 lets sign in currently holds the same full operator
-rights, and there is exactly one way to prove membership: a session this
-service itself issued.
+Every subject Auth0 lets sign in shares the route library and its
+synchronisation: what the source read holds and what it writes to Wahoo are
+the same for everyone signed in. Wahoo targets are not shared the same way — a
+non-admin subject sees and controls only their own target, created by their
+own "Connect," while an admin subject sees and controls every target that
+exists. That split is a separate namespaced claim the same Action asserts (see
+below), not a second sign-in decision; every admitted subject proves
+membership the same one way: a session this service itself issued.
 
 A session is created only by an authorisation-code flow with PKCE (S256) and a
 nonce, run against the configured Auth0 tenant through its own SDK. The

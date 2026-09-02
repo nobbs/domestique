@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"time"
 
@@ -65,10 +64,16 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	admin := identityOf(request.Context()).Admin
+	// A set rather than a repeated slices.Contains scan: self-service targets
+	// are unbounded, so this membership check has to stay O(1) per row.
+	wanted := make(map[string]struct{}, len(targetIDs))
+	for _, id := range targetIDs {
+		wanted[id] = struct{}{}
+	}
 	authorizations := make(map[string]string, len(targetIDs))
 	owners := make(map[string]string, len(targetIDs))
 	if targetErr := h.state.ForEachTarget(request.Context(), func(id, authorizationState, ownerSubject string) error {
-		if slices.Contains(targetIDs, id) {
+		if _, found := wanted[id]; found {
 			authorizations[id] = authorizationState
 			owners[id] = ownerSubject
 		}

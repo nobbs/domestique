@@ -94,8 +94,9 @@ func (h *Handler) registers(name string) bool {
 
 // RunTask starts one attempt of a named task, over an argument when the path
 // carries one. For a task that writes to or clears one rider's target, a
-// non-admin caller may only name their own subject — including leaving the
-// argument empty, which for those two tasks means "every target."
+// non-admin caller must name exactly their own subject; leaving the argument
+// empty means "every target" for those two tasks, which only an admin may ask
+// for.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {
