@@ -209,12 +209,14 @@ staleness bound, a one-minute delay before the first run, notifications on with
 nothing yet ruled on in the alert matrix, Pushover's own origin, a single
 keyless basemap, no surface regions, and a weekly index rebuild.
 
-The settings that name an upstream have no default. An OAuth application, a
-target slot name, and a library account belong to one operator. They are seeded
-**unconfigured**, and a service holding those seeds starts, passes its readiness
-probe, serves the settings page, and runs nothing. A scheduled run finds nothing
-configured and no-ops rather than failing, and the page names which settings are
-still missing. That is the state every new deployment begins in.
+The settings that name an upstream have no default. An OAuth application and a
+library account belong to one operator. They are seeded **unconfigured**, and a
+service holding those seeds starts, passes its readiness probe, serves the
+settings page, and runs nothing. A scheduled run finds nothing configured and
+no-ops rather than failing, and the page names which settings are still
+missing. That is the state every new deployment begins in. A target is not
+among these settings at all: it belongs to the subject who created it by
+connecting, not to an operator, and none exists until someone does.
 
 ### Credentials
 
@@ -268,16 +270,12 @@ without a path, matching what the adapter itself requires, and
 OAuth application. The service builds no Wahoo client until all four are set,
 and an unconfigured application makes runs report they are not ready.
 
-`wahoo.targets` holds up to two destination slots. Each is a non-empty name,
-unique within the list, and stable across deployments. It is a configured slot,
-not a Wahoo user identifier, and it is the identity every stored authorization,
-target route, and recorded run carries. Naming a slot creates its durable record
-on the save rather than at the next startup, so the one-time OAuth onboarding
-that follows has a row to authorise. Removing a slot from the list keeps that
-record, and nothing reads a record whose slot is not configured.
-
-An empty list is a deployment with nowhere to publish yet. The readiness probe
-still reports ready.
+Which destinations exist is not a setting: each target is a signed-in
+subject's own value, created the moment that subject starts their first Wahoo
+authorisation, not entered on this page. It is the identity every stored
+authorization, target route, and recorded run carries. A deployment with no
+target yet — because no application is configured, or because nobody has
+connected — still passes its readiness probe.
 
 The endpoint values must match the chosen Wahoo environment. The callback the
 application is registered with is derived from `http.browser_origin_url` and is
@@ -535,6 +533,5 @@ Outside the contract:
   the settings surface. What an operator may change while the service runs is
   the list above and nothing else, and the three things the file holds are
   exactly the three a wrong value would lock them out of the page with;
-- a stored credential read back out of the settings surface in any form;
-- secret rotation without a controlled migration; and
-- a third or dynamically created Wahoo target.
+- a stored credential read back out of the settings surface in any form; and
+- secret rotation without a controlled migration.

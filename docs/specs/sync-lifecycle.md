@@ -109,9 +109,11 @@ been replaced.
 
 ## OAuth lifecycle
 
-The configuration has one or two target slots. Each begins in `not_authorized`.
-Automatic sync does not start until every configured slot is `authorized`.
-State names are spelled here as the wire spells them.
+Each target is a signed-in subject's own value, created the moment that
+subject starts their first authorisation — the configuration does not bound
+how many exist. Each begins in `not_authorized`. Automatic sync does not start
+until every configured slot is `authorized`. State names are spelled here as
+the wire spells them.
 
 Three of the four states are stored on the slot. `pending` is not: it is derived
 at read time from an OAuth transaction that has neither expired nor been
@@ -129,8 +131,9 @@ stateDiagram-v2
     needs_reauthorization --> pending: protected start request
 ~~~
 
-1. The configured Tailnet user requests
-   GET /oauth/wahoo/start/{target}.
+1. The signed-in subject requests GET /oauth/wahoo/start, which starts their
+   own target and creates it on first use, or GET /oauth/wahoo/start/{target}
+   for a target an admin names explicitly.
 2. The service creates 32 random bytes of state, saves its digest with the
    target, caller identity, ten-minute expiry, and unused status, then redirects
    the browser to Wahoo.
@@ -138,7 +141,7 @@ stateDiagram-v2
    callback URL. It verifies the caller identity, target, expiry, digest, and
    unused status before exchanging the code.
 4. The service obtains the Wahoo user identity with the existing user_read
-   grant. It rejects an account already associated with the other target slot.
+   grant. It rejects an account already associated with any other target.
 5. It atomically encrypts and stores the new refresh token, marks the transaction
    consumed, and redirects with 303 See Other to the browser UI at /. The
    redirect removes the authorisation code and state from the browser URL.
@@ -153,12 +156,16 @@ every state-changing route.
 
 The configured Tailnet user starts one by asking for the task that does it:
 `POST /v1/tasks/sync:source/run` reads every configured library,
-`POST /v1/tasks/sync:target/run` reconciles every configured slot, and
-`POST /v1/tasks/sync:target/run/{slot}` reconciles exactly one configured
-target slot without touching the source read or any other target. There is no
-longer a single call that does both halves: the target half follows a
-successful source read as a declared chain edge instead. A slot that is not
-configured is accepted and does no work, recorded as `skipped` rather than
+`POST /v1/tasks/sync:target/run` reconciles every target — admin only, since a
+non-admin's empty argument would ask for targets that are not theirs — and
+`POST /v1/tasks/sync:target/run/{slot}` reconciles exactly one target without
+touching the source read or any other. There is no longer a single call that
+does both halves: the target half follows a successful source read as a
+declared chain edge instead. For `sync:target` and `sync:clear`, a non-admin's
+`{slot}` must name their own subject; any other name is refused as `404`
+before the task layer sees it, the same as a slot that does not exist, so a
+non-admin cannot learn which other targets exist. Past that gate, a slot that
+does not exist is accepted and does no work, recorded as `skipped` rather than
 refused: what an argument means is the task's, and the refusal that matters is
 in the service.
 
@@ -236,7 +243,7 @@ Wahoo access and refresh tokens are handled per target:
    later request, so a crash cannot leave only a stale token on disk.
 3. It performs the required API request with the in-memory access token.
 4. A rejected refresh token sets only that target to
-   `needs_reauthorization`; the other target is still attempted.
+   `needs_reauthorization`; every other target is still attempted.
 
 All Wahoo calls are serial across configured targets. The client observes
 advertised limits and request-response boundaries before the next target call
@@ -355,7 +362,7 @@ source-ID and stage-order sequence:
 An update never uses upload-and-delete replacement. If a create or update fails
 for a target, the service skips every deletion for that target in that run. A
 failure for one target does not prevent an attempted reconciliation of the
-other; the aggregate run remains failed unless both succeed.
+rest; the aggregate run remains failed unless every target succeeds.
 
 A fully validated source inventory is saved as trusted even if a Wahoo target
 fails. Per-target route mappings change only after their corresponding remote
@@ -364,9 +371,9 @@ target without replaying destructive work.
 
 ### Clearing a target
 
-An operator may clear one target: delete every route this service owns there
-and forget that slot's route mappings, leaving it as though it had never been
-written to.
+An operator, or the target's own owner, may clear one target: delete every
+route this service owns there and forget that slot's route mappings, leaving
+it as though it had never been written to.
 
 It is the only deletion the per-target deletion limit does not bound. Nothing
 schedules it, and it is reachable only from an explicit manual request naming
@@ -417,8 +424,8 @@ service never deletes a manually created Wahoo route.
 
 ## State-loss recovery
 
-When state is absent or cannot be decrypted, sync is disabled until both
-targets are authorised again. The first trusted inventory then reconciles by
+When state is absent or cannot be decrypted, sync is disabled until every
+target is authorised again. The first trusted inventory then reconciles by
 looking up the deterministic external IDs for currently desired routes:
 
 - a matching remote route may be adopted into fresh state;

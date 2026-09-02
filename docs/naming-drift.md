@@ -22,7 +22,8 @@ each call".
 
 **Proposed:** *phase* in both the comments and the identifiers. The enum keeps
 `"source" | "targets"`. The asymmetry reflects the domain — one configured
-source section, up to two target slots — and `SyncPhases` holds exactly one
+source section, an unbounded number of self-service targets — and
+`SyncPhases` holds exactly one
 `SyncPhaseRun` for each, so nothing reads the plural as a count. Grammatical
 consistency here would break `api/openapi.yaml`, `SYNC_PHASES` and Go's
 `PhaseSource`/`PhaseTargets` for a cosmetic gain.
