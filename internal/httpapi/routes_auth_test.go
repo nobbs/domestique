@@ -29,7 +29,7 @@ func assertRefused(t *testing.T, response *httptest.ResponseRecorder, reason str
 	t.Helper()
 
 	assert.Equal(t, http.StatusSeeOther, response.Code)
-	assert.Equal(t, "/auth/login?error="+reason, response.Header().Get("Location"))
+	assert.Equal(t, loginPath+"?error="+reason, response.Header().Get("Location"))
 }
 
 func TestLoginPageIsServedWithoutASession(t *testing.T) {
