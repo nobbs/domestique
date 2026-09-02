@@ -69,6 +69,12 @@ func New(options *Options) (*Client, error) {
 	if domain == "" || clientID == "" || clientSecret == "" || redirectURL == "" {
 		return nil, errors.New("auth0: domain, client id, client secret, and redirect url are required")
 	}
+	if err := validateDomain(domain); err != nil {
+		return nil, err
+	}
+	if err := validateRedirectURL(redirectURL); err != nil {
+		return nil, err
+	}
 
 	httpClient := options.HTTPClient
 	if httpClient == nil {
@@ -87,6 +93,31 @@ func New(options *Options) (*Client, error) {
 		httpClient:   httpClient,
 		now:          now,
 	}, nil
+}
+
+// validateDomain accepts the tenant as a bare host, optionally with a port.
+// The value becomes a URL host and is handed to the SDK, so a scheme, path, or
+// userinfo in it would silently address the wrong tenant.
+func validateDomain(domain string) error {
+	parsed, err := url.Parse("https://" + domain)
+	if err != nil || parsed.Host != domain || parsed.User != nil || parsed.Path != "" ||
+		parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("auth0: domain must be a bare tenant host, without a scheme or path")
+	}
+
+	return nil
+}
+
+// validateRedirectURL mirrors the Wahoo callback rule: the value is sent to
+// the provider and must match the registered callback exactly.
+func validateRedirectURL(redirectURL string) error {
+	parsed, err := url.Parse(redirectURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||
+		parsed.Path == "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("auth0: redirect url must be an absolute https callback url")
+	}
+
+	return nil
 }
 
 // AuthorizationURL builds the /authorize URL for a PKCE authorization-code
@@ -120,6 +151,10 @@ func (c *Client) AuthorizationURL(_ context.Context, state, nonce, codeVerifier 
 
 // Exchange trades an authorization code for a verified identity.
 func (c *Client) Exchange(ctx context.Context, code, codeVerifier, nonce string) (Identity, error) {
+	if code == "" || codeVerifier == "" || nonce == "" {
+		return Identity{}, errors.New("auth0: code, code verifier, and nonce are required")
+	}
+
 	sdk, err := c.authentication(ctx)
 	if err != nil {
 		return Identity{}, err

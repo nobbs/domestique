@@ -227,6 +227,48 @@ func TestNewRequiresEachOption(t *testing.T) {
 	}
 }
 
+func TestNewRejectsMalformedURLs(t *testing.T) {
+	cases := map[string]Options{
+		"domain with scheme":      {Domain: "https://tenant.example.com", RedirectURL: testRedirectURL},
+		"domain with path":        {Domain: "tenant.example.com/tenant", RedirectURL: testRedirectURL},
+		"domain with userinfo":    {Domain: "user@tenant.example.com", RedirectURL: testRedirectURL},
+		"redirect url relative":   {Domain: "tenant.example.com", RedirectURL: "/callback"},
+		"redirect url plain http": {Domain: "tenant.example.com", RedirectURL: "http://app.example/callback"},
+		"redirect url no path":    {Domain: "tenant.example.com", RedirectURL: "https://app.example"},
+		"redirect url with query": {Domain: "tenant.example.com", RedirectURL: "https://app.example/callback?next=/"},
+	}
+	for name, options := range cases {
+		t.Run(name, func(t *testing.T) {
+			options.ClientID = testClientID
+			options.ClientSecret = testClientSecret
+			_, err := New(&options)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestExchangeRequiresParameters(t *testing.T) {
+	transport := &countingTransport{base: http.DefaultTransport}
+	client, err := New(&Options{
+		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: testClientSecret, RedirectURL: testRedirectURL,
+		HTTPClient: &http.Client{Transport: transport},
+	})
+	require.NoError(t, err)
+
+	cases := map[string]struct{ code, verifier, nonce string }{
+		"empty code":     {"", testVerifier, "nonce-1"},
+		"empty verifier": {testCode, "", "nonce-1"},
+		"empty nonce":    {testCode, testVerifier, ""},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := client.Exchange(context.Background(), c.code, c.verifier, c.nonce)
+			assert.Error(t, err)
+		})
+	}
+	assert.Zero(t, transport.count.Load(), "an invalid exchange must not contact the provider")
+}
+
 func TestReadIdentityRejectsMalformedTokens(t *testing.T) {
 	cases := map[string]string{
 		"not three parts":          "header.payload",
