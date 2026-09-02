@@ -29,11 +29,12 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, request *http.Reque
 	}
 
 	// Who the gate admitted, so a reader can see which session they are in.
+	identity := identityOf(request.Context())
 	config := openapi.WebUIConfig{
 		Basemaps: basemaps,
 		Identity: openapi.BrowserIdentity{
-			Display: identityOf(request.Context()).Display,
-			Admin:   identityOf(request.Context()).Admin,
+			Display: identity.Display,
+			Admin:   identity.Admin,
 		},
 	}
 	// Omitted entirely when no source named one, so the page offers no link at
