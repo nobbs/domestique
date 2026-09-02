@@ -154,7 +154,8 @@ statements live in the linked specs.
   settings-page credentials are write-only
   ([configuration.md](docs/specs/configuration.md)).
 - **All non-OAuth HTTP is read-only and identity-gated** to a session issued
-  for an allowed subject. The container still publishes to loopback only,
+  for an allowed subject, apart from the sign-in document and the build
+  artefacts it loads. The container still publishes to loopback only,
   behind a TLS-terminating reverse proxy; the service never reads an identity
   header ([auth0.md](docs/auth0.md)).
 

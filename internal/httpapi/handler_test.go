@@ -196,11 +196,6 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z",
 		"/oauth/wahoo/start/rider-a",
 		"/oauth/wahoo/callback",
-		"/assets/app-abc123.js",
-		"/favicon.svg",
-		"/icon-256.png",
-		"/icon-512.png",
-		"/manifest.webmanifest",
 		"/",
 		"/routes/veloplanner/1/1",
 		"/catalogue",
@@ -220,6 +215,27 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 			refusedResponse := httptest.NewRecorder()
 			refusing.ServeHTTP(refusedResponse, authenticatedRequest(http.MethodGet, path))
 			assert.Equalf(t, http.StatusUnauthorized, refusedResponse.Code, "refused session %s", path)
+		})
+	}
+}
+
+// The sign-in page is the application bundle, so what it names is fetched
+// before any identity exists. These carry build output and no state.
+func TestBuildArtefactsAreServedWithoutASession(t *testing.T) {
+	handler := newTestHandler(t)
+
+	for _, path := range []string{
+		"/assets/app-abc123.js",
+		"/favicon.svg",
+		"/icon-256.png",
+		"/icon-512.png",
+		"/manifest.webmanifest",
+	} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, path, http.NoBody))
+			assert.Equal(t, http.StatusOK, response.Code)
 		})
 	}
 }

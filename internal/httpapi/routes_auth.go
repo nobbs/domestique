@@ -9,22 +9,34 @@ import (
 	"github.com/nobbs/domestique/internal/session"
 )
 
-// signInFailed is what every failure but a refused subject says. One message
-// for all of them: which step failed describes the check a caller has to defeat.
-const signInFailed = "Sign-in could not be completed."
+// loginPath is the application document served before an identity exists.
+const loginPath = "/auth/login"
 
-// GetLoginPage serves the static document that starts a sign-in. It writes
-// nothing: a state is minted by the POST the button sends, so a crawler or a
-// prefetch cannot fill the login table.
-func (h *Handler) GetLoginPage(writer http.ResponseWriter, _ *http.Request) {
-	h.page(writer, http.StatusOK, "login.html", nil)
+// What the sign-in page is told about a refusal. One reason for every failure
+// but a refused subject: which step failed describes the check to defeat.
+const (
+	signInFailed     = "failed"
+	signInNotAllowed = "not_allowed"
+)
+
+// GetLoginPage serves the application document that offers a sign-in. It
+// writes nothing: a state is minted by the POST the form sends, so a crawler
+// or a prefetch cannot fill the login table.
+func (h *Handler) GetLoginPage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
+// refuse sends a browser back to the sign-in page carrying why. The refused
+// subject is not named: a query string outlives the answer it was part of.
+func (h *Handler) refuse(writer http.ResponseWriter, request *http.Request, reason string) {
+	http.Redirect(writer, request, loginPath+"?error="+reason, http.StatusSeeOther)
 }
 
 // sameOrigin is the provenance check for the two routes outside the OpenAPI
 // document: StartLogin's full-page form post and Logout's fetch call. Origin
 // matching browserOrigin exactly is always sufficient, as it always was. The
 // one addition is narrow: Safari answers a top-level POST navigation from a
-// page served with Referrer-Policy: no-referrer — this login page,
+// page served with Referrer-Policy: no-referrer — this sign-in page,
 // deliberately — with Origin: null, and Sec-Fetch-Site: same-origin is the
 // browser's own corroboration for exactly that value. Sec-Fetch-Site is never
 // trusted for any other Origin, because it reflects same-origin relative to
@@ -45,7 +57,7 @@ func (h *Handler) sameOrigin(request *http.Request) bool {
 // routes sit outside the document, so it is made here.
 func (h *Handler) StartLogin(writer http.ResponseWriter, request *http.Request) {
 	if !h.sameOrigin(request) {
-		h.page(writer, http.StatusForbidden, "denied.html", pageValues{Message: signInFailed})
+		h.refuse(writer, request, signInFailed)
 
 		return
 	}
@@ -53,14 +65,14 @@ func (h *Handler) StartLogin(writer http.ResponseWriter, request *http.Request) 
 	login, err := h.sessions.Begin(request.Context())
 	if err != nil {
 		slog.Warn("sign-in refused", "reason", "login_not_started")
-		h.page(writer, http.StatusBadRequest, "denied.html", pageValues{Message: signInFailed})
+		h.refuse(writer, request, signInFailed)
 
 		return
 	}
 	location, parseErr := url.Parse(login.AuthorizationURL)
 	if parseErr != nil || location.Scheme != "https" || location.Host == "" {
 		slog.Warn("sign-in refused", "reason", "authorization_url_unusable")
-		h.page(writer, http.StatusBadRequest, "denied.html", pageValues{Message: signInFailed})
+		h.refuse(writer, request, signInFailed)
 
 		return
 	}
@@ -80,7 +92,7 @@ func (h *Handler) CompleteLogin(writer http.ResponseWriter, request *http.Reques
 		// Cleared like the branches below: a pending state that got this far is
 		// spent, and leaving it set has the browser resend it until it expires.
 		h.clearCookie(writer, loginCookie)
-		h.page(writer, http.StatusBadRequest, "denied.html", pageValues{Message: signInFailed})
+		h.refuse(writer, request, signInFailed)
 
 		return
 	}
@@ -89,21 +101,17 @@ func (h *Handler) CompleteLogin(writer http.ResponseWriter, request *http.Reques
 	var notAllowed *session.NotAllowedError
 	switch {
 	case errors.As(err, &notAllowed):
-		// The one place the refused subject is shown: a reader who cannot get in
-		// needs to know which account was refused. The log line carries the
-		// category only.
+		// The one refusal a reader is told apart from the rest, so an account
+		// that will never be admitted is not read as a service that is failing.
 		slog.Warn("sign-in refused", "reason", "subject_not_allowed")
 		h.clearCookie(writer, loginCookie)
-		h.page(writer, http.StatusForbidden, "denied.html", pageValues{
-			Message: "This account is not allowed to sign in.",
-			Subject: notAllowed.Subject,
-		})
+		h.refuse(writer, request, signInNotAllowed)
 
 		return
 	case err != nil:
 		slog.Warn("sign-in refused", "reason", "exchange_failed")
 		h.clearCookie(writer, loginCookie)
-		h.page(writer, http.StatusBadRequest, "denied.html", pageValues{Message: signInFailed})
+		h.refuse(writer, request, signInFailed)
 
 		return
 	}
@@ -130,18 +138,4 @@ func (h *Handler) Logout(writer http.ResponseWriter, request *http.Request) {
 	}
 	h.clearCookie(writer, sessionCookie)
 	writer.WriteHeader(http.StatusNoContent)
-}
-
-// pageValues is what a sign-in document is rendered with.
-type pageValues struct {
-	Message string
-	Subject string
-}
-
-func (h *Handler) page(writer http.ResponseWriter, status int, name string, values any) {
-	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	writer.WriteHeader(status)
-	if err := h.pages.ExecuteTemplate(writer, name, values); err != nil {
-		slog.Error("rendering a sign-in page", "page", name, "error", err)
-	}
 }

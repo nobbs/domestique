@@ -140,9 +140,13 @@ All service endpoints require a session, apart from the unauthenticated
 surface below and the readiness probe on its own loopback listener, which is
 reachable from host-local health checking alone.
 
-The unauthenticated surface is exactly `GET /healthz`, `GET /auth/login` — a
-static sign-in page that writes nothing — `POST /auth/start`, `GET
-/auth/callback`, and `POST /auth/logout`. `GET /healthz` reads nothing and
+The unauthenticated surface is exactly `GET /healthz`, `GET /auth/login` — the
+application entry document, offering a sign-in and writing nothing — `POST
+/auth/start`, `GET /auth/callback`, `POST /auth/logout`, and the build
+artefacts that document loads: the hashed assets under `/assets/`, the
+favicon, the two installed-copy icons, and the manifest. Those artefacts are
+compiled output holding no state and no route data, and the sign-in page
+cannot render without them. `GET /healthz` reads nothing and
 answers static fields; the proxy example refuses it with `404`, but the
 service is correct whether or not the proxy does. Everything else requires a
 session: a page request without one is redirected to `/auth/login`, and an
@@ -465,8 +469,10 @@ it.
 
 The browser UI is served from the same origin and the same listener: an
 application entry document and immutable hashed static assets. `/auth/login`
-is the one unauthenticated browser entry route; `/`, `/catalogue`, `/sync`,
-and `/settings` require a session. The catalogue reads the same inventory listing `/` does and asks the
+is the one unauthenticated browser entry route, and serves that same entry
+document: the sign-in form is the application's, and this service renders no
+HTML of its own. `/`, `/catalogue`, `/sync`, and `/settings` require a
+session. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
 ordering, searching and narrowing it offers all happen in the browser. Settings
 holds two kinds of preference and keeps them apart, and lists the data sources
@@ -797,8 +803,10 @@ secret files remain outside Git.
   service's own browser UI.
 - Every HTTP interaction is identity-gated to an allowed subject, by a session
   this service issued from an ID token it verified itself; a subject the
-  allowlist does not name reaches nothing, is told which subject was refused,
-  and appears in no log. Beyond OAuth, the only ones that change anything are
+  allowlist does not name reaches nothing, is told that the account is not
+  allowed rather than that the service failed, and appears in no log. Which
+  subject was refused is not shown: the refusal travels as a query parameter
+  on the sign-in page's own address, which outlives the answer it was part of. Beyond OAuth, the only ones that change anything are
   the task triggers and their switches, the reprocess request,
   which discards derived answers so they are worked out again, the
   surface-enrichment retry, which reclassifies stored routes without reading

@@ -23,6 +23,15 @@ func loginRequest(t *testing.T, method, target string) *http.Request {
 	return request
 }
 
+// assertRefused is what every refused sign-in now is: the browser sent back to
+// the sign-in page, carrying the one thing it may be told about the refusal.
+func assertRefused(t *testing.T, response *httptest.ResponseRecorder, reason string) {
+	t.Helper()
+
+	assert.Equal(t, http.StatusSeeOther, response.Code)
+	assert.Equal(t, "/auth/login?error="+reason, response.Header().Get("Location"))
+}
+
 func TestLoginPageIsServedWithoutASession(t *testing.T) {
 	sessions := newFakeSessions()
 	handler := newSessionHandler(t, sessions)
@@ -33,30 +42,35 @@ func TestLoginPageIsServedWithoutASession(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.Contains(t, response.Header().Get("Content-Type"), "text/html")
-	assert.Contains(t, response.Body.String(), `action="/auth/start"`)
+	// The application document, the same one every signed-in page is served:
+	// the sign-in form is the bundle's, not this package's.
+	assert.Contains(t, response.Body.String(), "<!doctype html>")
 	// No state is minted by a page a crawler or a prefetch can reach.
 	assert.Zero(t, sessions.beginCalls, "serving the login page started a sign-in")
 }
 
-// The sign-in pages get their own tight policy; the application keeps the one
-// its map needs.
-func TestSignInPagesCarryTheirOwnPolicy(t *testing.T) {
+// The sign-in page runs the same bundle, so it keeps the policy that bundle
+// needs — with the one form it has, and none of the map's tile origins.
+func TestSignInPageCarriesTheFormPolicy(t *testing.T) {
 	handler := newSessionHandler(t, newFakeSessions())
 
 	page := httptest.NewRecorder()
 	handler.ServeHTTP(page, httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, "/auth/login", http.NoBody))
 	policy := page.Header().Get("Content-Security-Policy")
-	assert.Equal(t, handler.authPolicy(), policy)
+	assert.Contains(t, policy, "script-src 'self'")
 	// The actual production bug: form-action governs the whole redirect chain a
 	// form submission follows, not only its immediate action, so a browser
 	// refuses to follow StartLogin's 303 to the tenant unless it is named here.
 	assert.Contains(t, policy, "form-action 'self' https://"+testAuth0Domain)
+	// No identity has been proved yet, so the configured map is not named to it.
+	assert.NotContains(t, policy, "tiles.example.test")
 
 	app := httptest.NewRecorder()
 	handler.ServeHTTP(app, signedInRequest(http.MethodGet, "/"))
-	assert.Contains(t, app.Header().Get("Content-Security-Policy"), "script-src 'self'")
-	assert.NotEqual(t, handler.authPolicy(), app.Header().Get("Content-Security-Policy"))
+	appPolicy := app.Header().Get("Content-Security-Policy")
+	assert.Contains(t, appPolicy, "form-action 'none'")
+	assert.Contains(t, appPolicy, "tiles.example.test")
 }
 
 // A handler built without Auth0Domain degrades the header rather than failing
@@ -75,8 +89,7 @@ func TestAuthPolicyDegradesWithoutAuth0Domain(t *testing.T) {
 	)
 	require.NoError(t, err, "New()")
 
-	assert.Equal(t, "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; "+
-		"form-action 'self'; style-src 'unsafe-inline'; img-src 'self'", handler.authPolicy())
+	assert.Contains(t, handler.contentSecurityPolicy("/auth/login"), "form-action 'self';")
 }
 
 // The sign-in flow is the way in, so nothing about it may need a session.
@@ -112,7 +125,7 @@ func TestStartLoginRequiresTheBrowserOrigin(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 
-			assert.Equal(t, http.StatusForbidden, response.Code)
+			assertRefused(t, response, signInFailed)
 			assert.Zero(t, sessions.beginCalls, "a refused request still started a sign-in")
 		})
 	}
@@ -156,7 +169,7 @@ func TestStartLoginRefusesAnotherOriginEvenAsSameOriginBySecFetchSite(t *testing
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
-	assert.Equal(t, http.StatusForbidden, response.Code)
+	assertRefused(t, response, signInFailed)
 	assert.Zero(t, sessions.beginCalls, "a refused request still started a sign-in")
 }
 
@@ -168,8 +181,7 @@ func TestStartLoginRefusesWhenBeginFails(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, loginRequest(t, http.MethodPost, "/auth/start"))
 
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-	assert.Contains(t, response.Body.String(), "Sign-in could not be completed")
+	assertRefused(t, response, signInFailed)
 	assert.Nil(t, setCookie(t, response, loginCookie), "a failed Begin still set the login cookie")
 }
 
@@ -186,8 +198,7 @@ func TestStartLoginRefusesAnUnusableAuthorizationURL(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, loginRequest(t, http.MethodPost, "/auth/start"))
 
-			assert.Equal(t, http.StatusBadRequest, response.Code)
-			assert.Contains(t, response.Body.String(), "Sign-in could not be completed")
+			assertRefused(t, response, signInFailed)
 			assert.Nil(t, setCookie(t, response, loginCookie), "an unusable authorization url still set the login cookie")
 		})
 	}
@@ -236,8 +247,7 @@ func TestCompleteLoginRefusesAnIncompleteCallback(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 
-			assert.Equal(t, http.StatusBadRequest, response.Code)
-			assert.Contains(t, response.Body.String(), "Sign-in could not be completed")
+			assertRefused(t, response, signInFailed)
 			assert.Empty(t, sessions.completed, "an incomplete callback reached the exchange")
 			assert.Nil(t, setCookie(t, response, sessionCookie), "a refused callback issued a session")
 
@@ -262,16 +272,15 @@ func TestCompleteLoginRefusesAMismatchedState(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
-	assert.Equal(t, http.StatusBadRequest, response.Code)
-	assert.Contains(t, response.Body.String(), "Sign-in could not be completed")
+	assertRefused(t, response, signInFailed)
 	// The refusal says nothing about which check refused it.
-	assert.NotContains(t, response.Body.String(), "state did not match")
+	assert.NotContains(t, response.Header().Get("Location"), "state")
 	assert.Nil(t, setCookie(t, response, sessionCookie), "a refused callback issued a session")
 }
 
-// A subject that authenticated but is not allowed is the one case a reader has
-// to be told about by name: they need to know which account was refused.
-func TestCompleteLoginNamesARefusedSubject(t *testing.T) {
+// A subject that authenticated but is not allowed is told apart from a failed
+// attempt, and never by name: the reason travels in an address.
+func TestCompleteLoginSeparatesARefusedSubject(t *testing.T) {
 	sessions := newFakeSessions()
 	sessions.completeErr = &session.NotAllowedError{Subject: "github|999"}
 	handler := newSessionHandler(t, sessions)
@@ -283,8 +292,8 @@ func TestCompleteLoginNamesARefusedSubject(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 
-	assert.Equal(t, http.StatusForbidden, response.Code)
-	assert.Contains(t, response.Body.String(), "github|999")
+	assertRefused(t, response, signInNotAllowed)
+	assert.NotContains(t, response.Header().Get("Location"), "github", "the refused subject travelled in the address")
 	assert.Nil(t, setCookie(t, response, sessionCookie), "a refused sign-in issued a session")
 }
 

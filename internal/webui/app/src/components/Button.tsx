@@ -144,15 +144,25 @@ function content(icon: ReactNode, children: ReactNode) {
   );
 }
 
-export interface ButtonProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type">,
-    ButtonStyleProps {
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, ButtonStyleProps {
   children?: ReactNode;
 }
 
-export function Button({ variant, icon, active, className, children, ...props }: ButtonProps) {
+/**
+ * `type` defaults to `button` rather than the element's own `submit`: a button
+ * inside a form submitting it by accident is the older of the two bugs.
+ */
+export function Button({
+  variant,
+  icon,
+  active,
+  className,
+  children,
+  type = "button",
+  ...props
+}: ButtonProps) {
   return (
-    <button type="button" className={classes(variant, children, active, className)} {...props}>
+    <button type={type} className={classes(variant, children, active, className)} {...props}>
       {content(icon, children)}
     </button>
   );
