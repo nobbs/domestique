@@ -1,6 +1,7 @@
 package auth0
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,15 +48,43 @@ func (t *boundedTransport) RoundTrip(request *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, fmt.Errorf("auth0: request failed: %w", err)
 	}
-	response.Body = limitedBody{
-		Reader: io.LimitReader(response.Body, maxResponseBytes),
-		Closer: response.Body,
-	}
+	response.Body = &limitedBody{body: response.Body, remaining: maxResponseBytes}
 
 	return response, nil
 }
 
+// errResponseTooLarge is what a reader of an over-cap body sees. Truncating to
+// a clean EOF instead would hand the caller a body that parses as a short but
+// complete reply.
+var errResponseTooLarge = errors.New("auth0: response exceeded size limit")
+
+// limitedBody yields at most maxResponseBytes and then fails, reading one byte
+// past the cap to tell a body that just fits from one that does not.
 type limitedBody struct {
-	io.Reader
-	io.Closer
+	body      io.ReadCloser
+	remaining int64
+	exceeded  bool
+}
+
+func (b *limitedBody) Read(p []byte) (int, error) {
+	if b.exceeded {
+		return 0, errResponseTooLarge
+	}
+	if int64(len(p)) > b.remaining+1 {
+		p = p[:b.remaining+1]
+	}
+
+	read, err := b.body.Read(p)
+	if int64(read) > b.remaining {
+		b.exceeded = true
+
+		return 0, errResponseTooLarge
+	}
+	b.remaining -= int64(read)
+
+	return read, err //nolint:wrapcheck // the body's own read error belongs to its reader.
+}
+
+func (b *limitedBody) Close() error {
+	return b.body.Close() //nolint:wrapcheck // closing is the wrapped body's own concern.
 }

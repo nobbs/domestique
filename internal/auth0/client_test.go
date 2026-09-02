@@ -1,6 +1,7 @@
 package auth0
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/hmac"
@@ -10,6 +11,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -526,5 +528,33 @@ func TestExchangeRefusesOversizedTokenResponse(t *testing.T) {
 	client := newClient(t, issuer, issuer.server.Client(), time.Now)
 
 	_, err = client.Exchange(context.Background(), testCode, testVerifier, "nonce-1")
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, errResponseTooLarge)
+}
+
+func TestLimitedBodyStopsAtTheCap(t *testing.T) {
+	cases := map[string]struct {
+		size    int
+		wantErr bool
+	}{
+		"under the cap": {size: maxResponseBytes - 1},
+		"at the cap":    {size: maxResponseBytes},
+		"over the cap":  {size: maxResponseBytes + 1, wantErr: true},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			body := &limitedBody{
+				body:      io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), test.size))),
+				remaining: maxResponseBytes,
+			}
+			read, err := io.ReadAll(body)
+			if test.wantErr {
+				assert.ErrorIs(t, err, errResponseTooLarge)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Len(t, read, test.size)
+			assert.NoError(t, body.Close())
+		})
+	}
 }
