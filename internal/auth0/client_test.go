@@ -188,7 +188,7 @@ func signRS256(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]
 // probe below.
 func hmacSHA256(secret, input string) []byte {
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(input))
+	_, _ = mac.Write([]byte(input))
 
 	return mac.Sum(nil)
 }

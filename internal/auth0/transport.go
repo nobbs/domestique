@@ -73,7 +73,7 @@ func (b *limitedBody) Read(p []byte) (int, error) {
 		return 0, errResponseTooLarge
 	}
 	if int64(len(p)) > b.remaining+1 {
-		p = p[:b.remaining+1]
+		p = p[:int(b.remaining)+1]
 	}
 
 	read, err := b.body.Read(p)
