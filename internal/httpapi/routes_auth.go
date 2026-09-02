@@ -21,18 +21,23 @@ func (h *Handler) GetLoginPage(writer http.ResponseWriter, _ *http.Request) {
 }
 
 // sameOrigin is the provenance check for the two routes outside the OpenAPI
-// document: StartLogin's full-page form post and Logout's fetch call. Where a
-// browser sends Sec-Fetch-Site, it is trusted over Origin: Safari answers a
-// top-level POST navigation from a page served with Referrer-Policy:
-// no-referrer — this login page, deliberately — with Origin: null, and
-// Sec-Fetch-Site is what still says same-origin correctly. A caller sending
-// neither header falls back to the exact Origin match this always did.
+// document: StartLogin's full-page form post and Logout's fetch call. Origin
+// matching browserOrigin exactly is always sufficient, as it always was. The
+// one addition is narrow: Safari answers a top-level POST navigation from a
+// page served with Referrer-Policy: no-referrer — this login page,
+// deliberately — with Origin: null, and Sec-Fetch-Site: same-origin is the
+// browser's own corroboration for exactly that value. Sec-Fetch-Site is never
+// trusted for any other Origin, because it reflects same-origin relative to
+// whatever host the request actually reached, not this service's configured
+// one — a request that reached this process under a different hostname could
+// compute same-origin against that hostname and still name it in Origin.
 func (h *Handler) sameOrigin(request *http.Request) bool {
-	if site := request.Header.Get("Sec-Fetch-Site"); site != "" {
-		return site == "same-origin"
+	origin := request.Header.Get("Origin")
+	if origin == h.browserOrigin {
+		return true
 	}
 
-	return request.Header.Get("Origin") == h.browserOrigin
+	return origin == "null" && request.Header.Get("Sec-Fetch-Site") == "same-origin"
 }
 
 // StartLogin mints a sign-in and redirects the browser to the provider. The
