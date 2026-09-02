@@ -248,9 +248,8 @@ const config: WebUIConfig = {
     },
   ],
   sourceBaseUrls: { veloplanner: "https://veloplanner.com" },
-  // A session with a way out of it, which is what a deployment behind
-  // Cloudflare Access has. Stories that need the other deployment — the one
-  // with nothing in front of it to sign out to — override this.
+  // The signed-in identity as every page reads it. Sessions are this service's
+  // own now, so there is no external sign-out URL to carry alongside it.
   identity: { display: "rider@example.test" },
 };
 

@@ -89,9 +89,9 @@ the runtime image carries.
 ## Secret input
 
 The file names exactly two secrets. Each has one active input: a TOML
-file path, an overriding `*_FILE` environment value, or — for the state key
-alone — a direct environment value. The file input is preferred for Docker
-deployments; the direct environment value supports a simple local setup.
+file path, an overriding `*_FILE` environment value, or a direct environment
+value. The file input is preferred for Docker deployments; the direct
+environment value supports a simple local setup.
 
 | Canonical secret | TOML file-path field | Direct environment value | Environment file path |
 | --- | --- | --- | --- |
@@ -100,10 +100,8 @@ deployments; the direct environment value supports a simple local setup.
 
 A literal `state.encryption_key` or `auth.auth0.client_secret` is invalid in
 the TOML file. Each is accepted only from its documented direct environment
-variable, and only the state key's has one: the Auth0 client secret has no
-direct environment form, so it is always a file. A `*_FILE` environment
-variable overrides the matching TOML file path, but it must not accompany the
-direct value.
+variable. A `*_FILE` environment variable overrides the matching TOML file
+path, but it must not accompany the direct value.
 
 A file secret must be an absolute path to a regular readable file, non-empty
 after one terminal line break is trimmed. The state encryption key is
