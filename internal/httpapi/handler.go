@@ -3,11 +3,8 @@ package httpapi
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"html/template"
 	"net/http"
 	"net/url"
 	"slices"
@@ -19,12 +16,6 @@ import (
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
 )
-
-// pageFiles holds the two sign-in documents. They are served before any
-// identity exists, so they cannot come from the browser UI bundle behind the gate.
-//
-//go:embed pages/*.html
-var pageFiles embed.FS
 
 // The two cookies this service sets. The `__Host-` prefix is enforced by the
 // browser only, so Secure, Path=/ and the absent Domain are set by hand too.
@@ -127,7 +118,6 @@ type Handler struct {
 	// handler: parameter bounds, request bodies, and provenance.
 	validate            func(http.Handler) http.Handler
 	sessions            Sessions
-	pages               *template.Template
 	surfaceIndex        func() (string, time.Time, bool)
 	now                 func() time.Time
 	mux                 *http.ServeMux
@@ -163,10 +153,6 @@ func New(
 	if options.Tasks == nil {
 		return nil, errors.New("the task list is required")
 	}
-	pages, err := template.ParseFS(pageFiles, "pages/*.html")
-	if err != nil {
-		return nil, fmt.Errorf("parsing the sign-in pages: %w", err)
-	}
 	browserOrigin, err := browserOriginOf(options.BrowserOriginURL)
 	if err != nil {
 		return nil, err
@@ -200,7 +186,6 @@ func New(
 		now:                 time.Now,
 
 		sessions: options.Sessions,
-		pages:    pages,
 	}
 	if err := handler.useContractValidation(); err != nil {
 		return nil, err
@@ -301,12 +286,36 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
+	// The sign-in page is the application bundle, so the artefacts it names are
+	// fetched before any identity exists. They carry build output and no state.
+	// Reads only: nothing else about these paths is served without a session.
+	if (request.Method == http.MethodGet || request.Method == http.MethodHead) &&
+		publicAsset(request.URL.Path) {
+		// One answer for every caller, so the blanket Vary above is not true of
+		// these: leaving it makes a cache re-fetch the whole bundle whenever the
+		// cookie appears or goes, which is exactly at sign-in and sign-out.
+		header.Del("Vary")
+		h.mux.ServeHTTP(writer, request)
+
+		return
+	}
 	if strings.HasPrefix(request.URL.Path, "/v1/") || strings.HasPrefix(request.URL.Path, "/oauth/") {
 		h.gated(h.bounded(h.validate(h.mux))).ServeHTTP(writer, request)
 
 		return
 	}
 	h.gated(h.mux).ServeHTTP(writer, request)
+}
+
+// publicAsset reports a path served to anyone: the bundle and stylesheet the
+// sign-in page loads, and the icons a browser asks for without being told to.
+func publicAsset(path string) bool {
+	switch path {
+	case "/favicon.svg", "/icon-256.png", "/icon-512.png", "/manifest.webmanifest":
+		return true
+	}
+
+	return strings.HasPrefix(path, "/assets/")
 }
 
 // bounded caps the body before the validator reads it. The validator reads a
@@ -431,34 +440,32 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 //   - style-src 'unsafe-inline': it styles its own controls inline;
 //   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
 //
-// authPolicy confines the sign-in pages, which are two static documents with
-// no script, no map, and one form posting back here — and, via StartLogin's
-// 303, on to the configured Auth0 tenant. form-action governs the whole
-// redirect chain a form submission follows, not only its immediate action, so
-// the tenant's origin is named here or a browser refuses to follow that
-// redirect at all.
-func (h *Handler) authPolicy() string {
-	formAction := "form-action 'self'"
-	if h.authOrigin != "" {
-		formAction += " " + h.authOrigin
-	}
-
-	return strings.Join([]string{
-		"default-src 'none'", "base-uri 'none'", "frame-ancestors 'none'",
-		formAction, "style-src 'unsafe-inline'", "img-src 'self'",
-	}, "; ")
-}
-
+// Nothing served before an identity exists names a tile origin — the sign-in
+// routes or a build artefact. The sign-in routes also allow one form: 'self'
+// posts to /auth/start, whose 303 carries the same submission on to the
+// configured Auth0 tenant. form-action governs the whole redirect chain a
+// submission follows, not only its immediate action, so the tenant is named
+// there or a browser refuses to follow it.
 func (h *Handler) contentSecurityPolicy(path string) string {
-	if strings.HasPrefix(path, "/auth/") {
-		return h.authPolicy()
+	formAction := "form-action 'none'"
+	var tileOrigins []string
+	signIn := strings.HasPrefix(path, "/auth/")
+	if signIn {
+		formAction = "form-action 'self'"
+		if h.authOrigin != "" {
+			formAction += " " + h.authOrigin
+		}
 	}
-
-	// A list that cannot be reduced to origins was never allowed to be stored, so
-	// this is a bug. The header then names no tile origin, blanking the map.
-	tileOrigins, err := tileOriginsOf(h.settings.Values().Basemaps)
-	if err != nil {
-		tileOrigins = nil
+	// The configured map is named to a caller that could hold an identity and to
+	// no other: every answer served before one is a build artefact with no map
+	// in it, and the header would otherwise hand the origins to anyone.
+	if !signIn && !publicAsset(path) {
+		// A list that cannot be reduced to origins was never allowed to be stored, so
+		// this is a bug. The header then names no tile origin, blanking the map.
+		origins, err := tileOriginsOf(h.settings.Values().Basemaps)
+		if err == nil {
+			tileOrigins = origins
+		}
 	}
 
 	return strings.Join([]string{
@@ -466,14 +473,14 @@ func (h *Handler) contentSecurityPolicy(path string) string {
 		"base-uri 'none'",
 		"object-src 'none'",
 		"frame-ancestors 'none'",
-		"form-action 'none'",
+		formAction,
 		"script-src 'self'",
 		"style-src 'self' 'unsafe-inline'",
 		"font-src 'self'",
 		"worker-src 'self' blob:",
 		"child-src 'self' blob:",
-		"img-src 'self' data: blob: " + strings.Join(tileOrigins, " "),
-		"connect-src 'self' " + strings.Join(tileOrigins, " "),
+		strings.TrimSpace("img-src 'self' data: blob: " + strings.Join(tileOrigins, " ")),
+		strings.TrimSpace("connect-src 'self' " + strings.Join(tileOrigins, " ")),
 	}, "; ")
 }
 

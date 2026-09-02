@@ -1,6 +1,6 @@
 /**
- * The sign-in and sign-out round trip, through the real gate: the static
- * `/auth/login` page, the `/auth/start` redirect, and the fake issuer
+ * The sign-in and sign-out round trip, through the real gate: the application
+ * document at `/auth/login`, the `/auth/start` redirect, and the fake issuer
  * `dev/demoapi` stands up for a demo.
  *
  * Every test here signs in for itself rather than reusing `bundlePage`'s

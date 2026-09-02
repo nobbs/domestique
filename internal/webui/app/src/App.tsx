@@ -1,5 +1,6 @@
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
+import { SignInPage } from "./features/auth/SignInPage";
 import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
@@ -72,6 +73,9 @@ export function App() {
       <Route path="routes/:provider/:sourceRouteId/:stageOrder" element={<OpenedRoute />} />
       <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
       <Route path="catalogue" element={<CataloguePage />} />
+      {/* The one page reached without a session. The service serves this same
+          document there, so the sign-in form is the application's own. */}
+      <Route path="auth/login" element={<SignInPage />} />
       <Route path="sync" element={<SyncPage />} />
       <Route
         path="settings"

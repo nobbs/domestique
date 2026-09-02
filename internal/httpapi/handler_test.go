@@ -197,11 +197,6 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z",
 		"/oauth/wahoo/start/rider-a",
 		"/oauth/wahoo/callback",
-		"/assets/app-abc123.js",
-		"/favicon.svg",
-		"/icon-256.png",
-		"/icon-512.png",
-		"/manifest.webmanifest",
 		"/",
 		"/routes/veloplanner/1/1",
 		"/catalogue",
@@ -221,6 +216,39 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 			refusedResponse := httptest.NewRecorder()
 			refusing.ServeHTTP(refusedResponse, authenticatedRequest(http.MethodGet, path))
 			assert.Equalf(t, http.StatusUnauthorized, refusedResponse.Code, "refused session %s", path)
+		})
+	}
+}
+
+// The sign-in page is the application bundle, so what it names is fetched
+// before any identity exists. These carry build output and no state.
+func TestBuildArtefactsAreServedWithoutASession(t *testing.T) {
+	handler := newTestHandler(t)
+
+	for _, path := range []string{
+		"/assets/app-abc123.js",
+		"/favicon.svg",
+		"/icon-256.png",
+		"/icon-512.png",
+		"/manifest.webmanifest",
+	} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, path, http.NoBody))
+			assert.Equal(t, http.StatusOK, response.Code)
+			// The header travels with the artefact, so it must not name the
+			// configured map to a caller that has proved nothing.
+			assert.NotContains(t, response.Header().Get("Content-Security-Policy"), "tiles.example.test")
+			// One answer for every caller: a cache told otherwise re-fetches the
+			// whole bundle at every sign-in and sign-out.
+			assert.Empty(t, response.Header().Get("Vary"))
+
+			// Reads only. Anything else about the same path meets the gate.
+			written := httptest.NewRecorder()
+			handler.ServeHTTP(written, httptest.NewRequestWithContext(
+				t.Context(), http.MethodPost, path, http.NoBody))
+			assert.Equal(t, http.StatusUnauthorized, written.Code)
 		})
 	}
 }
