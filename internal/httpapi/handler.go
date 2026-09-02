@@ -267,8 +267,9 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Cache-Control", cacheAPI)
-	// Every answer below this line depends on the session cookie, including the
-	// ones a shared cache would otherwise be free to reuse for anyone.
+	// Set on every answer, not only the ones that read the cookie: a blanket
+	// Vary is what keeps a shared cache from reusing one caller's page for
+	// another, and /healthz below is static enough not to mind.
 	header.Set("Vary", "Cookie")
 	// HEAD as well as GET: Go's "GET /healthz" pattern answers both, and a
 	// liveness probe that sends HEAD must not be told it needs an identity.

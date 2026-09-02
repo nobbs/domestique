@@ -285,9 +285,9 @@ func hasPath(values map[string]any, path []string) bool {
 	return false
 }
 
-// validateAuth0 accepts the section wholly absent or wholly present, and
-// returns the deduplicated subject allowlist. A half-configured section would
-// leave the service with no way to authenticate anyone.
+// validateAuth0 requires the section whole and returns the deduplicated subject
+// allowlist. It is the only gate the service has, so anything less than all of
+// domain, client id, and allowlist leaves no way to authenticate anyone.
 func validateAuth0(raw *rawAuth0) ([]string, error) {
 	subjects := trimmedSubjects(raw.AllowedSubjects)
 	values := map[string]bool{
