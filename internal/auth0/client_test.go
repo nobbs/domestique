@@ -199,7 +199,7 @@ func newClient(t *testing.T, issuer *fakeIssuer, httpClient *http.Client, now fu
 	client, err := New(&Options{
 		Domain:       issuer.domain,
 		ClientID:     testClientID,
-		ClientSecret: testClientSecret,
+		ClientSecret: []byte(testClientSecret),
 		RedirectURL:  testRedirectURL,
 		HTTPClient:   httpClient,
 		Now:          now,
@@ -216,10 +216,10 @@ func TestNewRejectsNilOptions(t *testing.T) {
 
 func TestNewRequiresEachOption(t *testing.T) {
 	cases := map[string]Options{
-		"blank domain":        {Domain: "", ClientID: testClientID, ClientSecret: testClientSecret, RedirectURL: testRedirectURL},
-		"blank client id":     {Domain: "tenant.example.com", ClientID: "", ClientSecret: testClientSecret, RedirectURL: testRedirectURL},
-		"blank client secret": {Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: "", RedirectURL: testRedirectURL},
-		"blank redirect url":  {Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: testClientSecret, RedirectURL: ""},
+		"blank domain":        {Domain: "", ClientID: testClientID, ClientSecret: []byte(testClientSecret), RedirectURL: testRedirectURL},
+		"blank client id":     {Domain: "tenant.example.com", ClientID: "", ClientSecret: []byte(testClientSecret), RedirectURL: testRedirectURL},
+		"blank client secret": {Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: nil, RedirectURL: testRedirectURL},
+		"blank redirect url":  {Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: []byte(testClientSecret), RedirectURL: ""},
 	}
 	for name, options := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -242,7 +242,7 @@ func TestNewRejectsMalformedURLs(t *testing.T) {
 	for name, options := range cases {
 		t.Run(name, func(t *testing.T) {
 			options.ClientID = testClientID
-			options.ClientSecret = testClientSecret
+			options.ClientSecret = []byte(testClientSecret)
 			_, err := New(&options)
 			assert.Error(t, err)
 		})
@@ -252,7 +252,7 @@ func TestNewRejectsMalformedURLs(t *testing.T) {
 func TestExchangeRequiresParameters(t *testing.T) {
 	transport := &countingTransport{base: http.DefaultTransport}
 	client, err := New(&Options{
-		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: testClientSecret, RedirectURL: testRedirectURL,
+		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: []byte(testClientSecret), RedirectURL: testRedirectURL,
 		HTTPClient: &http.Client{Transport: transport},
 	})
 	require.NoError(t, err)
@@ -289,7 +289,7 @@ func TestAuthorizationURL(t *testing.T) {
 	client, err := New(&Options{
 		Domain:       "tenant.example.com",
 		ClientID:     testClientID,
-		ClientSecret: testClientSecret,
+		ClientSecret: []byte(testClientSecret),
 		RedirectURL:  testRedirectURL,
 	})
 	require.NoError(t, err)
@@ -320,7 +320,7 @@ func TestAuthorizationURL(t *testing.T) {
 
 func TestAuthorizationURLRequiresParameters(t *testing.T) {
 	client, err := New(&Options{
-		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: testClientSecret, RedirectURL: testRedirectURL,
+		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: []byte(testClientSecret), RedirectURL: testRedirectURL,
 	})
 	require.NoError(t, err)
 
@@ -441,7 +441,7 @@ func (c *countingTransport) RoundTrip(request *http.Request) (*http.Response, er
 func TestNewAndAuthorizationURLContactNothing(t *testing.T) {
 	transport := &countingTransport{base: http.DefaultTransport}
 	client, err := New(&Options{
-		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: testClientSecret, RedirectURL: testRedirectURL,
+		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: []byte(testClientSecret), RedirectURL: testRedirectURL,
 		HTTPClient: &http.Client{Transport: transport},
 	})
 	require.NoError(t, err)
@@ -485,7 +485,7 @@ func TestExchangeInitialisationFloor(t *testing.T) {
 	transport := &countingTransport{base: http.DefaultTransport}
 	clock := &manualClock{now: time.Now()}
 	client, err := New(&Options{
-		Domain: unreachable, ClientID: testClientID, ClientSecret: testClientSecret, RedirectURL: testRedirectURL,
+		Domain: unreachable, ClientID: testClientID, ClientSecret: []byte(testClientSecret), RedirectURL: testRedirectURL,
 		HTTPClient: &http.Client{Timeout: time.Second, Transport: transport},
 		Now:        clock.Now,
 	})
@@ -551,6 +551,38 @@ func TestBoundedHTTPClientBoundsTheTimeout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBoundedHTTPClientRefusesRedirects(t *testing.T) {
+	var followed atomic.Bool
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		followed.Store(true)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(target.Close)
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	t.Cleanup(redirector.Close)
+
+	response, err := boundedHTTPClient(nil).Get(redirector.URL) //nolint:noctx // no context to carry in a transport test.
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, response.Body.Close()) })
+
+	assert.Equal(t, http.StatusFound, response.StatusCode, "the redirect itself must be returned")
+	assert.False(t, followed.Load(), "a request carrying the client secret must not be redirected")
+}
+
+func TestNewClonesTheClientSecret(t *testing.T) {
+	secret := []byte("secret")
+	client, err := New(&Options{
+		Domain: "tenant.example.com", ClientID: testClientID, ClientSecret: secret, RedirectURL: testRedirectURL,
+	})
+	require.NoError(t, err)
+
+	secret[0] = 'x'
+	assert.Equal(t, []byte("secret"), client.clientSecret, "the caller must not be able to change the stored secret")
 }
 
 func TestLimitedBodyStopsAtTheCap(t *testing.T) {

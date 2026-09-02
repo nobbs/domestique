@@ -3,6 +3,7 @@
 package auth0
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -29,8 +30,8 @@ type Options struct {
 	Now          func() time.Time
 	Domain       string
 	ClientID     string
-	ClientSecret string
 	RedirectURL  string
+	ClientSecret []byte
 }
 
 // Identity is the verified caller an exchanged ID token names.
@@ -49,8 +50,8 @@ type Client struct {
 	sdk             *authentication.Authentication
 	domain          string
 	clientID        string
-	clientSecret    string
 	redirectURL     string
+	clientSecret    []byte
 	mu              sync.Mutex
 }
 
@@ -64,9 +65,8 @@ func New(options *Options) (*Client, error) {
 
 	domain := strings.TrimSpace(options.Domain)
 	clientID := strings.TrimSpace(options.ClientID)
-	clientSecret := strings.TrimSpace(options.ClientSecret)
 	redirectURL := strings.TrimSpace(options.RedirectURL)
-	if domain == "" || clientID == "" || clientSecret == "" || redirectURL == "" {
+	if domain == "" || clientID == "" || len(options.ClientSecret) == 0 || redirectURL == "" {
 		return nil, errors.New("auth0: domain, client id, client secret, and redirect url are required")
 	}
 	if err := validateDomain(domain); err != nil {
@@ -85,7 +85,7 @@ func New(options *Options) (*Client, error) {
 	return &Client{
 		domain:       domain,
 		clientID:     clientID,
-		clientSecret: clientSecret,
+		clientSecret: bytes.Clone(options.ClientSecret),
 		redirectURL:  redirectURL,
 		httpClient:   httpClient,
 		now:          now,
@@ -206,7 +206,7 @@ func (c *Client) authentication() (*authentication.Authentication, error) {
 		context.Background(),
 		c.domain,
 		authentication.WithClientID(c.clientID),
-		authentication.WithClientSecret(c.clientSecret),
+		authentication.WithClientSecret(string(c.clientSecret)),
 		authentication.WithIDTokenSigningAlg("RS256"),
 		authentication.WithClient(c.httpClient),
 		authentication.WithNoRetries(),

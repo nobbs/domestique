@@ -36,8 +36,16 @@ func boundedHTTPClient(client *http.Client) *http.Client {
 	if _, already := bounded.Transport.(*boundedTransport); !already {
 		bounded.Transport = &boundedTransport{base: bounded.Transport}
 	}
+	bounded.CheckRedirect = refuseRedirect
 
 	return bounded
+}
+
+// refuseRedirect keeps the token exchange from following a redirect: the
+// request carries the client secret, and the tenant it was addressed to is the
+// only one allowed to answer.
+func refuseRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 // boundedTransport wraps a RoundTripper to cap the response body it returns.
