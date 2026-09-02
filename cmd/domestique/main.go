@@ -215,6 +215,7 @@ func run(ctx context.Context) error {
 			BuildImageDigest: buildInfo.ImageDigest,
 			Sessions:         sessions,
 			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
+			Auth0Domain:      settings.Auth.Auth0.Domain,
 			// What the page reports is the map build classifications are
 			// actually being read from, not the one the state database last
 			// wrote down — those differ exactly when a recorded build's file did

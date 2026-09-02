@@ -46,12 +46,37 @@ func TestSignInPagesCarryTheirOwnPolicy(t *testing.T) {
 	page := httptest.NewRecorder()
 	handler.ServeHTTP(page, httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, "/auth/login", http.NoBody))
-	assert.Equal(t, authPolicy, page.Header().Get("Content-Security-Policy"))
+	policy := page.Header().Get("Content-Security-Policy")
+	assert.Equal(t, handler.authPolicy(), policy)
+	// The actual production bug: form-action governs the whole redirect chain a
+	// form submission follows, not only its immediate action, so a browser
+	// refuses to follow StartLogin's 303 to the tenant unless it is named here.
+	assert.Contains(t, policy, "form-action 'self' https://"+testAuth0Domain)
 
 	app := httptest.NewRecorder()
 	handler.ServeHTTP(app, signedInRequest(http.MethodGet, "/"))
 	assert.Contains(t, app.Header().Get("Content-Security-Policy"), "script-src 'self'")
-	assert.NotEqual(t, authPolicy, app.Header().Get("Content-Security-Policy"))
+	assert.NotEqual(t, handler.authPolicy(), app.Header().Get("Content-Security-Policy"))
+}
+
+// A handler built without Auth0Domain degrades the header rather than failing
+// construction — the same choice this file already makes when a basemap's
+// style URL cannot be reduced to a tile origin.
+func TestAuthPolicyDegradesWithoutAuth0Domain(t *testing.T) {
+	handler, err := New(
+		&Options{
+			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
+			Settings:         settingsWith(testBasemaps()),
+			Sessions:         newFakeSessions(),
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; "+
+		"form-action 'self'; style-src 'unsafe-inline'; img-src 'self'", handler.authPolicy())
 }
 
 // The sign-in flow is the way in, so nothing about it may need a session.

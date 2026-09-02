@@ -232,6 +232,7 @@ func newHandler(
 			BuildRevision:    "demo",
 			Sessions:         sessions,
 			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
+			Auth0Domain:      settings.Auth.Auth0.Domain,
 		},
 		oauthService,
 		store,

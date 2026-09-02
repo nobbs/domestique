@@ -98,6 +98,7 @@ func newSessionHandler(t *testing.T, sessions Sessions) *Handler {
 			Settings:         settingsWith(testBasemaps()),
 			Sessions:         sessions,
 			BrowserOriginURL: testBrowserOriginURL,
+			Auth0Domain:      testAuth0Domain,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
 	)
