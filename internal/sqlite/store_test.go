@@ -126,7 +126,7 @@ func TestStoreRefusesInvalidMigrationState(t *testing.T) {
 			return nil
 		},
 		"watermark mismatch": func(ctx context.Context, database *sql.DB) error {
-			if _, err := database.ExecContext(ctx, fmt.Sprintf(`INSERT INTO schema_migrations (version, applied_at_unix) VALUES (%d, 0)`, currentSchemaVersion+1)); err != nil {
+			if _, err := database.ExecContext(ctx, `INSERT INTO schema_migrations (version, applied_at_unix) VALUES (?, 0)`, currentSchemaVersion+1); err != nil {
 				return fmt.Errorf("advancing legacy watermark: %w", err)
 			}
 			return nil
