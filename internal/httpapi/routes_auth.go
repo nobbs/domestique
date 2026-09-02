@@ -20,11 +20,26 @@ func (h *Handler) GetLoginPage(writer http.ResponseWriter, _ *http.Request) {
 	h.page(writer, http.StatusOK, "login.html", nil)
 }
 
+// sameOrigin is the provenance check for the two routes outside the OpenAPI
+// document: StartLogin's full-page form post and Logout's fetch call. Where a
+// browser sends Sec-Fetch-Site, it is trusted over Origin: Safari answers a
+// top-level POST navigation from a page served with Referrer-Policy:
+// no-referrer — this login page, deliberately — with Origin: null, and
+// Sec-Fetch-Site is what still says same-origin correctly. A caller sending
+// neither header falls back to the exact Origin match this always did.
+func (h *Handler) sameOrigin(request *http.Request) bool {
+	if site := request.Header.Get("Sec-Fetch-Site"); site != "" {
+		return site == "same-origin"
+	}
+
+	return request.Header.Get("Origin") == h.browserOrigin
+}
+
 // StartLogin mints a sign-in and redirects the browser to the provider. The
 // Origin check is the one the contract's browserOrigin scheme makes; these
 // routes sit outside the document, so it is made here.
 func (h *Handler) StartLogin(writer http.ResponseWriter, request *http.Request) {
-	if request.Header.Get("Origin") != h.browserOrigin {
+	if !h.sameOrigin(request) {
 		h.page(writer, http.StatusForbidden, "denied.html", pageValues{Message: signInFailed})
 
 		return
@@ -96,7 +111,7 @@ func (h *Handler) CompleteLogin(writer http.ResponseWriter, request *http.Reques
 // Logout ends a browser session. Deliberately not gated: a session the gate
 // will no longer admit is exactly the one whose cookie has to be cleared.
 func (h *Handler) Logout(writer http.ResponseWriter, request *http.Request) {
-	if request.Header.Get("Origin") != h.browserOrigin {
+	if !h.sameOrigin(request) {
 		h.error(writer, http.StatusForbidden, "forbidden", "request origin is not permitted")
 
 		return

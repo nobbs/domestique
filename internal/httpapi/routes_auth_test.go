@@ -93,6 +93,45 @@ func TestStartLoginRequiresTheBrowserOrigin(t *testing.T) {
 	}
 }
 
+// Safari answers a top-level POST navigation from login.html, served with
+// Referrer-Policy: no-referrer, with Origin: null. Sec-Fetch-Site is what a
+// real same-origin form post still carries correctly, and Chrome and Firefox
+// send both headers in agreement, so trusting it here does not admit anything
+// Origin alone would have refused for them.
+func TestStartLoginAcceptsSameOriginBySecFetchSite(t *testing.T) {
+	sessions := newFakeSessions()
+	handler := newSessionHandler(t, sessions)
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/start", http.NoBody)
+	request.Header.Set("Origin", "null")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	assert.NotEqual(t, http.StatusForbidden, response.Code)
+	assert.Equal(t, 1, sessions.beginCalls)
+}
+
+// A page on another site cannot make Sec-Fetch-Site lie about cross-site: the
+// browser sets it, not the page. A cross-site value must refuse even a request
+// that also happens to carry the right Origin, so a caller cannot pick whichever
+// header this handler trusts.
+func TestStartLoginRefusesCrossSiteEvenWithTheBrowserOrigin(t *testing.T) {
+	sessions := newFakeSessions()
+	handler := newSessionHandler(t, sessions)
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/start", http.NoBody)
+	request.Header.Set("Origin", testBrowserOrigin)
+	request.Header.Set("Sec-Fetch-Site", "cross-site")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	assert.Equal(t, http.StatusForbidden, response.Code)
+	assert.Zero(t, sessions.beginCalls, "a refused request still started a sign-in")
+}
+
 func TestStartLoginRefusesWhenBeginFails(t *testing.T) {
 	sessions := newFakeSessions()
 	sessions.beginErr = errors.New("provider unreachable")
