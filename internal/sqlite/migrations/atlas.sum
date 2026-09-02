@@ -1,5 +1,7 @@
-h1:81ydDzX4JS/nqkc8s0qv7qtgRKYCUpFSvAp/C7X9FYc=
+h1:AimDWrbZ54HtiapwBqMif3HSqhJqVlifBxu2kSyYbjs=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
 000028_web_sessions.up.sql h1:V6ItqUhTuY+9jaZRSqFm0vhv/lZhgUWJAP3V9X53Ywk=
+000029_fixed_session_lifetime.down.sql h1:AMQysB6Z4Joto/TxmbSRWbsziQxwMgtewPn3m8/HWAs=
+000029_fixed_session_lifetime.up.sql h1:2KUpqVxUvc0E1gWyks0KN7WYHVT0/DeOdl67WbgrPwU=

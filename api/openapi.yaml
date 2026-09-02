@@ -1965,9 +1965,16 @@ components:
         them: it is how a session can be seen to be the one intended.
       required:
         - display
+        - admin
       properties:
         display:
           type: string
+        admin:
+          type: boolean
+          description: >-
+            Whether this subject holds cross-subject rights, asserted by the
+            Auth0 Action that decided it as well as whether this subject may
+            sign in at all.
     SourceBaseUrls:
       type: object
       additionalProperties: false

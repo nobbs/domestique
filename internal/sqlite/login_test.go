@@ -104,13 +104,13 @@ func TestStoreRoundTripsSession(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(5)
 	expiresAt := now.Add(time.Hour)
-	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", now, expiresAt), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", true, now, expiresAt), "CreateSession()")
 
-	subject, display, renewedAt, gotExpiresAt, err := store.Session(t.Context(), digest, now)
+	subject, display, admin, gotExpiresAt, err := store.Session(t.Context(), digest, now)
 	require.NoError(t, err, "Session()")
 	assert.Equal(t, "rider@example.ts.net", subject, "Session() subject")
 	assert.Equal(t, "Rider", display, "Session() display")
-	assert.Equal(t, now.Unix(), renewedAt.Unix(), "Session() renewedAt")
+	assert.True(t, admin, "Session() admin")
 	assert.Equal(t, expiresAt.Unix(), gotExpiresAt.Unix(), "Session() expiresAt")
 
 	_, _, _, _, err = store.Session(t.Context(), loginDigest(6), now)
@@ -121,42 +121,17 @@ func TestStoreReportsExpiredSession(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(7)
-	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", now, now.Add(time.Minute)), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", false, now, now.Add(time.Minute)), "CreateSession()")
 
 	_, _, _, _, err := store.Session(t.Context(), digest, now.Add(time.Minute))
 	require.ErrorIs(t, err, ErrSessionExpired, "Session() at expiry")
-}
-
-func TestStoreRenewsSession(t *testing.T) {
-	store := openTestStore(t, testKey(1))
-	now := time.Unix(1_700_000_000, 0)
-	digest := loginDigest(8)
-	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", now, now.Add(time.Minute)), "CreateSession()")
-
-	stale := loginDigest(9)
-	require.NoError(t, store.CreateSession(t.Context(), stale, "other@example.ts.net", "Other", now, now.Add(20*time.Second)), "CreateSession() stale")
-
-	renewedAt := now.Add(30 * time.Second)
-	newExpiresAt := renewedAt.Add(time.Hour)
-	require.NoError(t, store.RenewSession(t.Context(), digest, renewedAt, newExpiresAt), "RenewSession()")
-
-	_, _, gotRenewedAt, gotExpiresAt, err := store.Session(t.Context(), digest, renewedAt)
-	require.NoError(t, err, "Session() after renewal")
-	assert.Equal(t, renewedAt.Unix(), gotRenewedAt.Unix(), "Session() renewedAt after renewal")
-	assert.Equal(t, newExpiresAt.Unix(), gotExpiresAt.Unix(), "Session() expiresAt after renewal")
-
-	err = store.RenewSession(t.Context(), loginDigest(10), renewedAt, newExpiresAt)
-	require.ErrorIs(t, err, ErrSessionNotFound, "RenewSession() unknown digest")
-
-	_, _, _, _, err = store.Session(t.Context(), stale, renewedAt)
-	require.ErrorIs(t, err, ErrSessionNotFound, "Session() a session RenewSession should have pruned")
 }
 
 func TestStoreDeletesSession(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(11)
-	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", now, now.Add(time.Hour)), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", false, now, now.Add(time.Hour)), "CreateSession()")
 
 	require.NoError(t, store.DeleteSession(t.Context(), digest), "DeleteSession()")
 	_, _, _, _, err := store.Session(t.Context(), digest, now)
@@ -180,17 +155,17 @@ func TestStoreRejectsInvalidInput(t *testing.T) {
 		"BeginLogin blank verifier":    func() error { return store.BeginLogin(t.Context(), loginDigest(20), "nonce", "", now, future) },
 		"BeginLogin non-future expiry": func() error { return store.BeginLogin(t.Context(), loginDigest(20), "nonce", "verifier", now, now) },
 		"ConsumeLogin short digest":    func() error { _, _, err := store.ConsumeLogin(t.Context(), short, now); return err },
-		"CreateSession short digest":   func() error { return store.CreateSession(t.Context(), short, "subject", "display", now, future) },
-		"CreateSession blank subject":  func() error { return store.CreateSession(t.Context(), loginDigest(21), "", "display", now, future) },
-		"CreateSession blank display":  func() error { return store.CreateSession(t.Context(), loginDigest(21), "subject", " ", now, future) },
+		"CreateSession short digest":   func() error { return store.CreateSession(t.Context(), short, "subject", "display", false, now, future) },
+		"CreateSession blank subject": func() error {
+			return store.CreateSession(t.Context(), loginDigest(21), "", "display", false, now, future)
+		},
+		"CreateSession blank display": func() error {
+			return store.CreateSession(t.Context(), loginDigest(21), "subject", " ", false, now, future)
+		},
 		"CreateSession non-future expiry": func() error {
-			return store.CreateSession(t.Context(), loginDigest(21), "subject", "display", now, now)
+			return store.CreateSession(t.Context(), loginDigest(21), "subject", "display", false, now, now)
 		},
-		"Session short digest":      func() error { _, _, _, _, err := store.Session(t.Context(), short, now); return err },
-		"RenewSession short digest": func() error { return store.RenewSession(t.Context(), short, now, future) },
-		"RenewSession non-future expiry": func() error {
-			return store.RenewSession(t.Context(), loginDigest(22), now, now)
-		},
+		"Session short digest":       func() error { _, _, _, _, err := store.Session(t.Context(), short, now); return err },
 		"DeleteSession short digest": func() error { return store.DeleteSession(t.Context(), short) },
 	}
 	for name, call := range tests {
@@ -204,10 +179,10 @@ func TestStoreCreateSessionPrunesExpiredRows(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	stale := loginDigest(12)
-	require.NoError(t, store.CreateSession(t.Context(), stale, "rider@example.ts.net", "Rider", now, now.Add(time.Second)), "CreateSession() stale")
+	require.NoError(t, store.CreateSession(t.Context(), stale, "rider@example.ts.net", "Rider", false, now, now.Add(time.Second)), "CreateSession() stale")
 
 	fresh := loginDigest(13)
-	require.NoError(t, store.CreateSession(t.Context(), fresh, "rider@example.ts.net", "Rider", now.Add(time.Minute), now.Add(2*time.Minute)), "CreateSession() fresh")
+	require.NoError(t, store.CreateSession(t.Context(), fresh, "rider@example.ts.net", "Rider", false, now.Add(time.Minute), now.Add(2*time.Minute)), "CreateSession() fresh")
 
 	_, _, _, _, err := store.Session(t.Context(), stale, now.Add(time.Minute))
 	require.ErrorIs(t, err, ErrSessionNotFound, "Session() a row CreateSession should have pruned")
@@ -229,14 +204,11 @@ func TestStoreReportsLoginStorageFailures(t *testing.T) {
 			return err
 		}},
 		"CreateSession": {table: "web_sessions", call: func(store *Store) error {
-			return store.CreateSession(t.Context(), loginDigest(31), "subject", "display", now, future)
+			return store.CreateSession(t.Context(), loginDigest(31), "subject", "display", false, now, future)
 		}},
 		"Session": {table: "web_sessions", call: func(store *Store) error {
 			_, _, _, _, err := store.Session(t.Context(), loginDigest(31), now)
 			return err
-		}},
-		"RenewSession": {table: "web_sessions", call: func(store *Store) error {
-			return store.RenewSession(t.Context(), loginDigest(31), now, future)
 		}},
 		"DeleteSession": {table: "web_sessions", call: func(store *Store) error {
 			return store.DeleteSession(t.Context(), loginDigest(31))
@@ -263,6 +235,6 @@ func TestStoreRejectsDuplicateDigests(t *testing.T) {
 	require.Error(t, store.BeginLogin(t.Context(), state, "nonce", "verifier", now, future), "BeginLogin() reusing a state digest")
 
 	token := loginDigest(33)
-	require.NoError(t, store.CreateSession(t.Context(), token, "subject", "display", now, future), "CreateSession()")
-	assert.Error(t, store.CreateSession(t.Context(), token, "subject", "display", now, future), "CreateSession() reusing a token digest")
+	require.NoError(t, store.CreateSession(t.Context(), token, "subject", "display", false, now, future), "CreateSession()")
+	assert.Error(t, store.CreateSession(t.Context(), token, "subject", "display", false, now, future), "CreateSession() reusing a token digest")
 }

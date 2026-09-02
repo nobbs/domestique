@@ -140,18 +140,26 @@ library: `current`, `lagging`, `failed` or `unauthorized`. See
 ## Sign-in
 
 **subject** — the OIDC `sub` claim Auth0 asserts for a signed-in identity, such
-as `github|123456`. It is the wire word (`allowed_subjects`) and the code word
-alike; it is never called a *principal*, a *user*, or an *account* — those
-name other things this project already uses those words for.
+as `github|123456`. It is the wire word and the code word alike; it is never
+called a *principal*, a *user*, or an *account* — those name other things this
+project already uses those words for.
 
-**allowed subject** — a subject named in `allowed_subjects`, and therefore
-authorised. The allowlist is re-checked on every request, so being an allowed
-subject is a live fact about the current configuration, not a stored role.
+**allowed subject** — a subject the tenant's post-login Action asserted the
+access claim for, and therefore authorised. That decision is made once, at
+sign-in, not re-checked against anything live on every later request; the
+fixed session lifetime below is what bounds how long it can go stale.
+
+**admin** — a subject the tenant's post-login Action asserted the admin claim
+for. Distinct from *operator*: an admin holds cross-subject rights within the
+running service, asserted the same way *allowed subject* is; an operator runs
+the service and holds its configuration. The two are often the same person,
+but a sentence meaning one does not mean the other.
 
 **session** — the browser's proof of a subject's sign-in: the
 `__Host-domestique_session` cookie and the `web_sessions` row its hash
-identifies. See [configuration.md](specs/configuration.md#runtime-state) for
-what a session shares the state database's fate with.
+identifies. Fixed at a 24-hour lifetime, not renewed on use. See
+[configuration.md](specs/configuration.md#runtime-state) for what a session
+shares the state database's fate with.
 
 ## People
 

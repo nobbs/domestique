@@ -238,9 +238,8 @@ type SettingsState interface {
 // Sessions is who is signed in, as this surface needs it; *session.Service
 // satisfies it.
 type Sessions interface {
-	// Verify admits a caller. The returned time is non-zero exactly when the
-	// sliding expiry moved and the cookie must be re-issued carrying it.
-	Verify(ctx context.Context, token string) (session.Identity, time.Time, error)
+	// Verify admits a caller.
+	Verify(ctx context.Context, token string) (session.Identity, error)
 	Begin(ctx context.Context) (session.Login, error)
 	Complete(ctx context.Context, state, cookieState, code string) (session.Completion, error)
 	Revoke(ctx context.Context, token string) error

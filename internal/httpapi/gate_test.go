@@ -22,17 +22,16 @@ const (
 
 // fakeSessions stands in for internal/session and records what it was asked.
 type fakeSessions struct {
-	verifyErr    error
-	beginErr     error
-	completeErr  error
-	revokeErr    error
-	identity     session.Identity
-	login        session.Login
-	completion   session.Completion
-	renewedUntil time.Time
-	completed    []string
-	revoked      []string
-	beginCalls   int
+	verifyErr   error
+	beginErr    error
+	completeErr error
+	revokeErr   error
+	identity    session.Identity
+	login       session.Login
+	completion  session.Completion
+	completed   []string
+	revoked     []string
+	beginCalls  int
 }
 
 // newFakeSessions is a session service that admits testSessionToken and
@@ -52,15 +51,15 @@ func newFakeSessions() *fakeSessions {
 	}
 }
 
-func (s *fakeSessions) Verify(_ context.Context, token string) (session.Identity, time.Time, error) {
+func (s *fakeSessions) Verify(_ context.Context, token string) (session.Identity, error) {
 	if s.verifyErr != nil {
-		return session.Identity{}, time.Time{}, s.verifyErr
+		return session.Identity{}, s.verifyErr
 	}
 	if token != testSessionToken {
-		return session.Identity{}, time.Time{}, errors.New("no such session")
+		return session.Identity{}, errors.New("no such session")
 	}
 
-	return s.identity, s.renewedUntil, nil
+	return s.identity, nil
 }
 
 func (s *fakeSessions) Begin(context.Context) (session.Login, error) {
@@ -204,32 +203,16 @@ func TestGateSendsAPageRequestToSignIn(t *testing.T) {
 	assert.Equal(t, "/auth/login", response.Header().Get("Location"))
 }
 
-// The sliding expiry only moves on the store's terms, so the cookie is
-// re-issued exactly when it did.
-func TestGateReissuesARenewedCookie(t *testing.T) {
-	renewed := time.Date(2026, 12, 1, 9, 30, 0, 0, time.UTC)
-	sessions := newFakeSessions()
-	sessions.renewedUntil = renewed
-	handler := newSessionHandler(t, sessions)
-
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
-
-	require.Equal(t, http.StatusOK, response.Code)
-	cookie := setCookie(t, response, sessionCookie)
-	require.NotNil(t, cookie, "a renewed session did not re-issue its cookie")
-	assert.Equal(t, testSessionToken, cookie.Value)
-	assert.WithinDuration(t, renewed, cookie.Expires, time.Second)
-}
-
-func TestGateLeavesAnUnrenewedCookieAlone(t *testing.T) {
+// The gate never re-issues the session cookie: the lifetime is fixed, so
+// there is nothing for a request to move.
+func TestGateNeverReissuesTheCookie(t *testing.T) {
 	handler := newSessionHandler(t, newFakeSessions())
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
 
 	require.Equal(t, http.StatusOK, response.Code)
-	assert.Nil(t, setCookie(t, response, sessionCookie), "an unrenewed session re-issued its cookie")
+	assert.Nil(t, setCookie(t, response, sessionCookie), "the gate must not set a session cookie")
 }
 
 // Every answer depends on the cookie, so none of them may be reused for

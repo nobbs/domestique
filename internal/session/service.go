@@ -10,25 +10,31 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 )
 
 const (
-	sessionLifetime = 30 * 24 * time.Hour
-	renewInterval   = time.Hour
+	// sessionLifetime is fixed, not renewed: whether a subject may still sign
+	// in is an Auth0-Action-minted claim, checked only at sign-in time, so a
+	// revoked subject is reached only by forcing every session back through a
+	// real Auth0 round-trip within this bound rather than by a live per-request
+	// check.
+	sessionLifetime = 24 * time.Hour
 	loginLifetime   = 10 * time.Minute
 )
 
-// NotAllowedError reports a subject that authenticated but is not on the
-// configured allowlist. Error() deliberately omits the subject, so a logged
+// NotAllowedError reports a subject Auth0 authenticated but did not assert
+// the sign-in claim for. Error() deliberately omits the subject, so a logged
 // error never carries it; callers that need it for display read the field.
 type NotAllowedError struct{ Subject string }
 
 func (e *NotAllowedError) Error() string { return "subject is not allowed to sign in" }
 
 // Identity is the signed-in caller as later requests see it.
-type Identity struct{ Subject, Display string }
+type Identity struct {
+	Subject, Display string
+	Admin            bool
+}
 
 // Login is a pending browser sign-in: where to send the browser, and the
 // state it must return unchanged.
@@ -46,46 +52,38 @@ type Completion struct {
 type Store interface {
 	BeginLogin(ctx context.Context, stateDigest []byte, nonce, codeVerifier string, now, expiresAt time.Time) error
 	ConsumeLogin(ctx context.Context, stateDigest []byte, now time.Time) (nonce, codeVerifier string, err error)
-	CreateSession(ctx context.Context, tokenDigest []byte, subject, display string, now, expiresAt time.Time) error
-	Session(ctx context.Context, tokenDigest []byte, now time.Time) (subject, display string, renewedAt, expiresAt time.Time, err error)
-	RenewSession(ctx context.Context, tokenDigest []byte, now, expiresAt time.Time) error
+	CreateSession(ctx context.Context, tokenDigest []byte, subject, display string, admin bool, now, expiresAt time.Time) error
+	Session(ctx context.Context, tokenDigest []byte, now time.Time) (subject, display string, admin bool, expiresAt time.Time, err error)
 	DeleteSession(ctx context.Context, tokenDigest []byte) error
 }
 
 // Provider is the issuer as this package needs it, in primitives so this
-// package never imports the adapter behind it.
+// package never imports the adapter behind it. access and admin are the two
+// namespaced claims an Auth0 Action mints on the ID token: whether the
+// subject may hold a session at all, and whether it holds cross-subject
+// rights once it does.
 type Provider interface {
 	AuthorizationURL(ctx context.Context, state, nonce, codeVerifier string) (string, error)
-	Exchange(ctx context.Context, code, codeVerifier, nonce string) (subject, email, name string, err error)
+	Exchange(ctx context.Context, code, codeVerifier, nonce string) (subject, email, name string, access, admin bool, err error)
 }
 
 // Service coordinates browser sign-in and admits later requests.
 type Service struct {
-	store           Store
-	provider        Provider
-	allowedSubjects map[string]struct{}
-	now             func() time.Time
+	store    Store
+	provider Provider
+	now      func() time.Time
 }
 
 // New creates a session service with explicit consumer dependencies.
-func New(store Store, provider Provider, allowedSubjects []string, now func() time.Time) (*Service, error) {
+func New(store Store, provider Provider, now func() time.Time) (*Service, error) {
 	if store == nil || provider == nil {
 		return nil, errors.New("session store and provider are required")
-	}
-	allowed := make(map[string]struct{}, len(allowedSubjects))
-	for _, subject := range allowedSubjects {
-		if trimmed := strings.TrimSpace(subject); trimmed != "" {
-			allowed[trimmed] = struct{}{}
-		}
-	}
-	if len(allowed) == 0 {
-		return nil, errors.New("at least one allowed subject is required")
 	}
 	if now == nil {
 		now = time.Now
 	}
 
-	return &Service{store: store, provider: provider, allowedSubjects: allowed, now: now}, nil
+	return &Service{store: store, provider: provider, now: now}, nil
 }
 
 // Begin mints a sign-in state and returns where to send the browser.
@@ -119,7 +117,8 @@ func (s *Service) Begin(ctx context.Context) (Login, error) {
 }
 
 // Complete validates and consumes a pending sign-in, exchanges the
-// authorization code, and creates a browser session for an allowed subject.
+// authorization code, and creates a browser session for a subject Auth0
+// asserted the sign-in claim for.
 func (s *Service) Complete(ctx context.Context, state, cookieState, code string) (Completion, error) {
 	// The digests are compared, not the wire values: they are fixed length, so
 	// the comparison cannot leak through an early return on differing lengths,
@@ -136,11 +135,11 @@ func (s *Service) Complete(ctx context.Context, state, cookieState, code string)
 		return Completion{}, fmt.Errorf("consuming login: %w", err)
 	}
 
-	subject, email, name, err := s.provider.Exchange(ctx, code, verifier, nonce)
+	subject, email, name, access, admin, err := s.provider.Exchange(ctx, code, verifier, nonce)
 	if err != nil {
 		return Completion{}, fmt.Errorf("exchanging authorization code: %w", err)
 	}
-	if _, ok := s.allowedSubjects[subject]; !ok {
+	if !access {
 		return Completion{}, &NotAllowedError{Subject: subject}
 	}
 	display := display(email, name, subject)
@@ -150,43 +149,32 @@ func (s *Service) Complete(ctx context.Context, state, cookieState, code string)
 		return Completion{}, fmt.Errorf("minting session token: %w", err)
 	}
 	expiresAt := now.Add(sessionLifetime)
-	if err := s.store.CreateSession(ctx, tokenDigestBytes, subject, display, now, expiresAt); err != nil {
+	if err := s.store.CreateSession(ctx, tokenDigestBytes, subject, display, admin, now, expiresAt); err != nil {
 		return Completion{}, fmt.Errorf("storing session: %w", err)
 	}
 
 	return Completion{
 		Token:     token,
-		Identity:  Identity{Subject: subject, Display: display},
+		Identity:  Identity{Subject: subject, Display: display, Admin: admin},
 		ExpiresAt: expiresAt,
 	}, nil
 }
 
-// Verify admits a caller. renewedUntil is zero unless the sliding expiry
-// moved, in which case the cookie must be re-issued carrying it.
-func (s *Service) Verify(ctx context.Context, token string) (Identity, time.Time, error) {
+// Verify admits a caller by its stored session row. Whether the subject may
+// still sign in is checked only at sign-in time now; sessionLifetime is what
+// bounds how long a revoked subject's existing session keeps working.
+func (s *Service) Verify(ctx context.Context, token string) (Identity, error) {
 	digest, err := tokenDigest(token)
 	if err != nil {
-		return Identity{}, time.Time{}, errors.New("session token is invalid")
+		return Identity{}, errors.New("session token is invalid")
 	}
 
-	now := s.now()
-	subject, display, renewedAt, _, err := s.store.Session(ctx, digest, now)
+	subject, display, admin, _, err := s.store.Session(ctx, digest, s.now())
 	if err != nil {
-		return Identity{}, time.Time{}, fmt.Errorf("reading session: %w", err)
-	}
-	if _, ok := s.allowedSubjects[subject]; !ok {
-		return Identity{}, time.Time{}, errors.New("subject is no longer allowed")
+		return Identity{}, fmt.Errorf("reading session: %w", err)
 	}
 
-	var renewedUntil time.Time
-	if now.Sub(renewedAt) >= renewInterval {
-		renewedUntil = now.Add(sessionLifetime)
-		if err := s.store.RenewSession(ctx, digest, now, renewedUntil); err != nil {
-			return Identity{}, time.Time{}, fmt.Errorf("renewing session: %w", err)
-		}
-	}
-
-	return Identity{Subject: subject, Display: display}, renewedUntil, nil
+	return Identity{Subject: subject, Display: display, Admin: admin}, nil
 }
 
 // Revoke ends a browser session.

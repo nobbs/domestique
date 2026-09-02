@@ -33,6 +33,7 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, request *http.Reque
 		Basemaps: basemaps,
 		Identity: openapi.BrowserIdentity{
 			Display: identityOf(request.Context()).Display,
+			Admin:   identityOf(request.Context()).Admin,
 		},
 	}
 	// Omitted entirely when no source named one, so the page offers no link at

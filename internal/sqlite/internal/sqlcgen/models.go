@@ -249,4 +249,5 @@ type WebSession struct {
 	CreatedAtUnix int64
 	RenewedAtUnix int64
 	ExpiresAtUnix int64
+	Admin         int64
 }

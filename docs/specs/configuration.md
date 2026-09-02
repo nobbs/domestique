@@ -59,7 +59,6 @@ browser_origin_url = "https://domestique.example.com"
 domain = "yourtenant.eu.auth0.com"
 client_id = "the application's client ID"
 client_secret_file = "/run/secrets/auth0_client_secret"
-allowed_subjects = ["github|123456"]
 
 [state]
 database_path = "/var/lib/domestique/state.db"
@@ -152,25 +151,20 @@ application dependency.
   fixed by where the container is published, it gates the write path the
   settings page itself uses, and a wrong value edited through that page would
   lock the operator out of the page that could correct it.
-- `auth.auth0` is required in full: `domain`, `client_id`,
-  `client_secret_file`, and `allowed_subjects` must all be present. It is the
-  only gate the service has, and a missing or partly filled section is a
-  startup error, because a service that cannot verify a session cannot
-  authenticate anyone.
+- `auth.auth0` is required in full: `domain` and `client_id` must both be
+  present, alongside a client secret (below). It is the only gate the service
+  has, and a missing or partly filled section is a startup error, because a
+  service that cannot verify a session cannot authenticate anyone.
   - `domain` is the tenant host, `host[:port]` with no scheme and no path.
   - `client_id` and `domain` are not secrets: the tenant host and the client
     ID are public identifiers, and verification uses Auth0's published signing
     keys, so they are ordinary configuration values rather than secret files.
-  - `allowed_subjects` is a non-empty list of OIDC `sub` values — the exact
-    identity Auth0 asserts, such as `github|123456`. It is **file-only**: it
-    has no environment form at all, because the environment layer can carry a
-    single value per key and not a list.
-- `auth.auth0.allowed_subjects` is the list of identities allowed to use normal
-  or OAuth endpoints; each carries the same full operator rights, and the
-  service stays single-tenant in the sense that this is one short,
-  deliberately configured list rather than open registration. The `sub` claim
-  is matched exactly, with no normalisation, because it is an opaque
-  provider-issued identifier rather than a human-typed address.
+- Who may sign in, and who among them holds cross-subject rights, is not a
+  file setting: a post-login Action in the tenant asserts two namespaced ID
+  token claims, and this service does no more than read them. The `sub` claim
+  itself is still matched exactly, with no normalisation, because it is an
+  opaque provider-issued identifier rather than a human-typed address — there
+  is simply nothing left in this file to match it against.
 - `state.database_path` is required and must reside on the persistent Docker
   volume.
 - The interval between scheduled runs and the per-target deletion limit are not

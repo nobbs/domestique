@@ -343,8 +343,8 @@ func identityOf(ctx context.Context) session.Identity {
 	return identity
 }
 
-// gated admits a caller holding a valid session cookie, renewing it where the
-// sliding expiry moved, and puts the identity in the request context.
+// gated admits a caller holding a valid session cookie and puts the identity
+// in the request context.
 func (h *Handler) gated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		cookie, err := request.Cookie(sessionCookie)
@@ -353,7 +353,7 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 
 			return
 		}
-		identity, renewedUntil, err := h.sessions.Verify(request.Context(), cookie.Value)
+		identity, err := h.sessions.Verify(request.Context(), cookie.Value)
 		if err != nil {
 			// The reason stays here. Telling an unauthenticated caller why its
 			// session failed describes the check it has to defeat.
@@ -361,9 +361,6 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 			h.unauthenticated(writer, request)
 
 			return
-		}
-		if !renewedUntil.IsZero() {
-			h.setSessionCookie(writer, cookie.Value, renewedUntil)
 		}
 
 		next.ServeHTTP(writer, request.WithContext(

@@ -148,24 +148,29 @@ service is correct whether or not the proxy does. Everything else requires a
 session: a page request without one is redirected to `/auth/login`, and an
 API request without one answers JSON `401`.
 
-The service is still single-tenant. A short configured list of subjects is
-authorised, each with the same full operator rights, and there is exactly one
-way to prove membership in it: a session this service itself issued.
+Every subject Auth0 lets sign in currently holds the same full operator
+rights, and there is exactly one way to prove membership: a session this
+service itself issued.
 
 A session is created only by an authorisation-code flow with PKCE (S256) and a
 nonce, run against the configured Auth0 tenant through its own SDK. The
 service validates the ID token Auth0 returns itself — signature (RS256),
 issuer, audience equal to the configured client ID, expiry, and nonce — and
-matches its `sub` claim exactly against `allowed_subjects`. The allowlist is
-re-checked on every request, so removing a subject from it and restarting
-revokes that subject's live sessions immediately, without waiting for the
-session to expire.
+then reads one namespaced claim the tenant's post-login Action asserts: whether
+this subject may hold a session at all. Who that Action admits, and on what
+terms, is the tenant's own configuration, not something this file holds; a
+subject the Action does not admit is refused before Auth0 ever issues a code,
+answering the callback with `error=access_denied` instead.
 
-The gate is a session cookie, `__Host-domestique_session`, carrying an opaque
-256-bit token; only its SHA-256 is stored, in `web_sessions`. It is `Secure`,
-`HttpOnly`, `SameSite=Lax`, scoped to `Path=/` with no `Domain`, and slides
-forward on use — a 30-day expiry renewed at most once an hour. Signing out
-revokes it server-side. Sessions live in the state database and share its
+Whether a subject may still sign in is decided at sign-in time, not re-checked
+against anything live on every later request, so the session itself has to
+bound how long a revoked subject's access can keep working: the gate is a
+session cookie, `__Host-domestique_session`, carrying an opaque 256-bit token;
+only its SHA-256 is stored, in `web_sessions`. It is `Secure`, `HttpOnly`,
+`SameSite=Lax`, scoped to `Path=/` with no `Domain`, and fixed at a 24-hour
+expiry — not renewed on use, so a subject is forced back through a real Auth0
+round-trip within a day of any change to the Action's own decision. Signing
+out revokes it server-side. Sessions live in the state database and share its
 fate: a lost database signs every subject out, which is a sign-in problem
 rather than a recovery one. No identity header — `Cf-Access-Jwt-Assertion`,
 `Cf-Access-Authenticated-User-Email`, or `Tailscale-User-Login` — is ever read.
@@ -186,10 +191,13 @@ exceptions to that rule. Both are a cross-site GET the browser is redirected
 into rather than a request the page itself issues, and each carries its own
 one-time, expiring, identity-bound state instead: the Auth0 callback's state
 must also be presented back in a `__Host-domestique_login` cookie the same
-browser was given when it started. A subject the allowlist refuses is shown
-their own `sub` on the resulting 403 page, so a first deployment can copy it
-into `allowed_subjects`; that subject is never written to a log, which carries
-a stable category only.
+browser was given when it started. Most refusals never reach this service at
+all — the Action denies them before Auth0 issues a code, and the callback
+answers `error=access_denied`. A subject that does complete the exchange
+without the access claim — the Action disabled or misconfigured, say — is
+shown their own `sub` on the resulting 403 page instead, the one place this
+service will ever display a subject value; it is never written to a log,
+which carries a stable category only.
 
 The map view is one documented exception to the otherwise session-gated
 posture.
@@ -497,8 +505,9 @@ The service has a provider-neutral configuration contract:
 
 - One read-only static configuration file holds what the host has to know
   before the process can serve anything: the two listener addresses, the origin
-  a browser reaches the service at, the Auth0 tenant domain, client id and
-  allowed subjects, and the state database's path and key file.
+  a browser reaches the service at, the Auth0 tenant domain and client id, and
+  the state database's path and key file. Who may sign in is not among them —
+  that is the tenant's own Action, not this file.
 - Everything that decides what work the service does is not in that file. The
   provider endpoints, target slots, source libraries, ride model, schedule and
   credentials are held in the state database, edited over the settings
@@ -797,8 +806,9 @@ secret files remain outside Git.
   service's own browser UI.
 - Every HTTP interaction is identity-gated to an allowed subject, by a session
   this service issued from an ID token it verified itself; a subject the
-  allowlist does not name reaches nothing, is told which subject was refused,
-  and appears in no log. Beyond OAuth, the only ones that change anything are
+  tenant's Action does not admit reaches nothing, is told which subject was
+  refused when it does reach this service, and appears in no log. Beyond
+  OAuth, the only ones that change anything are
   the task triggers and their switches, the reprocess request,
   which discards derived answers so they are worked out again, the
   surface-enrichment retry, which reclassifies stored routes without reading

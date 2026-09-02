@@ -87,15 +87,20 @@ host can reach the configured Auth0 tenant at all, and that `auth.auth0.domain`
 in `config.toml` is the tenant host with no scheme and no path. This is a host
 problem, not a browser one.
 
-**The subject signed in is not allowed.** The 403 page itself is the
-diagnostic: it names the exact `sub` value Auth0 asserted for that sign-in,
-and it is the only place this service ever shows that value — it is never
-written to a log. Compare it against `allowed_subjects` in `config.toml`. A
-value that is not there yet is exactly [first-time setup](auth0.md#first-time-setup):
-copy it in and restart. A value that looks like it should already be there
-means the list and the running configuration have drifted — confirm the file
-that was actually deployed, and that the service restarted after it changed,
-since this section is a file setting rather than a runtime one.
+**The subject signed in is not allowed.** Two different pages can say this,
+depending on where the refusal happened. Most of the time the tenant's
+post-login Action denies the sign-in itself: the browser lands on this
+service's `/auth/callback?error=access_denied`, and the page it renders never
+had a subject to show — an ID token was never issued. Read the Auth0 tenant's
+own login logs (Monitoring → Logs, a **Failed Login** entry) for the `user_id`
+that was refused. Less often, a token is issued without the access claim — the
+Action disabled, removed, or errored without denying — and this service's own
+403 page fires instead, naming the exact `sub` value Auth0 asserted; it is the
+only place this service ever shows that value, and it is never written to a
+log. Either way, the fix is the same: add the subject to the Action's `ACCESS`
+list (see [who may sign in](auth0.md#who-may-sign-in-the-post-login-action))
+and deploy it — no restart of this service is needed, since it holds no copy
+of that list.
 
 **The callback URL does not match.** A sign-in that returns from the identity
 provider to an error page, or to the wrong host entirely, usually means the

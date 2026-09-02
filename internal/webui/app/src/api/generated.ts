@@ -495,6 +495,8 @@ export interface SourceBaseUrls {
  */
 export interface BrowserIdentity {
   display: string;
+  /** Whether this subject holds cross-subject rights, asserted by the Auth0 Action that decided it as well as whether this subject may sign in at all. */
+  admin: boolean;
 }
 
 export interface WebUIConfig {

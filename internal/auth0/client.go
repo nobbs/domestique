@@ -39,6 +39,12 @@ type Identity struct {
 	Subject string
 	Email   string
 	Name    string
+	// Access is the Action's assertion that this subject may hold a session
+	// at all — the replacement for a config-file allowlist.
+	Access bool
+	// Admin is the Action's assertion that this subject holds cross-subject
+	// rights once signed in.
+	Admin bool
 }
 
 // Client is an Auth0 tenant configured as a sign-in provider.
@@ -223,9 +229,14 @@ func (c *Client) authentication() (*authentication.Authentication, error) {
 	return sdk, nil
 }
 
-// readIdentity reads sub, email, and name from an already-validated ID
-// token's payload. No re-verification: LoginWithAuthCodeWithPKCE has already
-// checked the signature, issuer, audience, expiry, and nonce.
+// readIdentity reads sub, email, name, and the two namespaced claims a
+// post-login Action mints from an already-validated ID token's payload. No
+// re-verification: LoginWithAuthCodeWithPKCE has already checked the
+// signature, issuer, audience, expiry, and nonce. The claim names use
+// https://domestique.invalid/ — Auth0 requires custom claims to be namespaced
+// URIs, and .invalid is the TLD RFC 2606 reserves so it can never resolve or
+// imply a domain this project doesn't own. Either claim is simply absent
+// (read as false) on a token from a tenant with no Action configured yet.
 func readIdentity(idToken string) (Identity, error) {
 	parts := strings.Split(idToken, ".")
 	if len(parts) != 3 {
@@ -241,10 +252,15 @@ func readIdentity(idToken string) (Identity, error) {
 		Subject string `json:"sub"`
 		Email   string `json:"email"`
 		Name    string `json:"name"`
+		Access  bool   `json:"https://domestique.invalid/access"`
+		Admin   bool   `json:"https://domestique.invalid/admin"`
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return Identity{}, errors.New("auth0: id token payload is not valid json")
 	}
 
-	return Identity{Subject: claims.Subject, Email: claims.Email, Name: claims.Name}, nil
+	return Identity{
+		Subject: claims.Subject, Email: claims.Email, Name: claims.Name,
+		Access: claims.Access, Admin: claims.Admin,
+	}, nil
 }

@@ -21,21 +21,22 @@ import (
 
 // lifetime matches internal/session's own, so a minted row expires the way one
 // created by a real sign-in does.
-const lifetime = 30 * 24 * time.Hour
+const lifetime = 24 * time.Hour
 
 func main() {
 	database := flag.String("database", "", "state database to mint the session into")
 	subject := flag.String("subject", "", "subject claim the session belongs to")
+	admin := flag.Bool("admin", false, "mint the session with cross-subject rights")
 	out := flag.String("out", "", "write the raw token here instead of to stdout")
 	flag.Parse()
 
-	if err := run(*database, *subject, *out); err != nil {
+	if err := run(*database, *subject, *out, *admin); err != nil {
 		fmt.Fprintf(os.Stderr, "session: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(database, subject, out string) error {
+func run(database, subject, out string, admin bool) error {
 	if database == "" || subject == "" {
 		return errors.New("-database and -subject are required")
 	}
@@ -59,7 +60,7 @@ func run(database, subject, out string) error {
 		return err
 	}
 	now := time.Now().UTC()
-	if err := store.CreateSession(ctx, digest, subject, subject, now, now.Add(lifetime)); err != nil {
+	if err := store.CreateSession(ctx, digest, subject, subject, admin, now, now.Add(lifetime)); err != nil {
 		return fmt.Errorf("storing session: %w", err)
 	}
 

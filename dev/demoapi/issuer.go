@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	// demoSubject is who the fake issuer authenticates. Also the one subject the
-	// demo configuration allows.
+	// demoSubject is who the fake issuer authenticates. It is the only subject
+	// this issuer ever mints a token for, and every token carries both the
+	// access and admin claims, so demo exercises both surfaces.
 	demoSubject = "demo|rider"
 
 	// demoDisplay is what a real sign-in would settle on: the email claim.
@@ -207,14 +208,16 @@ func (i *issuer) mint(nonce string) (string, error) {
 		{"alg": "RS256", "kid": "demo", "typ": "JWT"},
 		{
 			// The SDK expects the issuer to carry a trailing slash.
-			"iss":   "https://" + i.address + "/",
-			"aud":   i.clientID,
-			"sub":   demoSubject,
-			"nonce": nonce,
-			"email": demoDisplay,
-			"name":  "Demo Rider",
-			"iat":   now.Unix(),
-			"exp":   now.Add(idTokenLifetime).Unix(),
+			"iss":                               "https://" + i.address + "/",
+			"aud":                               i.clientID,
+			"sub":                               demoSubject,
+			"nonce":                             nonce,
+			"email":                             demoDisplay,
+			"name":                              "Demo Rider",
+			"https://domestique.invalid/access": true,
+			"https://domestique.invalid/admin":  true,
+			"iat":                               now.Unix(),
+			"exp":                               now.Add(idTokenLifetime).Unix(),
 		},
 	}
 
@@ -275,11 +278,13 @@ func (p signInProvider) AuthorizationURL(ctx context.Context, state, nonce, code
 	return p.client.AuthorizationURL(ctx, state, nonce, codeVerifier) //nolint:wrapcheck // forwarding to the client this holds
 }
 
-func (p signInProvider) Exchange(ctx context.Context, code, codeVerifier, nonce string) (subject, email, name string, err error) {
+func (p signInProvider) Exchange(
+	ctx context.Context, code, codeVerifier, nonce string,
+) (subject, email, name string, access, admin bool, err error) {
 	identity, err := p.client.Exchange(ctx, code, codeVerifier, nonce)
 	if err != nil {
-		return "", "", "", err //nolint:wrapcheck // forwarding to the client this holds
+		return "", "", "", false, false, err //nolint:wrapcheck // forwarding to the client this holds
 	}
 
-	return identity.Subject, identity.Email, identity.Name, nil
+	return identity.Subject, identity.Email, identity.Name, identity.Access, identity.Admin, nil
 }

@@ -213,6 +213,52 @@ func TestStartLoginRedirectsToTheProviderAndRemembersTheState(t *testing.T) {
 
 // A callback missing any of the three values it needs must not reach the
 // exchange at all.
+// Where the Action itself refuses a subject, Auth0 never issues a code:
+// the browser lands here carrying error=access_denied instead. That is
+// checked before code or state are ever required, and error_description
+// (tenant-controlled text) must never reach the rendered page.
+func TestCompleteLoginHandlesAuth0ErrorCallbacks(t *testing.T) {
+	tests := map[string]struct {
+		target      string
+		wantStatus  int
+		wantMessage string
+	}{
+		"access denied": {
+			target:      "/auth/callback?error=access_denied&error_description=go+away",
+			wantStatus:  http.StatusForbidden,
+			wantMessage: "This account is not allowed to sign in.",
+		},
+		"other provider error": {
+			target:      "/auth/callback?error=server_error&error_description=go+away",
+			wantStatus:  http.StatusForbidden,
+			wantMessage: "Sign-in could not be completed.",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			sessions := newFakeSessions()
+			handler := newSessionHandler(t, sessions)
+
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, test.target, http.NoBody)
+			request.AddCookie(&http.Cookie{Name: loginCookie, Value: "abc", Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			assert.Equal(t, test.wantStatus, response.Code)
+			assert.Contains(t, response.Body.String(), test.wantMessage)
+			assert.NotContains(t, response.Body.String(), "go away", "error_description must never be rendered")
+			assert.Empty(t, sessions.completed, "an Auth0-side denial must not reach the exchange")
+			assert.Nil(t, setCookie(t, response, sessionCookie), "a refused callback issued a session")
+
+			cleared := setCookie(t, response, loginCookie)
+			require.NotNil(t, cleared, "the pending login cookie was not cleared")
+			assert.Negative(t, cleared.MaxAge)
+		})
+	}
+}
+
 func TestCompleteLoginRefusesAnIncompleteCallback(t *testing.T) {
 	tests := map[string]struct {
 		target string

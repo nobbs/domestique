@@ -195,7 +195,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("configuring the sign-in provider: %w", err)
 	}
-	sessions, err := session.New(store, signInProvider{client: provider}, settings.Auth.Auth0.AllowedSubjects, nil)
+	sessions, err := session.New(store, signInProvider{client: provider}, nil)
 	if err != nil {
 		return fmt.Errorf("creating the session service: %w", err)
 	}

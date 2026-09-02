@@ -20,6 +20,7 @@ import (
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
+	"github.com/nobbs/domestique/internal/session"
 )
 
 const (
@@ -598,6 +599,30 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 	// The subject is the allowlist's own spelling and is never a display name;
 	// it stays behind the gate rather than reaching the page.
 	assert.NotContains(t, response.Body.String(), testSubject, "the config exposed the subject claim")
+}
+
+// The admin claim reaches the browser too, so the UI can tell a rider from an
+// admin without a second request.
+func TestWebUIConfigReflectsTheAdminClaim(t *testing.T) {
+	for name, admin := range map[string]bool{"admin": true, "non-admin": false} {
+		t.Run(name, func(t *testing.T) {
+			sessions := newFakeSessions()
+			sessions.identity = session.Identity{Subject: testSubject, Display: testDisplay, Admin: admin}
+			handler := newSessionHandler(t, sessions)
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/webui/config"))
+			require.Equal(t, http.StatusOK, response.Code)
+
+			var body struct {
+				Identity struct {
+					Admin bool `json:"admin"`
+				} `json:"identity"`
+			}
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+			assert.Equal(t, admin, body.Identity.Admin)
+		})
+	}
 }
 
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {

@@ -28,6 +28,6 @@ func TestSignInProviderForwardsToTheAuth0Client(t *testing.T) {
 	require.NoError(t, err, "AuthorizationURL()")
 	assert.Contains(t, url, "state=state-1", "AuthorizationURL() did not forward the state")
 
-	_, _, _, err = provider.Exchange(t.Context(), "code", "verifier-1", "nonce-1")
+	_, _, _, _, _, err = provider.Exchange(t.Context(), "code", "verifier-1", "nonce-1")
 	assert.Error(t, err, "Exchange() against an unroutable domain")
 }

@@ -454,6 +454,8 @@ type WebUIConfig struct {
 // BrowserIdentity Who the gate let through. It names the reader rather than identifying them: it is how a session can be seen to be the one intended.
 type BrowserIdentity struct {
 	Display string `json:"display"`
+	// Admin Whether this subject holds cross-subject rights, asserted by the Auth0 Action that decided it as well as whether this subject may sign in at all.
+	Admin bool `json:"admin"`
 }
 
 type SourceBaseUrls struct {

@@ -74,7 +74,7 @@ func (s *Store) ConsumeLogin(ctx context.Context, stateDigest []byte, now time.T
 
 // CreateSession saves a hashed, expiring web session. The raw token is never
 // persisted. Expired sessions are cleared first.
-func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, display string, now, expiresAt time.Time) error {
+func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, display string, admin bool, now, expiresAt time.Time) error {
 	if len(tokenDigest) != 32 || strings.TrimSpace(subject) == "" || strings.TrimSpace(display) == "" || !expiresAt.After(now) {
 		return errors.New("token digest, subject, display, and future expiry are required")
 	}
@@ -84,7 +84,7 @@ func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, 
 			return fmt.Errorf("clearing expired web sessions: %w", err)
 		}
 		if err := queries.InsertWebSession(ctx, sqlcgen.InsertWebSessionParams{
-			TokenDigest: tokenDigest, Subject: subject, Display: display,
+			TokenDigest: tokenDigest, Subject: subject, Display: display, Admin: boolInteger(admin),
 			CreatedAtUnix: now.Unix(), RenewedAtUnix: now.Unix(), ExpiresAtUnix: expiresAt.Unix(),
 		}); err != nil {
 			return fmt.Errorf("storing web session: %w", err)
@@ -96,51 +96,23 @@ func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, 
 // Session returns a web session's identity and lifetime by its hashed token.
 // It leaves an expired row in place: a write path prunes it instead, so a
 // read alone never mutates state.
-func (s *Store) Session(ctx context.Context, tokenDigest []byte, now time.Time) (subject, display string, renewedAt, expiresAt time.Time, err error) {
+func (s *Store) Session(ctx context.Context, tokenDigest []byte, now time.Time) (subject, display string, admin bool, expiresAt time.Time, err error) {
 	if len(tokenDigest) != 32 {
-		return "", "", time.Time{}, time.Time{}, errors.New("token digest is required")
+		return "", "", false, time.Time{}, errors.New("token digest is required")
 	}
 
 	row, err := s.queries.GetWebSession(ctx, tokenDigest)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", time.Time{}, time.Time{}, ErrSessionNotFound
+		return "", "", false, time.Time{}, ErrSessionNotFound
 	}
 	if err != nil {
-		return "", "", time.Time{}, time.Time{}, fmt.Errorf("reading web session: %w", err)
+		return "", "", false, time.Time{}, fmt.Errorf("reading web session: %w", err)
 	}
 	if row.ExpiresAtUnix <= now.Unix() {
-		return "", "", time.Time{}, time.Time{}, ErrSessionExpired
+		return "", "", false, time.Time{}, ErrSessionExpired
 	}
 
-	return row.Subject, row.Display, time.Unix(row.RenewedAtUnix, 0).UTC(), time.Unix(row.ExpiresAtUnix, 0).UTC(), nil
-}
-
-// RenewSession extends a web session's lifetime and prunes other expired
-// sessions in the same transaction.
-func (s *Store) RenewSession(ctx context.Context, tokenDigest []byte, now, expiresAt time.Time) error {
-	if len(tokenDigest) != 32 || !expiresAt.After(now) {
-		return errors.New("token digest and future expiry are required")
-	}
-
-	return s.withTx(ctx, "web session renewal", func(queries *sqlcgen.Queries) error {
-		if err := queries.DeleteExpiredWebSessions(ctx, now.Unix()); err != nil {
-			return fmt.Errorf("clearing expired web sessions: %w", err)
-		}
-		result, err := queries.RenewWebSession(ctx, sqlcgen.RenewWebSessionParams{
-			RenewedAtUnix: now.Unix(), ExpiresAtUnix: expiresAt.Unix(), TokenDigest: tokenDigest,
-		})
-		if err != nil {
-			return fmt.Errorf("renewing web session: %w", err)
-		}
-		updated, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("checking web session renewal: %w", err)
-		}
-		if updated == 0 {
-			return ErrSessionNotFound
-		}
-		return nil
-	})
+	return row.Subject, row.Display, row.Admin != 0, time.Unix(row.ExpiresAtUnix, 0).UTC(), nil
 }
 
 // DeleteSession removes a web session by its hashed token. Deleting a token

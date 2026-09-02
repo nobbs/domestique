@@ -37,13 +37,15 @@ func (p signInProvider) AuthorizationURL(ctx context.Context, state, nonce, code
 	return p.client.AuthorizationURL(ctx, state, nonce, codeVerifier) //nolint:wrapcheck // forwarding to the client this holds
 }
 
-func (p signInProvider) Exchange(ctx context.Context, code, codeVerifier, nonce string) (subject, email, name string, err error) {
+func (p signInProvider) Exchange(
+	ctx context.Context, code, codeVerifier, nonce string,
+) (subject, email, name string, access, admin bool, err error) {
 	identity, err := p.client.Exchange(ctx, code, codeVerifier, nonce)
 	if err != nil {
-		return "", "", "", err //nolint:wrapcheck // forwarding to the client this holds
+		return "", "", "", false, false, err //nolint:wrapcheck // forwarding to the client this holds
 	}
 
-	return identity.Subject, identity.Email, identity.Name, nil
+	return identity.Subject, identity.Email, identity.Name, identity.Access, identity.Admin, nil
 }
 
 // errNotConfigured reports that the settings an upstream client is built from
