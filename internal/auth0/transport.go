@@ -58,7 +58,11 @@ func (t *boundedTransport) RoundTrip(request *http.Request) (*http.Response, err
 	if err != nil {
 		return nil, fmt.Errorf("auth0: request failed: %w", err)
 	}
-	response.Body = &limitedBody{body: response.Body, remaining: maxResponseBytes}
+	// A RoundTripper is not obliged to hand back a body, and wrapping a nil one
+	// would panic on the first read.
+	if response.Body != nil {
+		response.Body = &limitedBody{body: response.Body, remaining: maxResponseBytes}
+	}
 
 	return response, nil
 }

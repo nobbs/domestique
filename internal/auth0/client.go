@@ -193,10 +193,11 @@ func (c *Client) authentication() (*authentication.Authentication, error) {
 	if c.sdk != nil {
 		return c.sdk, nil
 	}
-	if !c.lastAttempt.IsZero() && c.now().Sub(c.lastAttempt) < initialisationFloor {
+	now := c.now()
+	if !c.lastAttempt.IsZero() && now.Sub(c.lastAttempt) < initialisationFloor {
 		return nil, fmt.Errorf("auth0: provider unavailable: %w", c.initialiseError)
 	}
-	c.lastAttempt = c.now()
+	c.lastAttempt = now
 
 	// The JWKS refresher the SDK builds outlives every request, so it gets a
 	// process-scoped context rather than a detached copy of a request's: a

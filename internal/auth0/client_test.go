@@ -600,6 +600,8 @@ func TestLimitedBodyStopsAtTheCap(t *testing.T) {
 				body:      io.NopCloser(bytes.NewReader(bytes.Repeat([]byte("a"), test.size))),
 				remaining: maxResponseBytes,
 			}
+			defer func() { assert.NoError(t, body.Close()) }()
+
 			read, err := io.ReadAll(body)
 			if test.wantErr {
 				require.ErrorIs(t, err, errResponseTooLarge)
@@ -609,7 +611,6 @@ func TestLimitedBodyStopsAtTheCap(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Len(t, read, test.size)
-			assert.NoError(t, body.Close())
 		})
 	}
 }
