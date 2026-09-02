@@ -22,29 +22,32 @@ func (h *Handler) StartOAuth(writer http.ResponseWriter, request *http.Request) 
 	if targetID == "" {
 		targetID = identity.Subject
 	}
+	if !identity.Admin && targetID != identity.Subject {
+		h.notFound(writer)
+
+		return
+	}
 	if targetID == identity.Subject {
 		if err := h.state.EnsureTargetOwner(request.Context(), identity.Subject); err != nil {
 			h.unavailable(writer)
 
 			return
 		}
-	} else {
-		if !identity.Admin {
-			h.notFound(writer)
+	}
+	// Re-checked through the same identity-scoped list a status read uses,
+	// even for a caller's own subject: a target already existing under a
+	// misassigned owner_subject (only reachable by an operator editing state
+	// by hand) must not let self-service quietly write to it anyway.
+	existing, err := h.targetIDs(request.Context())
+	if err != nil {
+		h.unavailable(writer)
 
-			return
-		}
-		existing, err := h.targetIDs(request.Context())
-		if err != nil {
-			h.unavailable(writer)
+		return
+	}
+	if !slices.Contains(existing, targetID) {
+		h.notFound(writer)
 
-			return
-		}
-		if !slices.Contains(existing, targetID) {
-			h.notFound(writer)
-
-			return
-		}
+		return
 	}
 
 	location, err := h.oauth.Start(request.Context(), identity.Subject, targetID)
