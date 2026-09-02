@@ -16,6 +16,13 @@ type AlertToggle struct {
 	UpdatedAtUnix int64
 }
 
+type LoginTransaction struct {
+	StateDigest   []byte
+	Nonce         string
+	CodeVerifier  string
+	ExpiresAtUnix int64
+}
+
 type NotificationState struct {
 	Kind           string
 	LastSentAtUnix int64
@@ -233,4 +240,13 @@ type TrustedInventoryStage struct {
 	RouteID      int64
 	StageOrder   int64
 	WahooRouteID int64
+}
+
+type WebSession struct {
+	TokenDigest   []byte
+	Subject       string
+	Display       string
+	CreatedAtUnix int64
+	RenewedAtUnix int64
+	ExpiresAtUnix int64
 }
