@@ -94,11 +94,11 @@ func (s *Service) Begin(ctx context.Context) (Login, error) {
 	if err != nil {
 		return Login{}, fmt.Errorf("minting login state: %w", err)
 	}
-	nonce, _, err := randomToken()
+	nonce, err := randomValue()
 	if err != nil {
 		return Login{}, fmt.Errorf("minting login nonce: %w", err)
 	}
-	verifier, _, err := randomToken()
+	verifier, err := randomValue()
 	if err != nil {
 		return Login{}, fmt.Errorf("minting code verifier: %w", err)
 	}
@@ -214,12 +214,32 @@ func display(email, name, subject string) string {
 // tokenBytes is how much randomness a state or session token carries.
 const tokenBytes = 32
 
-// randomToken mints tokenBytes of randomness as a wire value and its storage
-// digest.
-func randomToken() (wire string, digest []byte, err error) {
+// randomRaw mints tokenBytes of randomness.
+func randomRaw() ([]byte, error) {
 	raw := make([]byte, tokenBytes)
 	if _, err := rand.Read(raw); err != nil {
-		return "", nil, fmt.Errorf("reading randomness: %w", err)
+		return nil, fmt.Errorf("reading randomness: %w", err)
+	}
+
+	return raw, nil
+}
+
+// randomValue mints a wire value this service never stores, so it needs no
+// digest: the nonce and the PKCE verifier go to the provider and nowhere else.
+func randomValue() (string, error) {
+	raw, err := randomRaw()
+	if err != nil {
+		return "", err
+	}
+
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// randomToken mints a wire value together with the digest it is stored under.
+func randomToken() (wire string, digest []byte, err error) {
+	raw, err := randomRaw()
+	if err != nil {
+		return "", nil, err
 	}
 	sum := sha256.Sum256(raw)
 
