@@ -78,9 +78,12 @@ func (b *limitedBody) Read(p []byte) (int, error) {
 
 	read, err := b.body.Read(p)
 	if int64(read) > b.remaining {
-		b.exceeded = true
+		// Hand back the bytes that still fit under the cap alongside the error,
+		// rather than dropping a read the caller already paid for.
+		fitted := int(b.remaining)
+		b.remaining, b.exceeded = 0, true
 
-		return 0, errResponseTooLarge
+		return fitted, errResponseTooLarge
 	}
 	b.remaining -= int64(read)
 

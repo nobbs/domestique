@@ -570,7 +570,8 @@ func TestLimitedBodyStopsAtTheCap(t *testing.T) {
 			}
 			read, err := io.ReadAll(body)
 			if test.wantErr {
-				assert.ErrorIs(t, err, errResponseTooLarge)
+				require.ErrorIs(t, err, errResponseTooLarge)
+				assert.Len(t, read, maxResponseBytes, "the bytes within the cap are still handed back")
 
 				return
 			}
