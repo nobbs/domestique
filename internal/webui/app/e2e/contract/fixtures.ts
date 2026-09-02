@@ -51,9 +51,9 @@ async function sessionToken(): Promise<string> {
 async function identityHeaders(): Promise<Record<string, string>> {
   return {
     cookie: `${SESSION_COOKIE}=${await sessionToken()}`,
-    // A state-changing request must come from the origin the service is
-    // configured to serve at, which is not the loopback address this test reaches
-    // it on. The dev proxy rewrites it for the same reason.
+    // Sent on every request, though only a state-changing one is checked: the
+    // origin the service is configured to serve at is not the loopback address
+    // this test reaches it on. The dev proxy rewrites it for the same reason.
     origin: BROWSER_ORIGIN,
   };
 }
