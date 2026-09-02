@@ -92,9 +92,10 @@ type Auth0 struct {
 	clientSecret runtimeconfig.Secret
 }
 
-// ClientSecret returns the confidential client's secret.
-func (a *Auth0) ClientSecret() string {
-	return string(a.clientSecret.Bytes())
+// ClientSecret returns the confidential client's secret. Bytes, not a string:
+// the adapter takes it as bytes, and a string copy would outlive its use.
+func (a *Auth0) ClientSecret() []byte {
+	return a.clientSecret.Bytes()
 }
 
 // State configures durable service state.

@@ -38,7 +38,7 @@ func TestDemoIssuerSatisfiesTheProductionAdapter(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(stop)
 
-	client, err := tenant.client("demo-secret", "https://127.0.0.1:9/auth/callback")
+	client, err := tenant.client([]byte("demo-secret"), "https://127.0.0.1:9/auth/callback")
 	require.NoError(t, err)
 
 	const nonce = "demo-nonce"
@@ -57,7 +57,7 @@ func TestDemoIssuerBindsTheNonceToTheCode(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(stop)
 
-	client, err := tenant.client("demo-secret", "https://127.0.0.1:9/auth/callback")
+	client, err := tenant.client([]byte("demo-secret"), "https://127.0.0.1:9/auth/callback")
 	require.NoError(t, err)
 
 	_, err = client.Exchange(t.Context(),

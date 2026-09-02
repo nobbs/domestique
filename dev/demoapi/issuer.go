@@ -107,7 +107,7 @@ func (i *issuer) serve() (stop func(), err error) {
 
 // client is the production Auth0 adapter pointed at this tenant, trusting the
 // certificate it just generated.
-func (i *issuer) client(clientSecret, redirectURL string) (*auth0.Client, error) {
+func (i *issuer) client(clientSecret []byte, redirectURL string) (*auth0.Client, error) {
 	transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: i.roots, MinVersion: tls.VersionTLS12}}
 	client, err := auth0.New(&auth0.Options{
 		Domain:       i.address,

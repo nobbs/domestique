@@ -353,7 +353,7 @@ func TestLoadReadsAuth0(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, testAuth0Domain, settings.Auth.Auth0.Domain, "Domain")
 	assert.Equal(t, "client-id", settings.Auth.Auth0.ClientID, "ClientID")
-	assert.Equal(t, testClientSecret, settings.Auth.Auth0.ClientSecret(), "ClientSecret()")
+	assert.Equal(t, []byte(testClientSecret), settings.Auth.Auth0.ClientSecret(), "ClientSecret()")
 	assert.Equal(t, []string{"github|123456"}, settings.Auth.Auth0.AllowedSubjects, "AllowedSubjects")
 }
 
@@ -471,7 +471,7 @@ func TestLoadClearsTheDirectAuth0ClientSecret(t *testing.T) {
 
 	settings, err := Load()
 	require.NoError(t, err)
-	assert.Equal(t, "direct-client-secret", settings.Auth.Auth0.ClientSecret(), "ClientSecret()")
+	assert.Equal(t, []byte("direct-client-secret"), settings.Auth.Auth0.ClientSecret(), "ClientSecret()")
 	_, found := os.LookupEnv(envPrefix + "AUTH__AUTH0__CLIENT_SECRET")
 	assert.False(t, found, "the direct secret environment value remains after Load()")
 }

@@ -18,7 +18,7 @@ func TestSignInProviderForwardsToTheAuth0Client(t *testing.T) {
 	client, err := auth0.New(&auth0.Options{
 		Domain:       "127.0.0.1:1",
 		ClientID:     "cid",
-		ClientSecret: "secret",
+		ClientSecret: []byte("secret"),
 		RedirectURL:  "https://app.example/callback",
 	})
 	require.NoError(t, err, "auth0.New()")
