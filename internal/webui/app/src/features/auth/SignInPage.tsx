@@ -16,9 +16,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  * attempt so it is not read as an outage; which account is not carried,
  * because a query string outlives the answer it was part of.
  */
-const REFUSALS: Record<string, string> = {
-  not_allowed: "This account is not allowed to sign in.",
-};
+// A Map rather than an object: the key is whatever the address carried, and a
+// plain object answers `__proto__` or `constructor` from its prototype.
+const REFUSALS = new Map<string, string>([
+  ["not_allowed", "This account is not allowed to sign in."],
+]);
 
 /** Nothing at all where nothing failed, and one sentence for every step that can. */
 export function refusalMessage(error: string | null): string | null {
@@ -26,7 +28,7 @@ export function refusalMessage(error: string | null): string | null {
     return null;
   }
 
-  return REFUSALS[error] ?? "Sign-in could not be completed.";
+  return REFUSALS.get(error) ?? "Sign-in could not be completed.";
 }
 
 export function SignInPage() {

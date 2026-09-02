@@ -20,6 +20,14 @@ describe("refusalMessage", () => {
   it("reads an unknown reason as a failure", () => {
     expect(refusalMessage("something-else")).toBe("Sign-in could not be completed.");
   });
+
+  // A plain object would answer these from its prototype, handing the page an
+  // object or a function to render where it expects a sentence.
+  it("reads a prototype key as a failure like any other", () => {
+    for (const key of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(refusalMessage(key)).toBe("Sign-in could not be completed.");
+    }
+  });
 });
 
 describe("SignInPage", () => {
@@ -39,6 +47,15 @@ describe("SignInPage", () => {
     expect(button.closest("form")).toHaveAttribute("action", "/auth/start");
     expect(button.closest("form")).toHaveAttribute("method", "post");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  // The page a reader has to reach to get in at all, so an address anyone can
+  // send them must not be able to stop it rendering.
+  it("draws the sign-in control whatever the address carries", () => {
+    renderAt("/auth/login?error=__proto__");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign-in could not be completed.");
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 
   // The refusal is drawn from the address the service redirected to, and the
