@@ -15,9 +15,8 @@ host, outside this repository.
 
 ```mermaid
 flowchart LR
-  browser["Any browser"] --> proxy["Host reverse proxy\nTLS terminated here"]
-  proxy --> loopback["127.0.0.1:8080"]
-  loopback --> app["Domestique container\nread-only root filesystem"]
+  browser["Any browser"] --> proxy["Traefik container\nport 443, TLS terminated here"]
+  proxy --> app["Domestique container\nread-only root filesystem"]
   app --> state["Named Docker volume\nSQLite state"]
   app --> providers["VeloPlanner, Wahoo, Auth0, Pushover"]
 ```
@@ -26,8 +25,9 @@ On a VM with a public IP, the container must publish to `127.0.0.1` only, never
 to `0.0.0.0`. Confirm it after every start with `ss -tlnp`.
 
 Reaching the service is a supported, TLS-terminating reverse proxy in front of
-it — [the Auth0 guide](auth0.md) documents a Caddy example. The proxy forwards
-only to `127.0.0.1:8080`, never to the readiness listener, and never adds or
+it — [the Auth0 guide](auth0.md) documents the Traefik service that ships in
+the compose example. The proxy forwards only the served listener, never the
+readiness listener, and never adds or
 trusts an identity header of its own: the service reads no identity header at
 all, and authenticates every request by verifying a session it issued itself
 from an ID token it validated against the configured Auth0 tenant. A proxy
@@ -59,7 +59,7 @@ Create a directory owned by the operator, for example `/srv/domestique`:
 ```text
 /srv/domestique/
 ├── compose.yml   # docs/compose.example.yml, unmodified
-├── .env          # DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
+├── .env          # DOMESTIQUE_IMAGE, DOMESTIQUE_PUBLIC_HOST, DOMESTIQUE_ACME_EMAIL
 ├── config.toml   # config.example.toml with every placeholder replaced
 ├── secrets/      # the state key, the Auth0 client secret, and the deploy
 │                 # script's own Pushover pair
@@ -161,7 +161,7 @@ it from the deployment directory:
 docker compose --env-file .env up -d
 curl --fail http://127.0.0.1:8080/healthz
 curl --fail http://127.0.0.1:8081/readyz
-ss -tlnp | grep -E '8080|8081'
+ss -tlnp
 ```
 
 The readiness probe is the second port, published to loopback like the first and
@@ -170,8 +170,11 @@ it was configured with, while `/healthz` reports only that the process answers
 HTTP. Readiness contacts nothing outside this host, and a target still waiting
 for its one-time authorisation does not make it unready.
 
-The last command must show `127.0.0.1:8080` and `127.0.0.1:8081`, and nothing
-bound to a public address. The named state volume is initialised from the image
+Read the last command's output whole rather than grepping it: the point is not
+only that `127.0.0.1:8080`, `127.0.0.1:8081` and `:443` are there, but that
+nothing else is. Traefik on 443 must be the single listener on a public
+address; both domestique ports belong to loopback, and anything else bound to
+`0.0.0.0` or `[::]` is a finding. The named state volume is initialised from the image
 with the unprivileged runtime ownership; replacing it with a host bind mount
 means making the target writable by UID and GID `65532` first. Do not remove or
 recreate it during a routine update. The service writes no log line on a healthy
@@ -186,18 +189,31 @@ older `compose.yml` needs the current `compose.example.yml` copied over it, or
 the one line added, and the service recreated once with
 `docker compose --env-file .env up -d`.
 
+Copy the compose file and the two new `.env` values in the same step. Compose
+interpolates the whole file before it selects a service, so a `compose.yml`
+naming `DOMESTIQUE_PUBLIC_HOST` or `DOMESTIQUE_ACME_EMAIL` with neither set in
+`.env` fails every later `docker compose` call — including the deploy script's,
+which pins the new digest, fails to start, and rolls the host back.
+
 ## Publish it through the reverse proxy
 
-Deploy a TLS-terminating reverse proxy on the host, forwarding only to
-`127.0.0.1:8080` and never to the readiness listener — [the Auth0
-guide](auth0.md) documents a Caddy example. Point DNS for the public hostname
-at this host.
+Traefik is a service in `compose.yml` and came up with the command above, so
+there is no proxy to install separately — [the Auth0 guide](auth0.md) covers
+what it is configured to do and what its Docker socket mount costs. Point DNS
+for the public hostname at this host as a plain `A` record; a record proxied by
+a CDN that terminates TLS itself cannot complete the TLS-ALPN-01 challenge
+Traefik uses.
 
-Put that hostname into `http.browser_origin_url`, and the URLs it derives —
-that hostname plus `/oauth/wahoo/callback`, and plus `/auth/callback` — into
-the Wahoo application's registered callback and the Auth0 application's
-Allowed Callback URLs respectively. Open the host firewall to the reverse
-proxy's port only.
+Put that hostname into `http.browser_origin_url` and into
+`DOMESTIQUE_PUBLIC_HOST` in `.env`, and the URLs it derives — that hostname
+plus `/oauth/wahoo/callback`, and plus `/auth/callback` — into the Wahoo
+application's registered callback and the Auth0 application's Allowed Callback
+URLs respectively. Open the host firewall to 443 and nothing else: there is no
+`:80` entrypoint, because the certificate is obtained on 443 itself.
+
+Certificate issuance happens the first time Traefik starts with DNS already
+pointing here. `curl -sI https://<hostname>/healthz` answering 200 is the proof
+it completed; until it does, the browser sees Traefik's self-signed default.
 
 Open the service URL in a browser and complete first-time sign-in as [the
 Auth0 guide](auth0.md) describes. A host reaching this point has a running

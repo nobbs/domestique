@@ -126,10 +126,13 @@ revising this document first.
 ## Deployment and access model
 
 Docker publishes the service port only to the host's `127.0.0.1`; the
-container has no public host port. A TLS-terminating reverse proxy — Caddy is
-the documented example — is what makes the service reachable at all: it
-terminates TLS, forwards only to `127.0.0.1:8080`, must never forward the
-readiness listener, and must never add or trust an identity header of its own.
+container has no public host port. A TLS-terminating reverse proxy — Traefik in
+the same compose project is the documented example — is what makes the service
+reachable at all: it terminates TLS, forwards the served listener alone, must
+never forward the readiness listener, and must never add or trust an identity
+header of its own. How it reaches that listener is the deployment's business,
+over a private container network or the loopback publish; what the contract
+fixes is that nothing but the proxy's own port is reachable from outside.
 The service is therefore publicly reachable, and `GET /healthz` along with it;
 [the Auth0 guide](../auth0.md) covers the proxy in full.
 

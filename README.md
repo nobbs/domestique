@@ -53,8 +53,9 @@ states why and what stands in its place. Its base images are Docker Hardened
 Images, so *building* it requires `docker login dhi.io`; deploying it does not,
 because a host pulls rather than builds.
 The host owns the private boundary: Docker publishes only `127.0.0.1:8080` and
-the readiness probe's own `127.0.0.1:8081`, while a host-level TLS-terminating
-reverse proxy — Caddy is the documented example — forwards the served listener
+the readiness probe's own `127.0.0.1:8081`, while a TLS-terminating reverse
+proxy alongside it in the compose project — Traefik is the documented example —
+forwards the served listener
 alone. Readiness is never given to it, so it stays a host-local health check
 rather than an endpoint on the public surface. No reverse proxy runs in the
 image.
