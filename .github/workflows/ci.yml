@@ -50,7 +50,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.lint == 'true'
+    # Pull requests only: the branch ruleset requires an up-to-date branch
+    # before merging, so what a PR validated is exactly the tree that lands on
+    # main, and a push there has nothing left to reprove.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.lint == 'true'
 
     permissions:
       contents: read
@@ -111,7 +114,8 @@ jobs:
     # runner, which prints nothing. dev/gatecheck asserts that sum against this.
     timeout-minutes: 25
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    # Pull requests only: see the Lint job above.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
@@ -173,7 +177,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    # Pull requests only: see the Lint job above.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
@@ -223,7 +228,8 @@ jobs:
     # minutes rather than seconds.
     timeout-minutes: 20
     needs: changes
-    if: needs.changes.outputs.ui == 'true'
+    # Pull requests only: see the Lint job above.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.ui == 'true'
 
     permissions:
       contents: read
@@ -478,7 +484,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     needs: changes
-    if: needs.changes.outputs.go == 'true'
+    # Pull requests only: see the Lint job above.
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
 
     permissions:
       contents: read
