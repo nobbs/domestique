@@ -75,8 +75,8 @@ func (s *Store) ConsumeLogin(ctx context.Context, stateDigest []byte, now time.T
 // CreateSession saves a hashed, expiring web session. The raw token is never
 // persisted. Expired sessions are cleared first.
 func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, display string, now, expiresAt time.Time) error {
-	if len(tokenDigest) != 32 || strings.TrimSpace(subject) == "" || !expiresAt.After(now) {
-		return errors.New("token digest, subject, and future expiry are required")
+	if len(tokenDigest) != 32 || strings.TrimSpace(subject) == "" || strings.TrimSpace(display) == "" || !expiresAt.After(now) {
+		return errors.New("token digest, subject, display, and future expiry are required")
 	}
 
 	return s.withTx(ctx, "web session", func(queries *sqlcgen.Queries) error {

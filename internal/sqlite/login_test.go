@@ -182,6 +182,7 @@ func TestStoreRejectsInvalidInput(t *testing.T) {
 		"ConsumeLogin short digest":    func() error { _, _, err := store.ConsumeLogin(t.Context(), short, now); return err },
 		"CreateSession short digest":   func() error { return store.CreateSession(t.Context(), short, "subject", "display", now, future) },
 		"CreateSession blank subject":  func() error { return store.CreateSession(t.Context(), loginDigest(21), "", "display", now, future) },
+		"CreateSession blank display":  func() error { return store.CreateSession(t.Context(), loginDigest(21), "subject", " ", now, future) },
 		"CreateSession non-future expiry": func() error {
 			return store.CreateSession(t.Context(), loginDigest(21), "subject", "display", now, now)
 		},
