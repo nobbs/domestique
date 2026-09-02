@@ -93,10 +93,12 @@ func (h *Handler) registers(name string) bool {
 }
 
 // RunTask starts one attempt of a named task, over an argument when the path
-// carries one. For a task that writes to or clears one rider's target, a
-// non-admin caller must name exactly their own subject; leaving the argument
-// empty means "every target" for those two tasks, which only an admin may ask
-// for.
+// carries one. For sync:target/sync:clear, a non-admin caller must name
+// exactly their own subject; an admin may name any target. sync:target alone
+// also accepts an empty argument, meaning every target — admin-only, since a
+// non-admin naming nothing is already refused above. sync:clear has no such
+// meaning: it always requires a target, refused as invalid otherwise, even
+// for an admin.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {
@@ -109,6 +111,11 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 		identity := identityOf(request.Context())
 		if !identity.Admin && argument != identity.Subject {
 			h.notFound(writer)
+
+			return
+		}
+		if name == TaskSyncClear && argument == "" {
+			h.error(writer, http.StatusBadRequest, "invalid_request", "sync:clear requires a target")
 
 			return
 		}

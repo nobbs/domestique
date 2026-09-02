@@ -447,6 +447,34 @@ describe("TargetConvergenceCard", () => {
     expect(screen.queryByText("No target has connected yet.")).not.toBeInTheDocument();
   });
 
+  // A failed identity read must not be read as "not admin" either: that would
+  // show a non-admin rider's self-service prompt to an admin whose own
+  // config request happened to fail.
+  it("reports an error rather than guessing when identity fails to load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("failure", { status: 500 })),
+    );
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+        mutations: { retry: false },
+      },
+    });
+    client.setQueryData(statusQuery().queryKey, status(true, []));
+    // webUIConfigQuery is deliberately left unseeded, so it fetches and fails.
+
+    render(
+      <QueryClientProvider client={client}>
+        <TargetConvergenceCard />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText(/did not say who is signed in/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connect it" })).not.toBeInTheDocument();
+    expect(screen.queryByText("No target has connected yet.")).not.toBeInTheDocument();
+  });
+
   it("shows who owns a target when the service names an owner", () => {
     renderConvergence(status(true, [target({ owner: "rider-a" })]), config(true));
 

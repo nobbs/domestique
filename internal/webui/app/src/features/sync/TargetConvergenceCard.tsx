@@ -46,7 +46,11 @@ function ConnectPrompt() {
 export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
-  const { data: config, isPending: configIsPending } = useQuery(webUIConfigQuery());
+  const {
+    data: config,
+    isPending: configIsPending,
+    isError: configIsError,
+  } = useQuery(webUIConfigQuery());
   const reconcile = useRunTaskArgument({
     mutation: {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
@@ -81,10 +85,19 @@ export function TargetConvergenceCard() {
   // none exist yet rather than that this caller's own is missing. Which of
   // the two empty states to show depends on identity.admin, so this waits on
   // that query too: deciding from a still-loading config would flash the
-  // wrong one at an admin for a moment.
+  // wrong one at an admin for a moment, and a failed config must not be read
+  // as "not admin" either — an admin whose identity failed to load would see
+  // the self-service prompt instead of the truth, that this page cannot tell.
   if (data.targets.length === 0) {
     if (configIsPending) {
       return <Skeleton className="h-24 w-full" role="status" aria-label="Loading targets" />;
+    }
+    if (configIsError) {
+      return (
+        <p className="text-sm text-[var(--alert)]">
+          The service did not say who is signed in, so it cannot say whether a target is missing.
+        </p>
+      );
     }
 
     return config?.identity.admin ? (

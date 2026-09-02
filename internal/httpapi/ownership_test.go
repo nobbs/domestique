@@ -191,6 +191,20 @@ func TestRunTaskAllowsAdminAnyTargetOrEveryTarget(t *testing.T) {
 	assert.Equal(t, http.StatusAccepted, response.Code, "run status with no argument")
 }
 
+// sync:clear has no "every target" meaning the way sync:target's empty
+// argument does: it always deletes one named target's routes, so an empty
+// argument is refused as invalid rather than run — even for an admin, who
+// would otherwise be the one caller this doesn't already refuse as not found.
+func TestRunTaskRefusesAnEmptyArgumentForSyncClearEvenForAdmin(t *testing.T) {
+	tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskSyncClear}}}
+	handler := handlerFor(t, newFakeSessions(), &fakeOAuth{}, &fakeState{}, tasks)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(TaskSyncClear)+"/run"))
+	assert.Equal(t, http.StatusBadRequest, response.Code, "run status with no argument")
+	assert.Empty(t, tasks.asked, "the task must not have been reached")
+}
+
 // encodedTaskName percent-encodes a task name's colon the way a browser's own
 // request does, so a path built from it matches what the mux registers.
 func encodedTaskName(name string) string {
