@@ -113,17 +113,20 @@ func TestStartLoginAcceptsSameOriginBySecFetchSite(t *testing.T) {
 	assert.Equal(t, 1, sessions.beginCalls)
 }
 
-// A page on another site cannot make Sec-Fetch-Site lie about cross-site: the
-// browser sets it, not the page. A cross-site value must refuse even a request
-// that also happens to carry the right Origin, so a caller cannot pick whichever
-// header this handler trusts.
-func TestStartLoginRefusesCrossSiteEvenWithTheBrowserOrigin(t *testing.T) {
+// Sec-Fetch-Site: same-origin is computed relative to whatever host the
+// request actually reached, not this service's configured browserOrigin — a
+// request that reached this process under another hostname (a DNS rebind, an
+// alternate vhost sharing the address) computes same-origin against that
+// hostname too. Sec-Fetch-Site is trusted only for the one Origin value this
+// exists to admit; naming an attacker's own origin must still refuse, exactly
+// as it did before Sec-Fetch-Site was ever consulted.
+func TestStartLoginRefusesAnotherOriginEvenAsSameOriginBySecFetchSite(t *testing.T) {
 	sessions := newFakeSessions()
 	handler := newSessionHandler(t, sessions)
 
 	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/auth/start", http.NoBody)
-	request.Header.Set("Origin", testBrowserOrigin)
-	request.Header.Set("Sec-Fetch-Site", "cross-site")
+	request.Header.Set("Origin", "https://evil.example.test")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
