@@ -64,11 +64,13 @@ export const Failed: Story = {
  */
 export const UnknownReason: Story = {
   decorators: [at(`?error=${encodeURIComponent("<img src=x onerror=alert(1)>")}`)],
-  play: async ({ canvas }) => {
+  play: async ({ canvas, canvasElement }) => {
     const alert = await canvas.findByRole("alert");
 
     await expect(alert).toHaveTextContent("Sign-in could not be completed.");
     await expect(alert.textContent).not.toContain("onerror");
-    await expect(canvas.queryByRole("img", { name: "" })).toBeNull();
+    // The element itself, not a role it may or may not answer to: an `img`
+    // without alt text has no accessible name to be found by.
+    await expect(canvasElement.querySelector("img")).toBeNull();
   },
 };

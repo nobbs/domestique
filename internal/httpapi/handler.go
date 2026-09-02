@@ -288,7 +288,9 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	}
 	// The sign-in page is the application bundle, so the artefacts it names are
 	// fetched before any identity exists. They carry build output and no state.
-	if publicAsset(request.URL.Path) {
+	// Reads only: nothing else about these paths is served without a session.
+	if (request.Method == http.MethodGet || request.Method == http.MethodHead) &&
+		publicAsset(request.URL.Path) {
 		h.mux.ServeHTTP(writer, request)
 
 		return
@@ -437,20 +439,26 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 //   - style-src 'unsafe-inline': it styles its own controls inline;
 //   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
 //
-// The sign-in routes serve the same bundle before any identity exists, so they
-// name no tile origin and one form: 'self' posts to /auth/start, whose 303
-// carries the same submission on to the configured Auth0 tenant. form-action
-// governs the whole redirect chain a submission follows, not only its immediate
-// action, so the tenant is named there or a browser refuses to follow it.
+// Nothing served before an identity exists names a tile origin — the sign-in
+// routes or a build artefact. The sign-in routes also allow one form: 'self'
+// posts to /auth/start, whose 303 carries the same submission on to the
+// configured Auth0 tenant. form-action governs the whole redirect chain a
+// submission follows, not only its immediate action, so the tenant is named
+// there or a browser refuses to follow it.
 func (h *Handler) contentSecurityPolicy(path string) string {
 	formAction := "form-action 'none'"
 	var tileOrigins []string
-	if strings.HasPrefix(path, "/auth/") {
+	signIn := strings.HasPrefix(path, "/auth/")
+	if signIn {
 		formAction = "form-action 'self'"
 		if h.authOrigin != "" {
 			formAction += " " + h.authOrigin
 		}
-	} else {
+	}
+	// The configured map is named to a caller that could hold an identity and to
+	// no other: every answer served before one is a build artefact with no map
+	// in it, and the header would otherwise hand the origins to anyone.
+	if !signIn && !publicAsset(path) {
 		// A list that cannot be reduced to origins was never allowed to be stored, so
 		// this is a bug. The header then names no tile origin, blanking the map.
 		origins, err := tileOriginsOf(h.settings.Values().Basemaps)

@@ -29,7 +29,7 @@ func (h *Handler) GetLoginPage(writer http.ResponseWriter, request *http.Request
 // refuse sends a browser back to the sign-in page carrying why. The refused
 // subject is not named: a query string outlives the answer it was part of.
 func (h *Handler) refuse(writer http.ResponseWriter, request *http.Request, reason string) {
-	http.Redirect(writer, request, loginPath+"?error="+reason, http.StatusSeeOther)
+	http.Redirect(writer, request, loginPath+"?error="+url.QueryEscape(reason), http.StatusSeeOther)
 }
 
 // sameOrigin is the provenance check for the two routes outside the OpenAPI

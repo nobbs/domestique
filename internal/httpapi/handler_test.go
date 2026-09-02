@@ -236,6 +236,15 @@ func TestBuildArtefactsAreServedWithoutASession(t *testing.T) {
 			handler.ServeHTTP(response, httptest.NewRequestWithContext(
 				t.Context(), http.MethodGet, path, http.NoBody))
 			assert.Equal(t, http.StatusOK, response.Code)
+			// The header travels with the artefact, so it must not name the
+			// configured map to a caller that has proved nothing.
+			assert.NotContains(t, response.Header().Get("Content-Security-Policy"), "tiles.example.test")
+
+			// Reads only. Anything else about the same path meets the gate.
+			written := httptest.NewRecorder()
+			handler.ServeHTTP(written, httptest.NewRequestWithContext(
+				t.Context(), http.MethodPost, path, http.NoBody))
+			assert.Equal(t, http.StatusUnauthorized, written.Code)
 		})
 	}
 }
