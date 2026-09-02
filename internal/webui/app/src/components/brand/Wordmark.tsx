@@ -7,13 +7,20 @@
  * to the brand standing at the end of it.
  */
 
+import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
 
-export function Wordmark() {
+export interface WordmarkProps {
+  /** The mark's edge in pixels; the name is sized by `className`. */
+  size?: number;
+  className?: string;
+}
+
+export function Wordmark({ size = 22, className }: WordmarkProps) {
   return (
-    <span className="flex items-center gap-2">
-      <Logo className="text-[var(--accent)]" size={22} />
-      <span className="text-sm font-semibold tracking-tight">domestique</span>
+    <span className={cn("flex items-center gap-2 text-sm font-semibold tracking-tight", className)}>
+      <Logo className="text-[var(--accent)]" size={size} />
+      domestique
     </span>
   );
 }

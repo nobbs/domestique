@@ -9,7 +9,7 @@ import { useSearchParams } from "react-router";
 import { Button } from "@/components/Button";
 import { Wordmark } from "@/components/brand/Wordmark";
 import { Alert, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
  * Why a sign-in came back here. A refused account is told apart from a failed
@@ -34,30 +34,26 @@ export function SignInPage() {
   const message = refusalMessage(params.get("error"));
 
   return (
-    <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-[var(--base)] p-6 md:p-10">
-      <div className="flex w-full max-w-sm flex-col gap-6">
-        <div className="self-center">
-          <Wordmark />
-        </div>
-        <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-          <CardHeader className="text-center">
-            <CardTitle className="text-xl">Welcome back</CardTitle>
-            <CardDescription>Sign in with the configured account.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            {message === null ? null : (
-              <Alert variant="destructive" className="border-[var(--rule)]">
-                <AlertTitle>{message}</AlertTitle>
-              </Alert>
-            )}
-            <form action="/auth/start" className="flex justify-center" method="post">
-              <Button type="submit" variant="default">
-                Sign in
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
+    <main className="flex min-h-svh flex-col items-center justify-center bg-[var(--base)] p-6 md:p-10">
+      <Card className="w-full max-w-sm border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
+        <CardHeader>
+          <CardTitle className="flex justify-center">
+            <Wordmark className="gap-3 text-2xl" size={40} />
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {message === null ? null : (
+            <Alert variant="destructive" className="border-0 bg-transparent text-center">
+              <AlertTitle>{message}</AlertTitle>
+            </Alert>
+          )}
+          <form action="/auth/start" className="flex justify-center" method="post">
+            <Button type="submit" variant="default">
+              Sign in
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </main>
   );
 }
