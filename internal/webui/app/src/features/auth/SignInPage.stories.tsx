@@ -57,3 +57,18 @@ export const Failed: Story = {
     );
   },
 };
+
+/**
+ * A reason this page does not know, which is the shape anyone can send someone
+ * else: the value chooses between sentences written here and is never shown.
+ */
+export const UnknownReason: Story = {
+  decorators: [at(`?error=${encodeURIComponent("<img src=x onerror=alert(1)>")}`)],
+  play: async ({ canvas }) => {
+    const alert = await canvas.findByRole("alert");
+
+    await expect(alert).toHaveTextContent("Sign-in could not be completed.");
+    await expect(alert.textContent).not.toContain("onerror");
+    await expect(canvas.queryByRole("img", { name: "" })).toBeNull();
+  },
+};
