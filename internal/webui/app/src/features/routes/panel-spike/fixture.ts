@@ -1,0 +1,290 @@
+/**
+ * A route built to tell the four cards apart.
+ *
+ * The shared story fixture is forty points climbing at a constant rate along a
+ * straight line, with two surfaces split down the middle. Every encoding in
+ * this spike looks identical on it — one gradient band, two ground classes, no
+ * order worth preserving — which is the one thing a comparison must not do.
+ *
+ * So: a hundred and thirty kilometre loop over three cols, rippled so the
+ * steepness comes out as ramps rather than as one block per leg, and six
+ * classes of ground including the unsurveyed stretch every real route has.
+ *
+ * Every figure the cards print is *measured off this geometry* rather than
+ * asserted beside it — distance, ascent, steepest hundred metres, the climbs,
+ * both mixes. A card therefore cannot quietly disagree with its own ribbon,
+ * and a layout that looks good here is not looking good on numbers chosen to
+ * flatter it.
+ */
+
+import type { Position, Route, SurfaceKind, WeatherPoint } from "../../../api/types";
+import { SURFACE_KINDS } from "../../../api/types";
+import {
+  START_AT,
+  samplesAlong,
+  weatherAlong,
+} from "../../../components/route/forecast-spike/fixture";
+import type { Climb } from "../../../lib/climbs";
+import { findClimbs } from "../../../lib/climbs";
+import type { ForecastSample } from "../../../lib/forecastSamples";
+import type { BandShare } from "../../../lib/profile";
+import { buildProfile, cumulativeMetres, gradientMix, gradientShares } from "../../../lib/profile";
+import type { SurfaceBand, SurfaceShare, SurfaceSummary } from "../../../lib/surface";
+
+/** Somewhere in the western Alps, so the loop sits on plausible ground. */
+const START: readonly [number, number] = [7.42, 46.31];
+
+const TARGET_METRES = 130_000;
+const POINT_COUNT = 2_001;
+
+/**
+ * Height above sea level at each turning point, by distance in kilometres.
+ *
+ * Seven climbs, deliberately unlike each other, because three cols of much the
+ * same size is the easy case for everything that draws them. There is a long
+ * steady col, a short wall steep enough to reach the top gradient band, a
+ * gentle drag, two punchy ramps close enough together to crowd any marker
+ * placed on an axis, the day's big one, and a sting in the tail at the point a
+ * reader has stopped expecting one.
+ *
+ * That range is the point. A climbs list is easy to lay out for three and
+ * awkward for seven; a bracket track is legible until two climbs are four
+ * kilometres apart; a "biggest climb" line means something quite different
+ * when the biggest is one of seven rather than one of three.
+ *
+ * The last keyframe returns to the first: the route is a loop, and one that
+ * ended two hundred metres above where it started would put that error into
+ * the ascent figure every card prints.
+ */
+const ELEVATION_KEYFRAMES: ReadonlyArray<readonly [number, number]> = [
+  [0, 420],
+  [8, 450],
+  [20, 1_150],
+  [27, 640],
+  [32, 700],
+  [35, 1_050],
+  [40, 520],
+  [52, 700],
+  [60, 1_060],
+  [66, 640],
+  [69, 900],
+  [73, 700],
+  [76, 960],
+  [82, 560],
+  [95, 620],
+  [106, 1_250],
+  [108, 1_420],
+  [116, 700],
+  [121, 1_000],
+  [130, 420],
+];
+
+/**
+ * The road's own unevenness, in metres, at a distance in kilometres.
+ *
+ * Three wavelengths: the long roll of a valley floor, the pitch between
+ * hairpins, and the short ramps inside a pitch. Without it every leg is one
+ * constant gradient, which classifies as a single band and makes the steepness
+ * mix a picture of this function rather than of a road.
+ *
+ * Deliberately shallower than the gentlest col's own gradient. Ripple deep
+ * enough to turn a trough into a descent splits one col into eight climbs, and
+ * the climbs line every card prints would then be counting this function's
+ * wavelengths rather than the road's cols.
+ */
+function ripple(km: number): number {
+  return (
+    2.1 * Math.sin((2 * Math.PI * km) / 1.4) +
+    0.85 * Math.sin((2 * Math.PI * km) / 0.42 + 1.1) +
+    0.2 * Math.sin((2 * Math.PI * km) / 0.17 + 2.3)
+  );
+}
+
+/** Base height at a distance in kilometres, straight between the keyframes. */
+function baseElevation(km: number): { metres: number; gradientPercent: number } {
+  const last = ELEVATION_KEYFRAMES[ELEVATION_KEYFRAMES.length - 1] ?? [0, 0];
+  for (let index = 1; index < ELEVATION_KEYFRAMES.length; index++) {
+    const from = ELEVATION_KEYFRAMES[index - 1];
+    const to = ELEVATION_KEYFRAMES[index];
+    if (!from || !to || km > to[0]) {
+      continue;
+    }
+    const span = to[0] - from[0];
+    const fraction = span > 0 ? (km - from[0]) / span : 0;
+
+    return {
+      metres: from[1] + (to[1] - from[1]) * fraction,
+      gradientPercent: span > 0 ? (to[1] - from[1]) / (span * 10) : 0,
+    };
+  }
+
+  return { metres: last[1], gradientPercent: 0 };
+}
+
+/**
+ * Height at a distance in kilometres.
+ *
+ * The ripple is scaled by how hard the leg already is. Valley floors are
+ * smooth and cols are ramped, and a flat eighteen kilometres carrying the same
+ * unevenness as a hairpin would fill the gentlest band with steepness the road
+ * does not have.
+ */
+function elevationAt(km: number): number {
+  const { metres, gradientPercent } = baseElevation(km);
+  const weight = 0.25 + 0.75 * Math.min(Math.abs(gradientPercent) / 6, 1);
+
+  return metres + ripple(km) * weight;
+}
+
+/** A wobbling closed ring, so the shape reads as a road rather than as a circle. */
+function ringAt(fraction: number, radiusLon: number, radiusLat: number): [number, number] {
+  const angle = 2 * Math.PI * fraction;
+  const wobble = 1 + 0.16 * Math.sin(6 * angle) + 0.09 * Math.cos(9 * angle);
+
+  return [
+    START[0] + radiusLon * Math.cos(angle) * wobble,
+    START[1] + radiusLat * Math.sin(angle) * wobble,
+  ];
+}
+
+function ringOf(radiusLat: number): Array<[number, number]> {
+  const radiusLon = radiusLat / Math.cos((START[1] * Math.PI) / 180);
+
+  return Array.from({ length: POINT_COUNT }, (_, index) =>
+    ringAt(index / (POINT_COUNT - 1), radiusLon, radiusLat),
+  );
+}
+
+/**
+ * The ring at the radius that measures out to the length asked for.
+ *
+ * Solved rather than derived: the wobble makes the perimeter something other
+ * than a circle's, and the distance the cards print has to be the distance the
+ * geometry actually is. Three passes converge well inside a hundred metres.
+ */
+function scaledRing(): { ring: Array<[number, number]>; distances: number[] } {
+  let radius = 0.18;
+  let ring = ringOf(radius);
+  let distances = cumulativeMetres(ring);
+
+  for (let pass = 0; pass < 3; pass++) {
+    const measured = distances[distances.length - 1] ?? TARGET_METRES;
+    radius *= TARGET_METRES / measured;
+    ring = ringOf(radius);
+    distances = cumulativeMetres(ring);
+  }
+
+  return { ring, distances };
+}
+
+const { ring, distances } = scaledRing();
+
+export const spikeCoordinates: Position[] = ring.map(([longitude, latitude], index) => [
+  longitude,
+  latitude,
+  elevationAt((distances[index] ?? 0) / 1_000),
+]);
+
+const totalMetres = distances[distances.length - 1] ?? 0;
+
+/** Measured, not asserted: what the geometry above actually climbs. */
+function ascentOf(coordinates: Position[]): number {
+  let gained = 0;
+  for (let index = 1; index < coordinates.length; index++) {
+    const rise = (coordinates[index]?.[2] ?? 0) - (coordinates[index - 1]?.[2] ?? 0);
+    if (rise > 0) {
+      gained += rise;
+    }
+  }
+
+  return gained;
+}
+
+export const spikeProfile = buildProfile(spikeCoordinates);
+
+const steepest = spikeProfile
+  ? Math.max(...spikeProfile.samples.map((sample) => sample.gradientPercent))
+  : 0;
+
+/**
+ * Where each class of ground starts and stops, as fractions of the route.
+ *
+ * Fractions rather than metres so the table stays right whatever the ring
+ * solves to. Contiguous and covering the whole loop, because a summary with
+ * gaps in it would let a ribbon draw holes the classifier never reported.
+ */
+const GROUND: ReadonlyArray<readonly [SurfaceKind, number]> = [
+  ["asphalt", 0.24],
+  ["paving", 0.262],
+  ["asphalt", 0.34],
+  ["compacted", 0.41],
+  ["gravel", 0.455],
+  ["asphalt", 0.52],
+  ["gravel", 0.578],
+  ["ground", 0.63],
+  ["unknown", 0.695],
+  ["asphalt", 0.8],
+  ["compacted", 0.845],
+  ["asphalt", 1],
+];
+
+const surfaceBands: SurfaceBand[] = GROUND.map(([kind, until], index) => ({
+  kind,
+  startMetres: (GROUND[index - 1]?.[1] ?? 0) * totalMetres,
+  endMetres: until * totalMetres,
+}));
+
+const surfaceShares: SurfaceShare[] = SURFACE_KINDS.flatMap((kind) => {
+  const metres = surfaceBands
+    .filter((band) => band.kind === kind)
+    .reduce((sum, band) => sum + (band.endMetres - band.startMetres), 0);
+
+  return metres > 0 ? [{ kind, metres, share: metres / totalMetres }] : [];
+});
+
+export const spikeSurface: SurfaceSummary = {
+  bands: surfaceBands,
+  shares: surfaceShares,
+  totalMetres,
+};
+
+export const spikeBands: BandShare[] = gradientShares(spikeCoordinates);
+/** The same steepness in ride order rather than totalled, for the positional ribbons. */
+export const spikeRuns: BandShare[] = gradientMix(spikeCoordinates);
+export const spikeClimbs: Climb[] = findClimbs(spikeCoordinates);
+
+/**
+ * The day over this route, borrowed from the forecast spike.
+ *
+ * The two spikes share a ride rather than each carrying one, so a story that
+ * shows a panel and a forecast together is showing one day. The samples are
+ * placed by riding the geometry at a speed that falls with the gradient, which
+ * is also where the moving time below comes from — the figure the panel prints
+ * and the axis the forecast lays its tiles along are then the same ride by
+ * construction rather than by two numbers agreeing.
+ */
+export const spikeSamples: ForecastSample[] = samplesAlong(spikeCoordinates, START_AT);
+export const spikeWeather: WeatherPoint[] = weatherAlong(spikeSamples);
+export const spikeStartAt = START_AT;
+
+const lastArrival = spikeSamples[spikeSamples.length - 1]?.arrivalAt ?? START_AT;
+
+export const spikeRoute: Route = {
+  provider: "veloplanner",
+  sourceRouteId: 208,
+  stageOrder: 1,
+  title: "Trois Cols — the long way round",
+  sourceRouteName: "Trois Cols",
+  routeName: "the long way round",
+  sourceRevision: "2026-08-24",
+  contentHash: "panel-spike",
+  distanceMetres: totalMetres,
+  ascentMetres: ascentOf(spikeCoordinates),
+  maxGradientPercent: steepest,
+  pointCount: spikeCoordinates.length,
+  movingSeconds: Math.round((lastArrival.getTime() - START_AT.getTime()) / 1_000),
+  validation: { biasPercent: -0.8, maePercent: 7.4, p90Percent: 15.2, evaluatedRides: 63 },
+};
+
+export const spikeHighestMetres = spikeProfile?.maxElevationMetres ?? 0;
+export const spikeSubtitle = "Haute-Savoie · read 19:38";
