@@ -118,12 +118,13 @@ func (s *Service) Begin(ctx context.Context) (Login, error) {
 // Complete validates and consumes a pending sign-in, exchanges the
 // authorization code, and creates a browser session for an allowed subject.
 func (s *Service) Complete(ctx context.Context, state, cookieState, code string) (Completion, error) {
-	if state == "" || cookieState == "" || subtle.ConstantTimeCompare([]byte(state), []byte(cookieState)) != 1 {
-		return Completion{}, errors.New("login state did not match")
-	}
+	// The digests are compared, not the wire values: they are fixed length, so
+	// the comparison cannot leak through an early return on differing lengths,
+	// and no slice of attacker-chosen size is allocated.
 	digest, err := tokenDigest(state)
-	if err != nil {
-		return Completion{}, errors.New("login state is invalid")
+	cookieDigest, cookieErr := tokenDigest(cookieState)
+	if err != nil || cookieErr != nil || subtle.ConstantTimeCompare(digest, cookieDigest) != 1 {
+		return Completion{}, errors.New("login state did not match")
 	}
 
 	now := s.now()

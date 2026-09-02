@@ -50,6 +50,24 @@ func TestCompleteRejectsMismatchedCookieState(t *testing.T) {
 	assert.Zero(t, store.consumeCalls)
 }
 
+// TestCompleteRejectsADifferentValidState pairs two well-formed states, so the
+// rejection comes from the comparison rather than from decoding.
+func TestCompleteRejectsADifferentValidState(t *testing.T) {
+	store := newFakeStore()
+	service, err := New(store, &fakeProvider{}, []string{"rider"}, newFakeClock().now)
+	require.NoError(t, err)
+
+	login, err := service.Begin(t.Context())
+	require.NoError(t, err)
+	other, err := service.Begin(t.Context())
+	require.NoError(t, err)
+	require.Len(t, login.State, len(other.State), "both states must be the same length")
+
+	_, err = service.Complete(t.Context(), login.State, other.State, "code")
+	require.Error(t, err)
+	assert.Zero(t, store.consumeCalls)
+}
+
 func TestCompleteHappyPath(t *testing.T) {
 	store := newFakeStore()
 	provider := &fakeProvider{subject: "rider", email: "rider@example.ts.net"}
