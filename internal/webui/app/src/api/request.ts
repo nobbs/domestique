@@ -38,6 +38,11 @@ export async function domestiqueRequest<T>(url: string, options: RequestInit): P
     readable = false;
   }
   if (!response.ok) {
+    // The gate redirected a document request that lacked a session; this is the
+    // same rejection reaching a fetch, which gets no redirect to follow.
+    if (response.status === 401) {
+      window.location.assign("/auth/login");
+    }
     const error = (payload as { error?: { code?: unknown; message?: unknown } } | undefined)?.error;
     throw new ApiError(
       response.status,

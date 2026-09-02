@@ -1,10 +1,12 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,7 +34,7 @@ func freeAddress(t *testing.T) string {
 // adapter, so that round trip is the thing worth asserting: a token the real
 // SDK verifies, naming the subject the demo configuration allows.
 func TestDemoIssuerSatisfiesTheProductionAdapter(t *testing.T) {
-	tenant, err := newIssuer(freeAddress(t), "demo-client")
+	tenant, err := newIssuer(freeAddress(t), "demo-client", "http://127.0.0.1:9/auth/callback")
 	require.NoError(t, err)
 	stop, err := tenant.serve()
 	require.NoError(t, err)
@@ -51,7 +53,7 @@ func TestDemoIssuerSatisfiesTheProductionAdapter(t *testing.T) {
 // The nonce the authorization request carried has to come back in the ID
 // token, or a replayed code would verify.
 func TestDemoIssuerBindsTheNonceToTheCode(t *testing.T) {
-	tenant, err := newIssuer(freeAddress(t), "demo-client")
+	tenant, err := newIssuer(freeAddress(t), "demo-client", "http://127.0.0.1:9/auth/callback")
 	require.NoError(t, err)
 	stop, err := tenant.serve()
 	require.NoError(t, err)
@@ -63,6 +65,57 @@ func TestDemoIssuerBindsTheNonceToTheCode(t *testing.T) {
 	_, err = client.Exchange(t.Context(),
 		base64.RawURLEncoding.EncodeToString([]byte("minted-for")), "demo-verifier", "asked-for")
 	require.Error(t, err, "a token minted for another nonce must be refused")
+}
+
+// The real service derives redirect_uri from browser_origin_url, which the
+// demo config keeps deliberately unroutable. The issuer must send the browser
+// back to its own callback address instead, carrying state and code intact.
+func TestDemoIssuerAuthorizeRedirectsToItsOwnCallback(t *testing.T) {
+	tenant, err := newIssuer(freeAddress(t), "demo-client", "http://127.0.0.1:9999/auth/callback")
+	require.NoError(t, err)
+	stop, err := tenant.serve()
+	require.NoError(t, err)
+	t.Cleanup(stop)
+
+	client := &http.Client{
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport:     &http.Transport{TLSClientConfig: &tls.Config{RootCAs: tenant.roots}},
+	}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+tenant.address+
+		"/authorize?redirect_uri=https://127.0.0.1:9/auth/callback&state=demo-state&nonce=demo-nonce", http.NoBody)
+	require.NoError(t, err)
+	response, err := client.Do(request)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, response.Body.Close()) })
+
+	require.Equal(t, http.StatusFound, response.StatusCode)
+	location, err := url.Parse(response.Header.Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:9999", location.Host, "the browser goes to the demo's own callback, not redirect_uri")
+	assert.Equal(t, "/auth/callback", location.Path)
+	assert.Equal(t, "demo-state", location.Query().Get("state"))
+	assert.Equal(t, base64.RawURLEncoding.EncodeToString([]byte("demo-nonce")), location.Query().Get("code"))
+}
+
+func TestNewIssuerRefusesACallbackURLThatIsNotAbsolute(t *testing.T) {
+	for name, callbackURL := range map[string]string{
+		"empty":     "",
+		"relative":  "/auth/callback",
+		"no scheme": "127.0.0.1:9999/auth/callback",
+		"not a url": "http://[::1/auth/callback",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := newIssuer(freeAddress(t), "demo-client", callbackURL)
+			require.Error(t, err)
+			assert.NotContains(t, err.Error(), "<nil>", "a validation failure reported a nil cause")
+		})
+	}
+}
+
+func TestDefaultCallbackURLUsesLoopback(t *testing.T) {
+	value, err := defaultCallbackURL(":8082")
+	require.NoError(t, err)
+	assert.Equal(t, "http://127.0.0.1:8082/auth/callback", value)
 }
 
 func TestSlotsForPairsConfiguredTargetsWithRequestedStates(t *testing.T) {

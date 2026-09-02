@@ -13,10 +13,22 @@
  * opening anything, and the menu spells it out for everyone else.
  */
 
+import { IconLogout } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { webUIConfigQuery } from "../api/queries";
 import { Button } from "./Button";
+
+/**
+ * Ends the session and leaves for the sign-in page regardless of the answer:
+ * the cookie is cleared either way, so staying would show a dead session.
+ */
+async function signOut(): Promise<void> {
+  await fetch("/auth/logout", { method: "POST", credentials: "same-origin" }).catch(
+    () => undefined,
+  );
+  window.location.assign("/auth/login");
+}
 
 /**
  * One or two letters standing in for a display name.
@@ -78,6 +90,16 @@ export function UserPill() {
         {/* Breaks anywhere: an address is one word to a browser, and a long one
             would otherwise decide how wide this popover is. */}
         <p className="wrap-anywhere px-1.5 text-sm text-[var(--ink)]">{identity.display}</p>
+        <Button
+          className="w-full justify-start"
+          icon={<IconLogout stroke={1.6} />}
+          onClick={() => {
+            void signOut();
+          }}
+          variant="ghost"
+        >
+          Sign out
+        </Button>
       </PopoverContent>
     </Popover>
   );
