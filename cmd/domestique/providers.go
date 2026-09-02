@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -150,14 +151,18 @@ func (p *wahooProvider) targetIDs() []string {
 		return nil
 	}
 
-	// Best effort: a read failure here is reported as no targets, which is
-	// exactly the "not ready" state a caller already handles.
+	// Best effort: the sync service's own targetIDs has no error channel, so a
+	// read failure here is reported as no targets — the "not ready" state a
+	// caller already handles — but logged first, so it is not read as the
+	// ordinary "nothing configured yet" case an operator need not act on.
 	ids := []string{}
 	if err := p.store.ForEachTarget(context.Background(), func(id, _, _ string) error {
 		ids = append(ids, id)
 
 		return nil
 	}); err != nil {
+		slog.Error("reading target IDs", "error", err)
+
 		return nil
 	}
 

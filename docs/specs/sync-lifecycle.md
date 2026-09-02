@@ -112,8 +112,8 @@ been replaced.
 Each target is a signed-in subject's own value, created the moment that
 subject starts their first authorisation — the configuration does not bound
 how many exist. Each begins in `not_authorized`. Automatic sync does not start
-until every configured slot is `authorized`. State names are spelled here as
-the wire spells them.
+until every target that exists is `authorized`. State names are spelled here
+as the wire spells them.
 
 Three of the four states are stored on the slot. `pending` is not: it is derived
 at read time from an OAuth transaction that has neither expired nor been

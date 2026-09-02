@@ -46,7 +46,7 @@ function ConnectPrompt() {
 export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
-  const { data: config } = useQuery(webUIConfigQuery());
+  const { data: config, isPending: configIsPending } = useQuery(webUIConfigQuery());
   const reconcile = useRunTaskArgument({
     mutation: {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
@@ -78,8 +78,15 @@ export function TargetConvergenceCard() {
   }
   // Nothing to reconcile before there is a target, and no target before its
   // owner connects — an admin sees every rider's, so an empty list here means
-  // none exist yet rather than that this caller's own is missing.
+  // none exist yet rather than that this caller's own is missing. Which of
+  // the two empty states to show depends on identity.admin, so this waits on
+  // that query too: deciding from a still-loading config would flash the
+  // wrong one at an admin for a moment.
   if (data.targets.length === 0) {
+    if (configIsPending) {
+      return <Skeleton className="h-24 w-full" role="status" aria-label="Loading targets" />;
+    }
+
     return config?.identity.admin ? (
       <p className="text-sm text-[var(--ink-2)]">No target has connected yet.</p>
     ) : (

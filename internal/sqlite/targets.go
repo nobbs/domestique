@@ -23,6 +23,12 @@ type Target struct {
 // time its owning subject has been seen, and leaves an existing one alone.
 // A self-service target's slot is the owning subject's own value, so this is
 // safe to call on every "Connect" attempt, not only the first.
+//
+// A slot that predates ownership (owner_subject NULL, from migration 000030)
+// is claimed rather than left orphaned forever: matching on slot here is
+// never a guess, since a self-service slot IS the owning subject's own
+// value. This is a no-op against a slot already owned by someone — including
+// this same subject, on their second or later "Connect".
 func (s *Store) EnsureTargetOwner(ctx context.Context, subject string) error {
 	if strings.TrimSpace(subject) == "" {
 		return errors.New("a subject is required")
@@ -33,6 +39,11 @@ func (s *Store) EnsureTargetOwner(ctx context.Context, subject string) error {
 		AuthorizationState: string(AuthorizationNotAuthorized), UpdatedAtUnix: time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("creating target owner: %w", err)
+	}
+	if err := s.queries.ClaimUnownedTarget(ctx, sqlcgen.ClaimUnownedTargetParams{
+		OwnerSubject: sql.NullString{String: subject, Valid: true}, Slot: subject,
+	}); err != nil {
+		return fmt.Errorf("claiming target owner: %w", err)
 	}
 
 	return nil

@@ -35,6 +35,26 @@ func TestEnsureTargetOwnerLeavesAnExistingTargetAlone(t *testing.T) {
 	assert.Equal(t, "refresh-token", token, "the target kept its authorization")
 }
 
+// A slot that predates ownership (owner_subject NULL, from migration 000030)
+// is claimed by a subject connecting under that same value, rather than left
+// orphaned forever with no way for anyone to claim it: the slot matching is
+// never a guess, since a self-service slot IS the owning subject's own value.
+func TestEnsureTargetOwnerClaimsASlotThatPredatesOwnership(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	_, err := store.database.ExecContext(t.Context(),
+		"INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES (?, ?, ?)",
+		"rider-a", "authorized", 1)
+	require.NoError(t, err, "seeding a pre-ownership target row")
+
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	target, err := store.Target(t.Context(), "rider-a")
+	require.NoError(t, err, "Target()")
+	assert.Equal(t, "rider-a", target.OwnerSubject, "the pre-ownership slot was claimed")
+	assert.Equal(t, AuthorizationAuthorized, target.AuthorizationState,
+		"claiming ownership must not disturb an existing authorization")
+}
+
 // A blank subject names no one to own the target, so it is refused rather
 // than silently creating an unowned row.
 func TestEnsureTargetOwnerRejectsABlankSubject(t *testing.T) {

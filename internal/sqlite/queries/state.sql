@@ -16,6 +16,10 @@ INSERT INTO targets (slot, owner_subject, authorization_state, updated_at_unix)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(slot) DO NOTHING;
 
+-- name: ClaimUnownedTarget :exec
+-- Claims a slot that predates ownership; a no-op otherwise.
+UPDATE targets SET owner_subject = ? WHERE owner_subject IS NULL AND slot = ?;
+
 -- name: ListTargetStates :many
 SELECT slot, authorization_state, COALESCE(owner_subject, '') AS owner_subject
 FROM targets ORDER BY slot;

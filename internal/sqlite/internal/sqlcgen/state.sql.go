@@ -10,6 +10,21 @@ import (
 	"database/sql"
 )
 
+const claimUnownedTarget = `-- name: ClaimUnownedTarget :exec
+UPDATE targets SET owner_subject = ? WHERE owner_subject IS NULL AND slot = ?
+`
+
+type ClaimUnownedTargetParams struct {
+	OwnerSubject sql.NullString
+	Slot         string
+}
+
+// Claims a slot that predates ownership; a no-op otherwise.
+func (q *Queries) ClaimUnownedTarget(ctx context.Context, arg ClaimUnownedTargetParams) error {
+	_, err := q.db.ExecContext(ctx, claimUnownedTarget, arg.OwnerSubject, arg.Slot)
+	return err
+}
+
 const countStageEnrichmentFailures = `-- name: CountStageEnrichmentFailures :one
 SELECT COUNT(*) FROM (
   SELECT 1 FROM stage_enrichment_failure GROUP BY provider, route_id, stage_order

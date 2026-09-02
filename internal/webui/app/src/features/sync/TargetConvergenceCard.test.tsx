@@ -423,6 +423,30 @@ describe("TargetConvergenceCard", () => {
 
   // Owner is admin-only on the wire; when it is present the row says whose
   // target this is, so an admin reading a list of many can tell them apart.
+  // Which empty state to show depends on identity.admin, so a still-loading
+  // config must not be read as "not admin" — that would flash the wrong
+  // state at an admin for a moment.
+  it("shows a loading state rather than guessing while identity is still loading", () => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
+        mutations: { retry: false },
+      },
+    });
+    client.setQueryData(statusQuery().queryKey, status(true, []));
+    // webUIConfigQuery is deliberately left unseeded and unfetched.
+
+    render(
+      <QueryClientProvider client={client}>
+        <TargetConvergenceCard />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByRole("status", { name: "Loading targets" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connect it" })).not.toBeInTheDocument();
+    expect(screen.queryByText("No target has connected yet.")).not.toBeInTheDocument();
+  });
+
   it("shows who owns a target when the service names an owner", () => {
     renderConvergence(status(true, [target({ owner: "rider-a" })]), config(true));
 
