@@ -32,6 +32,7 @@ const (
 	// browser derives from it for the requests it sends this service.
 	testBrowserOriginURL = "https://domestique.example.test/oauth/wahoo/callback"
 	testBrowserOrigin    = "https://domestique.example.test"
+	testAuth0Domain      = "tenant.eu.auth0.test"
 )
 
 // staticSettings stands in for the live snapshot, holding one set of settings

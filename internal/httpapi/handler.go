@@ -96,6 +96,15 @@ type Options struct {
 	// BrowserOriginURL is an absolute HTTPS URL on the hostname a browser reaches
 	// this service at. Only scheme and host are read; it is the one allowed origin.
 	BrowserOriginURL string
+
+	// Auth0Domain is the configured tenant's bare host, e.g. "example.eu.auth0.com".
+	// It names the one cross-origin redirect the sign-in pages' CSP allows: a
+	// browser enforces form-action against the whole redirect chain a form
+	// submission follows, not just its immediate action, so StartLogin's 303 to
+	// the authorization endpoint is silently refused without it. Optional like
+	// tileOrigins below, and for the same reason: a missing value degrades the
+	// header rather than failing every unrelated caller's construction.
+	Auth0Domain string
 }
 
 // RideModelValidation is the frozen coefficient profile's measured
@@ -129,6 +138,7 @@ type Handler struct {
 	buildRevision       string
 	buildImageDigest    string
 	browserOrigin       string
+	authOrigin          string
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -161,6 +171,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	var authOrigin string
+	if domain := strings.TrimSpace(options.Auth0Domain); domain != "" {
+		authOrigin = "https://" + domain
+	}
 	// The settings are not re-checked here: they arrive already validated by the
 	// same rules an edit through this handler is held to.
 	if options.Settings == nil {
@@ -180,6 +194,7 @@ func New(
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,
+		authOrigin:          authOrigin,
 		surfaceIndex:        options.SurfaceIndexFunc,
 		rideModelValidation: options.RideModelValidationFunc,
 		now:                 time.Now,
@@ -419,14 +434,27 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 //   - style-src 'unsafe-inline': it styles its own controls inline;
 //   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
 //
-// authPolicy confines the sign-in pages, which are two static documents with no
-// script, no map and one form posting back here.
-const authPolicy = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; " +
-	"form-action 'self'; style-src 'unsafe-inline'; img-src 'self'"
+// authPolicy confines the sign-in pages, which are two static documents with
+// no script, no map, and one form posting back here — and, via StartLogin's
+// 303, on to the configured Auth0 tenant. form-action governs the whole
+// redirect chain a form submission follows, not only its immediate action, so
+// the tenant's origin is named here or a browser refuses to follow that
+// redirect at all.
+func (h *Handler) authPolicy() string {
+	formAction := "form-action 'self'"
+	if h.authOrigin != "" {
+		formAction += " " + h.authOrigin
+	}
+
+	return strings.Join([]string{
+		"default-src 'none'", "base-uri 'none'", "frame-ancestors 'none'",
+		formAction, "style-src 'unsafe-inline'", "img-src 'self'",
+	}, "; ")
+}
 
 func (h *Handler) contentSecurityPolicy(path string) string {
 	if strings.HasPrefix(path, "/auth/") {
-		return authPolicy
+		return h.authPolicy()
 	}
 
 	// A list that cannot be reduced to origins was never allowed to be stored, so
