@@ -220,8 +220,8 @@ func TestStartLoginRedirectsToTheProviderAndRemembersTheState(t *testing.T) {
 func TestCompleteLoginHandlesAuth0ErrorCallbacks(t *testing.T) {
 	tests := map[string]struct {
 		target      string
-		wantStatus  int
 		wantMessage string
+		wantStatus  int
 	}{
 		"access denied": {
 			target:      "/auth/callback?error=access_denied&error_description=go+away",

@@ -250,7 +250,7 @@ const config: WebUIConfig = {
   sourceBaseUrls: { veloplanner: "https://veloplanner.com" },
   // The signed-in identity as every page reads it. Sessions are this service's
   // own now, so there is no external sign-out URL to carry alongside it.
-  identity: { display: "rider@example.test" },
+  identity: { display: "rider@example.test", admin: false },
 };
 
 /** What this build registers, as the sync and tasks pages read it. */

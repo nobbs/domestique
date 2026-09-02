@@ -57,14 +57,21 @@ type Store interface {
 	DeleteSession(ctx context.Context, tokenDigest []byte) error
 }
 
-// Provider is the issuer as this package needs it, in primitives so this
-// package never imports the adapter behind it. access and admin are the two
-// namespaced claims an Auth0 Action mints on the ID token: whether the
-// subject may hold a session at all, and whether it holds cross-subject
-// rights once it does.
+// ExchangedIdentity is a verified ID token reduced to what this package needs
+// from it — a value type of this package's own, not the adapter's, so
+// Provider stays in primitives and never imports the adapter behind it.
+// Access and Admin are the two namespaced claims an Auth0 Action mints:
+// whether the subject may hold a session at all, and whether it holds
+// cross-subject rights once it does.
+type ExchangedIdentity struct {
+	Subject, Email, Name string
+	Access, Admin        bool
+}
+
+// Provider is the issuer as this package needs it.
 type Provider interface {
 	AuthorizationURL(ctx context.Context, state, nonce, codeVerifier string) (string, error)
-	Exchange(ctx context.Context, code, codeVerifier, nonce string) (subject, email, name string, access, admin bool, err error)
+	Exchange(ctx context.Context, code, codeVerifier, nonce string) (ExchangedIdentity, error)
 }
 
 // Service coordinates browser sign-in and admits later requests.
@@ -135,27 +142,27 @@ func (s *Service) Complete(ctx context.Context, state, cookieState, code string)
 		return Completion{}, fmt.Errorf("consuming login: %w", err)
 	}
 
-	subject, email, name, access, admin, err := s.provider.Exchange(ctx, code, verifier, nonce)
+	exchanged, err := s.provider.Exchange(ctx, code, verifier, nonce)
 	if err != nil {
 		return Completion{}, fmt.Errorf("exchanging authorization code: %w", err)
 	}
-	if !access {
-		return Completion{}, &NotAllowedError{Subject: subject}
+	if !exchanged.Access {
+		return Completion{}, &NotAllowedError{Subject: exchanged.Subject}
 	}
-	display := display(email, name, subject)
+	display := display(exchanged.Email, exchanged.Name, exchanged.Subject)
 
 	token, tokenDigestBytes, err := randomToken()
 	if err != nil {
 		return Completion{}, fmt.Errorf("minting session token: %w", err)
 	}
 	expiresAt := now.Add(sessionLifetime)
-	if err := s.store.CreateSession(ctx, tokenDigestBytes, subject, display, admin, now, expiresAt); err != nil {
+	if err := s.store.CreateSession(ctx, tokenDigestBytes, exchanged.Subject, display, exchanged.Admin, now, expiresAt); err != nil {
 		return Completion{}, fmt.Errorf("storing session: %w", err)
 	}
 
 	return Completion{
 		Token:     token,
-		Identity:  Identity{Subject: subject, Display: display, Admin: admin},
+		Identity:  Identity{Subject: exchanged.Subject, Display: display, Admin: exchanged.Admin},
 		ExpiresAt: expiresAt,
 	}, nil
 }

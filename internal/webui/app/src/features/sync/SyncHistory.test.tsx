@@ -44,7 +44,7 @@ function config(sourceBaseUrls: Record<string, string> = { veloplanner: "https:/
       { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
     ],
     sourceBaseUrls,
-    identity: { display: "rider@example.test" },
+    identity: { display: "rider@example.test", admin: false },
   };
 
   return value;

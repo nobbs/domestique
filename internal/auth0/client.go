@@ -252,8 +252,8 @@ func readIdentity(idToken string) (Identity, error) {
 		Subject string `json:"sub"`
 		Email   string `json:"email"`
 		Name    string `json:"name"`
-		Access  bool   `json:"https://domestique.invalid/access"`
-		Admin   bool   `json:"https://domestique.invalid/admin"`
+		Access  bool   `json:"https://domestique.invalid/access"` //nolint:tagliatelle // an Auth0 namespaced claim, not a field name this project chose
+		Admin   bool   `json:"https://domestique.invalid/admin"`  //nolint:tagliatelle // an Auth0 namespaced claim, not a field name this project chose
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return Identity{}, errors.New("auth0: id token payload is not valid json")

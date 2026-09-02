@@ -435,12 +435,13 @@ func (f *fakeStore) DeleteSession(_ context.Context, tokenDigest []byte) error {
 
 type fakeProvider struct {
 	subject, email, name string
-	access, admin        bool
 	exchangeErr          error
 	authURLErr           error
 
 	gotState, gotNonce, gotVerifier   string
 	exchangedNonce, exchangedVerifier string
+
+	access, admin bool
 }
 
 func (p *fakeProvider) AuthorizationURL(_ context.Context, state, nonce, codeVerifier string) (string, error) {
@@ -453,12 +454,15 @@ func (p *fakeProvider) AuthorizationURL(_ context.Context, state, nonce, codeVer
 
 func (p *fakeProvider) Exchange(
 	_ context.Context, _, codeVerifier, nonce string,
-) (subject, email, name string, access, admin bool, err error) {
+) (ExchangedIdentity, error) {
 	if p.exchangeErr != nil {
-		return "", "", "", false, false, p.exchangeErr
+		return ExchangedIdentity{}, p.exchangeErr
 	}
 	p.exchangedNonce, p.exchangedVerifier = nonce, codeVerifier
-	return p.subject, p.email, p.name, p.access, p.admin, nil
+	return ExchangedIdentity{
+		Subject: p.subject, Email: p.email, Name: p.name,
+		Access: p.access, Admin: p.admin,
+	}, nil
 }
 
 func TestTokenDigestRejectsAnythingButAWellFormedToken(t *testing.T) {

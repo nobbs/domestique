@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/auth0"
+	"github.com/nobbs/domestique/internal/session"
 )
 
 const (
@@ -280,11 +281,14 @@ func (p signInProvider) AuthorizationURL(ctx context.Context, state, nonce, code
 
 func (p signInProvider) Exchange(
 	ctx context.Context, code, codeVerifier, nonce string,
-) (subject, email, name string, access, admin bool, err error) {
+) (session.ExchangedIdentity, error) {
 	identity, err := p.client.Exchange(ctx, code, codeVerifier, nonce)
 	if err != nil {
-		return "", "", "", false, false, err //nolint:wrapcheck // forwarding to the client this holds
+		return session.ExchangedIdentity{}, err //nolint:wrapcheck // forwarding to the client this holds
 	}
 
-	return identity.Subject, identity.Email, identity.Name, identity.Access, identity.Admin, nil
+	return session.ExchangedIdentity{
+		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
+		Access: identity.Access, Admin: identity.Admin,
+	}, nil
 }

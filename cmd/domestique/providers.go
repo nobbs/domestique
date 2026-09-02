@@ -14,6 +14,7 @@ import (
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
+	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/sqlite"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/veloplanner"
@@ -39,13 +40,16 @@ func (p signInProvider) AuthorizationURL(ctx context.Context, state, nonce, code
 
 func (p signInProvider) Exchange(
 	ctx context.Context, code, codeVerifier, nonce string,
-) (subject, email, name string, access, admin bool, err error) {
+) (session.ExchangedIdentity, error) {
 	identity, err := p.client.Exchange(ctx, code, codeVerifier, nonce)
 	if err != nil {
-		return "", "", "", false, false, err //nolint:wrapcheck // forwarding to the client this holds
+		return session.ExchangedIdentity{}, err //nolint:wrapcheck // forwarding to the client this holds
 	}
 
-	return identity.Subject, identity.Email, identity.Name, identity.Access, identity.Admin, nil
+	return session.ExchangedIdentity{
+		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
+		Access: identity.Access, Admin: identity.Admin,
+	}, nil
 }
 
 // errNotConfigured reports that the settings an upstream client is built from
