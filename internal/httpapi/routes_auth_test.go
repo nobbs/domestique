@@ -173,6 +173,10 @@ func TestCompleteLoginRefusesAnIncompleteCallback(t *testing.T) {
 			assert.Contains(t, response.Body.String(), "Sign-in could not be completed")
 			assert.Empty(t, sessions.completed, "an incomplete callback reached the exchange")
 			assert.Nil(t, setCookie(t, response, sessionCookie), "a refused callback issued a session")
+
+			cleared := setCookie(t, response, loginCookie)
+			require.NotNil(t, cleared, "the pending login cookie was not cleared")
+			assert.Negative(t, cleared.MaxAge)
 		})
 	}
 }

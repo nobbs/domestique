@@ -57,6 +57,9 @@ func (h *Handler) CompleteLogin(writer http.ResponseWriter, request *http.Reques
 	cookie, cookieErr := request.Cookie(loginCookie)
 	if cookieErr != nil || state == "" || code == "" || cookie.Value == "" {
 		slog.Warn("sign-in refused", "reason", "login_state_missing")
+		// Cleared like the branches below: a pending state that got this far is
+		// spent, and leaving it set has the browser resend it until it expires.
+		h.clearCookie(writer, loginCookie)
 		h.page(writer, http.StatusBadRequest, "denied.html", pageValues{Message: signInFailed})
 
 		return
