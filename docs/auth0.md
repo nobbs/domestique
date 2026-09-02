@@ -57,7 +57,7 @@ network, never routes the readiness listener, and never adds or trusts an
 identity header — the service reads none, so an added one would be inert rather
 than dangerous, but a proxy that trusted one from somewhere else would not be.
 
-Three values go in `.env` beside the image digest:
+Two values join the image digest in `.env`, shown here with it for context:
 
 ```sh
 DOMESTIQUE_IMAGE=ghcr.io/nobbs/domestique@sha256:<digest>
