@@ -42,3 +42,11 @@ func TestEnsureTargetOwnerRejectsABlankSubject(t *testing.T) {
 
 	require.Error(t, store.EnsureTargetOwner(t.Context(), "   "), "EnsureTargetOwner() with a blank subject")
 }
+
+// A query failure is reported rather than swallowed.
+func TestEnsureTargetOwnerReportsAQueryFailure(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	require.Error(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner() over a closed store")
+}

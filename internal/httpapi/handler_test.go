@@ -2068,6 +2068,7 @@ type fakeState struct {
 	lastSuccessErr       error
 	targetRunErr         error
 	ensureTargetOwnerErr error
+	targetErr            error
 	ensuredOwners        []string
 	sourceStageErr       error
 	lastRun              *phaseRun
@@ -2122,6 +2123,9 @@ type fakeTargetRun struct {
 // the store actually holds, so a test cannot pass on a state production can
 // never produce.
 func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string, string) error) error {
+	if s.targetErr != nil {
+		return s.targetErr
+	}
 	if len(s.targets) == 0 {
 		return visit("rider-a", "authorized", "")
 	}

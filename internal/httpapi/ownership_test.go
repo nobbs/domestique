@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -193,4 +195,50 @@ func TestRunTaskAllowsAdminAnyTargetOrEveryTarget(t *testing.T) {
 // request does, so a path built from it matches what the mux registers.
 func encodedTaskName(name string) string {
 	return strings.ReplaceAll(name, ":", "%3A")
+}
+
+// A status request that cannot read who owns what is unavailable rather than
+// silently answering as though nobody owned anything.
+func TestGetStatusReportsUnavailableWhenTargetIDsFails(t *testing.T) {
+	state := &fakeState{targetErr: errors.New("state unavailable")}
+	handler := handlerFor(t, newFakeSessions(), &fakeOAuth{}, state, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
+}
+
+// targetRouteCounts and targetRuns each read ownership scoping on their own,
+// independently of GetStatus's own read, and each must fail the same way.
+func TestTargetRouteCountsAndTargetRunsReturnTheTargetIDsError(t *testing.T) {
+	state := &fakeState{targetErr: errors.New("state unavailable")}
+	handler := handlerFor(t, newFakeSessions(), &fakeOAuth{}, state, nil)
+
+	_, err := handler.targetRouteCounts(context.Background())
+	require.Error(t, err)
+
+	_, err = handler.targetRuns(context.Background())
+	require.Error(t, err)
+}
+
+// A failed self-service creation is reported as unavailable, not silently
+// treated as though the caller had no target to connect.
+func TestStartOAuthReportsUnavailableWhenEnsureTargetOwnerFails(t *testing.T) {
+	state := &fakeState{ensureTargetOwnerErr: errors.New("state unavailable")}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, state, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/oauth/wahoo/start/rider-a"))
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
+}
+
+// An admin naming another subject's target still needs the existing-target
+// list to check it against; a failed read is unavailable, not a silent 404.
+func TestStartOAuthReportsUnavailableWhenTargetIDsFailsForAdmin(t *testing.T) {
+	state := &fakeState{targetErr: errors.New("state unavailable")}
+	handler := handlerFor(t, newFakeSessions(), &fakeOAuth{}, state, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/oauth/wahoo/start/rider-b"))
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
 }
