@@ -8,6 +8,8 @@
 import { useSearchParams } from "react-router";
 import { Button } from "@/components/Button";
 import { Wordmark } from "@/components/brand/Wordmark";
+import { Alert, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
  * Why a sign-in came back here. A refused account is told apart from a failed
@@ -32,21 +34,29 @@ export function SignInPage() {
   const message = refusalMessage(params.get("error"));
 
   return (
-    <main className="grid min-h-dvh place-items-center bg-[var(--base)] p-6">
-      <div className="flex w-full max-w-xs flex-col items-center gap-6 rounded-xl border border-[var(--rule)] bg-[var(--panel)] p-8 shadow-[var(--shadow)]">
-        <Wordmark />
-        {message === null ? null : (
-          // Assertive rather than polite: the reader arrived at this page for
-          // the message, so it is the answer and not an aside.
-          <p className="text-center text-sm text-[var(--alert)]" role="alert">
-            {message}
-          </p>
-        )}
-        <form action="/auth/start" className="w-full" method="post">
-          <Button className="w-full" type="submit" variant="default">
-            Sign in
-          </Button>
-        </form>
+    <main className="flex min-h-svh flex-col items-center justify-center gap-6 bg-[var(--base)] p-6 md:p-10">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <div className="self-center">
+          <Wordmark />
+        </div>
+        <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Welcome back</CardTitle>
+            <CardDescription>Sign in with the configured account.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {message === null ? null : (
+              <Alert variant="destructive" className="border-[var(--rule)]">
+                <AlertTitle>{message}</AlertTitle>
+              </Alert>
+            )}
+            <form action="/auth/start" className="flex justify-center" method="post">
+              <Button type="submit" variant="default">
+                Sign in
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </main>
   );
