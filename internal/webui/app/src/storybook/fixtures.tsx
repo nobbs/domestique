@@ -222,7 +222,6 @@ export const settings: Settings = {
     apiBaseUrl: "https://api.wahooligan.com",
     oauthBaseUrl: "https://api.wahooligan.com",
     clientId: "wahoo-client-id",
-    targets: ["rider-a", "rider-b"],
   },
   sources: [{ provider: "veloplanner", baseUrl: "https://veloplanner.com" }],
   rideModel: { coefficientsFile: "/var/lib/domestique/coefficients.json" },

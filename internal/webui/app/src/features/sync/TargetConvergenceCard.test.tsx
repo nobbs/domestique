@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { statusQuery } from "../../api/queries";
-import type { Status, TargetStatus } from "../../api/types";
+import { statusQuery, webUIConfigQuery } from "../../api/queries";
+import type { Status, TargetStatus, WebUIConfig } from "../../api/types";
 import { TargetConvergenceCard } from "./TargetConvergenceCard";
 
 afterEach(() => {
@@ -38,7 +38,17 @@ function status(converged: boolean, targets: TargetStatus[]): Status {
   };
 }
 
-function renderConvergence(value: Status) {
+function config(admin = false): WebUIConfig {
+  return {
+    basemaps: [
+      { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
+    ],
+    sourceBaseUrls: {},
+    identity: { display: "rider@example.test", admin },
+  };
+}
+
+function renderConvergence(value: Status, configValue: WebUIConfig = config()) {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -46,6 +56,7 @@ function renderConvergence(value: Status) {
     },
   });
   client.setQueryData(statusQuery().queryKey, value);
+  client.setQueryData(webUIConfigQuery().queryKey, configValue);
 
   return render(
     <QueryClientProvider client={client}>
@@ -389,5 +400,38 @@ describe("TargetConvergenceCard", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "the task is already running, or something it needs is held by another run",
     );
+  });
+
+  // A rider with no target yet has one way to get one, and it needs no target
+  // identifier: the browser is never told its own subject.
+  it("offers a non-admin the self-service connect flow when they have no target", () => {
+    renderConvergence(status(true, []), config(false));
+
+    const connect = screen.getByRole("link", { name: "Connect it" });
+    expect(connect).toHaveAttribute("href", "/oauth/wahoo/start");
+  });
+
+  // An admin sees every rider's target, so an empty list means none exist yet
+  // rather than that this caller's own is missing — the self-service prompt
+  // would be misleading here.
+  it("tells an admin no target has connected yet, without the self-service prompt", () => {
+    renderConvergence(status(true, []), config(true));
+
+    expect(screen.getByText("No target has connected yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connect it" })).not.toBeInTheDocument();
+  });
+
+  // Owner is admin-only on the wire; when it is present the row says whose
+  // target this is, so an admin reading a list of many can tell them apart.
+  it("shows who owns a target when the service names an owner", () => {
+    renderConvergence(status(true, [target({ owner: "rider-a" })]), config(true));
+
+    expect(screen.getByText("Owned by rider-a")).toBeInTheDocument();
+  });
+
+  it("says nothing about ownership when the service names no owner", () => {
+    renderConvergence(status(true, [target()]));
+
+    expect(screen.queryByText(/^Owned by/)).not.toBeInTheDocument();
   });
 });

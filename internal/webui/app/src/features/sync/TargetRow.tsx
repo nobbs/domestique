@@ -96,6 +96,11 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
     >
       <div className="flex min-w-0 flex-col gap-1 text-sm">
         <span className="font-semibold">{target.id}</span>
+        {/* Present only for an admin: a non-admin's own target is already
+            known to be theirs, and never sees another's here at all. */}
+        {target.owner ? (
+          <span className="text-xs text-[var(--ink-2)]">Owned by {target.owner}</span>
+        ) : null}
         <span className="text-[var(--ink-2)]">{stagesSummary(target)}</span>
         {failure ? <span className="text-[var(--ink-2)]">{failure}</span> : null}
         {authorisation ? (

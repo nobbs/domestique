@@ -42,7 +42,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   useSetAlerts,
   useSetBasemaps,
@@ -51,7 +50,6 @@ import {
   useSetSource,
   useSetSurface,
   useSetSync,
-  useSetTargets,
   useSetTimezone,
   useSetWahooApplication,
 } from "../../api/generated";
@@ -99,15 +97,6 @@ function inMinutes(seconds: number): number {
 
 function fromMinutes(minutes: number): number {
   return Math.round(minutes * SECONDS_PER_MINUTE);
-}
-
-/**
- * The lines of a list typed one per line. They are kept as typed while they are
- * being typed, so the newline that starts an entry survives; the blanks are
- * dropped on the way out.
- */
-function entered(lines: string[]): string[] {
-  return lines.map((line) => line.trim()).filter(Boolean);
 }
 
 /**
@@ -317,7 +306,6 @@ export function ServiceSettings() {
       <Missing missing={data.missing} />
       <Timezone settings={data} />
       <WahooApplication settings={data} />
-      <Targets settings={data} />
       {SOURCE_PROVIDERS.map((provider) => (
         <SourceSettingsSection key={provider} provider={provider} settings={data} />
       ))}
@@ -432,39 +420,6 @@ function WahooApplication({ settings }: { settings: Settings }) {
         value={secret}
         onChange={setSecret}
       />
-    </Section>
-  );
-}
-
-function Targets({ settings }: { settings: Settings }) {
-  const id = useId();
-  const invalidate = useSettingsInvalidation();
-  const [draft, setDraft] = useState<string[] | null>(null);
-  const save = useSetTargets(saving(() => setDraft(null), invalidate));
-
-  const targets = draft ?? settings.wahoo.targets;
-
-  return (
-    <Section
-      title="Wahoo targets"
-      description="The targets this application writes routes to."
-      save={save}
-      edited={draft !== null}
-      onSave={() => save.mutate({ data: { targets: entered(targets) } })}
-    >
-      <Field>
-        <FieldLabel htmlFor={`${id}-targets`}>Targets, one per line</FieldLabel>
-        <Textarea
-          id={`${id}-targets`}
-          rows={2}
-          value={targets.join("\n")}
-          onChange={(event) => setDraft(event.target.value.split("\n"))}
-        />
-        <FieldDescription>
-          A name here is the identity every authorisation, route and recorded run is stored under,
-          so renaming one leaves that target's history behind rather than moving it. Two at most.
-        </FieldDescription>
-      </Field>
     </Section>
   );
 }
