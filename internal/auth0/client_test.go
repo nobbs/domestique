@@ -504,16 +504,27 @@ func TestExchangeInitialisationFloor(t *testing.T) {
 	assert.EqualValues(t, 2, transport.count.Load(), "advancing past the floor must permit another attempt")
 }
 
+// TestExchangeRefusesOversizedTokenResponse pads an otherwise valid token
+// response past the cap: without the cap the exchange would succeed, so the
+// failure can only come from the truncated body.
 func TestExchangeRefusesOversizedTokenResponse(t *testing.T) {
 	issuer := newFakeIssuer(t)
-	issuer.setRawTokenBody([]byte(`{"access_token":"` + strings.Repeat("a", maxResponseBytes+1024) + `"}`))
+	now := time.Now()
+	idToken := signRS256(t, issuer.key, testKeyID,
+		tokenClaims(issuer.domain, testClientID, "user-1", now, map[string]any{"nonce": "nonce-1"}))
+	body, err := json.Marshal(map[string]any{
+		"access_token": strings.Repeat("a", maxResponseBytes+1024),
+		"id_token":     idToken,
+		"token_type":   "Bearer",
+		"expires_in":   3600,
+	})
+	require.NoError(t, err, "marshalling token response")
+	issuer.setRawTokenBody(body)
 
-	httpClient := &http.Client{
-		Timeout:   5 * time.Second,
-		Transport: &boundedTransport{base: issuer.server.Client().Transport},
-	}
-	client := newClient(t, issuer, httpClient, time.Now)
+	// The client is handed over unwrapped: bounding a caller-supplied client is
+	// this package's guarantee, not the caller's.
+	client := newClient(t, issuer, issuer.server.Client(), time.Now)
 
-	_, err := client.Exchange(context.Background(), testCode, testVerifier, "nonce-1")
+	_, err = client.Exchange(context.Background(), testCode, testVerifier, "nonce-1")
 	assert.Error(t, err)
 }

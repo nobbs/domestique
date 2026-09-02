@@ -76,10 +76,7 @@ func New(options *Options) (*Client, error) {
 		return nil, err
 	}
 
-	httpClient := options.HTTPClient
-	if httpClient == nil {
-		httpClient = defaultHTTPClient()
-	}
+	httpClient := boundedHTTPClient(options.HTTPClient)
 	now := options.Now
 	if now == nil {
 		now = time.Now

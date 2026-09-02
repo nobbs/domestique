@@ -14,13 +14,27 @@ const defaultTimeout = 5 * time.Second
 // hostile or broken endpoint must not be buffered in full.
 const maxResponseBytes = 1 << 20
 
-// defaultHTTPClient bounds every outbound call and caps every response body,
+// boundedHTTPClient bounds every outbound call and caps every response body,
 // so a public callback endpoint cannot be made to buffer an unbounded reply.
-func defaultHTTPClient() *http.Client {
-	return &http.Client{
-		Timeout:   defaultTimeout,
-		Transport: &boundedTransport{base: http.DefaultTransport},
+// A caller-supplied client is copied rather than used as it stands: the cap is
+// a guarantee of this package, not of whoever passed the client in.
+func boundedHTTPClient(client *http.Client) *http.Client {
+	bounded := &http.Client{Timeout: defaultTimeout, Transport: http.DefaultTransport}
+	if client != nil {
+		copied := *client
+		bounded = &copied
+		if bounded.Timeout <= 0 {
+			bounded.Timeout = defaultTimeout
+		}
+		if bounded.Transport == nil {
+			bounded.Transport = http.DefaultTransport
+		}
 	}
+	if _, already := bounded.Transport.(*boundedTransport); !already {
+		bounded.Transport = &boundedTransport{base: bounded.Transport}
+	}
+
+	return bounded
 }
 
 // boundedTransport wraps a RoundTripper to cap the response body it returns.
