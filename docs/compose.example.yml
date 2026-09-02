@@ -28,6 +28,21 @@ services:
       - "127.0.0.1:8081:8081"
     tmpfs:
       - /tmp:mode=1777,nosuid,nodev,noexec
+    # Traefik reaches the served port over this network. The loopback publish
+    # above stays: the deploy script health-gates on it and refuses to leave the
+    # host on an image whose port is published anywhere else.
+    networks:
+      - edge
+    # Read by Traefik off the Docker socket, so a deploy that recreates this
+    # container re-registers the route without restarting the proxy.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.domestique.rule=Host(`${DOMESTIQUE_PUBLIC_HOST:?set the public hostname in .env}`)"
+      - "traefik.http.routers.domestique.entrypoints=websecure"
+      - "traefik.http.routers.domestique.tls.certresolver=letsencrypt"
+      # The container port, not the published one: Traefik connects over the
+      # network above and never through the loopback binding.
+      - "traefik.http.services.domestique.loadbalancer.server.port=8080"
     volumes:
       - domestique-state:/var/lib/domestique
       - ./config.toml:/etc/domestique/config.toml:ro
@@ -38,11 +53,70 @@ services:
       - state_encryption_key
       - auth0_client_secret
 
+  # The only container on this host with a public port. It terminates TLS for
+  # the hostname and forwards to domestique over the edge network; nothing else
+  # on the host is reachable from outside.
+  traefik:
+    image: traefik:v3.7.12@sha256:9c2a54d87f76f5c2f5f2682c68394af92fb12c0a2686798d6462a3f84bd78eaf
+    restart: unless-stopped
+    command:
+      # One entrypoint. There is deliberately no :80 — the certificate is
+      # obtained over TLS-ALPN on 443, so the host firewall opens one port and a
+      # plaintext listener would be the only thing on this host answering
+      # without one.
+      - "--entrypoints.websecure.address=:443"
+      # Routes come from container labels, and only from containers that ask:
+      # without exposedbydefault=false Traefik would publish itself too.
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=domestique-edge"
+      # TLS-ALPN-01 answers the challenge on the port already being served, so
+      # it needs no second listener and no DNS credential.
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${DOMESTIQUE_ACME_EMAIL:?set the Let's Encrypt account address in .env}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
+      # No dashboard and no API: this proxy has one route, and the dashboard
+      # would be a second thing listening for a reason nobody here needs.
+      - "--api=false"
+      - "--global.checknewversion=false"
+      - "--global.sendanonymoususage=false"
+    ports:
+      - "443:443"
+    networks:
+      - edge
+    read_only: true
+    cap_drop:
+      - ALL
+    # Dropping ALL takes CAP_NET_BIND_SERVICE with it, and the entrypoint above
+    # is a privileged port inside the container.
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:mode=1777,nosuid,nodev,noexec
+    volumes:
+      # Traefik runs as root and reads the Docker daemon, which is what the
+      # label provider costs. `:ro` stops it writing the socket file; it does
+      # not restrain the API behind it, so this container is trusted in a way
+      # domestique deliberately is not. docs/auth0.md says what that means.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/acme
+
 secrets:
   state_encryption_key:
     file: ./secrets/state_encryption_key
   auth0_client_secret:
     file: ./secrets/auth0_client_secret
 
+# Named rather than left to the project prefix, because the Docker provider
+# above has to name it too and the project name is a deploy-script variable.
+networks:
+  edge:
+    name: domestique-edge
+
 volumes:
   domestique-state:
+  # The issued certificate and the ACME account key. Losing it costs a
+  # re-issue, not access.
+  traefik-acme:

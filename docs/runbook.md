@@ -106,6 +106,15 @@ browser is actually on. The two must agree exactly, including scheme; a
 Tailnet URL left over from a previous deployment is a common cause of this
 one.
 
+**The certificate is not trusted.** A browser warning about a self-signed
+certificate, on a host that has never served a valid one, means Traefik has not
+completed issuance rather than that anything about sign-in is wrong — and
+because `__Host-` cookies need real TLS, nothing below will work until it has.
+TLS-ALPN-01 needs the public DNS record to resolve to this host directly, with
+443 open and nothing else terminating TLS in front; a record still proxied by a
+CDN fails for that reason. `docker compose logs traefik` carries the ACME
+error, and issuance retries on its own once the cause is fixed.
+
 **The cookie is refused.** `__Host-` cookies are a browser rule, not a
 service one: they are refused outright over plain HTTP, on any origin that is
 not exactly the one that set them, and if the response tries to set a
