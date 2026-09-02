@@ -23,16 +23,30 @@ describe("refusalMessage", () => {
 });
 
 describe("SignInPage", () => {
-  it("submits the document to the route that mints a sign-in", () => {
+  function renderAt(entry: string) {
     render(
-      <MemoryRouter initialEntries={["/auth/login"]}>
+      <MemoryRouter initialEntries={[entry]}>
         <SignInPage />
       </MemoryRouter>,
     );
+  }
+
+  it("submits the document to the route that mints a sign-in", () => {
+    renderAt("/auth/login");
 
     const button = screen.getByRole("button", { name: "Sign in" });
     expect(button).toHaveAttribute("type", "submit");
     expect(button.closest("form")).toHaveAttribute("action", "/auth/start");
     expect(button.closest("form")).toHaveAttribute("method", "post");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  // The refusal is drawn from the address the service redirected to, and the
+  // control it sits above stays offered: the reader's next move is to retry.
+  it("draws the refusal the address carries", () => {
+    renderAt("/auth/login?error=not_allowed");
+
+    expect(screen.getByRole("alert")).toHaveTextContent("This account is not allowed to sign in.");
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 });
