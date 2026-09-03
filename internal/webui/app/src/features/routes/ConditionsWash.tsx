@@ -7,10 +7,12 @@
  * is the cold one. The strip stays the place to read one moment's numbers; this
  * is the place to see where a change lands on the map.
  *
- * A `line-gradient` over one LineString, not a canvas and not a custom layer.
- * The wash is a function of distance along the route, which is precisely what
- * `line-progress` is, and the corridor's width and its soft edge are the line's
- * own `line-width` and `line-blur` — so there is no per-frame work here at all.
+ * Filled polygons, not a wide translucent line. A line kilometres wide folds
+ * over itself on every bend tighter than its own half-width, and the two
+ * translucent fragments blend into a dark streak that reads as weather nobody
+ * forecast. `conditionsCorridor.ts` builds concentric rings that share no
+ * ground at all instead, so nothing on the map is ever painted twice; the
+ * stepped rings are what carry the fade the line's `line-blur` used to.
  *
  * The corridor is only as wide as the forecast's own grid cell allows
  * (`conditionsField.ts`), so a three-day-out forecast is drawn visibly broader
@@ -21,26 +23,30 @@
  * Banded, never interpolated between bands. A colour half way between two bands
  * belongs to no band, and would quietly contradict the legend beside the map.
  *
+ * The geometry is a `useMemo` over the route, the readings and the resolution,
+ * and one `fill` layer paints all of it from properties on the features — so
+ * there is no per-frame work here at all, and no layer per band either.
+ *
  * Runs its own `weatherQuery`, the way `ForecastStrip` does: React Query keys on
  * the samples, so the two share one cache entry rather than fetching twice.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import type { DataDrivenPropertyValueSpecification, ExpressionSpecification } from "maplibre-gl";
 import { useMemo } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import { weatherQuery } from "../../api/queries";
 import type { Position } from "../../api/types";
 import { useCartography } from "../../components/map/CartographyContext";
+import type { BandRun, CorridorRing } from "../../lib/conditionsCorridor";
+import { corridorRings } from "../../lib/conditionsCorridor";
 import type { ScalarSample } from "../../lib/conditionsField";
-import { corridorRadii, sampleScalarAt } from "../../lib/conditionsField";
+import { sampleScalarAt } from "../../lib/conditionsField";
 import { forecastResolution } from "../../lib/forecastResolution";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatDistance } from "../../lib/format";
 import type { Measure, MeasureKey } from "../../lib/measures";
 import { MEASURES } from "../../lib/measures";
 import { cumulativeMetres } from "../../lib/profile";
-import { metresPerPixel } from "../../lib/routeCues";
 import type { UnitSystem } from "../../lib/units";
 
 const SOURCE_ID = "route-conditions";
@@ -65,9 +71,6 @@ export const BAND_SCAN_METRES = 100;
  */
 const MAX_BAND_SCANS = 4000;
 
-/** MapLibre's own highest zoom, and so the far end of every ground-width ramp. */
-const MAX_ZOOM = 22;
-
 /**
  * How strongly the wash paints where it paints at all.
  *
@@ -78,63 +81,19 @@ const MAX_ZOOM = 22;
 export const WASH_OPACITY = 0.45;
 
 /**
- * A width fixed on the ground, as a paint expression in screen pixels.
+ * The stretches the route falls into, one per run of a single band.
  *
- * Metres per pixel halves with every zoom level, so a constant ground width is
- * exactly an exponential-base-2 ramp and two stops pin it at every zoom — no
- * recomputation as the camera moves. The latitude is the route's own, which
- * only enters through Mercator's cosine and cannot vary meaningfully over the
- * few tenths of a degree one ride spans.
+ * Read at a fine interval and cut only where the band changes, rather than one
+ * run per forecast sample: the cut is the boundary itself, which is what keeps
+ * the corridor banded rather than blended through a colour no reading is in.
  */
-function groundWidth(
-  metres: number,
-  latitude: number,
-): DataDrivenPropertyValueSpecification<number> {
-  const atZoomZero = metres / metresPerPixel(0, latitude);
-
-  return [
-    "interpolate",
-    ["exponential", 2],
-    ["zoom"],
-    0,
-    atZoomZero,
-    MAX_ZOOM,
-    atZoomZero * 2 ** MAX_ZOOM,
-  ];
-}
-
-/**
- * A band's colour with its opacity baked into the alpha channel.
- *
- * `line-opacity` is one number for the whole layer, so a measure whose lowest
- * band paints nothing — rain's dry, cloud's clear — can only say so here. Baked
- * as alpha, that band is genuinely absent rather than painted pale, and every
- * other band is scaled so the ground still reads through it.
- */
-function washColour(measure: Measure, band: number, dark: boolean): string {
-  const hex = measure.colour(band, dark);
-  const value = Number.parseInt(hex.slice(1), 16);
-
-  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${measure.opacity(band) * WASH_OPACITY})`;
-}
-
-/** One band, and the fraction of the route's length it takes over at. */
-interface BandStop {
-  progress: number;
-  band: number;
-}
-
-/**
- * Where each band starts, as fractions of the route's length.
- *
- * Read at a fine interval and emitted only where the band changes, rather than
- * one stop per forecast sample: the stops are the boundaries themselves, which
- * is what lets the gradient be a `step` rather than an interpolation through
- * colours that are in no band at all.
- */
-function bandStops(readings: ScalarSample[], totalMetres: number, measure: Measure): BandStop[] {
+export function bandRuns(
+  readings: ScalarSample[],
+  totalMetres: number,
+  measure: Measure,
+): BandRun[] {
   const interval = Math.max(BAND_SCAN_METRES, totalMetres / MAX_BAND_SCANS);
-  const stops: BandStop[] = [];
+  const starts: Array<{ metres: number; band: number }> = [];
   let previous: number | null = null;
   for (let metres = 0; metres <= totalMetres; metres += interval) {
     const value = sampleScalarAt(readings, metres);
@@ -143,38 +102,36 @@ function bandStops(readings: ScalarSample[], totalMetres: number, measure: Measu
     }
     const band = measure.band(value);
     if (band !== previous) {
-      stops.push({ progress: Math.min(metres / totalMetres, 1), band });
+      starts.push({ metres: Math.min(metres, totalMetres), band });
       previous = band;
     }
   }
 
-  return stops;
+  return starts.map((start, index) => ({
+    band: start.band,
+    fromMetres: start.metres,
+    toMetres: starts[index + 1]?.metres ?? totalMetres,
+  }));
 }
 
 /**
- * The stops as a `step` over `line-progress`.
+ * The rings as map features, each carrying the colour and the alpha it is to be
+ * painted in.
  *
- * A route in one band still needs a stop pair — MapLibre's `step` takes no
- * fewer — so it repeats its own colour at the finish. Cast because a variadic
- * expression does not narrow to the tuple union the spec is typed as, the same
- * reason `RouteOverlay`'s `dimmedOutside` is written as a function.
+ * One layer reads both off the feature, rather than a layer per band: a paint
+ * property is one value for a whole layer, and the corridor has a colour per
+ * band and an alpha per ring of the fade.
  */
-function washGradient(stops: BandStop[], measure: Measure, dark: boolean): ExpressionSpecification {
-  const [first, ...rest] = stops;
-  if (!first) {
-    throw new Error("a wash gradient needs at least one band");
-  }
-  const tail =
-    rest.length > 0
-      ? rest.flatMap((stop) => [stop.progress, washColour(measure, stop.band, dark)])
-      : [1, washColour(measure, first.band, dark)];
-
-  return [
-    "step",
-    ["line-progress"],
-    washColour(measure, first.band, dark),
-    ...tail,
-  ] as unknown as ExpressionSpecification;
+function washFeatures(rings: CorridorRing[], measure: Measure, dark: boolean) {
+  return rings.map((ring, index) => ({
+    type: "Feature" as const,
+    id: index,
+    geometry: { type: "MultiPolygon" as const, coordinates: ring.polygon },
+    properties: {
+      colour: measure.colour(ring.band, dark),
+      opacity: WASH_OPACITY * ring.strength * measure.opacity(ring.band),
+    },
+  }));
 }
 
 export interface ConditionsWashProps {
@@ -243,50 +200,56 @@ export function ConditionsWash({
     return forecastResolution(leadHours).metresPerCell;
   }, [samples]);
 
-  const stops = useMemo(
+  const runs = useMemo(
     () =>
       chosen && readings.length > 0 && totalMetres > 0
-        ? bandStops(readings, totalMetres, chosen)
+        ? bandRuns(readings, totalMetres, chosen)
         : [],
     [chosen, readings, totalMetres],
   );
 
-  // One LineString, because `line-progress` runs from 0 to 1 over one line and
-  // a multi-part geometry would restart the gradient on each part.
-  const line = useMemo(
-    () => ({
-      type: "Feature" as const,
-      geometry: { type: "LineString" as const, coordinates },
-      properties: {},
-    }),
-    [coordinates],
-  );
+  // Once per route, never per frame. A band a measure paints nothing in — rain's
+  // dry, cloud's clear — is dropped before any geometry is built for it, so
+  // most of most rides costs nothing to draw.
+  const wash = useMemo(() => {
+    // A band a measure paints nothing in — rain's dry, cloud's clear — never
+    // reaches the geometry at all, so most of most rides costs nothing to draw.
+    const speaking = chosen ? runs.filter((run) => chosen.opacity(run.band) > 0) : [];
 
-  if (!chosen || stops.length === 0) {
+    return {
+      type: "FeatureCollection" as const,
+      features: chosen
+        ? washFeatures(
+            corridorRings(coordinates, distances, speaking, metresPerCell),
+            chosen,
+            darkBasemap,
+          )
+        : [],
+    };
+  }, [chosen, coordinates, darkBasemap, distances, metresPerCell, runs]);
+
+  if (!chosen || runs.length === 0) {
     return null;
   }
 
-  const { coreMetres, edgeMetres } = corridorRadii(metresPerCell);
-  const latitude = coordinates[Math.floor(coordinates.length / 2)]?.[1] ?? 0;
-
   return (
     <>
-      <Source id={SOURCE_ID} type="geojson" lineMetrics data={line}>
+      <Source id={SOURCE_ID} type="geojson" data={wash}>
         <Layer
           id={WASH_LAYER_ID}
-          type="line"
+          type="fill"
           // Spread only when there is one. Under `exactOptionalPropertyTypes`
           // an optional prop and one that may be undefined are different types.
           {...(beforeId === undefined ? {} : { beforeId })}
-          layout={{ "line-cap": "butt", "line-join": "round" }}
           paint={{
-            "line-gradient": washGradient(stops, chosen, darkBasemap),
-            // The corridor's full width: twice the radius at which a reading
-            // has faded to nothing.
-            "line-width": groundWidth(edgeMetres * 2, latitude),
-            // Full strength out to the core radius, gone at the edge, which is
-            // what leaves the corridor with no boundary of its own to read.
-            "line-blur": groundWidth(edgeMetres - coreMetres, latitude),
+            "fill-color": ["get", "colour"],
+            // Per feature, not per layer: one layer paints every band and every
+            // ring of the fade, and the ring itself carries how strong it is.
+            "fill-opacity": ["get", "opacity"],
+            // The outline MapLibre draws to antialias an edge would paint the
+            // seam between two rings twice, which is the one thing the whole
+            // corridor is built to avoid.
+            "fill-antialias": false,
           }}
         />
       </Source>
