@@ -16,9 +16,9 @@ const LINE_ROUTE = { provider: "veloplanner", sourceRouteId: 4101, stageOrder: 1
 const SOURCE_SWITCH = "Hourly: Read from VeloPlanner";
 const STALE_AFTER = "Call the library stale after (hours)";
 
-/** The settings page, once the service has answered what it is set to. */
+/** The admin page, once the service has answered what it is set to. */
 async function openSettings(page: Page): Promise<void> {
-  await page.goto("/settings");
+  await page.goto("/admin");
   await expect(page.getByRole("heading", { level: 3, name: "Sync" })).toBeVisible();
 }
 

@@ -15,8 +15,19 @@
 
 import { IconLogout } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { webUIConfigQuery } from "../api/queries";
+import { useViewAsRider } from "../lib/identity";
 import { Button } from "./Button";
 
 /**
@@ -54,6 +65,7 @@ export function initialsOf(display: string): string {
 export function UserPill() {
   const { data } = useQuery(webUIConfigQuery());
   const identity = data?.identity;
+  const [viewAsRider, setViewAsRider] = useViewAsRider();
 
   /*
    * Nothing at all until the configuration has arrived, and nothing ever if it
@@ -65,42 +77,54 @@ export function UserPill() {
   }
 
   return (
-    <Popover>
-      <PopoverTrigger
+    <DropdownMenu>
+      <DropdownMenuTrigger
         // The circle holds initials, which are an abbreviation and not a name.
         // What it is is the session, and whose it is is the account, so both
         // are said here rather than left to the two letters to imply.
         aria-label={`Signed in as ${identity.display}`}
         render={
-          <Button
-            className="size-8 shrink-0 rounded-full bg-[var(--base)] p-0 text-xs font-semibold tracking-tight text-[var(--ink-2)] hover:text-[var(--ink)]"
-            variant="ghost"
-          >
-            {initialsOf(identity.display)}
+          <Button className="size-8 shrink-0 rounded-full p-0" variant="ghost">
+            <Avatar>
+              <AvatarFallback>{initialsOf(identity.display)}</AvatarFallback>
+            </Avatar>
           </Button>
         }
         title={identity.display}
       />
-      <PopoverContent
-        align="end"
-        aria-label="Session"
-        className="w-auto max-w-[min(20rem,calc(100dvw-1.5rem))] gap-2 bg-[var(--panel)] p-2 shadow-[var(--shadow)]"
-        side="bottom"
-      >
-        {/* Breaks anywhere: an address is one word to a browser, and a long one
-            would otherwise decide how wide this popover is. */}
-        <p className="wrap-anywhere px-1.5 text-sm text-[var(--ink)]">{identity.display}</p>
-        <Button
-          className="w-full justify-start"
-          icon={<IconLogout stroke={1.6} />}
+      <DropdownMenuContent align="end" className="w-auto max-w-[min(20rem,calc(100dvw-1.5rem))]">
+        {/* `GroupLabel` requires a `Group` ancestor, and `wrap-anywhere` keeps a
+            long address from deciding how wide this menu is. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="wrap-anywhere whitespace-normal">
+            <div className="text-[10px] tracking-wide text-[var(--ink-2)] uppercase">
+              Signed in as
+            </div>
+            <div>{identity.display}</div>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        {/* The raw flag, not `useEffectiveAdmin`: this is the one control that
+            must keep showing even after it is switched on, or it could never
+            be switched off again. */}
+        {identity.admin ? (
+          <>
+            <DropdownMenuCheckboxItem checked={viewAsRider} onCheckedChange={setViewAsRider}>
+              View as rider
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        <DropdownMenuItem
           onClick={() => {
             void signOut();
           }}
-          variant="ghost"
+          variant="destructive"
         >
+          <IconLogout stroke={1.6} />
           Sign out
-        </Button>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -63,7 +63,7 @@ import {
 } from "../../api/types";
 import { Button } from "../../components/Button";
 import { providerLabel } from "../../lib/provider";
-import { RegionPicker } from "./regions/RegionPicker";
+import { RegionPicker } from "../settings/regions/RegionPicker";
 
 const SECONDS_PER_HOUR = 3600;
 const SECONDS_PER_MINUTE = 60;

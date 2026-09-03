@@ -8,9 +8,12 @@
  * now that a route's identity carries its provider.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { webUIConfigQuery } from "./api/queries";
+import type { WebUIConfig } from "./api/types";
 
 // The pages behind these routes are a WebGL map and a query client; neither is
 // what is under test. Standing both in reduces each route to the address it
@@ -24,6 +27,12 @@ vi.mock("./features/sync/SyncPage", () => ({
 vi.mock("./features/settings/SettingsPage", () => ({
   SettingsPage: () => <p>the settings page</p>,
 }));
+vi.mock("./features/admin/AdminPage", () => ({
+  AdminPage: () => <p>the admin page</p>,
+}));
+vi.mock("./features/admin/tasks/TasksPage", () => ({
+  TasksPage: () => <p>the tasks page</p>,
+}));
 
 const { App } = await import("./App");
 
@@ -33,12 +42,33 @@ function Address() {
   return <p data-testid="address">{`${pathname}${search}`}</p>;
 }
 
-function open(path: string): void {
+function config(admin: boolean): WebUIConfig {
+  return {
+    basemaps: [],
+    sourceBaseUrls: {},
+    identity: { display: "rider@example.test", admin },
+  };
+}
+
+/**
+ * `admin` left undefined leaves the config query unseeded and unfetched, the
+ * still-loading state `AdminOnly` must not read as "not admin".
+ */
+function open(path: string, admin?: boolean): void {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+  });
+  if (admin !== undefined) {
+    client.setQueryData(webUIConfigQuery().queryKey, config(admin));
+  }
+
   render(
-    <MemoryRouter initialEntries={[path]}>
-      <Address />
-      <App />
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Address />
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -102,6 +132,52 @@ describe("the client routes", () => {
 
     expect(address()).toBe("/settings");
     expect(screen.getByText("the settings page")).toBeInTheDocument();
+  });
+
+  it("renders the admin page for an admin", () => {
+    open("/admin", true);
+
+    expect(address()).toBe("/admin");
+    expect(screen.getByText("the admin page")).toBeInTheDocument();
+  });
+
+  it("sends a non-admin from /admin back to their own settings", () => {
+    open("/admin", false);
+
+    expect(address()).toBe("/settings");
+  });
+
+  it("renders the admin tasks page for an admin", () => {
+    open("/admin/tasks", true);
+
+    expect(address()).toBe("/admin/tasks");
+    expect(screen.getByText("the tasks page")).toBeInTheDocument();
+  });
+
+  it("sends a non-admin from /admin/tasks back to their own settings", () => {
+    open("/admin/tasks", false);
+
+    expect(address()).toBe("/settings");
+  });
+
+  // Deciding before the caller's own identity has arrived would bounce an
+  // admin on first paint; nothing is rendered until it settles.
+  it("renders nothing at /admin while identity is still loading", () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    open("/admin");
+
+    expect(address()).toBe("/admin");
+    expect(screen.queryByText("the admin page")).not.toBeInTheDocument();
+    expect(screen.queryByText("the settings page")).not.toBeInTheDocument();
+  });
+
+  it("redirects the old tasks path to the admin one", () => {
+    open("/settings/tasks", true);
+
+    expect(address()).toBe("/admin/tasks");
   });
 });
 

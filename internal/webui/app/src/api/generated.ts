@@ -64,6 +64,8 @@ export interface TargetStatus {
   id: string;
   /** The subject that owns this target. Present only for an admin caller: a non-admin's own target is already known to be theirs, and never sees another's here at all. */
   owner?: string;
+  /** True when this target belongs to the calling subject. Present only for an admin caller, whose list also carries other riders' targets; a non-admin's list holds only their own. */
+  own?: boolean;
   authorisation: string;
   convergence: TargetStatusConvergence;
   routes: TargetRoutes;

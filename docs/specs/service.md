@@ -367,7 +367,9 @@ The read-only JSON surface is small:
   only when every target is current. A non-admin subject's answer names only
   their own target — zero or one, never another's — and the overall answer is
   computed over that same, scoped set; an admin's names every target that
-  exists, each carrying who owns it. Those are derived from stored revisions
+  exists, each carrying who owns it, and marks the one owned by the calling
+  admin's own subject so the browser can tell it apart without being told its
+  own identity. Those are derived from stored revisions
   alone, never by asking Wahoo what it holds, and they describe the Wahoo
   accounts rather than what any physical head unit has downloaded. It also names
   the build that is running: the full public source commit the binary was

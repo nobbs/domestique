@@ -139,6 +139,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		// known to be theirs, and never sees another's here at all.
 		if admin {
 			status.Owner = optionalString(owners[targetID])
+			status.Own = optionalBool(owners[targetID] == identityOf(request.Context()).Subject)
 		}
 		targets = append(targets, status)
 		allRoutes.Current += routes.Current

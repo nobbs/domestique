@@ -1,12 +1,33 @@
+import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
+import { webUIConfigQuery } from "./api/queries";
+import { AdminPage } from "./features/admin/AdminPage";
+import { TasksPage } from "./features/admin/tasks/TasksPage";
 import { SignInPage } from "./features/auth/SignInPage";
 import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
-import { TasksPage } from "./features/settings/tasks/TasksPage";
 import { SyncPage } from "./features/sync/SyncPage";
+import { useEffectiveAdmin } from "./lib/identity";
 import { useThemeChoice } from "./lib/theme";
+
+/**
+ * Guards an admin-only route. Nothing is rendered while identity is still
+ * loading — deciding early would bounce an admin to `/settings` on first
+ * paint, before their own config has even arrived.
+ */
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { isPending } = useQuery(webUIConfigQuery());
+  const effectiveAdmin = useEffectiveAdmin();
+
+  if (isPending) {
+    return null;
+  }
+
+  return effectiveAdmin ? children : <Navigate to="/settings" replace />;
+}
 
 /**
  * The address a route used to have, answered by the one it has now.
@@ -81,7 +102,23 @@ export function App() {
         path="settings"
         element={<SettingsPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
       />
-      <Route path="settings/tasks" element={<TasksPage />} />
+      <Route
+        path="admin"
+        element={
+          <AdminOnly>
+            <AdminPage />
+          </AdminOnly>
+        }
+      />
+      <Route
+        path="admin/tasks"
+        element={
+          <AdminOnly>
+            <TasksPage />
+          </AdminOnly>
+        }
+      />
+      <Route path="settings/tasks" element={<Navigate to="/admin/tasks" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -24,13 +24,18 @@ function status(overrides: Partial<Status["sync"]> = {}): Status {
   };
 }
 
-function config(sourceBaseUrls: Record<string, string> = { veloplanner: "https://v.example" }) {
+// Admin by default: most of these tests are about the controls themselves,
+// which is what an admin sees, and the non-admin case is its own test below.
+function config(
+  sourceBaseUrls: Record<string, string> = { veloplanner: "https://v.example" },
+  admin = true,
+) {
   const value: WebUIConfig = {
     basemaps: [
       { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
     ],
     sourceBaseUrls,
-    identity: { display: "rider@example.test", admin: false },
+    identity: { display: "rider@example.test", admin },
   };
 
   return value;
@@ -471,6 +476,32 @@ describe("SyncControls", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "the task is already running, or something it needs is held by another run",
     );
+  });
+
+  // Both buttons run a task over every target or the whole library, not the
+  // caller's own — an admin-only trigger for a non-admin rider.
+  it("hides both run-now buttons for a non-admin", () => {
+    renderControls(status(), config(undefined, false));
+
+    expect(
+      screen.queryByRole("button", { name: "Run now: Read from VeloPlanner" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Run now: Write to Wahoo" }),
+    ).not.toBeInTheDocument();
+    // The switches stay: turning the schedule off is not the same permission.
+    expect(
+      screen.getByRole("switch", { name: "Hourly: Read from VeloPlanner" }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the classification retry button for a non-admin", () => {
+    renderControls(
+      status({ surface: { classified: 1, total: 3, incomplete: 1, enrichmentFailures: 0 } }),
+      config(undefined, false),
+    );
+
+    expect(screen.queryByRole("button", { name: "Retry now" })).not.toBeInTheDocument();
   });
 });
 

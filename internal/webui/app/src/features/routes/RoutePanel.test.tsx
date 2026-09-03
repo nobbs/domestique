@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { Route } from "../../api/types";
+import { webUIConfigQuery } from "../../api/queries";
+import type { Route, WebUIConfig } from "../../api/types";
 import { RoutePanel, type RoutePanelProps } from "./RoutePanel";
 
 function route(overrides: Partial<Route> = {}): Route {
@@ -24,8 +25,16 @@ function route(overrides: Partial<Route> = {}): Route {
   };
 }
 
-function renderPanel(overrides: Partial<RoutePanelProps> = {}) {
+function renderPanel(overrides: Partial<RoutePanelProps> = {}, admin?: boolean) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (admin !== undefined) {
+    const config: WebUIConfig = {
+      basemaps: [],
+      sourceBaseUrls: {},
+      identity: { display: "rider@example.test", admin },
+    };
+    client.setQueryData(webUIConfigQuery().queryKey, config);
+  }
   const props: RoutePanelProps = {
     route: route(),
     highestMetres: null,
@@ -160,5 +169,23 @@ describe("RoutePanel", () => {
     );
 
     expect(screen.getByText("1 h 45 min")).toBeInTheDocument();
+  });
+
+  // Reprocessing spends the shared upstream budget on a route every rider
+  // sees, so it is offered only once the caller is known to be an admin.
+  it("offers reprocess to an admin", async () => {
+    renderPanel({}, true);
+
+    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
+
+    expect(await screen.findByText("Reprocess")).toBeInTheDocument();
+  });
+
+  it("hides reprocess from a non-admin", async () => {
+    renderPanel({}, false);
+
+    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
+
+    expect(screen.queryByText("Reprocess")).not.toBeInTheDocument();
   });
 });

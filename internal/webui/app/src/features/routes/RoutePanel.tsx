@@ -56,6 +56,7 @@ import {
   formatMovingTimeUncertainty,
 } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
+import { useEffectiveAdmin } from "../../lib/identity";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
@@ -161,6 +162,7 @@ export function RoutePanel({
   unitSystem,
 }: RoutePanelProps) {
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
+  const effectiveAdmin = useEffectiveAdmin();
 
   return (
     // The shell strips its own card off whatever carries this, which is what
@@ -245,12 +247,16 @@ export function RoutePanel({
                 baseUrl={sourceBaseUrls[route.provider]}
                 sourceRouteId={route.sourceRouteId}
               />
-              <DropdownMenuSeparator />
-              <ReprocessButton
-                provider={route.provider}
-                sourceRouteId={route.sourceRouteId}
-                stageOrder={route.stageOrder}
-              />
+              {effectiveAdmin ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <ReprocessButton
+                    provider={route.provider}
+                    sourceRouteId={route.sourceRouteId}
+                    stageOrder={route.stageOrder}
+                  />
+                </>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
           <button
