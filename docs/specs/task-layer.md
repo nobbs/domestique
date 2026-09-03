@@ -298,6 +298,12 @@ the rest. A read
 that stored nothing at all left every classification standing, and a rebuild
 that found nothing new left every stored classification standing too.
 
+`ridemodel:predict` widens this further: it advances even when classification
+stopped before it could say what it stored, because prediction rereads the
+stored inventory itself rather than taking classification's word for what is
+in it — trying costs nothing when there turns out to be nothing new, and finds
+whatever classification did manage when there is.
+
 Each edge fires on its own, so a task following two predecessors runs after
 each. That is what classification wants: a read leaves stages nobody has
 classified, and a rebuild leaves the stored classifications stale, and neither
