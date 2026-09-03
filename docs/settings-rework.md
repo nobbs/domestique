@@ -1,9 +1,9 @@
 # Settings rework
 
 Split the one settings page into a rider's own **profile** and an
-**admin-only** service area, and make the server enforce the split. Applied
-in two changes on 2026-09-03: the server gate, then the profile and admin
-pages. Kept as the record of what was decided and why. Every claim names the
+**admin-only** service area, and make the server enforce the split. Delivered
+as two stacked changes: the server gate (#410) and, on top of it, the profile
+and admin pages (#411). Kept as the record of what was decided and why. Every claim names the
 file it was read from at `527d8c3`; line numbers will drift, shapes will not.
 
 ## Where things stand
@@ -87,8 +87,8 @@ first regardless of the rest.
    `adminOnly` wrapper around the handler funcs above, answering the existing
    error shape with `403 forbidden`). Regression tests in
    `routes_settings_test.go` / `routes_tasks_test.go` with a non-admin
-   identity, following `gate_test.go`'s pattern. Add `403` to each affected
-   operation in `api/openapi.yaml` and regenerate. Update
+   identity, following `gate_test.go`'s pattern. No change to `api/openapi.yaml`: every affected operation already
+   declares the shared `Forbidden` response. Update
    `docs/specs/service.md` (define the admin subject once, next to the
    sign-in gate around line 155, and mark each endpoint) and the safety list
    in `AGENTS.md`. Run `test-race`: the session gate is touched.
