@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/auth0/go-auth0/v2/authentication"
-	"github.com/auth0/go-auth0/v2/authentication/oauth"
+	"github.com/auth0/go-auth0/v3/authentication"
+	"github.com/auth0/go-auth0/v3/authentication/oauth"
 )
 
 // initialisationFloor spaces retries of the SDK's eager JWKS fetch, so a broken
