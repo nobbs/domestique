@@ -1,6 +1,6 @@
 [tools]
 go = "1.27.0"
-node = "24.19.0"
+node = "24.20.0"
 # Kept in step with the `packageManager` field in internal/webui/app/package.json,
 # which is what establishes the same pnpm inside the container build.
 pnpm = "11.25.0"
