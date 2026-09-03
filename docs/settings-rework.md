@@ -1,9 +1,9 @@
 # Settings rework
 
 Split the one settings page into a rider's own **profile** and an
-**admin-only** service area, and make the server enforce the split. Applied
-in two changes on 2026-09-03: the server gate, then the profile and admin
-pages. Kept as the record of what was decided and why. Every claim names the
+**admin-only** service area, and make the server enforce the split. Delivered
+as two stacked changes: the server gate (#410) and, on top of it, the profile
+and admin pages (#411). Kept as the record of what was decided and why. Every claim names the
 file it was read from at `527d8c3`; line numbers will drift, shapes will not.
 
 ## Where things stand
