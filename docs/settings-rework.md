@@ -43,7 +43,7 @@ view an admin sees.
 
 | Surface | Who | Holds |
 | --- | --- | --- |
-| `/settings` | every rider | units, theme (local); **own Wahoo account**: connection state, connect / re-authorise; credits (`DataSources`) |
+| `/settings` | every rider | units, theme (local); **own Wahoo account**: connection state, connect / re-authorise; credits (`DataSources`); for an admin, a **"View as rider"** toggle |
 | `/admin` | admin only | today's `ServiceSettings` cards, link to tasks |
 | `/admin/tasks` | admin only | today's `TasksPage` |
 
@@ -94,7 +94,14 @@ first regardless of the rest.
    card, gains a "Wahoo account" card built from the caller's own target in
    `/v1/status` (reuse `TargetRow`; `ConnectPrompt` from
    `TargetConvergenceCard.tsx` when none). `SyncControls.tsx` hides the
-   source/surface run buttons for non-admins. Vitest for both states.
+   source/surface run buttons for non-admins. A "View as rider" switch on
+   the profile, shown only when `identity.admin`, stored in local storage
+   beside the unit system; one hook (`useEffectiveAdmin`) returns
+   `identity.admin && !viewAsRider` and every admin-only UI branch reads it
+   instead of `identity.admin`. Browser-only: the server still sees an
+   admin, so a rider-view admin who hand-crafts a request is still admitted,
+   which is fine — the toggle previews the layout, it is not a privilege
+   drop. Vitest for both states.
 3. **Admin page.** New `features/admin/AdminPage.tsx` wrapping
    `ServiceSettings` and the tasks link; move `TasksPage` under
    `/admin/tasks`; `App.tsx` routes with a `Navigate` from `/settings/tasks`;
@@ -114,8 +121,9 @@ Steps 2 and 3 can be one PR; step 1 is its own.
   the server can refuse the document as well as the API.
 - `403`, not `404`, for the admin gate.
 - Reprocess is admin only.
-- The dev session stays selectable. `dev/session` already takes `-admin`;
-  `dev/setup.sh` mints one admin token today. In step 2 it mints a second
-  rider token (no `-admin`, another subject) and prints both, so `ui-dev`
-  can be pointed at either view by swapping `DOMESTIQUE_DEV_SESSION`. The
-  demo issuer (`dev/demoapi/issuer.go`) already mints both claims.
+- The view switch is a UI toggle, not a second dev token. An admin flips
+  "View as rider" on the profile page; the dev session stays admin as
+  `dev/setup.sh` mints it today, and the same toggle serves in production to
+  check what a rider sees. Testing the server's 403s against a real
+  non-admin session stays in the Go tests, where `gate_test.go` already
+  builds one.
