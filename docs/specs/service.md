@@ -468,7 +468,11 @@ it.
   with, and `/v1/settings/notifications`, `/v1/settings/basemaps`,
   `/v1/settings/surface`, `/v1/settings/ridemodel` and `/v1/settings/sync` for
   the rest. The `{provider}` a source path names is one of the libraries the
-  service reads; any other is refused.
+  service reads; any other is refused. Writing the surface section also starts
+  a surface-index rebuild, and writing the ride-model section a prediction
+  pass, on the terms a manual trigger starts one: the change is what those
+  passes consume, and the next scheduled run is otherwise up to a rebuild
+  interval away.
 
   Each replaces the whole of the section it names. A body naming only some of
   that section's fields is refused. Sections the request does not name are not

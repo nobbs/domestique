@@ -85,6 +85,27 @@ func settingsHandler(t *testing.T) (*Handler, *staticSettings) {
 	return handler, settings
 }
 
+// settingsHandlerWithTasks builds a handler over settings and a task list a
+// test can read back, for the routes that start a task after a successful
+// write.
+func settingsHandlerWithTasks(t *testing.T) (*Handler, *fakeTasks) {
+	t.Helper()
+	tasks := &fakeTasks{}
+	handler, err := New(
+		&Options{
+			Alerts:           &fakeAlerts{},
+			Tasks:            tasks,
+			Settings:         settingsWith(testBasemaps()),
+			Sessions:         newFakeSessions(),
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler, tasks
+}
+
 func settingsOf(t *testing.T, handler *Handler, request *http.Request) openapi.Settings {
 	t.Helper()
 	response := httptest.NewRecorder()
@@ -316,6 +337,36 @@ func TestASectionRejectsAnythingButOneWholeSection(t *testing.T) {
 			assert.Empty(t, settings.Values().Surface.Regions, "a refused body reached the settings")
 		})
 	}
+}
+
+// A stored surface edit starts the index rebuild the new regions or cadence
+// feed.
+func TestSetSurfaceStartsTheIndexRebuild(t *testing.T) {
+	handler, tasks := settingsHandlerWithTasks(t)
+
+	saveSection(t, handler, settingsSurfacePath, surfaceSubmission)
+	assert.Equal(t, []startedTask{{name: TaskSurfaceIndex}}, tasks.started, "started tasks")
+}
+
+// A stored ride-model edit starts the prediction pass the new coefficients
+// feed.
+func TestSetRideModelStartsThePredictionPass(t *testing.T) {
+	handler, tasks := settingsHandlerWithTasks(t)
+
+	saveSection(t, handler, settingsRideModelPath, rideModelSubmission)
+	assert.Equal(t, []startedTask{{name: TaskRidemodelPredict}}, tasks.started, "started tasks")
+}
+
+// A refused edit changed nothing for either pass to consume, so it starts no
+// run.
+func TestARefusedSurfaceEditStartsNoRun(t *testing.T) {
+	handler, tasks := settingsHandlerWithTasks(t)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response,
+		authenticatedRequestWithBody(http.MethodPut, settingsSurfacePath, `{"regions": ["europe/germany"]}`))
+	require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+	assert.Empty(t, tasks.started, "a refused edit started a run")
 }
 
 // A credential belongs to the section that owns it, so one offered to a section

@@ -639,7 +639,7 @@ paths:
       security:
         - session: []
           browserOrigin: []
-      description: Replaces the surface index's regions and rebuild cadence.
+      description: Replaces the surface index's regions and rebuild cadence, and starts a rebuild.
       requestBody:
         required: true
         content:
@@ -665,7 +665,7 @@ paths:
       security:
         - session: []
           browserOrigin: []
-      description: Replaces the coefficient file predicted moving time is computed from.
+      description: Replaces the coefficient file predicted moving time is computed from, and starts a prediction pass.
       requestBody:
         required: true
         content:
