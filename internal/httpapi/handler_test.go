@@ -194,6 +194,8 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/catalogue",
 		"/settings",
 		"/settings/tasks",
+		"/admin",
+		"/admin/tasks",
 		"/sync",
 		"/unknown",
 	}
@@ -260,6 +262,8 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/sync",
 		"/settings",
 		"/settings/tasks",
+		"/admin",
+		"/admin/tasks",
 	}
 
 	for _, path := range paths {
@@ -1031,6 +1035,57 @@ func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, "/v1/providers/veloplanner/sourceRoutes/99/routes/1/reprocess"))
 	assert.Equal(t, http.StatusNotFound, response.Code, "reprocess status")
 	assert.Empty(t, trigger.phases, "a stage that is not stored triggered a run")
+}
+
+// Reprocessing re-runs the shared enrichment and spends the shared upstream
+// budget on a route every rider reads, so it is the operator's to ask for.
+// Both legacy redirect paths reach the same guard as the canonical path.
+func TestReprocessRefusesANonAdminSession(t *testing.T) {
+	for _, target := range []string{
+		"/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess",
+		"/v1/providers/veloplanner/routes/12/stages/1/reprocess",
+		"/v1/routes/12/stages/1/reprocess",
+	} {
+		t.Run(target, func(t *testing.T) {
+			state := surfaceState()
+			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, state, nil)
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, target))
+
+			assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+			assert.Empty(t, state.reprocessed, "a non-admin marked a stage for reprocessing")
+		})
+	}
+}
+
+// The admin documents are not served to a rider at all: not found rather than
+// forbidden, since a document is not one of the contract's operations.
+func TestAdminDocumentsAnswerNotFoundToANonAdmin(t *testing.T) {
+	for _, path := range []string{"/admin", "/admin/tasks"} {
+		t.Run(path, func(t *testing.T) {
+			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, nil)
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
+
+			assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+		})
+	}
+}
+
+func TestAdminDocumentsAreServedToAnAdmin(t *testing.T) {
+	for _, path := range []string{"/admin", "/admin/tasks"} {
+		t.Run(path, func(t *testing.T) {
+			handler := newTestHandler(t)
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
+
+			assert.Equal(t, http.StatusOK, response.Code)
+			assert.Equal(t, cacheDocument, response.Header().Get("Cache-Control"))
+		})
+	}
 }
 
 // A stage URL from before a second provider existed still resolves, redirected

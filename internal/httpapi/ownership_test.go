@@ -147,19 +147,30 @@ func TestStartOAuthAllowsAdminToStartAnotherExistingTarget(t *testing.T) {
 	assert.Equal(t, "rider-b", oauthService.targetID)
 }
 
-// A non-admin's own sync:target/sync:clear run is accepted.
+// A non-admin's own sync:target run is accepted: it is the one task they may
+// start at all.
 func TestRunTaskAllowsNonAdminToRunTheirOwnTarget(t *testing.T) {
-	for _, name := range []string{TaskSyncTarget, TaskSyncClear} {
-		t.Run(name, func(t *testing.T) {
-			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
-			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
+	tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskSyncTarget}}}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
 
-			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(name)+"/run/rider-a"))
-			assert.Equal(t, http.StatusAccepted, response.Code, "run status")
-			assert.Equal(t, []startedTask{{name: name, argument: "rider-a"}}, tasks.started)
-		})
-	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response,
+		signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(TaskSyncTarget)+"/run/rider-a"))
+	assert.Equal(t, http.StatusAccepted, response.Code, "run status")
+	assert.Equal(t, []startedTask{{name: TaskSyncTarget, argument: "rider-a"}}, tasks.started)
+}
+
+// Clearing a target is service administration, so a non-admin is refused even
+// over their own subject.
+func TestRunTaskRefusesSyncClearOverTheOwnTargetForNonAdmin(t *testing.T) {
+	tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskSyncClear}}}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response,
+		signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(TaskSyncClear)+"/run/rider-a"))
+	assert.Equal(t, http.StatusForbidden, response.Code, "run status")
+	assert.Empty(t, tasks.asked, "the task must not have been reached")
 }
 
 // A non-admin cannot start sync:target/sync:clear against another subject's

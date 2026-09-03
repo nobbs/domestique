@@ -161,6 +161,15 @@ exists. That split is a separate namespaced claim the same Action asserts (see
 below), not a second sign-in decision; every admitted subject proves
 membership the same one way: a session this service itself issued.
 
+The same claim also decides who administers the service. The shared settings,
+the background activities and their schedules, and the per-route reprocess
+request belong to an admin subject: the endpoints marked admin-only below
+answer `403` in the shared error shape to any other session, and the two
+admin browser routes answer not found. The one thing a non-admin may start is
+`sync:target` over their own subject. Those rights come from the namespaced
+claim the Action asserts and from nothing else — no header, no local list, and
+no second gate.
+
 A session is created only by an authorisation-code flow with PKCE (S256) and a
 nonce, run against the configured Auth0 tenant through its own SDK. The
 service validates the ID token Auth0 returns itself — signature (RS256),
@@ -397,7 +406,7 @@ The read-only JSON surface is small:
   is omitted when unconfigured, and the page then shows no such link. It also
   reports the signed-in subject's display name: the ID token's email, else its
   name, else the bare `sub`.
-- `GET /v1/settings` returns every setting an operator may change while the
+- `GET /v1/settings` (admin-only) returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
   the basemap list, the surface settings, the Wahoo application, the source
   libraries, and the ride model. It is one document and the whole of it every
@@ -434,10 +443,15 @@ browser origin described above, and answer 403 without it.
 
   An argument is the task's own to interpret, not this surface's — except for
   `sync:target` and `sync:clear`, where it names a target and this surface
-  refuses it before the task layer ever sees it: a non-admin's argument must be
-  their own subject (or, for `sync:target`, empty, meaning every target — which
-  only an admin may ask for), anything else answered `404` the same as a name
-  that does not exist, so a non-admin cannot learn which other targets exist.
+  refuses it before the task layer ever sees it. An admin may name any target,
+  and for `sync:target` may leave the argument empty, meaning every target. A
+  non-admin's argument must be their own subject; anything else, the empty
+  argument included, is answered `404` the same as a name that does not exist,
+  so a non-admin cannot learn which other targets exist.
+  Every other task is service administration: a non-admin asking for one — the
+  source read, a surface rebuild, `sync:clear`, any of them — is answered
+  `403`, the target-scoping `404` above taking precedence where both apply.
+
   Past that gate, a target that does not exist is accepted and recorded as
   `skipped` rather than refused: the refusal that matters is in the service — a
   clear or a reconciliation of a target that does not exist does no work. The
@@ -450,18 +464,19 @@ browser origin described above, and answer 403 without it.
   deletion limit does not bound, and nothing schedules it. It still deletes only
   routes carrying an external ID this service issued, and leaves the stored
   library untouched, so the next reconciliation rebuilds the target.
-- `GET /v1/tasks` lists what this build registers: whether each has a schedule,
+- `GET /v1/tasks` (admin-only) lists what this build registers: whether each has a schedule,
   whether that schedule may start it, how many attempts are in flight, and when
-  the first scheduled run is due.
-- `PUT /v1/tasks/{name}/schedule` sets whether the schedule may start one task,
+  the first scheduled run is due. `GET /v1/tasks/runs` pages what those
+  activities have been doing, newest first, and is admin-only too.
+- `PUT /v1/tasks/{name}/schedule` (admin-only) sets whether the schedule may start one task,
   and answers with the registered tasks as they now stand. It governs unattended
   runs only.
 - `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
-  asks for one route to be worked out again from scratch and starts the read
+  (admin-only) asks for one route to be worked out again from scratch and starts the read
   that will do it, as `sync:source` run on that stage's behalf. What the targets
   hold follows from that read. It returns `202 Accepted`, or `404` for a
   route that is not in the stored inventory.
-- The settings are written one section at a time, over one endpoint per
+- The settings are written one section at a time (admin-only), over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,
   `/v1/settings/sources/{provider}` for one library and the account it is read
   with, and `/v1/settings/notifications`, `/v1/settings/basemaps`,
@@ -503,7 +518,9 @@ application entry document and immutable hashed static assets. `/auth/login`
 is the one unauthenticated browser entry route, and serves that same entry
 document: the sign-in form is the application's, and this service renders no
 HTML of its own. `/`, `/catalogue`, `/sync`, and `/settings` require a
-session. The catalogue reads the same inventory listing `/` does and asks the
+session, and `/admin` and `/admin/tasks` require an admin session: any other
+session is answered not found rather than `403`, since a document is not one
+of the contract's operations. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
 ordering, searching and narrowing it offers all happen in the browser. Settings
 holds two kinds of preference and keeps them apart, and lists the data sources

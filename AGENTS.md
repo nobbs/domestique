@@ -148,6 +148,10 @@ statements live in the linked specs.
 - **Secrets stay out of everything observable**: logs, notifications, and
   errors carry aggregate counts and a stable failure category only — never
   tokens, route names, geometry, or raw response bodies.
+- **Shared settings, task administration and reprocess are admin-only**: a
+  session without the Auth0 Action's admin claim is answered `403`, and may
+  start no task but `sync:target` over its own subject
+  ([service.md](docs/specs/service.md)).
 - **Geometry is served only by its own endpoint**, only to the gated identity
   ([service.md](docs/specs/service.md)).
 - **Refresh tokens are encrypted at rest**; access tokens in memory only;

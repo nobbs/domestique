@@ -209,30 +209,30 @@ func (h *Handler) routes() {
 		h.GetRouteGeometry)
 	h.mux.HandleFunc(
 		"POST /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/reprocess",
-		h.ReprocessRoute)
+		h.adminOnly(h.ReprocessRoute))
 	h.mux.HandleFunc("GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}", h.RedirectStageRoute)
 	h.mux.HandleFunc(
 		"GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry", h.RedirectStageGeometry)
 	h.mux.HandleFunc(
-		"POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess", h.RedirectStageReprocess)
+		"POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess", h.adminOnly(h.RedirectStageReprocess))
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}", h.RedirectLegacyRoute)
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}/geometry", h.RedirectLegacyGeometry)
-	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.RedirectLegacyReprocess)
-	h.mux.HandleFunc("GET /v1/settings", h.GetSettings)
-	h.mux.HandleFunc("PUT /v1/settings/wahoo", h.SetWahooApplication)
-	h.mux.HandleFunc("PUT /v1/settings/sources/{provider}", h.SetSource)
-	h.mux.HandleFunc("PUT /v1/settings/notifications", h.SetNotifications)
-	h.mux.HandleFunc("PUT /v1/settings/alerts", h.SetAlerts)
-	h.mux.HandleFunc("PUT /v1/settings/timezone", h.SetTimezone)
-	h.mux.HandleFunc("GET /v1/tasks", h.ListTasks)
-	h.mux.HandleFunc("GET /v1/tasks/runs", h.GetTaskRuns)
-	h.mux.HandleFunc("PUT /v1/tasks/{name}/schedule", h.SetTaskSchedule)
+	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.adminOnly(h.RedirectLegacyReprocess))
+	h.mux.HandleFunc("GET /v1/settings", h.adminOnly(h.GetSettings))
+	h.mux.HandleFunc("PUT /v1/settings/wahoo", h.adminOnly(h.SetWahooApplication))
+	h.mux.HandleFunc("PUT /v1/settings/sources/{provider}", h.adminOnly(h.SetSource))
+	h.mux.HandleFunc("PUT /v1/settings/notifications", h.adminOnly(h.SetNotifications))
+	h.mux.HandleFunc("PUT /v1/settings/alerts", h.adminOnly(h.SetAlerts))
+	h.mux.HandleFunc("PUT /v1/settings/timezone", h.adminOnly(h.SetTimezone))
+	h.mux.HandleFunc("GET /v1/tasks", h.adminOnly(h.ListTasks))
+	h.mux.HandleFunc("GET /v1/tasks/runs", h.adminOnly(h.GetTaskRuns))
+	h.mux.HandleFunc("PUT /v1/tasks/{name}/schedule", h.adminOnly(h.SetTaskSchedule))
 	h.mux.HandleFunc("POST /v1/tasks/{name}/run", h.RunTask)
 	h.mux.HandleFunc("POST /v1/tasks/{name}/run/{argument}", h.RunTask)
-	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.SetBasemaps)
-	h.mux.HandleFunc("PUT /v1/settings/surface", h.SetSurface)
-	h.mux.HandleFunc("PUT /v1/settings/ridemodel", h.SetRideModel)
-	h.mux.HandleFunc("PUT /v1/settings/sync", h.SetSync)
+	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.adminOnly(h.SetBasemaps))
+	h.mux.HandleFunc("PUT /v1/settings/surface", h.adminOnly(h.SetSurface))
+	h.mux.HandleFunc("PUT /v1/settings/ridemodel", h.adminOnly(h.SetRideModel))
+	h.mux.HandleFunc("PUT /v1/settings/sync", h.adminOnly(h.SetSync))
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
 	h.mux.HandleFunc("GET /auth/login", h.GetLoginPage)
@@ -257,6 +257,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
 	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
 	h.mux.HandleFunc("GET /settings/tasks", h.GetTasksPage)
+	h.mux.HandleFunc("GET /admin", h.GetAdminPage)
+	h.mux.HandleFunc("GET /admin/tasks", h.GetAdminTasksPage)
 	// Browser routes are explicit application navigation, not OpenAPI operations.
 	// Separate because ServeMux has no pattern for the unmatched-path fallback.
 	h.mux.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) {
@@ -379,6 +381,24 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 		next.ServeHTTP(writer, request.WithContext(
 			context.WithValue(request.Context(), identityKey{}, identity)))
 	})
+}
+
+// adminOnly refuses a session without the administrator claim. It wraps the
+// shared reads and writes: settings, task administration, and reprocess.
+func (h *Handler) adminOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		if !identityOf(request.Context()).Admin {
+			h.forbidden(writer)
+
+			return
+		}
+		next(writer, request)
+	}
+}
+
+// forbidden is what a session without the rights an operation needs is told.
+func (h *Handler) forbidden(writer http.ResponseWriter) {
+	h.error(writer, http.StatusForbidden, "forbidden", "an administrator identity is required")
 }
 
 // unauthenticated answers a caller with no usable session: a browser asking for

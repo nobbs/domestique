@@ -340,3 +340,76 @@ func TestGetTaskRunsRefusesAPageSizeItWillNotServe(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, response.Code, "status for limit="+limit)
 	}
 }
+
+// Task administration is the whole service's: what is registered, what it has
+// been doing, whether the schedule may start it, and starting anything other
+// than a rider's own target sync.
+func TestTaskAdministrationRefusesANonAdminSession(t *testing.T) {
+	tests := map[string]struct {
+		method, target, body string
+	}{
+		"list":     {http.MethodGet, tasksPath, ""},
+		"runs":     {http.MethodGet, taskRunsPath, ""},
+		"schedule": {http.MethodPut, "/v1/tasks/sync%3Asource/schedule", `{"enabled": false}`},
+		"run":      {http.MethodPost, "/v1/tasks/sync%3Asource/run", ""},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskSyncSource}}}
+			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
+
+			request := authenticatedRequest(test.method, test.target)
+			if test.body != "" {
+				request = authenticatedRequestWithBody(test.method, test.target, test.body)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), "forbidden")
+			assert.Empty(t, tasks.asked, "the task layer was reached")
+			assert.Empty(t, tasks.scheduled, "the schedule was reached")
+		})
+	}
+}
+
+func TestTaskAdministrationStillAnswersAnAdminSession(t *testing.T) {
+	tests := map[string]struct {
+		method, target, body string
+		wantStatus           int
+	}{
+		"list":     {http.MethodGet, tasksPath, "", http.StatusOK},
+		"runs":     {http.MethodGet, taskRunsPath, "", http.StatusOK},
+		"schedule": {http.MethodPut, "/v1/tasks/sync%3Asource/schedule", `{"enabled": false}`, http.StatusOK},
+		"run":      {http.MethodPost, "/v1/tasks/sync%3Asource/run", "", http.StatusAccepted},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			handler, _ := tasksHandler(t, RegisteredTask{Name: TaskSyncSource})
+
+			request := authenticatedRequest(test.method, test.target)
+			if test.body != "" {
+				request = authenticatedRequestWithBody(test.method, test.target, test.body)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+
+			assert.Equal(t, test.wantStatus, response.Code, response.Body.String())
+		})
+	}
+}
+
+// The gate does not change what a rider's own target sync answers: a refused
+// start is still a conflict rather than a refusal of the caller.
+func TestRunTaskStillReportsAConflictToANonAdminOverTheirOwnTarget(t *testing.T) {
+	tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskSyncTarget}}, refuse: true}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response,
+		authenticatedRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(TaskSyncTarget)+"/run/rider-a"))
+
+	assert.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+}
