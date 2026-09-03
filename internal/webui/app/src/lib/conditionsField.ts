@@ -129,16 +129,28 @@ export function projectToRoute(
 
 /**
  * How far either side of the route a reading is drawn at full strength, as a
- * share of the forecast's grid cell: 1500 m for ICON-D2's 2 km cell.
+ * share of the forecast's grid cell: 250 m for ICON-D2's 2 km cell.
  *
- * Under a cell, because a reading is a point sample of that cell rather than a
- * measurement of all of it, and over-claiming is the thing the corridor exists
- * to avoid.
+ * Far under a cell. A corridor as wide as the ground a reading speaks for is
+ * honest arithmetic and an unusable drawing — over a hundred kilometres of ride
+ * it stops being a ribbon along a road and becomes a stain over the county. The
+ * width says *where the ride is*; how far the reading can be trusted is what
+ * the resolution sentence says in words.
  */
-export const CORRIDOR_CORE_CELLS = 0.75;
+export const CORRIDOR_CORE_CELLS = 0.125;
 
-/** Where it has faded to nothing: 4000 m for that same 2 km cell. */
-export const CORRIDOR_EDGE_CELLS = 2;
+/** Where it has faded to nothing: 700 m for that same 2 km cell. */
+export const CORRIDOR_EDGE_CELLS = 0.35;
+
+/**
+ * How wide the corridor may ever run, whatever the grid.
+ *
+ * A coarse forecast is still drawn broader than a sharp one, because that
+ * difference is worth seeing, but only up to half again: unchecked, an 11 km
+ * cell would reach nearly four kilometres either side and swallow the map the
+ * route is drawn on.
+ */
+export const CORRIDOR_MAX_EDGE_METRES = 1050;
 
 /** The full-strength and vanishing radii for one forecast grid size. */
 export interface CorridorRadii {
@@ -149,13 +161,16 @@ export interface CorridorRadii {
 /**
  * How wide the corridor is for a forecast resolved at `metresPerCell`.
  *
- * Both radii come from the cell, which is what makes a three-day-out forecast
- * read as visibly broader and vaguer than tomorrow morning's.
+ * Both radii come from the cell, so a three-day-out forecast is still drawn
+ * broader than tomorrow morning's — until the cap, which holds them in
+ * proportion to each other rather than flattening the core alone.
  */
 export function corridorRadii(metresPerCell: number): CorridorRadii {
   const cell = Number.isFinite(metresPerCell) ? Math.max(metresPerCell, 0) : 0;
+  const edge = cell * CORRIDOR_EDGE_CELLS;
+  const held = edge > CORRIDOR_MAX_EDGE_METRES ? CORRIDOR_MAX_EDGE_METRES / edge : 1;
 
-  return { coreMetres: cell * CORRIDOR_CORE_CELLS, edgeMetres: cell * CORRIDOR_EDGE_CELLS };
+  return { coreMetres: cell * CORRIDOR_CORE_CELLS * held, edgeMetres: edge * held };
 }
 
 /**

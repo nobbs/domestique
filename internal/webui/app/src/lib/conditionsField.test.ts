@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
 import {
+  CORRIDOR_MAX_EDGE_METRES,
   corridorRadii,
   corridorWeight,
   projectToRoute,
@@ -96,8 +97,8 @@ describe("corridorWeight", () => {
   it("holds full strength out to the core radius", () => {
     const { coreMetres, edgeMetres } = corridorRadii(2000);
 
-    expect(coreMetres).toBe(1500);
-    expect(edgeMetres).toBe(4000);
+    expect(coreMetres).toBe(250);
+    expect(edgeMetres).toBe(700);
     expect(corridorWeight(coreMetres, 2000)).toBe(1);
   });
 
@@ -107,7 +108,9 @@ describe("corridorWeight", () => {
   });
 
   it("stays continuous across the core boundary", () => {
-    expect(corridorWeight(1501, 2000)).toBeCloseTo(1, 4);
+    const { coreMetres } = corridorRadii(2000);
+
+    expect(corridorWeight(coreMetres + 1, 2000)).toBeCloseTo(1, 4);
   });
 
   it("never rises as the offset grows", () => {
@@ -121,8 +124,19 @@ describe("corridorWeight", () => {
   });
 
   it("draws a coarser forecast as a wider corridor", () => {
-    expect(corridorWeight(3000, 7000)).toBeGreaterThan(corridorWeight(3000, 2000));
-    expect(corridorWeight(8000, 11000)).toBeGreaterThan(corridorWeight(8000, 7000));
+    expect(corridorRadii(7000).edgeMetres).toBeGreaterThan(corridorRadii(2000).edgeMetres);
+    expect(corridorWeight(800, 7000)).toBeGreaterThan(corridorWeight(800, 2000));
+  });
+
+  /*
+   * Only up to a point. Unchecked, an 11 km cell would reach nearly four
+   * kilometres either side of the road and cover the map the route is drawn
+   * on, so past the cap a coarser grid stops buying any more width.
+   */
+  it("stops widening once the corridor would swallow the map", () => {
+    expect(corridorRadii(11000).edgeMetres).toBe(corridorRadii(7000).edgeMetres);
+    expect(corridorRadii(11000).edgeMetres).toBe(CORRIDOR_MAX_EDGE_METRES);
+    expect(corridorRadii(7000).coreMetres).toBeLessThan(corridorRadii(7000).edgeMetres);
   });
 
   it("claims nothing off the route for a grid size it cannot read", () => {
