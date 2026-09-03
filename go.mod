@@ -3,7 +3,6 @@ module github.com/nobbs/domestique
 go 1.27.0
 
 require (
-	github.com/auth0/go-auth0/v2 v2.14.0
 	github.com/auth0/go-auth0/v3 v3.3.0
 	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/golang-migrate/migrate/v4 v4.19.1
