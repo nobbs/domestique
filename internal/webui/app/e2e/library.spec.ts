@@ -325,7 +325,7 @@ test("the bar names the session the gate admitted", async ({ offlinePage: page }
 
   await pill.click();
 
-  const session = page.getByRole("dialog", { name: "Session" });
+  const session = page.getByRole("menu");
   await expect(session).toContainText("rider@example.test");
 });
 

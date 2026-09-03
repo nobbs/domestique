@@ -100,7 +100,7 @@ test("signing out ends the session and the next page request is sent back to sig
   await signIn(page, identity.origin ?? "");
 
   await page.getByRole("button", { name: "Signed in as rider@example.test" }).click();
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page.waitForURL(/\/auth\/login$/);
 
   await page.goto("/");
