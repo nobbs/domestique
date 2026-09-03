@@ -1039,16 +1039,24 @@ func TestHandlerReportsAnUnknownStageForReprocessingAsNotFound(t *testing.T) {
 
 // Reprocessing re-runs the shared enrichment and spends the shared upstream
 // budget on a route every rider reads, so it is the operator's to ask for.
+// Both legacy redirect paths reach the same guard as the canonical path.
 func TestReprocessRefusesANonAdminSession(t *testing.T) {
-	state := surfaceState()
-	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, state, nil)
+	for _, target := range []string{
+		"/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess",
+		"/v1/providers/veloplanner/routes/12/stages/1/reprocess",
+		"/v1/routes/12/stages/1/reprocess",
+	} {
+		t.Run(target, func(t *testing.T) {
+			state := surfaceState()
+			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, state, nil)
 
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(
-		http.MethodPost, "/v1/providers/veloplanner/sourceRoutes/12/routes/1/reprocess"))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, target))
 
-	assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
-	assert.Empty(t, state.reprocessed, "a non-admin marked a stage for reprocessing")
+			assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+			assert.Empty(t, state.reprocessed, "a non-admin marked a stage for reprocessing")
+		})
+	}
 }
 
 // The admin documents are not served to a rider at all: not found rather than
