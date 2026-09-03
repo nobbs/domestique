@@ -58,6 +58,37 @@
   },
   osvVulnerabilityAlerts: true,
 
+  // Renovate reads an unqualified `dhi.io/<image>` as a Docker Hub namespace
+  // unless told it is its own registry, and Docker Hardened Images requires
+  // authentication even for a public pull. Left unset, that is why the
+  // Dependency Dashboard has carried "Failed to look up docker package
+  // dhi.io/node: no-result" since the DHI migration, and why no Renovate PR
+  // has ever touched the Dockerfile's base images. This repo's Renovate runs
+  // as the hosted GitHub App, not self-hosted, so the credentials the
+  // hostRules below reference have to exist in the Mend Developer Portal
+  // before either takes effect: MEND_DHI_USERNAME/MEND_DHI_PASSWORD, and
+  // MEND_DOCKER_USERNAME/MEND_DOCKER_PASSWORD.
+  registryAliases: {
+    "dhi.io": "dhi.io",
+  },
+  hostRules: [
+    {
+      matchHost: "dhi.io",
+      hostType: "docker",
+      username: "{{ secrets.MEND_DHI_USERNAME }}",
+      password: "{{ secrets.MEND_DHI_PASSWORD }}",
+    },
+    // Authenticated pulls get Docker Hub's higher rate limit instead of the
+    // shared anonymous one, which is what the base-image and lock-file
+    // maintenance runs draw down across every dependency update.
+    {
+      matchHost: "docker.io",
+      hostType: "docker",
+      username: "{{ secrets.MEND_DOCKER_USERNAME }}",
+      password: "{{ secrets.MEND_DOCKER_PASSWORD }}",
+    },
+  ],
+
   packageRules: [
     {
       description: "Everything Renovate opens is a dependency update.",
