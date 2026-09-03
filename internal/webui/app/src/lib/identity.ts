@@ -38,15 +38,20 @@ export function useViewAsRider(): [boolean, (value: boolean) => void] {
   return [value, choose];
 }
 
+// Held in memory too, so a storage that throws still lets the toggle flip
+// for the page that flipped it.
+let current = false;
+
 function readViewAsRider(): boolean {
   try {
-    return window.localStorage.getItem(STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
+    current = window.localStorage.getItem(STORAGE_KEY) === "true";
+  } catch {}
+
+  return current;
 }
 
 function writeViewAsRider(value: boolean): void {
+  current = value;
   try {
     window.localStorage.setItem(STORAGE_KEY, String(value));
   } catch {

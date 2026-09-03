@@ -100,4 +100,26 @@ describe("useViewAsRider", () => {
     expect(a.result.current[0]).toBe(true);
     expect(b.result.current[0]).toBe(true);
   });
+
+  // A storage that throws on every call must not make the toggle inert: the
+  // choice still has to flip for as long as the page stays open.
+  it("still flips for the session when localStorage throws", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("storage disabled");
+      },
+      setItem: () => {
+        throw new Error("storage disabled");
+      },
+    });
+    const { result } = renderHook(() => useViewAsRider());
+
+    // Flips both ways so the assertion cannot pass on leftover module state
+    // from an earlier test — only a live update through the throwing setter
+    // explains ending up back at true.
+    act(() => result.current[1](false));
+    act(() => result.current[1](true));
+
+    expect(result.current[0]).toBe(true);
+  });
 });

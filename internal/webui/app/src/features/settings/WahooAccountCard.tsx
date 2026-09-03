@@ -2,10 +2,8 @@
  * The rider's own Wahoo account, on their own settings page.
  *
  * `/v1/status` is already scoped to the caller: a non-admin sees only their
- * own target, so the first entry is theirs. An admin sees every target, so
- * the one without an `owner` is the one connected under their own subject —
- * `TargetRow`'s owner line exists for exactly the opposite case, another
- * rider's target in the admin's fleet view.
+ * own target, so the first entry is theirs. An admin sees every target in slot
+ * order, and only the server can tell which is theirs: it marks that one `own`.
  */
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,16 +14,15 @@ import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
 import type { TargetStatus } from "../../api/types";
 import { Skeleton } from "../../components/ui/skeleton";
-import { useEffectiveAdmin } from "../../lib/identity";
 import { ConnectPrompt } from "../sync/TargetConvergenceCard";
 import { TargetRow } from "../sync/TargetRow";
 
-function ownTarget(targets: TargetStatus[], effectiveAdmin: boolean): TargetStatus | undefined {
-  if (!effectiveAdmin) {
+function ownTarget(targets: TargetStatus[], admin: boolean): TargetStatus | undefined {
+  if (!admin) {
     return targets[0];
   }
 
-  return targets.find((target) => !target.owner) ?? targets[0];
+  return targets.find((target) => target.own);
 }
 
 function CardShell({ children }: { children: ReactNode }) {
@@ -44,8 +41,11 @@ function CardShell({ children }: { children: ReactNode }) {
 export function WahooAccountCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
-  const { isPending: configIsPending, isError: configIsError } = useQuery(webUIConfigQuery());
-  const effectiveAdmin = useEffectiveAdmin();
+  const {
+    data: config,
+    isPending: configIsPending,
+    isError: configIsError,
+  } = useQuery(webUIConfigQuery());
   const [confirming, setConfirming] = useState(false);
   const [confirmation, setConfirmation] = useState("");
   const reconcile = useRunTaskArgument({
@@ -81,7 +81,7 @@ export function WahooAccountCard() {
     );
   }
 
-  const target = ownTarget(data.targets, effectiveAdmin);
+  const target = ownTarget(data.targets, config.identity.admin);
   if (!target) {
     return (
       <CardShell>

@@ -70,6 +70,27 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("link", { name: "Connect it" })).toBeInTheDocument();
   });
 
+  // An admin's fleet is in slot order, not "the admin's own target first" —
+  // `own` is what says which one is theirs.
+  it("shows the admin's own target even when it is not first in the fleet", () => {
+    renderPage(
+      status([
+        target({ id: "rider-b", owner: "rider-b" }),
+        target({ id: "rider-a", owner: "admin", own: true }),
+      ]),
+      config(true),
+    );
+
+    expect(screen.getByText("rider-a")).toBeInTheDocument();
+    expect(screen.queryByText("rider-b")).not.toBeInTheDocument();
+  });
+
+  it("offers the connect flow when an admin has not connected their own account", () => {
+    renderPage(status([target({ id: "rider-b", owner: "rider-b" })]), config(true));
+
+    expect(screen.getByRole("link", { name: "Connect it" })).toBeInTheDocument();
+  });
+
   // The shared service cards moved to the admin page; this page holds only
   // what a rider sees, so neither the settings form nor the tasks link
   // belongs here any more.

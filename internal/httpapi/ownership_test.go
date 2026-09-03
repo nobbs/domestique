@@ -92,6 +92,38 @@ func TestGetStatusNamesEveryTargetsOwnerForAdmin(t *testing.T) {
 	assert.Equal(t, map[string]string{"rider-a": "rider-a", "rider-b": "rider-b"}, owners)
 }
 
+// An admin's status view marks exactly their own target as `own`, and carries
+// no `own` field on anyone else's; a non-admin's view carries no `own` field
+// at all, since a status view scoped to one target has nothing to compare.
+func TestGetStatusMarksOnlyTheAdminsOwnTargetAsOwn(t *testing.T) {
+	state := &fakeState{targets: []fakeTarget{
+		{id: "target-1", authorization: "authorized", owner: "rider-b"},
+		{id: "target-2", authorization: "authorized", owner: testSubject},
+	}}
+
+	adminView := statusOf(t, handlerFor(t, newFakeSessions(), &fakeOAuth{}, state, nil))
+	require.Len(t, adminView.Targets, 2)
+	own := map[string]bool{}
+	for _, target := range adminView.Targets {
+		own[target.ID] = target.Own != nil && *target.Own
+	}
+	assert.Equal(t, map[string]bool{"target-1": false, "target-2": true}, own)
+
+	response := httptest.NewRecorder()
+	handlerFor(t, nonAdminSessions("rider-b"), &fakeOAuth{}, state, nil).
+		ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code)
+
+	var nonAdminView struct {
+		Targets []struct {
+			Own *bool `json:"own"`
+		} `json:"targets"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &nonAdminView))
+	require.Len(t, nonAdminView.Targets, 1)
+	assert.Nil(t, nonAdminView.Targets[0].Own, "own is admin-only")
+}
+
 // A rider's own "Connect" click is always allowed, and creates their target
 // the first time — the one self-service creation point.
 func TestStartOAuthCreatesAndAllowsTheCallersOwnTarget(t *testing.T) {
