@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -105,13 +106,15 @@ func TestReporterReportsTheLastAnnotationPassesIncompleteCount(t *testing.T) {
 	reporter := newReporter(t, runner, &fakeRunState{})
 	assert.Zero(t, reporter.SurfaceIncomplete(), "an incomplete count was reported before any pass ran")
 
-	reporter.Annotate(t.Context())
+	_, err := reporter.Annotate(t.Context())
+	require.NoError(t, err, "Annotate()")
 	assert.Equal(t, 2, reporter.SurfaceIncomplete(), "SurfaceIncomplete()")
 
 	// A pass that catches up moves the gauge back down, rather than latching
 	// the worst count any pass ever saw.
 	runner.annotateFailed = 0
-	reporter.Annotate(t.Context())
+	_, err = reporter.Annotate(t.Context())
+	require.NoError(t, err, "Annotate()")
 	assert.Zero(t, reporter.SurfaceIncomplete(), "a recovered pass left the old incomplete count in place")
 }
 
@@ -121,11 +124,23 @@ func TestReporterAnnotateRunsOnlyClassification(t *testing.T) {
 	runner := &reportingRunner{annotateFailed: 1}
 	reporter := newReporter(t, runner, &fakeRunState{})
 
-	reporter.Annotate(t.Context())
+	failed, err := reporter.Annotate(t.Context())
+	require.NoError(t, err, "Annotate()")
 	assert.Equal(t, 1, runner.annotations, "annotation passes")
 	assert.Zero(t, runner.sourceRuns, "Annotate read the source")
 	assert.Zero(t, runner.targetRuns, "Annotate wrote a target")
+	assert.Equal(t, 1, failed, "Annotate()")
 	assert.Equal(t, 1, reporter.SurfaceIncomplete(), "SurfaceIncomplete()")
+}
+
+// A pass that stops before it can even say how much it did not finish is a
+// failure the task layer must hear about, not a silent zero.
+func TestReporterAnnotateReportsWhenThePassStopsEarly(t *testing.T) {
+	runner := &reportingRunner{annotateErr: errors.New("index unavailable")}
+	reporter := newReporter(t, runner, &fakeRunState{})
+
+	_, err := reporter.Annotate(t.Context())
+	assert.Error(t, err, "Annotate()")
 }
 
 // A manual retry predicts without touching either phase, and reports the
@@ -134,11 +149,22 @@ func TestReporterPredictRunsOnlyPrediction(t *testing.T) {
 	runner := &reportingRunner{predictFailed: 1}
 	reporter := newReporter(t, runner, &fakeRunState{})
 
-	failed := reporter.Predict(t.Context())
+	failed, err := reporter.Predict(t.Context())
+	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, runner.predictions, "prediction passes")
 	assert.Zero(t, runner.sourceRuns, "Predict read the source")
 	assert.Zero(t, runner.targetRuns, "Predict wrote a target")
 	assert.Equal(t, 1, failed, "Predict()")
+}
+
+// Same as classification: a pass that stops before it can report is a
+// failure, even when nothing was individually counted as failed.
+func TestReporterPredictReportsWhenThePassStopsEarly(t *testing.T) {
+	runner := &reportingRunner{predictErr: errors.New("coefficients unavailable")}
+	reporter := newReporter(t, runner, &fakeRunState{})
+
+	_, err := reporter.Predict(t.Context())
+	assert.Error(t, err, "Predict()")
 }
 
 func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
@@ -178,15 +204,17 @@ func TestReporterReportsThePhaseInFlight(t *testing.T) {
 }
 
 type reportingRunner struct {
-	targetRunIDs       []string
+	annotateErr        error
+	predictErr         error
 	clearedIDs         []string
-	source             Result
+	targetRunIDs       []string
 	targets            Result
-	sourceRuns         int
+	source             Result
 	targetRuns         int
 	annotations        int
 	annotateClassified int
 	annotateFailed     int
+	sourceRuns         int
 	predictions        int
 	predictPredicted   int
 	predictFailed      int
@@ -223,16 +251,16 @@ func (r *reportingRunner) ClearTarget(_ context.Context, targetID string) Result
 	return r.targets
 }
 
-func (r *reportingRunner) AnnotateStored(context.Context) (classified, failed int) {
+func (r *reportingRunner) AnnotateStored(context.Context) (classified, failed int, err error) {
 	r.annotations++
 
-	return r.annotateClassified, r.annotateFailed
+	return r.annotateClassified, r.annotateFailed, r.annotateErr
 }
 
-func (r *reportingRunner) PredictStored(context.Context) (predicted, failed int) {
+func (r *reportingRunner) PredictStored(context.Context) (predicted, failed int, err error) {
 	r.predictions++
 
-	return r.predictPredicted, r.predictFailed
+	return r.predictPredicted, r.predictFailed, r.predictErr
 }
 
 type blockingReportingRunner struct {
@@ -263,12 +291,12 @@ func (r *blockingReportingRunner) ClearTarget(context.Context, string) Result {
 	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
 }
 
-func (r *blockingReportingRunner) AnnotateStored(context.Context) (classified, failed int) {
-	return 0, 0
+func (r *blockingReportingRunner) AnnotateStored(context.Context) (classified, failed int, err error) {
+	return 0, 0, nil
 }
 
-func (r *blockingReportingRunner) PredictStored(context.Context) (predicted, failed int) {
-	return 0, 0
+func (r *blockingReportingRunner) PredictStored(context.Context) (predicted, failed int, err error) {
+	return 0, 0, nil
 }
 
 // recordedRunReference is what this fake names every run it records. The store

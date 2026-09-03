@@ -46,11 +46,12 @@ type Runner interface {
 	// target and forgets its stage mappings. Only an operator asks for it.
 	ClearTarget(ctx context.Context, targetID string) Result
 	// AnnotateStored enriches the stored inventory and reports how much of it it
-	// could not classify. The count never changes a run's outcome.
-	AnnotateStored(ctx context.Context) (classified, failed int)
+	// could not classify; a non-nil err means the pass stopped before finishing.
+	AnnotateStored(ctx context.Context) (classified, failed int, err error)
 	// PredictStored predicts the stored inventory's moving time and reports how
-	// much of it it could not predict. The count never changes a run's outcome.
-	PredictStored(ctx context.Context) (predicted, failed int)
+	// much of it it could not predict; a non-nil err means the pass stopped
+	// before finishing.
+	PredictStored(ctx context.Context) (predicted, failed int, err error)
 }
 
 // NewReporter creates a reporting runner with explicit dependencies.
@@ -93,17 +94,19 @@ func (r *Reporter) ClearTarget(ctx context.Context, targetID string) Result {
 }
 
 // Annotate runs one classification pass, touching only the local index and
-// cache, and reports how many stages it could not classify.
-func (r *Reporter) Annotate(ctx context.Context) (failed int) {
+// cache, and reports how many stages it could not classify. A non-nil err
+// means the pass stopped before it could finish walking the inventory.
+func (r *Reporter) Annotate(ctx context.Context) (failed int, err error) {
 	return r.annotate(ctx)
 }
 
 // Predict runs one ride-model prediction pass, touching only the local index
-// and cache, and reports how many stages it could not predict.
-func (r *Reporter) Predict(ctx context.Context) (failed int) {
-	_, failed = r.runner.PredictStored(ctx)
+// and cache, and reports how many stages it could not predict. A non-nil err
+// means the pass stopped before it could finish walking the inventory.
+func (r *Reporter) Predict(ctx context.Context) (failed int, err error) {
+	_, failed, err = r.runner.PredictStored(ctx)
 
-	return failed
+	return failed, err //nolint:wrapcheck // the runner already names what it was doing
 }
 
 // SurfaceIncomplete reports how many stages the most recently completed
@@ -169,11 +172,11 @@ func (r *Reporter) runPhasesWith(
 
 // annotate runs one classification pass and records what it could not finish,
 // for SurfaceIncomplete to read back.
-func (r *Reporter) annotate(ctx context.Context) (failed int) {
-	_, failed = r.runner.AnnotateStored(ctx)
+func (r *Reporter) annotate(ctx context.Context) (failed int, err error) {
+	_, failed, err = r.runner.AnnotateStored(ctx)
 	r.surfaceIncomplete.Store(int64(failed))
 
-	return failed
+	return failed, err //nolint:wrapcheck // the runner already names what it was doing
 }
 
 func (r *Reporter) run(ctx context.Context, phase func(context.Context) Result) Result {

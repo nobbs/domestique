@@ -654,7 +654,8 @@ func TestServiceAnnotateStoredReportsTheAnnotatorsCounts(t *testing.T) {
 	state.trusted = []route.Route{stage}
 	service := newAnnotatedService(t, state, &fakeSource{}, newFakeTarget(), &fakeAnnotator{})
 
-	classified, failed := service.AnnotateStored(t.Context())
+	classified, failed, err := service.AnnotateStored(t.Context())
+	require.NoError(t, err, "AnnotateStored()")
 	assert.Equal(t, 1, classified, "classified")
 	assert.Zero(t, failed, "failed")
 }
@@ -666,9 +667,13 @@ func TestServiceAnnotateStoredReportsNothingWhenTheInventoryCannotBeRead(t *test
 	state.trustedErr = errors.New("state unavailable")
 	service := newAnnotatedService(t, state, &fakeSource{}, newFakeTarget(), &fakeAnnotator{})
 
-	classified, failed := service.AnnotateStored(t.Context())
+	classified, failed, err := service.AnnotateStored(t.Context())
 	assert.Zero(t, classified, "classified")
 	assert.Zero(t, failed, "failed")
+	// A state read failure stopped the pass before it could even start, and
+	// that has to reach the caller: a task layer reading only the counts
+	// would record this as a clean, empty success.
+	assert.Error(t, err, "AnnotateStored()")
 }
 
 func newAnnotatedService(
@@ -766,11 +771,25 @@ func TestServiceAnnotateStoredRunsOnlyClassification(t *testing.T) {
 	)
 	require.NoError(t, err, "New()")
 
-	classified, failed := service.AnnotateStored(t.Context())
+	classified, failed, err := service.AnnotateStored(t.Context())
+	require.NoError(t, err, "AnnotateStored()")
 	assert.Equal(t, 1, annotator.calls, "annotate calls")
 	assert.Zero(t, predictor.calls, "predict calls")
 	assert.Equal(t, 1, classified, "classified")
 	assert.Zero(t, failed, "failed")
+}
+
+// A pass that stops before it can name a single failed stage is still a
+// failure the caller must be told about, not a silent (0, 0).
+func TestServiceAnnotateStoredReportsWhenThePassStopsEarly(t *testing.T) {
+	stage := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{stage}
+	annotator := &fakeAnnotator{err: errors.New("index unavailable")}
+	service := newAnnotatedService(t, state, &fakeSource{}, newFakeTarget(), annotator)
+
+	_, _, err := service.AnnotateStored(t.Context())
+	assert.Error(t, err, "AnnotateStored()")
 }
 
 // PredictStored reports the predictor's own counts back, reading the stored
@@ -786,7 +805,8 @@ func TestServicePredictStoredReportsThePredictorsCounts(t *testing.T) {
 	)
 	require.NoError(t, err, "New()")
 
-	predicted, failed := service.PredictStored(t.Context())
+	predicted, failed, err := service.PredictStored(t.Context())
+	require.NoError(t, err, "PredictStored()")
 	assert.Equal(t, 1, predictor.calls, "predict calls")
 	assert.Equal(t, 1, predicted, "predicted")
 	assert.Zero(t, failed, "failed")
@@ -804,10 +824,28 @@ func TestServicePredictStoredReportsNothingWhenTheInventoryCannotBeRead(t *testi
 	)
 	require.NoError(t, err, "New()")
 
-	predicted, failed := service.PredictStored(t.Context())
+	predicted, failed, err := service.PredictStored(t.Context())
 	assert.Zero(t, predicted, "predicted")
 	assert.Zero(t, failed, "failed")
 	assert.Zero(t, predictor.calls, "predict calls")
+	assert.Error(t, err, "PredictStored()")
+}
+
+// Same as classification: a pass that stops before it can name a failed
+// stage is still a failure the caller has to hear about.
+func TestServicePredictStoredReportsWhenThePassStopsEarly(t *testing.T) {
+	stage := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{stage}
+	predictor := &fakePredictor{err: errors.New("coefficients unavailable")}
+	service, err := New(
+		syncOptions(false, []Source{&fakeSource{}}, "a"),
+		state, exportProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, predictor,
+	)
+	require.NoError(t, err, "New()")
+
+	_, _, predictErr := service.PredictStored(t.Context())
+	assert.Error(t, predictErr, "PredictStored()")
 }
 
 type fakePredictor struct {
@@ -1033,8 +1071,10 @@ func runBoth(ctx context.Context, service *Service) Result {
 	}
 	targets := service.RunTargets(ctx)
 	targets.SourceStages = source.SourceStages
-	service.AnnotateStored(ctx)
-	service.PredictStored(ctx)
+	// Enrichment never changes what a sync run reports; a test wanting its own
+	// error asserts against AnnotateStored/PredictStored directly.
+	_, _, _ = service.AnnotateStored(ctx) //nolint:errcheck // a test wanting this error asserts against it directly
+	_, _, _ = service.PredictStored(ctx)  //nolint:errcheck // a test wanting this error asserts against it directly
 
 	return targets
 }

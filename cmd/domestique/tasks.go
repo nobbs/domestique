@@ -62,8 +62,13 @@ const (
 )
 
 // detailIncomplete is why a classification or prediction pass that left stages
-// unfinished is recorded as failed rather than succeeded.
-const detailIncomplete task.Detail = "incomplete"
+// unfinished is recorded as failed rather than succeeded. detailStoppedEarly is
+// why one is failed even with nothing named unfinished: it never got far enough
+// to say, the same word the pass's own log line already uses for this.
+const (
+	detailIncomplete   task.Detail = "incomplete"
+	detailStoppedEarly task.Detail = "stopped_early"
+)
 
 // synchronizer is the sync work the task layer starts; indexBuilder is the
 // surface index rebuild. Both live here so definitions can be read without a
@@ -73,8 +78,8 @@ type synchronizer interface {
 	RunSourceProvider(ctx context.Context, provider route.Provider) syncservice.Result
 	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
-	Annotate(ctx context.Context) (failed int)
-	Predict(ctx context.Context) (failed int)
+	Annotate(ctx context.Context) (failed int, err error)
+	Predict(ctx context.Context) (failed int, err error)
 }
 
 type indexBuilder interface {
@@ -209,7 +214,13 @@ func inventoryTasks(
 			Follows:   []string{taskSyncSource, taskSurfaceIndex},
 			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
-				if failed := reporter.Annotate(ctx); failed > 0 {
+				failed, err := reporter.Annotate(ctx)
+				if err != nil {
+					// Stopped early, not just partial: worth predicting over
+					// whatever it did manage, same as a partial classification.
+					return task.Result{Outcome: task.Failed, Detail: detailStoppedEarly, Advances: true}
+				}
+				if failed > 0 {
 					// A partial classification is still worth predicting over:
 					// prediction falls back to asphalt for unclassified ground.
 					return task.Result{Outcome: task.Failed, Detail: detailIncomplete, Advances: true}
@@ -224,7 +235,11 @@ func inventoryTasks(
 			Follows:   []string{taskSurfaceAnnotate},
 			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
-				if failed := reporter.Predict(ctx); failed > 0 {
+				failed, err := reporter.Predict(ctx)
+				if err != nil {
+					return task.Result{Outcome: task.Failed, Detail: detailStoppedEarly}
+				}
+				if failed > 0 {
 					return task.Result{Outcome: task.Failed, Detail: detailIncomplete}
 				}
 
