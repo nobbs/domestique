@@ -87,8 +87,8 @@ first regardless of the rest.
    `adminOnly` wrapper around the handler funcs above, answering the existing
    error shape with `403 forbidden`). Regression tests in
    `routes_settings_test.go` / `routes_tasks_test.go` with a non-admin
-   identity, following `gate_test.go`'s pattern. Add `403` to each affected
-   operation in `api/openapi.yaml` and regenerate. Update
+   identity, following `gate_test.go`'s pattern. No change to `api/openapi.yaml`: every affected operation already
+   declares the shared `Forbidden` response. Update
    `docs/specs/service.md` (define the admin subject once, next to the
    sign-in gate around line 155, and mark each endpoint) and the safety list
    in `AGENTS.md`. Run `test-race`: the session gate is touched.
