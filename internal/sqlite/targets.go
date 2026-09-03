@@ -34,29 +34,20 @@ func (s *Store) EnsureTargetOwner(ctx context.Context, subject string) error {
 		return errors.New("a subject is required")
 	}
 
-	transaction, err := s.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("starting target owner: %w", err)
-	}
-	defer rollback(transaction)
-
-	queries := s.queries.WithTx(transaction)
-	if err := queries.EnsureTargetOwner(ctx, sqlcgen.EnsureTargetOwnerParams{
-		Slot: subject, OwnerSubject: sql.NullString{String: subject, Valid: true},
-		AuthorizationState: string(AuthorizationNotAuthorized), UpdatedAtUnix: time.Now().Unix(),
-	}); err != nil {
-		return fmt.Errorf("creating target owner: %w", err)
-	}
-	if err := queries.ClaimUnownedTarget(ctx, sqlcgen.ClaimUnownedTargetParams{
-		OwnerSubject: sql.NullString{String: subject, Valid: true}, Slot: subject,
-	}); err != nil {
-		return fmt.Errorf("claiming target owner: %w", err)
-	}
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("committing target owner: %w", err)
-	}
-
-	return nil
+	return s.withTx(ctx, "target owner", func(queries *sqlcgen.Queries) error {
+		if err := queries.EnsureTargetOwner(ctx, sqlcgen.EnsureTargetOwnerParams{
+			Slot: subject, OwnerSubject: sql.NullString{String: subject, Valid: true},
+			AuthorizationState: string(AuthorizationNotAuthorized), UpdatedAtUnix: time.Now().Unix(),
+		}); err != nil {
+			return fmt.Errorf("creating target owner: %w", err)
+		}
+		if err := queries.ClaimUnownedTarget(ctx, sqlcgen.ClaimUnownedTargetParams{
+			OwnerSubject: sql.NullString{String: subject, Valid: true}, Slot: subject,
+		}); err != nil {
+			return fmt.Errorf("claiming target owner: %w", err)
+		}
+		return nil
+	})
 }
 
 // ForEachTarget visits every target without exposing its Wahoo identity or
