@@ -81,6 +81,9 @@ WHERE provider = ? AND route_id = ? AND stage_order = ?;
 -- name: DeleteStageSurface :exec
 DELETE FROM stage_surface WHERE provider = ? AND route_id = ? AND stage_order = ?;
 
+-- name: DeleteStageDuration :exec
+DELETE FROM stage_duration WHERE provider = ? AND route_id = ? AND stage_order = ?;
+
 -- name: GetStageGeometryHash :one
 SELECT content_hash FROM stage_geometry WHERE provider = ? AND route_id = ? AND stage_order = ?;
 

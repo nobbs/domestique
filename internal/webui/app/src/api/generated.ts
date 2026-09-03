@@ -3582,7 +3582,7 @@ export const getSetSurfaceUrl = () => {
 };
 
 /**
- * Replaces the surface index's regions and rebuild cadence.
+ * Replaces the surface index's regions and rebuild cadence, and starts a rebuild.
  */
 export const setSurface = async (
   surfaceSettings: SurfaceSettings,
@@ -3716,7 +3716,7 @@ export const getSetRideModelUrl = () => {
 };
 
 /**
- * Replaces the coefficient file predicted moving time is computed from.
+ * Replaces the coefficient file predicted moving time is computed from, and starts a prediction pass.
  */
 export const setRideModel = async (
   rideModelSettings: RideModelSettings,

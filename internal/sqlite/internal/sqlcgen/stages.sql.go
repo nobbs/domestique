@@ -10,6 +10,21 @@ import (
 	"database/sql"
 )
 
+const deleteStageDuration = `-- name: DeleteStageDuration :exec
+DELETE FROM stage_duration WHERE provider = ? AND route_id = ? AND stage_order = ?
+`
+
+type DeleteStageDurationParams struct {
+	Provider   string
+	RouteID    int64
+	StageOrder int64
+}
+
+func (q *Queries) DeleteStageDuration(ctx context.Context, arg DeleteStageDurationParams) error {
+	_, err := q.db.ExecContext(ctx, deleteStageDuration, arg.Provider, arg.RouteID, arg.StageOrder)
+	return err
+}
+
 const deleteStageReprocessByProvider = `-- name: DeleteStageReprocessByProvider :exec
 DELETE FROM stage_reprocess WHERE provider = ?
 `

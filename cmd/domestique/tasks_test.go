@@ -33,7 +33,7 @@ func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 		)
 	}
 	assert.Equal(t,
-		[]string{taskSyncSource, taskSyncTarget, taskSyncClear, taskSurfaceAnnotate},
+		[]string{taskSyncSource, taskSyncTarget, taskSyncClear, taskSurfaceAnnotate, taskRideModelPredict},
 		names, "registered tasks")
 }
 
@@ -91,6 +91,12 @@ func TestEachInventoryTaskRunsItsOwnWork(t *testing.T) {
 				assert.Equal(t, 1, s.annotations, "annotation passes")
 			},
 		},
+		"prediction": {
+			task: taskRideModelPredict,
+			expect: func(t *testing.T, s *fakeSynchronizer) {
+				assert.Equal(t, 1, s.predictions, "prediction passes")
+			},
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -115,6 +121,49 @@ func TestClassificationRecordsFailureWhenStagesAreLeftUnclassified(t *testing.T)
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSurfaceAnnotate})
 	assert.Equal(t, task.Failed, result.Outcome, "outcome")
 	assert.Equal(t, detailIncomplete, result.Detail, "detail")
+	// A partial classification still advances to prediction, rather than
+	// silencing it over stages that did classify.
+	assert.True(t, result.Advances, "advances")
+}
+
+// A pass that stops before it can name a single failed stage — a state read
+// error, say — is still a failure the history and backoff have to see, not a
+// silent success that happens to have found nothing wrong.
+func TestClassificationRecordsFailureWhenThePassStopsEarly(t *testing.T) {
+	t.Parallel()
+
+	synchronizer := &fakeSynchronizer{annotationErr: errors.New("index unavailable")}
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskSurfaceAnnotate)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSurfaceAnnotate})
+	assert.Equal(t, task.Failed, result.Outcome, "outcome")
+	assert.Equal(t, detailStoppedEarly, result.Detail, "detail")
+	// Whatever the pass did manage is still worth predicting over.
+	assert.True(t, result.Advances, "advances")
+}
+
+func TestPredictionRecordsFailureWhenStagesAreLeftUnpredicted(t *testing.T) {
+	t.Parallel()
+
+	synchronizer := &fakeSynchronizer{predictionFailed: 2}
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskRideModelPredict)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelPredict})
+	assert.Equal(t, task.Failed, result.Outcome, "outcome")
+	assert.Equal(t, detailIncomplete, result.Detail, "detail")
+}
+
+// Same as classification: a stopped-early pass has to fail the run even with
+// nothing individually counted as failed.
+func TestPredictionRecordsFailureWhenThePassStopsEarly(t *testing.T) {
+	t.Parallel()
+
+	synchronizer := &fakeSynchronizer{predictionErr: errors.New("coefficients unavailable")}
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskRideModelPredict)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelPredict})
+	assert.Equal(t, task.Failed, result.Outcome, "outcome")
+	assert.Equal(t, detailStoppedEarly, result.Detail, "detail")
 }
 
 func TestSyncResultCarriesEveryOutcomeAcross(t *testing.T) {
@@ -195,15 +244,19 @@ func definitionNamed(t *testing.T, definitions []task.Definition, name string) t
 }
 
 type fakeSynchronizer struct {
-	providers        []route.Provider
-	phases           []syncservice.Phase
-	reconciled       []string
+	annotationErr    error
+	predictionErr    error
 	cleared          []string
+	providers        []route.Provider
+	reconciled       []string
+	phases           []syncservice.Phase
 	result           syncservice.Result
 	scheduled        int
 	both             int
 	annotations      int
 	annotationFailed int
+	predictions      int
+	predictionFailed int
 }
 
 func (s *fakeSynchronizer) Run(context.Context) syncservice.Result {
@@ -242,10 +295,16 @@ func (s *fakeSynchronizer) ClearTarget(_ context.Context, targetID string) syncs
 	return s.result
 }
 
-func (s *fakeSynchronizer) Annotate(context.Context) int {
+func (s *fakeSynchronizer) Annotate(context.Context) (failed int, err error) {
 	s.annotations++
 
-	return s.annotationFailed
+	return s.annotationFailed, s.annotationErr
+}
+
+func (s *fakeSynchronizer) Predict(context.Context) (failed int, err error) {
+	s.predictions++
+
+	return s.predictionFailed, s.predictionErr
 }
 
 type fakeIndexBuilder struct {
@@ -465,6 +524,9 @@ func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 	annotate := definitionNamed(t, definitions, taskSurfaceAnnotate)
 	assert.Equal(t, []string{taskSyncSource, taskSurfaceIndex}, annotate.Follows,
 		"what classification follows")
+
+	predict := definitionNamed(t, definitions, taskRideModelPredict)
+	assert.Equal(t, []string{taskSurfaceAnnotate}, predict.Follows, "what prediction follows")
 }
 
 func alwaysOn() bool { return true }

@@ -377,9 +377,9 @@ scheduled build fills it in.
 
 **When nothing is classified on purpose**, the region list under **Settings →
 Service settings** is empty. That is the default, and it switches the whole
-feature off: no extract is downloaded and no index is built. Adding a region
-there does not build anything by itself; the next rebuild on the configured
-schedule does, and routes are classified on the pass after that.
+feature off: no extract is downloaded and no index is built. Saving a region
+there starts a rebuild at once, and routes are classified on the pass that
+follows it.
 
 A single route classified wrongly is a **Reprocess** away. Re-planning a route
 reclassifies it automatically.

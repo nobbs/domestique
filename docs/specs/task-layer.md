@@ -104,13 +104,16 @@ branches share that set rather than each starting from a copy.
 These chains are registered:
 
 ~~~text
-sync:source     stored an inventory   ->  sync:target
-sync:source     stored an inventory   ->  surface:annotate
-surface:index   installed a new map   ->  surface:annotate
+sync:source       stored an inventory     ->  sync:target
+sync:source       stored an inventory     ->  surface:annotate
+surface:index     installed a new map     ->  surface:annotate
+surface:annotate  classified the ground   ->  ridemodel:predict
 ~~~
 
 A rebuilt index makes every stored classification stale, and nothing else
-notices that.
+notices that. Prediction reads the ground classification stored, so it follows
+that pass rather than the read: a new inventory and a new map both reach it
+through the one edge.
 
 ## Scheduling
 
@@ -199,6 +202,10 @@ one. `202` means the attempt was accepted and continues independently of the
 request. `409` means it was refused, which is not a fault: either this exact
 work is already happening, or something it needs is held by another run.
 
+`PUT /v1/tasks/{name}/schedule` sets whether the schedule may start one task,
+and answers with the registered tasks as they now stand. It writes the switch
+described below, and like it governs unattended runs only.
+
 `GET /v1/tasks/runs` serves what the activities have been doing: one page of the
 recorded history, newest first, over every task or over the one a `task` filter
 names. Each attempt carries what started it, what it was over, what it came to
@@ -249,6 +256,7 @@ is checked rather than inferred.
 | `sync:target` | target slot, or none for every one | `inventory` exclusive | every six hours |
 | `sync:clear` | target slot | `inventory` exclusive | none |
 | `surface:annotate` | none | `inventory` exclusive | none |
+| `ridemodel:predict` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 
 The read takes a library the same way the targets take a slot: none is every
@@ -263,6 +271,14 @@ a library would.
 
 `sync:target` follows the read. `surface:annotate` follows both the read and the
 index rebuild, and runs after each: either alone leaves stages wanting it.
+`ridemodel:predict` follows classification alone, and an incomplete
+classification still advances to it: prediction reads unclassified ground as
+paved rather than waiting for a pass that may never finish.
+
+Two settings ask for a pass themselves: a written surface section starts the
+index rebuild, and a written ride-model section starts prediction. What a pass
+consumes changing is a reason to run it, and the operator who changed it is
+already watching.
 `sync:target`'s own schedule is a backstop behind its edge — what it catches is a
 slot that failed on its own, and an operator who has the read switched off.
 
@@ -276,9 +292,17 @@ registered for a rider who connects mid-run.
 
 What follows an attempt follows a successful one, or one whose result says it
 still stored something worth building on despite not fully succeeding — a
-source read over several libraries where only some of them failed, say. A read
+source read over several libraries where only some of them failed, say, or a
+classification pass that named the stages it could not finish while storing
+the rest. A read
 that stored nothing at all left every classification standing, and a rebuild
 that found nothing new left every stored classification standing too.
+
+`ridemodel:predict` widens this further: it advances even when classification
+stopped before it could say what it stored, because prediction rereads the
+stored inventory itself rather than taking classification's word for what is
+in it — trying costs nothing when there turns out to be nothing new, and finds
+whatever classification did manage when there is.
 
 Each edge fires on its own, so a task following two predecessors runs after
 each. That is what classification wants: a read leaves stages nobody has
@@ -372,8 +396,9 @@ announcing what was deliberately silenced.
 
 ## Enrichment failures
 
-Classifying the ground under a stage and timing it are passes over the whole
-stored inventory, not tasks of their own. A stage either pass could not finish
+Classifying the ground under a stage and timing it are each one task's single
+pass over the whole stored inventory; no stage is an attempt of its own, and
+neither pass fails for one stage. A stage either pass could not finish
 is named, with a stable reason for what stopped it, and the record is replaced
 when the pass tries again and removed when it succeeds. What is there is what is
 wrong now, rather than a log of everything that ever went wrong.
@@ -392,6 +417,6 @@ blaming the map for a service that was stopping would outlast the shutdown.
 
 ## Out of scope
 
-Delayed retry after repeated failure and a bound on how long one attempt may
-take are not part of this layer yet. Nothing here queues work or retries an
-attempt.
+A bound on how long one attempt may take is not part of this layer yet.
+Nothing here queues work or retries an attempt; backoff only holds a schedule
+back from a task that keeps faulting.

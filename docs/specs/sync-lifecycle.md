@@ -186,28 +186,31 @@ it. The switches govern unattended runs only.
 
 ## Retrying enrichment
 
-`POST /v1/tasks/surface:annotate/run` asks for one immediate classification pass
+`POST /v1/tasks/surface:annotate/run` asks for one immediate classification
+pass, and `POST /v1/tasks/ridemodel:predict/run` for one prediction pass, each
 on the same terms as any other task: it carries the browser-origin requirement,
 and the service returns `202` only when nothing else holds the stored library,
 `409` otherwise. Every task above holds it exclusively, so none of them may run
 while another is in flight.
 
-It never reads VeloPlanner and never writes a Wahoo target. It reclassifies the
-routes already stored against the local surface index and cache alone, which is
-the pass a successful source read runs automatically. It can neither create,
-update, nor delete a route on any target, and carries none of the safety gates
-or notification traffic a synchronisation does.
+Neither reads VeloPlanner and neither writes a Wahoo target. Classification
+reworks the routes already stored against the local surface index and cache
+alone, which is the pass a successful source read runs automatically, and
+prediction follows it, timing the same stored routes against the loaded
+coefficients. They can neither create, update, nor delete a route on any
+target, and carry none of the safety gates or notification traffic a
+synchronisation does.
 
 ## Reprocessing one route
 
-A route carries three derived answers the service reuses while they still look
+A route carries four derived answers the service reuses while they still look
 current: the geometry it derived and stored, the revision it last pushed to each
-target, and its surface classification.
+target, its surface classification, and its predicted moving time.
 
-A reprocess request discards all three for that route and starts a
+A reprocess request discards all four for that route and starts a
 synchronisation of both halves. The route is read again, derived again, encoded
-again, pushed to every target regardless of the revision recorded there, and
-classified again.
+again, pushed to every target regardless of the revision recorded there,
+classified again, and timed again.
 
 It is not a delete and not a create. The Wahoo route identity is kept, so the
 route the service already owns is rewritten in place through the same ownership

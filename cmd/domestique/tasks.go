@@ -15,11 +15,12 @@ import (
 
 // The background activities this service runs.
 const (
-	taskSyncSource      = httpapi.TaskSyncSource
-	taskSyncTarget      = httpapi.TaskSyncTarget
-	taskSyncClear       = httpapi.TaskSyncClear
-	taskSurfaceAnnotate = "surface:annotate"
-	taskSurfaceIndex    = "surface:index"
+	taskSyncSource       = httpapi.TaskSyncSource
+	taskSyncTarget       = httpapi.TaskSyncTarget
+	taskSyncClear        = httpapi.TaskSyncClear
+	taskSurfaceAnnotate  = "surface:annotate"
+	taskSurfaceIndex     = httpapi.TaskSurfaceIndex
+	taskRideModelPredict = httpapi.TaskRideModelPredict
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -42,10 +43,10 @@ const (
 // reasons and recover on different timescales, hence different bases; both cap
 // at six hours, a morning's quiet rather than giving up.
 const (
-	syncBackoffBase     = 30 * time.Second
-	targetBackoffBase   = time.Hour
-	annotateBackoffBase = 5 * time.Minute
-	backoffCap          = 6 * time.Hour
+	syncBackoffBase       = 30 * time.Second
+	targetBackoffBase     = time.Hour
+	enrichmentBackoffBase = 5 * time.Minute
+	backoffCap            = 6 * time.Hour
 )
 
 // targetBackstopInterval is how often targets are reconciled unasked; a
@@ -60,9 +61,14 @@ const (
 	detailNoRegions task.Detail = "no_regions"
 )
 
-// detailIncomplete is why a classification pass that left stages unclassified
-// is recorded as failed rather than succeeded.
-const detailIncomplete task.Detail = "incomplete"
+// detailIncomplete is why a classification or prediction pass that left stages
+// unfinished is recorded as failed rather than succeeded. detailStoppedEarly is
+// why one is failed even with nothing named unfinished: it never got far enough
+// to say, the same word the pass's own log line already uses for this.
+const (
+	detailIncomplete   task.Detail = "incomplete"
+	detailStoppedEarly task.Detail = "stopped_early"
+)
 
 // synchronizer is the sync work the task layer starts; indexBuilder is the
 // surface index rebuild. Both live here so definitions can be read without a
@@ -72,7 +78,8 @@ type synchronizer interface {
 	RunSourceProvider(ctx context.Context, provider route.Provider) syncservice.Result
 	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
-	Annotate(ctx context.Context) (failed int)
+	Annotate(ctx context.Context) (failed int, err error)
+	Predict(ctx context.Context) (failed int, err error)
 }
 
 type indexBuilder interface {
@@ -205,9 +212,34 @@ func inventoryTasks(
 			Name:      taskSurfaceAnnotate,
 			Resources: inventory,
 			Follows:   []string{taskSyncSource, taskSurfaceIndex},
-			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
+			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
-				if failed := reporter.Annotate(ctx); failed > 0 {
+				failed, err := reporter.Annotate(ctx)
+				if err != nil {
+					// Stopped early, not just partial: worth predicting over
+					// whatever it did manage, same as a partial classification.
+					return task.Result{Outcome: task.Failed, Detail: detailStoppedEarly, Advances: true}
+				}
+				if failed > 0 {
+					// A partial classification is still worth predicting over:
+					// prediction falls back to asphalt for unclassified ground.
+					return task.Result{Outcome: task.Failed, Detail: detailIncomplete, Advances: true}
+				}
+
+				return task.Result{Outcome: task.Succeeded}
+			}),
+		},
+		{
+			Name:      taskRideModelPredict,
+			Resources: inventory,
+			Follows:   []string{taskSurfaceAnnotate},
+			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
+			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
+				failed, err := reporter.Predict(ctx)
+				if err != nil {
+					return task.Result{Outcome: task.Failed, Detail: detailStoppedEarly}
+				}
+				if failed > 0 {
 					return task.Result{Outcome: task.Failed, Detail: detailIncomplete}
 				}
 

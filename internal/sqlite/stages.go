@@ -111,7 +111,8 @@ const reprocessSentinel = "reprocess-requested"
 
 // RequestStageReprocess asks for one stage to be redone from scratch, changing no
 // route data: it drops the geometry cache, the revision each target last pushed,
-// and the surface classification. The Wahoo route identity is kept, so the next
+// the surface classification, and the predicted moving time. The Wahoo route
+// identity is kept, so the next
 // reconciliation takes the update path and never creates a second route. Reports
 // whether the stage is in the stored inventory.
 func (s *Store) RequestStageReprocess(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (bool, error) {
@@ -148,6 +149,13 @@ func (s *Store) RequestStageReprocess(ctx context.Context, provider route.Provid
 		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
 	}); err != nil {
 		return false, fmt.Errorf("dropping the stage surface: %w", err)
+	}
+	// The prediction is keyed by the map's generation, not the classification
+	// itself, so a reclassified stage would otherwise keep a time read off the old one.
+	if err := queries.DeleteStageDuration(ctx, sqlcgen.DeleteStageDurationParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	}); err != nil {
+		return false, fmt.Errorf("dropping the stage duration: %w", err)
 	}
 	if err := transaction.Commit(); err != nil {
 		return false, fmt.Errorf("committing the reprocess request: %w", err)

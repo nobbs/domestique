@@ -376,38 +376,48 @@ func targetOutcome(failure FailureCategory) Outcome {
 	return OutcomeFailed
 }
 
-// AnnotateStored classifies the ground under the stored inventory and predicts
-// its moving time over one read, predicting after classifying. Neither is part
-// of either sync phase and neither can fail a run; the failed count tells a
-// stage that keeps failing apart from one nobody has asked about yet.
-func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
-	if s.annotator == nil && s.predictor == nil {
-		return 0, 0
+// AnnotateStored classifies the ground under the stored inventory over one
+// read. It is not part of either sync phase; the failed count tells a stage
+// that keeps failing classification apart from one nobody has asked about
+// yet, and a non-nil err means the pass stopped before it could say even
+// that — the task layer fails the run rather than reading it as clean.
+func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int, err error) {
+	if s.annotator == nil {
+		return 0, 0, nil
 	}
-	stages, err := s.state.TrustedInventory(ctx)
-	if err != nil {
-		slog.Warn("surface classification skipped", "reason", "state")
+	stages, stateErr := s.state.TrustedInventory(ctx)
+	if stateErr != nil {
+		slog.Warn("surface classification stopped early", "reason", "state")
 
-		return 0, 0
+		return 0, 0, fmt.Errorf("surface: reading trusted inventory: %w", stateErr)
 	}
 
-	if s.annotator != nil {
-		classified, failed, err = s.annotator.Annotate(ctx, stages)
-		logPassOutcome("surface classification", classified, failed, err)
-	}
-	s.predictStored(ctx, stages)
+	classified, failed, err = s.annotator.Annotate(ctx, stages)
+	logPassOutcome("surface classification", classified, failed, err)
 
-	return classified, failed
+	return classified, failed, err //nolint:wrapcheck // the annotator already names what it was doing
 }
 
-// predictStored runs the ride-model predictor over the stages AnnotateStored
-// read. Silent on success: a routine pass is not worth a log line.
-func (s *Service) predictStored(ctx context.Context, stages []route.Route) {
+// PredictStored predicts the moving time of the stored inventory over one
+// read. It is not part of either sync phase; the failed count tells a stage
+// that keeps failing prediction apart from one nobody has asked about yet,
+// and a non-nil err means the pass stopped before it could say even that —
+// the task layer fails the run rather than reading it as clean.
+func (s *Service) PredictStored(ctx context.Context) (predicted, failed int, err error) {
 	if s.predictor == nil {
-		return
+		return 0, 0, nil
 	}
-	predicted, failed, err := s.predictor.Predict(ctx, stages)
+	stages, stateErr := s.state.TrustedInventory(ctx)
+	if stateErr != nil {
+		slog.Warn("ride model prediction stopped early", "reason", "state")
+
+		return 0, 0, fmt.Errorf("ridemodel: reading trusted inventory: %w", stateErr)
+	}
+
+	predicted, failed, err = s.predictor.Predict(ctx, stages)
 	logPassOutcome("ride model prediction", predicted, failed, err)
+
+	return predicted, failed, err //nolint:wrapcheck // the predictor already names what it was doing
 }
 
 // logPassOutcome is the one place either enrichment pass is heard in the log.

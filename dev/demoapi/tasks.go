@@ -38,7 +38,8 @@ var demoTaskNames = []struct { //nolint:gochecknoglobals // a fixture for develo
 	{name: "sync:target", scheduled: true, interval: targetBackstopInterval},
 	{name: "sync:clear"},
 	{name: "surface:annotate"},
-	{name: "surface:index", scheduled: true},
+	{name: httpapi.TaskRideModelPredict},
+	{name: httpapi.TaskSurfaceIndex, scheduled: true},
 }
 
 // Registered lists the demo's tasks, so the page has a switch to draw per task

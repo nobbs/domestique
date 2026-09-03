@@ -122,13 +122,14 @@ func (h *Handler) SetBasemaps(writer http.ResponseWriter, request *http.Request)
 }
 
 // SetSurface replaces the regions the surface index is built from and how often
-// it is rebuilt.
+// it is rebuilt. A stored edit starts the rebuild the new regions or cadence
+// feed.
 func (h *Handler) SetSurface(writer http.ResponseWriter, request *http.Request) {
 	body, ok := settingsBody[openapi.SurfaceSettings](h, writer, request)
 	if !ok {
 		return
 	}
-	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+	stored := h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
 		values.Surface = runtimeconfig.Surface{
 			Regions:         slices.Clone(body.Regions),
 			RebuildInterval: time.Duration(body.RebuildIntervalSeconds) * time.Second,
@@ -136,20 +137,28 @@ func (h *Handler) SetSurface(writer http.ResponseWriter, request *http.Request) 
 
 		return values
 	}, nil)
+	if stored {
+		// The trigger result is ignored: a refused start means the work is
+		// already happening.
+		h.tasks.Run(TaskSurfaceIndex, "")
+	}
 }
 
 // SetRideModel replaces the coefficient file predicted moving time is computed
-// from.
+// from. A stored edit starts the prediction pass that consumes it.
 func (h *Handler) SetRideModel(writer http.ResponseWriter, request *http.Request) {
 	body, ok := settingsBody[openapi.RideModelSettings](h, writer, request)
 	if !ok {
 		return
 	}
-	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+	stored := h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
 		values.RideModel = runtimeconfig.RideModel{CoefficientsFile: body.CoefficientsFile}
 
 		return values
 	}, nil)
+	if stored {
+		h.tasks.Run(TaskRideModelPredict, "")
+	}
 }
 
 // SetSync replaces the settings a run reads when it starts.
@@ -193,12 +202,14 @@ func settingsBody[Body any](h *Handler, writer http.ResponseWriter, request *htt
 
 // storeSection commits one section and its credentials together, applied to the
 // settings as they are at the moment of the write, and answers with every setting now in force.
+// It reports true only when the 200 settings view was written, so a caller can
+// start work the section it just wrote feeds.
 func (h *Handler) storeSection(
 	writer http.ResponseWriter,
 	request *http.Request,
 	change func(runtimeconfig.Values) runtimeconfig.Values,
 	secrets map[runtimeconfig.SecretName]runtimeconfig.Secret,
-) {
+) bool {
 	// The rules are the runtime settings package's own — the same ones the
 	// stored values were read back through at startup — so the message names
 	// the setting that is wrong rather than the section it was in.
@@ -206,13 +217,15 @@ func (h *Handler) storeSection(
 		if errors.Is(err, runtimeconfig.ErrStore) {
 			h.unavailable(writer)
 
-			return
+			return false
 		}
 		h.error(writer, http.StatusBadRequest, "invalid_request", err.Error())
 
-		return
+		return false
 	}
 	h.writeJSON(writer, http.StatusOK, h.settingsView())
+
+	return true
 }
 
 // declaredAlert identifies one alert in the matrix. It is what an alert is,
