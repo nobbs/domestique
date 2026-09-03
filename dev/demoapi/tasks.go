@@ -38,6 +38,7 @@ var demoTaskNames = []struct { //nolint:gochecknoglobals // a fixture for develo
 	{name: "sync:target", scheduled: true, interval: targetBackstopInterval},
 	{name: "sync:clear"},
 	{name: "surface:annotate"},
+	{name: httpapi.TaskRidemodelPredict},
 	{name: "surface:index", scheduled: true},
 }
 

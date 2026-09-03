@@ -259,6 +259,7 @@ export const tasks: TaskList = {
     { name: "sync:target", scheduled: true, enabled: false, running: 0, intervalSeconds: 21600 },
     { name: "sync:clear", scheduled: false, enabled: true, running: 0 },
     { name: "surface:annotate", scheduled: false, enabled: true, running: 0 },
+    { name: "ridemodel:predict", scheduled: false, enabled: true, running: 0 },
     { name: "surface:index", scheduled: true, enabled: true, running: 0, intervalSeconds: 604800 },
   ],
 };

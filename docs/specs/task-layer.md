@@ -104,13 +104,16 @@ branches share that set rather than each starting from a copy.
 These chains are registered:
 
 ~~~text
-sync:source     stored an inventory   ->  sync:target
-sync:source     stored an inventory   ->  surface:annotate
-surface:index   installed a new map   ->  surface:annotate
+sync:source       stored an inventory     ->  sync:target
+sync:source       stored an inventory     ->  surface:annotate
+surface:index     installed a new map     ->  surface:annotate
+surface:annotate  classified the ground   ->  ridemodel:predict
 ~~~
 
 A rebuilt index makes every stored classification stale, and nothing else
-notices that.
+notices that. Prediction reads the ground classification stored, so it follows
+that pass rather than the read: a new inventory and a new map both reach it
+through the one edge.
 
 ## Scheduling
 
@@ -249,6 +252,7 @@ is checked rather than inferred.
 | `sync:target` | target slot, or none for every one | `inventory` exclusive | every six hours |
 | `sync:clear` | target slot | `inventory` exclusive | none |
 | `surface:annotate` | none | `inventory` exclusive | none |
+| `ridemodel:predict` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 
 The read takes a library the same way the targets take a slot: none is every
@@ -263,6 +267,9 @@ a library would.
 
 `sync:target` follows the read. `surface:annotate` follows both the read and the
 index rebuild, and runs after each: either alone leaves stages wanting it.
+`ridemodel:predict` follows classification alone, and an incomplete
+classification still advances to it: prediction reads unclassified ground as
+paved rather than waiting for a pass that may never finish.
 `sync:target`'s own schedule is a backstop behind its edge — what it catches is a
 slot that failed on its own, and an operator who has the read switched off.
 
@@ -276,7 +283,9 @@ registered for a rider who connects mid-run.
 
 What follows an attempt follows a successful one, or one whose result says it
 still stored something worth building on despite not fully succeeding — a
-source read over several libraries where only some of them failed, say. A read
+source read over several libraries where only some of them failed, say, or a
+classification pass that named the stages it could not finish while storing
+the rest. A read
 that stored nothing at all left every classification standing, and a rebuild
 that found nothing new left every stored classification standing too.
 
@@ -372,8 +381,9 @@ announcing what was deliberately silenced.
 
 ## Enrichment failures
 
-Classifying the ground under a stage and timing it are passes over the whole
-stored inventory, not tasks of their own. A stage either pass could not finish
+Classifying the ground under a stage and timing it are each one task's single
+pass over the whole stored inventory; no stage is an attempt of its own, and
+neither pass fails for one stage. A stage either pass could not finish
 is named, with a stable reason for what stopped it, and the record is replaced
 when the pass tries again and removed when it succeeds. What is there is what is
 wrong now, rather than a log of everything that ever went wrong.

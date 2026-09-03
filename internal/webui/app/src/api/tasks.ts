@@ -10,6 +10,10 @@ export const TASKS = {
   syncClear: "sync:clear",
   /** One surface-classification pass over the stored library. */
   surfaceAnnotate: "surface:annotate",
+  /** Rebuilding the OSM surface index. */
+  surfaceIndex: "surface:index",
+  /** One moving-time prediction pass over the stored library. */
+  ridemodelPredict: "ridemodel:predict",
 } as const;
 
 /** SYNC_PHASE_TASKS is which task does each half of a synchronization. */

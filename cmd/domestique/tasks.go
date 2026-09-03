@@ -15,11 +15,12 @@ import (
 
 // The background activities this service runs.
 const (
-	taskSyncSource      = httpapi.TaskSyncSource
-	taskSyncTarget      = httpapi.TaskSyncTarget
-	taskSyncClear       = httpapi.TaskSyncClear
-	taskSurfaceAnnotate = "surface:annotate"
-	taskSurfaceIndex    = "surface:index"
+	taskSyncSource       = httpapi.TaskSyncSource
+	taskSyncTarget       = httpapi.TaskSyncTarget
+	taskSyncClear        = httpapi.TaskSyncClear
+	taskSurfaceAnnotate  = "surface:annotate"
+	taskSurfaceIndex     = httpapi.TaskSurfaceIndex
+	taskRidemodelPredict = httpapi.TaskRidemodelPredict
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -60,8 +61,8 @@ const (
 	detailNoRegions task.Detail = "no_regions"
 )
 
-// detailIncomplete is why a classification pass that left stages unclassified
-// is recorded as failed rather than succeeded.
+// detailIncomplete is why a classification or prediction pass that left stages
+// unfinished is recorded as failed rather than succeeded.
 const detailIncomplete task.Detail = "incomplete"
 
 // synchronizer is the sync work the task layer starts; indexBuilder is the
@@ -73,6 +74,7 @@ type synchronizer interface {
 	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
 	Annotate(ctx context.Context) (failed int)
+	Predict(ctx context.Context) (failed int)
 }
 
 type indexBuilder interface {
@@ -208,6 +210,21 @@ func inventoryTasks(
 			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				if failed := reporter.Annotate(ctx); failed > 0 {
+					// A partial classification is still worth predicting over:
+					// prediction falls back to asphalt for unclassified ground.
+					return task.Result{Outcome: task.Failed, Detail: detailIncomplete, Advances: true}
+				}
+
+				return task.Result{Outcome: task.Succeeded}
+			}),
+		},
+		{
+			Name:      taskRidemodelPredict,
+			Resources: inventory,
+			Follows:   []string{taskSurfaceAnnotate},
+			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
+			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
+				if failed := reporter.Predict(ctx); failed > 0 {
 					return task.Result{Outcome: task.Failed, Detail: detailIncomplete}
 				}
 

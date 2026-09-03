@@ -376,12 +376,12 @@ func targetOutcome(failure FailureCategory) Outcome {
 	return OutcomeFailed
 }
 
-// AnnotateStored classifies the ground under the stored inventory and predicts
-// its moving time over one read, predicting after classifying. Neither is part
-// of either sync phase and neither can fail a run; the failed count tells a
-// stage that keeps failing apart from one nobody has asked about yet.
+// AnnotateStored classifies the ground under the stored inventory over one
+// read. It is not part of either sync phase and cannot fail a run; the failed
+// count tells a stage that keeps failing classification apart from one nobody
+// has asked about yet.
 func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
-	if s.annotator == nil && s.predictor == nil {
+	if s.annotator == nil {
 		return 0, 0
 	}
 	stages, err := s.state.TrustedInventory(ctx)
@@ -391,23 +391,31 @@ func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int) {
 		return 0, 0
 	}
 
-	if s.annotator != nil {
-		classified, failed, err = s.annotator.Annotate(ctx, stages)
-		logPassOutcome("surface classification", classified, failed, err)
-	}
-	s.predictStored(ctx, stages)
+	classified, failed, err = s.annotator.Annotate(ctx, stages)
+	logPassOutcome("surface classification", classified, failed, err)
 
 	return classified, failed
 }
 
-// predictStored runs the ride-model predictor over the stages AnnotateStored
-// read. Silent on success: a routine pass is not worth a log line.
-func (s *Service) predictStored(ctx context.Context, stages []route.Route) {
+// PredictStored predicts the moving time of the stored inventory over one
+// read. It is not part of either sync phase and cannot fail a run; the failed
+// count tells a stage that keeps failing prediction apart from one nobody has
+// asked about yet.
+func (s *Service) PredictStored(ctx context.Context) (predicted, failed int) {
 	if s.predictor == nil {
-		return
+		return 0, 0
 	}
-	predicted, failed, err := s.predictor.Predict(ctx, stages)
+	stages, err := s.state.TrustedInventory(ctx)
+	if err != nil {
+		slog.Warn("ride model prediction skipped", "reason", "state")
+
+		return 0, 0
+	}
+
+	predicted, failed, err = s.predictor.Predict(ctx, stages)
 	logPassOutcome("ride model prediction", predicted, failed, err)
+
+	return predicted, failed
 }
 
 // logPassOutcome is the one place either enrichment pass is heard in the log.

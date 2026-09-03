@@ -20,6 +20,14 @@ const (
 	TaskSyncClear  = "sync:clear"
 )
 
+// TaskSurfaceIndex is the registered name of the task that rebuilds the
+// surface index, also used by the surface settings route below.
+const TaskSurfaceIndex = "surface:index"
+
+// TaskRidemodelPredict is the registered name of the task that predicts moving
+// time over the stored inventory, also used by the ride-model settings route.
+const TaskRidemodelPredict = "ridemodel:predict"
+
 const (
 	// codeTaskInProgress is what a refused attempt is told.
 	codeTaskInProgress = "task_in_progress"

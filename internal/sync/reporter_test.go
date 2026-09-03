@@ -128,6 +128,19 @@ func TestReporterAnnotateRunsOnlyClassification(t *testing.T) {
 	assert.Equal(t, 1, reporter.SurfaceIncomplete(), "SurfaceIncomplete()")
 }
 
+// A manual retry predicts without touching either phase, and reports the
+// same way a scheduled pass does.
+func TestReporterPredictRunsOnlyPrediction(t *testing.T) {
+	runner := &reportingRunner{predictFailed: 1}
+	reporter := newReporter(t, runner, &fakeRunState{})
+
+	failed := reporter.Predict(t.Context())
+	assert.Equal(t, 1, runner.predictions, "prediction passes")
+	assert.Zero(t, runner.sourceRuns, "Predict read the source")
+	assert.Zero(t, runner.targetRuns, "Predict wrote a target")
+	assert.Equal(t, 1, failed, "Predict()")
+}
+
 func TestReporterDoesNotRecordOrNotifySkippedRun(t *testing.T) {
 	state := &fakeRunState{}
 	runner := &reportingRunner{
@@ -174,6 +187,9 @@ type reportingRunner struct {
 	annotations        int
 	annotateClassified int
 	annotateFailed     int
+	predictions        int
+	predictPredicted   int
+	predictFailed      int
 }
 
 func (r *reportingRunner) RunSourceProvider(_ context.Context, _ route.Provider) Result {
@@ -213,6 +229,12 @@ func (r *reportingRunner) AnnotateStored(context.Context) (classified, failed in
 	return r.annotateClassified, r.annotateFailed
 }
 
+func (r *reportingRunner) PredictStored(context.Context) (predicted, failed int) {
+	r.predictions++
+
+	return r.predictPredicted, r.predictFailed
+}
+
 type blockingReportingRunner struct {
 	started chan struct{}
 	release chan struct{}
@@ -242,6 +264,10 @@ func (r *blockingReportingRunner) ClearTarget(context.Context, string) Result {
 }
 
 func (r *blockingReportingRunner) AnnotateStored(context.Context) (classified, failed int) {
+	return 0, 0
+}
+
+func (r *blockingReportingRunner) PredictStored(context.Context) (predicted, failed int) {
 	return 0, 0
 }
 

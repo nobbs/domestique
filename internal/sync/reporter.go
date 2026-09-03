@@ -48,6 +48,9 @@ type Runner interface {
 	// AnnotateStored enriches the stored inventory and reports how much of it it
 	// could not classify. The count never changes a run's outcome.
 	AnnotateStored(ctx context.Context) (classified, failed int)
+	// PredictStored predicts the stored inventory's moving time and reports how
+	// much of it it could not predict. The count never changes a run's outcome.
+	PredictStored(ctx context.Context) (predicted, failed int)
 }
 
 // NewReporter creates a reporting runner with explicit dependencies.
@@ -93,6 +96,14 @@ func (r *Reporter) ClearTarget(ctx context.Context, targetID string) Result {
 // cache, and reports how many stages it could not classify.
 func (r *Reporter) Annotate(ctx context.Context) (failed int) {
 	return r.annotate(ctx)
+}
+
+// Predict runs one ride-model prediction pass, touching only the local index
+// and cache, and reports how many stages it could not predict.
+func (r *Reporter) Predict(ctx context.Context) (failed int) {
+	_, failed = r.runner.PredictStored(ctx)
+
+	return failed
 }
 
 // SurfaceIncomplete reports how many stages the most recently completed
