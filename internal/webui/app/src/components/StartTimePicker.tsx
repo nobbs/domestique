@@ -146,6 +146,12 @@ export function StartTimePicker({
     }
     const next = new Date(day);
     next.setHours(hours, minutes ?? 0, 0, 0);
+    // Where both events do arrive, the second says nothing the first did not:
+    // every focus and blur of an untouched field would otherwise hand the page
+    // a fresh Date and re-render everything hanging off the departure.
+    if (value !== null && next.getTime() === value.getTime()) {
+      return;
+    }
     propose(next);
   };
 

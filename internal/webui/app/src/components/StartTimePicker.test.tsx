@@ -170,13 +170,29 @@ describe("StartTimePicker", () => {
     expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
   });
 
-  it("leaves an unfilled field alone when it loses focus", () => {
+  it("leaves an unfilled field alone when it loses focus", async () => {
     const onChange = vi.fn();
     render(<StartTimePicker value={null} onChange={onChange} />);
+
+    // A day first: an empty field is disabled until one exists, and blurring
+    // a disabled control is not a state a reader can reach.
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
 
     fireEvent.blur(timeField());
 
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("proposes nothing further when a field it already accepted loses focus", () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
+
+    // What a browser firing both events looks like from here.
+    fireEvent.change(timeField(), { target: { value: "08:30" } });
+    fireEvent.blur(timeField());
+
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it("says which half of the departure is still missing", async () => {
