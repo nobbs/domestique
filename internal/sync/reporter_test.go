@@ -136,11 +136,21 @@ func TestReporterAnnotateRunsOnlyClassification(t *testing.T) {
 // A pass that stops before it can even say how much it did not finish is a
 // failure the task layer must hear about, not a silent zero.
 func TestReporterAnnotateReportsWhenThePassStopsEarly(t *testing.T) {
-	runner := &reportingRunner{annotateErr: errors.New("index unavailable")}
+	runner := &reportingRunner{annotateFailed: 2}
 	reporter := newReporter(t, runner, &fakeRunState{})
-
 	_, err := reporter.Annotate(t.Context())
-	assert.Error(t, err, "Annotate()")
+	require.NoError(t, err, "Annotate()")
+	require.Equal(t, 2, reporter.SurfaceIncomplete(), "SurfaceIncomplete() before the stopped-early pass")
+
+	// A stopped-early pass's own count may be a bare zero rather than a true
+	// one — a trusted-inventory read failure reports exactly that — so it
+	// must leave the gauge exactly where the last completed pass left it
+	// rather than overwriting it with a number that says nothing.
+	runner.annotateFailed = 0
+	runner.annotateErr = errors.New("index unavailable")
+	_, err = reporter.Annotate(t.Context())
+	require.Error(t, err, "Annotate()")
+	assert.Equal(t, 2, reporter.SurfaceIncomplete(), "SurfaceIncomplete() overwritten by a pass that never finished")
 }
 
 // A manual retry predicts without touching either phase, and reports the

@@ -110,7 +110,8 @@ func (r *Reporter) Predict(ctx context.Context) (failed int, err error) {
 }
 
 // SurfaceIncomplete reports how many stages the most recently completed
-// annotation pass could not classify. Zero before any pass has run.
+// annotation pass could not classify. Zero before any pass has run, and
+// unchanged by one that stopped early rather than completing.
 func (r *Reporter) SurfaceIncomplete() int {
 	return int(r.surfaceIncomplete.Load())
 }
@@ -171,10 +172,14 @@ func (r *Reporter) runPhasesWith(
 }
 
 // annotate runs one classification pass and records what it could not finish,
-// for SurfaceIncomplete to read back.
+// for SurfaceIncomplete to read back. A pass that stopped early updated
+// nothing, so its count — which may be a bare zero rather than a true one —
+// must not overwrite what the last completed pass actually found.
 func (r *Reporter) annotate(ctx context.Context) (failed int, err error) {
 	_, failed, err = r.runner.AnnotateStored(ctx)
-	r.surfaceIncomplete.Store(int64(failed))
+	if err == nil {
+		r.surfaceIncomplete.Store(int64(failed))
+	}
 
 	return failed, err //nolint:wrapcheck // the runner already names what it was doing
 }
