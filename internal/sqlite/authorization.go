@@ -181,7 +181,7 @@ func (s *Store) BeginAuthorization(
 	if err != nil {
 		return fmt.Errorf("checking oauth target: %w", err)
 	}
-	if targetExists == 0 {
+	if !targetExists {
 		return ErrTargetNotFound
 	}
 
