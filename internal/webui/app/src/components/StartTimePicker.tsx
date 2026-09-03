@@ -129,7 +129,7 @@ export function StartTimePicker({
   /**
    * Proposes whatever the time field holds, from either the event that reports
    * it. WebKit fires neither `input` nor `change` while a time field's segments
-   * are being edited, so a departure typed and never blurred away from reached
+   * are being edited, so a departure typed into one and left focused reached
    * nothing: the reader saw a day, a time, and no forecast.
    */
   const proposeTime = (raw: string) => {
