@@ -43,7 +43,8 @@ view an admin sees.
 
 | Surface | Who | Holds |
 | --- | --- | --- |
-| `/settings` | every rider | units, theme (local); **own Wahoo account**: connection state, connect / re-authorise; credits (`DataSources`); for an admin, a **"View as rider"** toggle |
+| `/settings` | every rider | units, theme (local); **own Wahoo account**: connection state, connect / re-authorise; credits (`DataSources`) |
+| user pill menu | admin only | **"View as rider"** switch, above "Sign out" |
 | `/admin` | admin only | today's `ServiceSettings` cards, link to tasks |
 | `/admin/tasks` | admin only | today's `TasksPage` |
 
@@ -94,9 +95,10 @@ first regardless of the rest.
    card, gains a "Wahoo account" card built from the caller's own target in
    `/v1/status` (reuse `TargetRow`; `ConnectPrompt` from
    `TargetConvergenceCard.tsx` when none). `SyncControls.tsx` hides the
-   source/surface run buttons for non-admins. A "View as rider" switch on
-   the profile, shown only when `identity.admin`, stored in local storage
-   beside the unit system; one hook (`useEffectiveAdmin`) returns
+   source/surface run buttons for non-admins. A "View as rider" `Switch`
+   (registry `ui/switch`) in the `UserPill.tsx` popover above "Sign out",
+   rendered only when `identity.admin`, stored in local storage beside the
+   unit system; one hook (`useEffectiveAdmin`) returns
    `identity.admin && !viewAsRider` and every admin-only UI branch reads it
    instead of `identity.admin`. Browser-only: the server still sees an
    admin, so a rider-view admin who hand-crafts a request is still admitted,
@@ -122,7 +124,8 @@ Steps 2 and 3 can be one PR; step 1 is its own.
 - `403`, not `404`, for the admin gate.
 - Reprocess is admin only.
 - The view switch is a UI toggle, not a second dev token. An admin flips
-  "View as rider" on the profile page; the dev session stays admin as
+  "View as rider" in the user pill menu, so it is reachable from every page
+  and the profile page holds only what a rider also sees; the dev session stays admin as
   `dev/setup.sh` mints it today, and the same toggle serves in production to
   check what a rider sees. Testing the server's 403s against a real
   non-admin session stays in the Go tests, where `gate_test.go` already
