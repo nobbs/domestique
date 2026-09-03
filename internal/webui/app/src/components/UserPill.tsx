@@ -97,7 +97,10 @@ export function UserPill() {
             long address from deciding how wide this menu is. */}
         <DropdownMenuGroup>
           <DropdownMenuLabel className="wrap-anywhere whitespace-normal">
-            {identity.display}
+            <div className="text-[10px] tracking-wide text-[var(--ink-2)] uppercase">
+              Signed in as
+            </div>
+            <div>{identity.display}</div>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
