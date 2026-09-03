@@ -18,7 +18,7 @@
 # The -dev variant carries corepack and a shell. Corepack installs the pnpm
 # version pinned by `packageManager` in package.json, so the build resolves the
 # same pnpm the repository does without pinning it a second time here.
-FROM --platform=$BUILDPLATFORM dhi.io/node:24.19.0-dev@sha256:1949e745d8b5365e45dbd7ba20a495178aa55fda7248c5c5af3928d84467d047 AS webui
+FROM --platform=$BUILDPLATFORM dhi.io/node:24.20.0-dev@sha256:35dae551ffb9790b9e0416c5359c80b1b45c345b950b0670615a307451f0005f AS webui
 
 USER root
 WORKDIR /app
