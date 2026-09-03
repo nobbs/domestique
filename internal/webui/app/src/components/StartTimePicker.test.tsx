@@ -150,6 +150,49 @@ describe("StartTimePicker", () => {
     expect(screen.getByText("That's more than a day in the past.")).toBeInTheDocument();
   });
 
+  /*
+   * WebKit reports a time field's segments only once it loses focus: a
+   * departure typed into it and left focused reached nothing, and the page
+   * showed a day, a time and no forecast. Written as the browser reports it —
+   * the field carries the value, and blur is the first event about it.
+   */
+  it("commits a time the browser only reports on blur", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    const field = timeField();
+    field.value = "08:30";
+    fireEvent.blur(field);
+
+    expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
+  });
+
+  it("leaves an unfilled field alone when it loses focus", () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.blur(timeField());
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("says which half of the departure is still missing", async () => {
+    render(<StartTimePicker value={null} onChange={() => {}} />);
+
+    expect(screen.queryByText("Add a time to forecast this ride.")).not.toBeInTheDocument();
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    // A day alone draws the same button a chosen departure does, so without
+    // this the reader is left with a picker that looks finished and a forecast
+    // that never appears.
+    expect(screen.getByText("Add a time to forecast this ride.")).toBeInTheDocument();
+  });
+
   it("clears back to nothing chosen", () => {
     const onChange = vi.fn();
     render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
