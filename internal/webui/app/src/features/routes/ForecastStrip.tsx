@@ -29,6 +29,7 @@ import { useMemo } from "react";
 import { weatherQuery } from "../../api/queries";
 import { ApiError } from "../../api/request";
 import type { Position } from "../../api/types";
+import { forecastResolution } from "../../lib/forecastResolution";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import type { UnitSystem } from "../../lib/units";
@@ -60,26 +61,6 @@ const STRIP_RADIUS = "0.375rem";
 const MIN_WIND_WIDTH = 34;
 const MIN_ICON_WIDTH = 26;
 const MIN_FIGURE_WIDTH = 18;
-
-/**
- * How much a forecast this far ahead can be trusted to be precise, in one
- * line rather than per cell: the response carries no model name, so this
- * infers it from lead time the way an operator reading Open-Meteo's own
- * documentation would. Within about two days it is ICON-D2 at roughly 2 km;
- * beyond that, ICON-EU or the global model at 7–11 km; past 78 hours, coarser
- * again. A forecast eleven days out looks exactly as confident on this strip
- * as one for tomorrow morning, and it is not.
- */
-function forecastSharpness(leadHours: number): string {
-  if (leadHours <= 48) {
-    return "Within 2 days out, so this uses ICON-D2 — about 2 km resolution.";
-  }
-  if (leadHours <= 78) {
-    return "More than 2 days out: ICON-EU/global guidance, about 7–11 km resolution.";
-  }
-
-  return "More than 3 days out: coarser global guidance, past ICON's finer-grained range.";
-}
 
 export interface ForecastStripProps {
   samples: ForecastSample[];
@@ -218,7 +199,7 @@ export function ForecastStrip({
         </div>
       </div>
       <p className="mt-1 text-xs text-[var(--ink-2)]" style={{ paddingLeft: PADDING.left }}>
-        {forecastSharpness(leadHours)}
+        {forecastResolution(leadHours).sentence}
       </p>
     </div>
   );
