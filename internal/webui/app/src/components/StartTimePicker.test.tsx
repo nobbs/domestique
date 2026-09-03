@@ -209,6 +209,33 @@ describe("StartTimePicker", () => {
     expect(screen.getByText("Add a time to forecast this ride.")).toBeInTheDocument();
   });
 
+  /*
+   * The form the forecast caption actually renders. Its message sits in a span
+   * of its own rather than a `FieldError`, so what the block form gets from
+   * shadcn — the wording, and whether it is announced — is hand-written here
+   * and worth asserting on its own.
+   */
+  it("speaks a refusal but not a hint, on the caption row", async () => {
+    const pending = render(<StartTimePicker value={null} onChange={() => {}} inline />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    expect(screen.getByText("Add a time to forecast this ride.")).toBeInTheDocument();
+    // Nothing was refused: half a departure is a state to describe, and
+    // announcing it would interrupt a reader mid-pick.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    pending.unmount();
+
+    // A refusal in the same slot is announced: it is the answer to what the
+    // reader just did.
+    render(<StartTimePicker value={new Date("2026-08-01T07:00")} onChange={() => {}} inline />);
+    fireEvent.change(timeField(), { target: { value: "08:00" } });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("That's more than a day in the past.");
+  });
+
   it("clears back to nothing chosen", () => {
     const onChange = vi.fn();
     render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
