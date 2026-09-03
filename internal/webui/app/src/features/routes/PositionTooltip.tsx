@@ -63,7 +63,10 @@ function tooltipDistance(metres: number, system: UnitSystem): string {
 }
 
 interface Wind {
-  /** Degrees clockwise from "along the direction of travel". */
+  /**
+   * Degrees clockwise from the top of the screen, so the arrow points the way
+   * the air is actually going — the same direction the drifting field shows.
+   */
   rotation: number;
   colour: string;
   named: string;
@@ -85,6 +88,7 @@ function windAt(
   atMetres: number,
   windFromDegrees: number,
   windSpeedKmh: number,
+  mapBearingDegrees: number,
   onDarkGround: boolean,
   unitSystem: UnitSystem,
 ): Wind | null {
@@ -105,8 +109,14 @@ function windAt(
       : Math.abs(reading.componentKmhPerKmh) * windSpeedKmh;
 
   return {
-    // A headwind arrow comes back at the reader; a tailwind runs away.
-    rotation: (((windFromDegrees - bearing + 180) % 360) + 360) % 360,
+    /*
+     * Where the air is going, turned into screen angle against the camera's own
+     * bearing. Measured off the direction of travel instead — which is what the
+     * relation below is measured off — it would be read as a compass arrow by
+     * anyone looking at a map, and disagree with the field drifting under it
+     * everywhere except a road heading due north.
+     */
+    rotation: (((windFromDegrees + 180 - mapBearingDegrees) % 360) + 360) % 360,
     colour:
       reading.relation === "tail"
         ? TONE.good[ground]
@@ -273,6 +283,7 @@ export function PositionTooltip({
         content.distanceMetres,
         reading.windDirectionDegrees,
         reading.windSpeedKmh,
+        map?.getBearing() ?? 0,
         onDarkGround,
         unitSystem,
       )
