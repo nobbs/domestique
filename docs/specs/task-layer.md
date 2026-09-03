@@ -202,6 +202,10 @@ one. `202` means the attempt was accepted and continues independently of the
 request. `409` means it was refused, which is not a fault: either this exact
 work is already happening, or something it needs is held by another run.
 
+`PUT /v1/tasks/{name}/schedule` sets whether the schedule may start one task,
+and answers with the registered tasks as they now stand. It writes the switch
+described below, and like it governs unattended runs only.
+
 `GET /v1/tasks/runs` serves what the activities have been doing: one page of the
 recorded history, newest first, over every task or over the one a `task` filter
 names. Each attempt carries what started it, what it was over, what it came to
@@ -407,6 +411,6 @@ blaming the map for a service that was stopping would outlast the shutdown.
 
 ## Out of scope
 
-Delayed retry after repeated failure and a bound on how long one attempt may
-take are not part of this layer yet. Nothing here queues work or retries an
-attempt.
+A bound on how long one attempt may take is not part of this layer yet.
+Nothing here queues work or retries an attempt; backoff only holds a schedule
+back from a task that keeps faulting.

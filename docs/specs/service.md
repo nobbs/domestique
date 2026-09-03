@@ -306,15 +306,15 @@ for two targets. The Wahoo callback joins the Auth0 callback as the surface's
 other documented exception to the `Origin` rule, for the same reason: both are
 a cross-site GET the browser is redirected into.
 
-Alongside it are the operator controls over synchronisation: the manual
-triggers, the two switches that decide what the timer is allowed to start, the
-per-route reprocess request, and the surface-enrichment retry. They change what
-the service does next; they change nothing it has stored about routes. A
-triggered run is the same run through the same gates as a scheduled one. The
-enrichment retry is narrower still: it never reads VeloPlanner or writes a Wahoo
-target, only reclassifying routes already stored, and it shares the same
-single-flight guard as the other four triggers. Every one of them is limited to
-a session belonging to an allowed subject, as the rest of the surface is.
+Alongside it are the operator controls over the background activities: starting
+one by name, the per-task switches that decide what a schedule is allowed to
+start, and the per-route reprocess request. They change what the service does
+next; they change nothing it has stored about routes. A triggered run is the
+same run through the same gates as a scheduled one, and an enrichment pass
+asked for by name is narrower still: it never reads VeloPlanner or writes a
+Wahoo target, only reworking what is already stored. Every one of them is
+limited to a session belonging to an allowed subject, as the rest of the
+surface is.
 
 Beside those is the one write that changes what the service *is* rather than
 what it does next: the settings write stores the runtime settings an operator
@@ -422,10 +422,9 @@ The read-only JSON surface is small:
   outbound call; a provider failure is `502`, carrying no upstream response
   text.
 
-The endpoints below that change state — the sync triggers, the schedule switch,
-the reprocess request, the enrichment retry, and the settings write —
-additionally require the browser origin described above, and answer 403 without
-it.
+The endpoints below that change state — the task runs, the schedule switches,
+the reprocess request, and the settings write — additionally require the
+browser origin described above, and answer 403 without it.
 
 - `POST /v1/tasks/{name}/run`, and `/run/{argument}` for one over an argument,
   start a single attempt of a background activity. It returns `202 Accepted`,
@@ -843,13 +842,13 @@ secret files remain outside Git.
   not allowed rather than that the service failed, and appears in no log.
   Which subject was refused is not shown: the refusal travels as a query
   parameter on the sign-in page's own address, which outlives the answer it
-  was part of. Beyond OAuth, the only ones that change anything are
-  the task triggers and their switches, the reprocess request,
-  which discards derived answers so they are worked out again, the
-  surface-enrichment retry, which reclassifies stored routes without reading
-  VeloPlanner or writing a Wahoo target, and the settings write, which changes
-  how the service behaves next and nothing it holds about a route. Nothing on the
-  surface edits route data, in this service or at the source.
+  was part of. Beyond OAuth, the only ones that change anything are the task
+  triggers and their switches — an enrichment pass among them reworks stored
+  routes without reading VeloPlanner or writing a Wahoo target — the reprocess
+  request, which discards derived answers so they are worked out again, and
+  the settings write, which changes how the service behaves next and nothing
+  it holds about a route. Nothing on the surface edits route data, in this
+  service or at the source.
 - The browser UI renders stored routes on a map, is reachable only by
   the configured identity, and offers no affordance for editing a route. The
   settings it does offer are the service's own runtime settings and this
