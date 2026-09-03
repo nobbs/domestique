@@ -24,7 +24,7 @@ export const Default: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByText("sync:source")).toBeInTheDocument();
     await expect(canvas.getByText("Hourly")).toBeInTheDocument();
-    // sync:clear, surface:annotate and ridemodel:predict are nothing this build schedules.
+    // sync:clear, surface:annotate and ridemodel:predict: none of them is scheduled.
     await expect(canvas.getAllByText("On demand")).toHaveLength(3);
   },
 };

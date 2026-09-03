@@ -387,7 +387,7 @@ func (s *Service) AnnotateStored(ctx context.Context) (classified, failed int, e
 	}
 	stages, stateErr := s.state.TrustedInventory(ctx)
 	if stateErr != nil {
-		slog.Warn("surface classification skipped", "reason", "state")
+		slog.Warn("surface classification stopped early", "reason", "state")
 
 		return 0, 0, fmt.Errorf("surface: reading trusted inventory: %w", stateErr)
 	}
@@ -409,7 +409,7 @@ func (s *Service) PredictStored(ctx context.Context) (predicted, failed int, err
 	}
 	stages, stateErr := s.state.TrustedInventory(ctx)
 	if stateErr != nil {
-		slog.Warn("ride model prediction skipped", "reason", "state")
+		slog.Warn("ride model prediction stopped early", "reason", "state")
 
 		return 0, 0, fmt.Errorf("ridemodel: reading trusted inventory: %w", stateErr)
 	}
