@@ -21,6 +21,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { NavLink } from "react-router";
 import { statusQuery } from "../api/queries";
+import { useEffectiveAdmin } from "../lib/identity";
 import { syncState } from "../lib/syncState";
 import { Wordmark } from "./brand/Wordmark";
 import { UserPill } from "./UserPill";
@@ -38,6 +39,8 @@ const DESTINATIONS = [
   { to: "/settings", label: "Settings", end: false },
 ] as const;
 
+const ADMIN_DESTINATION = { to: "/admin", label: "Admin", end: false } as const;
+
 /*
  * Two channels, kept apart on purpose. Which page you are on is `aria-current`,
  * which paints the link's own text; what sync is doing is a dot
@@ -51,12 +54,14 @@ export function MenuBar() {
   const { data } = useQuery(statusQuery());
   const state = data ? syncState(data) : null;
   const described = state ? `Sync · ${state.label}` : undefined;
+  const effectiveAdmin = useEffectiveAdmin();
+  const destinations = effectiveAdmin ? [...DESTINATIONS, ADMIN_DESTINATION] : DESTINATIONS;
 
   return (
     <header className="sticky top-0 z-40 flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-3 border-[var(--rule)] border-b bg-[var(--panel)] px-3 pt-[env(safe-area-inset-top)] sm:h-[calc(3.5rem+env(safe-area-inset-top))] sm:gap-6 sm:px-4">
       <Wordmark />
       <nav aria-label="Primary" className="flex items-center gap-0.5 sm:gap-1">
-        {DESTINATIONS.map(({ to, label, end }) => (
+        {destinations.map(({ to, label, end }) => (
           <NavLink
             key={to}
             to={to}

@@ -20,6 +20,7 @@ import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatCount, formatTimestamp } from "../../lib/format";
+import { useEffectiveAdmin } from "../../lib/identity";
 import { TargetRow } from "./TargetRow";
 
 /**
@@ -27,7 +28,7 @@ import { TargetRow } from "./TargetRow";
  * Wahoo account, and the flow needs no target identifier to start — the
  * browser is never told its own subject.
  */
-function ConnectPrompt() {
+export function ConnectPrompt() {
   return (
     <p className="text-sm text-[var(--ink-2)]">
       Your Wahoo account is not connected yet.{" "}
@@ -46,11 +47,8 @@ function ConnectPrompt() {
 export function TargetConvergenceCard() {
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(statusQuery());
-  const {
-    data: config,
-    isPending: configIsPending,
-    isError: configIsError,
-  } = useQuery(webUIConfigQuery());
+  const { isPending: configIsPending, isError: configIsError } = useQuery(webUIConfigQuery());
+  const effectiveAdmin = useEffectiveAdmin();
   const reconcile = useRunTaskArgument({
     mutation: {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
@@ -100,7 +98,7 @@ export function TargetConvergenceCard() {
       );
     }
 
-    return config?.identity.admin ? (
+    return effectiveAdmin ? (
       <p className="text-sm text-[var(--ink-2)]">No target has connected yet.</p>
     ) : (
       <ConnectPrompt />

@@ -1,8 +1,17 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { expect, fn, screen, userEvent } from "storybook/test";
-import type { TargetStatus } from "../../api/types";
+import { webUIConfigQuery } from "../../api/queries";
+import type { TargetStatus, WebUIConfig } from "../../api/types";
 import { TargetRow } from "./TargetRow";
+
+/** Admin, so the deletion stories below can reach the control they exercise. */
+const config: WebUIConfig = {
+  basemaps: [],
+  sourceBaseUrls: {},
+  identity: { display: "admin@example.test", admin: true },
+};
 
 const connected: TargetStatus = {
   id: "rider-a",
@@ -71,11 +80,22 @@ const meta = {
     },
   },
   decorators: [
-    (Story) => (
-      <ul className="w-[28rem] bg-[var(--panel)] p-2">
-        <Story />
-      </ul>
-    ),
+    (Story) => {
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: { enabled: false, retry: false, staleTime: Number.POSITIVE_INFINITY },
+        },
+      });
+      client.setQueryData(webUIConfigQuery().queryKey, config);
+
+      return (
+        <QueryClientProvider client={client}>
+          <ul className="w-[28rem] bg-[var(--panel)] p-2">
+            <Story />
+          </ul>
+        </QueryClientProvider>
+      );
+    },
   ],
 } satisfies Meta<typeof TargetRow>;
 

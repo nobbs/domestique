@@ -38,7 +38,9 @@ function status(converged: boolean, targets: TargetStatus[]): Status {
   };
 }
 
-function config(admin = false): WebUIConfig {
+// Admin by default: most of these tests are about the fleet-view mechanics
+// themselves, which is what an admin sees; the non-admin cases pass false.
+function config(admin = true): WebUIConfig {
   return {
     basemaps: [
       { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
@@ -303,6 +305,20 @@ describe("TargetConvergenceCard", () => {
     expect(
       fetchMock.mock.calls.some((call) => call[0] === "/v1/tasks/sync%3Atarget/run/rider-a"),
     ).toBe(false);
+  });
+
+  // sync:clear is admin-only on the wire even over the caller's own target,
+  // unlike sync:target — so the control that starts it follows the same rule.
+  it("offers the delete control only to an admin", () => {
+    renderConvergence(status(true, [target()]), config(true));
+
+    expect(screen.getByRole("button", { name: "Delete all routes…" })).toBeInTheDocument();
+  });
+
+  it("hides the delete control from a non-admin", () => {
+    renderConvergence(status(true, [target()]), config(false));
+
+    expect(screen.queryByRole("button", { name: "Delete all routes…" })).not.toBeInTheDocument();
   });
 
   // Deleting everything a target holds must not be one click away, and the

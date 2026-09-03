@@ -13,6 +13,7 @@ import {
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { formatTimestamp } from "../../lib/format";
+import { useEffectiveAdmin } from "../../lib/identity";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 import { authorisationGuidance, authorisationStartHref } from "../../lib/targetAuthorisation";
 
@@ -87,6 +88,10 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
   const guidance = targetGuidance(target);
   const authorisation = authorisationGuidance(target.authorisation);
   const failure = lastRunSummary(target);
+  // Clearing spends the shared deletion gate on a target that may not be this
+  // caller's own in the admin fleet view, so it stays admin-only regardless
+  // of which page renders this row.
+  const effectiveAdmin = useEffectiveAdmin();
 
   return (
     <li
@@ -161,50 +166,54 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
            * for is the target's own name — the one confirmation a stray
            * click cannot supply.
            */}
-          <AlertDialog open={clear.open} onOpenChange={clear.onOpenChange}>
-            <AlertDialogTrigger
-              className="text-sm text-[var(--alert)] underline-offset-4 hover:underline disabled:opacity-50"
-              disabled={clear.pending}
-            >
-              Delete all routes…
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete Domestique routes from {target.id}?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Routes you made yourself are left alone. The next sync puts these back, and no
-                  other sync starts until this clear finishes.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <label className="grid gap-1 text-sm" htmlFor={`clear-${target.id}`}>
-                Type <strong>{target.id}</strong> to confirm.
-                <Input
-                  id={`clear-${target.id}`}
-                  value={clear.confirmation}
-                  onChange={(event) => clear.onConfirmationChange(event.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-              <AlertDialogFooter>
-                {/*
-                 * The application's own button, handed to the primitive rather
-                 * than reached for inside it: `ui/alert-dialog` stays the
-                 * vendored file the registry wrote, and this file decides what
-                 * its footer is made of.
-                 */}
-                <AlertDialogCancel render={<Button variant="outline" />}>Cancel</AlertDialogCancel>
-                <Button
-                  variant="destructive"
-                  disabled={clear.confirmation !== target.id || clear.pending}
-                  onClick={clear.onConfirm}
-                  aria-label={`Delete every Domestique route from ${target.id}`}
-                >
-                  {clear.pending ? <Spinner aria-label="Deleting" /> : null}
-                  Delete them
-                </Button>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {effectiveAdmin ? (
+            <AlertDialog open={clear.open} onOpenChange={clear.onOpenChange}>
+              <AlertDialogTrigger
+                className="text-sm text-[var(--alert)] underline-offset-4 hover:underline disabled:opacity-50"
+                disabled={clear.pending}
+              >
+                Delete all routes…
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Domestique routes from {target.id}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Routes you made yourself are left alone. The next sync puts these back, and no
+                    other sync starts until this clear finishes.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <label className="grid gap-1 text-sm" htmlFor={`clear-${target.id}`}>
+                  Type <strong>{target.id}</strong> to confirm.
+                  <Input
+                    id={`clear-${target.id}`}
+                    value={clear.confirmation}
+                    onChange={(event) => clear.onConfirmationChange(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+                <AlertDialogFooter>
+                  {/*
+                   * The application's own button, handed to the primitive rather
+                   * than reached for inside it: `ui/alert-dialog` stays the
+                   * vendored file the registry wrote, and this file decides what
+                   * its footer is made of.
+                   */}
+                  <AlertDialogCancel render={<Button variant="outline" />}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <Button
+                    variant="destructive"
+                    disabled={clear.confirmation !== target.id || clear.pending}
+                    onClick={clear.onConfirm}
+                    aria-label={`Delete every Domestique route from ${target.id}`}
+                  >
+                    {clear.pending ? <Spinner aria-label="Deleting" /> : null}
+                    Delete them
+                  </Button>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          ) : null}
         </div>
       ) : null}
     </li>

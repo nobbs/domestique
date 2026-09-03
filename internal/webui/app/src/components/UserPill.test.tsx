@@ -1,5 +1,78 @@
-import { describe, expect, it } from "vitest";
-import { initialsOf } from "./UserPill";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { webUIConfigQuery } from "../api/queries";
+import type { WebUIConfig } from "../api/types";
+import { initialsOf, UserPill } from "./UserPill";
+
+function config(admin: boolean): WebUIConfig {
+  return {
+    basemaps: [],
+    sourceBaseUrls: {},
+    identity: { display: "rider@example.test", admin },
+  };
+}
+
+function renderPill(admin: boolean) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+  });
+  client.setQueryData(webUIConfigQuery().queryKey, config(admin));
+
+  return render(
+    <QueryClientProvider client={client}>
+      <UserPill />
+    </QueryClientProvider>,
+  );
+}
+
+/** A `localStorage` for jsdom, which has none. See `basemap.test.ts` for why a `Map` behind the two methods the hook uses is enough. */
+function stubStorage(): void {
+  const entries = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => entries.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      entries.set(key, value);
+    },
+  });
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("the view-as-rider switch", () => {
+  it("is offered to an admin", async () => {
+    stubStorage();
+    renderPill(true);
+
+    await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
+
+    expect(await screen.findByRole("switch", { name: "View as rider" })).toBeInTheDocument();
+  });
+
+  it("is not offered to a non-admin", async () => {
+    stubStorage();
+    renderPill(false);
+
+    await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
+
+    expect(await screen.findByRole("dialog", { name: "Session" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "View as rider" })).not.toBeInTheDocument();
+  });
+
+  it("persists the flip to localStorage", async () => {
+    stubStorage();
+    renderPill(true);
+
+    await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
+    const toggle = await screen.findByRole("switch", { name: "View as rider" });
+    await userEvent.click(toggle);
+
+    expect(window.localStorage.getItem("domestique.viewAsRider")).toBe("true");
+  });
+});
 
 describe("initialsOf", () => {
   it("takes the local part, because every address shares its domain", () => {

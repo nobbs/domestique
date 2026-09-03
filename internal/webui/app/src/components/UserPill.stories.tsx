@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { expect, screen, userEvent } from "storybook/test";
+import { expect, screen, userEvent, within } from "storybook/test";
 import { webUIConfigQuery } from "../api/queries";
 import type { WebUIConfig } from "../api/types";
 import { StoryProviders } from "../storybook/fixtures";
@@ -87,6 +87,17 @@ export const SignedIn: Story = {
     // Presence, not visibility: the popover is still animating open here. The
     // sign-out itself is exercised end to end by e2e/contract/sign-in.spec.ts.
     await expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
+  },
+};
+
+/** An admin session, which alone is offered the rider-view preview switch. */
+export const Admin: Story = {
+  decorators: withConfig({ ...config(), identity: { display: "admin@example.test", admin: true } }),
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("button", { name: /Signed in as/ }));
+
+    const menu = await screen.findByRole("dialog", { name: "Session" });
+    await expect(within(menu).getByRole("switch", { name: "View as rider" })).toBeInTheDocument();
   },
 };
 

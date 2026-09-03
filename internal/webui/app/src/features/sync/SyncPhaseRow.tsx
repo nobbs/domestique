@@ -43,7 +43,8 @@ export interface SyncPhaseRowProps {
   scheduleDisabled: boolean;
   onToggle: () => void;
   running: boolean;
-  onRun: () => void;
+  /** Absent hides the button: running either half now is an admin action. */
+  onRun: (() => void) | undefined;
 }
 
 /**
@@ -98,15 +99,17 @@ export function SyncPhaseRow({
           />
           <span>{cadence}</span>
         </div>
-        <Button
-          variant="outline"
-          disabled={running}
-          onClick={onRun}
-          aria-label={`Run now: ${label}`}
-        >
-          {running ? <Spinner aria-label={`Running ${label}`} /> : null}
-          Run now
-        </Button>
+        {onRun ? (
+          <Button
+            variant="outline"
+            disabled={running}
+            onClick={onRun}
+            aria-label={`Run now: ${label}`}
+          >
+            {running ? <Spinner aria-label={`Running ${label}`} /> : null}
+            Run now
+          </Button>
+        ) : null}
       </div>
     </li>
   );

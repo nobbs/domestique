@@ -16,7 +16,9 @@
 import { IconLogout } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
 import { webUIConfigQuery } from "../api/queries";
+import { useViewAsRider } from "../lib/identity";
 import { Button } from "./Button";
 
 /**
@@ -54,6 +56,7 @@ export function initialsOf(display: string): string {
 export function UserPill() {
   const { data } = useQuery(webUIConfigQuery());
   const identity = data?.identity;
+  const [viewAsRider, setViewAsRider] = useViewAsRider();
 
   /*
    * Nothing at all until the configuration has arrived, and nothing ever if it
@@ -90,6 +93,19 @@ export function UserPill() {
         {/* Breaks anywhere: an address is one word to a browser, and a long one
             would otherwise decide how wide this popover is. */}
         <p className="wrap-anywhere px-1.5 text-sm text-[var(--ink)]">{identity.display}</p>
+        {/* The raw flag, not `useEffectiveAdmin`: this is the one control that
+            must keep showing even after it is switched on, or it could never
+            be switched off again. */}
+        {identity.admin ? (
+          <div className="flex items-center justify-between gap-3 px-1.5 py-1 text-sm text-[var(--ink)]">
+            <span>View as rider</span>
+            <Switch
+              checked={viewAsRider}
+              onCheckedChange={setViewAsRider}
+              aria-label="View as rider"
+            />
+          </div>
+        ) : null}
         <Button
           className="w-full justify-start"
           icon={<IconLogout stroke={1.6} />}
