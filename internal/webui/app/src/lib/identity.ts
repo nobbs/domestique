@@ -38,20 +38,25 @@ export function useViewAsRider(): [boolean, (value: boolean) => void] {
   return [value, choose];
 }
 
-// Held in memory too, so a storage that throws still lets the toggle flip
-// for the page that flipped it.
+// Memory is the source of truth after one load from storage, so a failed
+// `setItem` cannot let the next read undo a flip.
 let current = false;
+let loaded = false;
 
 function readViewAsRider(): boolean {
-  try {
-    current = window.localStorage.getItem(STORAGE_KEY) === "true";
-  } catch {}
+  if (!loaded) {
+    loaded = true;
+    try {
+      current = window.localStorage.getItem(STORAGE_KEY) === "true";
+    } catch {}
+  }
 
   return current;
 }
 
 function writeViewAsRider(value: boolean): void {
   current = value;
+  loaded = true;
   try {
     window.localStorage.setItem(STORAGE_KEY, String(value));
   } catch {
