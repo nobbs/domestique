@@ -69,6 +69,15 @@ const MAX_BAND_SCANS = 4000;
 const MAX_ZOOM = 22;
 
 /**
+ * How strongly the wash paints where it paints at all.
+ *
+ * Ink on the ground rather than a coat over it: at full strength the corridor
+ * hides the towns and roads the reader is placing the weather against, which
+ * is the whole point of drawing it on a map instead of in the strip.
+ */
+export const WASH_OPACITY = 0.45;
+
+/**
  * A width fixed on the ground, as a paint expression in screen pixels.
  *
  * Metres per pixel halves with every zoom level, so a constant ground width is
@@ -99,13 +108,14 @@ function groundWidth(
  *
  * `line-opacity` is one number for the whole layer, so a measure whose lowest
  * band paints nothing — rain's dry, cloud's clear — can only say so here. Baked
- * as alpha, that band is genuinely absent rather than painted pale.
+ * as alpha, that band is genuinely absent rather than painted pale, and every
+ * other band is scaled so the ground still reads through it.
  */
 function washColour(measure: Measure, band: number, dark: boolean): string {
   const hex = measure.colour(band, dark);
   const value = Number.parseInt(hex.slice(1), 16);
 
-  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${measure.opacity(band)})`;
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${measure.opacity(band) * WASH_OPACITY})`;
 }
 
 /** One band, and the fraction of the route's length it takes over at. */

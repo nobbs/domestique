@@ -50,7 +50,9 @@ vi.mock("react-map-gl/maplibre", () => ({
   },
 }));
 
-const { BAND_SCAN_METRES, ConditionsWash, WASH_LAYER_ID } = await import("./ConditionsWash");
+const { BAND_SCAN_METRES, ConditionsWash, WASH_LAYER_ID, WASH_OPACITY } = await import(
+  "./ConditionsWash"
+);
 
 /** A due-east road of about 29 km, long enough for a band to change along it. */
 const ROAD: Position[] = Array.from({ length: 41 }, (_, index): Position => [8 + index * 0.01, 49]);
@@ -262,7 +264,7 @@ describe("the bands the wash is painted in", () => {
     const value = Number.parseInt(hex.slice(1), 16);
 
     expect(first?.[1]).toBe(
-      `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, 1)`,
+      `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${WASH_OPACITY})`,
     );
   });
 });
