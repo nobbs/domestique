@@ -126,8 +126,39 @@ export function StartTimePicker({
     onChange(next);
   };
 
+  /**
+   * Proposes whatever the time field holds, from either the event that reports
+   * it. WebKit fires neither `input` nor `change` while a time field's segments
+   * are being edited, so a departure typed into one and left focused reached
+   * nothing: the reader saw a day, a time, and no forecast.
+   */
+  const proposeTime = (raw: string) => {
+    // Clearing the field is not a proposal. An empty string splits to [""] and
+    // Number("") is 0, so without this the guard below reads a cleared field —
+    // or an unfilled one blurred past — as a confident midnight.
+    if (raw === "") {
+      return;
+    }
+    const [hours, minutes] = raw.split(":").map(Number);
+    const day = value ?? pendingDay;
+    if (day === null || hours === undefined || Number.isNaN(hours)) {
+      return;
+    }
+    const next = new Date(day);
+    next.setHours(hours, minutes ?? 0, 0, 0);
+    // Where both events do arrive, the second says nothing the first did not:
+    // every focus and blur of an untouched field would otherwise hand the page
+    // a fresh Date and re-render everything hanging off the departure.
+    if (value !== null && next.getTime() === value.getTime()) {
+      return;
+    }
+    propose(next);
+  };
+
   // The chosen departure's day, or the day waiting for its time.
   const shownDay = value ?? pendingDay;
+  // A day alone is not a departure, and the control reads the same either way.
+  const hint = value === null && pendingDay !== null ? "Add a time to forecast this ride." : null;
 
   const controls = (
     <div className="flex items-center gap-1.5">
@@ -205,28 +236,13 @@ export function StartTimePicker({
         type="time"
         className={inline ? "h-7 w-[6.5rem] px-2 text-xs tabular-nums" : "w-[7.5rem] tabular-nums"}
         aria-label="The time the ride starts"
-        aria-describedby={refusal ? "start-time-refusal" : undefined}
+        aria-describedby={refusal || hint ? "start-time-refusal" : undefined}
         // Nothing for it to set a time on: no day is chosen and none pending,
         // so an enabled field would be a control that swallows keystrokes.
         disabled={shownDay === null}
         value={value ? toTimeValue(value) : ""}
-        onChange={(event) => {
-          const raw = event.target.value;
-          // Clearing the field is not a proposal. An empty string splits to
-          // [""] and Number("") is 0, so without this the guard below reads a
-          // cleared field as a confident midnight.
-          if (raw === "") {
-            return;
-          }
-          const [hours, minutes] = raw.split(":").map(Number);
-          const day = value ?? pendingDay;
-          if (day === null || hours === undefined || Number.isNaN(hours)) {
-            return;
-          }
-          const next = new Date(day);
-          next.setHours(hours, minutes ?? 0, 0, 0);
-          propose(next);
-        }}
+        onChange={(event) => proposeTime(event.target.value)}
+        onBlur={(event) => proposeTime(event.target.value)}
       />
     </div>
   );
@@ -235,15 +251,21 @@ export function StartTimePicker({
     return (
       <div className="flex items-center gap-1.5">
         {controls}
-        {refusal ? (
+        {(refusal ?? hint) ? (
           <span
             id="start-time-refusal"
             // What FieldError gives the block form for free: the refusal is the
             // answer to what the reader just did, and has to be spoken as one.
-            role="alert"
-            className="text-[11px] text-[var(--danger,var(--ink-2))]"
+            // The hint is not: nothing has been refused, and half a departure
+            // is a state to describe rather than an error to announce.
+            {...(refusal ? { role: "alert" } : {})}
+            className={
+              refusal
+                ? "text-[11px] text-[var(--danger,var(--ink-2))]"
+                : "text-[11px] text-[var(--ink-2)]"
+            }
           >
-            {refusal}
+            {refusal ?? hint}
           </span>
         ) : null}
       </div>
@@ -257,6 +279,11 @@ export function StartTimePicker({
       </FieldLabel>
       {controls}
       {refusal ? <FieldError id="start-time-refusal">{refusal}</FieldError> : null}
+      {refusal === null && hint !== null ? (
+        <p id="start-time-refusal" className="text-xs text-[var(--ink-2)]">
+          {hint}
+        </p>
+      ) : null}
     </Field>
   );
 }

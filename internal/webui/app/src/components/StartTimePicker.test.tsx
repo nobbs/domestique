@@ -150,6 +150,92 @@ describe("StartTimePicker", () => {
     expect(screen.getByText("That's more than a day in the past.")).toBeInTheDocument();
   });
 
+  /*
+   * WebKit reports a time field's segments only once it loses focus: a
+   * departure typed into it and left focused reached nothing, and the page
+   * showed a day, a time and no forecast. Written as the browser reports it —
+   * the field carries the value, and blur is the first event about it.
+   */
+  it("commits a time the browser only reports on blur", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    const field = timeField();
+    field.value = "08:30";
+    fireEvent.blur(field);
+
+    expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
+  });
+
+  it("leaves an unfilled field alone when it loses focus", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    // A day first: an empty field is disabled until one exists, and blurring
+    // a disabled control is not a state a reader can reach.
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    fireEvent.blur(timeField());
+
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("proposes nothing further when a field it already accepted loses focus", () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
+
+    // What a browser firing both events looks like from here.
+    fireEvent.change(timeField(), { target: { value: "08:30" } });
+    fireEvent.blur(timeField());
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("says which half of the departure is still missing", async () => {
+    render(<StartTimePicker value={null} onChange={() => {}} />);
+
+    expect(screen.queryByText("Add a time to forecast this ride.")).not.toBeInTheDocument();
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    // A day alone draws the same button a chosen departure does, so without
+    // this the reader is left with a picker that looks finished and a forecast
+    // that never appears.
+    expect(screen.getByText("Add a time to forecast this ride.")).toBeInTheDocument();
+  });
+
+  /*
+   * The form the forecast caption actually renders. Its message sits in a span
+   * of its own rather than a `FieldError`, so what the block form gets from
+   * shadcn — the wording, and whether it is announced — is hand-written here
+   * and worth asserting on its own.
+   */
+  it("speaks a refusal but not a hint, on the caption row", async () => {
+    const pending = render(<StartTimePicker value={null} onChange={() => {}} inline />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    expect(screen.getByText("Add a time to forecast this ride.")).toBeInTheDocument();
+    // Nothing was refused: half a departure is a state to describe, and
+    // announcing it would interrupt a reader mid-pick.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    pending.unmount();
+
+    // A refusal in the same slot is announced: it is the answer to what the
+    // reader just did.
+    render(<StartTimePicker value={new Date("2026-08-01T07:00")} onChange={() => {}} inline />);
+    fireEvent.change(timeField(), { target: { value: "08:00" } });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("That's more than a day in the past.");
+  });
+
   it("clears back to nothing chosen", () => {
     const onChange = vi.fn();
     render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
