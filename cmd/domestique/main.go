@@ -379,6 +379,7 @@ func weatherSeriesOf(hourlies []openmeteo.Hourly) []httpapi.WeatherSeries {
 			WindSpeedKMH:                    hourlies[i].WindSpeedKMH,
 			WindDirectionDegrees:            hourlies[i].WindDirectionDegrees,
 			WeatherCode:                     hourlies[i].WeatherCode,
+			CloudCoverPercent:               hourlies[i].CloudCoverPercent,
 		}
 	}
 

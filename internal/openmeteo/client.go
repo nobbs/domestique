@@ -29,8 +29,9 @@ const (
 	defaultTimezone = "Europe/Berlin"
 	defaultTimeout  = 15 * time.Second
 	// maximumBodyBytes bounds a response for the largest request the httpapi
-	// boundary allows: 48 points over its 17-day window, roughly 1.05 MB of
-	// column-oriented JSON. This leaves headroom without being unbounded.
+	// boundary allows: 48 points over its 17-day window, roughly 1.2 MB of
+	// column-oriented JSON across the eight hourly columns. This leaves
+	// headroom without being unbounded.
 	maximumBodyBytes = 4 << 20
 	hourFormat       = "2006-01-02T15:04"
 
@@ -39,7 +40,7 @@ const (
 	// parent issue argues for. No unit parameters: the default units are
 	// metric, and that is what this service transmits throughout.
 	hourlyParams = "temperature_2m,apparent_temperature,precipitation," +
-		"precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code"
+		"precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code,cloud_cover"
 )
 
 // Options configures an Open-Meteo client. There is no API key: the free
@@ -72,6 +73,7 @@ type Hourly struct {
 	WindSpeedKMH                    []float64
 	WindDirectionDegrees            []float64
 	WeatherCode                     []int
+	CloudCoverPercent               []float64
 }
 
 // Client asks Open-Meteo for an hourly forecast. The host is hardcoded:
@@ -250,6 +252,8 @@ type rawHourly struct {
 	WindDirection10m []float64 `json:"wind_direction_10m"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
 	WeatherCode []int `json:"weather_code"`
+	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
+	CloudCover []float64 `json:"cloud_cover"`
 }
 
 // decodeForecastResponse handles both response shapes: a bare object for one
@@ -273,7 +277,7 @@ func (raw *rawHourly) parse(location *time.Location) (Hourly, error) {
 	count := len(raw.Time)
 	for _, series := range [][]float64{
 		raw.Temperature2m, raw.ApparentTemperature, raw.Precipitation, raw.PrecipitationProbability,
-		raw.WindSpeed10m, raw.WindDirection10m,
+		raw.WindSpeed10m, raw.WindDirection10m, raw.CloudCover,
 	} {
 		if len(series) != count {
 			return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
@@ -301,6 +305,7 @@ func (raw *rawHourly) parse(location *time.Location) (Hourly, error) {
 		WindSpeedKMH:                    raw.WindSpeed10m,
 		WindDirectionDegrees:            raw.WindDirection10m,
 		WeatherCode:                     raw.WeatherCode,
+		CloudCoverPercent:               raw.CloudCover,
 	}, nil
 }
 

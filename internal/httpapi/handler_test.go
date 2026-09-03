@@ -2103,6 +2103,7 @@ func (f *fakeWeather) Forecast(
 			WindSpeedKMH:                    []float64{12.3},
 			WindDirectionDegrees:            []float64{240},
 			WeatherCode:                     []int{1},
+			CloudCoverPercent:               []float64{55},
 		}
 	}
 
