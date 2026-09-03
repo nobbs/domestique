@@ -100,15 +100,18 @@ first regardless of the rest.
    rendered only when `identity.admin`, stored in local storage beside the
    unit system; one hook (`useEffectiveAdmin`) returns
    `identity.admin && !viewAsRider` and every admin-only UI branch reads it
-   instead of `identity.admin`. Browser-only: the server still sees an
+   instead of `identity.admin`. The switch itself is the one place that keeps
+   reading the raw flag, or it would vanish once flipped. Browser-only: the server still sees an
    admin, so a rider-view admin who hand-crafts a request is still admitted,
    which is fine — the toggle previews the layout, it is not a privilege
    drop. Vitest for both states.
 3. **Admin page.** New `features/admin/AdminPage.tsx` wrapping
    `ServiceSettings` and the tasks link; move `TasksPage` under
    `/admin/tasks`; `App.tsx` routes with a `Navigate` from `/settings/tasks`;
-   `MenuBar.tsx` adds "Admin" when `identity.admin`; Go page handlers for
-   `/admin` and `/admin/tasks`. Storybook stories move with the components.
+   `MenuBar.tsx` adds "Admin" under `useEffectiveAdmin`; the `/admin*` SPA
+   routes redirect to `/settings` when it is false. Go page handlers for
+   `/admin` and `/admin/tasks` answer not found to a non-admin session (a
+   document, not an API operation, so the `403` rule does not apply). Storybook stories move with the components.
    Update `service.md` §"Browser UI" route list and the spec's "state-changing
    HTTP" sentence in `AGENTS.md` if the path list there changes.
 
