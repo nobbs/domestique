@@ -69,11 +69,12 @@ Admin-only after the change:
   UI hides them for non-admins in the same change.
 - The `/admin` and `/admin/tasks` documents (the Go page handlers check
   `identity.Admin` and answer not found; the SPA route also redirects).
+- `POST .../reprocess`: it re-runs elevation and surface enrichment on a
+  shared route and spends the shared upstream budget. The route page hides
+  the button for non-admins.
 
 Stays for every rider: `/v1/status`, `/v1/sync/runs`, `/v1/routes*`,
-`/v1/weather`, `/v1/webui/config`, the reprocess POST (check: the spec ties
-it to origin only, decide whether a rider may reprocess a shared route), and
-`sync:target` over their own subject.
+`/v1/weather`, `/v1/webui/config`, and `sync:target` over their own subject.
 
 ## Steps
 
@@ -112,11 +113,9 @@ Steps 2 and 3 can be one PR; step 1 is its own.
 - Two routes, not tabs or hidden cards: the admin area has its own URL, so
   the server can refuse the document as well as the API.
 - `403`, not `404`, for the admin gate.
-
-## Open
-
-- Whether a rider may `POST .../reprocess` on a shared route. Leaning no:
-  it spends the elevation and surface budget everyone shares.
-- Whether the dev session (`DOMESTIQUE_DEV_SESSION`) should be admin by
-  default. It must be for `ui-dev` to reach `/admin`; confirm in
-  `cmd/domestique/providers.go` when doing step 1.
+- Reprocess is admin only.
+- The dev session stays selectable. `dev/session` already takes `-admin`;
+  `dev/setup.sh` mints one admin token today. In step 2 it mints a second
+  rider token (no `-admin`, another subject) and prints both, so `ui-dev`
+  can be pointed at either view by swapping `DOMESTIQUE_DEV_SESSION`. The
+  demo issuer (`dev/demoapi/issuer.go`) already mints both claims.
