@@ -15,6 +15,7 @@
 
 import { IconLogout } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -83,11 +84,10 @@ export function UserPill() {
         // are said here rather than left to the two letters to imply.
         aria-label={`Signed in as ${identity.display}`}
         render={
-          <Button
-            className="size-8 shrink-0 rounded-full bg-[var(--base)] p-0 text-xs font-semibold tracking-tight text-[var(--ink-2)] hover:text-[var(--ink)]"
-            variant="ghost"
-          >
-            {initialsOf(identity.display)}
+          <Button className="size-8 shrink-0 rounded-full p-0" variant="ghost">
+            <Avatar>
+              <AvatarFallback>{initialsOf(identity.display)}</AvatarFallback>
+            </Avatar>
           </Button>
         }
         title={identity.display}
