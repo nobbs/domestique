@@ -11,6 +11,7 @@ import { findClimbs } from "../../lib/climbs";
 import { forecastSamples } from "../../lib/forecastSamples";
 import type { Highlight } from "../../lib/highlight";
 import { highlightSpans, nextSpan, sameHighlight } from "../../lib/highlight";
+import type { MeasureKey } from "../../lib/measures";
 import type { DistanceWindow } from "../../lib/profile";
 import {
   buildProfile,
@@ -38,6 +39,15 @@ export function useOpenRoute(
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
+  /*
+   * Which forecast measure the map is washed in, and null — off — to begin
+   * with: the wash covers ground, and covering it before anybody asked is an
+   * overlay in the way of the map. Deliberately not cleared by `forget`,
+   * unlike the highlight above it: a highlight names this route's own ground,
+   * while "show me the rain" is a question about the weather that stays asked
+   * when the reader opens the next route.
+   */
+  const [measure, setMeasure] = useState<MeasureKey | null>(null);
   const [chartCollapsed, setChartCollapsed] = useState(false);
 
   const routeProfile = useMemo(() => buildProfile(coordinates), [coordinates]);
@@ -151,6 +161,8 @@ export function useOpenRoute(
     setActiveMetres,
     highlight,
     setHighlight,
+    measure,
+    setMeasure,
     chartCollapsed,
     setChartCollapsed,
     routeProfile,

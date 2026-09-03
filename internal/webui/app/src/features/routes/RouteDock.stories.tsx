@@ -10,6 +10,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import type { Highlight } from "../../lib/highlight";
+import type { MeasureKey } from "../../lib/measures";
 import type { DistanceWindow } from "../../lib/profile";
 import {
   climbs,
@@ -37,6 +38,7 @@ type Story = StoryObj<typeof meta>;
 function Docked({ startOpen }: { startOpen: boolean }) {
   const [open, setOpen] = useState(startOpen);
   const [highlight, setHighlight] = useState<Highlight | null>(null);
+  const [measure, setMeasure] = useState<MeasureKey | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
   // An hour before the first sample, and always inside the forecast window —
@@ -66,6 +68,8 @@ function Docked({ startOpen }: { startOpen: boolean }) {
           onZoomChange={setZoomWindow}
           highlight={highlight}
           onHighlightChange={setHighlight}
+          measure={measure}
+          onMeasureChange={setMeasure}
           unitSystem="metric"
           open={open}
           onOpenChange={setOpen}
