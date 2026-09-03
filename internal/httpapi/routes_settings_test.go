@@ -583,3 +583,61 @@ func TestSetTimezoneRefusesAZoneItCannotLoad(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "timezone", "the message names the setting")
 	assert.Equal(t, "Europe/Berlin", settings.Values().Timezone, "a refused edit reached the settings")
 }
+
+// adminOnlySettingsOperations is every settings operation the admin gate
+// covers, with a body the contract validator accepts so the refusal under
+// test is the gate's and not the document's.
+func adminOnlySettingsOperations() []struct{ name, method, path, body string } {
+	return []struct{ name, method, path, body string }{
+		{"read", http.MethodGet, settingsPath, ""},
+		{"wahoo", http.MethodPut, settingsWahooPath, wahooSubmission},
+		{"source", http.MethodPut, settingsKomootPath, komootSubmission},
+		{"notifications", http.MethodPut, settingsNotificationsPath, notificationsSubmission},
+		{"alerts", http.MethodPut, settingsAlertsPath, `{"alerts": [{"task": "sync", "alert": "failed", "enabled": false}]}`},
+		{"timezone", http.MethodPut, settingsTimezonePath, `{"timezone": "Europe/Lisbon"}`},
+		{"basemaps", http.MethodPut, basemapsPath, basemapsSubmission},
+		{"surface", http.MethodPut, settingsSurfacePath, surfaceSubmission},
+		{"ridemodel", http.MethodPut, settingsRideModelPath, rideModelSubmission},
+		{"sync", http.MethodPut, settingsSyncPath, syncSubmission},
+	}
+}
+
+// settingsRequest is one of those operations as a signed-in browser sends it.
+func settingsRequest(method, path, body string) *http.Request {
+	if body == "" {
+		return authenticatedRequest(method, path)
+	}
+
+	return authenticatedRequestWithBody(method, path, body)
+}
+
+// The settings are the whole service's, not one rider's: they carry the Wahoo
+// application, the source accounts, and what every run is held to.
+func TestSettingsRefuseANonAdminSession(t *testing.T) {
+	for _, operation := range adminOnlySettingsOperations() {
+		t.Run(operation.name, func(t *testing.T) {
+			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, nil)
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, settingsRequest(operation.method, operation.path, operation.body))
+
+			assert.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+			assert.Contains(t, response.Body.String(), "forbidden")
+		})
+	}
+}
+
+func TestSettingsStillAnswerAnAdminSession(t *testing.T) {
+	for _, operation := range adminOnlySettingsOperations() {
+		t.Run(operation.name, func(t *testing.T) {
+			// The alert matrix refuses an alert no task raises, so this one
+			// operation needs a catalogue to write into.
+			handler, _ := alertsHandler(t, AlertSetting{Task: "sync", Alert: "failed"})
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, settingsRequest(operation.method, operation.path, operation.body))
+
+			assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+		})
+	}
+}

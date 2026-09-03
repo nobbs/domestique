@@ -110,6 +110,27 @@ func (h *Handler) GetTasksPage(writer http.ResponseWriter, request *http.Request
 	h.index(writer, request)
 }
 
+// GetAdminPage serves the application document for the service administration
+// view. A non-admin is answered not found: a document is not an API operation.
+func (h *Handler) GetAdminPage(writer http.ResponseWriter, request *http.Request) {
+	h.adminPage(writer, request)
+}
+
+// GetAdminTasksPage serves the application document for the task
+// administration view.
+func (h *Handler) GetAdminTasksPage(writer http.ResponseWriter, request *http.Request) {
+	h.adminPage(writer, request)
+}
+
+func (h *Handler) adminPage(writer http.ResponseWriter, request *http.Request) {
+	if !identityOf(request.Context()).Admin {
+		h.notFound(writer)
+
+		return
+	}
+	h.index(writer, request)
+}
+
 // GetSyncPage serves the application document for the synchronization view.
 func (h *Handler) GetSyncPage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)

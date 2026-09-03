@@ -101,12 +101,11 @@ func (h *Handler) registers(name string) bool {
 }
 
 // RunTask starts one attempt of a named task, over an argument when the path
-// carries one. For sync:target/sync:clear, a non-admin caller must name
-// exactly their own subject; an admin may name any target. sync:target alone
-// also accepts an empty argument, meaning every target — admin-only, since a
-// non-admin naming nothing is already refused above. sync:clear has no such
-// meaning: it always requires a target, refused as invalid otherwise, even
-// for an admin.
+// carries one. A non-admin may run exactly one thing: sync:target over their
+// own subject. Naming another subject's target stays not found rather than
+// forbidden, so the surface never confirms which targets exist. sync:target
+// alone also accepts an empty argument, meaning every target; sync:clear has
+// no such meaning and is refused as invalid without one, even for an admin.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {
@@ -115,8 +114,8 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	argument := request.PathValue("argument")
+	identity := identityOf(request.Context())
 	if name == TaskSyncTarget || name == TaskSyncClear {
-		identity := identityOf(request.Context())
 		if !identity.Admin && argument != identity.Subject {
 			h.notFound(writer)
 
@@ -127,6 +126,12 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 
 			return
 		}
+	}
+	// Every other task is service administration, and so is clearing a target.
+	if !identity.Admin && (name != TaskSyncTarget || argument != identity.Subject) {
+		h.forbidden(writer)
+
+		return
 	}
 	h.accepted(writer, func() bool { return h.tasks.Run(name, argument) })
 }
