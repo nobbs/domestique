@@ -45,9 +45,9 @@ const METRES_PER_DEGREE_LATITUDE = haversineMetres([0, 0], [0, 1]);
  * enough of them read as moving air; ten times as many read as fog and cost
  * ten times the frame.
  */
-export const MAX_PARTICLES = 900;
+export const MAX_PARTICLES = 1400;
 
-/** How densely the field is seeded before that cap bites: it does past ~45 km. */
+/** How densely the field is seeded before that cap bites: it does past ~70 km. */
 export const PARTICLES_PER_KILOMETRE = 20;
 
 /**
