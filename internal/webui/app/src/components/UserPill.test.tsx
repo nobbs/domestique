@@ -49,7 +49,9 @@ describe("the view-as-rider switch", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
 
-    expect(await screen.findByRole("switch", { name: "View as rider" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("menuitemcheckbox", { name: "View as rider" }),
+    ).toBeInTheDocument();
   });
 
   it("is not offered to a non-admin", async () => {
@@ -58,8 +60,10 @@ describe("the view-as-rider switch", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
 
-    expect(await screen.findByRole("dialog", { name: "Session" })).toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: "View as rider" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitemcheckbox", { name: "View as rider" }),
+    ).not.toBeInTheDocument();
   });
 
   it("persists the flip to localStorage", async () => {
@@ -67,7 +71,7 @@ describe("the view-as-rider switch", () => {
     renderPill(true);
 
     await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
-    const toggle = await screen.findByRole("switch", { name: "View as rider" });
+    const toggle = await screen.findByRole("menuitemcheckbox", { name: "View as rider" });
     await userEvent.click(toggle);
 
     expect(window.localStorage.getItem("domestique.viewAsRider")).toBe("true");

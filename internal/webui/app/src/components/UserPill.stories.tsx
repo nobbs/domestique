@@ -82,11 +82,11 @@ export const SignedIn: Story = {
 
     await userEvent.click(pill);
 
-    const menu = await screen.findByRole("dialog", { name: "Session" });
+    const menu = await screen.findByRole("menu");
     await expect(menu).toHaveTextContent("alexej.disterhoft@example.test");
-    // Presence, not visibility: the popover is still animating open here. The
+    // Presence, not visibility: the menu is still animating open here. The
     // sign-out itself is exercised end to end by e2e/contract/sign-in.spec.ts.
-    await expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
+    await expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeEnabled();
   },
 };
 
@@ -96,8 +96,10 @@ export const Admin: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole("button", { name: /Signed in as/ }));
 
-    const menu = await screen.findByRole("dialog", { name: "Session" });
-    await expect(within(menu).getByRole("switch", { name: "View as rider" })).toBeInTheDocument();
+    const menu = await screen.findByRole("menu");
+    await expect(
+      within(menu).getByRole("menuitemcheckbox", { name: "View as rider" }),
+    ).toBeInTheDocument();
   },
 };
 
