@@ -962,6 +962,8 @@ export const setTaskSchedule = async (
   });
 };
 
+export const getSetTaskScheduleMutationKey = () => ["setTaskSchedule"] as const;
+
 export const getSetTaskScheduleMutationOptions = <
   TError = ErrorType<
     | InvalidRequestResponse
@@ -985,7 +987,7 @@ export const getSetTaskScheduleMutationOptions = <
   SetTaskScheduleMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setTaskSchedule"];
+  const mutationKey = getSetTaskScheduleMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -1100,6 +1102,8 @@ export const runTask = async (
   });
 };
 
+export const getRunTaskMutationKey = () => ["runTask"] as const;
+
 export const getRunTaskMutationOptions = <
   TError = ErrorType<
     UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
@@ -1119,7 +1123,7 @@ export const getRunTaskMutationOptions = <
   RunTaskMutationVariables,
   TContext
 > => {
-  const mutationKey = ["runTask"];
+  const mutationKey = getRunTaskMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -1225,6 +1229,8 @@ export const runTaskArgument = async (
   });
 };
 
+export const getRunTaskArgumentMutationKey = () => ["runTaskArgument"] as const;
+
 export const getRunTaskArgumentMutationOptions = <
   TError = ErrorType<
     UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | TaskInProgressResponse
@@ -1244,7 +1250,7 @@ export const getRunTaskArgumentMutationOptions = <
   RunTaskArgumentMutationVariables,
   TContext
 > => {
-  const mutationKey = ["runTaskArgument"];
+  const mutationKey = getRunTaskArgumentMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -2641,6 +2647,8 @@ export const reprocessRoute = async (
   );
 };
 
+export const getReprocessRouteMutationKey = () => ["reprocessRoute"] as const;
+
 export const getReprocessRouteMutationOptions = <
   TError = ErrorType<
     | InvalidRequestResponse
@@ -2664,7 +2672,7 @@ export const getReprocessRouteMutationOptions = <
   ReprocessRouteMutationVariables,
   TContext
 > => {
-  const mutationKey = ["reprocessRoute"];
+  const mutationKey = getReprocessRouteMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -2931,6 +2939,8 @@ export const setWahooApplication = async (
   });
 };
 
+export const getSetWahooApplicationMutationKey = () => ["setWahooApplication"] as const;
+
 export const getSetWahooApplicationMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -2950,7 +2960,7 @@ export const getSetWahooApplicationMutationOptions = <
   SetWahooApplicationMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setWahooApplication"];
+  const mutationKey = getSetWahooApplicationMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -3068,6 +3078,8 @@ export const setSource = async (
   });
 };
 
+export const getSetSourceMutationKey = () => ["setSource"] as const;
+
 export const getSetSourceMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -3087,7 +3099,7 @@ export const getSetSourceMutationOptions = <
   SetSourceMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setSource"];
+  const mutationKey = getSetSourceMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -3202,6 +3214,8 @@ export const setNotifications = async (
   });
 };
 
+export const getSetNotificationsMutationKey = () => ["setNotifications"] as const;
+
 export const getSetNotificationsMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -3221,7 +3235,7 @@ export const getSetNotificationsMutationOptions = <
   SetNotificationsMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setNotifications"];
+  const mutationKey = getSetNotificationsMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -3338,6 +3352,8 @@ export const setAlerts = async (
   });
 };
 
+export const getSetAlertsMutationKey = () => ["setAlerts"] as const;
+
 export const getSetAlertsMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -3357,7 +3373,7 @@ export const getSetAlertsMutationOptions = <
   SetAlertsMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setAlerts"];
+  const mutationKey = getSetAlertsMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -3472,6 +3488,8 @@ export const setBasemaps = async (
   });
 };
 
+export const getSetBasemapsMutationKey = () => ["setBasemaps"] as const;
+
 export const getSetBasemapsMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -3491,7 +3509,7 @@ export const getSetBasemapsMutationOptions = <
   SetBasemapsMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setBasemaps"];
+  const mutationKey = getSetBasemapsMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -3606,6 +3624,8 @@ export const setSurface = async (
   });
 };
 
+export const getSetSurfaceMutationKey = () => ["setSurface"] as const;
+
 export const getSetSurfaceMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -3625,7 +3645,7 @@ export const getSetSurfaceMutationOptions = <
   SetSurfaceMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setSurface"];
+  const mutationKey = getSetSurfaceMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -3740,6 +3760,8 @@ export const setRideModel = async (
   });
 };
 
+export const getSetRideModelMutationKey = () => ["setRideModel"] as const;
+
 export const getSetRideModelMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -3759,7 +3781,7 @@ export const getSetRideModelMutationOptions = <
   SetRideModelMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setRideModel"];
+  const mutationKey = getSetRideModelMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -3874,6 +3896,8 @@ export const setTimezone = async (
   });
 };
 
+export const getSetTimezoneMutationKey = () => ["setTimezone"] as const;
+
 export const getSetTimezoneMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -3893,7 +3917,7 @@ export const getSetTimezoneMutationOptions = <
   SetTimezoneMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setTimezone"];
+  const mutationKey = getSetTimezoneMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options
@@ -4008,6 +4032,8 @@ export const setSync = async (
   });
 };
 
+export const getSetSyncMutationKey = () => ["setSync"] as const;
+
 export const getSetSyncMutationOptions = <
   TError = ErrorType<
     InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
@@ -4027,7 +4053,7 @@ export const getSetSyncMutationOptions = <
   SetSyncMutationVariables,
   TContext
 > => {
-  const mutationKey = ["setSync"];
+  const mutationKey = getSetSyncMutationKey();
   const { mutation: mutationOptions, request: requestOptions } = options
     ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
       ? options

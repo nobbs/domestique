@@ -445,10 +445,11 @@ browser origin described above, and answer 403 without it.
 
   An argument is the task's own to interpret, not this surface's — except for
   `sync:target` and `sync:clear`, where it names a target and this surface
-  refuses it before the task layer ever sees it: a non-admin's argument must be
-  their own subject (or, for `sync:target`, empty, meaning every target — which
-  only an admin may ask for), anything else answered `404` the same as a name
-  that does not exist, so a non-admin cannot learn which other targets exist.
+  refuses it before the task layer ever sees it. An admin may name any target,
+  and for `sync:target` may leave the argument empty, meaning every target. A
+  non-admin's argument must be their own subject; anything else, the empty
+  argument included, is answered `404` the same as a name that does not exist,
+  so a non-admin cannot learn which other targets exist.
   Every other task is service administration: a non-admin asking for one — the
   source read, a surface rebuild, `sync:clear`, any of them — is answered
   `403`, the target-scoping `404` above taking precedence where both apply.

@@ -102,10 +102,10 @@ func (h *Handler) registers(name string) bool {
 
 // RunTask starts one attempt of a named task, over an argument when the path
 // carries one. A non-admin may run exactly one thing: sync:target over their
-// own subject. Naming another subject's target stays not found rather than
-// forbidden, so the surface never confirms which targets exist. sync:target
-// alone also accepts an empty argument, meaning every target; sync:clear has
-// no such meaning and is refused as invalid without one, even for an admin.
+// own subject. Naming another subject's target, or none, stays not found rather
+// than forbidden, so the surface never confirms which targets exist. An admin
+// may name any target, and may leave sync:target's argument empty to mean every
+// target; sync:clear has no such meaning and is refused as invalid without one.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {

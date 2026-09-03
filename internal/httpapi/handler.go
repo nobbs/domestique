@@ -214,10 +214,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc(
 		"GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}/geometry", h.RedirectStageGeometry)
 	h.mux.HandleFunc(
-		"POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess", h.RedirectStageReprocess)
+		"POST /v1/providers/{provider}/routes/{routeId}/stages/{stage}/reprocess", h.adminOnly(h.RedirectStageReprocess))
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}", h.RedirectLegacyRoute)
 	h.mux.HandleFunc("GET /v1/routes/{routeId}/stages/{stage}/geometry", h.RedirectLegacyGeometry)
-	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.RedirectLegacyReprocess)
+	h.mux.HandleFunc("POST /v1/routes/{routeId}/stages/{stage}/reprocess", h.adminOnly(h.RedirectLegacyReprocess))
 	h.mux.HandleFunc("GET /v1/settings", h.adminOnly(h.GetSettings))
 	h.mux.HandleFunc("PUT /v1/settings/wahoo", h.adminOnly(h.SetWahooApplication))
 	h.mux.HandleFunc("PUT /v1/settings/sources/{provider}", h.adminOnly(h.SetSource))
