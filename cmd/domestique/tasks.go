@@ -43,10 +43,10 @@ const (
 // reasons and recover on different timescales, hence different bases; both cap
 // at six hours, a morning's quiet rather than giving up.
 const (
-	syncBackoffBase     = 30 * time.Second
-	targetBackoffBase   = time.Hour
-	annotateBackoffBase = 5 * time.Minute
-	backoffCap          = 6 * time.Hour
+	syncBackoffBase       = 30 * time.Second
+	targetBackoffBase     = time.Hour
+	enrichmentBackoffBase = 5 * time.Minute
+	backoffCap            = 6 * time.Hour
 )
 
 // targetBackstopInterval is how often targets are reconciled unasked; a
@@ -212,7 +212,7 @@ func inventoryTasks(
 			Name:      taskSurfaceAnnotate,
 			Resources: inventory,
 			Follows:   []string{taskSyncSource, taskSurfaceIndex},
-			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
+			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				failed, err := reporter.Annotate(ctx)
 				if err != nil {
@@ -233,7 +233,7 @@ func inventoryTasks(
 			Name:      taskRidemodelPredict,
 			Resources: inventory,
 			Follows:   []string{taskSurfaceAnnotate},
-			Backoff:   task.Backoff{Base: annotateBackoffBase, Cap: backoffCap},
+			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				failed, err := reporter.Predict(ctx)
 				if err != nil {
