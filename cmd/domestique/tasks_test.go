@@ -33,7 +33,7 @@ func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
 		)
 	}
 	assert.Equal(t,
-		[]string{taskSyncSource, taskSyncTarget, taskSyncClear, taskSurfaceAnnotate, taskRidemodelPredict},
+		[]string{taskSyncSource, taskSyncTarget, taskSyncClear, taskSurfaceAnnotate, taskRideModelPredict},
 		names, "registered tasks")
 }
 
@@ -92,7 +92,7 @@ func TestEachInventoryTaskRunsItsOwnWork(t *testing.T) {
 			},
 		},
 		"prediction": {
-			task: taskRidemodelPredict,
+			task: taskRideModelPredict,
 			expect: func(t *testing.T, s *fakeSynchronizer) {
 				assert.Equal(t, 1, s.predictions, "prediction passes")
 			},
@@ -146,9 +146,9 @@ func TestPredictionRecordsFailureWhenStagesAreLeftUnpredicted(t *testing.T) {
 	t.Parallel()
 
 	synchronizer := &fakeSynchronizer{predictionFailed: 2}
-	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskRidemodelPredict)
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskRideModelPredict)
 
-	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRidemodelPredict})
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelPredict})
 	assert.Equal(t, task.Failed, result.Outcome, "outcome")
 	assert.Equal(t, detailIncomplete, result.Detail, "detail")
 }
@@ -159,9 +159,9 @@ func TestPredictionRecordsFailureWhenThePassStopsEarly(t *testing.T) {
 	t.Parallel()
 
 	synchronizer := &fakeSynchronizer{predictionErr: errors.New("coefficients unavailable")}
-	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskRidemodelPredict)
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets), taskRideModelPredict)
 
-	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRidemodelPredict})
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelPredict})
 	assert.Equal(t, task.Failed, result.Outcome, "outcome")
 	assert.Equal(t, detailStoppedEarly, result.Detail, "detail")
 }
@@ -525,7 +525,7 @@ func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 	assert.Equal(t, []string{taskSyncSource, taskSurfaceIndex}, annotate.Follows,
 		"what classification follows")
 
-	predict := definitionNamed(t, definitions, taskRidemodelPredict)
+	predict := definitionNamed(t, definitions, taskRideModelPredict)
 	assert.Equal(t, []string{taskSurfaceAnnotate}, predict.Follows, "what prediction follows")
 }
 

@@ -354,7 +354,7 @@ func TestSetRideModelStartsThePredictionPass(t *testing.T) {
 	handler, tasks := settingsHandlerWithTasks(t)
 
 	saveSection(t, handler, settingsRideModelPath, rideModelSubmission)
-	assert.Equal(t, []startedTask{{name: TaskRidemodelPredict}}, tasks.started, "started tasks")
+	assert.Equal(t, []startedTask{{name: TaskRideModelPredict}}, tasks.started, "started tasks")
 }
 
 // A refused edit changed nothing for either pass to consume, so it starts no

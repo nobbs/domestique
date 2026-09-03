@@ -157,7 +157,7 @@ func (h *Handler) SetRideModel(writer http.ResponseWriter, request *http.Request
 		return values
 	}, nil)
 	if stored {
-		h.tasks.Run(TaskRidemodelPredict, "")
+		h.tasks.Run(TaskRideModelPredict, "")
 	}
 }
 

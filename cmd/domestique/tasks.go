@@ -20,7 +20,7 @@ const (
 	taskSyncClear        = httpapi.TaskSyncClear
 	taskSurfaceAnnotate  = "surface:annotate"
 	taskSurfaceIndex     = httpapi.TaskSurfaceIndex
-	taskRidemodelPredict = httpapi.TaskRidemodelPredict
+	taskRideModelPredict = httpapi.TaskRideModelPredict
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -230,7 +230,7 @@ func inventoryTasks(
 			}),
 		},
 		{
-			Name:      taskRidemodelPredict,
+			Name:      taskRideModelPredict,
 			Resources: inventory,
 			Follows:   []string{taskSurfaceAnnotate},
 			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
