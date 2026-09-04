@@ -178,6 +178,16 @@ function normalise(angle: number): number {
  */
 function offsetRing(points: Pair[], radius: number, roundEnd: boolean): Ring {
   const ring: Ring = [];
+  // A straight (or nearly straight) stretch offsets two segments to the same
+  // point — the next segment's `from` is this one's `to` — so every push here
+  // goes through this to keep the ring free of the zero-length edges a sweep
+  // line reads as ambiguous.
+  const push = (point: Pair) => {
+    const last = ring[ring.length - 1];
+    if (!last || last[0] !== point[0] || last[1] !== point[1]) {
+      ring.push(point);
+    }
+  };
   const walk = (sequence: Pair[], cap: boolean) => {
     for (let index = 0; index + 1 < sequence.length; index++) {
       const from = sequence[index] as Pair;
@@ -185,19 +195,20 @@ function offsetRing(points: Pair[], radius: number, roundEnd: boolean): Ring {
       const left = heading(from, to) + Math.PI / 2;
       const east = radius * Math.cos(left);
       const north = radius * Math.sin(left);
-      ring.push(snap(from[0] + east, from[1] + north));
-      ring.push(snap(to[0] + east, to[1] + north));
+      push(snap(from[0] + east, from[1] + north));
+      push(snap(to[0] + east, to[1] + north));
       const next = sequence[index + 2];
       if (next) {
         const turn = normalise(heading(to, next) - heading(from, to));
         if (turn < 0) {
-          // Dropping the arc's own first point: it is the offset point for
-          // `to` just pushed above, and keeping it too would leave a
-          // zero-length edge in the ring.
-          ring.push(...arcPoints(to, radius, left, turn).slice(1));
+          for (const point of arcPoints(to, radius, left, turn)) {
+            push(point);
+          }
         }
       } else if (cap) {
-        ring.push(...arcPoints(to, radius, left, -Math.PI).slice(1));
+        for (const point of arcPoints(to, radius, left, -Math.PI)) {
+          push(point);
+        }
       }
     }
   };
