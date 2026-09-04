@@ -354,9 +354,10 @@ function ProfileWithClimbs(s: DockState) {
           <Ground {...s} />
         </Panel>
       </div>
-      {/* Pinned to the chart's height, so the list scrolls instead of growing. */}
+      {/* Five whole rows of 28px: the rows snap, and a viewport that is a
+          multiple of them never cuts one in half. */}
       <div className="relative w-80 shrink-0">
-        <div className="absolute inset-0 flex [&>section]:flex [&>section]:flex-col [&_ol]:min-h-0 [&_ol]:flex-1">
+        <div className="absolute inset-0 flex [&>section]:flex [&>section]:flex-col [&_ol]:h-[140px] [&_ol]:flex-none">
           <ClimbsSidebar
             climbs={MANY_CLIMBS}
             open
