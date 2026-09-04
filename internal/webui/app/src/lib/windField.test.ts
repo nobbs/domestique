@@ -106,9 +106,12 @@ function sequence(seed: number): () => number {
   let state = seed;
 
   return () => {
-    state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+    // Math.imul() keeps the multiply inside 32-bit integer arithmetic;
+    // state * 1_103_515_245 alone exceeds Number.MAX_SAFE_INTEGER and turns
+    // this into floating-point modulo instead of the intended 32-bit LCG.
+    state = (Math.imul(state, 1_103_515_245) + 12_345) >>> 0;
 
-    return (state + 0.5) / 2_147_483_648;
+    return ((state % 2_147_483_648) + 0.5) / 2_147_483_648;
   };
 }
 
