@@ -7,9 +7,10 @@ import { Tabs } from "@base-ui/react/tabs";
 import {
   IconArrowDownRight,
   IconArrowUpRight,
-  IconChevronsRight,
   IconCloud,
   IconInfoCircle,
+  IconLayoutBottombarCollapse,
+  IconLayoutBottombarExpand,
   IconMountain,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -377,6 +378,12 @@ function ForecastStop({
 const RAIL_TAB =
   "flex w-14 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[active]:bg-[var(--base)] data-[active]:font-semibold data-[active]:text-[var(--ink)]";
 
+/** A stop on the rail, open or folded — matches the `Tabs.Tab` values below. */
+type Stop = "profile" | "forecast";
+
+const FOLDED_CONTROL =
+  "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
+
 export function RouteDock({
   title,
   profile,
@@ -404,24 +411,56 @@ export function RouteDock({
 }: RouteDockProps) {
   const back = samples[samples.length - 1]?.arrivalAt;
   const [climbsOpen, setClimbsOpen] = useState(true);
+  // The stop shown while open, and the one Show reopens on — kept across folds.
+  const [stop, setStop] = useState<Stop>("profile");
 
   if (!open) {
     return (
-      <button
-        type="button"
-        aria-expanded={false}
-        onClick={() => onOpenChange(true)}
-        className="flex items-center gap-1.5 rounded-full bg-[var(--panel)] py-1.5 pr-3.5 pl-3 text-xs shadow-[var(--shadow)] ring-1 ring-black/5 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+      <div
+        role="group"
+        aria-label="Route detail, folded"
+        className="flex h-9 w-full items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)] ring-1 ring-black/5"
       >
-        <IconChevronsRight
-          size={13}
-          stroke={2}
-          aria-hidden="true"
-          className="-rotate-90 text-[var(--ink-2)]"
-        />
-        Profile, ground and forecast
-        {back === undefined ? null : ` · back ${clockAt(back)}`}
-      </button>
+        <button
+          type="button"
+          aria-label="Show the profile"
+          onClick={() => {
+            setStop("profile");
+            onOpenChange(true);
+          }}
+          className={FOLDED_CONTROL}
+        >
+          <IconMountain size={15} stroke={2} aria-hidden="true" />
+          Profile
+        </button>
+        <button
+          type="button"
+          aria-label="Show the forecast"
+          onClick={() => {
+            setStop("forecast");
+            onOpenChange(true);
+          }}
+          className={FOLDED_CONTROL}
+        >
+          <IconCloud size={15} stroke={2} aria-hidden="true" />
+          Forecast
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {back === undefined ? null : (
+            <span className="text-[10px] text-[var(--ink-2)]">back {clockAt(back)}</span>
+          )}
+          <button
+            type="button"
+            aria-expanded={false}
+            aria-label="Show the route detail"
+            onClick={() => onOpenChange(true)}
+            className={FOLDED_CONTROL}
+          >
+            <IconLayoutBottombarExpand size={15} stroke={2} aria-hidden="true" />
+            Show
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -430,31 +469,34 @@ export function RouteDock({
       aria-label="Route detail"
       className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
     >
-      {/*
-       * On the top edge, centred: that edge is the seam the dock folds along,
-       * and it is where the pill will be. The control does not move when the
-       * thing it controls goes away.
-       */}
-      <button
-        type="button"
-        aria-expanded
-        aria-label="Hide the route detail"
-        onClick={() => onOpenChange(false)}
-        className="absolute -top-3 left-1/2 flex h-6 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] shadow-[var(--shadow)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+      <Tabs.Root
+        value={stop}
+        onValueChange={(value) => setStop(value as Stop)}
+        orientation="vertical"
+        className="flex gap-3"
       >
-        <IconChevronsRight size={15} stroke={2} aria-hidden="true" className="rotate-90" />
-      </button>
-      <Tabs.Root defaultValue="profile" orientation="vertical" className="flex gap-3">
-        <Tabs.List className="flex shrink-0 flex-col gap-0.5 border-r border-[var(--rule)] pr-2">
-          <Tabs.Tab value="profile" className={RAIL_TAB}>
-            <IconMountain size={15} stroke={2} aria-hidden="true" />
-            Profile
-          </Tabs.Tab>
-          <Tabs.Tab value="forecast" className={RAIL_TAB}>
-            <IconCloud size={15} stroke={2} aria-hidden="true" />
-            Forecast
-          </Tabs.Tab>
-        </Tabs.List>
+        <div className="flex shrink-0 flex-col border-r border-[var(--rule)] pr-2">
+          <Tabs.List className="flex flex-col gap-0.5">
+            <Tabs.Tab value="profile" className={RAIL_TAB}>
+              <IconMountain size={15} stroke={2} aria-hidden="true" />
+              Profile
+            </Tabs.Tab>
+            <Tabs.Tab value="forecast" className={RAIL_TAB}>
+              <IconCloud size={15} stroke={2} aria-hidden="true" />
+              Forecast
+            </Tabs.Tab>
+          </Tabs.List>
+          <button
+            type="button"
+            aria-expanded
+            aria-label="Hide the route detail"
+            onClick={() => onOpenChange(false)}
+            className={`${RAIL_TAB} mt-auto`}
+          >
+            <IconLayoutBottombarCollapse size={15} stroke={2} aria-hidden="true" />
+            Hide
+          </button>
+        </div>
         {/* One height for every stop, so switching never moves the map's foot. */}
         <div className="h-52 min-w-0 flex-1 [&>[role=tabpanel]]:h-full">
           <Tabs.Panel value="profile" className="min-w-0">

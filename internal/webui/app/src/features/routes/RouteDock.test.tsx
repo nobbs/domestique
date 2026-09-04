@@ -135,7 +135,7 @@ describe("RouteDock", () => {
     expect(await screen.findByText(/resolution/)).toBeInTheDocument();
   });
 
-  it("folds to a pill and back", async () => {
+  it("folds to a strip and back on the last-shown stop", async () => {
     const user = userEvent.setup();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(weatherQuery(weatherSamples).queryKey, { points: [] });
@@ -176,10 +176,15 @@ describe("RouteDock", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Hide the route detail" }));
-    const pill = screen.getByRole("button", { name: /^Profile, ground and forecast/ });
-    expect(pill).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Route detail, folded" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show the forecast" })).toBeInTheDocument();
 
-    await user.click(pill);
-    expect(screen.getByRole("region", { name: "Route detail" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show the forecast" }));
+    expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
+
+    await user.click(screen.getByRole("button", { name: "Hide the route detail" }));
+    await user.click(screen.getByRole("button", { name: "Show the route detail" }));
+    expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
   });
 });
