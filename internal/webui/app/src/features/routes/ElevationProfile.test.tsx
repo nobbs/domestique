@@ -10,7 +10,7 @@ import type { DistanceWindow } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
-import { ElevationProfile, LONG_PRESS_MS } from "./ElevationProfile";
+import { ElevationProfile, LONG_PRESS_MS, profileReadout } from "./ElevationProfile";
 
 function climb(): Position[] {
   return Array.from(
@@ -97,10 +97,12 @@ function ZoomHarness({
   surface = null,
   onZoom,
   unitSystem = "metric",
+  caption = true,
 }: {
   surface?: SurfaceSummary | null;
   onZoom?: (window: DistanceWindow | null) => void;
   unitSystem?: "metric" | "imperial";
+  caption?: boolean;
 }) {
   const coordinates = useMemo(() => climb(), []);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
@@ -121,6 +123,7 @@ function ZoomHarness({
         setActiveMetres(null);
       }}
       unitSystem={unitSystem}
+      caption={caption}
     />
   );
 }
@@ -724,5 +727,72 @@ describe("a picked class", () => {
     render(<Harness highlight={{ type: "band", band: 1 }} />);
 
     expect(screen.getByRole("img")).toHaveAccessibleName(/Only the 3 to 6% stretches are lit\./);
+  });
+});
+
+describe("ElevationProfile caption", () => {
+  it("renders no readout paragraph when caption is false", () => {
+    render(
+      <ElevationProfile
+        profile={buildProfile(climb())}
+        title="Eich Rundkurs 90"
+        activeMetres={null}
+        onActiveChange={() => {}}
+        caption={false}
+      />,
+    );
+
+    expect(screen.queryByText(/above sea level/)).not.toBeInTheDocument();
+  });
+
+  it("still renders the zoom-back button while zoomed, with no caption", async () => {
+    const user = userEvent.setup();
+    render(<ZoomHarness caption={false} />);
+
+    await dragAcross(user, measured(screen.getByRole("slider")), 20, 120);
+
+    expect(screen.getByRole("button", { name: /Whole route/ })).toBeInTheDocument();
+    expect(screen.queryByText(/above sea level/)).not.toBeInTheDocument();
+  });
+});
+
+describe("profileReadout", () => {
+  const profile = buildProfile(climb());
+  if (!profile) {
+    throw new Error("fixture climb produced no profile");
+  }
+
+  it("matches the resting range the chart shows without a position active", () => {
+    expect(
+      profileReadout({ profile, surface: null, activeMetres: null, unitSystem: "metric" }),
+    ).toMatch(/100–295 m/);
+  });
+
+  it("matches the resting range in imperial units", () => {
+    expect(
+      profileReadout({ profile, surface: null, activeMetres: null, unitSystem: "imperial" }),
+    ).toMatch(/328–968 ft/);
+  });
+
+  it("names the ground at an active position, matching what the chart shows", () => {
+    const coordinates = climb();
+    const surface = summariseSurface(coordinates, [
+      { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
+    ]);
+
+    expect(
+      profileReadout({ profile, surface, activeMetres: profile.startMetres, unitSystem: "metric" }),
+    ).toMatch(/Gravel$/);
+  });
+
+  it("says nothing of the ground on an unclassified stage", () => {
+    expect(
+      profileReadout({
+        profile,
+        surface: null,
+        activeMetres: profile.startMetres,
+        unitSystem: "metric",
+      }),
+    ).not.toMatch(/gravel|asphalt/i);
   });
 });

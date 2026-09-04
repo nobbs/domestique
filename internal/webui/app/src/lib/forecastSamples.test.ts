@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
+import type { ForecastSample } from "./forecastSamples";
 import {
+  forecastLeadHours,
   forecastSamples,
   MAX_SAMPLES,
   MIN_SAMPLE_SPACING_METRES,
@@ -338,5 +340,29 @@ describe("forecastSamples", () => {
         START_AT,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("forecastLeadHours", () => {
+  function sampleAt(arrivalAt: Date): ForecastSample[] {
+    return [{ position: [8, 49], distanceMetres: 0, arrivalAt }];
+  }
+
+  it("reports the hours until the first sample arrives", () => {
+    const now = new Date("2026-08-24T06:00:00Z");
+    const arrivalAt = new Date("2026-08-24T09:00:00Z");
+
+    expect(forecastLeadHours(sampleAt(arrivalAt), now)).toBe(3);
+  });
+
+  it("clamps at 0 for a start already past", () => {
+    const now = new Date("2026-08-24T09:00:00Z");
+    const arrivalAt = new Date("2026-08-24T06:00:00Z");
+
+    expect(forecastLeadHours(sampleAt(arrivalAt), now)).toBe(0);
+  });
+
+  it("is 0 without any samples", () => {
+    expect(forecastLeadHours([], new Date())).toBe(0);
   });
 });

@@ -32,7 +32,7 @@ import {
   temperatureUnitLabel,
   temperatureValue,
 } from "./units";
-import { temperatureBand } from "./weather";
+import { TEMPERATURE_FLOORS, temperatureBand } from "./weather";
 import type { WindRelation } from "./wind";
 
 export type MeasureKey = "wind" | "temperature" | "rain" | "cloud";
@@ -439,4 +439,63 @@ export function windRelationWords(stop: number | null, kmh: number, system: Unit
   const band = stop === null ? WIND_MIXED_BAND : WIND_RELATION_BANDS[stop];
 
   return `${band?.label}, ${Math.round(speedValue(kmh, system))} ${speedUnitLabel(system)}`;
+}
+
+/**
+ * Each measure's band cuts, ascending and exclusive of the infinite top —
+ * `WIND_BANDS`, `RAIN_BANDS` and `CLOUD_BANDS`'s own limits, and
+ * `TEMPERATURE_FLOORS` reversed into ascending order. One source, so a legend
+ * cannot print a cut the bands themselves do not use.
+ */
+const BAND_CUTS: Record<MeasureKey, readonly number[]> = {
+  wind: WIND_BANDS.slice(0, -1).map((cut) => cut.limit),
+  temperature: [...TEMPERATURE_FLOORS].reverse(),
+  rain: RAIN_BANDS.slice(0, -1).map((cut) => cut.limit),
+  cloud: CLOUD_BANDS.slice(0, -1).map((cut) => cut.limit),
+};
+
+/** A cut in the reader's units, one decimal place with a trailing `.0` dropped. */
+function formatCut(
+  value: number,
+  system: UnitSystem,
+  convert: (v: number, s: UnitSystem) => number,
+) {
+  return String(Math.round(convert(value, system) * 10) / 10);
+}
+
+const MEASURE_CONVERT: Record<MeasureKey, (value: number, system: UnitSystem) => number> = {
+  wind: speedValue,
+  temperature: temperatureValue,
+  rain: precipitationValue,
+  cloud: (percent) => percent,
+};
+
+const MEASURE_UNIT_LABEL: Record<MeasureKey, (system: UnitSystem) => string> = {
+  wind: speedUnitLabel,
+  temperature: temperatureUnitLabel,
+  // The forecast reading is a rate, which `precipitationUnitLabel` alone does
+  // not say — it names the depth unit `format.ts` also uses for a rain total.
+  rain: (system) => `${precipitationUnitLabel(system)}/h`,
+  cloud: () => "%",
+};
+
+/**
+ * One band's cut, in the reader's own units — `"under 15 km/h"`, `"15–30
+ * km/h"`, `"over 45 km/h"` — for a key that has to say where a band starts
+ * and ends without reading the private cut tables above.
+ */
+export function bandRange(measure: Measure, band: number, system: UnitSystem): string {
+  const cuts = BAND_CUTS[measure.key];
+  const convert = MEASURE_CONVERT[measure.key];
+  const unit = MEASURE_UNIT_LABEL[measure.key](system);
+  const cut = (index: number) => formatCut(cuts[index] as number, system, convert);
+
+  if (band === 0) {
+    return `under ${cut(0)} ${unit}`;
+  }
+  if (band >= cuts.length) {
+    return `over ${cut(cuts.length - 1)} ${unit}`;
+  }
+
+  return `${cut(band - 1)}–${cut(band)} ${unit}`;
 }

@@ -141,3 +141,10 @@ export function forecastSamples(
     arrivalAt: new Date(startAt.getTime() + (cumulativeSeconds[coordinateIndex] ?? 0) * 1000),
   }));
 }
+
+/** Hours until the first sample arrives, floored at 0 for a start already past. */
+export function forecastLeadHours(samples: ForecastSample[], now: Date = new Date()): number {
+  const first = samples[0]?.arrivalAt;
+
+  return first ? Math.max(0, (first.getTime() - now.getTime()) / 3_600_000) : 0;
+}

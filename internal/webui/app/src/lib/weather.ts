@@ -83,7 +83,7 @@ export function weatherIcon(code: number): ComponentType<IconProps> {
  * points at which what goes on over the jersey changes — long sleeves under
  * 12, a gilet under 5, and above 27 the ride itself becomes the problem.
  */
-const TEMPERATURE_FLOORS = [27, 20, 12, 5] as const;
+export const TEMPERATURE_FLOORS = [27, 20, 12, 5] as const;
 
 /** Which of the five `--temp-*` bands a reading falls in, 0 coldest. */
 export function temperatureBand(celsius: number): 0 | 1 | 2 | 3 | 4 {

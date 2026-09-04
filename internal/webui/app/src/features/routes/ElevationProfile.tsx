@@ -99,6 +99,46 @@ const BAND_COLOURS = [
  */
 export const LONG_PRESS_MS = 350;
 
+/**
+ * The footer's own reading: the resting elevation range, or — with a position
+ * active — its elevation, distance, gradient and ground, in that order.
+ *
+ * Exported so a caller drawing the readout outside the chart's own footer
+ * cannot say something different from what the chart says about itself.
+ */
+export function profileReadout({
+  profile,
+  surface,
+  activeMetres,
+  unitSystem,
+}: {
+  profile: Profile;
+  surface: SurfaceSummary | null;
+  activeMetres: number | null;
+  unitSystem: UnitSystem;
+}): string {
+  const active = activeMetres === null ? null : sampleAt(profile, activeMetres);
+  if (!active) {
+    return (
+      `${Math.round(elevationValue(profile.minElevationMetres, unitSystem))}–` +
+      `${Math.round(elevationValue(profile.maxElevationMetres, unitSystem))} ` +
+      `${elevationUnitLabel(unitSystem)} above sea level`
+    );
+  }
+
+  const activeKind = surface ? surfaceKindAt(surface, active.distanceMetres) : null;
+  const activeSurface = activeKind ? SURFACE_STYLES[activeKind].label : null;
+  const shown = Math.max(profile.endMetres - profile.startMetres, 1);
+  const distanceStep = niceStep(shown / 1000, 5);
+
+  return (
+    `${Math.round(elevationValue(active.elevationMetres, unitSystem))} ${elevationUnitLabel(unitSystem)}` +
+    ` at ${distanceLabel(active.distanceMetres, distanceStep, unitSystem)} ${distanceUnitLabel(unitSystem)}` +
+    ` · ${active.gradientPercent.toFixed(1)}%` +
+    (activeSurface ? ` · ${activeSurface}` : "")
+  );
+}
+
 export interface ElevationProfileProps {
   /** Already restricted to the stretch on show, when there is a zoom. */
   profile: Profile | null;
@@ -140,6 +180,8 @@ export interface ElevationProfileProps {
   highlight?: Highlight | null;
   /** The units the axis, the tooltip, and the accessible readout report in. */
   unitSystem?: UnitSystem;
+  /** Whether the footer's range/readout paragraph is shown; the zoom-back button is unaffected. */
+  caption?: boolean;
 }
 
 /** One stretch of ground of a single steepness band. */
@@ -232,6 +274,7 @@ export function ElevationProfile({
   onZoomChange,
   highlight = null,
   unitSystem = "metric",
+  caption = true,
 }: ElevationProfileProps) {
   const gradientId = useId();
   const { ref, width } = useElementWidth<HTMLDivElement>();
@@ -764,29 +807,11 @@ export function ElevationProfile({
             <span className="tabular-nums"> · showing {shownLabel}</span>
           </Button>
         ) : null}
-        <p className="text-xs text-[var(--ink-2)] tabular-nums" aria-live="polite">
-          {active ? (
-            <>
-              <strong className="font-semibold text-[var(--ink)]">
-                {Math.round(elevationValue(active.elevationMetres, unitSystem))}{" "}
-                {elevationUnitLabel(unitSystem)}
-              </strong>
-              <span>
-                {" "}
-                at {distanceLabel(active.distanceMetres, geometry.distanceStep, unitSystem)}{" "}
-                {distanceUnitLabel(unitSystem)}
-              </span>
-              <span> · {active.gradientPercent.toFixed(1)}%</span>
-              {activeSurface ? <span> · {activeSurface}</span> : null}
-            </>
-          ) : (
-            <span>
-              {Math.round(elevationValue(profile.minElevationMetres, unitSystem))}–
-              {Math.round(elevationValue(profile.maxElevationMetres, unitSystem))}{" "}
-              {elevationUnitLabel(unitSystem)} above sea level
-            </span>
-          )}
-        </p>
+        {caption ? (
+          <p className="text-xs text-[var(--ink-2)] tabular-nums" aria-live="polite">
+            {profileReadout({ profile, surface, activeMetres, unitSystem })}
+          </p>
+        ) : null}
       </div>
     </div>
   );

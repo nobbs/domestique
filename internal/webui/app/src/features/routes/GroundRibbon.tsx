@@ -52,12 +52,15 @@ interface Anchor {
  * hundred metres at kilometre three and then rides it for eleven kilometres
  * over the col should be pointing at the col.
  */
-function anchorsFor(surface: SurfaceSummary | null): Anchor[] {
+function anchorsFor(surface: SurfaceSummary | null, unmarked: readonly SurfaceKind[]): Anchor[] {
   if (surface === null || surface.totalMetres <= 0) {
     return [];
   }
   const longest = new Map<SurfaceKind, { start: number; end: number }>();
   for (const band of surface.bands) {
+    if (unmarked.includes(band.kind)) {
+      continue;
+    }
     const held = longest.get(band.kind);
     if (held === undefined || band.endMetres - band.startMetres > held.end - held.start) {
       longest.set(band.kind, { start: band.startMetres, end: band.endMetres });
@@ -106,6 +109,8 @@ export function GroundRibbon({
   segments,
   surface,
   labelled = true,
+  thin = false,
+  unmarked = [],
   highlight,
   onHighlightChange,
 }: {
@@ -120,16 +125,29 @@ export function GroundRibbon({
    * a reader who knows the palette does not need on screen.
    */
   labelled?: boolean;
+  /** Draws the bar at `h-1.5` rather than `h-3`. */
+  thin?: boolean;
+  /**
+   * Classes drawn as transparent segments with no label — the width they hold
+   * in the route still keeps the others in place, so a route that is mostly
+   * one class shows only where it departs from it.
+   */
+  unmarked?: readonly SurfaceKind[];
   highlight: Highlight | null;
   onHighlightChange: (next: Highlight | null) => void;
 }) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
-  const anchors = anchorsFor(surface);
+  const anchors = anchorsFor(surface, unmarked);
   const placed = place(anchors, width);
+  const drawn = segments.map((segment) =>
+    segment.highlight.type === "surface" && unmarked.includes(segment.highlight.kind)
+      ? { ...segment, colour: "transparent" }
+      : segment,
+  );
 
   return (
     <div ref={ref}>
-      <MixRibbon segments={segments} className="h-3" highlight={highlight} />
+      <MixRibbon segments={drawn} className={thin ? "h-1.5" : "h-3"} highlight={highlight} />
       {!labelled ? null : (
         <div className="relative" style={{ height: LEADER_HEIGHT + LABEL_HEIGHT }}>
           <svg
