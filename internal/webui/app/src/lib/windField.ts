@@ -13,7 +13,8 @@
  * kept in ground positions would pay that scan per particle per frame and spend
  * a stage of a few thousand points' whole frame budget on it. Here the corridor
  * test is `corridorWeight` of the offset, death is a comparison, and only the
- * drawing crosses to the ground — by binary search, twice per streak.
+ * drawing crosses to the ground — three bisections for the head, and the tail
+ * from the velocity that put it there.
  *
  * The meteorological convention is the trap. `directionDegrees` is the
  * direction the wind blows *from*, so the air moves toward the opposite
@@ -83,6 +84,35 @@ const FADE_SHARE = 0.25;
  * without ever having been drawn.
  */
 const SPAWN_EDGE_SHARE = 0.98;
+
+/**
+ * How much of the route the corridor's own direction is measured over.
+ *
+ * Both of the corridor's axes hang off this bearing, so a bearing that changes
+ * abruptly moves every particle at once. Stored geometry stair-steps: a road
+ * running north-east arrives as short alternating east and north segments, and
+ * the bearing of any one of them is a fact about how the route was digitised
+ * rather than about the road. Measured over a segment, the frame would flip
+ * between two bearings several times a second as a particle crossed vertices,
+ * and a streak 500 m off the road would jump half a kilometre sideways each
+ * time.
+ *
+ * Wide enough to span a run of those steps, narrow enough that a real bend
+ * still turns the corridor with it — the same trade `BEARING_WINDOW_METRES`
+ * makes in `wind.ts`, for the same reason.
+ */
+export const FRAME_WINDOW_METRES = 600;
+
+/**
+ * How short the window's chord may get before it is read as saying nothing, as
+ * a share of the window.
+ *
+ * A hairpin inside one window comes back to where it started, and the bearing
+ * between two near-coincident points is noise. The local segment is the honest
+ * answer there, discontinuity and all: the corridor genuinely has no single
+ * direction across a switchback.
+ */
+const FRAME_CHORD_MINIMUM_SHARE = 0.05;
 
 /**
  * How much of the drift a streak's tail is drawn from, in seconds of field
@@ -193,12 +223,47 @@ function ratioWithin(distances: number[], index: number, alongMetres: number): n
   return end > start ? Math.min(Math.max((alongMetres - start) / (end - start), 0), 1) : 0;
 }
 
-/** Which way the route points at one distance along it, in degrees from north. */
+/** The point on the route at one distance along it, clamped to either end. */
+function pointAt(
+  coordinates: Position[],
+  distances: number[],
+  alongMetres: number,
+): Position | null {
+  const index = segmentAt(distances, alongMetres);
+  const from = coordinates[index];
+  const to = coordinates[index + 1];
+  if (!from || !to) {
+    return null;
+  }
+  const ratio = ratioWithin(distances, index, alongMetres);
+
+  return [from[0] + ratio * (to[0] - from[0]), from[1] + ratio * (to[1] - from[1])];
+}
+
+/**
+ * Which way the corridor points at one distance along the route, in degrees
+ * from north.
+ *
+ * The chord across `FRAME_WINDOW_METRES` of route centred on the distance,
+ * which is continuous in it — the ends of the chord slide along the polyline
+ * rather than snapping from one segment's bearing to the next's, so the frame
+ * a particle is carried in never jumps.
+ */
 export function routeBearingAt(
   coordinates: Position[],
   distances: number[],
   alongMetres: number,
 ): number {
+  const half = FRAME_WINDOW_METRES / 2;
+  const behind = pointAt(coordinates, distances, alongMetres - half);
+  const ahead = pointAt(coordinates, distances, alongMetres + half);
+  if (
+    behind &&
+    ahead &&
+    haversineMetres(behind, ahead) > FRAME_WINDOW_METRES * FRAME_CHORD_MINIMUM_SHARE
+  ) {
+    return bearingBetween(behind, ahead);
+  }
   const index = segmentAt(distances, alongMetres);
   const from = coordinates[index];
   const to = coordinates[index + 1];
@@ -207,12 +272,40 @@ export function routeBearingAt(
 }
 
 /**
- * Corridor coordinates back onto the ground: along the route to the distance,
- * then sideways by the local normal. Null where there is no route to walk.
+ * A position moved so many metres east and so many north of itself.
  *
- * Flat-earth for the sideways step, which is good to a fraction of a percent
- * over a corridor a few kilometres wide — well inside the grid cell the reading
- * came from.
+ * Flat-earth, which is good to a fraction of a percent over a corridor a few
+ * kilometres wide — well inside the grid cell the reading came from.
+ */
+function displaced(position: Position, eastMetres: number, northMetres: number): Position {
+  const [longitude, latitude] = position;
+  const longitudeScale = Math.cos((latitude * Math.PI) / 180);
+
+  return [
+    longitude + eastMetres / (METRES_PER_DEGREE_LATITUDE * longitudeScale || 1),
+    latitude + northMetres / METRES_PER_DEGREE_LATITUDE,
+  ];
+}
+
+/**
+ * A point on the route, moved out to its offset across a corridor pointing
+ * `frameDegrees`.
+ *
+ * Takes the bearing rather than looking it up, so a caller that needs the frame
+ * for something else too — `writeStreaks` needs it for the streak itself — pays
+ * for it once.
+ */
+function placeInFrame(on: Position, frameDegrees: number, offsetMetres: number): Position {
+  // A quarter turn clockwise off the way the corridor points, so a positive
+  // offset lies to the right of a rider on it.
+  const normal = ((frameDegrees + 90) * Math.PI) / 180;
+
+  return displaced(on, offsetMetres * Math.sin(normal), offsetMetres * Math.cos(normal));
+}
+
+/**
+ * Corridor coordinates back onto the ground: along the route to the distance,
+ * then sideways by the corridor's normal. Null where there is no route to walk.
  */
 export function positionAt(
   coordinates: Position[],
@@ -223,25 +316,42 @@ export function positionAt(
   if (coordinates.length < 2 || coordinates.length !== distances.length) {
     return null;
   }
-  const index = segmentAt(distances, alongMetres);
-  const from = coordinates[index];
-  const to = coordinates[index + 1];
-  if (!from || !to) {
-    return null;
-  }
-  const ratio = ratioWithin(distances, index, alongMetres);
-  const longitude = from[0] + ratio * (to[0] - from[0]);
-  const latitude = from[1] + ratio * (to[1] - from[1]);
-  // A quarter turn clockwise off the way the route points, so a positive offset
-  // lies to the right of a rider on it.
-  const normal = ((bearingBetween(from, to) + 90) * Math.PI) / 180;
-  const longitudeScale = Math.cos((latitude * Math.PI) / 180);
+  const on = pointAt(coordinates, distances, alongMetres);
 
-  return [
-    longitude +
-      (offsetMetres * Math.sin(normal)) / (METRES_PER_DEGREE_LATITUDE * longitudeScale || 1),
-    latitude + (offsetMetres * Math.cos(normal)) / METRES_PER_DEGREE_LATITUDE,
-  ];
+  return on
+    ? placeInFrame(on, routeBearingAt(coordinates, distances, alongMetres), offsetMetres)
+    : null;
+}
+
+/**
+ * Where a streak has come from: its head, carried back along the ground
+ * velocity the corridor's own rates work out to.
+ *
+ * The rates are held in the corridor's axes, so turning them back into a
+ * direction over the ground is the frame's bearing applied the other way round
+ * — which returns exactly the direction the air is going, whatever the route
+ * beneath is doing. Reading the tail out of the corridor a second time instead,
+ * at the distance the particle came from, would put the polyline's own
+ * stair-stepping into the one channel this layer carries: the streak would
+ * swing tens of degrees either side of the wind as the ends of it crossed
+ * vertices, several times a second.
+ */
+export function streakTail(
+  head: Position,
+  particle: DriftRates,
+  frameDegrees: number,
+  seconds: number = STREAK_SECONDS,
+): Position {
+  const radians = (frameDegrees * Math.PI) / 180;
+  const sin = Math.sin(radians);
+  const cos = Math.cos(radians);
+  const { alongMetresPerSecond: along, acrossMetresPerSecond: across } = particle;
+
+  return displaced(
+    head,
+    -(along * sin + across * cos) * seconds,
+    -(along * cos - across * sin) * seconds,
+  );
 }
 
 /**
@@ -416,16 +526,13 @@ export function writeStreaks(
     if (!particle.hasWind) {
       continue;
     }
-    const head = positionAt(coordinates, distances, particle.alongMetres, particle.offsetMetres);
-    const tail = positionAt(
-      coordinates,
-      distances,
-      particle.alongMetres - particle.alongMetresPerSecond * STREAK_SECONDS,
-      particle.offsetMetres - particle.acrossMetresPerSecond * STREAK_SECONDS,
-    );
-    if (!head || !tail) {
+    const on = pointAt(coordinates, distances, particle.alongMetres);
+    if (!on) {
       continue;
     }
+    const frameDegrees = routeBearingAt(coordinates, distances, particle.alongMetres);
+    const head = placeInFrame(on, frameDegrees, particle.offsetMetres);
+    const tail = streakTail(head, particle, frameDegrees);
     const alpha = streakAlpha(particle, metresPerCell);
     const [tailX, tailY] = mercatorXY(tail);
     const [headX, headY] = mercatorXY(head);

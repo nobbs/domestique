@@ -13,7 +13,8 @@ import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
 import type { WindSample } from "./conditionsField";
 import { corridorRadii } from "./conditionsField";
-import { cumulativeMetres } from "./profile";
+import { cumulativeMetres, haversineMetres } from "./profile";
+import { bearingBetween } from "./routeCues";
 import type { FieldGeometry, FieldParticle } from "./windField";
 import {
   advanceField,
@@ -36,6 +37,7 @@ import {
   segmentAt,
   staticFlow,
   streakAlpha,
+  streakTail,
   VERTICES_PER_STREAK,
   writeStreaks,
 } from "./windField";
@@ -52,6 +54,21 @@ const NORTH: Position[] = Array.from(
 );
 const NORTH_DISTANCES = cumulativeMetres(NORTH);
 const NORTH_METRES = NORTH_DISTANCES[NORTH_DISTANCES.length - 1] ?? 0;
+
+/**
+ * A road running north-east, stored the way real geometry arrives: not as one
+ * diagonal but as a staircase of short alternating east and north steps, about
+ * 60 m each over 12 km.
+ *
+ * The shape the corridor used to come apart on. Any one step's bearing is 0° or
+ * 90° and says nothing about the road, which runs at 45° throughout.
+ */
+const STAIR: Position[] = Array.from(
+  { length: 200 },
+  (_, index): Position => [8 + 0.0008 * Math.ceil(index / 2), 49 + 0.00054 * Math.floor(index / 2)],
+);
+const STAIR_DISTANCES = cumulativeMetres(STAIR);
+const STAIR_METRES = STAIR_DISTANCES[STAIR_DISTANCES.length - 1] ?? 0;
 
 /** ICON-D2's cell, so the corridor is 1500 m of core and 4000 m of fade. */
 const METRES_PER_CELL = 2000;
@@ -83,6 +100,28 @@ function northRoad(directionDegrees: number, speedKmh = 20): FieldGeometry {
     metresPerCell: METRES_PER_CELL,
     totalMetres: NORTH_METRES,
   };
+}
+
+function stairRoad(directionDegrees: number, speedKmh = 20): FieldGeometry {
+  return {
+    coordinates: STAIR,
+    distances: STAIR_DISTANCES,
+    samples: steady(directionDegrees, speedKmh, STAIR_METRES),
+    metresPerCell: METRES_PER_CELL,
+    totalMetres: STAIR_METRES,
+  };
+}
+
+/**
+ * The bearing a written streak is drawn at. Read straight off the Mercator
+ * vertices — the projection is conformal, so the angle a streak makes with
+ * north survives it — with y counted southward.
+ */
+function streakBearing(buffer: Float32Array): number {
+  const east = (buffer[3] ?? 0) - (buffer[0] ?? 0);
+  const north = (buffer[1] ?? 0) - (buffer[4] ?? 0);
+
+  return ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360;
 }
 
 function particle(overrides: Partial<FieldParticle> = {}): FieldParticle {
@@ -338,6 +377,63 @@ describe("how strongly a streak is drawn", () => {
   });
 });
 
+describe("a road stored as a staircase", () => {
+  it("reads the corridor's direction off the road, not off one digitised step", () => {
+    for (let alongMetres = 1000; alongMetres < 6000; alongMetres += 37) {
+      // Two degrees of the road's own 45°, where a step's own bearing is 0 or 90.
+      expect(Math.abs(routeBearingAt(STAIR, STAIR_DISTANCES, alongMetres) - 45)).toBeLessThan(2);
+    }
+  });
+
+  it("keeps a particle on the same side of the road as it crosses a step", () => {
+    // Half a kilometre out, where a frame taken from one step used to swing the
+    // particle through a right angle at every vertex — half a kilometre of
+    // ground, several times a second.
+    let worstMetres = 0;
+    let previous = positionAt(STAIR, STAIR_DISTANCES, 1000, 400);
+    for (let alongMetres = 1002; alongMetres < 6000; alongMetres += 2) {
+      const here = positionAt(STAIR, STAIR_DISTANCES, alongMetres, 400);
+      if (previous && here) {
+        worstMetres = Math.max(worstMetres, haversineMetres(previous, here));
+      }
+      previous = here;
+    }
+
+    expect(worstMetres).toBeLessThan(10);
+  });
+
+  it("draws every streak the way the air is going, whatever the steps do", () => {
+    const geometry = stairRoad(225);
+    const drifting = particle({ alongMetres: 1000, offsetMetres: 200, lifeSeconds: 1000 });
+    const buffer = new Float32Array(VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
+
+    for (let frame = 0; frame < 90; frame++) {
+      advanceField([drifting], geometry, 1 / 60);
+      writeStreaks([drifting], geometry, buffer);
+
+      // A wind from the south-west blows north-east, and the streak says so at
+      // every one of those frames rather than at the ones that fall mid-step.
+      expect(Math.abs(streakBearing(buffer) - 45)).toBeLessThan(2);
+    }
+  });
+
+  it("falls back to the step itself where the window doubles back on itself", () => {
+    // Out and back over 200 m: the chord across the window collapses, and there
+    // is no one direction a hairpin's corridor could point.
+    const hairpin: Position[] = [
+      [8, 49],
+      [8, 49.0018],
+      [8.00001, 49],
+    ];
+    const distances = cumulativeMetres(hairpin);
+
+    expect(routeBearingAt(hairpin, distances, 100)).toBeCloseTo(
+      bearingBetween(hairpin[0] as Position, hairpin[1] as Position),
+      3,
+    );
+  });
+});
+
 describe("the field written into a vertex buffer", () => {
   it("writes a tail and a head per streak, the tail at nothing", () => {
     const geometry = eastRoad(0);
@@ -364,6 +460,17 @@ describe("the field written into a vertex buffer", () => {
     // it to the north — a smaller y than the head's.
     expect(buffer[1] ?? 0).toBeLessThan(buffer[4] ?? 0);
     expect(buffer[0] ?? 0).toBeCloseTo(buffer[3] ?? 0, 6);
+  });
+
+  it("trails it back along the ground velocity rather than back down the route", () => {
+    // Carried due east at 10 m/s, whatever the corridor beneath is doing: the
+    // tail is the second of ground the head has just come from, to the west.
+    const head: Position = [8, 49];
+    const tail = streakTail(head, { alongMetresPerSecond: 10, acrossMetresPerSecond: 0 }, 90, 1);
+
+    expect(tail[1]).toBeCloseTo(head[1], 9);
+    expect(haversineMetres(tail, head)).toBeCloseTo(10, 1);
+    expect(tail[0]).toBeLessThan(head[0]);
   });
 
   it("stops at the end of the buffer rather than writing past it", () => {
