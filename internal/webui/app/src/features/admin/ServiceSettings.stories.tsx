@@ -177,6 +177,29 @@ export const SavesTheServiceTimezone: Story = {
   },
 };
 
+/**
+ * A basemap is drawn as it was last saved: the browser may only reach the
+ * origins the service has already permitted, so a typed URL waits for the save.
+ */
+export const PreviewsABasemapOnlyAsSaved: Story = {
+  play: async ({ canvas }) => {
+    await expect(canvas.queryByText("Save to preview")).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole("button", { name: "Edit basemap 1" }));
+    const url = canvas.getByLabelText("Style URL");
+    await userEvent.type(url, "?edited");
+
+    await expect(canvas.getByText("Save to preview")).toBeInTheDocument();
+
+    // A new entry has nothing saved to show, so it opens straight onto its fields.
+    await userEvent.click(canvas.getByRole("button", { name: "Add a basemap" }));
+    await expect(
+      canvas.getByRole("button", { name: "Finish editing basemap 2" }),
+    ).toHaveTextContent("Done");
+    await expect(canvas.getAllByText("Save to preview")).toHaveLength(1);
+  },
+};
+
 interface Written {
   url: string;
   // biome-ignore lint/suspicious/noExplicitAny: the body under assertion is one section of a settings document

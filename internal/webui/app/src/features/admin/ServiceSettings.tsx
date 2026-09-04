@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Field,
   FieldContent,
@@ -62,6 +63,7 @@ import {
   type SourceProvider,
 } from "../../api/types";
 import { Button } from "../../components/Button";
+import { BasemapStrip } from "../../components/map/BasemapPreview";
 import { providerLabel } from "../../lib/provider";
 import { RegionPicker } from "../settings/regions/RegionPicker";
 
@@ -698,6 +700,14 @@ function Alerts({ settings }: { settings: Settings }) {
   );
 }
 
+/**
+ * Past this many styles, the rows carry names alone.
+ *
+ * Every strip is a WebGL context and a browser hands out about sixteen for the
+ * whole page; an entry with a dark style draws two. See `BasemapPreview`.
+ */
+const MOST_STRIPS = 12;
+
 function Basemaps({ settings }: { settings: Settings }) {
   const id = useId();
   const invalidate = useSettingsInvalidation();
@@ -707,88 +717,141 @@ function Basemaps({ settings }: { settings: Settings }) {
   // first row would move every value below it up into a different input.
   const [rowKeys, setRowKeys] = useState(() => settings.basemaps.map((_, index) => index));
   const nextRowKey = useRef(settings.basemaps.length);
+  const [openKeys, setOpenKeys] = useState<number[]>([]);
   const save = useSetBasemaps(saving(() => setDraft(null), invalidate));
 
   const basemaps = draft ?? settings.basemaps;
   const replaceBasemap = (index: number, next: BrowserBasemap) =>
     setDraft(basemaps.map((basemap, at) => (at === index ? next : basemap)));
 
+  // The browser may only reach the origins of saved styles, and the hosts each
+  // one names are learnt on save — so a typed URL cannot be drawn until then.
+  const saved = new Set(
+    settings.basemaps.flatMap((basemap) => [basemap.styleUrl, basemap.styleUrlDark]),
+  );
+  const strips = basemaps.reduce((count, basemap) => count + (basemap.styleUrlDark ? 2 : 1), 0);
+  const styleUrlsOf = (basemap: BrowserBasemap) =>
+    strips <= MOST_STRIPS
+      ? [basemap.styleUrl, basemap.styleUrlDark].filter((url): url is string => Boolean(url))
+      : [];
+
   return (
     <Section
       title="Basemaps"
-      description="The cartography this page offers. An entry with a dark style switches between the two with the system colour scheme; an entry whose own ground is dark whatever the scheme is — imagery — says so instead, and the two cannot both be set."
+      description="The cartography this page offers. An entry with a dark style switches between the two with the system colour scheme; an entry whose own ground is dark whatever the scheme is — imagery — says so instead, and the two cannot both be set. A preview shows a style as last saved."
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: { basemaps } })}
     >
-      {basemaps.map((basemap, index) => (
-        <div key={rowKeys[index]} className="grid gap-3 rounded-lg border border-[var(--rule)] p-3">
-          <Field>
-            <FieldLabel htmlFor={`${id}-name-${rowKeys[index]}`}>Name</FieldLabel>
-            <Input
-              id={`${id}-name-${rowKeys[index]}`}
-              value={basemap.name}
-              onChange={(event) => replaceBasemap(index, { ...basemap, name: event.target.value })}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-style-${rowKeys[index]}`}>Style URL</FieldLabel>
-            <Input
-              id={`${id}-style-${rowKeys[index]}`}
-              type="url"
-              value={basemap.styleUrl}
-              onChange={(event) =>
-                replaceBasemap(index, { ...basemap, styleUrl: event.target.value })
-              }
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor={`${id}-dark-${rowKeys[index]}`}>
-              Dark style URL (optional)
-            </FieldLabel>
-            <Input
-              id={`${id}-dark-${rowKeys[index]}`}
-              type="url"
-              value={basemap.styleUrlDark ?? ""}
-              onChange={(event) =>
-                replaceBasemap(index, withDarkStyle(basemap, event.target.value))
-              }
-            />
-          </Field>
-          <Field orientation="horizontal">
-            <FieldContent>
-              <FieldTitle>This style is dark cartography</FieldTitle>
-            </FieldContent>
-            <Switch
-              checked={basemap.darkCartography ?? false}
-              disabled={Boolean(basemap.styleUrlDark)}
-              aria-label={`This style is dark cartography: basemap ${index + 1}`}
-              onCheckedChange={(darkCartography) =>
-                replaceBasemap(index, { ...basemap, darkCartography })
-              }
-            />
-          </Field>
-          <div>
-            <Button
-              variant="destructive"
-              disabled={basemaps.length === 1}
-              aria-label={`Remove basemap ${index + 1}`}
-              onClick={() => {
-                setDraft(basemaps.filter((_, at) => at !== index));
-                setRowKeys(rowKeys.filter((_, at) => at !== index));
-              }}
-            >
-              Remove
-            </Button>
-          </div>
-        </div>
-      ))}
+      {basemaps.map((basemap, index) => {
+        const key = rowKeys[index] ?? index;
+        const open = openKeys.includes(key);
+
+        return (
+          <Collapsible
+            key={key}
+            open={open}
+            onOpenChange={(next) =>
+              setOpenKeys(next ? [...openKeys, key] : openKeys.filter((other) => other !== key))
+            }
+            className="grid gap-3 rounded-lg border border-[var(--rule)] p-3"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-medium">{basemap.name || `Basemap ${index + 1}`}</span>
+              <CollapsibleTrigger
+                render={<Button variant="outline" />}
+                aria-label={`${open ? "Finish editing" : "Edit"} basemap ${index + 1}`}
+              >
+                {open ? "Done" : "Edit"}
+              </CollapsibleTrigger>
+            </div>
+            {styleUrlsOf(basemap).length > 0 ? (
+              <div className="grid gap-3 sm:grid-flow-col sm:auto-cols-fr">
+                {styleUrlsOf(basemap).map((url) =>
+                  saved.has(url) ? (
+                    <BasemapStrip key={url} styleUrl={url} />
+                  ) : (
+                    <span
+                      key={url}
+                      className="flex h-40 items-center justify-center rounded-lg bg-[var(--base)] text-sm text-[var(--ink-2)] ring-1 ring-[var(--rule)]"
+                    >
+                      Save to preview
+                    </span>
+                  ),
+                )}
+              </div>
+            ) : null}
+            <CollapsibleContent className="grid gap-3">
+              <Field>
+                <FieldLabel htmlFor={`${id}-name-${key}`}>Name</FieldLabel>
+                <Input
+                  id={`${id}-name-${key}`}
+                  value={basemap.name}
+                  onChange={(event) =>
+                    replaceBasemap(index, { ...basemap, name: event.target.value })
+                  }
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`${id}-style-${key}`}>Style URL</FieldLabel>
+                <Input
+                  id={`${id}-style-${key}`}
+                  type="url"
+                  value={basemap.styleUrl}
+                  onChange={(event) =>
+                    replaceBasemap(index, { ...basemap, styleUrl: event.target.value })
+                  }
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor={`${id}-dark-${key}`}>Dark style URL (optional)</FieldLabel>
+                <Input
+                  id={`${id}-dark-${key}`}
+                  type="url"
+                  value={basemap.styleUrlDark ?? ""}
+                  onChange={(event) =>
+                    replaceBasemap(index, withDarkStyle(basemap, event.target.value))
+                  }
+                />
+              </Field>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <FieldTitle>This style is dark cartography</FieldTitle>
+                </FieldContent>
+                <Switch
+                  checked={basemap.darkCartography ?? false}
+                  disabled={Boolean(basemap.styleUrlDark)}
+                  aria-label={`This style is dark cartography: basemap ${index + 1}`}
+                  onCheckedChange={(darkCartography) =>
+                    replaceBasemap(index, { ...basemap, darkCartography })
+                  }
+                />
+              </Field>
+              <div>
+                <Button
+                  variant="destructive"
+                  disabled={basemaps.length === 1}
+                  aria-label={`Remove basemap ${index + 1}`}
+                  onClick={() => {
+                    setDraft(basemaps.filter((_, at) => at !== index));
+                    setRowKeys(rowKeys.filter((_, at) => at !== index));
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        );
+      })}
       <div>
         <Button
           variant="outline"
           onClick={() => {
             setDraft([...basemaps, { name: "", styleUrl: "" }]);
             setRowKeys([...rowKeys, nextRowKey.current]);
+            // A new entry has nothing saved to show, so it opens onto its fields.
+            setOpenKeys([...openKeys, nextRowKey.current]);
             nextRowKey.current += 1;
           }}
         >
