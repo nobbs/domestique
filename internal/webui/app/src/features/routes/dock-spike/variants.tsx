@@ -330,7 +330,7 @@ function Forecast(s: DockState) {
   return (
     <Panel
       gutter={false}
-      line={`Forecast · ${weatherSamples.length} readings${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
+      line={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
       control={
         <div className="flex flex-wrap items-center gap-3">
           <Choices {...s} />
