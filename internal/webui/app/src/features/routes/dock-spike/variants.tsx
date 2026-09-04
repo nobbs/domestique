@@ -10,7 +10,17 @@
 
 import { Tabs } from "@base-ui/react/tabs";
 import { Tooltip } from "@base-ui/react/tooltip";
-import { IconCloud, IconMountain, type IconProps, IconRoad, IconStairs } from "@tabler/icons-react";
+import {
+  IconCircleOff,
+  IconCloud,
+  IconCloudRain,
+  IconMountain,
+  type IconProps,
+  IconRoad,
+  IconStairs,
+  IconTemperature,
+  IconWind,
+} from "@tabler/icons-react";
 import type { ComponentType, ReactNode } from "react";
 import { useState } from "react";
 import { StartTimePicker } from "../../../components/StartTimePicker";
@@ -146,8 +156,15 @@ const RANGES: Record<MeasureKey, readonly string[]> = {
   cloud: ["under 20 %", "20–50 %", "50–85 %", "over 85 %"],
 };
 
+const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
+  wind: IconWind,
+  temperature: IconTemperature,
+  rain: IconCloudRain,
+  cloud: IconCloud,
+};
+
 const CHOICE =
-  "rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
+  "flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
 
 /** One band as a coloured chip; what it means and where it cuts wait under the pointer. */
 function Chip({
@@ -211,19 +228,24 @@ function Choices(s: DockState) {
         onClick={() => s.setMeasure(null)}
         className={CHOICE}
       >
+        <IconCircleOff size={12} stroke={2} aria-hidden="true" />
         Off
       </button>
-      {MEASURES.map((entry) => (
-        <button
-          key={entry.key}
-          type="button"
-          aria-pressed={s.measure === entry.key}
-          onClick={() => s.setMeasure(s.measure === entry.key ? null : entry.key)}
-          className={CHOICE}
-        >
-          {entry.label}
-        </button>
-      ))}
+      {MEASURES.map((entry) => {
+        const Icon = MEASURE_ICON[entry.key];
+        return (
+          <button
+            key={entry.key}
+            type="button"
+            aria-pressed={s.measure === entry.key}
+            onClick={() => s.setMeasure(s.measure === entry.key ? null : entry.key)}
+            className={CHOICE}
+          >
+            <Icon size={12} stroke={2} aria-hidden="true" />
+            {entry.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
