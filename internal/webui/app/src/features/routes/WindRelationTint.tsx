@@ -155,9 +155,13 @@ export function WindRelationTint({
           </tr>
         </thead>
         <tbody>
-          {runs.map((run) => (
-            <tr key={run.fromMetres}>
-              <th scope="row">{formatDistance(run.fromMetres, unitSystem)}</th>
+          {runs.map((run, index) => (
+            <tr key={`${run.fromMetres}-${index}`}>
+              <th scope="row">
+                {formatDistance(run.fromMetres, unitSystem)}
+                {"–"}
+                {formatDistance(run.toMetres, unitSystem)}
+              </th>
               <td>{windRelationWords(run.stop, run.windSpeedKmh, unitSystem)}</td>
             </tr>
           ))}
