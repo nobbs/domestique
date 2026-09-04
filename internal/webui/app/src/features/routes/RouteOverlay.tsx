@@ -37,6 +37,7 @@ import { PositionTooltip } from "./PositionTooltip";
 import { RouteTerminal } from "./RouteTerminal";
 import { dimmedOutside, EDGING_WIDTH, taggedCollection } from "./routeFeatures";
 import { SelectionLink } from "./SelectionLink";
+import { WindDriftField } from "./WindDriftField";
 import { useWindRuns, WindRelationTint } from "./WindRelationTint";
 
 const SOURCE_ID = "route-geometry";
@@ -449,6 +450,18 @@ export function RouteOverlay({
         measure={measure}
         beforeId={HALO_LAYER_ID}
         unitSystem={unitSystem}
+      />
+      {/*
+       * Which way the air is going, drifting through the corridor it was washed
+       * in: mounted after the wash and named against the same layer, so it goes
+       * immediately above the corridor and still under everything the route
+       * itself draws. It is the only mark on this map drawn frame by frame.
+       */}
+      <WindDriftField
+        coordinates={coordinates}
+        samples={samples}
+        measure={measure}
+        beforeId={HALO_LAYER_ID}
       />
       {/*
        * The wind on the rider, in the edging slot the steepness bands give up

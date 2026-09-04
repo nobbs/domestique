@@ -269,10 +269,19 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 .current-location-marker { display: grid; width: 28px; height: 28px; place-items: center; border: 2px solid var(--panel); border-radius: 50% 50% 50% 0; background: var(--accent); box-shadow: var(--shadow); color: var(--panel); pointer-events: none; transform: rotate(-45deg); }
 .current-location-marker > svg { transform: rotate(45deg); }
 .route-map > .map-credits { position: absolute; right: calc(24px + env(safe-area-inset-right)); bottom: calc(24px + env(safe-area-inset-bottom)); }
-.route-position-tooltip-marker, .route-terminal-marker, .route-direction-marker { pointer-events: none; }
+.route-position-tooltip-marker, .route-terminal-marker, .route-direction-marker, .route-wind-arrow-marker { pointer-events: none; }
 .route-direction { display: block; }
 .route-direction--light { filter: drop-shadow(0 0 2px rgb(28 33 38 / 85%)); }
 .route-direction--dark { filter: drop-shadow(0 0 2px rgb(252 253 255 / 85%)); }
+/*
+ * The wind arrows a reader who asked for no movement gets instead of the
+ * drifting field. Named for the basemap they stand on, like the chevrons above,
+ * but haloed the other way round: the arrow itself is the contrasting ink the
+ * field is drawn in, so the glow behind it has to be the ground's own tone.
+ */
+.route-wind-arrow { display: block; }
+.route-wind-arrow--light { filter: drop-shadow(0 0 2px rgb(252 253 255 / 85%)); }
+.route-wind-arrow--dark { filter: drop-shadow(0 0 2px rgb(28 33 38 / 85%)); }
 .route-terminal { display: grid; width: 28px; height: 28px; place-items: center; border: 2.5px solid #fff; border-radius: 50%; filter: drop-shadow(0 1px 2px rgb(28 33 38 / 35%)); }
 .route-terminal--start { background: #188b45; }
 .route-terminal--finish { background: #fff; }
