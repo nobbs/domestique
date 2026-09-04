@@ -53,3 +53,8 @@ client_secret_file = "/run/secrets/auth0_client_secret"
 [state]
 database_path = "/var/lib/domestique/state.db"
 encryption_key_file = "/run/secrets/state_encryption_key"
+
+# How much the service says on stderr, as JSON lines: debug, info, warn or
+# error. Optional; this is the default. DOMESTIQUE_LOG__LEVEL overrides it.
+[log]
+level = "info"

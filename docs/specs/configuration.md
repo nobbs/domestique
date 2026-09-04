@@ -63,6 +63,9 @@ client_secret_file = "/run/secrets/auth0_client_secret"
 [state]
 database_path = "/var/lib/domestique/state.db"
 encryption_key_file = "/run/secrets/state_encryption_key"
+
+[log]
+level = "info"
 ```
 
 What the file does not carry is as much a part of its contract as what it does.
@@ -133,6 +136,13 @@ application dependency.
   terms as `http.listen_address`, and its port must differ from that listener's.
   One port serving both would put readiness behind the reverse proxy along with
   everything else.
+- `log.level` is optional and defaults to `info`; the accepted values are
+  `debug`, `info`, `warn` and `error`. The service writes one JSON object per
+  line to stderr. Successful requests are not logged; a failed, slow or refused
+  answer is reported with its method, status, duration and the first two path
+  segments only, never a route ID, query string or subject. Like every other
+  field it may be set as `DOMESTIQUE_LOG__LEVEL`, which is the intended way to
+  raise it for one restart.
 - `http.browser_origin_url` is required, and must be an absolute HTTPS origin
   with no path. It is the address a browser reaches this service at, behind the
   reverse proxy.

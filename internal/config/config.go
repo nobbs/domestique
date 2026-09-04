@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -49,6 +50,12 @@ type Settings struct {
 	HTTP  HTTP
 	Auth  Auth
 	State State
+	Log   Log
+}
+
+// Log configures what the service writes to stderr. Output is always JSON.
+type Log struct {
+	Level slog.Level
 }
 
 // HTTP configures the service listeners and the origin a browser reaches the
@@ -109,6 +116,11 @@ type rawSettings struct {
 	HTTP  rawHTTP  `koanf:"http"`
 	State rawState `koanf:"state"`
 	Auth  rawAuth  `koanf:"auth"`
+	Log   rawLog   `koanf:"log"`
+}
+
+type rawLog struct {
+	Level string `koanf:"level"`
 }
 
 type rawHTTP struct {
@@ -371,6 +383,10 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err != nil {
 		return nil, err
 	}
+	var level slog.Level
+	if err := level.UnmarshalText([]byte(strings.TrimSpace(raw.Log.Level))); err != nil {
+		return nil, fmt.Errorf("log.level: %w", err)
+	}
 
 	return &Settings{
 		HTTP: HTTP{
@@ -389,6 +405,7 @@ func build(raw *rawSettings) (*Settings, error) {
 			DatabasePath:  raw.State.DatabasePath,
 			encryptionKey: key,
 		},
+		Log: Log{Level: level},
 	}, nil
 }
 
@@ -489,6 +506,9 @@ func configurationDefaults() map[string]any {
 	return map[string]any{
 		"http": map[string]any{
 			"readiness_address": defaultReadinessAddress,
+		},
+		"log": map[string]any{
+			"level": "info",
 		},
 	}
 }
