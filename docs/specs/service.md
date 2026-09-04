@@ -233,10 +233,18 @@ be changed, or pointed at a self-hosted tile source, without a code change.
 
 An operator may configure more than one basemap so the reader can switch between
 them. A Content-Security-Policy restricts the browser to the service's own
-origin plus the origin of each configured basemap. The policy names which
-origins the page *may* reach; only the basemap on screen is ever requested. A
-second style may be configured for a dark system colour scheme, and must be on
-**its own basemap's** origin.
+origin, the origin of each configured basemap, and the hosts those basemaps'
+style documents name for their glyphs, sprites, and tiles — a provider is free
+to split those across hosts, and a policy naming only the configured origin
+leaves the reader a map with no labels or no streets. Those hosts are in the
+document rather than in the settings, so the service reads each configured style
+to learn them, and the TileJSON a source points at when it names one that way.
+Those two document reads are the whole of what it asks a tile origin for on its
+own behalf: no tile, glyph, or sprite is ever fetched by the service, and the
+requests carry nothing about any route or any reader. The policy names
+which origins the page *may* reach; only the basemap on screen is ever
+requested. A second style may be configured for a dark system colour scheme, and
+must be on **its own basemap's** origin.
 
 The reader's pick is remembered in the browser's own storage, under one key
 holding the chosen basemap's name and nothing else. It is never sent anywhere:
@@ -260,10 +268,16 @@ read from. A route is reclassified when its shape changes and when the map
 underneath it is rebuilt, and at no other time.
 
 Open-Meteo is the second service the deployment itself reaches outbound, after
-the OpenStreetMap extract download above. The tile origin, by contrast, is
-reached only by the operator's **browser**. The service asks Open-Meteo for an
+the OpenStreetMap extract download above. The service asks Open-Meteo for an
 hourly forecast at the coordinates and times `GET /v1/weather` was given. A
 viewed route's shape and timing are what leaves; the request carries no identity.
+
+The tile origin is the third, and the narrowest: the service reads the
+configured style documents, and the TileJSON any of their sources points at, so
+the policy can admit the hosts they name. It reads nothing else there, and a
+style names a bounded number of both. Every tile, glyph, and sprite is still
+fetched by the operator's **browser** alone; which area a reader is looking at
+never reaches the tile origin from this service.
 
 Every credit this service owes is shown in one place, the settings page, and
 nowhere else in the UI: no credit is drawn over the map or beside the forecast.

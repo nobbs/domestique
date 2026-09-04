@@ -454,6 +454,34 @@ func TestSetBasemapsAcceptsABodyPastTheDefaultCap(t *testing.T) {
 	assert.Len(t, view.Basemaps, 12, "basemaps")
 }
 
+// A saved style is read on the save rather than at the next scheduled read, so
+// the policy on the responses that follow already admits whatever hosts the new
+// style names for its glyphs, sprite, or tiles.
+func TestSetBasemapsReadsTheSavedStyles(t *testing.T) {
+	styleOrigins := &fakeStyleOrigins{}
+	handler, err := New(
+		&Options{
+			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
+			Settings:         settingsWith(testBasemaps()),
+			StyleOrigins:     styleOrigins,
+			Sessions:         newFakeSessions(),
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	saveSection(t, handler, basemapsPath, basemapsSubmission)
+	assert.Equal(t, 1, styleOrigins.refreshes, "the saved styles were not read")
+
+	// A refused edit changes nothing to read.
+	rejected := httptest.NewRecorder()
+	handler.ServeHTTP(rejected, authenticatedRequestWithBody(http.MethodPut, basemapsPath, `{"basemaps": []}`))
+	require.NotEqual(t, http.StatusOK, rejected.Code, rejected.Body.String())
+	assert.Equal(t, 1, styleOrigins.refreshes, "a refused edit must not cost a read")
+}
+
 // Every other route keeps the cap it is right to have.
 func TestOnlyTheBasemapsPathCarriesTheLargerBody(t *testing.T) {
 	assert.Equal(t, int64(maximumSettingsBytes), requestLimit(basemapsPath), "the basemaps path")

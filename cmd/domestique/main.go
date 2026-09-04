@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/auth0"
+	"github.com/nobbs/domestique/internal/basemap"
 	"github.com/nobbs/domestique/internal/build"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/elevation"
@@ -206,9 +207,20 @@ func run(ctx context.Context) error {
 	// own digest. Only the digest survives the read.
 	buildInfo := build.Current(settings.ImageReference)
 
+	// The configured styles' own hosts come from the settings; whatever else a
+	// style names for its glyphs, sprite, or tiles is only in the document, and
+	// is read from there so the Content-Security-Policy can admit it.
+	styleOrigins, err := basemap.NewResolver(basemap.Options{
+		Styles: func() []string { return configuredStyleURLs(runtimeSettings.Values().Basemaps) },
+	})
+	if err != nil {
+		return fmt.Errorf("creating the basemap style reader: %w", err)
+	}
+
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
+			StyleOrigins:     styleOrigins,
 			Alerts:           alertMatrix{decisions: alerts, declarations: tasks.Declarations()},
 			Tasks:            taskSurface{ctx: runCtx, manager: tasks, switches: switches},
 			BuildRevision:    buildInfo.Revision,
@@ -264,7 +276,21 @@ func run(ctx context.Context) error {
 		ReadTimeout:       httpReadTimeout,
 		WriteTimeout:      httpWriteTimeout,
 	}
-	return serve(runCtx, cancel, server, readinessServer, tasks)
+	return serve(runCtx, cancel, server, readinessServer, tasks, styleOrigins.Run)
+}
+
+// configuredStyleURLs is every style a browser may be told to load, which is
+// every entry's own style and the dark one it may carry.
+func configuredStyleURLs(basemaps []runtimeconfig.Basemap) []string {
+	styles := make([]string, 0, 2*len(basemaps))
+	for _, entry := range basemaps {
+		styles = append(styles, entry.StyleURL)
+		if entry.StyleURLDark != "" {
+			styles = append(styles, entry.StyleURLDark)
+		}
+	}
+
+	return styles
 }
 
 // startSurfaceIndex prepares the surface index and the schedule that rebuilds it.
@@ -325,6 +351,7 @@ func serve(
 	cancel context.CancelFunc,
 	server, readinessServer *http.Server,
 	tasks backgroundTasks,
+	readStyles func(context.Context),
 ) error {
 	defer cancel()
 	serverErrors := make(chan error, 2)
@@ -332,6 +359,7 @@ func serve(
 	go func() { serverErrors <- readinessServer.ListenAndServe() }()
 	var scheduled sync.WaitGroup
 	scheduled.Go(func() { tasks.Run(ctx) })
+	scheduled.Go(func() { readStyles(ctx) })
 
 	var servingErr error
 	select {

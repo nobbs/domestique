@@ -221,6 +221,21 @@ type TaskRunState interface {
 	ForEachTaskRunPage(ctx context.Context, task, after string, limit int, visit func(task, argument, trigger string, startedAt, finishedAt time.Time, outcome, detail, reference string) error) (next string, usable bool, err error)
 }
 
+// StyleOrigins reports the origins the configured basemap styles name for
+// their glyphs, sprites, and tiles. A style document is free to point at hosts
+// its own URL does not name, and a policy that omits them leaves the reader a
+// map with no labels or no streets. Satisfied by *basemap.Resolver.
+type StyleOrigins interface {
+	// Origins answers from what was last read, never from the network: it is
+	// called while a response header is being composed.
+	Origins() []string
+
+	// Refresh reads the configured styles again, so a basemap saved on the
+	// settings page is admitted by the responses that follow the save rather
+	// than at the next scheduled read.
+	Refresh(ctx context.Context)
+}
+
 // SettingsState is the settings an operator edits while the service runs, held
 // live and replaced a section at a time. Satisfied by *runtimeconfig.Current.
 type SettingsState interface {
