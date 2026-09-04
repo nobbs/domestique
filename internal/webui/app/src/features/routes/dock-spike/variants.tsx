@@ -55,7 +55,7 @@ import { ClimbsSidebar } from "../ClimbsSidebar";
 import { ConditionsPicker } from "../ConditionsPicker";
 import { ElevationProfile } from "../ElevationProfile";
 import { ForecastStrip } from "../ForecastStrip";
-import { MixRibbon } from "../MixRibbon";
+import { GroundRibbon } from "../GroundRibbon";
 
 const UNITS = "metric";
 const GUTTER = { paddingLeft: PADDING.left, paddingRight: PADDING.right };
@@ -503,6 +503,7 @@ function Profile(s: DockState) {
 /**
  * The ground, thin and asphalt-less: asphalt is what most of most routes are,
  * so drawing it says nothing, and what is left is where the ground changes.
+ * Every other class is named once, under its longest run.
  */
 function Ground(s: DockState) {
   const segments = groundSegments(surface).map((segment) =>
@@ -510,10 +511,18 @@ function Ground(s: DockState) {
       ? { ...segment, colour: "transparent" }
       : segment,
   );
+  const named = { ...surface, bands: surface.bands.filter((band) => band.kind !== "asphalt") };
 
   return (
-    <div style={GUTTER}>
-      <MixRibbon segments={segments} className="h-1.5" highlight={s.highlight} />
+    // ponytail: the ribbon's bar height is its own; overridden here, a prop for real.
+    <div className="[&_.h-3]:h-1.5" style={GUTTER}>
+      <GroundRibbon
+        segments={segments}
+        surface={named}
+        labelled
+        highlight={s.highlight}
+        onHighlightChange={s.setHighlight}
+      />
     </div>
   );
 }
