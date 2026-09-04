@@ -140,12 +140,22 @@ describe("ForecastStrip", () => {
     const fixed = renderStrip({ coordinates, samples, seed });
     const fixedBox = fixed.container.querySelector(".border") as HTMLElement;
     expect(fixedBox.style.height).toBe("62px");
+    // The tiles themselves, not just the box around them — a fixed height left
+    // on a tile after this box grows would strand it at the box's own top.
+    for (const tile of fixed.container.querySelectorAll<HTMLElement>(".absolute.top-0")) {
+      expect(tile.style.height).toBe("62px");
+      expect(tile.style.bottom).toBe("");
+    }
     fixed.unmount();
 
     const grown = renderStrip({ coordinates, samples, seed, fill: true });
     const grownBox = grown.container.querySelector(".border") as HTMLElement;
     expect(grownBox.style.height).toBe("");
     expect(grownBox).toHaveClass("h-full");
+    for (const tile of grown.container.querySelectorAll<HTMLElement>(".absolute.top-0")) {
+      expect(tile.style.height).toBe("");
+      expect(tile.style.bottom).toBe("0px");
+    }
   });
 
   /*

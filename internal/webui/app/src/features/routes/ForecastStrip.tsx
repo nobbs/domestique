@@ -181,7 +181,6 @@ export function ForecastStrip({
                   left,
                   width: cellWidth,
                   ...(fill ? { bottom: 0 } : { height: TILE_HEIGHT }),
-                  height: TILE_HEIGHT,
                   backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
                 }}
               >
