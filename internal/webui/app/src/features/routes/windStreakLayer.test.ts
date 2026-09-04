@@ -27,8 +27,10 @@ const NAMES = [
   "createShader",
   "shaderSource",
   "compileShader",
+  "getShaderParameter",
   "attachShader",
   "linkProgram",
+  "getProgramParameter",
   "deleteShader",
   "getUniformLocation",
   "createBuffer",
@@ -51,7 +53,10 @@ const NAMES = [
   "drawArrays",
 ] as const;
 
-function recorder(): Recorder {
+/** Per-call return-value overrides, keyed by GL method name — for exercising failure paths. */
+type Overrides = Partial<Record<(typeof NAMES)[number], unknown>>;
+
+function recorder(overrides: Overrides = {}): Recorder {
   const calls: Array<{ name: string; args: unknown[] }> = [];
   const context: Record<string, unknown> = {
     VERTEX_SHADER: 1,
@@ -63,11 +68,16 @@ function recorder(): Recorder {
     ONE: 7,
     ONE_MINUS_SRC_ALPHA: 8,
     LINES: 9,
+    COMPILE_STATUS: 10,
+    LINK_STATUS: 11,
     createProgram: () => "program",
   };
   for (const name of NAMES) {
     context[name] = vi.fn((...args: unknown[]) => {
       calls.push({ name, args });
+      if (name in overrides) {
+        return overrides[name];
+      }
 
       return name === "getAttribLocation" ? 0 : name;
     });
@@ -216,6 +226,45 @@ describe("what the layer asks of the context", () => {
     expect(context.called("deleteBuffer")).toHaveLength(1);
     expect(context.called("deleteVertexArray")).toHaveLength(1);
     // And nothing is drawn with what has just been deleted.
+    draw(layer, context.gl);
+
+    expect(context.called("drawArrays")).toEqual([]);
+  });
+});
+
+describe("when the context refuses part of the setup", () => {
+  it("deletes both shaders and draws nothing when one fails to compile", () => {
+    const context = recorder({ getShaderParameter: false });
+    const layer = spread(windStreakLayer("route-wind-field", () => frame(4)));
+    layer.onAdd?.(NO_MAP, context.gl);
+
+    // One deleted before the program is even reached, one right after linking
+    // never happens.
+    expect(context.called("deleteShader")).toHaveLength(2);
+    expect(context.called("deleteProgram")).toHaveLength(1);
+    draw(layer, context.gl);
+
+    expect(context.called("drawArrays")).toEqual([]);
+  });
+
+  it("deletes the program and draws nothing when linking fails", () => {
+    const context = recorder({ getProgramParameter: false });
+    const layer = spread(windStreakLayer("route-wind-field", () => frame(4)));
+    layer.onAdd?.(NO_MAP, context.gl);
+
+    expect(context.called("deleteProgram")).toHaveLength(1);
+    draw(layer, context.gl);
+
+    expect(context.called("drawArrays")).toEqual([]);
+  });
+
+  it("cleans up the program and draws nothing when the buffer can't be allocated", () => {
+    const context = recorder({ createBuffer: null });
+    const layer = spread(windStreakLayer("route-wind-field", () => frame(4)));
+    layer.onAdd?.(NO_MAP, context.gl);
+
+    expect(context.called("deleteProgram")).toHaveLength(1);
+    expect(context.called("deleteVertexArray")).toHaveLength(1);
     draw(layer, context.gl);
 
     expect(context.called("drawArrays")).toEqual([]);

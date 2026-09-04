@@ -75,6 +75,11 @@ function compile(gl: WebGL2RenderingContext, kind: number, source: string): WebG
   }
   gl.shaderSource(shader, source);
   gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    gl.deleteShader(shader);
+
+    return null;
+  }
 
   return shader;
 }
@@ -126,6 +131,12 @@ export function windStreakLayer(id: string, frame: () => StreakFrame): CustomLay
       gl.linkProgram(program);
       gl.deleteShader(vertex);
       gl.deleteShader(fragment);
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        gl.deleteProgram(program);
+        program = null;
+
+        return;
+      }
       matrixLocation = gl.getUniformLocation(program, "u_matrix");
       colourLocation = gl.getUniformLocation(program, "u_colour");
       strengthLocation = gl.getUniformLocation(program, "u_strength");

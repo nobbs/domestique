@@ -105,10 +105,10 @@ export function WindDriftField({ coordinates, samples, measure, beforeId }: Wind
 
   const distances = useMemo(() => cumulativeMetres(coordinates), [coordinates]);
   const totalMetres = distances[distances.length - 1] ?? 0;
-  const metresPerCell = useMemo(
-    () => arrivalResolution(samples[0]?.arrivalAt).metresPerCell,
-    [samples],
-  );
+  // Not memoized: it reads Date.now(), so caching it against [samples] would
+  // let this drift from ConditionsWash's and ForecastStrip's own resolution
+  // once enough real time passes between renders to cross a lead-time band.
+  const metresPerCell = arrivalResolution(samples[0]?.arrivalAt).metresPerCell;
 
   // Everything the field drifts through, or null when there is nothing to
   // drift: another measure, a ride with no forecast, a forecast still in
