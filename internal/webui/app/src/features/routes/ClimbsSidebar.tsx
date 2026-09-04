@@ -22,7 +22,7 @@
  * was the same reading in a worse place.
  */
 
-import { IconStairs } from "@tabler/icons-react";
+import { IconChevronLeft, IconStairs } from "@tabler/icons-react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
@@ -114,20 +114,23 @@ export function ClimbsSidebar({
   return (
     <section
       ref={sectionRef}
-      className="w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3"
+      className="relative w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3"
     >
+      {/*
+       * On the divider itself rather than in the column: a control belongs
+       * where the eye already goes to tell the two apart, not in a row that
+       * otherwise has nothing to say.
+       */}
+      <button
+        type="button"
+        aria-expanded
+        aria-label={`Hide ${count}`}
+        onClick={() => onOpenChange(false)}
+        className="absolute top-1/2 left-0 z-10 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+      >
+        <IconChevronLeft size={13} stroke={2} aria-hidden="true" />
+      </button>
       <div ref={headerRef}>
-        {/* The closed chip itself, still the way back to it: count and toggle, nothing to read. */}
-        <button
-          type="button"
-          aria-expanded
-          aria-label={`Hide ${count}`}
-          onClick={() => onOpenChange(false)}
-          className="flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-        >
-          <IconStairs size={13} stroke={2} aria-hidden="true" />
-          {count}
-        </button>
         {/*
          * Outside the scroller, so the names stay put while the climbs move
          * under them — a header that scrolls away is a header that is absent
