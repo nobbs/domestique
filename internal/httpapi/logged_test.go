@@ -104,4 +104,8 @@ func TestPathClass(t *testing.T) {
 	assert.Equal(t, "/healthz", pathClass("/healthz"))
 	assert.Equal(t, "/auth/callback", pathClass("/auth/callback"))
 	assert.Equal(t, "/v1/routes", pathClass("/v1/routes/abc/geometry"))
+	assert.Equal(t, "/settings/tasks", pathClass("/settings/tasks"))
+	assert.Equal(t, "/routes", pathClass("/routes/abc123/view"))
+	assert.Equal(t, "/routes", pathClass("/routes/veloplanner/abc123/view"))
+	assert.Equal(t, "/worker", pathClass("/worker/map.js"))
 }
