@@ -56,3 +56,18 @@ export function forecastResolution(leadHours: number): ForecastResolution {
     sentence: "More than 3 days out: coarser global guidance, past ICON's finer-grained range.",
   };
 }
+
+/**
+ * The resolution behind a forecast whose first reading lands at `arrivalAt`,
+ * counted from now. No arrival is a ride with nothing forecast for it yet,
+ * which reads as the sharpest grid rather than the coarsest.
+ *
+ * Here rather than in each layer that draws the forecast on the ground: the
+ * corridor's width comes from this figure, and two copies of the arithmetic
+ * would eventually disagree about how wide one ride's corridor is.
+ */
+export function arrivalResolution(arrivalAt: Date | undefined): ForecastResolution {
+  const leadHours = arrivalAt ? Math.max(0, (arrivalAt.getTime() - Date.now()) / 3_600_000) : 0;
+
+  return forecastResolution(leadHours);
+}

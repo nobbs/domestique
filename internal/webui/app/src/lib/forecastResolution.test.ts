@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { forecastResolution } from "./forecastResolution";
+import { arrivalResolution, forecastResolution } from "./forecastResolution";
 
 describe("forecastResolution", () => {
   it("reads a ride within two days as ICON-D2 at 2 km", () => {
@@ -40,5 +40,24 @@ describe("forecastResolution", () => {
     cells.forEach((cell, index) => {
       expect(cell).toBeGreaterThanOrEqual(cells[index - 1] ?? 0);
     });
+  });
+});
+
+describe("arrivalResolution", () => {
+  it("counts the lead time from now to the first reading of the ride", () => {
+    const tomorrow = new Date(Date.now() + 30 * 3_600_000);
+
+    expect(arrivalResolution(tomorrow).metresPerCell).toBe(2000);
+  });
+
+  it("reads a ride four days out as the coarser guidance it comes from", () => {
+    const later = new Date(Date.now() + 96 * 3_600_000);
+
+    expect(arrivalResolution(later).metresPerCell).toBe(11000);
+  });
+
+  it("treats a ride already under way, or one with no reading yet, as sharpest", () => {
+    expect(arrivalResolution(new Date(Date.now() - 3_600_000)).metresPerCell).toBe(2000);
+    expect(arrivalResolution(undefined).metresPerCell).toBe(2000);
   });
 });

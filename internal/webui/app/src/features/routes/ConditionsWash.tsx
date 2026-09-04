@@ -41,7 +41,7 @@ import type { BandRun, CorridorRing } from "../../lib/conditionsCorridor";
 import { corridorRings } from "../../lib/conditionsCorridor";
 import type { ScalarSample } from "../../lib/conditionsField";
 import { sampleScalarAt } from "../../lib/conditionsField";
-import { forecastResolution } from "../../lib/forecastResolution";
+import { arrivalResolution } from "../../lib/forecastResolution";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatDistance } from "../../lib/format";
 import type { Measure, MeasureKey } from "../../lib/measures";
@@ -208,11 +208,7 @@ export function ConditionsWash({
   // sample — the same figure the strip reports its resolution sentence from.
   // Not memoized: it reads Date.now(), so caching it against [samples] would
   // let the corridor width drift from that sentence as time passes.
-  const firstArrival = samples[0]?.arrivalAt;
-  const leadHours = firstArrival
-    ? Math.max(0, (firstArrival.getTime() - Date.now()) / 3_600_000)
-    : 0;
-  const metresPerCell = forecastResolution(leadHours).metresPerCell;
+  const metresPerCell = arrivalResolution(samples[0]?.arrivalAt).metresPerCell;
 
   const runs = useMemo(
     () =>
