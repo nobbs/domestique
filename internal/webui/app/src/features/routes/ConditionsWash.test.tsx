@@ -311,13 +311,21 @@ describe("the ground the wash covers", () => {
     expect(painting).toHaveLength(1);
   });
 
-  it("leaves the middle of a loop alone, rather than filling it in", () => {
-    show({ measure: "temperature", coordinates: LOOP, points: WARMING });
-    const features = washFeatures();
+  // A closed ring gives polygon-clipping self-intersections a hairpin never
+  // does, which makes this the slowest test in the file by a wide margin —
+  // comfortably under a second locally, but tight enough against CI's
+  // slower, shared hardware to need its own longer timeout.
+  it(
+    "leaves the middle of a loop alone, rather than filling it in",
+    () => {
+      show({ measure: "temperature", coordinates: LOOP, points: WARMING });
+      const features = washFeatures();
 
-    expect(features.filter((feature) => covers(feature, 8, 49))).toEqual([]);
-    expect(overlapping(features)).toEqual([]);
-  });
+      expect(features.filter((feature) => covers(feature, 8, 49))).toEqual([]);
+      expect(overlapping(features)).toEqual([]);
+    },
+    15_000,
+  );
 
   /*
    * The corridor's width comes from the forecast's own grid cell, so a forecast
