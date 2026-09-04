@@ -214,6 +214,22 @@ export function StartTimePicker({
           />
         </PopoverContent>
       </Popover>
+      <Input
+        id={TIME_ID}
+        type="time"
+        // Typed, not picked: the field takes hours and minutes from the keys,
+        // and WebKit's clock button opened a dropdown styled by nobody here.
+        // Five digit-widths for "hh:mm" plus the padding, so the box fits its text.
+        className={`appearance-none tabular-nums [&::-webkit-calendar-picker-indicator]:hidden ${inline ? "h-7 w-[calc(5ch+1.25rem)] px-2 text-xs" : "w-[calc(5ch+1.75rem)]"}`}
+        aria-label="The time the ride starts"
+        aria-describedby={refusal || hint ? "start-time-refusal" : undefined}
+        // Nothing for it to set a time on: no day is chosen and none pending,
+        // so an enabled field would be a control that swallows keystrokes.
+        disabled={shownDay === null}
+        value={value ? toTimeValue(value) : ""}
+        onChange={(event) => proposeTime(event.target.value)}
+        onBlur={(event) => proposeTime(event.target.value)}
+      />
       {shownDay === null ? null : (
         // The way back to nothing chosen. There is no default start time on
         // purpose — an invented one draws a confident forecast for a ride
@@ -231,21 +247,6 @@ export function StartTimePicker({
           <IconX size={14} stroke={2} aria-hidden="true" />
         </button>
       )}
-      <Input
-        id={TIME_ID}
-        type="time"
-        // Typed, not picked: the field takes hours and minutes from the keys,
-        // and WebKit's clock button opened a dropdown styled by nobody here.
-        className={`appearance-none tabular-nums [&::-webkit-calendar-picker-indicator]:hidden ${inline ? "h-7 w-[5.5rem] px-2 text-xs" : "w-[6.5rem]"}`}
-        aria-label="The time the ride starts"
-        aria-describedby={refusal || hint ? "start-time-refusal" : undefined}
-        // Nothing for it to set a time on: no day is chosen and none pending,
-        // so an enabled field would be a control that swallows keystrokes.
-        disabled={shownDay === null}
-        value={value ? toTimeValue(value) : ""}
-        onChange={(event) => proposeTime(event.target.value)}
-        onBlur={(event) => proposeTime(event.target.value)}
-      />
     </div>
   );
 
