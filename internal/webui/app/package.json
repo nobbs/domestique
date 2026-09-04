@@ -30,6 +30,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "maplibre-gl": "^6.6.0",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.2.8",
     "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.8",

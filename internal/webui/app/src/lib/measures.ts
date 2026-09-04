@@ -300,6 +300,29 @@ export const MEASURES: readonly Measure[] = [
   },
 ];
 
+/**
+ * Which custom property in index.css mirrors each measure's ramp. The band
+ * index is appended, so `--rain-2` is rain's third band.
+ */
+const MEASURE_VARIABLE: Record<MeasureKey, string> = {
+  wind: "--wind",
+  temperature: "--temp",
+  rain: "--rain",
+  cloud: "--cloud",
+};
+
+/**
+ * A band's colour as the custom property a panel reads.
+ *
+ * `colour` above is hex because MapLibre paints on a canvas and cannot resolve
+ * a property; a legend is not on the map, so it follows the page's theme
+ * instead — the same split `mix.ts` makes between `bandColour` and
+ * `bandVariable`. `cartography.test.ts` holds the two sides equal.
+ */
+export function measureVariable(key: MeasureKey, band: number): string {
+  return `var(${MEASURE_VARIABLE[key]}-${band})`;
+}
+
 /** `temperatureColour`'s hex twin, for a MapLibre paint property. */
 export function temperatureHexColour(band: number, dark: boolean): string {
   return rampColour(TEMPERATURE_COLOURS, band, dark);

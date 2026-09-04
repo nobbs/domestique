@@ -283,6 +283,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     setActiveMetres,
     highlight,
     setHighlight,
+    measure,
+    setMeasure,
     routeProfile,
     samples,
     movingSeconds,
@@ -438,6 +440,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
                 zoomWindow={shownWindow}
                 onZoomChange={onZoomChange}
                 highlight={highlight}
+                measure={measure}
                 unitSystem={unitSystem}
               />
             ) : null}
@@ -464,6 +467,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             onZoomChange={onZoomChange}
             highlight={highlight}
             onHighlightChange={scopeHighlight}
+            measure={measure}
+            onMeasureChange={setMeasure}
             unitSystem={unitSystem}
             open={dockOpen}
             onOpenChange={setDockOpen}

@@ -29,6 +29,7 @@ import type { Climb } from "../../lib/climbs";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
+import type { MeasureKey } from "../../lib/measures";
 import { useCoarsePointer } from "../../lib/mediaQuery";
 import { groundSegments } from "../../lib/mix";
 import { PADDING } from "../../lib/plotAxis";
@@ -38,6 +39,7 @@ import type { UnitSystem } from "../../lib/units";
 import { distanceUnitLabel, distanceValue } from "../../lib/units";
 import { ClimbMarkers } from "./ClimbMarkers";
 import { ClimbsSidebar } from "./ClimbsSidebar";
+import { ConditionsPicker } from "./ConditionsPicker";
 import { ElevationProfile } from "./ElevationProfile";
 import { ForecastFrame } from "./ForecastFrame";
 import { ForecastStrip } from "./ForecastStrip";
@@ -71,6 +73,9 @@ export interface RouteDockProps {
   onZoomChange: (window: DistanceWindow | null) => void;
   highlight: Highlight | null;
   onHighlightChange: (highlight: Highlight | null) => void;
+  /** The forecast measure the map is washed in, and null for none. */
+  measure: MeasureKey | null;
+  onMeasureChange: (measure: MeasureKey | null) => void;
   unitSystem: UnitSystem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -99,6 +104,8 @@ export function RouteDock({
   onZoomChange,
   highlight,
   onHighlightChange,
+  measure,
+  onMeasureChange,
   unitSystem,
   open,
   onOpenChange,
@@ -256,6 +263,20 @@ export function RouteDock({
               unitSystem={unitSystem}
             />
           </ForecastFrame>
+          {/*
+           * Outside the frame, not inside it. The band folds away and the wash
+           * on the map does not fold with it — a reader who put the strip away
+           * with the rain still painted across the ground would have no way
+           * left to turn it off.
+           */}
+          <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
+            <ConditionsPicker
+              measure={measure}
+              onMeasureChange={onMeasureChange}
+              samples={samples}
+              movingSeconds={movingSeconds}
+            />
+          </div>
         </div>
         <ClimbsSidebar
           climbs={climbs}

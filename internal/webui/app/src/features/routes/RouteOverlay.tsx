@@ -21,6 +21,7 @@ import { ROUTE_ACCENT, PANEL as ROUTE_CASING } from "../../lib/cartography";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import type { Highlight } from "../../lib/highlight";
 import { highlightRanges, litRanges } from "../../lib/highlight";
+import type { MeasureKey } from "../../lib/measures";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import { bandColour, coordinateRange, sampleAt } from "../../lib/profile";
 import { cuesDescription, routeCues } from "../../lib/routeCues";
@@ -29,6 +30,7 @@ import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_LINE_WIDTH, surfaceColour, surfaceLinesWithin } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { useEscapeKey } from "../../lib/useEscapeKey";
+import { ConditionsWash } from "./ConditionsWash";
 import { DirectionCues } from "./DirectionCues";
 import { HoverLink } from "./HoverLink";
 import { PositionTooltip } from "./PositionTooltip";
@@ -36,6 +38,9 @@ import { RouteTerminal } from "./RouteTerminal";
 import { SelectionLink } from "./SelectionLink";
 
 const SOURCE_ID = "route-geometry";
+
+/** The lowest layer the route itself draws, and so what the wash goes under. */
+const HALO_LAYER_ID = "route-window-halo";
 
 /** The casing's normal opacity, kept in one place so the dimmed one follows it. */
 const CASING_OPACITY = 0.85;
@@ -220,6 +225,11 @@ export interface RouteOverlayProps {
    * in on a climb and then asks for the gravel means the gravel on that climb.
    */
   highlight?: Highlight | null;
+  /**
+   * The forecast measure the route is washed in, and null — the default — for
+   * none. Read from the same samples above; nothing is drawn without both.
+   */
+  measure?: MeasureKey | null;
   /** The units the tooltip and the route's own screen-reader summary report in. */
   unitSystem?: UnitSystem;
 }
@@ -237,6 +247,7 @@ export function RouteOverlay({
   zoomWindow = null,
   onZoomChange,
   highlight = null,
+  measure = null,
   unitSystem = "metric",
 }: RouteOverlayProps) {
   // Picks the steepness ramp: the edging has to match the ground it is drawn
@@ -462,7 +473,7 @@ export function RouteOverlay({
        */}
       <Source id="route-window" type="geojson" data={haloRoute}>
         <Layer
-          id="route-window-halo"
+          id={HALO_LAYER_ID}
           type="line"
           beforeId={`route-gradient-${LOWEST_BAND_DRAWN}-line`}
           layout={{ "line-cap": "round", "line-join": "round" }}
@@ -476,6 +487,19 @@ export function RouteOverlay({
           }}
         />
       </Source>
+      {/*
+       * The forecast wash, under the halo and so under everything: it is a
+       * broad field the route is read against, and a route drawn on top of its
+       * own weather is still a route. Mounted after the layer it names, for the
+       * same reason the halo is mounted after the band it names.
+       */}
+      <ConditionsWash
+        coordinates={coordinates}
+        samples={samples}
+        measure={measure}
+        beforeId={HALO_LAYER_ID}
+        unitSystem={unitSystem}
+      />
       {surfaceFeatures.map(({ kind, data }) => (
         <Source key={kind} id={`route-surface-${kind}`} type="geojson" data={data}>
           <Layer
