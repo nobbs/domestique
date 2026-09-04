@@ -270,7 +270,21 @@ function ProfileStop({
         <Panel
           line={line}
           lineLabel="Elevation summary"
-          control={climbsOpen ? undefined : climbsSidebar}
+          control={
+            <div className="flex items-center gap-2">
+              {zoomWindow && onZoomChange ? (
+                <button
+                  type="button"
+                  aria-keyshortcuts="Escape"
+                  onClick={() => onZoomChange(null)}
+                  className="rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+                >
+                  Whole route
+                </button>
+              ) : null}
+              {climbsOpen ? null : climbsSidebar}
+            </div>
+          }
           info={
             <SteepnessTable
               coordinates={coordinates}
@@ -296,6 +310,7 @@ function ProfileStop({
               highlight={highlight}
               unitSystem={unitSystem}
               caption={false}
+              zoomBack={false}
             />
             <ClimbMarkers climbs={climbs} totalMetres={distanceMetres} onSelect={onActiveChange} />
           </div>

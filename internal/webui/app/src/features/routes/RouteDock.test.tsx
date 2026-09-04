@@ -201,6 +201,22 @@ describe("RouteDock", () => {
     expect(wrapper).not.toBeNull();
   });
 
+  it("puts the zoom-back control on the profile line, not a second one under the chart", () => {
+    const zoomWindow = { startMetres: 0, endMetres: 1_000 };
+    const { container } = renderDock({ zoomWindow });
+
+    const zoomBacks = [...container.querySelectorAll("button")].filter((button) =>
+      (button.textContent ?? "").startsWith("Whole route"),
+    );
+    expect(zoomBacks).toHaveLength(1);
+    expect(
+      within(screen.getByLabelText("Elevation summary").parentElement as HTMLElement).getByText(
+        "Whole route",
+        { exact: false },
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("folds the climbs list to a chip and back", async () => {
     const user = userEvent.setup();
     renderDock();

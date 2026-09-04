@@ -180,8 +180,10 @@ export interface ElevationProfileProps {
   highlight?: Highlight | null;
   /** The units the axis, the tooltip, and the accessible readout report in. */
   unitSystem?: UnitSystem;
-  /** Whether the footer's range/readout paragraph is shown; the zoom-back button is unaffected. */
+  /** Whether the footer's range/readout paragraph is shown. */
   caption?: boolean;
+  /** Whether the zoom-back button is shown here, for a caller that places its own elsewhere. */
+  zoomBack?: boolean;
 }
 
 /** One stretch of ground of a single steepness band. */
@@ -275,6 +277,7 @@ export function ElevationProfile({
   highlight = null,
   unitSystem = "metric",
   caption = true,
+  zoomBack = true,
 }: ElevationProfileProps) {
   const gradientId = useId();
   const { ref, width } = useElementWidth<HTMLDivElement>();
@@ -801,7 +804,7 @@ export function ElevationProfile({
          * does. The span sits inside the button, so the name says what is
          * being left as well as where it goes.
          */}
-        {zoomed && onZoomChange ? (
+        {zoomBack && zoomed && onZoomChange ? (
           <Button variant="outline" aria-keyshortcuts="Escape" onClick={() => onZoomChange(null)}>
             Whole route
             <span className="tabular-nums"> · showing {shownLabel}</span>
