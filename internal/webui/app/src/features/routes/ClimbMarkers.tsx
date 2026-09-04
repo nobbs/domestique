@@ -58,7 +58,10 @@ export function ClimbMarkers({
             <button
               key={climb.startMetres}
               type="button"
-              onClick={() => onSelect((climb.startMetres + climb.endMetres) / 2)}
+              // The visible bracket's own midpoint, not the whole climb's: a
+              // climb only partly in view has its true centre outside the
+              // window, where the profile has no sample to select.
+              onClick={() => onSelect((clampedStart + clampedEnd) / 2)}
               aria-label={`Climb ${ordinal}`}
               className="pointer-events-auto absolute rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
               style={{

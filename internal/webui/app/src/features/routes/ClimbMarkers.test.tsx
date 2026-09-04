@@ -2,7 +2,7 @@
  * The climb brackets, against a shown window narrower than the full route.
  */
 
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Climb } from "../../lib/climbs";
 import { bandVariable } from "../../lib/mix";
@@ -58,6 +58,19 @@ describe("ClimbMarkers", () => {
     const third = screen.getByRole("button", { name: "Climb 3" });
     expect(third.style.left).toBe("90%");
     expect(third.style.width).toBe("10%"); // clamped to the window's end at 8500.
+  });
+
+  it("selects the visible bracket's own midpoint, not a point the window has cut away", () => {
+    const onSelect = vi.fn();
+    // Climb 2 runs 3000-4000; its true midpoint (3500) sits right at the
+    // window's own edge, outside the profile the chart is actually showing.
+    render(
+      <ClimbMarkers climbs={THREE} startMetres={3_500} endMetres={8_500} onSelect={onSelect} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Climb 2" }));
+
+    expect(onSelect).toHaveBeenCalledWith(3_750);
   });
 
   it("keeps a climb's full-route ordinal after zooming past an earlier climb", () => {

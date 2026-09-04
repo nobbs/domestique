@@ -77,7 +77,11 @@ function Panel({
         className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1"
         style={gutter ? GUTTER : undefined}
       >
-        <output aria-label={lineLabel} className="text-xs text-[var(--ink-2)] tabular-nums">
+        <output
+          aria-label={lineLabel}
+          aria-live="polite"
+          className="text-xs text-[var(--ink-2)] tabular-nums"
+        >
           <span className="text-sm font-semibold text-[var(--ink)]">{lead}</span>
           {rest === undefined ? null : ` · ${rest}`}
         </output>
