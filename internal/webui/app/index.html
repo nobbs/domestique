@@ -14,9 +14,12 @@
          the Home Screen the same document gets the entire screen, which is why
          the two Apple meta tags and the manifest below are here: they are the
          only way the map actually runs edge to edge on a phone today. -->
+    <!-- `user-scalable=no` is what Chrome and Android WebView read to hold the
+         document at one scale; iOS has ignored it since iOS 10, and is held
+         still by `lockPageZoom` and `touch-action` instead. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
     />
     <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

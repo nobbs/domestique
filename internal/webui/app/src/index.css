@@ -187,6 +187,15 @@
 *::after { box-sizing: border-box; }
 
 html, body, #root { min-height: 100%; min-height: 100dvh; }
+
+/*
+ * The frame is fixed and the map owns the only zoom worth having; see
+ * `lib/pageZoom.ts`. `pan-x pan-y` is `auto` minus `pinch-zoom` and minus
+ * double-tap zoom, so scrolling a panel and swiping a drawer are untouched,
+ * and MapLibre's pinch is its own — it reads the touches rather than the
+ * browser's gesture.
+ */
+html { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--base); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.55; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
