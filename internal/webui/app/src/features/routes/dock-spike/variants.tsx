@@ -477,7 +477,9 @@ function SteepnessTable() {
 
 function Profile(s: DockState) {
   return (
-    <div className="relative">
+    // ponytail: the chart prints its own range line, and the hover readout in
+    // the same slot; both hidden here, the readout moves into the top line for real.
+    <div className="relative [&_p]:hidden">
       <ElevationProfile
         profile={profile}
         title={route.title}
