@@ -738,11 +738,13 @@ function Basemaps({ settings }: { settings: Settings }) {
 
     return saved !== undefined && (url === saved.styleUrl || url === saved.styleUrlDark);
   };
-  const strips = basemaps.reduce((count, basemap) => count + (basemap.styleUrlDark ? 2 : 1), 0);
-  const styleUrlsOf = (basemap: BrowserBasemap) =>
-    strips <= MOST_STRIPS
-      ? [basemap.styleUrl, basemap.styleUrlDark].filter((url): url is string => Boolean(url))
-      : [];
+  const urlsOf = (basemap: BrowserBasemap) =>
+    [
+      { role: "light", url: basemap.styleUrl },
+      { role: "dark", url: basemap.styleUrlDark },
+    ].filter((entry): entry is { role: string; url: string } => Boolean(entry.url));
+  const strips = basemaps.reduce((count, basemap) => count + urlsOf(basemap).length, 0);
+  const styleUrlsOf = (basemap: BrowserBasemap) => (strips <= MOST_STRIPS ? urlsOf(basemap) : []);
 
   return (
     <Section
@@ -780,12 +782,12 @@ function Basemaps({ settings }: { settings: Settings }) {
             </div>
             {styleUrlsOf(basemap).length > 0 ? (
               <div className="grid gap-3 sm:grid-flow-col sm:auto-cols-fr">
-                {styleUrlsOf(basemap).map((url) =>
+                {styleUrlsOf(basemap).map(({ role, url }) =>
                   savedInRow(key, url) ? (
-                    <BasemapStrip key={url} styleUrl={url} />
+                    <BasemapStrip key={role} styleUrl={url} />
                   ) : (
                     <span
-                      key={url}
+                      key={role}
                       className="flex h-40 items-center justify-center rounded-lg bg-[var(--base)] text-sm text-[var(--ink-2)] ring-1 ring-[var(--rule)]"
                     >
                       Save to preview
