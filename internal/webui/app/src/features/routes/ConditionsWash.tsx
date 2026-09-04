@@ -209,7 +209,9 @@ export function ConditionsWash({
   // Not memoized: it reads Date.now(), so caching it against [samples] would
   // let the corridor width drift from that sentence as time passes.
   const firstArrival = samples[0]?.arrivalAt;
-  const leadHours = firstArrival ? Math.max(0, (firstArrival.getTime() - Date.now()) / 3_600_000) : 0;
+  const leadHours = firstArrival
+    ? Math.max(0, (firstArrival.getTime() - Date.now()) / 3_600_000)
+    : 0;
   const metresPerCell = forecastResolution(leadHours).metresPerCell;
 
   const runs = useMemo(
