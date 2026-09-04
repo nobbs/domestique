@@ -95,7 +95,14 @@ function widen(pixels: number): () => void {
   return () => {
     if (original) {
       Object.defineProperty(HTMLElement.prototype, "clientWidth", original);
+
+      return;
     }
+    // jsdom carries `clientWidth` on `Element.prototype`, so there is no own
+    // property here to put back and restoring one would be a no-op — deleting
+    // the override is what uncovers the inherited accessor again. Left in
+    // place it would report 900 to every later test in this worker.
+    Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
   };
 }
 
@@ -153,6 +160,15 @@ describe("ForecastStrip", () => {
     } finally {
       restore();
     }
+  });
+
+  it("leaves the width it stubbed behind it, rather than in the next test", () => {
+    const restore = widen(900);
+    expect(document.createElement("div").clientWidth).toBe(900);
+
+    restore();
+
+    expect(document.createElement("div").clientWidth).toBe(0);
   });
 
   it("names that direction for a reader who cannot see the glyph", () => {
