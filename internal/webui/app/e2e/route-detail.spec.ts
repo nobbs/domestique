@@ -259,7 +259,7 @@ test("the detail dock folds away and leaves the route open", async ({ offlinePag
   // The route is still open around it: the dock was put away, not the route.
   await expect(routePanel(page)).toContainText("km");
 
-  await page.getByRole("button", { name: "Show the route detail" }).click();
+  await page.getByRole("button", { name: "Show the profile" }).click();
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 });
 

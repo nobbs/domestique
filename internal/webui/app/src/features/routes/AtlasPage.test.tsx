@@ -626,7 +626,7 @@ describe("AtlasPage", () => {
     renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
     await userEvent.click(screen.getByRole("button", { name: "Hide the route detail" }));
 
-    expect(screen.getByRole("button", { name: "Show the route detail" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
   });
 

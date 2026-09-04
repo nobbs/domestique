@@ -10,7 +10,6 @@ import {
   IconCloud,
   IconInfoCircle,
   IconLayoutBottombarCollapse,
-  IconLayoutBottombarExpand,
   IconMountain,
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
@@ -445,21 +444,9 @@ export function RouteDock({
           <IconCloud size={15} stroke={2} aria-hidden="true" />
           Forecast
         </button>
-        <div className="ml-auto flex items-center gap-2">
-          {back === undefined ? null : (
-            <span className="text-[10px] text-[var(--ink-2)]">back {clockAt(back)}</span>
-          )}
-          <button
-            type="button"
-            aria-expanded={false}
-            aria-label="Show the route detail"
-            onClick={() => onOpenChange(true)}
-            className={FOLDED_CONTROL}
-          >
-            <IconLayoutBottombarExpand size={15} stroke={2} aria-hidden="true" />
-            Show
-          </button>
-        </div>
+        {back === undefined ? null : (
+          <span className="ml-auto text-[10px] text-[var(--ink-2)]">back {clockAt(back)}</span>
+        )}
       </div>
     );
   }

@@ -3,7 +3,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -135,7 +135,7 @@ describe("RouteDock", () => {
     expect(await screen.findByText(/resolution/)).toBeInTheDocument();
   });
 
-  it("folds to a strip and back on the last-shown stop", async () => {
+  it("folds to a strip with only the two stop buttons, reopening on the chosen stop", async () => {
     const user = userEvent.setup();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(weatherQuery(weatherSamples).queryKey, { points: [] });
@@ -176,15 +176,14 @@ describe("RouteDock", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Hide the route detail" }));
-    expect(screen.getByRole("group", { name: "Route detail, folded" })).toBeInTheDocument();
+    const strip = screen.getByRole("group", { name: "Route detail, folded" });
+    expect(strip).toBeInTheDocument();
+    expect(within(strip).getAllByRole("button")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Show the forecast" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show the route detail" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Show the forecast" }));
-    expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
-
-    await user.click(screen.getByRole("button", { name: "Hide the route detail" }));
-    await user.click(screen.getByRole("button", { name: "Show the route detail" }));
     expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
   });
 });
