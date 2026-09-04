@@ -156,8 +156,11 @@ export function windRuns(cells: Cell[], coordinates: Position[], distances: numb
       const atMetres = cell.startMetres + (span * step) / steps;
       const reading = relationAt(coordinates, distances, atMetres, cell.point.windDirectionDegrees);
       // No bearing at all is "no road here", which is not the answer `"mixed"`
-      // gives — so it opens nothing rather than being drawn as a neutral.
+      // gives — so it opens nothing rather than being drawn as a neutral, and
+      // the run open before this gap closes rather than silently stretching
+      // across ground with no bearing to justify it.
       if (reading.relation === null) {
+        openIndex = -1;
         continue;
       }
       const stop =
@@ -170,10 +173,14 @@ export function windRuns(cells: Cell[], coordinates: Position[], distances: numb
 
         continue;
       }
-      // A change is read at this point, so the run before it ends here and the
-      // new one starts where that one ended: the two share a distance.
+      // A change is read at this point, so the run before it ends here — not
+      // wherever it was last extended to — and the new one starts at the same
+      // distance, so the two share a boundary rather than a gap.
+      if (open) {
+        open.toMetres = atMetres;
+      }
       runs.push({
-        fromMetres: open?.toMetres ?? atMetres,
+        fromMetres: atMetres,
         toMetres: atMetres,
         stop,
         windSpeedKmh: cell.point.windSpeedKmh,
