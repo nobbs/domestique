@@ -397,11 +397,20 @@ export function cloudColour(band: number, dark: boolean): string {
 }
 
 /**
+ * A component this close to nought is a pure crosswind read through
+ * floating-point noise, not a genuine lean toward the head or tail side —
+ * `windRelation`'s `-cos(angleDifference)` lands a hair either side of zero at
+ * exactly ±90°, and picking a stop by that sign alone would flip it between
+ * two adjacent readings of the same wind.
+ */
+const CROSSWIND_EPSILON = 1e-9;
+
+/**
  * Which stop of the head-to-tail ramp a reading sits on, from `windRelation`'s
  * own answer rather than from a second set of cuts over the same component.
  */
 export function windRelationStop(relation: WindRelation, componentKmhPerKmh: number): number {
-  const leaning = componentKmhPerKmh < 0 ? 1 : 2;
+  const leaning = componentKmhPerKmh < -CROSSWIND_EPSILON ? 1 : 2;
 
   return relation === "head" ? 0 : relation === "tail" ? 3 : leaning;
 }
