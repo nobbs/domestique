@@ -236,24 +236,6 @@ describe("ElevationProfile", () => {
     expect(screen.queryByText(/Gravel|Asphalt|Unsurveyed/)).not.toBeInTheDocument();
   });
 
-  it("makes room under the plot for a ribbon when asked", () => {
-    const plain = render(<Harness />);
-    const plainHeight = Number(screen.getByRole("img").getAttribute("height"));
-    plain.unmount();
-
-    render(
-      <ElevationProfile
-        profile={buildProfile(climb())}
-        title="Eich Rundkurs 90"
-        activeMetres={null}
-        onActiveChange={() => {}}
-        axisGap={16}
-      />,
-    );
-
-    expect(Number(screen.getByRole("img").getAttribute("height"))).toBe(plainHeight + 16);
-  });
-
   it("says so plainly when a route has no elevation", () => {
     const flat: Position[] = [
       [8, 49],

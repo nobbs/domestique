@@ -140,8 +140,6 @@ export interface ElevationProfileProps {
   highlight?: Highlight | null;
   /** The units the axis, the tooltip, and the accessible readout report in. */
   unitSystem?: UnitSystem;
-  /** Extra pixels between the plot's floor and the distance labels, for a caller laying a ribbon there. */
-  axisGap?: number;
 }
 
 /** One stretch of ground of a single steepness band. */
@@ -234,13 +232,12 @@ export function ElevationProfile({
   onZoomChange,
   highlight = null,
   unitSystem = "metric",
-  axisGap = 0,
 }: ElevationProfileProps) {
   const gradientId = useId();
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
   const plotHeight = useNarrowViewport() ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide;
-  const height = plotHeight + PADDING.top + PADDING.bottom + axisGap;
+  const height = plotHeight + PADDING.top + PADDING.bottom;
 
   // Measured through the shared axis rather than repeating its arithmetic, so
   // the chart and the forecast strip below it cannot disagree about how much
@@ -566,8 +563,7 @@ export function ElevationProfile({
             tick={{ fill: "var(--ink-2)", fontSize: 12 }}
             tickLine={false}
             axisLine={false}
-            tickMargin={axisGap}
-            height={PADDING.bottom + axisGap}
+            height={PADDING.bottom}
           />
           <YAxis
             type="number"

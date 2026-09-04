@@ -475,9 +475,6 @@ function SteepnessTable() {
 
 /* ---- the lanes, as they exist today, each wrapped once ------------------ */
 
-/** The ribbon's height plus a hair of air above it, laid between the plot and its axis. */
-const RIBBON_GAP = 16;
-
 function Profile(s: DockState) {
   return (
     // ponytail: the chart prints its own range line, and the hover readout in
@@ -493,28 +490,12 @@ function Profile(s: DockState) {
         onZoomChange={s.setZoomWindow}
         highlight={s.highlight}
         unitSystem={UNITS}
-        axisGap={RIBBON_GAP}
       />
       <ClimbMarkers
         climbs={climbs}
         totalMetres={route.distanceMetres}
         onSelect={s.setActiveMetres}
       />
-      {/* Between the plot's floor and the distance labels: the ground under the
-          terrain, read against the same axis. Unlabelled, since the names would
-          land on the axis; they wait under the pointer and behind the ⓘ. */}
-      <div
-        className="absolute right-0 left-0"
-        style={{ ...GUTTER, bottom: PADDING.bottom, height: RIBBON_GAP, paddingTop: 4 }}
-      >
-        <GroundRibbon
-          segments={groundSegments(surface)}
-          surface={surface}
-          labelled={false}
-          highlight={s.highlight}
-          onHighlightChange={s.setHighlight}
-        />
-      </div>
     </div>
   );
 }
@@ -594,6 +575,7 @@ function ProfileWithClimbs(s: DockState) {
       <div className="min-w-0 flex-1">
         <Panel line={profileLine(s)} info={<SteepnessTable />}>
           <Profile {...s} />
+          <Ground {...s} />
         </Panel>
       </div>
       {/* Five whole rows of 28px: the rows snap, and a viewport that is a
