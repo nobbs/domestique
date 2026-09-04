@@ -373,15 +373,18 @@ function ForecastStop({
         </p>
       }
     >
-      <ForecastStrip
-        samples={samples}
-        coordinates={coordinates}
-        startMetres={shown.startMetres}
-        endMetres={shown.endMetres}
-        unitSystem={unitSystem}
-        inset={false}
-        caption={false}
-      />
+      <div className="min-h-0 flex-1">
+        <ForecastStrip
+          samples={samples}
+          coordinates={coordinates}
+          startMetres={shown.startMetres}
+          endMetres={shown.endMetres}
+          unitSystem={unitSystem}
+          inset={false}
+          caption={false}
+          fill
+        />
+      </div>
       <ConditionsKey measure={measure} samples={samples} unitSystem={unitSystem} />
       {/* Pinned to the panel's own foot rather than following the key up
           against the strip, so the departure and the wash choice stay put

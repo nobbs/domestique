@@ -56,6 +56,7 @@ function renderStrip(options: {
   samples?: ReturnType<typeof forecastSamples>;
   coordinates?: Position[];
   seed?: WeatherForecast;
+  fill?: boolean;
 }) {
   const coordinates = options.coordinates ?? road();
   const samples =
@@ -73,6 +74,7 @@ function renderStrip(options: {
         startMetres={0}
         endMetres={distances[distances.length - 1] ?? 0}
         unitSystem="metric"
+        fill={options.fill ?? false}
       />
     </QueryClientProvider>,
   );
@@ -129,6 +131,21 @@ describe("ForecastStrip", () => {
     expect(container.querySelectorAll("[style*='color-mix']").length).toBeGreaterThanOrEqual(
       samples.length,
     );
+  });
+
+  it("grows the tile row to its flex parent's height instead of a fixed one, when asked", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    const fixed = renderStrip({ coordinates, samples, seed });
+    const fixedBox = fixed.container.querySelector(".border") as HTMLElement;
+    expect(fixedBox.style.height).toBe("62px");
+    fixed.unmount();
+
+    const grown = renderStrip({ coordinates, samples, seed, fill: true });
+    const grownBox = grown.container.querySelector(".border") as HTMLElement;
+    expect(grownBox.style.height).toBe("");
+    expect(grownBox).toHaveClass("h-full");
   });
 
   /*

@@ -80,6 +80,8 @@ export interface ForecastStripProps {
   inset?: boolean;
   /** Whether the resolution sentence below the strip is shown. */
   caption?: boolean;
+  /** Grows the strip to fill a flex parent's height instead of sitting at a fixed one. */
+  fill?: boolean;
 }
 
 export function ForecastStrip({
@@ -90,6 +92,7 @@ export function ForecastStrip({
   unitSystem,
   inset = true,
   caption = true,
+  fill = false,
 }: ForecastStripProps) {
   // Nothing to ask about without samples: the endpoint refuses an empty
   // request, and the strip renders nothing for one anyway.
@@ -138,18 +141,28 @@ export function ForecastStrip({
     // Named as a group rather than as an image: the old strip was one graphic
     // with a hidden table beside it, and this one is tiles carrying their own
     // readings — marking it `img` would hide every figure on it.
-    <div ref={ref} role="group" aria-label={`Forecast along the way, ${cells.length} readings`}>
+    <div
+      ref={ref}
+      role="group"
+      aria-label={`Forecast along the way, ${cells.length} readings`}
+      className={fill ? "flex h-full flex-col" : undefined}
+    >
       {/*
        * The chart's own gutters, left clear rather than drawn in: this strip
        * has no axis labels of its own but reserves the same margin, which is
        * what keeps its tiles under the terrain they describe.
        */}
       <div
+        className={fill ? "min-h-0 flex-1" : undefined}
         style={{ paddingLeft: inset ? PADDING.left : 0, paddingRight: inset ? PADDING.right : 0 }}
       >
         <div
-          className="relative overflow-hidden border border-[var(--rule)]"
-          style={{ height: TILE_HEIGHT, borderRadius: STRIP_RADIUS }}
+          className="relative h-full overflow-hidden border border-[var(--rule)]"
+          style={
+            fill
+              ? { borderRadius: STRIP_RADIUS }
+              : { height: TILE_HEIGHT, borderRadius: STRIP_RADIUS }
+          }
         >
           {cells.map((cell) => {
             const left = x(cell.startMetres);
@@ -167,6 +180,7 @@ export function ForecastStrip({
                 style={{
                   left,
                   width: cellWidth,
+                  ...(fill ? { bottom: 0 } : { height: TILE_HEIGHT }),
                   height: TILE_HEIGHT,
                   backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
                 }}
