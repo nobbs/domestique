@@ -234,7 +234,9 @@ export function StartTimePicker({
       <Input
         id={TIME_ID}
         type="time"
-        className={inline ? "h-7 w-[6.5rem] px-2 text-xs tabular-nums" : "w-[7.5rem] tabular-nums"}
+        // Typed, not picked: the field takes hours and minutes from the keys,
+        // and WebKit's clock button opened a dropdown styled by nobody here.
+        className={`appearance-none tabular-nums [&::-webkit-calendar-picker-indicator]:hidden ${inline ? "h-7 w-[5.5rem] px-2 text-xs" : "w-[6.5rem]"}`}
         aria-label="The time the ride starts"
         aria-describedby={refusal || hint ? "start-time-refusal" : undefined}
         // Nothing for it to set a time on: no day is chosen and none pending,
