@@ -14,6 +14,7 @@ import {
   IconCircleOff,
   IconCloud,
   IconCloudRain,
+  IconInfoCircle,
   IconMountain,
   type IconProps,
   IconRoad,
@@ -24,6 +25,8 @@ import {
 import type { ComponentType, ReactNode } from "react";
 import { useState } from "react";
 import { StartTimePicker } from "../../../components/StartTimePicker";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { forecastResolution } from "../../../lib/forecastResolution";
 import { formatAscent, formatDistance, formatElevation } from "../../../lib/format";
 import type { Highlight } from "../../../lib/highlight";
 import type { Measure, MeasureKey } from "../../../lib/measures";
@@ -33,10 +36,11 @@ import {
   WIND_RELATION_KEY,
   windRelationVariable,
 } from "../../../lib/measures";
-import { groundSegments } from "../../../lib/mix";
+import { bandEntries, groundSegments, surfaceEntries } from "../../../lib/mix";
 import { PADDING } from "../../../lib/plotAxis";
 import type { DistanceWindow } from "../../../lib/profile";
 import {
+  bands,
   climbs,
   coordinates,
   profile,
@@ -51,6 +55,7 @@ import { ConditionsPicker } from "../ConditionsPicker";
 import { ElevationProfile } from "../ElevationProfile";
 import { ForecastStrip } from "../ForecastStrip";
 import { GroundRibbon } from "../GroundRibbon";
+import { MixColumn } from "../MixColumn";
 
 const UNITS = "metric";
 const GUTTER = { paddingLeft: PADDING.left, paddingRight: PADDING.right };
@@ -99,11 +104,14 @@ export function useDockState(): DockState {
 function Panel({
   line,
   control,
+  info,
   gutter = true,
   children,
 }: {
   line: string;
   control?: ReactNode;
+  /** What waits behind the ⓘ at the line's end: the figures a glance does not need. */
+  info?: ReactNode;
   /** Whether the line sits over the chart's plotted area; off where there is no axis. */
   gutter?: boolean;
   children: ReactNode;
@@ -122,7 +130,22 @@ function Panel({
           <span className="text-sm font-semibold text-[var(--ink)]">{lead}</span>
           {rest === undefined ? null : ` · ${rest}`}
         </output>
-        {control}
+        <div className="flex items-center gap-3">
+          {control}
+          {info === undefined ? null : (
+            <Popover>
+              <PopoverTrigger
+                aria-label="More about this"
+                className="rounded-full p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[popup-open]:text-[var(--ink)]"
+              >
+                <IconInfoCircle size={16} stroke={1.8} aria-hidden="true" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-3">
+                {info}
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
       </div>
       {children}
     </div>
@@ -428,11 +451,18 @@ function Ground(s: DockState) {
 function Forecast(s: DockState) {
   const shown = s.zoomWindow ?? { startMetres: 0, endMetres: route.distanceMetres };
   const back = weatherSamples[weatherSamples.length - 1]?.arrivalAt;
+  const first = weatherSamples[0]?.arrivalAt;
+  const leadHours = first ? Math.max(0, (first.getTime() - Date.now()) / 3_600_000) : 0;
 
   return (
     <Panel
       gutter={false}
       line={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
+      info={
+        <p className="max-w-64 text-xs text-[var(--ink-2)]">
+          {forecastResolution(leadHours).sentence}
+        </p>
+      }
       control={
         <div className="flex flex-wrap items-center gap-3">
           <Choices {...s} />
@@ -445,8 +475,12 @@ function Forecast(s: DockState) {
         </div>
       }
     >
-      {/* ponytail: the strip reserves the chart's gutters itself; undone here, parameterised for real. */}
-      <div style={{ marginLeft: -PADDING.left, marginRight: -PADDING.right }}>
+      {/* ponytail: the strip reserves the chart's gutters and prints the model
+          note itself; both undone here, parameterised for real. */}
+      <div
+        className="[&>div>p]:hidden"
+        style={{ marginLeft: -PADDING.left, marginRight: -PADDING.right }}
+      >
         <ForecastStrip
           samples={weatherSamples}
           coordinates={coordinates}
@@ -473,7 +507,31 @@ function ProfileWithClimbs(s: DockState) {
   return (
     <div className="flex h-full items-stretch gap-3">
       <div className="min-w-0 flex-1">
-        <Panel line={profileLine(s)}>
+        <Panel
+          line={profileLine(s)}
+          info={
+            <div className="flex gap-6">
+              <MixColumn
+                name="Steepness"
+                classesLabel="Gradient bands"
+                entries={bandEntries(bands, route.distanceMetres)}
+                absence="Nothing has graded this route."
+                highlight={s.highlight}
+                onHighlightChange={s.setHighlight}
+                unitSystem={UNITS}
+              />
+              <MixColumn
+                name="Ground"
+                classesLabel="Ground classes"
+                entries={surfaceEntries(surface)}
+                absence="Nothing has classified this route's ground."
+                highlight={s.highlight}
+                onHighlightChange={s.setHighlight}
+                unitSystem={UNITS}
+              />
+            </div>
+          }
+        >
           <Profile {...s} />
           <Ground {...s} />
         </Panel>
