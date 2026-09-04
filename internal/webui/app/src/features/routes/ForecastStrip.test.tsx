@@ -78,6 +78,27 @@ function renderStrip(options: {
   );
 }
 
+/**
+ * A strip wide enough for its tiles to still carry a wind glyph.
+ *
+ * jsdom reports every element as nought wide, and a tile that narrow drops its
+ * wind before anything else — so without this the arrow under test is never
+ * drawn at all and the assertion passes against an empty strip.
+ */
+function widen(pixels: number): () => void {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: () => pixels,
+  });
+
+  return () => {
+    if (original) {
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", original);
+    }
+  };
+}
+
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
@@ -101,6 +122,50 @@ describe("ForecastStrip", () => {
     expect(container.querySelectorAll("[style*='color-mix']").length).toBeGreaterThanOrEqual(
       samples.length,
     );
+  });
+
+  /*
+   * The frame, not the pixels. A tile's arrow and the arrows on the map are the
+   * same fact, and they once disagreed by the road's own bearing — the tile
+   * measured the wind against the rider, the map against north. On this
+   * due-east road that gap is the whole reading: rider-relative, this same wind
+   * draws at 0°.
+   */
+  it("points the tile's arrow the way the air is going, in the compass frame", () => {
+    const restore = widen(900);
+    try {
+      const coordinates = road();
+      const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+      const { container } = renderStrip({
+        coordinates,
+        samples,
+        seed: forecastFor(samples.length),
+      });
+      const arrows = [...container.querySelectorAll("svg")].filter((svg) =>
+        svg.getAttribute("style")?.includes("rotate"),
+      );
+
+      expect(arrows.length).toBeGreaterThan(0);
+      // The fixture's wind is from the west, so the air is going due east.
+      for (const arrow of arrows) {
+        expect(arrow).toHaveStyle({ transform: "rotate(90deg)" });
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("names that direction for a reader who cannot see the glyph", () => {
+    const restore = widen(900);
+    try {
+      const coordinates = road();
+      const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+      renderStrip({ coordinates, samples, seed: forecastFor(samples.length) });
+
+      expect(screen.getAllByLabelText(/toward the east/).length).toBeGreaterThan(0);
+    } finally {
+      restore();
+    }
   });
 
   it("says how sharp a forecast this far ahead can be", () => {

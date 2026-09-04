@@ -17,13 +17,17 @@
  * — so a caller only has to hand over what the forecast is asked about, not
  * thread a query result through props.
  *
- * The wind reading can be honestly unsettled. A switchback is heading two
- * directions within a few hundred metres, and `wind.ts` reports that as
- * `"mixed"` rather than averaging it into a confident crosswind; this draws
- * that as its own glyph rather than picking one of the two to believe.
+ * The tile's arrow is a compass arrow, north up: it points the way the air is
+ * going, which is what the tooltip's arrow and the drifting field on the map
+ * both say. Measured against the way the rider faces instead — as it once was
+ * — the same wind read one way in a tile and the opposite way on the map
+ * wherever the road ran south, with nothing in a row of weather tiles to tell
+ * a reader which of the two frames they were looking at. What the wind does
+ * *to the rider* is the route's own tint, and it is said in colour there
+ * rather than in a second arrow here.
  */
 
-import { IconArrowUp, IconWind } from "@tabler/icons-react";
+import { IconArrowUp } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { weatherQuery } from "../../api/queries";
@@ -31,7 +35,9 @@ import { ApiError } from "../../api/request";
 import type { Position } from "../../api/types";
 import { forecastResolution } from "../../lib/forecastResolution";
 import type { ForecastSample } from "../../lib/forecastSamples";
+import { formatWindSpeed } from "../../lib/format";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
+import { compassPoint } from "../../lib/routeCues";
 import type { UnitSystem } from "../../lib/units";
 import { speedValue, temperatureValue } from "../../lib/units";
 import { useElementWidth } from "../../lib/useElementWidth";
@@ -181,16 +187,22 @@ export function ForecastStrip({
                 <span
                   className="flex items-center gap-0.5 text-[10px] text-[var(--ink-2)] tabular-nums"
                   style={{ opacity: 0.4 + windWeight(cell.point.windSpeedKmh) * 0.6 }}
+                  // The glyph is a picture and the figure beside it a bare
+                  // number, so between them they say nothing about direction to
+                  // a reader who is not looking at the strip.
+                  aria-label={
+                    wind
+                      ? `Wind ${formatWindSpeed(cell.point.windSpeedKmh, unitSystem)} toward the ${compassPoint(cell.flowDegrees)}`
+                      : undefined
+                  }
                 >
-                  {!wind ? null : cell.relation === "mixed" || cell.pushDegrees === null ? (
-                    <IconWind size={12} stroke={1.8} />
-                  ) : (
+                  {wind ? (
                     <IconArrowUp
                       size={12}
                       stroke={2.2}
-                      style={{ transform: `rotate(${cell.pushDegrees}deg)` }}
+                      style={{ transform: `rotate(${cell.flowDegrees}deg)` }}
                     />
-                  )}
+                  ) : null}
                   {wind ? Math.round(speedValue(cell.point.windSpeedKmh, unitSystem)) : null}
                 </span>
               </div>

@@ -87,6 +87,59 @@ function distinctStops(route: Position[], windFromDegrees: number): (number | nu
 const EAST = straightRoute(90, 21);
 const WEST = straightRoute(270, 21);
 
+describe("the direction a tile's arrow points", () => {
+  it("reads where the air is going, not where the forecast says it comes from", () => {
+    const samples = samplesAlong(EAST);
+    const cells = buildCells(
+      samples,
+      samples.map(() => point(270)),
+      EAST,
+    );
+
+    // A wind *from* the west is air moving east.
+    expect(cells[0]?.flowDegrees).toBeCloseTo(90, 6);
+  });
+
+  /*
+   * The bug this is here for: the strip's arrow and the map's arrows once
+   * disagreed by exactly the road's own bearing, because the tile measured the
+   * wind against the rider and the map measured it against north. The same
+   * reading over the same ground has one direction, whichever way the road
+   * happens to run through it — the relation is what flips.
+   */
+  it("says the same direction whichever way the road runs, where the relation flips", () => {
+    const there = buildCells(
+      samplesAlong(EAST),
+      samplesAlong(EAST).map(() => point(90)),
+      EAST,
+    );
+    const back = buildCells(
+      samplesAlong(WEST),
+      samplesAlong(WEST).map(() => point(90)),
+      WEST,
+    );
+
+    expect(there[0]?.flowDegrees).toBeCloseTo(270, 6);
+    expect(back[0]?.flowDegrees).toBeCloseTo(270, 6);
+    expect(there[0]?.relation).toBe("head");
+    expect(back[0]?.relation).toBe("tail");
+  });
+
+  it("still has a direction where the road doubles back and the relation has none", () => {
+    const route = switchback();
+    const samples = samplesAlong(route);
+    const cells = buildCells(
+      samples,
+      samples.map(() => point(0)),
+      route,
+    );
+    const turn = cells.find((cell) => cell.relation === "mixed");
+
+    expect(turn).toBeDefined();
+    expect(turn?.flowDegrees).toBeCloseTo(180, 6);
+  });
+});
+
 describe("the wind against the way the road runs", () => {
   it("reads a road run into the wind as a headwind, end to end", () => {
     expect(distinctStops(EAST, 90)).toEqual([0]);
