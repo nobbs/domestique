@@ -733,18 +733,26 @@ function Basemaps({ settings }: { settings: Settings }) {
 
   // The browser may only reach the origins of saved styles, and the hosts each
   // one names are learnt on save — so a typed URL cannot be drawn until then.
-  const savedInRow = (key: number, role: string, url: string) => {
+  const slotsOf = (key: number, basemap: BrowserBasemap) => {
     const saved = settings.basemaps[key];
 
-    return url === (role === "dark" ? saved?.styleUrlDark : saved?.styleUrl);
+    return [
+      { role: "light", url: basemap.styleUrl, saved: basemap.styleUrl === saved?.styleUrl },
+      {
+        role: "dark",
+        url: basemap.styleUrlDark,
+        saved: basemap.styleUrlDark === saved?.styleUrlDark,
+      },
+    ].filter((slot): slot is { role: string; url: string; saved: boolean } => Boolean(slot.url));
   };
-  const urlsOf = (basemap: BrowserBasemap) =>
-    [
-      { role: "light", url: basemap.styleUrl },
-      { role: "dark", url: basemap.styleUrlDark },
-    ].filter((entry): entry is { role: string; url: string } => Boolean(entry.url));
-  const strips = basemaps.reduce((count, basemap) => count + urlsOf(basemap).length, 0);
-  const styleUrlsOf = (basemap: BrowserBasemap) => (strips <= MOST_STRIPS ? urlsOf(basemap) : []);
+  // Only a saved slot draws a map; a placeholder costs no context.
+  const strips = basemaps.reduce(
+    (count, basemap, index) =>
+      count + slotsOf(rowKeys[index] ?? index, basemap).filter((slot) => slot.saved).length,
+    0,
+  );
+  const styleUrlsOf = (key: number, basemap: BrowserBasemap) =>
+    strips <= MOST_STRIPS ? slotsOf(key, basemap) : [];
 
   return (
     <Section
@@ -780,10 +788,10 @@ function Basemaps({ settings }: { settings: Settings }) {
                 {open ? "Done" : "Edit"}
               </CollapsibleTrigger>
             </div>
-            {styleUrlsOf(basemap).length > 0 ? (
+            {styleUrlsOf(key, basemap).length > 0 ? (
               <div className="grid gap-3 sm:grid-flow-col sm:auto-cols-fr">
-                {styleUrlsOf(basemap).map(({ role, url }) =>
-                  savedInRow(key, role, url) ? (
+                {styleUrlsOf(key, basemap).map(({ role, url, saved }) =>
+                  saved ? (
                     <BasemapStrip key={role} styleUrl={url} />
                   ) : (
                     <span
