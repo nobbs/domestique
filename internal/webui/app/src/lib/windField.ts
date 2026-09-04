@@ -404,6 +404,9 @@ export function writeStreaks(
     if (written + VERTICES_PER_STREAK > into.length / FLOATS_PER_VERTEX) {
       break;
     }
+    if (!sampleVectorAt(geometry.samples, particle.alongMetres)) {
+      continue;
+    }
     const head = positionAt(coordinates, distances, particle.alongMetres, particle.offsetMetres);
     const tail = positionAt(
       coordinates,
