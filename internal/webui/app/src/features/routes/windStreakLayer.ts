@@ -108,6 +108,17 @@ export function windStreakLayer(id: string, frame: () => StreakFrame): CustomLay
       const fragment = compile(gl, gl.FRAGMENT_SHADER, FRAGMENT_SOURCE);
       program = gl.createProgram();
       if (!program || !vertex || !fragment) {
+        if (vertex) {
+          gl.deleteShader(vertex);
+        }
+        if (fragment) {
+          gl.deleteShader(fragment);
+        }
+        if (program) {
+          gl.deleteProgram(program);
+        }
+        program = null;
+
         return;
       }
       gl.attachShader(program, vertex);
@@ -121,6 +132,20 @@ export function windStreakLayer(id: string, frame: () => StreakFrame): CustomLay
 
       buffer = gl.createBuffer();
       vertexArray = gl.createVertexArray();
+      if (!buffer || !vertexArray) {
+        gl.deleteProgram(program);
+        if (buffer) {
+          gl.deleteBuffer(buffer);
+        }
+        if (vertexArray) {
+          gl.deleteVertexArray(vertexArray);
+        }
+        program = null;
+        buffer = null;
+        vertexArray = null;
+
+        return;
+      }
       gl.bindVertexArray(vertexArray);
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       const position = gl.getAttribLocation(program, "a_position");
@@ -149,7 +174,7 @@ export function windStreakLayer(id: string, frame: () => StreakFrame): CustomLay
 
     render(gl, options) {
       const { vertices, vertexCount, colour, strength } = frame();
-      if (!program || !vertexArray || vertexCount === 0) {
+      if (!program || !vertexArray || !buffer || vertexCount === 0) {
         return;
       }
       matrix.set(options.defaultProjectionData.mainMatrix);
