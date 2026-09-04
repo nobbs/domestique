@@ -82,6 +82,27 @@ func (h *Handler) GetAsset(writer http.ResponseWriter, request *http.Request) {
 	h.assets.Static(writer, request)
 }
 
+// GetWorkerAsset serves the map's worker bundle, content-hashed and cached like
+// anything under /assets/ but served from its own directory because that one is
+// public.
+//
+// A worker is governed by the Content-Security-Policy on its own response, not
+// by the document's. Served as a public asset it is handed a policy naming no
+// tile origin, and every tile fetch it makes — which is all of them, because
+// MapLibre loads tiles in the worker — is refused, leaving a map that draws its
+// ground and nothing on it. Behind the identity gate it is sent the same policy
+// the page is.
+//
+// It keeps the blanket Vary: Cookie that every gated answer carries, unlike the
+// public assets that drop it. The bytes are the same for every caller, but the
+// answer is not: without an identity this path is a 401, and a cache free to
+// ignore the cookie could serve either one to the wrong caller. The cost is a
+// re-fetch when the session cookie changes, which is once per sign-in.
+func (h *Handler) GetWorkerAsset(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Cache-Control", cacheImmutableGated)
+	h.assets.Static(writer, request)
+}
+
 // GetIndex serves the application document at the root. It and the four
 // methods below are separate operations because each is a page a reader can be
 // linked straight to; they serve the same document because the routing that

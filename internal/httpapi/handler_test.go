@@ -214,6 +214,51 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 	}
 }
 
+// The map's worker is the one build artefact that is not public. A worker reads
+// its Content-Security-Policy from its own response rather than from the
+// document that started it, so a worker served to anyone is handed a policy
+// naming no tile origin — and MapLibre fetches every tile inside it.
+func TestTheMapWorkerIsServedOnlyToAnIdentityAndNamesTheTileOrigins(t *testing.T) {
+	handler := newTestHandler(t)
+	const worker = "/worker/maplibre-gl-worker-abc123.js"
+
+	anonymous := httptest.NewRecorder()
+	handler.ServeHTTP(anonymous, httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, worker, http.NoBody))
+	assert.Equal(t, http.StatusUnauthorized, anonymous.Code, "the worker was served without an identity")
+	assert.NotContains(t, anonymous.Header().Get("Content-Security-Policy"), "tiles.example.test",
+		"a refusal must not name the configured map to the caller it refused")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, worker))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Contains(t, response.Header().Get("Content-Security-Policy"), "connect-src 'self' https://tiles.example.test",
+		"the worker's own policy must admit the tile origins it fetches from")
+	// Content-hashed, so it is cached indefinitely — but privately, and keyed on
+	// the cookie: the same path answers 401 to a caller without an identity, and
+	// a shared cache holding one answer would serve it to the other.
+	assert.Equal(t, cacheImmutableGated, response.Header().Get("Cache-Control"), "worker Cache-Control")
+	assert.Equal(t, "Cookie", response.Header().Get("Vary"), "worker Vary")
+}
+
+// A refusal is served before an identity exists, so it is held to the same rule
+// a build artefact is: the header travels with it, and naming the configured map
+// there hands the origins to whoever asked rather than to a reader.
+func TestARefusedRequestIsNotToldWhichMapIsConfigured(t *testing.T) {
+	handler := newTestHandler(t)
+
+	for _, path := range []string{"/", "/settings", "/v1/status", "/worker/maplibre-gl-worker-abc123.js"} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, path, http.NoBody))
+			require.Equal(t, http.StatusUnauthorized, response.Code, "status")
+			assert.NotContains(t, response.Header().Get("Content-Security-Policy"), "tiles.example.test",
+				"the refusal names the configured map")
+		})
+	}
+}
+
 // The sign-in page is the application bundle, so what it names is fetched
 // before any identity exists. These carry build output and no state.
 func TestBuildArtefactsAreServedWithoutASession(t *testing.T) {

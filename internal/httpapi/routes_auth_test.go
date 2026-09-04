@@ -89,7 +89,7 @@ func TestAuthPolicyDegradesWithoutAuth0Domain(t *testing.T) {
 	)
 	require.NoError(t, err, "New()")
 
-	assert.Contains(t, handler.contentSecurityPolicy("/auth/login"), "form-action 'self';")
+	assert.Contains(t, handler.contentSecurityPolicy("/auth/login", false), "form-action 'self';")
 }
 
 // The sign-in flow is the way in, so nothing about it may need a session.

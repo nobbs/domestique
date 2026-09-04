@@ -41,6 +41,11 @@ const (
 	cacheAPI       = "no-store"
 	cacheDocument  = "no-cache"
 	cacheImmutable = "public, max-age=31536000, immutable"
+	// cacheImmutableGated is cacheImmutable for an artefact behind the identity
+	// gate. A shared cache must not hold one at all: what it would store depends
+	// on the session that asked for it, and a stored copy served on to a caller
+	// without one would hand out an answer the gate exists to withhold.
+	cacheImmutableGated = "private, max-age=31536000, immutable"
 )
 
 // The shapes a build stamp may have before this package will serve it: only a
@@ -254,6 +259,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
 	h.mux.HandleFunc("GET /oauth/wahoo/callback", h.CompleteOAuth)
 	h.mux.HandleFunc("GET /assets/{asset}", h.GetAsset)
+	h.mux.HandleFunc("GET /worker/{asset}", h.GetWorkerAsset)
 	h.mux.HandleFunc("GET /favicon.svg", h.GetFavicon)
 	h.mux.HandleFunc("GET /icon-256.png", h.GetIcon256)
 	h.mux.HandleFunc("GET /icon-512.png", h.GetIcon512)
@@ -277,7 +283,10 @@ func (h *Handler) routes() {
 // ServeHTTP applies the shared response headers and dispatches.
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	header := writer.Header()
-	header.Set("Content-Security-Policy", h.contentSecurityPolicy(request.URL.Path))
+	// Composed without the configured map: no identity has been established yet,
+	// and a request refused below is answered from here. The gate names the
+	// origins once it has admitted somebody.
+	header.Set("Content-Security-Policy", h.contentSecurityPolicy(request.URL.Path, false))
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Cache-Control", cacheAPI)
@@ -323,6 +332,9 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 // publicAsset reports a path served to anyone: the bundle and stylesheet the
 // sign-in page loads, and the icons a browser asks for without being told to.
+//
+// The map's worker is deliberately not among them, and is emitted outside
+// `assets/` so it cannot become one by accident: see GetWorkerAsset.
 func publicAsset(path string) bool {
 	switch path {
 	case "/favicon.svg", "/icon-256.png", "/icon-512.png", "/manifest.webmanifest":
@@ -386,6 +398,10 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 			return
 		}
 
+		// Composed again now that there is somebody to compose it for. The one set
+		// before this gate names no tile origin, because every answer this gate
+		// refuses is served to a caller that has proved nothing.
+		writer.Header().Set("Content-Security-Policy", h.contentSecurityPolicy(request.URL.Path, true))
 		next.ServeHTTP(writer, request.WithContext(
 			context.WithValue(request.Context(), identityKey{}, identity)))
 	})
@@ -472,18 +488,24 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 //   - style-src 'unsafe-inline': it styles its own controls inline;
 //   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
 //
+// A worker does not read this header from the document that started it: it is
+// governed by the policy on its own response. The map's worker is therefore
+// served from behind the identity gate, so that it is sent this policy rather
+// than the one a public asset gets — see GetWorkerAsset.
+//
 // A basemap's own origin is only the host the style document is read from. The
 // document is free to name another for its glyphs, its sprite, or its tiles,
 // and a provider that splits them is common; those hosts are read from the
 // style itself rather than configured, and are added here.
 //
 // Nothing served before an identity exists names a tile origin — the sign-in
-// routes or a build artefact. The sign-in routes also allow one form: 'self'
+// routes, a build artefact, or a request this service refused. The sign-in
+// routes also allow one form: 'self'
 // posts to /auth/start, whose 303 carries the same submission on to the
 // configured Auth0 tenant. form-action governs the whole redirect chain a
 // submission follows, not only its immediate action, so the tenant is named
 // there or a browser refuses to follow it.
-func (h *Handler) contentSecurityPolicy(path string) string {
+func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 	formAction := "form-action 'none'"
 	var tileOrigins []string
 	signIn := strings.HasPrefix(path, "/auth/")
@@ -493,10 +515,11 @@ func (h *Handler) contentSecurityPolicy(path string) string {
 			formAction += " " + h.authOrigin
 		}
 	}
-	// The configured map is named to a caller that could hold an identity and to
-	// no other: every answer served before one is a build artefact with no map
-	// in it, and the header would otherwise hand the origins to anyone.
-	if !signIn && !publicAsset(path) {
+	// The configured map is named to a caller whose identity has been established
+	// and to no other. Everything else — a build artefact, a sign-in page, a
+	// refused request — is answered before there is anyone to name it to, and the
+	// header would otherwise hand the origins to whoever asked.
+	if identified {
 		// A list that cannot be reduced to origins was never allowed to be stored, so
 		// this is a bug. The header then names no tile origin, blanking the map.
 		origins, err := tileOriginsOf(h.settings.Values().Basemaps)
