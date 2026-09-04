@@ -179,7 +179,13 @@ export function ConditionsWash({
   });
   const points = forecast.data?.points;
 
-  const distances = useMemo(() => cumulativeMetres(coordinates), [coordinates]);
+  // Skipped entirely with the wash off (the default): nothing below reads
+  // distances without `chosen`, so there is no reason to pay the O(n)
+  // haversine pass on every route opened.
+  const distances = useMemo(
+    () => (chosen ? cumulativeMetres(coordinates) : []),
+    [chosen, coordinates],
+  );
   const totalMetres = distances[distances.length - 1] ?? 0;
 
   // One reading per sample, at the distance the sample sits at. `weatherQuery`
