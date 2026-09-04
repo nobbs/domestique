@@ -307,8 +307,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    */
   const [dockOpen, setDockOpen] = useState(true);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
-  const [groundLabelled, setGroundLabelled] = useState(true);
-  const [forecastOpen, setForecastOpen] = useState(true);
 
   const open = useCallback(
     (key: string) => {
@@ -453,6 +451,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             title={shownRoute.title}
             profile={windowed ?? routeProfile}
             distanceMetres={shownRoute.distanceMetres}
+            ascentMetres={shownRoute.ascentMetres}
             surface={surfaceSummary}
             climbs={climbs}
             onSelectClimb={selectClimb}
@@ -472,10 +471,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             unitSystem={unitSystem}
             open={dockOpen}
             onOpenChange={setDockOpen}
-            groundLabelled={groundLabelled}
-            onGroundLabelledChange={setGroundLabelled}
-            forecastOpen={forecastOpen}
-            onForecastOpenChange={setForecastOpen}
           />
         ) : undefined
       }

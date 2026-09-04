@@ -26,6 +26,7 @@ import { IconChevronRight, IconLayoutSidebarRightCollapse } from "@tabler/icons-
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
+import { useElementHeight } from "../../lib/useElementHeight";
 
 /**
  * The row's columns: ordinal, length, average gradient, steepest gradient,
@@ -66,6 +67,7 @@ export function ClimbsSidebar({
   onOpenChange,
   onSelect,
   unitSystem,
+  fixedHeight = false,
 }: {
   climbs: Climb[];
   open: boolean;
@@ -73,14 +75,26 @@ export function ClimbsSidebar({
   /** Opens the shared map/chart window on one climb, as the brackets do. */
   onSelect: (climb: Climb) => void;
   unitSystem: UnitSystem;
+  /**
+   * Snaps the list to a whole number of rows rather than letting a partial
+   * one show at the foot — for a caller (the rail dock) that stretches this
+   * to a fixed height rather than letting it size to its own content.
+   */
+  fixedHeight?: boolean;
 }) {
   const summary = climbSentence(climbs, unitSystem);
+  const { ref: sectionRef, height: sectionHeight } = useElementHeight<HTMLElement>();
+  const { ref: headerRef, height: headerHeight } = useElementHeight<HTMLDivElement>();
   // A route with no climbs has no sidebar: an empty column beside the chart
   // spends width saying that a flat route is flat.
   if (summary === null) {
     return null;
   }
   const count = `${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`;
+  const rows =
+    fixedHeight && sectionHeight > 0
+      ? Math.max(1, Math.floor((sectionHeight - headerHeight) / ROW_HEIGHT))
+      : null;
 
   if (!open) {
     return (
@@ -98,52 +112,62 @@ export function ClimbsSidebar({
   }
 
   return (
-    <section className="w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3">
-      <h3>
-        <button
-          type="button"
-          aria-expanded
-          aria-label={`Hide ${count}`}
-          onClick={() => onOpenChange(false)}
-          className="flex w-full items-baseline gap-2 rounded py-0.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+    <section
+      ref={sectionRef}
+      className="w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3"
+    >
+      <div ref={headerRef}>
+        <h3>
+          <button
+            type="button"
+            aria-expanded
+            aria-label={`Hide ${count}`}
+            onClick={() => onOpenChange(false)}
+            className="flex w-full items-baseline gap-2 rounded py-0.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+          >
+            <span className="text-[10px] font-semibold tracking-[0.08em] text-[var(--ink-2)] uppercase">
+              {count}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--ink-2)]">
+              {summary}
+            </span>
+            <IconChevronRight
+              size={12}
+              stroke={2}
+              aria-hidden="true"
+              className="shrink-0 rotate-90 text-[var(--ink-2)]"
+            />
+          </button>
+        </h3>
+        {/*
+         * Outside the scroller, so the names stay put while the climbs move
+         * under them — a header that scrolls away is a header that is absent
+         * exactly when a reader has lost track of which column is which.
+         */}
+        <div
+          className="mt-1 grid gap-2 px-1.5 text-[10px] leading-none text-[var(--ink-2)]"
+          style={{ gridTemplateColumns: ROW_COLUMNS }}
+          aria-hidden="true"
         >
-          <span className="text-[10px] font-semibold tracking-[0.08em] text-[var(--ink-2)] uppercase">
-            {count}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--ink-2)]">{summary}</span>
-          <IconChevronRight
-            size={12}
-            stroke={2}
-            aria-hidden="true"
-            className="shrink-0 rotate-90 text-[var(--ink-2)]"
-          />
-        </button>
-      </h3>
-      {/*
-       * Outside the scroller, so the names stay put while the climbs move
-       * under them — a header that scrolls away is a header that is absent
-       * exactly when a reader has lost track of which column is which.
-       */}
-      <div
-        className="mt-1 grid gap-2 px-1.5 text-[10px] leading-none text-[var(--ink-2)]"
-        style={{ gridTemplateColumns: ROW_COLUMNS }}
-        aria-hidden="true"
-      >
-        <span />
-        <span className="text-right">Length</span>
-        <span className="text-right">Avg</span>
-        <span className="text-right">Max</span>
-        <span className="text-right">Ascent</span>
-        <span className="text-right">Starts</span>
+          <span />
+          <span className="text-right">Length</span>
+          <span className="text-right">Avg</span>
+          <span className="text-right">Max</span>
+          <span className="text-right">Ascent</span>
+          <span className="text-right">Starts</span>
+        </div>
       </div>
       {/*
        * `snap-mandatory` rather than `proximity`: this list is short and its
        * rows are uniform, so there is never a reading where landing between two
-       * of them is what the reader meant. It scrolls against the dock's own
-       * height rather than a row count, because beside the chart that height is
-       * whatever the chart came to.
+       * of them is what the reader meant. Fixed height snaps to whole rows so
+       * the fixed-height rail panel never shows a row cut in half; otherwise it
+       * scrolls against whatever height the chart beside it came to.
        */}
-      <ol className="mt-1 max-h-full snap-y snap-mandatory overflow-y-auto">
+      <ol
+        className="mt-1 max-h-full snap-y snap-mandatory overflow-y-auto"
+        style={rows === null ? undefined : { height: rows * ROW_HEIGHT }}
+      >
         {climbs.map((climb, index) => (
           <li key={climb.startMetres} className="snap-start" style={{ height: ROW_HEIGHT }}>
             <button

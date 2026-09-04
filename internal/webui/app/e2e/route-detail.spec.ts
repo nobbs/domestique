@@ -350,10 +350,12 @@ test("choosing a start time draws a forecast strip under the profile", async ({
   offlinePage: page,
 }) => {
   const strip = page.getByRole("group", { name: /^Forecast along the way/ });
+  const forecastStop = page.getByRole("tab", { name: "Forecast" });
 
   // Without a departure there is nothing to time a sample against, so the strip
   // draws nothing at all.
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
+  await forecastStop.click();
   await expect(strip).toHaveCount(0);
 
   // Seeded and reopened. The subject here is the strip, not the picker —
@@ -362,18 +364,18 @@ test("choosing a start time draws a forecast strip under the profile", async ({
   await chooseStartTime(page);
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
-  await expect(strip).toBeVisible();
-
   /*
-   * The alignment is the whole point of drawing the strip here rather than
-   * anywhere else, and it is invisible to every assertion above: the strip
+   * The alignment is the whole point of drawing the strip at this width rather
+   * than at any other, and it is invisible to every assertion above: the strip
    * shipped once measuring nothing, drawing itself at the fallback width and
    * stretching that over the card, which reads as a strip until you notice the
-   * rain sitting a kilometre from the climb it falls on. Both are laid out by
-   * `plotAxis` against their own measured width, so the two boxes agree to the
-   * pixel or one of them is measuring something the other is not.
+   * rain sitting a kilometre from the climb it falls on. Both stops share one
+   * fixed-width panel, so the two boxes agree to the pixel or one of them is
+   * measuring something the other is not.
    */
   const chartBox = await page.getByRole("img", { name: /^Elevation profile of / }).boundingBox();
+  await forecastStop.click();
+  await expect(strip).toBeVisible();
   const stripBox = await strip.boundingBox();
   expect(chartBox).not.toBeNull();
   expect(stripBox).not.toBeNull();
