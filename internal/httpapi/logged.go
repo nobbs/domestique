@@ -66,6 +66,13 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
+// Write commits an implicit 200 when no status was written, as net/http does.
+func (r *statusRecorder) Write(body []byte) (int, error) {
+	r.written = true
+
+	return r.ResponseWriter.Write(body) //nolint:wrapcheck // A pass-through; the caller sees the writer's own error.
+}
+
 // Unwrap lets http.ResponseController reach the underlying writer.
 func (r *statusRecorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
