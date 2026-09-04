@@ -733,10 +733,10 @@ function Basemaps({ settings }: { settings: Settings }) {
 
   // The browser may only reach the origins of saved styles, and the hosts each
   // one names are learnt on save — so a typed URL cannot be drawn until then.
-  const savedInRow = (key: number, url: string) => {
+  const savedInRow = (key: number, role: string, url: string) => {
     const saved = settings.basemaps[key];
 
-    return saved !== undefined && (url === saved.styleUrl || url === saved.styleUrlDark);
+    return url === (role === "dark" ? saved?.styleUrlDark : saved?.styleUrl);
   };
   const urlsOf = (basemap: BrowserBasemap) =>
     [
@@ -783,7 +783,7 @@ function Basemaps({ settings }: { settings: Settings }) {
             {styleUrlsOf(basemap).length > 0 ? (
               <div className="grid gap-3 sm:grid-flow-col sm:auto-cols-fr">
                 {styleUrlsOf(basemap).map(({ role, url }) =>
-                  savedInRow(key, url) ? (
+                  savedInRow(key, role, url) ? (
                     <BasemapStrip key={role} styleUrl={url} />
                   ) : (
                     <span
