@@ -86,6 +86,12 @@ func TestStatusRecorderKeepsTheFirstStatusLikeNetHTTP(t *testing.T) {
 	recorder.WriteHeader(http.StatusBadGateway)
 	recorder.WriteHeader(http.StatusOK)
 	assert.Equal(t, http.StatusBadGateway, recorder.status)
+
+	recorder = &statusRecorder{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
+	_, err := recorder.Write([]byte("body"))
+	require.NoError(t, err)
+	recorder.WriteHeader(http.StatusBadGateway)
+	assert.Equal(t, http.StatusOK, recorder.status, "a body write commits the implicit 200")
 }
 
 func TestStatusRecorderUnwrapsForTheResponseController(t *testing.T) {
