@@ -41,6 +41,11 @@ const (
 	cacheAPI       = "no-store"
 	cacheDocument  = "no-cache"
 	cacheImmutable = "public, max-age=31536000, immutable"
+	// cacheImmutableGated is cacheImmutable for an artefact behind the identity
+	// gate. A shared cache must not hold one at all: what it would store depends
+	// on the session that asked for it, and a stored copy served on to a caller
+	// without one would hand out an answer the gate exists to withhold.
+	cacheImmutableGated = "private, max-age=31536000, immutable"
 )
 
 // The shapes a build stamp may have before this package will serve it: only a

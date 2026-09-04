@@ -92,8 +92,13 @@ func (h *Handler) GetAsset(writer http.ResponseWriter, request *http.Request) {
 // MapLibre loads tiles in the worker — is refused, leaving a map that draws its
 // ground and nothing on it. Behind the identity gate it is sent the same policy
 // the page is.
+// It keeps the blanket Vary: Cookie that every gated answer carries, unlike the
+// public assets that drop it. The bytes are the same for every caller, but the
+// answer is not: without an identity this path is a 401, and a cache free to
+// ignore the cookie could serve either one to the wrong caller. The cost is a
+// re-fetch when the session cookie changes, which is once per sign-in.
 func (h *Handler) GetWorkerAsset(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Cache-Control", cacheImmutable)
+	writer.Header().Set("Cache-Control", cacheImmutableGated)
 	h.assets.Static(writer, request)
 }
 

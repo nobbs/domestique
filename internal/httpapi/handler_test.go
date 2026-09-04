@@ -232,8 +232,11 @@ func TestTheMapWorkerIsServedOnlyToAnIdentityAndNamesTheTileOrigins(t *testing.T
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Contains(t, response.Header().Get("Content-Security-Policy"), "connect-src 'self' https://tiles.example.test",
 		"the worker's own policy must admit the tile origins it fetches from")
-	// Content-hashed like anything under /assets/, so it is cached the same way.
-	assert.Equal(t, cacheImmutable, response.Header().Get("Cache-Control"), "worker Cache-Control")
+	// Content-hashed, so it is cached indefinitely — but privately, and keyed on
+	// the cookie: the same path answers 401 to a caller without an identity, and
+	// a shared cache holding one answer would serve it to the other.
+	assert.Equal(t, cacheImmutableGated, response.Header().Get("Cache-Control"), "worker Cache-Control")
+	assert.Equal(t, "Cookie", response.Header().Get("Vary"), "worker Vary")
 }
 
 // The sign-in page is the application bundle, so what it names is fetched
