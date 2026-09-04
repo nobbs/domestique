@@ -133,7 +133,8 @@ func (c *Client) DownloadWorkoutFIT(ctx context.Context, fileURL string) (data [
 	}
 	request, requestErr := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), http.NoBody)
 	if requestErr != nil {
-		return nil, fmt.Errorf("wahoo: creating workout file request: %w", requestErr)
+		// Not wrapped: a *url.Error message would carry the signed CDN URL.
+		return nil, errors.New("wahoo: workout file request could not be created")
 	}
 	response, err := download.Do(request)
 	if err != nil {
