@@ -11,6 +11,8 @@
 import { Tabs } from "@base-ui/react/tabs";
 import { Tooltip } from "@base-ui/react/tooltip";
 import {
+  IconArrowDownRight,
+  IconArrowUpRight,
   IconCircleOff,
   IconCloud,
   IconCloudRain,
@@ -36,11 +38,10 @@ import {
   WIND_RELATION_KEY,
   windRelationVariable,
 } from "../../../lib/measures";
-import { bandEntries, groundSegments, surfaceEntries } from "../../../lib/mix";
+import { bandEntries, groundSegments } from "../../../lib/mix";
 import { PADDING } from "../../../lib/plotAxis";
 import type { DistanceWindow } from "../../../lib/profile";
 import {
-  bands,
   climbs,
   coordinates,
   profile,
@@ -55,7 +56,6 @@ import { ConditionsPicker } from "../ConditionsPicker";
 import { ElevationProfile } from "../ElevationProfile";
 import { ForecastStrip } from "../ForecastStrip";
 import { GroundRibbon } from "../GroundRibbon";
-import { MixColumn } from "../MixColumn";
 
 const UNITS = "metric";
 const GUTTER = { paddingLeft: PADDING.left, paddingRight: PADDING.right };
@@ -409,6 +409,68 @@ function Conditions(s: DockState) {
   return chosen === undefined ? null : <WashKey measure={chosen} look="keyed" />;
 }
 
+/**
+ * The steepness bands as a table, climbing and descending apart: how much of
+ * the route goes up steeply is a different fact from how much comes down it.
+ */
+function SteepnessTable() {
+  // ponytail: gradientShares does not yet split by sign, and the fixture is one
+  // uniform ramp; every band is faked from a made-up share until it does.
+  const shares = [0.5, 0.25, 0.15, 0.07, 0.03];
+  const rows = bandEntries(
+    shares.map((share, band) => ({ band, share })),
+    route.distanceMetres,
+  ).map((entry, band) => ({
+    ...entry,
+    up: entry.metres * (0.4 + band * 0.1),
+    down: entry.metres * (0.6 - band * 0.1),
+  }));
+  const cell = "px-2 py-1 text-right text-xs tabular-nums";
+
+  return (
+    <table className="border-collapse">
+      <thead>
+        <tr className="text-[10px] tracking-[0.06em] text-[var(--ink-2)] uppercase">
+          <th scope="col" className="px-2 py-1 text-left font-semibold">
+            Steepness
+          </th>
+          <th scope="col" className="px-2 py-1 text-right font-semibold">
+            <span className="inline-flex items-center gap-0.5">
+              Up <IconArrowUpRight size={11} stroke={2} aria-hidden="true" />
+            </span>
+          </th>
+          <th scope="col" className="px-2 py-1 text-right font-semibold">
+            <span className="inline-flex items-center gap-0.5">
+              Down <IconArrowDownRight size={11} stroke={2} aria-hidden="true" />
+            </span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.label} className="border-t border-[var(--rule)]">
+            <th
+              scope="row"
+              className="flex items-center gap-1.5 px-2 py-1 text-left text-xs font-normal"
+            >
+              <span
+                aria-hidden="true"
+                className="size-2.5 rounded-xs"
+                style={{ backgroundColor: row.colour }}
+              />
+              {row.label}
+            </th>
+            <td className={cell}>{row.up < 1 ? "–" : formatDistance(row.up, UNITS)}</td>
+            <td className={`${cell} text-[var(--ink-2)]`}>
+              {row.down < 1 ? "–" : formatDistance(row.down, UNITS)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /* ---- the lanes, as they exist today, each wrapped once ------------------ */
 
 function Profile(s: DockState) {
@@ -507,31 +569,7 @@ function ProfileWithClimbs(s: DockState) {
   return (
     <div className="flex h-full items-stretch gap-3">
       <div className="min-w-0 flex-1">
-        <Panel
-          line={profileLine(s)}
-          info={
-            <div className="flex gap-6">
-              <MixColumn
-                name="Steepness"
-                classesLabel="Gradient bands"
-                entries={bandEntries(bands, route.distanceMetres)}
-                absence="Nothing has graded this route."
-                highlight={s.highlight}
-                onHighlightChange={s.setHighlight}
-                unitSystem={UNITS}
-              />
-              <MixColumn
-                name="Ground"
-                classesLabel="Ground classes"
-                entries={surfaceEntries(surface)}
-                absence="Nothing has classified this route's ground."
-                highlight={s.highlight}
-                onHighlightChange={s.setHighlight}
-                unitSystem={UNITS}
-              />
-            </div>
-          }
-        >
+        <Panel line={profileLine(s)} info={<SteepnessTable />}>
           <Profile {...s} />
           <Ground {...s} />
         </Panel>
