@@ -193,12 +193,11 @@ export function ConditionsWash({
 
   // How sharp this forecast can honestly be, from the lead time to the first
   // sample — the same figure the strip reports its resolution sentence from.
-  const metresPerCell = useMemo(() => {
-    const first = samples[0]?.arrivalAt;
-    const leadHours = first ? Math.max(0, (first.getTime() - Date.now()) / 3_600_000) : 0;
-
-    return forecastResolution(leadHours).metresPerCell;
-  }, [samples]);
+  // Not memoized: it reads Date.now(), so caching it against [samples] would
+  // let the corridor width drift from that sentence as time passes.
+  const firstArrival = samples[0]?.arrivalAt;
+  const leadHours = firstArrival ? Math.max(0, (firstArrival.getTime() - Date.now()) / 3_600_000) : 0;
+  const metresPerCell = forecastResolution(leadHours).metresPerCell;
 
   const runs = useMemo(
     () =>
