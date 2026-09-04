@@ -22,7 +22,7 @@
  * was the same reading in a worse place.
  */
 
-import { IconChevronLeft, IconStairs } from "@tabler/icons-react";
+import { IconChevronRight, IconStairs } from "@tabler/icons-react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
@@ -128,7 +128,7 @@ export function ClimbsSidebar({
         onClick={() => onOpenChange(false)}
         className="absolute top-1/2 left-0 z-10 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
       >
-        <IconChevronLeft size={13} stroke={2} aria-hidden="true" />
+        <IconChevronRight size={13} stroke={2} aria-hidden="true" />
       </button>
       <div ref={headerRef}>
         {/*
