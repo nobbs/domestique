@@ -16,6 +16,7 @@ import {
   openLibrary,
   openRoute,
   openSearch,
+  openWorkspace,
   pinRendering,
   settleMap,
   test,
@@ -219,5 +220,21 @@ test.describe("text selection", () => {
       field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0),
     );
     expect(selected).toBe("rhine");
+  });
+
+  test.describe("in the drawer the panels dock into", () => {
+    test.use({ viewport: { width: 375, height: 667 } });
+
+    // The drawer is registry output and asks for `select-text` on its content.
+    // index.css overrules it, and what wins is decided by the cascade rather
+    // than by either file on its own.
+    test("the drawer does not hand selection back", async ({ offlinePage: page }) => {
+      await openLibrary(page);
+      await openWorkspace(page);
+
+      const content = page.locator('[data-slot="drawer-content"]');
+      await expect(content).toBeVisible();
+      expect(await content.evaluate((node) => getComputedStyle(node).userSelect)).toBe("none");
+    });
   });
 });

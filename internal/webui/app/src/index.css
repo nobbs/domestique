@@ -260,6 +260,10 @@ html { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none
 /* A field's own text is still text: WebKit inherits the rule above into form
    controls, and a caret that cannot select is a field that cannot be edited. */
 input, textarea, [contenteditable]:not([contenteditable="false"]) { user-select: text; -webkit-user-select: text; }
+
+/* The drawer is registry output and carries `select-text` of its own, which the
+   document overrules from here rather than by editing the primitive. */
+[data-slot="drawer-content"] { user-select: none; -webkit-user-select: none; }
 body { margin: 0; background: var(--base); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.55; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
