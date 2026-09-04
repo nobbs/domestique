@@ -3,8 +3,9 @@
  *
  * Several encodings are drawn along the same line — the ground under the wheel,
  * how steeply it rises, what the wind is doing to the rider — and each is drawn
- * as one set of lines per class. The cutting rules they share live here so a boundary lands in the same place
- * whichever encoding asked for it: neighbouring pieces meet on one shared point
+ * as one set of lines per class. The cutting rules they share live here so a
+ * boundary lands in the same place whichever encoding asked for it: neighbouring
+ * pieces meet on one shared point
  * and share no segment, because a gap would break the drawn route and an
  * overlap would paint one metre of it twice.
  *
@@ -96,8 +97,8 @@ export function routeLinesWithin(
 
 /** The first coordinate at or past a distance, searching on from `fromIndex`. */
 function indexAtOrPast(distances: number[], metres: number, fromIndex: number): number {
-  const lastIndex = distances.length - 1;
-  let index = Math.min(fromIndex, Math.max(lastIndex, 0));
+  const lastIndex = Math.max(distances.length - 1, 0);
+  let index = Math.min(Math.max(fromIndex, 0), lastIndex);
   while (index < lastIndex && (distances[index] ?? 0) < metres) {
     index++;
   }
@@ -135,7 +136,7 @@ export function distanceSlices(
   return ranges.map((range) => {
     const startIndex = indexAtOrPast(distances, range.fromMetres, cursor);
     const endIndex = indexAtOrPast(distances, range.toMetres, startIndex);
-    cursor = startIndex;
+    cursor = endIndex;
 
     return splitAtRanges(coordinates, startIndex, endIndex, lit);
   });
