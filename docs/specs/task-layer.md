@@ -75,6 +75,9 @@ refused attempt reports `skipped`.
 Resources describe state, not tasks. Everything that reads or writes the trusted
 inventory takes `inventory`, whichever task asked, so no two of those overlap. A
 surface index build takes `surface-index`, touches neither, and runs beside them.
+Reading a rider's recorded activities takes `activities`: it reaches the same
+Wahoo account a reconciliation does, but writes only activity rows, so it runs
+beside `inventory` rather than waiting behind it.
 
 ## Concurrency
 
@@ -258,6 +261,7 @@ is checked rather than inferred.
 | `surface:annotate` | none | `inventory` exclusive | none |
 | `ridemodel:predict` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
+| `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
 
 The read takes a library the same way the targets take a slot: none is every
 one that exists, a name is that one alone. One task rather than one per

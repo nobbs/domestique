@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/auth0"
 	"github.com/nobbs/domestique/internal/basemap"
 	"github.com/nobbs/domestique/internal/build"
@@ -171,10 +172,20 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("reading alert decisions: %w", err)
 	}
+	// Recorded activities are read from the same Wahoo account the routes are
+	// written to, but into rows of their own, so this runs beside a reconciliation.
+	activityPoller, err := activity.NewPoller(destination, store, time.Now)
+	if err != nil {
+		return fmt.Errorf("creating the activity poller: %w", err)
+	}
 	tasks, err := registerTasks(
 		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
-		append(inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs), indexTask),
+		append(
+			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs),
+			indexTask,
+			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
+		),
 	)
 	if err != nil {
 		return err

@@ -2,12 +2,15 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/auth0"
 	"github.com/nobbs/domestique/internal/session"
+	"github.com/nobbs/domestique/internal/wahoo"
 )
 
 // signInProvider is a thin forwarding adapter to *auth0.Client; these exercise
@@ -55,4 +58,37 @@ func TestExchangedIdentityFromCopiesEveryField(t *testing.T) {
 		Access:  true,
 		Admin:   true,
 	}, got)
+}
+
+// Wahoo's word for a ride stops at this adapter: what the activity package
+// reads is the service's own vocabulary, with its own field names.
+func TestActivityListingsNarrowWahooWorkouts(t *testing.T) {
+	t.Parallel()
+
+	starts := time.Date(2026, 4, 1, 6, 30, 0, 0, time.UTC)
+	listings := activityListings([]wahoo.Workout{
+		{ID: 42, WorkoutTypeID: 15, WorkoutTypeLocationID: 1, Starts: starts},
+	})
+
+	assert.Equal(t, []activity.Listing{{ID: 42, TypeID: 15, LocationID: 1, Starts: starts}}, listings)
+}
+
+func TestActivitySummaryOfCopiesEveryTotal(t *testing.T) {
+	t.Parallel()
+
+	summary := activitySummaryOf(wahoo.WorkoutSummary{
+		Raw:            []byte(`{"id":42}`),
+		DistanceMetres: 1234.5,
+		ActiveSeconds:  3600,
+		TotalSeconds:   3900,
+		AscentMetres:   120.25,
+	})
+
+	assert.Equal(t, activity.Summary{
+		Raw:            []byte(`{"id":42}`),
+		DistanceMetres: 1234.5,
+		MovingSeconds:  3600,
+		ElapsedSeconds: 3900,
+		AscentMetres:   120.25,
+	}, summary)
 }

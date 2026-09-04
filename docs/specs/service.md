@@ -174,10 +174,10 @@ The same claim also decides who administers the service. The shared settings,
 the background activities and their schedules, and the per-route reprocess
 request belong to an admin subject: the endpoints marked admin-only below
 answer `403` in the shared error shape to any other session, and the two
-admin browser routes answer not found. The one thing a non-admin may start is
-`sync:target` over their own subject. Those rights come from the namespaced
-claim the Action asserts and from nothing else — no header, no local list, and
-no second gate.
+admin browser routes answer not found. The only things a non-admin may start
+are `sync:target` and `activity:poll`, each over their own subject. Those rights
+come from the namespaced claim the Action asserts and from nothing else — no
+header, no local list, and no second gate.
 
 A session is created only by an authorisation-code flow with PKCE (S256) and a
 nonce, run against the configured Auth0 tenant through its own SDK. The
@@ -469,9 +469,10 @@ browser origin described above, and answer 403 without it.
   as `404`.
 
   An argument is the task's own to interpret, not this surface's — except for
-  `sync:target` and `sync:clear`, where it names a target and this surface
-  refuses it before the task layer ever sees it. An admin may name any target,
-  and for `sync:target` may leave the argument empty, meaning every target. A
+  `sync:target`, `sync:clear` and `activity:poll`, where it names a target and
+  this surface refuses it before the task layer ever sees it. An admin may name
+  any target, and for `sync:target` and `activity:poll` may leave the argument
+  empty, meaning every target. A
   non-admin's argument must be their own subject; anything else, the empty
   argument included, is answered `404` the same as a name that does not exist,
   so a non-admin cannot learn which other targets exist.
@@ -778,6 +779,24 @@ when safe to do so.
 Domestique deletes only Wahoo routes it owns through its `external_id`. A
 route deletion removes the corresponding owned Wahoo route from every
 target. It never deletes manually created Wahoo routes.
+
+## Recorded activities
+
+Domestique stores a summary of every activity the rider's own Wahoo account
+recorded, against the target that owns that account: when it started, its
+distance, moving and elapsed time and ascent, and Wahoo's own summary document
+kept verbatim. Nothing else reads it; an activity is the owning target's, the
+same as its routes are.
+
+Polling only adds. An activity the account no longer lists is never removed,
+and a summary read again replaces the row it already had. One poll reads at
+most twenty-five summaries, oldest first, because the Wahoo application's daily
+request budget is shared with every target's reconciliation; a longer history
+fills in over successive polls rather than spending the day's quota at once. A
+poll that fails part way keeps what it already stored.
+
+No FIT record stream is fetched yet: the file each summary names is left where
+it is, and the per-sample table stays empty.
 
 ## Sync lifecycle and safety
 

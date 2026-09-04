@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/route"
@@ -706,4 +707,94 @@ func TestTheReadTakesOneLibraryOrEveryOne(t *testing.T) {
 		Task: taskSyncSource, Argument: string(route.ProviderKomoot),
 	})
 	assert.Equal(t, []route.Provider{route.ProviderKomoot}, synchronizer.providers, "the library read")
+}
+
+// Polling a rider's activities reads their Wahoo account but writes only
+// activity rows, so it holds its own resource and runs beside a reconciliation.
+func TestActivityPollTaskHoldsOnlyTheActivities(t *testing.T) {
+	t.Parallel()
+
+	poller := &fakePoller{results: map[string]activity.Result{"rider-a": {Outcome: activity.Polled, Stored: 2}}}
+	definition := activityPollTask(poller, allEnabled, func() []string { return []string{"rider-a"} })
+
+	assert.Equal(t, taskActivityPoll, definition.Name, "name")
+	assert.Equal(t,
+		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
+		definition.Resources(""),
+		"resources",
+	)
+	assert.Equal(t, []string{"rider-a"}, definition.FanOut(), "fan-out")
+	assert.Equal(t, activityPollInterval, definition.InitialDelay(), "InitialDelay()")
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	assert.Equal(t, at.Add(activityPollInterval), definition.Schedule.NextFire(at), "NextFire()")
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityPoll, Argument: "rider-a"})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	assert.Equal(t, []string{"rider-a"}, poller.polled, "polled")
+}
+
+// No argument is every slot, and one slot's failure neither hides the others nor
+// is hidden by them.
+func TestActivityPollTaskWithoutAnArgumentPollsEveryTarget(t *testing.T) {
+	t.Parallel()
+
+	poller := &fakePoller{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Polled},
+		"rider-b": {Outcome: activity.Failed, Failure: activity.FailureUpstream},
+		"rider-c": {Outcome: activity.Unchanged},
+	}}
+	definition := activityPollTask(poller, allEnabled, func() []string { return []string{"rider-a", "rider-b", "rider-c"} })
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityPoll})
+	assert.Equal(t, task.Failed, result.Outcome, "outcome")
+	assert.Equal(t, detailActivityUpstream, result.Detail, "detail")
+	assert.Equal(t, []string{"rider-a", "rider-b", "rider-c"}, poller.polled, "every slot was polled")
+}
+
+// With nothing connected there is nothing to poll, which is not a failure.
+func TestActivityPollTaskWithoutATargetIsNotReady(t *testing.T) {
+	t.Parallel()
+
+	definition := activityPollTask(&fakePoller{}, allEnabled, func() []string { return nil })
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityPoll})
+	assert.Equal(t, task.NotReady, result.Outcome, "outcome")
+}
+
+func TestActivityResultCarriesEveryOutcomeAcross(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		want    task.Outcome
+		detail  task.Detail
+		failure activity.Failure
+		outcome activity.Outcome
+	}{
+		"polled":        {want: task.Succeeded, outcome: activity.Polled},
+		"unchanged":     {want: task.Unchanged, outcome: activity.Unchanged},
+		"not ready":     {want: task.NotReady, outcome: activity.NotReady},
+		"authorization": {want: task.Failed, detail: detailActivityAuthorization, failure: activity.FailureAuthorization},
+		"state":         {want: task.Failed, detail: detailActivityState, failure: activity.FailureState},
+		"upstream":      {want: task.Failed, detail: detailActivityUpstream, failure: activity.FailureUpstream},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			result := activityResult(activity.Result{Outcome: test.outcome, Failure: test.failure})
+			assert.Equal(t, test.want, result.Outcome, "outcome")
+			assert.Equal(t, test.detail, result.Detail, "detail")
+		})
+	}
+}
+
+type fakePoller struct {
+	results map[string]activity.Result
+	polled  []string
+}
+
+func (p *fakePoller) Poll(_ context.Context, targetID string) activity.Result {
+	p.polled = append(p.polled, targetID)
+
+	return p.results[targetID]
 }

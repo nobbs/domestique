@@ -1,6 +1,7 @@
 package wahoo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"time"
 )
 
 const (
@@ -18,17 +21,49 @@ const (
 
 // Workout is the list-level metadata Wahoo returns for one recorded activity.
 type Workout struct {
-	ID int64 `json:"id"`
+	// Starts is when the rider began recording, in Wahoo's own RFC 3339 form.
+	Starts time.Time `json:"starts"`
+	ID     int64     `json:"id"`
 	//nolint:tagliatelle // Wahoo's API uses snake_case.
 	WorkoutTypeID int `json:"workout_type_id"`
 	//nolint:tagliatelle // Wahoo's API uses snake_case.
 	WorkoutTypeLocationID int `json:"workout_type_location_id"`
 }
 
-// WorkoutSummary contains Wahoo's original summary and the URL of its FIT file.
+// WorkoutSummary contains Wahoo's original summary, the URL of its FIT file,
+// and the totals decoded from it.
 type WorkoutSummary struct {
-	FileURL string
-	Raw     json.RawMessage
+	FileURL        string
+	Raw            json.RawMessage
+	DistanceMetres float64
+	ActiveSeconds  float64
+	TotalSeconds   float64
+	AscentMetres   float64
+}
+
+// decimal is one of Wahoo's accumulated totals, which it encodes as a JSON
+// string holding a decimal rather than as a number.
+type decimal float64
+
+func (d *decimal) UnmarshalJSON(raw []byte) error {
+	*d = 0
+	if bytes.Equal(raw, []byte("null")) {
+		return nil
+	}
+	text := string(raw)
+	if quoted, err := strconv.Unquote(text); err == nil {
+		text = quoted
+	}
+	if text == "" {
+		return nil
+	}
+	value, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return fmt.Errorf("wahoo: workout summary total is not a number: %w", err)
+	}
+	*d = decimal(value)
+
+	return nil
 }
 
 // ListWorkouts returns every workout in Wahoo's paginated list.
@@ -103,15 +138,35 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 		File struct {
 			URL string `json:"url"`
 		} `json:"file"`
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		DistanceAccum decimal `json:"distance_accum"`
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		DurationActiveAccum decimal `json:"duration_active_accum"`
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		DurationTotalAccum decimal `json:"duration_total_accum"`
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		AscentAccum decimal `json:"ascent_accum"`
 	}
 	if err := json.Unmarshal(*envelope.WorkoutSummary, &summary); err != nil {
+		var numErr *strconv.NumError
+		if errors.As(err, &numErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
+			return WorkoutSummary{}, errors.New("wahoo: workout summary totals were not numbers")
+		}
+
 		return WorkoutSummary{}, errors.New("wahoo: workout summary was not valid json")
 	}
 	if summary.File.URL == "" {
 		return WorkoutSummary{}, errors.New("wahoo: workout summary did not contain a file url")
 	}
 
-	return WorkoutSummary{Raw: *envelope.WorkoutSummary, FileURL: summary.File.URL}, nil
+	return WorkoutSummary{
+		Raw:            *envelope.WorkoutSummary,
+		FileURL:        summary.File.URL,
+		DistanceMetres: float64(summary.DistanceAccum),
+		ActiveSeconds:  float64(summary.DurationActiveAccum),
+		TotalSeconds:   float64(summary.DurationTotalAccum),
+		AscentMetres:   float64(summary.AscentAccum),
+	}, nil
 }
 
 // DownloadWorkoutFIT reads the FIT file Wahoo's workout summary names.

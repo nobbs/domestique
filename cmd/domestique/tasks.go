@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/route"
@@ -21,13 +22,16 @@ const (
 	taskSurfaceAnnotate  = "surface:annotate"
 	taskSurfaceIndex     = httpapi.TaskSurfaceIndex
 	taskRideModelPredict = httpapi.TaskRideModelPredict
+	taskActivityPoll     = httpapi.TaskActivityPoll
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
 // so none overlap; a surface index build takes neither and runs beside them.
+// Recorded activities are neither, so polling them runs beside both.
 const (
 	resourceInventory    = "inventory"
 	resourceSurfaceIndex = "surface-index"
+	resourceActivities   = "activities"
 )
 
 // A failing library is worth hearing about the same morning; a failing weekly
@@ -54,6 +58,11 @@ const (
 // slot that failed alone or an operator with the read switched off.
 const targetBackstopInterval = 6 * time.Hour
 
+// activityPollInterval is how often a target's recorded activities are read. A
+// ride is finished long before anybody asks about it, and each poll spends from
+// the same daily Wahoo budget the reconciliation does.
+const activityPollInterval = 12 * time.Hour
+
 // The reasons a surface index rebuild reports. Both are stable words a status
 // page may show; neither carries an upstream URL or a local path.
 const (
@@ -70,6 +79,14 @@ const (
 	detailStoppedEarly task.Detail = "stopped_early"
 )
 
+// The reasons an activity poll reports. Each is a stable word a status page may
+// show; none carries a ride, a name or a credential.
+const (
+	detailActivityAuthorization task.Detail = "authorization"
+	detailActivityUpstream      task.Detail = "upstream"
+	detailActivityState         task.Detail = "state"
+)
+
 // synchronizer is the sync work the task layer starts; indexBuilder is the
 // surface index rebuild. Both live here so definitions can be read without a
 // reporter or builder behind them.
@@ -80,6 +97,11 @@ type synchronizer interface {
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
 	Annotate(ctx context.Context) (failed int, err error)
 	Predict(ctx context.Context) (failed int, err error)
+}
+
+// activityPoller is the activity work the task layer starts.
+type activityPoller interface {
+	Poll(ctx context.Context, targetID string) activity.Result
 }
 
 type indexBuilder interface {
@@ -247,6 +269,87 @@ func inventoryTasks(
 			}),
 		},
 	}
+}
+
+// activityPollTask reads each target's recorded activities into the store. It
+// takes its own resource rather than the inventory: it reads a rider's Wahoo
+// account and writes only activity rows, so it runs beside a reconciliation.
+func activityPollTask(
+	poller activityPoller, enabled func(string) func() bool, targetIDs func() []string,
+) task.Definition {
+	return task.Definition{
+		Name:    taskActivityPoll,
+		Enabled: enabled(taskActivityPoll),
+		Resources: func(string) []task.Resource {
+			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
+		},
+		Schedule:     task.Every(func() time.Duration { return activityPollInterval }),
+		InitialDelay: func() time.Duration { return activityPollInterval },
+		FanOut:       targetIDs,
+		Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
+		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+			if invocation.Argument != "" {
+				return activityResult(poller.Poll(ctx, invocation.Argument))
+			}
+
+			return pollEveryTarget(ctx, poller, targetIDs())
+		}),
+	}
+}
+
+// pollEveryTarget polls every slot, reporting the most serious thing that
+// happened: one rider's dead token must not stop another's rides being read.
+func pollEveryTarget(ctx context.Context, poller activityPoller, targetIDs []string) task.Result {
+	aggregate := task.Result{Outcome: task.NotReady}
+	for _, targetID := range targetIDs {
+		if result := activityResult(poller.Poll(ctx, targetID)); severity(result.Outcome) >= severity(aggregate.Outcome) {
+			aggregate = result
+		}
+	}
+
+	return aggregate
+}
+
+// severity orders what one slot came to, worst highest, so an aggregate over
+// every slot reports the outcome an operator would act on first.
+func severity(outcome task.Outcome) int {
+	switch outcome {
+	case task.Failed:
+		return 3
+	case task.Succeeded:
+		return 2
+	case task.Unchanged:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// activityResult carries a poll's outcome into the task layer's vocabulary.
+func activityResult(result activity.Result) task.Result {
+	switch result.Outcome {
+	case activity.Polled:
+		return task.Result{Outcome: task.Succeeded}
+	case activity.Unchanged:
+		return task.Result{Outcome: task.Unchanged}
+	case activity.NotReady:
+		return task.Result{Outcome: task.NotReady}
+	case activity.Failed:
+	}
+
+	return task.Result{Outcome: task.Failed, Detail: activityDetail(result.Failure)}
+}
+
+func activityDetail(failure activity.Failure) task.Detail {
+	switch failure {
+	case activity.FailureAuthorization:
+		return detailActivityAuthorization
+	case activity.FailureState:
+		return detailActivityState
+	case activity.FailureUpstream, activity.FailureNone:
+	}
+
+	return detailActivityUpstream
 }
 
 // surfaceIndexTask rebuilds the surface index; its initial delay counts from

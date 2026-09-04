@@ -48,7 +48,7 @@ private to this service.
 │   ├── surface/                    OSM surface classification and snapping
 │   ├── osmindex/                   OSM extract download, index build, schedule
 │   ├── ridemodel/                  predicted moving time from geometry
-│   ├── activity/                   recorded-activity FIT decoding
+│   ├── activity/                   recorded-activity polling and FIT decoding
 │   ├── veloplanner/                VeloPlanner HTTP source adapter
 │   ├── komoot/                     Komoot HTTP source adapter
 │   ├── openmeteo/                  weather forecast HTTP adapter
@@ -104,7 +104,7 @@ owns a distinct responsibility in this tree.
 | surface | OSM surface and tracktype classification, snapping a route to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a route | classification rules, SQL of the state store, what a route is |
 | ridemodel | the hybrid coefficient type and its loading, the forward model — fixed physics averaged with a rides-calibrated route correction — that turns a route's geometry into a predicted moving time, caching that prediction against geometry, surface, and coefficient fingerprints | calibrating the route correction from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a route's surface is classified |
-| activity | decoded activity FIT values and their validation | SQL, Wahoo URLs, OAuth, scheduling, HTTP routing |
+| activity | decoded activity FIT values and their validation, and polling a target's activity summaries into the store | SQL, Wahoo URLs, OAuth, scheduling, HTTP routing |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route | VeloPlanner or Komoot requests, OAuth, HTTP |
