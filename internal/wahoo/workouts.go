@@ -91,12 +91,12 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 
 	var envelope struct {
 		//nolint:tagliatelle // Wahoo's API uses snake_case.
-		WorkoutSummary json.RawMessage `json:"workout_summary"`
+		WorkoutSummary *json.RawMessage `json:"workout_summary"`
 	}
 	if err := c.doJSON(request, &envelope); err != nil {
 		return WorkoutSummary{}, err
 	}
-	if len(envelope.WorkoutSummary) == 0 || string(envelope.WorkoutSummary) == "null" {
+	if envelope.WorkoutSummary == nil {
 		return WorkoutSummary{}, errors.New("wahoo: workout summary was missing")
 	}
 	var summary struct {
@@ -104,14 +104,14 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 			URL string `json:"url"`
 		} `json:"file"`
 	}
-	if err := json.Unmarshal(envelope.WorkoutSummary, &summary); err != nil {
+	if err := json.Unmarshal(*envelope.WorkoutSummary, &summary); err != nil {
 		return WorkoutSummary{}, errors.New("wahoo: workout summary was not valid json")
 	}
 	if summary.File.URL == "" {
 		return WorkoutSummary{}, errors.New("wahoo: workout summary did not contain a file url")
 	}
 
-	return WorkoutSummary{Raw: envelope.WorkoutSummary, FileURL: summary.File.URL}, nil
+	return WorkoutSummary{Raw: *envelope.WorkoutSummary, FileURL: summary.File.URL}, nil
 }
 
 // DownloadWorkoutFIT reads the FIT file Wahoo's workout summary names.
