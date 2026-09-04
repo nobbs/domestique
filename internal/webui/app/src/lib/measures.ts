@@ -15,7 +15,7 @@
  * in `profile.ts` and `surfaceColour` in `surface.ts`: `cartography.ts` holds
  * only map chrome, not domain palettes. MapLibre paint properties cannot
  * resolve a CSS custom property, so — exactly as `cartography.ts` explains for
- * the route's own colours — the rain and cloud ramps are hex here and mirrored
+ * the route's own colours — every measure's ramp is hex here and mirrored
  * as custom properties in index.css, held equal by `cartography.test.ts`.
  * `--temp-0..4` already existed on the CSS side with no TS mirror; the hex
  * table here closes that gap too, reusing `temperatureBand` from `weather.ts`
@@ -42,7 +42,7 @@ export interface MeasureBand {
   description: string;
 }
 
-/** An internal band cut: `limit` is the ascending exclusive ceiling; the last band has none. */
+/** An internal band cut: `limit` is the ascending exclusive ceiling, `Number.POSITIVE_INFINITY` for the last. */
 interface BandCut extends MeasureBand {
   limit: number;
 }
