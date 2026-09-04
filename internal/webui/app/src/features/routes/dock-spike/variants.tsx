@@ -144,6 +144,38 @@ function Forecast(s: DockState) {
   );
 }
 
+/** Enough climbs to make the list scroll, which one fixture climb cannot. */
+const MANY_CLIMBS = climbs.flatMap((climb) =>
+  Array.from({ length: 9 }, (_, i) => {
+    const startMetres = 200 + i * 300;
+    return { ...climb, startMetres, endMetres: startMetres + 200, distanceMetres: 200 };
+  }),
+);
+
+/** The profile over its ground, with the climbs beside, scrolling against their height. */
+function ProfileWithClimbs(s: DockState) {
+  return (
+    <div className="flex items-stretch gap-3">
+      <div className="grid min-w-0 flex-1 gap-1.5">
+        <Profile {...s} />
+        <Ground {...s} />
+      </div>
+      {/* Pinned to the chart's height, so the list scrolls instead of growing. */}
+      <div className="relative w-80 shrink-0">
+        <div className="absolute inset-0 flex [&>section]:flex [&>section]:flex-col [&_ol]:min-h-0 [&_ol]:flex-1">
+          <ClimbsSidebar
+            climbs={MANY_CLIMBS}
+            open
+            onOpenChange={() => {}}
+            onSelect={() => {}}
+            unitSystem={UNITS}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Climbs() {
   // The sidebar always open: the tab is the fold now.
   return (
@@ -255,13 +287,20 @@ export function AnchoredDock(s: DockState) {
 /**
  * C · Rail. A vertical rail on the left, each stop an icon over a short word;
  * the lane it points at fills the width. A tenth lane costs one more stop.
+ * The ground stays under the profile and the climbs ride beside it rather than
+ * taking stops of their own: both are only readable against the chart.
  */
+const RAIL_LANES: Lane[] = [
+  { key: "profile", label: "Profile", Icon: IconMountain, render: ProfileWithClimbs },
+  ...LANES.filter((lane) => lane.key === "forecast"),
+];
+
 export function RailDock(s: DockState) {
   return (
     <Shell>
       <Tabs.Root defaultValue="profile" orientation="vertical" className="flex gap-3">
         <Tabs.List className="flex shrink-0 flex-col gap-0.5 border-r border-[var(--rule)] pr-2">
-          {LANES.map(({ key, label, Icon }) => (
+          {RAIL_LANES.map(({ key, label, Icon }) => (
             <Tabs.Tab
               key={key}
               value={key}
@@ -273,7 +312,7 @@ export function RailDock(s: DockState) {
           ))}
         </Tabs.List>
         <div className="min-w-0 flex-1">
-          <Panels lanes={LANES} state={s} />
+          <Panels lanes={RAIL_LANES} state={s} />
         </div>
       </Tabs.Root>
     </Shell>
