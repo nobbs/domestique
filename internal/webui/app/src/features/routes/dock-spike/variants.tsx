@@ -13,6 +13,7 @@ import { IconCloud, IconMountain, type IconProps, IconRoad, IconStairs } from "@
 import type { ComponentType, ReactNode } from "react";
 import { useState } from "react";
 import { StartTimePicker } from "../../../components/StartTimePicker";
+import { formatAscent, formatDistance, formatElevation } from "../../../lib/format";
 import type { Highlight } from "../../../lib/highlight";
 import type { MeasureKey } from "../../../lib/measures";
 import { groundSegments } from "../../../lib/mix";
@@ -72,6 +73,52 @@ export function useDockState(): DockState {
   };
 }
 
+/**
+ * The frame every stop shares: one line of figures across the top, a control
+ * at its end where the stop has one, and the body beneath. The line is data
+ * rather than a heading — a reader on the profile stop already knows it is the
+ * profile; what they do not know is how high it goes.
+ */
+function Panel({
+  line,
+  control,
+  children,
+}: {
+  line: string;
+  control?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <div
+        className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1"
+        style={GUTTER}
+      >
+        <output className="text-xs text-[var(--ink-2)] tabular-nums">{line}</output>
+        {control}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** `14:20`, in the reader's own zone. */
+function clockAt(at: Date): string {
+  return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+/** What the profile stop says about itself: the figures, then the gesture. */
+function profileLine(s: DockState): string {
+  if (s.zoomWindow) {
+    return `${formatDistance(s.zoomWindow.startMetres, UNITS)}–${formatDistance(s.zoomWindow.endMetres, UNITS)} shown · Escape returns`;
+  }
+  const range =
+    profile === null
+      ? ""
+      : ` · ${formatElevation(profile.minElevationMetres, UNITS)}–${formatElevation(profile.maxElevationMetres, UNITS)}`;
+  return `${formatDistance(route.distanceMetres, UNITS)} · ${formatAscent(route.ascentMetres, UNITS)} up${range} · drag across to look closer`;
+}
+
 /* ---- the lanes, as they exist today, each wrapped once ------------------ */
 
 function Profile(s: DockState) {
@@ -113,18 +160,20 @@ function Ground(s: DockState) {
 
 function Forecast(s: DockState) {
   const shown = s.zoomWindow ?? { startMetres: 0, endMetres: route.distanceMetres };
+  const back = weatherSamples[weatherSamples.length - 1]?.arrivalAt;
 
   return (
-    <div className="grid gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2" style={GUTTER}>
-        <span className="text-[11px] text-[var(--ink-2)]">Forecast along the ride</span>
+    <Panel
+      line={`Forecast · ${weatherSamples.length} readings${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
+      control={
         <StartTimePicker
           value={s.startAt}
           onChange={s.setStartAt}
           movingSeconds={route.movingSeconds}
           inline
         />
-      </div>
+      }
+    >
       <ForecastStrip
         samples={weatherSamples}
         coordinates={coordinates}
@@ -140,7 +189,7 @@ function Forecast(s: DockState) {
           movingSeconds={route.movingSeconds}
         />
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -156,9 +205,11 @@ const MANY_CLIMBS = climbs.flatMap((climb) =>
 function ProfileWithClimbs(s: DockState) {
   return (
     <div className="flex items-stretch gap-3">
-      <div className="grid min-w-0 flex-1 gap-1.5">
-        <Profile {...s} />
-        <Ground {...s} />
+      <div className="min-w-0 flex-1">
+        <Panel line={profileLine(s)}>
+          <Profile {...s} />
+          <Ground {...s} />
+        </Panel>
       </div>
       {/* Pinned to the chart's height, so the list scrolls instead of growing. */}
       <div className="relative w-80 shrink-0">
