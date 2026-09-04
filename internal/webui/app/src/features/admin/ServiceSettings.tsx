@@ -858,6 +858,7 @@ function Basemaps({ settings }: { settings: Settings }) {
                   onClick={() => {
                     setDraft(basemaps.filter((_, at) => at !== index));
                     setRowKeys(rowKeys.filter((_, at) => at !== index));
+                    setOpenKeys((keys) => keys.filter((other) => other !== key));
                   }}
                 >
                   Remove
