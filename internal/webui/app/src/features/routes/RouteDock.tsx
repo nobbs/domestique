@@ -72,7 +72,7 @@ function Panel({
   const rest = tail.length === 0 ? undefined : tail.join(" · ");
 
   return (
-    <div className="grid gap-1.5">
+    <div className="flex h-full flex-col gap-1.5">
       <div
         className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1"
         style={gutter ? GUTTER : undefined}
@@ -372,22 +372,6 @@ function ForecastStop({
           {forecastResolution(forecastLeadHours(samples)).sentence}
         </p>
       }
-      control={
-        <div className="flex flex-wrap items-center gap-3">
-          <ConditionsChoices
-            measure={measure}
-            onMeasureChange={onMeasureChange}
-            samples={samples}
-            movingSeconds={movingSeconds}
-          />
-          <StartTimePicker
-            value={startAt}
-            onChange={onStartAtChange}
-            movingSeconds={movingSeconds}
-            inline
-          />
-        </div>
-      }
     >
       <ForecastStrip
         samples={samples}
@@ -399,6 +383,23 @@ function ForecastStop({
         caption={false}
       />
       <ConditionsKey measure={measure} samples={samples} unitSystem={unitSystem} />
+      {/* Pinned to the panel's own foot rather than following the key up
+          against the strip, so the departure and the wash choice stay put
+          however tall the key beside them gets. */}
+      <div className="mt-auto flex flex-wrap items-end justify-between gap-3">
+        <StartTimePicker
+          value={startAt}
+          onChange={onStartAtChange}
+          movingSeconds={movingSeconds}
+          inline
+        />
+        <ConditionsChoices
+          measure={measure}
+          onMeasureChange={onMeasureChange}
+          samples={samples}
+          movingSeconds={movingSeconds}
+        />
+      </div>
     </Panel>
   );
 }
