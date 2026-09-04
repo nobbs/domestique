@@ -166,26 +166,78 @@ const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
 const CHOICE =
   "flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
 
-/** One band as a coloured chip; what it means and where it cuts wait under the pointer. */
-function Chip({
+/** The looks a key can wear; the story compares them, the rail picks one. */
+export type Look = "pill" | "swatch" | "underline" | "dot" | "ramp";
+
+const TRIGGER =
+  "text-[11px] leading-none text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
+
+/** One band; what it means and where it cuts wait under the pointer. */
+function Band({
+  look,
   colour,
   opacity = 1,
   label,
   detail,
 }: {
+  look: Look;
   colour: string;
   opacity?: number;
   label: string;
   detail: string;
 }) {
-  return (
-    <Tooltip.Root>
+  const fill = `color-mix(in srgb, ${colour} ${opacity * 100}%, transparent)`;
+  const wash = `color-mix(in srgb, ${colour} ${opacity * 60}%, transparent)`;
+  const shape = {
+    pill: (
       <Tooltip.Trigger
-        className="rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-        style={{ backgroundColor: `color-mix(in srgb, ${colour} ${opacity * 60}%, transparent)` }}
+        className={`${TRIGGER} rounded-full border border-[var(--rule)] px-2 py-0.5`}
+        style={{ backgroundColor: wash }}
       >
         {label}
       </Tooltip.Trigger>
+    ),
+    swatch: (
+      <Tooltip.Trigger className={`${TRIGGER} flex items-center gap-1 rounded px-0.5`}>
+        <span
+          aria-hidden="true"
+          className="h-2.5 w-3.5 rounded-xs border border-[var(--rule)]"
+          style={{ backgroundColor: fill }}
+        />
+        {label}
+      </Tooltip.Trigger>
+    ),
+    underline: (
+      <Tooltip.Trigger
+        className={`${TRIGGER} border-b-2 px-0.5 pb-0.5`}
+        style={{ borderColor: opacity === 0 ? "var(--rule)" : colour }}
+      >
+        {label}
+      </Tooltip.Trigger>
+    ),
+    dot: (
+      <Tooltip.Trigger className={`${TRIGGER} flex items-center gap-1 rounded px-0.5`}>
+        <span
+          aria-hidden="true"
+          className="size-2 rounded-full border border-[var(--rule)]"
+          style={{ backgroundColor: fill }}
+        />
+        {label}
+      </Tooltip.Trigger>
+    ),
+    ramp: (
+      <Tooltip.Trigger
+        className={`${TRIGGER} px-2 py-0.5 first:rounded-l-sm last:rounded-r-sm`}
+        style={{ backgroundColor: wash, boxShadow: "inset 0 0 0 1px var(--rule)" }}
+      >
+        {label}
+      </Tooltip.Trigger>
+    ),
+  }[look];
+
+  return (
+    <Tooltip.Root>
+      {shape}
       <Tooltip.Portal>
         <Tooltip.Positioner sideOffset={6}>
           <Tooltip.Popup className="max-w-56 rounded-md bg-[var(--ink)] px-2 py-1 text-[11px] text-[var(--panel)] shadow-[var(--shadow)]">
@@ -197,24 +249,56 @@ function Chip({
   );
 }
 
-function ChipKey({ measure }: { measure: Measure }) {
+/** One key: a lead word and its bands, butted together for the ramp and spaced otherwise. */
+function Key({ lead, look, children }: { lead: string; look: Look; children: ReactNode }) {
   return (
-    <ul className="flex flex-wrap items-center gap-1">
-      {measure.bands.map((band, index) => {
-        const opacity = measure.opacity(index);
-        const range = RANGES[measure.key][index] ?? "";
-        return (
-          <li key={band.label}>
-            <Chip
-              colour={measureVariable(measure.key, index)}
-              opacity={opacity}
-              label={band.label}
-              detail={`${band.description} · ${range}${opacity === 0 ? " · not washed" : ""}`}
-            />
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex items-center gap-x-1.5">
+      <span className="text-[10px] tracking-[0.06em] text-[var(--ink-2)] uppercase">{lead}</span>
+      <ul className={look === "ramp" ? "flex items-center" : "flex items-center gap-x-1.5"}>
+        {children}
+      </ul>
+    </div>
+  );
+}
+
+/** The key for one wash, on one line: the corridor, and for wind the route line too. */
+export function WashKey({ measure, look }: { measure: Measure; look: Look }) {
+  return (
+    <Tooltip.Provider>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--ink-2)]">
+        <Key lead="Corridor" look={look}>
+          {measure.bands.map((band, index) => {
+            const opacity = measure.opacity(index);
+            const range = RANGES[measure.key][index] ?? "";
+            return (
+              <li key={band.label}>
+                <Band
+                  look={look}
+                  colour={measureVariable(measure.key, index)}
+                  opacity={opacity}
+                  label={band.label}
+                  detail={`${band.description} · ${range}${opacity === 0 ? " · not washed" : ""}`}
+                />
+              </li>
+            );
+          })}
+        </Key>
+        {measure.key === "wind" ? (
+          <Key lead="Route line" look={look}>
+            {WIND_RELATION_KEY.map((band) => (
+              <li key={band.description}>
+                <Band
+                  look={look}
+                  colour={windRelationVariable(band.stop)}
+                  label={band.label}
+                  detail={`${band.description} · replaces the steepness edging`}
+                />
+              </li>
+            ))}
+          </Key>
+        ) : null}
+      </div>
+    </Tooltip.Provider>
   );
 }
 
@@ -250,38 +334,9 @@ function Choices(s: DockState) {
   );
 }
 
-/** The key for the chosen wash: one row of chips, two for wind. */
 function Conditions(s: DockState) {
   const chosen = MEASURES.find((entry) => entry.key === s.measure);
-  if (chosen === undefined) {
-    return null;
-  }
-  return (
-    <Tooltip.Provider>
-      <div className="grid gap-1.5 text-[11px] text-[var(--ink-2)]">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span>Corridor</span>
-          <ChipKey measure={chosen} />
-        </div>
-        {chosen.key === "wind" ? (
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>Route line</span>
-            <ul className="flex flex-wrap items-center gap-1">
-              {WIND_RELATION_KEY.map((band) => (
-                <li key={band.description}>
-                  <Chip
-                    colour={windRelationVariable(band.stop)}
-                    label={band.label}
-                    detail={`${band.description} · replaces the steepness edging`}
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </div>
-    </Tooltip.Provider>
-  );
+  return chosen === undefined ? null : <WashKey measure={chosen} look="swatch" />;
 }
 
 /* ---- the lanes, as they exist today, each wrapped once ------------------ */
