@@ -211,7 +211,7 @@ const MANY_CLIMBS = climbs.flatMap((climb) =>
 /** The profile over its ground, with the climbs beside, scrolling against their height. */
 function ProfileWithClimbs(s: DockState) {
   return (
-    <div className="flex items-stretch gap-3">
+    <div className="flex h-full items-stretch gap-3">
       <div className="min-w-0 flex-1">
         <Panel line={profileLine(s)}>
           <Profile {...s} />
@@ -344,7 +344,8 @@ export function AnchoredDock(s: DockState) {
 
 /**
  * C · Rail. A vertical rail on the left, each stop an icon over a short word;
- * the lane it points at fills the width. A tenth lane costs one more stop.
+ * the lane it points at fills the width, at a height that is the same for
+ * every stop. A tenth lane costs one more stop.
  * The ground stays under the profile and the climbs ride beside it rather than
  * taking stops of their own: both are only readable against the chart.
  */
@@ -369,7 +370,8 @@ export function RailDock(s: DockState) {
             </Tabs.Tab>
           ))}
         </Tabs.List>
-        <div className="min-w-0 flex-1">
+        {/* One height for every stop, so switching never moves the map's foot. */}
+        <div className="h-52 min-w-0 flex-1 [&>[role=tabpanel]]:h-full">
           <Panels lanes={RAIL_LANES} state={s} />
         </div>
       </Tabs.Root>
