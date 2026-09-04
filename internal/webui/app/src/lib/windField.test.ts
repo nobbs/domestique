@@ -93,6 +93,9 @@ function particle(overrides: Partial<FieldParticle> = {}): FieldParticle {
     lifeSeconds: 1000,
     alongMetresPerSecond: 0,
     acrossMetresPerSecond: 0,
+    // What `advanceField` would have left behind for a particle over a route
+    // the forecast has a reading for, which is what these fixtures build.
+    hasWind: true,
     ...overrides,
   };
 }
@@ -369,6 +372,17 @@ describe("the field written into a vertex buffer", () => {
     const buffer = new Float32Array(2 * VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
 
     expect(writeStreaks(particles, geometry, buffer)).toBe(2 * VERTICES_PER_STREAK);
+  });
+
+  // Nothing to drift on is nothing to draw: a still streak reads as a wind
+  // that is there and calm, which is not what an absent forecast means.
+  it("writes nothing for a route the forecast has no reading along", () => {
+    const geometry: FieldGeometry = { ...eastRoad(0), samples: [] };
+    const particles = seedField(geometry, 4, sequence(5));
+    advanceField(particles, geometry, 0.5);
+    const buffer = new Float32Array(4 * VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
+
+    expect(writeStreaks(particles, geometry, buffer)).toBe(0);
   });
 });
 

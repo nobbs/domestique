@@ -118,6 +118,12 @@ export interface FieldParticle extends DriftRates {
   offsetMetres: number;
   ageSeconds: number;
   lifeSeconds: number;
+  /**
+   * Whether there was a reading where this particle last sat, carried from the
+   * sample `advanceField` already takes so `writeStreaks` need not take a
+   * second one per particle per frame.
+   */
+  hasWind: boolean;
 }
 
 /** Everything the field needs to advect a particle and to place it on the map. */
@@ -296,6 +302,7 @@ export function respawn(
   particle.lifeSeconds = lifeSeconds(random);
   particle.alongMetresPerSecond = 0;
   particle.acrossMetresPerSecond = 0;
+  particle.hasWind = sampleVectorAt(geometry.samples, particle.alongMetres) !== null;
 }
 
 /** A field of `count` particles, each already part way through a life of its own. */
@@ -312,6 +319,7 @@ export function seedField(
       lifeSeconds: PARTICLE_LIFE_SECONDS,
       alongMetresPerSecond: 0,
       acrossMetresPerSecond: 0,
+      hasWind: false,
     };
     respawn(particle, geometry, random);
     // Seeded mid-life, or the whole field would fade in and out together.
@@ -368,6 +376,7 @@ export function advanceField(
   for (const particle of particles) {
     particle.ageSeconds += seconds;
     const wind = sampleVectorAt(geometry.samples, particle.alongMetres);
+    particle.hasWind = wind !== null;
     if (wind) {
       const rates = driftRates(
         wind,
@@ -404,7 +413,7 @@ export function writeStreaks(
     if (written + VERTICES_PER_STREAK > into.length / FLOATS_PER_VERTEX) {
       break;
     }
-    if (!sampleVectorAt(geometry.samples, particle.alongMetres)) {
+    if (!particle.hasWind) {
       continue;
     }
     const head = positionAt(coordinates, distances, particle.alongMetres, particle.offsetMetres);
