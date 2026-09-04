@@ -19,7 +19,7 @@
  * either re-checks the pair.
  */
 
-import { IconCalendar, IconX } from "@tabler/icons-react";
+import { IconCalendar } from "@tabler/icons-react";
 import { useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -90,8 +90,8 @@ export function StartTimePicker({
    * A day the reader has picked while no departure exists yet. Held rather
    * than proposed: there is deliberately no default start time, and proposing
    * the day at midnight would draw a confident forecast for a ride nobody
-   * planned — the very thing the clear button's comment promises not to do.
-   * The departure is proposed once the time field fills the other half in.
+   * planned. The departure is proposed once the time field fills the other
+   * half in. There is no clear: a start once set can only be changed.
    */
   const [pendingDay, setPendingDay] = useState<Date | null>(null);
   const now = new Date();
@@ -230,23 +230,6 @@ export function StartTimePicker({
         onChange={(event) => proposeTime(event.target.value)}
         onBlur={(event) => proposeTime(event.target.value)}
       />
-      {shownDay === null ? null : (
-        // The way back to nothing chosen. There is no default start time on
-        // purpose — an invented one draws a confident forecast for a ride
-        // nobody planned — so a reader who set one has to be able to unset it.
-        <button
-          type="button"
-          aria-label="Clear the ride start"
-          onClick={() => {
-            setRefusal(null);
-            setPendingDay(null);
-            onChange(null);
-          }}
-          className="rounded p-1 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-        >
-          <IconX size={14} stroke={2} aria-hidden="true" />
-        </button>
-      )}
     </div>
   );
 

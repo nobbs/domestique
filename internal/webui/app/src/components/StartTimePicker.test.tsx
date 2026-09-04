@@ -235,13 +235,4 @@ describe("StartTimePicker", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("That's more than a day in the past.");
   });
-
-  it("clears back to nothing chosen", () => {
-    const onChange = vi.fn();
-    render(<StartTimePicker value={new Date("2026-08-25T07:00")} onChange={onChange} />);
-
-    fireEvent.click(screen.getByLabelText("Clear the ride start"));
-
-    expect(onChange).toHaveBeenCalledWith(null);
-  });
 });
