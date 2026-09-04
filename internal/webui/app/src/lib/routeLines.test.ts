@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
-import { gradientSlices, routeLinesWithin } from "./routeLines";
+import { cumulativeMetres } from "./profile";
+import { distanceSlices, gradientSlices, routeLinesWithin } from "./routeLines";
 
 /** Points spaced evenly by latitude, so every stretch is the same length. */
 function route(pointCount: number): Position[] {
@@ -85,5 +86,60 @@ describe("gradientSlices", () => {
 
   it("has nothing to paint for a route with no elevation", () => {
     expect(gradientSlices(route(5), null)).toEqual([]);
+  });
+});
+
+describe("distanceSlices", () => {
+  const coordinates = route(9);
+  const distances = cumulativeMetres(coordinates);
+  const totalMetres = distances[distances.length - 1] ?? 0;
+  /** The distance of the middle point, so a boundary lands exactly on it. */
+  const middleMetres = distances[4] ?? 0;
+
+  it("cuts a stretch given in metres out of the geometry", () => {
+    const [slices] = distanceSlices(
+      coordinates,
+      distances,
+      [{ fromMetres: 0, toMetres: middleMetres }],
+      null,
+    );
+
+    expect(slices?.inside[0]?.[0]).toEqual(coordinates[0]);
+    expect(slices?.inside[0]).toHaveLength(5);
+  });
+
+  it("meets neighbouring stretches on one point, sharing no segment", () => {
+    const [first, second] = distanceSlices(
+      coordinates,
+      distances,
+      [
+        { fromMetres: 0, toMetres: middleMetres },
+        { fromMetres: middleMetres, toMetres: totalMetres },
+      ],
+      null,
+    );
+    const left = first?.inside[0] ?? [];
+    const right = second?.inside[0] ?? [];
+
+    expect(left[left.length - 1]).toEqual(right[0]);
+    expect(left.length + right.length).toBe(coordinates.length + 1);
+  });
+
+  it("splits each stretch by what the chart is showing, as every other cut does", () => {
+    const [slices] = distanceSlices(
+      coordinates,
+      distances,
+      [{ fromMetres: 0, toMetres: totalMetres }],
+      [{ startIndex: 0, endIndex: 4 }],
+    );
+
+    expect(slices?.inside).not.toHaveLength(0);
+    expect(slices?.outside).not.toHaveLength(0);
+  });
+
+  it("has nothing to cut for a stretch that spans no ground", () => {
+    const [slices] = distanceSlices(coordinates, distances, [{ fromMetres: 0, toMetres: 0 }], null);
+
+    expect(slices?.inside).toEqual([]);
   });
 });

@@ -33,6 +33,7 @@ import {
   temperatureValue,
 } from "./units";
 import { temperatureBand } from "./weather";
+import type { WindRelation } from "./wind";
 
 export type MeasureKey = "wind" | "temperature" | "rain" | "cloud";
 
@@ -103,6 +104,30 @@ const WIND_COLOURS: MeasureRamp = {
 };
 
 /**
+ * The same wind, drawn on the route itself: a diverging ramp from dead into it
+ * to dead behind, for what the wind is doing to the rider rather than how hard
+ * it blows. `WIND_COLOURS` above stays the corridor's speed ramp; this one is
+ * the line's, and the two are drawn at once.
+ *
+ * Amber against violet, never red against green: the two ends are the whole
+ * point of the encoding, so they have to stay apart for a reader who cannot
+ * separate red from green — this pair stays far apart under protanopia and
+ * deuteranopia alike. It is also the axis left clear of the corridor's teal,
+ * the route's own azure accent, and the steepness and surface ramps.
+ */
+const WIND_RELATION_COLOURS: MeasureRamp = {
+  light: ["#b3560f", "#e0a266", "#9c93dd", "#443a94"],
+  dark: ["#dd8b52", "#b8946f", "#8e88d4", "#7d6ef0"],
+};
+
+/**
+ * What a `"mixed"` stretch is drawn in: a stone that belongs to neither end of
+ * the ramp, so the switchback `wind.ts` refuses to average reads as no
+ * confident answer rather than as a middling crosswind.
+ */
+const WIND_MIXED_COLOUR = { light: "#6e6a66", dark: "#9b968f" } as const;
+
+/**
  * A neutral ramp, so it darkens against a light basemap and lightens against
  * a dark one rather than favouring either — the same reason `SURFACE_STYLES`
  * carries a light/dark pair for every class instead of one grey.
@@ -138,6 +163,34 @@ const WIND_BANDS: readonly BandCut[] = [
     label: "gale",
     description: "gale-force — exposed ground needs care",
   },
+];
+
+/**
+ * The stops of the head-to-tail ramp, cut by `wind.ts`'s own cones: a headwind
+ * and a tailwind each claim theirs, and a crosswind is split by the sign of
+ * its along-travel component — which is exactly what that component is signed
+ * for.
+ */
+const WIND_RELATION_BANDS: readonly MeasureBand[] = [
+  { label: "headwind", description: "headwind — straight into it" },
+  { label: "crosswind", description: "crosswind, leaning against you" },
+  { label: "crosswind", description: "crosswind, leaning with you" },
+  { label: "tailwind", description: "tailwind — pushing you along" },
+];
+
+/** The reading for a road that turns back on itself inside one bearing window. */
+const WIND_MIXED_BAND: MeasureBand = {
+  label: "wind shifting",
+  description: "wind shifting — the road turns back on itself here",
+};
+
+/**
+ * The key a legend lists, the ramp in order and the neutral last. `stop` is
+ * null for `"mixed"`, the same way every function below takes it.
+ */
+export const WIND_RELATION_KEY: readonly (MeasureBand & { stop: number | null })[] = [
+  ...WIND_RELATION_BANDS.map((band, stop) => ({ ...band, stop })),
+  { ...WIND_MIXED_BAND, stop: null },
 ];
 
 /**
@@ -341,4 +394,49 @@ export function rainColour(band: number, dark: boolean): string {
 /** `CLOUD_COLOURS`, for `cartography.test.ts` to hold equal to index.css. */
 export function cloudColour(band: number, dark: boolean): string {
   return rampColour(CLOUD_COLOURS, band, dark);
+}
+
+/**
+ * A component this close to nought is a pure crosswind read through
+ * floating-point noise, not a genuine lean toward the head or tail side —
+ * `windRelation`'s `-cos(angleDifference)` lands a hair either side of zero at
+ * exactly ±90°, and picking a stop by that sign alone would flip it between
+ * two adjacent readings of the same wind.
+ */
+const CROSSWIND_EPSILON = 1e-9;
+
+/**
+ * Which stop of the head-to-tail ramp a reading sits on, from `windRelation`'s
+ * own answer rather than from a second set of cuts over the same component.
+ */
+export function windRelationStop(relation: WindRelation, componentKmhPerKmh: number): number {
+  const leaning = componentKmhPerKmh < -CROSSWIND_EPSILON ? 1 : 2;
+
+  return relation === "head" ? 0 : relation === "tail" ? 3 : leaning;
+}
+
+/** A stop's colour on the cartography actually loaded; null is `"mixed"`. */
+export function windRelationColour(stop: number | null, dark: boolean): string {
+  return stop === null
+    ? WIND_MIXED_COLOUR[dark ? "dark" : "light"]
+    : rampColour(WIND_RELATION_COLOURS, stop, dark);
+}
+
+/** The same stop as the custom property a legend swatch reads. */
+export function windRelationVariable(stop: number | null): string {
+  return `var(--wind-relation-${stop ?? "mixed"})`;
+}
+
+/**
+ * The rider-relative wind in words, in the reader's own units: which way it
+ * sits against the road, and how hard it is blowing there.
+ *
+ * The wind's own speed rather than its along-road share — that is the figure
+ * the strip and the corridor already report, and putting the share here would
+ * give the same stretch two different wind speeds.
+ */
+export function windRelationWords(stop: number | null, kmh: number, system: UnitSystem): string {
+  const band = stop === null ? WIND_MIXED_BAND : WIND_RELATION_BANDS[stop];
+
+  return `${band?.label}, ${Math.round(speedValue(kmh, system))} ${speedUnitLabel(system)}`;
 }

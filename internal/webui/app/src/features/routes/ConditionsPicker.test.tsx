@@ -9,7 +9,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { ForecastSample } from "../../lib/forecastSamples";
-import { MEASURES } from "../../lib/measures";
+import { MEASURES, WIND_RELATION_KEY } from "../../lib/measures";
 import { ConditionsPicker } from "./ConditionsPicker";
 
 const SAMPLES: ForecastSample[] = [0, 1_500, 3_000].map((distanceMetres, index) => ({
@@ -112,6 +112,34 @@ describe("the key beside the choice", () => {
     show();
 
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The wind is the one measure drawn twice — a corridor of speed around the
+ * route, and the route itself in what that wind is doing to the rider — so it
+ * is the one measure whose key has two halves.
+ */
+describe("the second key the wind carries", () => {
+  it("names every stop of the head-to-tail ramp, and the shifting one", () => {
+    show({ measure: "wind" });
+
+    for (const band of WIND_RELATION_KEY) {
+      expect(screen.getByText(new RegExp(band.description))).toBeInTheDocument();
+    }
+  });
+
+  it("says the route is showing the wind in place of its steepness", () => {
+    show({ measure: "wind" });
+
+    expect(screen.getByText(/in place of its steepness edging/)).toBeInTheDocument();
+  });
+
+  it("says nothing of the sort for a measure the route is not drawn in", () => {
+    show({ measure: "rain" });
+
+    expect(screen.queryByText(/in place of its steepness edging/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/wind shifting/)).not.toBeInTheDocument();
   });
 });
 

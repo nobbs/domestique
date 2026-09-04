@@ -1,10 +1,11 @@
 /**
  * The route cut into the pieces a map paints.
  *
- * Two encodings are drawn along the same line — the ground under the wheel and
- * how steeply it rises — and both are drawn as one set of lines per class. The
- * cutting rules they share live here so a boundary lands in the same place
- * whichever encoding asked for it: neighbouring pieces meet on one shared point
+ * Several encodings are drawn along the same line — the ground under the wheel,
+ * how steeply it rises, what the wind is doing to the rider — and each is drawn
+ * as one set of lines per class. The cutting rules they share live here so a
+ * boundary lands in the same place whichever encoding asked for it: neighbouring
+ * pieces meet on one shared point
  * and share no segment, because a gap would break the drawn route and an
  * overlap would paint one metre of it twice.
  *
@@ -92,6 +93,53 @@ export function routeLinesWithin(
   }
 
   return splitAtRanges(coordinates, 0, lastIndex, lit);
+}
+
+/** The first coordinate at or past a distance, searching on from `fromIndex`. */
+function indexAtOrPast(distances: number[], metres: number, fromIndex: number): number {
+  const lastIndex = Math.max(distances.length - 1, 0);
+  let index = Math.min(Math.max(fromIndex, 0), lastIndex);
+  while (index < lastIndex && (distances[index] ?? 0) < metres) {
+    index++;
+  }
+
+  return index;
+}
+
+/** A stretch of route measured in metres rather than in point indices. */
+export interface MetreRange {
+  fromMetres: number;
+  toMetres: number;
+}
+
+/**
+ * Stretches given in metres, cut out of the geometry and split by what is drawn
+ * at full strength — one entry per stretch, in the order they were given.
+ *
+ * Each boundary snaps forward to the first coordinate at or past it, so
+ * neighbouring stretches meet on one shared point and share no segment: the
+ * same rule `gradientSlices` cuts by, and for the same reason. The stretches
+ * are expected in route order, which is how every producer of them reports
+ * ground.
+ *
+ * `distances` is `cumulativeMetres(coordinates)`, taken from the caller rather
+ * than walked again here.
+ */
+export function distanceSlices(
+  coordinates: Position[],
+  distances: number[],
+  ranges: readonly MetreRange[],
+  lit: readonly CoordinateRange[] | null,
+): { inside: Position[][]; outside: Position[][] }[] {
+  let cursor = 0;
+
+  return ranges.map((range) => {
+    const startIndex = indexAtOrPast(distances, range.fromMetres, cursor);
+    const endIndex = indexAtOrPast(distances, range.toMetres, startIndex);
+    cursor = endIndex;
+
+    return splitAtRanges(coordinates, startIndex, endIndex, lit);
+  });
 }
 
 /**
