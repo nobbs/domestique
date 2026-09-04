@@ -81,6 +81,13 @@ func TestLoggedIsSilentOnSuccess(t *testing.T) {
 	assert.Empty(t, output.String())
 }
 
+func TestStatusRecorderKeepsTheFirstStatusLikeNetHTTP(t *testing.T) {
+	recorder := &statusRecorder{ResponseWriter: httptest.NewRecorder(), status: http.StatusOK}
+	recorder.WriteHeader(http.StatusBadGateway)
+	recorder.WriteHeader(http.StatusOK)
+	assert.Equal(t, http.StatusBadGateway, recorder.status)
+}
+
 func TestStatusRecorderUnwrapsForTheResponseController(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	assert.Same(t, recorder, (&statusRecorder{ResponseWriter: recorder}).Unwrap())

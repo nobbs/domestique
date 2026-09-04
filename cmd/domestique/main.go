@@ -331,9 +331,6 @@ type backgroundTasks interface {
 	Wait()
 }
 
-// serve runs both HTTP listeners and every scheduled job under one cancellation
-// scope, waiting for cancelled runs to finish before its caller closes the state
-// and index files they may still use. Either listener failing stops the process.
 // installLogging makes the process write JSON lines to output. It starts at
 // Info, before the configuration is read, so a failure to read it is JSON too.
 func installLogging(output io.Writer) *slog.LevelVar {
@@ -358,6 +355,9 @@ func newServer(address string, handler http.Handler) *http.Server {
 	}
 }
 
+// serve runs both HTTP listeners and every scheduled job under one cancellation
+// scope, waiting for cancelled runs to finish before its caller closes the state
+// and index files they may still use. Either listener failing stops the process.
 func serve(
 	ctx context.Context,
 	cancel context.CancelFunc,

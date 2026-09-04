@@ -20,20 +20,24 @@ func (h *Handler) logged(next http.Handler) http.Handler {
 		next.ServeHTTP(recorder, request)
 		duration := h.now().Sub(start)
 
-		attributes := []any{
+		var level slog.Level
+		var message string
+		switch {
+		case recorder.status >= http.StatusInternalServerError:
+			level, message = slog.LevelError, "request failed"
+		case duration > slowRequest:
+			level, message = slog.LevelWarn, "request slow"
+		case recorder.status == http.StatusUnauthorized || recorder.status == http.StatusForbidden:
+			level, message = slog.LevelDebug, "request refused"
+		default:
+			return
+		}
+		slog.Log(request.Context(), level, message,
 			"method", request.Method,
 			"path", pathClass(request.URL.Path),
 			"status", recorder.status,
 			"duration_ms", duration.Milliseconds(),
-		}
-		switch {
-		case recorder.status >= http.StatusInternalServerError:
-			slog.Error("request failed", attributes...)
-		case duration > slowRequest:
-			slog.Warn("request slow", attributes...)
-		case recorder.status == http.StatusUnauthorized || recorder.status == http.StatusForbidden:
-			slog.Debug("request refused", attributes...)
-		}
+		)
 	})
 }
 
@@ -48,13 +52,17 @@ func pathClass(path string) string {
 	return "/" + strings.Join(segments, "/")
 }
 
+// statusRecorder keeps the status net/http honours: the first one written.
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status  int
+	written bool
 }
 
 func (r *statusRecorder) WriteHeader(status int) {
-	r.status = status
+	if !r.written {
+		r.status, r.written = status, true
+	}
 	r.ResponseWriter.WriteHeader(status)
 }
 
