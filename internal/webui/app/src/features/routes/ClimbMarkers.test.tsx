@@ -5,6 +5,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Climb } from "../../lib/climbs";
+import { bandVariable } from "../../lib/mix";
+import { gradientBand } from "../../lib/profile";
 import { ClimbMarkers } from "./ClimbMarkers";
 
 function climb(startMetres: number, endMetres: number): Climb {
@@ -66,6 +68,21 @@ describe("ClimbMarkers", () => {
     expect(screen.queryByRole("button", { name: "Climb 1" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Climb 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Climb 3" })).toBeInTheDocument();
+  });
+
+  it("colours a bracket by how steep its climb averages, not one flat colour", () => {
+    const climbs: Climb[] = [
+      { ...climb(0, 1_000), averageGradePercent: 2 },
+      { ...climb(3_000, 4_000), averageGradePercent: 11 },
+    ];
+    render(<ClimbMarkers climbs={climbs} startMetres={0} endMetres={10_000} onSelect={vi.fn()} />);
+
+    const gentle = screen.getByRole("button", { name: "Climb 1" });
+    const steep = screen.getByRole("button", { name: "Climb 2" });
+
+    expect(gentle.style.backgroundColor).toBe(bandVariable(gradientBand(2)));
+    expect(steep.style.backgroundColor).toBe(bandVariable(gradientBand(11)));
+    expect(gentle.style.backgroundColor).not.toBe(steep.style.backgroundColor);
   });
 
   it("draws nothing for an empty or inverted window", () => {

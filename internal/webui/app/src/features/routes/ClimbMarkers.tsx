@@ -13,10 +13,14 @@
  */
 
 import type { Climb } from "../../lib/climbs";
+import { bandVariable } from "../../lib/mix";
 import { PADDING } from "../../lib/plotAxis";
+import { gradientBand } from "../../lib/profile";
 
-/** Where the brackets sit: just inside the top of the plotted area. */
-const BRACKET_TOP = PADDING.top + 2;
+// Above PADDING.top rather than tracking it: the terrain can reach anywhere
+// from PADDING.top down, so a bracket built from that value would sit inside
+// the ground it is meant to stay clear of.
+const BRACKET_TOP = 2;
 
 export function ClimbMarkers({
   climbs,
@@ -56,11 +60,12 @@ export function ClimbMarkers({
               type="button"
               onClick={() => onSelect((climb.startMetres + climb.endMetres) / 2)}
               aria-label={`Climb ${ordinal}`}
-              className="pointer-events-auto absolute rounded-full bg-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+              className="pointer-events-auto absolute rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
               style={{
                 top: BRACKET_TOP,
                 height: 3,
-                opacity: 0.55,
+                opacity: 0.8,
+                backgroundColor: bandVariable(gradientBand(climb.averageGradePercent)),
                 left: `${((clampedStart - startMetres) / span) * 100}%`,
                 width: `${((clampedEnd - clampedStart) / span) * 100}%`,
               }}
