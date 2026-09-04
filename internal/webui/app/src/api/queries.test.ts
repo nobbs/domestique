@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { routeGeometryQuery, routeQuery, statusQuery } from "./queries";
+import { activitiesQuery, routeGeometryQuery, routeQuery, statusQuery } from "./queries";
+import type { Activity } from "./types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -87,5 +88,24 @@ describe("statusQuery", () => {
 
   it("stops polling once nothing is under way", () => {
     expect(intervalWhile(undefined)).toBe(false);
+  });
+});
+
+/**
+ * Seeded caches hold the list the page reads; a fetch answers with the wire
+ * envelope around it. Both reach the same select.
+ */
+describe("the activities query", () => {
+  it("reads the list out of the envelope, and leaves an unwrapped one alone", () => {
+    const { select } = activitiesQuery("2026-01-01T00:00:00.000Z");
+    if (!select) {
+      throw new Error("the activities query no longer selects");
+    }
+    type Response = Parameters<typeof select>[0];
+    const activity = { id: 1 } as unknown as Activity;
+
+    expect(select({ data: { activities: [activity] } } as unknown as Response)).toEqual([activity]);
+    expect(select({ activities: [activity] } as unknown as Response)).toEqual([activity]);
+    expect(select([activity] as unknown as Response)).toEqual([activity]);
   });
 });

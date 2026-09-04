@@ -1,5 +1,7 @@
 /** UI-domain aliases over the OpenAPI-generated models. */
 import {
+  type Activity,
+  type ActivityList,
   type AlertSetting,
   type BrowserBasemap,
   type Build,
@@ -32,6 +34,8 @@ import {
 } from "./generated";
 
 export type {
+  Activity,
+  ActivityList,
   AlertSetting,
   BrowserBasemap,
   Build as BuildInfo,

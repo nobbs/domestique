@@ -4,6 +4,7 @@ import type { ForecastSample } from "../lib/forecastSamples";
 import {
   type WebUIConfig as GeneratedWebUIConfig,
   type GetTaskRunsParams,
+  getGetActivitiesQueryOptions,
   getGetRouteGeometryQueryOptions,
   getGetRouteQueryOptions,
   getGetRoutesQueryOptions,
@@ -18,6 +19,8 @@ import {
   useGetTaskRunsInfinite,
 } from "./generated";
 import {
+  type Activity,
+  type ActivityList,
   type GeoJSONFeature,
   type Route,
   type RouteGeometry,
@@ -54,6 +57,27 @@ export const routesQuery = () =>
       },
     },
   });
+
+/**
+ * The rider's own recorded activities from `from` until now.
+ *
+ * The window's end is left to the service so that today's ride is in it; the
+ * start is a whole day, which is what keeps the key — and the cache — steady
+ * across a session.
+ */
+export const activitiesQuery = (from: string) =>
+  getGetActivitiesQueryOptions(
+    { from },
+    {
+      query: {
+        select: (response) => {
+          const list = payload<ActivityList | Activity[]>(response);
+
+          return Array.isArray(list) ? list : list.activities;
+        },
+      },
+    },
+  );
 
 export const routeQuery = (provider: string, sourceRouteId: number, stageOrder: number) =>
   getGetRouteQueryOptions(provider, sourceRouteId, stageOrder, {
