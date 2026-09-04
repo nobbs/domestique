@@ -22,7 +22,7 @@
  * was the same reading in a worse place.
  */
 
-import { IconChevronRight, IconStairs } from "@tabler/icons-react";
+import { IconStairs } from "@tabler/icons-react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
@@ -45,33 +45,50 @@ const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr)";
 const ROW_HEIGHT = 28;
 
 /**
- * The route's climbs in one line: how many, and the one that decides the day.
- *
- * What a reader deciding whether to open the list needs before opening it.
+ * The one way to open or fold the sidebar, wherever it sits: the same count,
+ * the same look, whichever state it names.
  */
-export function climbSentence(climbs: Climb[], unitSystem: UnitSystem): string | null {
-  const biggest = climbs.reduce<Climb | null>(
-    (worst, climb) => (worst === null || climb.ascentMetres > worst.ascentMetres ? climb : worst),
-    null,
-  );
-  if (biggest === null) {
+export function ClimbsToggle({
+  climbs,
+  open,
+  onOpenChange,
+}: {
+  climbs: Climb[];
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const count = climbCount(climbs);
+  if (count === null) {
     return null;
   }
 
-  return `biggest ${formatDistance(biggest.distanceMetres, unitSystem)} at ${formatGradient(biggest.averageGradePercent)}`;
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={`${open ? "Hide" : "Show"} ${count}`}
+      onClick={() => onOpenChange(!open)}
+      className="flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+    >
+      <IconStairs size={13} stroke={2} aria-hidden="true" />
+      {count}
+    </button>
+  );
+}
+
+function climbCount(climbs: Climb[]): string | null {
+  return climbs.length === 0
+    ? null
+    : `${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`;
 }
 
 export function ClimbsSidebar({
   climbs,
-  open,
-  onOpenChange,
   onSelect,
   unitSystem,
   fixedHeight = false,
 }: {
   climbs: Climb[];
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   /** Opens the shared map/chart window on one climb, as the brackets do. */
   onSelect: (climb: Climb) => void;
   unitSystem: UnitSystem;
@@ -82,54 +99,23 @@ export function ClimbsSidebar({
    */
   fixedHeight?: boolean;
 }) {
-  const summary = climbSentence(climbs, unitSystem);
   const { ref: sectionRef, height: sectionHeight } = useElementHeight<HTMLElement>();
   const { ref: headerRef, height: headerHeight } = useElementHeight<HTMLDivElement>();
   // A route with no climbs has no sidebar: an empty column beside the chart
   // spends width saying that a flat route is flat.
-  if (summary === null) {
+  if (climbs.length === 0) {
     return null;
   }
-  const count = `${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`;
   const rows =
     fixedHeight && sectionHeight > 0
       ? Math.max(1, Math.floor((sectionHeight - headerHeight) / ROW_HEIGHT))
       : null;
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        aria-expanded={false}
-        aria-label={`Show ${count}`}
-        onClick={() => onOpenChange(true)}
-        className="flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-      >
-        <IconStairs size={13} stroke={2} aria-hidden="true" />
-        {count}
-      </button>
-    );
-  }
-
   return (
     <section
       ref={sectionRef}
-      className="relative w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3"
+      className="w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3"
     >
-      {/*
-       * On the divider itself rather than in the column: a control belongs
-       * where the eye already goes to tell the two apart, not in a row that
-       * otherwise has nothing to say.
-       */}
-      <button
-        type="button"
-        aria-expanded
-        aria-label={`Hide ${count}`}
-        onClick={() => onOpenChange(false)}
-        className="absolute top-1/2 left-0 z-10 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-      >
-        <IconChevronRight size={13} stroke={2} aria-hidden="true" />
-      </button>
       <div ref={headerRef}>
         {/*
          * Outside the scroller, so the names stay put while the climbs move

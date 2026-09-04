@@ -31,7 +31,7 @@ import { gradientSharesBySign } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
 import { ClimbMarkers } from "./ClimbMarkers";
-import { ClimbsSidebar } from "./ClimbsSidebar";
+import { ClimbsSidebar, ClimbsToggle } from "./ClimbsSidebar";
 import { ConditionsChoices, ConditionsKey } from "./ConditionsPicker";
 import { ElevationProfile, profileReadout } from "./ElevationProfile";
 import { ForecastStrip } from "./ForecastStrip";
@@ -254,17 +254,6 @@ function ProfileStop({
     return `${formatDistance(distanceMetres, unitSystem)} · ${formatAscent(ascentMetres, unitSystem)} up${range} · ${hint}`;
   })();
 
-  const climbsSidebar = (
-    <ClimbsSidebar
-      climbs={climbs}
-      open={climbsOpen}
-      onOpenChange={onClimbsOpenChange}
-      onSelect={onSelectClimb}
-      unitSystem={unitSystem}
-      fixedHeight
-    />
-  );
-
   return (
     <div className="flex h-full items-stretch gap-3">
       <div className="min-w-0 flex-1">
@@ -283,7 +272,7 @@ function ProfileStop({
                   Whole route
                 </button>
               ) : null}
-              {climbsOpen ? null : climbsSidebar}
+              <ClimbsToggle climbs={climbs} open={climbsOpen} onOpenChange={onClimbsOpenChange} />
             </div>
           }
           info={
@@ -334,7 +323,14 @@ function ProfileStop({
           </div>
         </Panel>
       </div>
-      {climbsOpen ? climbsSidebar : null}
+      {climbsOpen ? (
+        <ClimbsSidebar
+          climbs={climbs}
+          onSelect={onSelectClimb}
+          unitSystem={unitSystem}
+          fixedHeight
+        />
+      ) : null}
     </div>
   );
 }
