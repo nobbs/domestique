@@ -55,7 +55,7 @@ import { ClimbsSidebar } from "../ClimbsSidebar";
 import { ConditionsPicker } from "../ConditionsPicker";
 import { ElevationProfile } from "../ElevationProfile";
 import { ForecastStrip } from "../ForecastStrip";
-import { GroundRibbon } from "../GroundRibbon";
+import { MixRibbon } from "../MixRibbon";
 
 const UNITS = "metric";
 const GUTTER = { paddingLeft: PADDING.left, paddingRight: PADDING.right };
@@ -500,16 +500,20 @@ function Profile(s: DockState) {
   );
 }
 
+/**
+ * The ground, thin and asphalt-less: asphalt is what most of most routes are,
+ * so drawing it says nothing, and what is left is where the ground changes.
+ */
 function Ground(s: DockState) {
+  const segments = groundSegments(surface).map((segment) =>
+    segment.highlight.type === "surface" && segment.highlight.kind === "asphalt"
+      ? { ...segment, colour: "transparent" }
+      : segment,
+  );
+
   return (
     <div style={GUTTER}>
-      <GroundRibbon
-        segments={groundSegments(surface)}
-        surface={surface}
-        labelled
-        highlight={s.highlight}
-        onHighlightChange={s.setHighlight}
-      />
+      <MixRibbon segments={segments} className="h-1.5" highlight={s.highlight} />
     </div>
   );
 }
