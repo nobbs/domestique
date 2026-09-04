@@ -148,7 +148,8 @@ func weatherSeriesConsistent(series *WeatherSeries) bool {
 		len(series.PrecipitationProbabilityPercent) == count &&
 		len(series.WindSpeedKMH) == count &&
 		len(series.WindDirectionDegrees) == count &&
-		len(series.WeatherCode) == count
+		len(series.WeatherCode) == count &&
+		len(series.CloudCoverPercent) == count
 }
 
 // nearestHourIndex finds the hour in an hourly series closest to at. The
@@ -180,5 +181,6 @@ func newWeatherPointView(series *WeatherSeries, index int) openapi.WeatherPoint 
 		WindSpeedKmh:                    series.WindSpeedKMH[index],
 		WindDirectionDegrees:            series.WindDirectionDegrees[index],
 		WeatherCode:                     series.WeatherCode[index],
+		CloudCoverPercent:               series.CloudCoverPercent[index],
 	}
 }

@@ -318,6 +318,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
         windSpeedKmh: 10,
         windDirectionDegrees: 180,
         weatherCode: 1,
+        cloudCoverPercent: 30,
       })),
     });
 

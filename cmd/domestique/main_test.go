@@ -234,6 +234,7 @@ func TestWeatherSeriesOfConvertsEveryField(t *testing.T) {
 			WindSpeedKMH:                    []float64{12.3},
 			WindDirectionDegrees:            []float64{240},
 			WeatherCode:                     []int{1},
+			CloudCoverPercent:               []float64{62},
 		},
 	})
 	require.Len(t, series, 1)
@@ -246,6 +247,7 @@ func TestWeatherSeriesOfConvertsEveryField(t *testing.T) {
 		WindSpeedKMH:                    []float64{12.3},
 		WindDirectionDegrees:            []float64{240},
 		WeatherCode:                     []int{1},
+		CloudCoverPercent:               []float64{62},
 	}, series[0])
 }
 

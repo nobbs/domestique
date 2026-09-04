@@ -47,6 +47,7 @@ function forecastFor(sampleCount: number): WeatherForecast {
       // From the west: a due-east road reads this as a tailwind.
       windDirectionDegrees: 270,
       weatherCode: index % 2 === 0 ? 1 : 61,
+      cloudCoverPercent: index % 2 === 0 ? 10 : 90,
     })),
   };
 }

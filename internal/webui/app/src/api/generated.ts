@@ -506,6 +506,7 @@ export interface WeatherPoint {
   windSpeedKmh: number;
   windDirectionDegrees: number;
   weatherCode: number;
+  cloudCoverPercent: number;
 }
 
 export interface WeatherForecast {

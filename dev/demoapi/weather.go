@@ -73,6 +73,7 @@ func syntheticSeriesAt(latitude, longitude float64, hours []time.Time) httpapi.W
 		WindSpeedKMH:                    make([]float64, len(hours)),
 		WindDirectionDegrees:            make([]float64, len(hours)),
 		WeatherCode:                     make([]int, len(hours)),
+		CloudCoverPercent:               make([]float64, len(hours)),
 	}
 
 	for i, hour := range hours {
@@ -96,6 +97,9 @@ func syntheticSeriesAt(latitude, longitude float64, hours []time.Time) httpapi.W
 		series.WindSpeedKMH[i] = 12 + 9*math.Abs(math.Sin(phase*1.4))
 		series.WindDirectionDegrees[i] = windDirection
 		series.WeatherCode[i] = code
+		// cloud is already the same sine wave the sky follows; rescaled from
+		// [-1,1] into the 0-100 percent range the field reports.
+		series.CloudCoverPercent[i] = 50 + 50*cloud
 	}
 
 	return series

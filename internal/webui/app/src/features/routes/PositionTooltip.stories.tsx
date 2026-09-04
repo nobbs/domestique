@@ -64,6 +64,7 @@ function SeedForecast({ fromDegrees, children }: { fromDegrees: number; children
         windSpeedKmh: 18,
         windDirectionDegrees: fromDegrees,
         weatherCode: 1,
+        cloudCoverPercent: 20,
       })),
     });
   });

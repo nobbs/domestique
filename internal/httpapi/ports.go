@@ -263,6 +263,7 @@ type WeatherSeries struct {
 	WindSpeedKMH                    []float64
 	WindDirectionDegrees            []float64
 	WeatherCode                     []int
+	CloudCoverPercent               []float64
 }
 
 // Weather asks a forecast provider for an hourly series at each of a set of

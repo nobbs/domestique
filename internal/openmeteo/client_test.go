@@ -21,6 +21,7 @@ func TestClientDecodesArrayResponseForSeveralCoordinates(t *testing.T) {
 		assert.Equal(t, "Europe/Berlin", query.Get("timezone"))
 		assert.NotContains(t, query, "models")
 		assert.NotContains(t, query, "temperature_unit")
+		assert.Contains(t, query.Get("hourly"), "cloud_cover")
 		// The request carries Europe/Berlin local time: UTC 06:00 and 08:00 land
 		// on 08:00 and 10:00 CEST.
 		assert.Equal(t, "2026-08-24T08:00", query.Get("start_hour"))
@@ -35,7 +36,8 @@ func TestClientDecodesArrayResponseForSeveralCoordinates(t *testing.T) {
 				"precipitation_probability":[10,20],
 				"wind_speed_10m":[12.3,13.0],
 				"wind_direction_10m":[240,245],
-				"weather_code":[1,2]}},
+				"weather_code":[1,2],
+				"cloud_cover":[80,90]}},
 			{"hourly":{"time":["2026-08-24T06:00","2026-08-24T07:00"],
 				"temperature_2m":[17.0,17.5],
 				"apparent_temperature":[16.0,16.5],
@@ -43,7 +45,8 @@ func TestClientDecodesArrayResponseForSeveralCoordinates(t *testing.T) {
 				"precipitation_probability":[5,5],
 				"wind_speed_10m":[10.0,10.5],
 				"wind_direction_10m":[200,205],
-				"weather_code":[0,0]}}
+				"weather_code":[0,0],
+				"cloud_cover":[20,25]}}
 		]`)
 	}))
 	defer server.Close()
@@ -58,6 +61,8 @@ func TestClientDecodesArrayResponseForSeveralCoordinates(t *testing.T) {
 	require.Len(t, result, 2)
 	assert.Equal(t, []float64{18.4, 19.1}, result[0].TemperatureCelsius)
 	assert.Equal(t, []float64{17.0, 17.5}, result[1].TemperatureCelsius)
+	assert.Equal(t, []float64{80, 90}, result[0].CloudCoverPercent)
+	assert.Equal(t, []float64{20, 25}, result[1].CloudCoverPercent)
 	require.Len(t, result[0].Time, 2)
 	// "2026-08-24T06:00" is Berlin local time (CEST, UTC+2 in August), so the
 	// parsed instant is 04:00 UTC.
@@ -80,7 +85,8 @@ func TestClientRoundsTheRequestWindowOutToWholeHours(t *testing.T) {
 			"precipitation_probability":[10],
 			"wind_speed_10m":[12.3],
 			"wind_direction_10m":[240],
-			"weather_code":[1]}}`)
+			"weather_code":[1],
+			"cloud_cover":[50]}}`)
 	}))
 	defer server.Close()
 
@@ -102,7 +108,8 @@ func TestClientDecodesBareObjectResponseForOneCoordinate(t *testing.T) {
 			"precipitation_probability":[10],
 			"wind_speed_10m":[12.3],
 			"wind_direction_10m":[240],
-			"weather_code":[1]}}`)
+			"weather_code":[1],
+			"cloud_cover":[50]}}`)
 	}))
 	defer server.Close()
 
@@ -181,7 +188,8 @@ func TestClientRejectsAMismatchedWeatherCodeLength(t *testing.T) {
 			"precipitation_probability":[10],
 			"wind_speed_10m":[12.3],
 			"wind_direction_10m":[240],
-			"weather_code":[]}}`)
+			"weather_code":[],
+			"cloud_cover":[50]}}`)
 	}))
 	defer server.Close()
 
@@ -200,7 +208,8 @@ func TestClientRejectsAMalformedHourlyTimestamp(t *testing.T) {
 			"precipitation_probability":[10],
 			"wind_speed_10m":[12.3],
 			"wind_direction_10m":[240],
-			"weather_code":[1]}}`)
+			"weather_code":[1],
+			"cloud_cover":[50]}}`)
 	}))
 	defer server.Close()
 
@@ -343,7 +352,8 @@ func TestClientAsksInTheConfiguredZone(t *testing.T) {
 			"precipitation_probability":[10],
 			"wind_speed_10m":[12.3],
 			"wind_direction_10m":[240],
-			"weather_code":[1]}}`)
+			"weather_code":[1],
+			"cloud_cover":[50]}}`)
 	}))
 	defer server.Close()
 
@@ -369,7 +379,7 @@ func TestClientReadsAnEditedZoneOnTheNextForecastRatherThanTheNextRestart(t *tes
 		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T07:00"],
 			"temperature_2m":[18.4],"apparent_temperature":[17.1],"precipitation":[0],
 			"precipitation_probability":[10],"wind_speed_10m":[12.3],
-			"wind_direction_10m":[240],"weather_code":[1]}}`)
+			"wind_direction_10m":[240],"weather_code":[1],"cloud_cover":[50]}}`)
 	}))
 	defer server.Close()
 

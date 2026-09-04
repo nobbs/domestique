@@ -519,6 +519,7 @@ type WeatherPoint struct {
 	WindSpeedKmh                    float64   `json:"windSpeedKmh"`
 	WindDirectionDegrees            float64   `json:"windDirectionDegrees"`
 	WeatherCode                     int       `json:"weatherCode"`
+	CloudCoverPercent               float64   `json:"cloudCoverPercent"`
 }
 
 type WeatherForecast struct {

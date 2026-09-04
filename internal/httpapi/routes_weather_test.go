@@ -32,6 +32,7 @@ func TestWeatherReturnsOneSampleFromEachPointsSeries(t *testing.T) {
 					WindSpeedKMH:                    []float64{12.3, 13.0},
 					WindDirectionDegrees:            []float64{240, 245},
 					WeatherCode:                     []int{1, 2},
+					CloudCoverPercent:               []float64{80, 90},
 				},
 				{
 					Time:                            []time.Time{from, from.Add(time.Hour)},
@@ -42,6 +43,7 @@ func TestWeatherReturnsOneSampleFromEachPointsSeries(t *testing.T) {
 					WindSpeedKMH:                    []float64{10.0, 10.5},
 					WindDirectionDegrees:            []float64{200, 205},
 					WeatherCode:                     []int{0, 0},
+					CloudCoverPercent:               []float64{20, 25},
 				},
 			}, nil
 		},
@@ -68,6 +70,8 @@ func TestWeatherReturnsOneSampleFromEachPointsSeries(t *testing.T) {
 	assert.InDelta(t, 17.5, body.Points[1].TemperatureCelsius, 0)
 	assert.Equal(t, 1, body.Points[0].WeatherCode)
 	assert.Equal(t, 0, body.Points[1].WeatherCode)
+	assert.InDelta(t, 80.0, body.Points[0].CloudCoverPercent, 0)
+	assert.InDelta(t, 25.0, body.Points[1].CloudCoverPercent, 0)
 }
 
 func TestWeatherDecodesBareObjectSeriesForOnePoint(t *testing.T) {
@@ -190,6 +194,36 @@ func TestWeatherReturnsBadGatewayOnAnInconsistentSeries(t *testing.T) {
 				series[i] = WeatherSeries{
 					Time:               []time.Time{from},
 					TemperatureCelsius: []float64{},
+				}
+			}
+
+			return series, nil
+		},
+	})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z"))
+
+	assert.Equal(t, http.StatusBadGateway, response.Code)
+}
+
+// A cloud cover slice shorter than the rest of the series must be caught by
+// the same guard as any other mismatched field, not just the original ones.
+func TestWeatherReturnsBadGatewayOnAMismatchedCloudCoverLength(t *testing.T) {
+	handler := newHandlerWithWeather(t, &fakeWeather{
+		ForecastFunc: func(_ context.Context, latitudes, _ []float64, from, _ time.Time) ([]WeatherSeries, error) {
+			series := make([]WeatherSeries, len(latitudes))
+			for i := range series {
+				series[i] = WeatherSeries{
+					Time:                            []time.Time{from},
+					TemperatureCelsius:              []float64{18.4},
+					ApparentTemperatureCelsius:      []float64{17.1},
+					PrecipitationMillimetres:        []float64{0},
+					PrecipitationProbabilityPercent: []float64{10},
+					WindSpeedKMH:                    []float64{12.3},
+					WindDirectionDegrees:            []float64{240},
+					WeatherCode:                     []int{1},
+					CloudCoverPercent:               []float64{},
 				}
 			}
 
