@@ -318,6 +318,54 @@ export function gradientShares(coordinates: Position[]): BandShare[] {
     .map((band) => ({ band, share: totals.get(band) ?? 0 }));
 }
 
+/** One band's share of a route, split into the ground that climbs and the ground that descends. */
+export interface SignedBandShare {
+  band: number;
+  climbing: number;
+  descending: number;
+}
+
+/**
+ * `gradientShares` with each band split by the net rise of its run: rise >= 0
+ * counts as climbing, so a band's pair always sums to its `gradientShares` figure.
+ */
+export function gradientSharesBySign(coordinates: Position[]): SignedBandShare[] {
+  const ranges = gradientRanges(coordinates);
+  if (ranges.length === 0) {
+    return [];
+  }
+  const distances = cumulativeMetres(coordinates);
+  const lastIndex = coordinates.length - 1;
+  const total = distances[lastIndex] ?? 0;
+  if (total <= 0) {
+    return [];
+  }
+  const elevations = coordinates.map((point) => elevationOf(point) ?? 0);
+
+  const climbing = new Map<number, number>();
+  const descending = new Map<number, number>();
+  for (const range of ranges) {
+    const startMetres = distances[range.startIndex] ?? 0;
+    const endIndex = Math.min(range.endIndex + 1, lastIndex);
+    const endMetres = distances[endIndex] ?? startMetres;
+    const share = (endMetres - startMetres) / total;
+    if (share <= 0) {
+      continue;
+    }
+    const rise = (elevations[endIndex] ?? 0) - (elevations[range.startIndex] ?? 0);
+    const bucket = rise >= 0 ? climbing : descending;
+    bucket.set(range.band, (bucket.get(range.band) ?? 0) + share);
+  }
+
+  return GRADIENT_BANDS.map((_, band) => band)
+    .filter((band) => climbing.has(band) || descending.has(band))
+    .map((band) => ({
+      band,
+      climbing: climbing.get(band) ?? 0,
+      descending: descending.get(band) ?? 0,
+    }));
+}
+
 /** What the route's gradients come to, once the climbing is told from the rest. */
 export interface GradientSummary {
   /**

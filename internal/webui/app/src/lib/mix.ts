@@ -14,7 +14,7 @@
 
 import type { SurfaceKind } from "../api/types";
 import type { Highlight } from "./highlight";
-import type { BandShare } from "./profile";
+import type { BandShare, SignedBandShare } from "./profile";
 import { GRADIENT_BANDS } from "./profile";
 import type { SurfaceSummary } from "./surface";
 import { SURFACE_STYLES } from "./surface";
@@ -92,6 +92,36 @@ export function bandEntries(bands: BandShare[], totalMetres: number): MixEntry[]
     metres: entry.share * totalMetres,
     colour: bandVariable(entry.band),
   }));
+}
+
+/** One steepness band as a row, with its ground told apart by climbing and descending. */
+export interface SteepnessEntry extends MixEntry {
+  climbingMetres: number;
+  descendingMetres: number;
+}
+
+/**
+ * The steepness bands as rows, split by sign.
+ *
+ * Mirrors `bandEntries`: `metres` and `share` are the band's climbing and
+ * descending ground added back together, so a caller that does not care
+ * about the split can still read a `SteepnessEntry` as a plain `MixEntry`.
+ */
+export function steepnessEntries(shares: SignedBandShare[], totalMetres: number): SteepnessEntry[] {
+  return shares.map((entry) => {
+    const share = entry.climbing + entry.descending;
+
+    return {
+      highlight: { type: "band", band: entry.band },
+      label: bandLabel(entry.band),
+      description: GRADIENT_BANDS[entry.band]?.description ?? "",
+      share,
+      metres: share * totalMetres,
+      climbingMetres: entry.climbing * totalMetres,
+      descendingMetres: entry.descending * totalMetres,
+      colour: bandVariable(entry.band),
+    };
+  });
 }
 
 export function surfaceEntries(surface: SurfaceSummary | null): MixEntry[] {
