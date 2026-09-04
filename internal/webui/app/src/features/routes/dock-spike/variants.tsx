@@ -167,7 +167,26 @@ const CHOICE =
   "flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
 
 /** The looks a key can wear; the story compares them, the rail picks one. */
-export type Look = "pill" | "swatch" | "underline" | "dot" | "ramp";
+export type Look =
+  | "pill"
+  | "swatch"
+  | "square"
+  | "bar"
+  | "stroke"
+  | "keyed"
+  | "underline"
+  | "dot"
+  | "ramp";
+
+/** A swatch of one shape beside a word. */
+function Marked({ mark, label }: { mark: ReactNode; label: string }) {
+  return (
+    <Tooltip.Trigger className={`${TRIGGER} flex items-center gap-1 rounded px-0.5`}>
+      {mark}
+      {label}
+    </Tooltip.Trigger>
+  );
+}
 
 const TRIGGER =
   "text-[11px] leading-none text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
@@ -179,15 +198,56 @@ function Band({
   opacity = 1,
   label,
   detail,
+  stroke = false,
 }: {
   look: Look;
   colour: string;
   opacity?: number;
   label: string;
   detail: string;
+  /** Whether this band is drawn on the route line rather than as a wash, for `keyed`. */
+  stroke?: boolean;
 }) {
   const fill = `color-mix(in srgb, ${colour} ${opacity * 100}%, transparent)`;
   const wash = `color-mix(in srgb, ${colour} ${opacity * 60}%, transparent)`;
+  const border = "border border-[var(--rule)]";
+  const marks = {
+    swatch: (
+      <span
+        aria-hidden="true"
+        className={`h-2.5 w-3.5 rounded-xs ${border}`}
+        style={{ backgroundColor: fill }}
+      />
+    ),
+    square: (
+      <span
+        aria-hidden="true"
+        className={`size-2.5 rounded-xs ${border}`}
+        style={{ backgroundColor: fill }}
+      />
+    ),
+    bar: (
+      <span
+        aria-hidden="true"
+        className={`h-2 w-4 rounded-full ${border}`}
+        style={{ backgroundColor: fill }}
+      />
+    ),
+    stroke: (
+      <span
+        aria-hidden="true"
+        className="h-0.5 w-4 rounded-full"
+        style={{ backgroundColor: opacity === 0 ? "var(--rule)" : colour }}
+      />
+    ),
+    dot: (
+      <span
+        aria-hidden="true"
+        className={`size-2 rounded-full ${border}`}
+        style={{ backgroundColor: fill }}
+      />
+    ),
+  };
   const shape = {
     pill: (
       <Tooltip.Trigger
@@ -197,16 +257,11 @@ function Band({
         {label}
       </Tooltip.Trigger>
     ),
-    swatch: (
-      <Tooltip.Trigger className={`${TRIGGER} flex items-center gap-1 rounded px-0.5`}>
-        <span
-          aria-hidden="true"
-          className="h-2.5 w-3.5 rounded-xs border border-[var(--rule)]"
-          style={{ backgroundColor: fill }}
-        />
-        {label}
-      </Tooltip.Trigger>
-    ),
+    swatch: <Marked mark={marks.swatch} label={label} />,
+    square: <Marked mark={marks.square} label={label} />,
+    bar: <Marked mark={marks.bar} label={label} />,
+    stroke: <Marked mark={marks.stroke} label={label} />,
+    keyed: <Marked mark={stroke ? marks.stroke : marks.bar} label={label} />,
     underline: (
       <Tooltip.Trigger
         className={`${TRIGGER} border-b-2 px-0.5 pb-0.5`}
@@ -215,16 +270,7 @@ function Band({
         {label}
       </Tooltip.Trigger>
     ),
-    dot: (
-      <Tooltip.Trigger className={`${TRIGGER} flex items-center gap-1 rounded px-0.5`}>
-        <span
-          aria-hidden="true"
-          className="size-2 rounded-full border border-[var(--rule)]"
-          style={{ backgroundColor: fill }}
-        />
-        {label}
-      </Tooltip.Trigger>
-    ),
+    dot: <Marked mark={marks.dot} label={label} />,
     ramp: (
       <Tooltip.Trigger
         className={`${TRIGGER} px-2 py-0.5 first:rounded-l-sm last:rounded-r-sm`}
@@ -289,6 +335,7 @@ export function WashKey({ measure, look }: { measure: Measure; look: Look }) {
               <li key={band.description}>
                 <Band
                   look={look}
+                  stroke
                   colour={windRelationVariable(band.stop)}
                   label={band.label}
                   detail={`${band.description} · replaces the steepness edging`}

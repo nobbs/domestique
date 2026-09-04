@@ -23,6 +23,18 @@ type Story = StoryObj<typeof meta>;
 const LOOKS: { look: Look; name: string; note: string }[] = [
   { look: "pill", name: "A · Pill", note: "Today: a filled pill per band." },
   { look: "swatch", name: "B · Swatch", note: "A small block of colour beside a plain word." },
+  { look: "square", name: "B2 · Square", note: "The block, square." },
+  {
+    look: "bar",
+    name: "B3 · Bar",
+    note: "The block as a short rounded bar, like the wash itself.",
+  },
+  { look: "stroke", name: "B4 · Stroke", note: "A thin line, like the route line itself." },
+  {
+    look: "keyed",
+    name: "B5 · Keyed",
+    note: "The shape says what it keys: a bar for the corridor wash, a stroke for the route line.",
+  },
   { look: "underline", name: "C · Underline", note: "Words only, each underlined in its band." },
   { look: "dot", name: "D · Dot", note: "A dot beside the word; the lightest ink." },
   { look: "ramp", name: "E · Ramp", note: "Bands butted into one scale, names inside." },
