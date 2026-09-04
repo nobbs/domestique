@@ -107,11 +107,13 @@ export function bandRuns(
     }
   }
 
-  return starts.map((start, index) => ({
-    band: start.band,
-    fromMetres: start.metres,
-    toMetres: starts[index + 1]?.metres ?? totalMetres,
-  }));
+  return starts
+    .map((start, index) => ({
+      band: start.band,
+      fromMetres: start.metres,
+      toMetres: starts[index + 1]?.metres ?? totalMetres,
+    }))
+    .filter((run) => run.toMetres > run.fromMetres);
 }
 
 /**

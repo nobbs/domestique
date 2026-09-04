@@ -191,10 +191,13 @@ function offsetRing(points: Pair[], radius: number, roundEnd: boolean): Ring {
       if (next) {
         const turn = normalise(heading(to, next) - heading(from, to));
         if (turn < 0) {
-          ring.push(...arcPoints(to, radius, left, turn));
+          // Dropping the arc's own first point: it is the offset point for
+          // `to` just pushed above, and keeping it too would leave a
+          // zero-length edge in the ring.
+          ring.push(...arcPoints(to, radius, left, turn).slice(1));
         }
       } else if (cap) {
-        ring.push(...arcPoints(to, radius, left, -Math.PI));
+        ring.push(...arcPoints(to, radius, left, -Math.PI).slice(1));
       }
     }
   };
