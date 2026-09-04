@@ -353,9 +353,12 @@ the area of a viewed route — or, once the map's locate button is pressed, the
 area around the reader's own live position — to the tile origin. The raw
 position is never revealed: it moves the camera and goes no further.
 
-The list changes the Content-Security-Policy the service sends, which permits
-the service's own origin plus **the origin of every configured entry**, sorted
-and deduplicated. The header is composed per response from the live list, so a
+The list changes the Content-Security-Policy the service sends to a caller whose
+identity has been established, which permits the service's own origin plus **the
+origin of every configured entry**, sorted and deduplicated. An answer served
+before an identity exists — a build artefact, a sign-in page, or a refused
+request — names no tile origin at all, because the header travels with it and
+would otherwise say which provider a deployment uses to whoever asked. The header is composed per response from the live list, so a
 basemap added on the settings page is permitted by the next response rather than
 at the next restart. An entry's dark style is held to that entry's own origin,
 so the configured origins are as many as the distinct providers offered and no

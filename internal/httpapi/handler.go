@@ -283,7 +283,10 @@ func (h *Handler) routes() {
 // ServeHTTP applies the shared response headers and dispatches.
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	header := writer.Header()
-	header.Set("Content-Security-Policy", h.contentSecurityPolicy(request.URL.Path))
+	// Composed without the configured map: no identity has been established yet,
+	// and a request refused below is answered from here. The gate names the
+	// origins once it has admitted somebody.
+	header.Set("Content-Security-Policy", h.contentSecurityPolicy(request.URL.Path, false))
 	header.Set("Referrer-Policy", "no-referrer")
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Cache-Control", cacheAPI)
@@ -395,6 +398,10 @@ func (h *Handler) gated(next http.Handler) http.Handler {
 			return
 		}
 
+		// Composed again now that there is somebody to compose it for. The one set
+		// before this gate names no tile origin, because every answer this gate
+		// refuses is served to a caller that has proved nothing.
+		writer.Header().Set("Content-Security-Policy", h.contentSecurityPolicy(request.URL.Path, true))
 		next.ServeHTTP(writer, request.WithContext(
 			context.WithValue(request.Context(), identityKey{}, identity)))
 	})
@@ -492,12 +499,13 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 // style itself rather than configured, and are added here.
 //
 // Nothing served before an identity exists names a tile origin — the sign-in
-// routes or a build artefact. The sign-in routes also allow one form: 'self'
+// routes, a build artefact, or a request this service refused. The sign-in
+// routes also allow one form: 'self'
 // posts to /auth/start, whose 303 carries the same submission on to the
 // configured Auth0 tenant. form-action governs the whole redirect chain a
 // submission follows, not only its immediate action, so the tenant is named
 // there or a browser refuses to follow it.
-func (h *Handler) contentSecurityPolicy(path string) string {
+func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 	formAction := "form-action 'none'"
 	var tileOrigins []string
 	signIn := strings.HasPrefix(path, "/auth/")
@@ -507,10 +515,11 @@ func (h *Handler) contentSecurityPolicy(path string) string {
 			formAction += " " + h.authOrigin
 		}
 	}
-	// The configured map is named to a caller that could hold an identity and to
-	// no other: every answer served before one is a build artefact with no map
-	// in it, and the header would otherwise hand the origins to anyone.
-	if !signIn && !publicAsset(path) {
+	// The configured map is named to a caller whose identity has been established
+	// and to no other. Everything else — a build artefact, a sign-in page, a
+	// refused request — is answered before there is anyone to name it to, and the
+	// header would otherwise hand the origins to whoever asked.
+	if identified {
 		// A list that cannot be reduced to origins was never allowed to be stored, so
 		// this is a bug. The header then names no tile origin, blanking the map.
 		origins, err := tileOriginsOf(h.settings.Values().Basemaps)

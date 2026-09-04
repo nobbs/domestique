@@ -226,6 +226,8 @@ func TestTheMapWorkerIsServedOnlyToAnIdentityAndNamesTheTileOrigins(t *testing.T
 	handler.ServeHTTP(anonymous, httptest.NewRequestWithContext(
 		t.Context(), http.MethodGet, worker, http.NoBody))
 	assert.Equal(t, http.StatusUnauthorized, anonymous.Code, "the worker was served without an identity")
+	assert.NotContains(t, anonymous.Header().Get("Content-Security-Policy"), "tiles.example.test",
+		"a refusal must not name the configured map to the caller it refused")
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, worker))
@@ -237,6 +239,24 @@ func TestTheMapWorkerIsServedOnlyToAnIdentityAndNamesTheTileOrigins(t *testing.T
 	// a shared cache holding one answer would serve it to the other.
 	assert.Equal(t, cacheImmutableGated, response.Header().Get("Cache-Control"), "worker Cache-Control")
 	assert.Equal(t, "Cookie", response.Header().Get("Vary"), "worker Vary")
+}
+
+// A refusal is served before an identity exists, so it is held to the same rule
+// a build artefact is: the header travels with it, and naming the configured map
+// there hands the origins to whoever asked rather than to a reader.
+func TestARefusedRequestIsNotToldWhichMapIsConfigured(t *testing.T) {
+	handler := newTestHandler(t)
+
+	for _, path := range []string{"/", "/settings", "/v1/status", "/worker/maplibre-gl-worker-abc123.js"} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, path, http.NoBody))
+			require.Equal(t, http.StatusUnauthorized, response.Code, "status")
+			assert.NotContains(t, response.Header().Get("Content-Security-Policy"), "tiles.example.test",
+				"the refusal names the configured map")
+		})
+	}
 }
 
 // The sign-in page is the application bundle, so what it names is fetched
