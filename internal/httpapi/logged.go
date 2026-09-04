@@ -41,12 +41,19 @@ func (h *Handler) logged(next http.Handler) http.Handler {
 	})
 }
 
-// pathClass keeps the leading two segments of a path: "/v1/routes/abc/geometry"
-// becomes "/v1/routes".
+// pathClass is the path with every identifier cut off: the first segment, plus
+// the second under the prefixes whose second segment names a resource kind
+// rather than an instance. "/v1/routes/abc/geometry" becomes "/v1/routes";
+// "/routes/abc/view" becomes "/routes".
 func pathClass(path string) string {
 	segments := strings.SplitN(strings.TrimPrefix(path, "/"), "/", 3)
-	if len(segments) > 2 {
-		segments = segments[:2]
+	keep := 1
+	switch segments[0] {
+	case "v1", "auth", "oauth", "settings", "admin":
+		keep = 2
+	}
+	if len(segments) > keep {
+		segments = segments[:keep]
 	}
 
 	return "/" + strings.Join(segments, "/")
