@@ -253,8 +253,8 @@ export function AnchoredDock(s: DockState) {
 }
 
 /**
- * C · Rail. A vertical icon rail on the left; the lane it points at fills the
- * width. Icons only, so a tenth lane costs one more glyph and no width.
+ * C · Rail. A vertical rail on the left, each stop an icon over a short word;
+ * the lane it points at fills the width. A tenth lane costs one more stop.
  */
 export function RailDock(s: DockState) {
   return (
@@ -262,8 +262,13 @@ export function RailDock(s: DockState) {
       <Tabs.Root defaultValue="profile" orientation="vertical" className="flex gap-3">
         <Tabs.List className="flex shrink-0 flex-col gap-0.5 border-r border-[var(--rule)] pr-2">
           {LANES.map(({ key, label, Icon }) => (
-            <Tabs.Tab key={key} value={key} aria-label={label} title={label} className={TAB}>
+            <Tabs.Tab
+              key={key}
+              value={key}
+              className={`${TAB} w-14 flex-col gap-0.5 px-1 py-1.5 text-[10px] leading-none`}
+            >
               <Icon size={15} stroke={2} aria-hidden="true" />
+              {label}
             </Tabs.Tab>
           ))}
         </Tabs.List>

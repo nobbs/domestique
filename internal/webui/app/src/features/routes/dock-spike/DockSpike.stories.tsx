@@ -32,7 +32,11 @@ const VARIANTS = [
     note: "Profile stays; tabs choose what lies beneath it.",
     Dock: AnchoredDock,
   },
-  { name: "C · Rail", note: "Icon rail on the left; a new lane costs one glyph.", Dock: RailDock },
+  {
+    name: "C · Rail",
+    note: "Rail on the left, icon over a word; a new lane costs one stop.",
+    Dock: RailDock,
+  },
   {
     name: "D · Split",
     note: "Lanes stay stacked; only the side column is tabbed.",
