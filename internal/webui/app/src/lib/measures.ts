@@ -163,7 +163,13 @@ const CLOUD_BANDS: readonly BandCut[] = [
   { limit: Number.POSITIVE_INFINITY, label: "overcast", description: "overcast" },
 ];
 
+/** What every `words` function reports for a reading with nothing to say — the same placeholder `format.ts` uses. */
+const NO_READING = "—";
+
 function temperatureWords(celsius: number, system: UnitSystem): string {
+  if (!Number.isFinite(celsius)) {
+    return NO_READING;
+  }
   const band = TEMPERATURE_BANDS[temperatureBand(celsius)];
   const value = Math.round(temperatureValue(celsius, system));
 
@@ -171,6 +177,9 @@ function temperatureWords(celsius: number, system: UnitSystem): string {
 }
 
 function windWords(kmh: number, system: UnitSystem): string {
+  if (!Number.isFinite(kmh)) {
+    return NO_READING;
+  }
   const band = WIND_BANDS[bandFor(WIND_BANDS, kmh)];
   const value = Math.round(speedValue(kmh, system));
 
@@ -178,6 +187,9 @@ function windWords(kmh: number, system: UnitSystem): string {
 }
 
 function rainWords(millimetres: number, system: UnitSystem): string {
+  if (!Number.isFinite(millimetres)) {
+    return NO_READING;
+  }
   const band = RAIN_BANDS[bandFor(RAIN_BANDS, millimetres)];
   const value = precipitationValue(millimetres, system);
   const decimals = system === "imperial" ? 2 : 1;
@@ -187,6 +199,9 @@ function rainWords(millimetres: number, system: UnitSystem): string {
 
 /** Cloud cover is a share, so it reads the same regardless of `system`; the parameter stays for the shape every measure's `words` shares. */
 function cloudWords(percent: number, _system: UnitSystem): string {
+  if (!Number.isFinite(percent)) {
+    return NO_READING;
+  }
   const band = CLOUD_BANDS[bandFor(CLOUD_BANDS, percent)];
 
   return `${band?.label}, ${Math.round(percent)}%`;
