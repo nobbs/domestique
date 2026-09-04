@@ -12,9 +12,9 @@
  * pushes the forecast off the foot; beside it, it costs width the full-width
  * dock has and height it does not.
  *
- * Folded it keeps its count, turned on its side. A rail is a poor thing to
- * read but a good thing to find, and what a reader folding this away wants
- * back is the chart's width rather than the memory of where the control went.
+ * Folded it keeps its count, a chip on the panel's own top line rather than a
+ * column of its own — what a reader folding this away wants back is the
+ * chart's width rather than the memory of where the control went.
  *
  * Climb data and nothing else. Everything the forecast knows about a col is
  * drawn along the band below — tile by tile, at every reading rather than only
@@ -22,7 +22,7 @@
  * was the same reading in a worse place.
  */
 
-import { IconChevronRight, IconLayoutSidebarRightCollapse } from "@tabler/icons-react";
+import { IconChevronRight, IconStairs } from "@tabler/icons-react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
@@ -103,10 +103,10 @@ export function ClimbsSidebar({
         aria-expanded={false}
         aria-label={`Show ${count}`}
         onClick={() => onOpenChange(true)}
-        className="flex shrink-0 items-center gap-1.5 self-stretch rounded-lg border border-[var(--rule)] px-2 text-[11px] text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+        className="flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
       >
-        <IconLayoutSidebarRightCollapse size={14} stroke={2} aria-hidden="true" />
-        <span className="rotate-180 [writing-mode:vertical-rl]">{count}</span>
+        <IconStairs size={13} stroke={2} aria-hidden="true" />
+        {count}
       </button>
     );
   }

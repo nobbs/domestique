@@ -253,12 +253,24 @@ function ProfileStop({
     return `${formatDistance(distanceMetres, unitSystem)} · ${formatAscent(ascentMetres, unitSystem)} up${range} · ${hint}`;
   })();
 
+  const climbsSidebar = (
+    <ClimbsSidebar
+      climbs={climbs}
+      open={climbsOpen}
+      onOpenChange={onClimbsOpenChange}
+      onSelect={onSelectClimb}
+      unitSystem={unitSystem}
+      fixedHeight
+    />
+  );
+
   return (
     <div className="flex h-full items-stretch gap-3">
       <div className="min-w-0 flex-1">
         <Panel
           line={line}
           lineLabel="Elevation summary"
+          control={climbsOpen ? undefined : climbsSidebar}
           info={
             <SteepnessTable
               coordinates={coordinates}
@@ -295,14 +307,7 @@ function ProfileStop({
           </div>
         </Panel>
       </div>
-      <ClimbsSidebar
-        climbs={climbs}
-        open={climbsOpen}
-        onOpenChange={onClimbsOpenChange}
-        onSelect={onSelectClimb}
-        unitSystem={unitSystem}
-        fixedHeight
-      />
+      {climbsOpen ? climbsSidebar : null}
     </div>
   );
 }

@@ -68,9 +68,9 @@ test("the route draws its map, its facts and its profile", async ({ offlinePage:
 /*
  * The climbs are the dock's, beside the chart that brackets them. They open
  * with it, because the reader who opened the dock opened it to study the
- * route, and fold to a rail when the chart wants the width back.
+ * route, and fold to a chip when the chart wants the width back.
  */
-test("the climbs sit beside the chart and fold to a rail", async ({ offlinePage: page }) => {
+test("the climbs sit beside the chart and fold to a chip", async ({ offlinePage: page }) => {
   await openRoute(page, CLIMB_ROUTE.provider, CLIMB_ROUTE.sourceRouteId, CLIMB_ROUTE.stageOrder);
 
   const dock = page.getByRole("region", { name: "Route detail" });

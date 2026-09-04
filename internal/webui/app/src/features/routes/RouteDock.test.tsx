@@ -186,4 +186,23 @@ describe("RouteDock", () => {
     await user.click(screen.getByRole("button", { name: "Show the forecast" }));
     expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
   });
+
+  it("folds the climbs list to a chip and back", async () => {
+    const user = userEvent.setup();
+    renderDock();
+
+    const hide = screen.getByRole("button", { name: /^Hide \d+ climbs?$/ });
+    expect(screen.getAllByRole("listitem")).toHaveLength(climbs.length);
+
+    await user.click(hide);
+
+    const show = screen.getByRole("button", { name: /^Show \d+ climbs?$/ });
+    expect(show).toBeInTheDocument();
+    expect(screen.queryByRole("listitem")).toBeNull();
+
+    await user.click(show);
+
+    expect(screen.getByRole("button", { name: /^Hide \d+ climbs?$/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(climbs.length);
+  });
 });
