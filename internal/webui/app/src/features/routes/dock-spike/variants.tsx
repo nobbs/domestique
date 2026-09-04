@@ -135,6 +135,8 @@ function Panel({
           {info === undefined ? null : (
             <Popover>
               <PopoverTrigger
+                openOnHover
+                delay={150}
                 aria-label="More about this"
                 className="rounded-full p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[popup-open]:text-[var(--ink)]"
               >
@@ -430,7 +432,7 @@ function SteepnessTable() {
   return (
     <table className="border-collapse">
       <thead>
-        <tr className="text-[10px] tracking-[0.06em] text-[var(--ink-2)] uppercase">
+        <tr className="border-b border-[var(--rule)] text-[10px] tracking-[0.06em] text-[var(--ink-2)] uppercase">
           <th scope="col" className="px-2 py-1 text-left font-semibold">
             Steepness
           </th>
@@ -448,7 +450,7 @@ function SteepnessTable() {
       </thead>
       <tbody>
         {rows.map((row) => (
-          <tr key={row.label} className="border-t border-[var(--rule)]">
+          <tr key={row.label}>
             <th
               scope="row"
               className="flex items-center gap-1.5 px-2 py-1 text-left text-xs font-normal"
