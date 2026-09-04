@@ -16,6 +16,7 @@ import {
   openLibrary,
   openRoute,
   openSearch,
+  openWorkspace,
   pinRendering,
   settleMap,
   test,
@@ -186,5 +187,54 @@ test.describe("on a narrow viewport", () => {
     expect(box.height).toBeGreaterThan(120);
     await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
     await expect(page.getByRole("slider")).toBeVisible();
+  });
+});
+
+/*
+ * Selection, which is a CSS rule and therefore has no answer in jsdom: what a
+ * double click leaves behind is decided by the layout engine that worked out
+ * what the word under the pointer was.
+ */
+test.describe("text selection", () => {
+  test("a double click on the page's own text selects nothing", async ({ offlinePage: page }) => {
+    await openLibrary(page);
+    await page.getByRole("link", { name: "Settings" }).click();
+
+    // A run of ordinary prose, well away from the map — which has had its own
+    // selection turned off since long before the document did.
+    await page.getByText(/Weather data by Open-Meteo/).dblclick();
+
+    expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
+  });
+
+  test("a field still selects the text typed into it", async ({ offlinePage: page }) => {
+    await openLibrary(page);
+    const search = await openSearch(page);
+    await search.fill("rhine");
+
+    // Triple click rather than `selectText`, which selects through the DOM and
+    // would pass whatever the stylesheet says.
+    await search.click({ clickCount: 3 });
+
+    const selected = await search.evaluate((field: HTMLInputElement) =>
+      field.value.slice(field.selectionStart ?? 0, field.selectionEnd ?? 0),
+    );
+    expect(selected).toBe("rhine");
+  });
+
+  test.describe("in the drawer the panels dock into", () => {
+    test.use({ viewport: { width: 375, height: 667 } });
+
+    // The drawer is registry output and asks for `select-text` on its content.
+    // index.css overrules it, and what wins is decided by the cascade rather
+    // than by either file on its own.
+    test("the drawer does not hand selection back", async ({ offlinePage: page }) => {
+      await openLibrary(page);
+      await openWorkspace(page);
+
+      const content = page.locator('[data-slot="drawer-content"]');
+      await expect(content).toBeVisible();
+      expect(await content.evaluate((node) => getComputedStyle(node).userSelect)).toBe("none");
+    });
   });
 });
