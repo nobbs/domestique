@@ -9,13 +9,20 @@
  */
 
 import { Tabs } from "@base-ui/react/tabs";
+import { Tooltip } from "@base-ui/react/tooltip";
 import { IconCloud, IconMountain, type IconProps, IconRoad, IconStairs } from "@tabler/icons-react";
 import type { ComponentType, ReactNode } from "react";
 import { useState } from "react";
 import { StartTimePicker } from "../../../components/StartTimePicker";
 import { formatAscent, formatDistance, formatElevation } from "../../../lib/format";
 import type { Highlight } from "../../../lib/highlight";
-import type { MeasureKey } from "../../../lib/measures";
+import type { Measure, MeasureKey } from "../../../lib/measures";
+import {
+  MEASURES,
+  measureVariable,
+  WIND_RELATION_KEY,
+  windRelationVariable,
+} from "../../../lib/measures";
 import { groundSegments } from "../../../lib/mix";
 import { PADDING } from "../../../lib/plotAxis";
 import type { DistanceWindow } from "../../../lib/profile";
@@ -82,10 +89,13 @@ export function useDockState(): DockState {
 function Panel({
   line,
   control,
+  gutter = true,
   children,
 }: {
   line: string;
   control?: ReactNode;
+  /** Whether the line sits over the chart's plotted area; off where there is no axis. */
+  gutter?: boolean;
   children: ReactNode;
 }) {
   const [lead, ...tail] = line.split(" · ");
@@ -95,7 +105,7 @@ function Panel({
     <div className="grid gap-1.5">
       <div
         className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1"
-        style={GUTTER}
+        style={gutter ? GUTTER : undefined}
       >
         <output className="text-xs text-[var(--ink-2)] tabular-nums">
           {/* The first figure carries the line; the rest qualifies it. */}
@@ -124,6 +134,132 @@ function profileLine(s: DockState): string {
       ? ""
       : ` · ${formatElevation(profile.minElevationMetres, UNITS)}–${formatElevation(profile.maxElevationMetres, UNITS)}`;
   return `${formatDistance(route.distanceMetres, UNITS)} · ${formatAscent(route.ascentMetres, UNITS)} up${range} · drag across to look closer`;
+}
+
+/* ---- the conditions key, as chips ---------------------------------------- */
+
+// ponytail: the cuts live privately in measures.ts; the real thing exports them.
+const RANGES: Record<MeasureKey, readonly string[]> = {
+  wind: ["under 15 km/h", "15–30 km/h", "30–45 km/h", "over 45 km/h"],
+  temperature: ["under 5 °C", "5–12 °C", "12–20 °C", "20–27 °C", "over 27 °C"],
+  rain: ["under 0.2 mm/h", "0.2–2 mm/h", "2–6 mm/h", "over 6 mm/h"],
+  cloud: ["under 20 %", "20–50 %", "50–85 %", "over 85 %"],
+};
+
+const CHOICE =
+  "rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
+
+/** One band as a coloured chip; what it means and where it cuts wait under the pointer. */
+function Chip({
+  colour,
+  opacity = 1,
+  label,
+  detail,
+}: {
+  colour: string;
+  opacity?: number;
+  label: string;
+  detail: string;
+}) {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger
+        className="rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+        style={{ backgroundColor: `color-mix(in srgb, ${colour} ${opacity * 60}%, transparent)` }}
+      >
+        {label}
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Positioner sideOffset={6}>
+          <Tooltip.Popup className="max-w-56 rounded-md bg-[var(--ink)] px-2 py-1 text-[11px] text-[var(--panel)] shadow-[var(--shadow)]">
+            {detail}
+          </Tooltip.Popup>
+        </Tooltip.Positioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
+
+function ChipKey({ measure }: { measure: Measure }) {
+  return (
+    <ul className="flex flex-wrap items-center gap-1">
+      {measure.bands.map((band, index) => {
+        const opacity = measure.opacity(index);
+        const range = RANGES[measure.key][index] ?? "";
+        return (
+          <li key={band.label}>
+            <Chip
+              colour={measureVariable(measure.key, index)}
+              opacity={opacity}
+              label={band.label}
+              detail={`${band.description} · ${range}${opacity === 0 ? " · not washed" : ""}`}
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The choice of wash, for the panel's top line. */
+function Choices(s: DockState) {
+  return (
+    <div role="group" aria-label="Conditions washed along the route" className="flex gap-1">
+      <button
+        type="button"
+        aria-pressed={s.measure === null}
+        onClick={() => s.setMeasure(null)}
+        className={CHOICE}
+      >
+        Off
+      </button>
+      {MEASURES.map((entry) => (
+        <button
+          key={entry.key}
+          type="button"
+          aria-pressed={s.measure === entry.key}
+          onClick={() => s.setMeasure(s.measure === entry.key ? null : entry.key)}
+          className={CHOICE}
+        >
+          {entry.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** The key for the chosen wash: one row of chips, two for wind. */
+function Conditions(s: DockState) {
+  const chosen = MEASURES.find((entry) => entry.key === s.measure);
+  if (chosen === undefined) {
+    return null;
+  }
+  return (
+    <Tooltip.Provider>
+      <div className="grid gap-1.5 text-[11px] text-[var(--ink-2)]">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>Corridor</span>
+          <ChipKey measure={chosen} />
+        </div>
+        {chosen.key === "wind" ? (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>Route line</span>
+            <ul className="flex flex-wrap items-center gap-1">
+              {WIND_RELATION_KEY.map((band) => (
+                <li key={band.description}>
+                  <Chip
+                    colour={windRelationVariable(band.stop)}
+                    label={band.label}
+                    detail={`${band.description} · replaces the steepness edging`}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </Tooltip.Provider>
+  );
 }
 
 /* ---- the lanes, as they exist today, each wrapped once ------------------ */
@@ -171,31 +307,31 @@ function Forecast(s: DockState) {
 
   return (
     <Panel
+      gutter={false}
       line={`Forecast · ${weatherSamples.length} readings${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
       control={
-        <StartTimePicker
-          value={s.startAt}
-          onChange={s.setStartAt}
-          movingSeconds={route.movingSeconds}
-          inline
-        />
+        <div className="flex flex-wrap items-center gap-3">
+          <Choices {...s} />
+          <StartTimePicker
+            value={s.startAt}
+            onChange={s.setStartAt}
+            movingSeconds={route.movingSeconds}
+            inline
+          />
+        </div>
       }
     >
-      <ForecastStrip
-        samples={weatherSamples}
-        coordinates={coordinates}
-        startMetres={shown.startMetres}
-        endMetres={shown.endMetres}
-        unitSystem={UNITS}
-      />
-      <div style={GUTTER}>
-        <ConditionsPicker
-          measure={s.measure}
-          onMeasureChange={s.setMeasure}
+      {/* ponytail: the strip reserves the chart's gutters itself; undone here, parameterised for real. */}
+      <div style={{ marginLeft: -PADDING.left, marginRight: -PADDING.right }}>
+        <ForecastStrip
           samples={weatherSamples}
-          movingSeconds={route.movingSeconds}
+          coordinates={coordinates}
+          startMetres={shown.startMetres}
+          endMetres={shown.endMetres}
+          unitSystem={UNITS}
         />
       </div>
+      <Conditions {...s} />
     </Panel>
   );
 }
