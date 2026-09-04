@@ -263,7 +263,7 @@ func TestServeWaitsForTheCancelledTaskLayerBeforeReturning(t *testing.T) {
 	readinessServer := newTestServer()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, server, readinessServer, tasks)
+		result <- serve(ctx, cancel, server, readinessServer, tasks, func(context.Context) {})
 	}()
 
 	<-tasks.started
@@ -293,7 +293,7 @@ func TestServeStopsBothListeners(t *testing.T) {
 	server, readinessServer := newTestServer(), newTestServer()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, server, readinessServer, tasks)
+		result <- serve(ctx, cancel, server, readinessServer, tasks, func(context.Context) {})
 	}()
 
 	<-tasks.started
@@ -334,7 +334,7 @@ func TestServeStopsWhenTheReadinessListenerCannotBind(t *testing.T) {
 	readinessServer.Addr = occupied.Addr().String()
 	result := make(chan error, 1)
 	go func() {
-		result <- serve(ctx, cancel, newTestServer(), readinessServer, tasks)
+		result <- serve(ctx, cancel, newTestServer(), readinessServer, tasks, func(context.Context) {})
 	}()
 
 	<-tasks.started

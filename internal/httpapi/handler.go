@@ -69,6 +69,12 @@ type Options struct {
 	// Read per request, never held: an edit reaches the page and the CSP at once.
 	Settings SettingsState
 
+	// StyleOrigins reports the further origins the configured styles name for
+	// their glyphs, sprites, and tiles. Optional: a nil one leaves the policy
+	// naming the configured style origins alone, which is every host a provider
+	// serving all four from one place needs.
+	StyleOrigins StyleOrigins
+
 	// Alerts are what this service can announce and what an operator has decided
 	// about each. Required.
 	Alerts Alerts
@@ -124,6 +130,7 @@ type Handler struct {
 	mux                 *http.ServeMux
 	rideModelValidation func() *RideModelValidation
 	settings            SettingsState
+	styleOrigins        StyleOrigins
 	alerts              Alerts
 	tasks               Tasks
 	buildRevision       string
@@ -176,6 +183,7 @@ func New(
 		assets:              assets,
 		weather:             weather,
 		settings:            options.Settings,
+		styleOrigins:        options.StyleOrigins,
 		alerts:              options.Alerts,
 		tasks:               options.Tasks,
 		buildRevision:       publishableRevision(options.BuildRevision),
@@ -464,6 +472,11 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 //   - style-src 'unsafe-inline': it styles its own controls inline;
 //   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
 //
+// A basemap's own origin is only the host the style document is read from. The
+// document is free to name another for its glyphs, its sprite, or its tiles,
+// and a provider that splits them is common; those hosts are read from the
+// style itself rather than configured, and are added here.
+//
 // Nothing served before an identity exists names a tile origin — the sign-in
 // routes or a build artefact. The sign-in routes also allow one form: 'self'
 // posts to /auth/start, whose 303 carries the same submission on to the
@@ -489,6 +502,11 @@ func (h *Handler) contentSecurityPolicy(path string) string {
 		origins, err := tileOriginsOf(h.settings.Values().Basemaps)
 		if err == nil {
 			tileOrigins = origins
+		}
+		if h.styleOrigins != nil {
+			tileOrigins = append(tileOrigins, h.styleOrigins.Origins()...)
+			slices.Sort(tileOrigins)
+			tileOrigins = slices.Compact(tileOrigins)
 		}
 	}
 

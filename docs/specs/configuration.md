@@ -358,14 +358,28 @@ the service's own origin plus **the origin of every configured entry**, sorted
 and deduplicated. The header is composed per response from the live list, so a
 basemap added on the settings page is permitted by the next response rather than
 at the next restart. An entry's dark style is held to that entry's own origin,
-so the list of origins is as long as the number of distinct providers offered
-and no longer.
+so the configured origins are as many as the distinct providers offered and no
+more.
+
+A provider is free to serve its style from one host and its glyphs, its sprite,
+or its tiles from others, and that is common: a style URL alone does not say
+which hosts the page will need. Those hosts are named in the style document
+rather than in the settings, so **the service reads each configured style** and
+permits what it names as well: its `glyphs`, its `sprite`, and each source's
+tiles — including the tiles named by a source's TileJSON, one level deep, since
+a provider may serve those from a host its TileJSON URL does not name. A
+reference that does not resolve to HTTPS is not permitted, because the page
+could not reach it in any case.
+
+Each style is read on the save that configures it and again on a periodic
+refresh, never while a response is being composed: the policy is built from what
+was last read. A style that cannot be read keeps the hosts it was last seen to
+name, so a provider being briefly unreachable does not blank a map that works.
+A basemap removed from the list stops being permitted with the next response,
+without waiting for a refresh.
 
 The policy names which origins the page *may* reach; it does not make the page
 reach them. Only the basemap on screen is ever requested.
-
-A provider that serves its style, tiles, sprites, and glyphs from more than one
-host is not supported; one entry admits one origin.
 
 The whole list is served to the page, which chooses within it. The service
 resolves neither the reader's choice nor the colour scheme; both belong to the

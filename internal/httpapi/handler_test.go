@@ -871,6 +871,79 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 		"the CSP names the wrong number of external origins: %q", policy)
 }
 
+// fakeStyleOrigins stands in for the component that reads the configured style
+// documents, so the policy can be asserted without a provider to read.
+type fakeStyleOrigins struct {
+	origins   []string
+	refreshes int
+}
+
+func (f *fakeStyleOrigins) Origins() []string { return f.origins }
+
+func (f *fakeStyleOrigins) Refresh(context.Context) { f.refreshes++ }
+
+// TestHandlerNamesTheHostsAStyleReachesBeyondItsOwn covers the split-host
+// provider: the style is on one host and its glyphs and tiles on others, and a
+// policy naming only the configured origin leaves the reader a map with no
+// labels and no streets.
+func TestHandlerNamesTheHostsAStyleReachesBeyondItsOwn(t *testing.T) {
+	handler, err := New(
+		&Options{
+			Alerts:   &fakeAlerts{},
+			Tasks:    &fakeTasks{},
+			Settings: settingsWith([]runtimeconfig.Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}),
+			StyleOrigins: &fakeStyleOrigins{origins: []string{
+				"https://fonts.example.test",
+				// Already the configured entry's own origin, so it must not be
+				// named twice in a directive.
+				"https://tiles.example.test",
+				"https://vector.example.test",
+			}},
+			Sessions:         newFakeSessions(),
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/status"))
+	policy := response.Header().Get("Content-Security-Policy")
+
+	for _, want := range []string{
+		"img-src 'self' data: blob: https://fonts.example.test https://tiles.example.test https://vector.example.test",
+		"connect-src 'self' https://fonts.example.test https://tiles.example.test https://vector.example.test",
+	} {
+		assert.Contains(t, policy, want, "the CSP omits a host the style reaches")
+	}
+	assert.Equalf(t, 6, strings.Count(policy, "https://"),
+		"the CSP names the wrong number of external origins: %q", policy)
+}
+
+// A style's hosts are configuration too, and are held to the same rule the
+// configured origins are: nothing served before an identity exists names one.
+func TestHandlerWithholdsAStylesFurtherHostsBeforeAnIdentityExists(t *testing.T) {
+	handler, err := New(
+		&Options{
+			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
+			Settings:         settingsWith([]runtimeconfig.Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}),
+			StyleOrigins:     &fakeStyleOrigins{origins: []string{"https://fonts.example.test"}},
+			Sessions:         newFakeSessions(),
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	for _, path := range []string{"/auth/sign-in", "/assets/app-abc123.js"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody))
+		assert.NotContainsf(t, response.Header().Get("Content-Security-Policy"), "https://fonts.example.test",
+			"%s names a style's host to a caller without an identity", path)
+	}
+}
+
 func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 	handler, err := New(
 		&Options{

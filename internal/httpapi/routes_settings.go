@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,6 +16,11 @@ import (
 // basemapsPath is the one route whose body is allowed to be larger than every
 // other; see requestLimit.
 const basemapsPath = "/v1/settings/basemaps"
+
+// styleRefreshBudget bounds how long a basemap save waits for the saved styles
+// to be read. Short enough that an unreachable provider costs the operator a
+// pause rather than a hung form.
+const styleRefreshBudget = 5 * time.Second
 
 // GetSettings serves the settings that are in force right now, which is what
 // the form the operator edits is filled from.
@@ -106,7 +112,7 @@ func (h *Handler) SetBasemaps(writer http.ResponseWriter, request *http.Request)
 	if !ok {
 		return
 	}
-	h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
+	stored := h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
 		values.Basemaps = make([]runtimeconfig.Basemap, len(body.Basemaps))
 		for index, basemap := range body.Basemaps {
 			values.Basemaps[index] = runtimeconfig.Basemap{
@@ -119,6 +125,16 @@ func (h *Handler) SetBasemaps(writer http.ResponseWriter, request *http.Request)
 
 		return values
 	}, nil)
+	if stored && h.styleOrigins != nil {
+		// The saved styles are read now rather than at the next scheduled read, so
+		// the policy on the responses after this save already admits whatever
+		// hosts they name. Bounded, because a provider that has gone away must not
+		// hold the save open: what does not resolve inside the budget is picked up
+		// by the scheduled read instead.
+		ctx, cancel := context.WithTimeout(request.Context(), styleRefreshBudget)
+		defer cancel()
+		h.styleOrigins.Refresh(ctx)
+	}
 }
 
 // SetSurface replaces the regions the surface index is built from and how often
