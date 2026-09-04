@@ -12,6 +12,12 @@
  * once per reading, and the route's own tint asks it every few hundred metres
  * along the way, because what changes between two readings is not the forecast
  * but the direction the road points in.
+ *
+ * The relation is not the *direction*, and the cell carries both. A relation
+ * needs the road and inverts wherever the road turns; a direction is a fact
+ * about the air and holds whatever the road does. `flowDegrees` is the second
+ * of those, kept in the compass frame the map's own arrows use so that a tile
+ * and the map cannot say the wind is going two different ways.
  */
 
 import type { Position, WeatherPoint } from "../../api/types";
@@ -20,6 +26,7 @@ import { windRelationStop } from "../../lib/measures";
 import { cumulativeMetres } from "../../lib/profile";
 import type { WindRelation } from "../../lib/wind";
 import { BEARING_WINDOW_METRES, bearingAt, bearingIsMixed, windRelation } from "../../lib/wind";
+import { flowBearingDegrees } from "../../lib/windField";
 
 /** A relation, `"mixed"` where the road disagrees, null where there is no road. */
 export type CellRelation = WindRelation | "mixed" | null;
@@ -29,13 +36,17 @@ export interface RelationReading {
   relation: CellRelation;
   /** The wind's share along the direction of travel, -1 dead ahead to 1 dead behind. */
   component: number | null;
-  /** Which way the wind pushes, in degrees clockwise from the way the rider faces. */
-  pushDegrees: number | null;
 }
 
 export interface Cell extends RelationReading {
   sample: ForecastSample;
   point: WeatherPoint;
+  /**
+   * Where the air is going, in degrees clockwise from north — a fact about the
+   * reading alone, which is why it hangs off the cell rather than off
+   * `relationAt` and needs no geometry to answer.
+   */
+  flowDegrees: number;
   /** The stretch this reading speaks for, halfway to each neighbour. */
   startMetres: number;
   endMetres: number;
@@ -62,14 +73,6 @@ export function relationAt(
   return {
     relation: mixed ? "mixed" : (reading?.relation ?? null),
     component: reading?.componentKmhPerKmh ?? null,
-    /*
-     * A forecast names the direction wind comes *from*; a rider cares which way
-     * it shoves them, which is the opposite. Measured against the way they are
-     * pointing rather than against north, so an arrow drawn at this angle reads
-     * as "behind you" or "in your face" without the reader holding a compass in
-     * their head.
-     */
-    pushDegrees: bearing === null ? null : (windFromDegrees + 180 - bearing + 360) % 360,
   };
 }
 
@@ -95,6 +98,7 @@ export function buildCells(
         point,
         startMetres: previous ? (previous.distanceMetres + sample.distanceMetres) / 2 : 0,
         endMetres: next ? (sample.distanceMetres + next.distanceMetres) / 2 : totalMetres,
+        flowDegrees: flowBearingDegrees(point.windDirectionDegrees),
         ...relationAt(coordinates, distances, sample.distanceMetres, point.windDirectionDegrees),
       },
     ];
