@@ -718,7 +718,14 @@ function Basemaps({ settings }: { settings: Settings }) {
   const [rowKeys, setRowKeys] = useState(() => settings.basemaps.map((_, index) => index));
   const nextRowKey = useRef(settings.basemaps.length);
   const [openKeys, setOpenKeys] = useState<number[]>([]);
-  const save = useSetBasemaps(saving(() => setDraft(null), invalidate));
+  // Once saved, every row is an original again, so its key is its index.
+  const save = useSetBasemaps(
+    saving(() => {
+      setDraft(null);
+      setRowKeys((keys) => keys.map((_, index) => index));
+      setOpenKeys([]);
+    }, invalidate),
+  );
 
   const basemaps = draft ?? settings.basemaps;
   const replaceBasemap = (index: number, next: BrowserBasemap) =>
@@ -726,9 +733,11 @@ function Basemaps({ settings }: { settings: Settings }) {
 
   // The browser may only reach the origins of saved styles, and the hosts each
   // one names are learnt on save — so a typed URL cannot be drawn until then.
-  const saved = new Set(
-    settings.basemaps.flatMap((basemap) => [basemap.styleUrl, basemap.styleUrlDark]),
-  );
+  const savedInRow = (key: number, url: string) => {
+    const saved = settings.basemaps[key];
+
+    return saved !== undefined && (url === saved.styleUrl || url === saved.styleUrlDark);
+  };
   const strips = basemaps.reduce((count, basemap) => count + (basemap.styleUrlDark ? 2 : 1), 0);
   const styleUrlsOf = (basemap: BrowserBasemap) =>
     strips <= MOST_STRIPS
@@ -752,7 +761,11 @@ function Basemaps({ settings }: { settings: Settings }) {
             key={key}
             open={open}
             onOpenChange={(next) =>
-              setOpenKeys(next ? [...openKeys, key] : openKeys.filter((other) => other !== key))
+              setOpenKeys((keys) =>
+                next
+                  ? [...keys.filter((other) => other !== key), key]
+                  : keys.filter((other) => other !== key),
+              )
             }
             className="grid gap-3 rounded-lg border border-[var(--rule)] p-3"
           >
@@ -768,7 +781,7 @@ function Basemaps({ settings }: { settings: Settings }) {
             {styleUrlsOf(basemap).length > 0 ? (
               <div className="grid gap-3 sm:grid-flow-col sm:auto-cols-fr">
                 {styleUrlsOf(basemap).map((url) =>
-                  saved.has(url) ? (
+                  savedInRow(key, url) ? (
                     <BasemapStrip key={url} styleUrl={url} />
                   ) : (
                     <span
@@ -849,9 +862,10 @@ function Basemaps({ settings }: { settings: Settings }) {
           variant="outline"
           onClick={() => {
             setDraft([...basemaps, { name: "", styleUrl: "" }]);
-            setRowKeys([...rowKeys, nextRowKey.current]);
+            const added = nextRowKey.current;
+            setRowKeys([...rowKeys, added]);
             // A new entry has nothing saved to show, so it opens onto its fields.
-            setOpenKeys([...openKeys, nextRowKey.current]);
+            setOpenKeys((keys) => [...keys, added]);
             nextRowKey.current += 1;
           }}
         >

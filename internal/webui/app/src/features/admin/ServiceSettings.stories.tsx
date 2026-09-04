@@ -197,6 +197,13 @@ export const PreviewsABasemapOnlyAsSaved: Story = {
       canvas.getByRole("button", { name: "Finish editing basemap 2" }),
     ).toHaveTextContent("Done");
     await expect(canvas.getAllByText("Save to preview")).toHaveLength(1);
+
+    // Another row's saved URL is still unsaved in this one.
+    await userEvent.type(
+      canvas.getAllByLabelText("Style URL")[1] as HTMLElement,
+      "https://tiles.example.test/streets.json",
+    );
+    await expect(canvas.getAllByText("Save to preview")).toHaveLength(2);
   },
 };
 
