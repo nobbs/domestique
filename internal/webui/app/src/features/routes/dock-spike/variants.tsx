@@ -383,7 +383,7 @@ function Choices(s: DockState) {
 
 function Conditions(s: DockState) {
   const chosen = MEASURES.find((entry) => entry.key === s.measure);
-  return chosen === undefined ? null : <WashKey measure={chosen} look="swatch" />;
+  return chosen === undefined ? null : <WashKey measure={chosen} look="keyed" />;
 }
 
 /* ---- the lanes, as they exist today, each wrapped once ------------------ */
