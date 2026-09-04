@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
 import "./index.css";
+import { lockPageZoom } from "./lib/pageZoom";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -13,6 +14,9 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+// Document-wide and for the life of the tab, so there is nothing to undo.
+lockPageZoom();
 
 const container = document.getElementById("root");
 if (!container) {
