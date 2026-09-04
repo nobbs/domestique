@@ -8,7 +8,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { SURFACE_KINDS } from "../api/types";
 import { INK, PANEL, ROUTE_ACCENT } from "./cartography";
-import { cloudColour, rainColour, temperatureHexColour, windColour } from "./measures";
+import {
+  cloudColour,
+  rainColour,
+  temperatureHexColour,
+  windColour,
+  windRelationColour,
+} from "./measures";
 import { bandColour } from "./profile";
 import { surfaceColour } from "./surface";
 
@@ -56,9 +62,11 @@ describe("cartography tokens", () => {
     }
     for (const band of [0, 1, 2, 3]) {
       expect(light.get(`--wind-${band}`)).toBe(windColour(band, false));
+      expect(light.get(`--wind-relation-${band}`)).toBe(windRelationColour(band, false));
       expect(light.get(`--rain-${band}`)).toBe(rainColour(band, false));
       expect(light.get(`--cloud-${band}`)).toBe(cloudColour(band, false));
     }
+    expect(light.get("--wind-relation-mixed")).toBe(windRelationColour(null, false));
     for (const kind of SURFACE_KINDS) {
       expect(light.get(surfaceVariable(kind))).toBe(surfaceColour(kind, false));
     }
@@ -74,9 +82,11 @@ describe("cartography tokens", () => {
     }
     for (const band of [0, 1, 2, 3]) {
       expect(vars.get(`--wind-${band}`)).toBe(windColour(band, true));
+      expect(vars.get(`--wind-relation-${band}`)).toBe(windRelationColour(band, true));
       expect(vars.get(`--rain-${band}`)).toBe(rainColour(band, true));
       expect(vars.get(`--cloud-${band}`)).toBe(cloudColour(band, true));
     }
+    expect(vars.get("--wind-relation-mixed")).toBe(windRelationColour(null, true));
     for (const kind of SURFACE_KINDS) {
       expect(vars.get(surfaceVariable(kind))).toBe(surfaceColour(kind, true));
     }

@@ -3,16 +3,16 @@
  *
  * Not a map of its own. The entry page has one MapLibre instance for the whole
  * library, and this is the stack of sources and layers that appears over it when
- * a route is picked: the casing, the steepness edging, the surface classes, the
- * direction cues, the two ends, and the position the elevation chart shares with
- * it. Mounting a second map for the selected route would download the style
- * again and throw away the ground the reader was already looking at.
+ * a route is picked: the casing, the edging — steepness, or what the wind is
+ * doing to the rider once that is asked for — the surface classes, the direction
+ * cues, the two ends, and the position the elevation chart shares with it.
+ * Mounting a second map for the selected route would download the style again
+ * and throw away the ground the reader was already looking at.
  *
  * Everything here is drawn from geometry the service already holds locally and
  * is never sent anywhere; only the basemap underneath comes from outside.
  */
 
-import type { DataDrivenPropertyValueSpecification } from "maplibre-gl";
 import { useMemo, useState } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import type { Position, SurfaceRange } from "../../api/types";
@@ -35,7 +35,9 @@ import { DirectionCues } from "./DirectionCues";
 import { HoverLink } from "./HoverLink";
 import { PositionTooltip } from "./PositionTooltip";
 import { RouteTerminal } from "./RouteTerminal";
+import { dimmedOutside, EDGING_WIDTH, taggedCollection } from "./routeFeatures";
 import { SelectionLink } from "./SelectionLink";
+import { useWindRuns, WindRelationTint } from "./WindRelationTint";
 
 const SOURCE_ID = "route-geometry";
 
@@ -71,65 +73,6 @@ const GRADIENT_BANDS_DRAWN = [1, 2, 3, 4] as const;
 
 /** The band whose layer sits lowest, and so the one the halo goes under. */
 const LOWEST_BAND_DRAWN = GRADIENT_BANDS_DRAWN[0];
-
-/**
- * How wide the steepness line runs beneath the casing.
- *
- * Wider than the casing, so what shows is an edging either side of it rather
- * than a colour behind it. The casing keeps the two encodings apart: steepness
- * never touches the class colour it would otherwise be read as part of.
- */
-const BAND_EDGE_WIDTH = 11;
-
-/**
- * How much of the route survives outside the ground on show.
- *
- * Dimmed rather than hidden: the ride does not stop at the edges of a window,
- * and a route drawn only in the middle would read as a shorter route rather than
- * as a closer look at a longer one. The same holds for a class picked out of the
- * key — the gravel is somewhere on this ride, and hiding the tarmac either side
- * of it would lose where. A quarter is faint enough that the eye lands on the
- * lit ground first and still dark enough to follow the road between.
- */
-const OUTSIDE_OPACITY = 0.25;
-
-/**
- * An opacity that drops away outside the ground on show.
- *
- * One expression over one tagged source rather than a second stack of layers:
- * `line-opacity` is a layer property, and one layer per class is exactly what
- * keeps a class's dash pattern identical on both sides of a lit stretch's edge.
- * Written as a function because a bare array in a `const` widens to `unknown[]`
- * and stops matching the tuple union the paint property is typed as.
- */
-function dimmedOutside(
-  full: number,
-  dimmed: boolean,
-): DataDrivenPropertyValueSpecification<number> {
-  return dimmed ? ["case", ["get", "shown"], full, full * OUTSIDE_OPACITY] : full;
-}
-
-/**
- * The route's geometry as at most two features, tagged by whether the chart is
- * showing them, so one paint expression can tell the two apart.
- */
-function taggedCollection(slices: { inside: Position[][]; outside: Position[][] }) {
-  const features = ([lines, shown]: [Position[][], boolean]) =>
-    lines.length === 0
-      ? []
-      : [
-          {
-            type: "Feature" as const,
-            geometry: { type: "MultiLineString" as const, coordinates: lines },
-            properties: { shown },
-          },
-        ];
-
-  return {
-    type: "FeatureCollection" as const,
-    features: [...features([slices.inside, true]), ...features([slices.outside, false])],
-  };
-}
 
 export interface RouteOverlayProps {
   /**
@@ -307,12 +250,19 @@ export function RouteOverlay({
     [coordinates, surface, lit],
   );
 
+  // Read here rather than inside the layer that draws it: the steepness edging
+  // below has to know whether the wind has taken the slot.
+  const windRuns = useWindRuns(samples, coordinates, measure === "wind");
+  const windTinted = windRuns.length > 0;
+
   // One feature collection per band, for the same reason the classes get one
   // each: the width and colour of an edging belong to its layer. Always one per
   // drawn band, empty where the route has no such ground, so the layers stay
-  // mounted and the stack keeps the order it was built in.
+  // mounted and the stack keeps the order it was built in — and empty
+  // throughout while the wind has the slot, since two ramps along one line
+  // leave a reader guessing which of them a colour belongs to.
   const gradientFeatures = useMemo(() => {
-    const slices = gradientSlices(coordinates, lit);
+    const slices = windTinted ? [] : gradientSlices(coordinates, lit);
 
     return GRADIENT_BANDS_DRAWN.map((band) => ({
       band,
@@ -320,7 +270,7 @@ export function RouteOverlay({
         slices.find((entry) => entry.band === band) ?? { inside: [], outside: [] },
       ),
     }));
-  }, [coordinates, lit]);
+  }, [coordinates, lit, windTinted]);
 
   // The halo marks the ground on show, so it has nothing to draw until
   // something is asked: unqualified, every metre of the route counts as inside.
@@ -458,7 +408,7 @@ export function RouteOverlay({
             layout={{ "line-cap": "butt", "line-join": "round" }}
             paint={{
               "line-color": bandColour(band, darkBasemap),
-              "line-width": BAND_EDGE_WIDTH,
+              "line-width": EDGING_WIDTH,
               "line-opacity": dimmedOutside(1, dimmed),
             }}
           />
@@ -481,7 +431,7 @@ export function RouteOverlay({
             "line-color": accent,
             // Wider than the edging it sits under, so the glow shows either
             // side of it rather than only through it.
-            "line-width": BAND_EDGE_WIDTH + 6,
+            "line-width": EDGING_WIDTH + 6,
             "line-opacity": 0.22,
             "line-blur": 3,
           }}
@@ -498,6 +448,19 @@ export function RouteOverlay({
         samples={samples}
         measure={measure}
         beforeId={HALO_LAYER_ID}
+        unitSystem={unitSystem}
+      />
+      {/*
+       * The wind on the rider, in the edging slot the steepness bands give up
+       * for it: under the casing, so it never touches the class colour above.
+       * Named against the casing rather than a band, because the bands are
+       * drawing nothing at all for as long as this is here.
+       */}
+      <WindRelationTint
+        runs={windRuns}
+        coordinates={coordinates}
+        lit={lit}
+        beforeId="route-casing"
         unitSystem={unitSystem}
       />
       {surfaceFeatures.map(({ kind, data }) => (

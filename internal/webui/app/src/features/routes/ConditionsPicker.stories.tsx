@@ -52,6 +52,12 @@ export const Off: Story = { render: () => <Picking /> };
 /** Rain, whose lowest band the map paints nothing for — and the key says so. */
 export const Rain: Story = { render: () => <Picking initial="rain" /> };
 
+/**
+ * The one measure with two keys: the corridor's bands for how hard the wind
+ * blows, and the route's own ramp for what it does to the rider.
+ */
+export const Wind: Story = { render: () => <Picking initial="wind" /> };
+
 /** Five bands rather than four, and every one of them painted. */
 export const Temperature: Story = { render: () => <Picking initial="temperature" /> };
 

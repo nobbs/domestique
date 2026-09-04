@@ -13,16 +13,24 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Position, SurfaceRange } from "../../api/types";
+import { weatherQuery } from "../../api/queries";
+import type { Position, SurfaceRange, WeatherPoint } from "../../api/types";
 import { CartographyProvider } from "../../components/map/CartographyContext";
+import type { ForecastSample } from "../../lib/forecastSamples";
 import { formatDistance, formatElevation } from "../../lib/format";
+import type { MeasureKey } from "../../lib/measures";
 import type { Profile } from "../../lib/profile";
-import { buildProfile, buildWindowedProfile, sampleAt } from "../../lib/profile";
+import { buildProfile, buildWindowedProfile, cumulativeMetres, sampleAt } from "../../lib/profile";
 import { summariseSurface } from "../../lib/surface";
 
 interface LayerRecord {
   id: string;
   paint: Record<string, unknown>;
+}
+
+interface SourceRecord {
+  id: string;
+  data: { features?: unknown[] } | undefined;
 }
 
 interface MarkerRecord {
@@ -35,6 +43,7 @@ interface MarkerRecord {
 
 const drawn = vi.hoisted(() => ({
   layers: [] as LayerRecord[],
+  sources: [] as SourceRecord[],
   markers: [] as MarkerRecord[],
   // Where the tooltip's own hover point projects to on screen, so a test can
   // move it into whichever quadrant it wants to check the anchor flips into.
@@ -54,7 +63,11 @@ vi.mock("react-map-gl/maplibre", () => ({
 
     return null;
   },
-  Source: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  Source: (props: SourceRecord & { children?: ReactNode }) => {
+    drawn.sources.push({ id: props.id, data: props.data });
+
+    return <>{props.children}</>;
+  },
   // The content is covered above; what only a real map could place is the
   // corner it opens from, which this records so that can be asked about here
   // rather than left to the browser test alone.
@@ -111,11 +124,45 @@ const COORDINATES: Position[] = Array.from(
 
 beforeEach(() => {
   drawn.layers = [];
+  drawn.sources = [];
   drawn.markers = [];
   drawn.projected = { x: 400, y: 300 };
   drawn.containerSize = { clientWidth: 800, clientHeight: 600 };
   drawn.mapReady = true;
 });
+
+/** A stage that climbs steadily, so its steepness has bands worth an edging. */
+const CLIMBING: Position[] = Array.from(
+  { length: 21 },
+  (_, index): Position => [8 + index * 0.001, 49, index * 20],
+);
+
+/** A forecast reading, flat and unremarkable apart from the wind on it. */
+function point(windDirectionDegrees: number): WeatherPoint {
+  return {
+    time: new Date().toISOString(),
+    temperatureCelsius: 14,
+    apparentTemperatureCelsius: 14,
+    precipitationMillimetres: 0,
+    precipitationProbabilityPercent: 0,
+    windSpeedKmh: 22,
+    windDirectionDegrees,
+    weatherCode: 1,
+    cloudCoverPercent: 20,
+  };
+}
+
+/** Three readings spread evenly along a route, the shape a stage's forecast has. */
+function samplesAlong(route: Position[]): ForecastSample[] {
+  const distances = cumulativeMetres(route);
+  const total = distances[distances.length - 1] ?? 0;
+
+  return [0, 0.5, 1].map((share) => ({
+    position: route[Math.round(share * (route.length - 1))] as Position,
+    distanceMetres: share * total,
+    arrivalAt: new Date(Date.now() + (1 + share) * 3_600_000),
+  }));
+}
 
 function show(
   props: {
@@ -128,6 +175,9 @@ function show(
     /** Defaults to the same whole-route profile `profile` builds, as an unzoomed chart would. */
     activeProfile?: Profile | null;
     profileCollapsed?: boolean;
+    /** The forecast measure asked for, with a forecast seeded to answer it. */
+    measure?: MeasureKey | null;
+    withForecast?: boolean;
   } = {},
 ) {
   const onZoomChange = vi.fn();
@@ -141,11 +191,19 @@ function show(
   // The position tooltip reads the forecast for its wind line, so the overlay
   // now needs a client in scope even where a test offers no samples at all.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const samples = props.withForecast ? samplesAlong(coordinates) : [];
+  if (props.withForecast) {
+    // The wind blows from due east onto a road running due east, which is the
+    // one reading whose colour a reader could not mistake for another.
+    client.setQueryData(weatherQuery(samples).queryKey, { points: samples.map(() => point(90)) });
+  }
   const jsx = (activeMetres: number | null) => (
     <QueryClientProvider client={client}>
       <CartographyProvider dark={props.darkBasemap ?? false}>
         <RouteOverlay
           coordinates={coordinates}
+          samples={samples}
+          measure={props.measure ?? null}
           surface={props.surface}
           surfaceSummary={surfaceSummary}
           profile={profile}
@@ -165,6 +223,8 @@ function show(
     profile,
     layer: (id: string) => drawn.layers.find((entry) => entry.id === id),
     ids: () => drawn.layers.map((entry) => entry.id),
+    /** What one source was handed, for a layer that is mounted whether or not it draws. */
+    features: (id: string) => drawn.sources.find((entry) => entry.id === id)?.data?.features ?? [],
     marker: () =>
       drawn.markers.find((marker) => marker.className === "route-position-tooltip-marker"),
     /** Re-renders the same tree with a different position, for a transition a fresh render cannot prove. */
@@ -205,6 +265,56 @@ describe("the route drawn over the library", () => {
       "route-surface-asphalt-line",
       "route-surface-gravel-line",
     ]);
+  });
+});
+
+/**
+ * The route carries one encoding at a time. Steepness has the edging under the
+ * casing until the reader asks what the wind is doing to them, and then the
+ * wind has it — two ramps along one line would leave a colour belonging to
+ * whichever of them the reader guessed.
+ */
+describe("the route tinted by the wind on the rider", () => {
+  const WIND_LAYER = "route-wind-relation-line";
+
+  it("tints the route once the wind is the measure asked for", () => {
+    const view = show({ measure: "wind", withForecast: true });
+
+    expect(view.layer(WIND_LAYER)).toBeDefined();
+  });
+
+  it("leaves the route alone for every other measure", () => {
+    for (const measure of ["temperature", "rain", "cloud"] as const) {
+      drawn.layers = [];
+      drawn.sources = [];
+      const view = show({ measure, withForecast: true });
+
+      expect(view.layer(WIND_LAYER)).toBeUndefined();
+    }
+  });
+
+  it("leaves the route alone with no measure asked for at all", () => {
+    const view = show({ withForecast: true });
+
+    expect(view.layer(WIND_LAYER)).toBeUndefined();
+  });
+
+  it("edges the steepness while nothing is tinting the route", () => {
+    const view = show({ coordinates: CLIMBING });
+
+    expect(view.features("route-gradient-4").length).toBeGreaterThan(0);
+  });
+
+  it("puts the steepness edging away for as long as the tint has the slot", () => {
+    const view = show({ coordinates: CLIMBING, measure: "wind", withForecast: true });
+
+    expect(view.layer(WIND_LAYER)).toBeDefined();
+    // Still mounted, drawing nothing: a layer that came and went would be
+    // re-added at whatever height the stack happened to have by then.
+    for (const band of [1, 2, 3, 4]) {
+      expect(view.layer(`route-gradient-${band}-line`)).toBeDefined();
+      expect(view.features(`route-gradient-${band}`)).toEqual([]);
+    }
   });
 });
 

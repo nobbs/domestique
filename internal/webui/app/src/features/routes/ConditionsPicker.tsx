@@ -17,33 +17,80 @@
  * is the split `mix.ts` states for the steepness and ground keys. Every band is
  * named as well as coloured; a key that only shows colours is unreadable to the
  * readers this legend exists for.
+ *
+ * Wind gets two keys, because it is drawn twice: a corridor for how hard it
+ * blows, and the route itself for what that does to the rider.
  */
 
 import type { ForecastSample } from "../../lib/forecastSamples";
 import type { Measure, MeasureKey } from "../../lib/measures";
-import { MEASURES, measureVariable } from "../../lib/measures";
+import {
+  MEASURES,
+  measureVariable,
+  WIND_RELATION_KEY,
+  windRelationVariable,
+} from "../../lib/measures";
 
 /** The pill every choice wears, pressed or not. */
 const CHOICE =
   "rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
+
+/**
+ * One row of the key: a swatch and the words for what it means.
+ *
+ * `opacity` blends into the fill alone via `color-mix()`, not the element's
+ * own CSS opacity — that would fade the border too, erasing a "not washed"
+ * band's outline along with its colour.
+ */
+function Swatch({ colour, opacity = 1 }: { colour: string; opacity?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-2.5 w-4 rounded-xs border border-[var(--rule)]"
+      style={{ backgroundColor: `color-mix(in srgb, ${colour} ${opacity * 100}%, transparent)` }}
+    />
+  );
+}
+
+/**
+ * What the route line itself is drawn in while the wind is on show, which is a
+ * second thing to say and not a second colour for the same one: the corridor
+ * carries the wind's speed, the route carries what it does to the rider.
+ *
+ * It also says plainly that the steepness edging has stood down. The map cannot
+ * carry two ramps along one line, so the reader is told which one is on rather
+ * than left to notice that the gradient colours went away.
+ */
+function WindRelationKey() {
+  return (
+    <div className="grid gap-1">
+      <p className="text-[11px] text-[var(--ink-2)]">
+        The route itself shows the wind against the way you are riding, in place of its steepness
+        edging.
+      </p>
+      <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--ink-2)]">
+        {WIND_RELATION_KEY.map((band) => (
+          <li key={band.description} className="flex items-center gap-1.5">
+            <Swatch colour={windRelationVariable(band.stop)} />
+            {band.description}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function Legend({ measure }: { measure: Measure }) {
   return (
     <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--ink-2)]">
       {measure.bands.map((band, index) => (
         <li key={band.label} className="flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className="h-2.5 w-4 rounded-xs border border-[var(--rule)]"
-            style={{
-              // Exactly what the map paints, so a band that washes nothing —
-              // rain's dry, cloud's clear — shows here as an empty swatch
-              // rather than as a colour the route never wears. Blended into
-              // the fill alone, not the element's own opacity, which would
-              // fade the border too and erase the swatch outline entirely.
-              backgroundColor: `color-mix(in srgb, ${measureVariable(measure.key, index)} ${measure.opacity(index) * 100}%, transparent)`,
-            }}
-          />
+          {/*
+           * The opacity is exactly what the map paints, so a band that washes
+           * nothing — rain's dry, cloud's clear — shows here as an empty swatch
+           * rather than as a colour the route never wears.
+           */}
+          <Swatch colour={measureVariable(measure.key, index)} opacity={measure.opacity(index)} />
           {band.description}
           {measure.opacity(index) === 0 ? " (not washed)" : null}
         </li>
@@ -112,6 +159,7 @@ export function ConditionsPicker({
       </div>
       {available ? null : <p className="text-[11px] text-[var(--ink-2)]">{absence}</p>}
       {available && chosen ? <Legend measure={chosen} /> : null}
+      {available && chosen?.key === "wind" ? <WindRelationKey /> : null}
     </div>
   );
 }

@@ -36,6 +36,11 @@
   --wind-1: #86bdd0;
   --wind-2: #3f8fac;
   --wind-3: #1c5f78;
+  --wind-relation-0: #b3560f;
+  --wind-relation-1: #e0a266;
+  --wind-relation-2: #9c93dd;
+  --wind-relation-3: #443a94;
+  --wind-relation-mixed: #6e6a66;
   --rain-0: #c7c2f2;
   --rain-1: #8477d9;
   --rain-2: #5b4bc4;
@@ -96,6 +101,11 @@
   --wind-1: #4b8298;
   --wind-2: #7cb6cd;
   --wind-3: #b3dced;
+  --wind-relation-0: #dd8b52;
+  --wind-relation-1: #b8946f;
+  --wind-relation-2: #8e88d4;
+  --wind-relation-3: #7d6ef0;
+  --wind-relation-mixed: #9b968f;
   --rain-0: #4c4570;
   --rain-1: #6d5fc4;
   --rain-2: #9385e2;
@@ -156,6 +166,11 @@
     --wind-1: #4b8298;
     --wind-2: #7cb6cd;
     --wind-3: #b3dced;
+    --wind-relation-0: #dd8b52;
+    --wind-relation-1: #b8946f;
+    --wind-relation-2: #8e88d4;
+    --wind-relation-3: #7d6ef0;
+    --wind-relation-mixed: #9b968f;
     --rain-0: #4c4570;
     --rain-1: #6d5fc4;
     --rain-2: #9385e2;

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { MeasureKey } from "./measures";
-import { MEASURES } from "./measures";
+import {
+  MEASURES,
+  WIND_RELATION_KEY,
+  windRelationColour,
+  windRelationStop,
+  windRelationVariable,
+  windRelationWords,
+} from "./measures";
 
 function measure(key: MeasureKey) {
   const found = MEASURES.find((entry) => entry.key === key);
@@ -131,5 +138,58 @@ describe("MEASURES", () => {
     expect(measure("wind").reading(point)).toBe(22);
     expect(measure("rain").reading(point)).toBe(4);
     expect(measure("cloud").reading(point)).toBe(70);
+  });
+});
+
+/**
+ * The second ramp the wind measure carries: not how hard it blows but which way
+ * it sits against the road, which is what the route itself is drawn in.
+ */
+describe("the head-to-tail ramp", () => {
+  it("puts a headwind at one end and a tailwind at the other", () => {
+    expect(windRelationStop("head", -1)).toBe(0);
+    expect(windRelationStop("tail", 1)).toBe(3);
+  });
+
+  it("leans a crosswind to whichever side its component points", () => {
+    expect(windRelationStop("cross", -0.5)).toBe(1);
+    expect(windRelationStop("cross", 0.5)).toBe(2);
+  });
+
+  it("colours every stop, and `mixed` in something that is on neither end", () => {
+    for (const dark of [false, true]) {
+      const neutral = windRelationColour(null, dark);
+      expect(neutral).toMatch(HEX);
+      for (const stop of [0, 1, 2, 3]) {
+        expect(windRelationColour(stop, dark)).toMatch(HEX);
+        expect(windRelationColour(stop, dark)).not.toBe(neutral);
+      }
+    }
+  });
+
+  it("gives each stop a colour of its own, so no two stretches read alike", () => {
+    const drawn = [0, 1, 2, 3, null].map((stop) => windRelationColour(stop, false));
+
+    expect(new Set(drawn).size).toBe(drawn.length);
+  });
+
+  it("names the same stops in the custom properties a legend reads", () => {
+    expect(windRelationVariable(0)).toBe("var(--wind-relation-0)");
+    expect(windRelationVariable(null)).toBe("var(--wind-relation-mixed)");
+  });
+
+  it("lists every stop in the key, the neutral last", () => {
+    expect(WIND_RELATION_KEY.map((band) => band.stop)).toEqual([0, 1, 2, 3, null]);
+    for (const band of WIND_RELATION_KEY) {
+      expect(band.description).not.toBe("");
+    }
+  });
+
+  it("says which way the wind sits in words, in the reader's own units", () => {
+    expect(windRelationWords(0, 24, "metric")).toBe("headwind, 24 km/h");
+    expect(windRelationWords(3, 24, "metric")).toBe("tailwind, 24 km/h");
+    expect(windRelationWords(1, 24, "metric")).toContain("crosswind");
+    expect(windRelationWords(null, 24, "metric")).toContain("wind shifting");
+    expect(windRelationWords(0, 24, "imperial")).toBe("headwind, 15 mph");
   });
 });
