@@ -20,50 +20,64 @@ const BRACKET_TOP = PADDING.top + 2;
 
 export function ClimbMarkers({
   climbs,
-  totalMetres,
+  startMetres,
+  endMetres,
   onSelect,
 }: {
   climbs: Climb[];
-  totalMetres: number;
+  /** The shown window's edges — the whole route when nothing is zoomed. */
+  startMetres: number;
+  endMetres: number;
   /** Opens the shared window on one climb, as the sidebar's own rows do. */
   onSelect: (metres: number) => void;
 }) {
-  if (climbs.length === 0 || totalMetres <= 0) {
+  if (climbs.length === 0 || endMetres <= startMetres) {
     return null;
   }
+  const span = endMetres - startMetres;
 
   return (
     <div
       className="pointer-events-none absolute inset-y-0"
       style={{ left: PADDING.left, right: PADDING.right }}
     >
-      {climbs.map((climb, index) => (
-        <button
-          key={climb.startMetres}
-          type="button"
-          onClick={() => onSelect((climb.startMetres + climb.endMetres) / 2)}
-          aria-label={`Climb ${index + 1}`}
-          className="pointer-events-auto absolute rounded-full bg-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-          style={{
-            top: BRACKET_TOP,
-            height: 3,
-            opacity: 0.55,
-            left: `${(climb.startMetres / totalMetres) * 100}%`,
-            width: `${((climb.endMetres - climb.startMetres) / totalMetres) * 100}%`,
-          }}
-        >
-          {/*
-           * The ordinal hangs below its bracket rather than above it. Above,
-           * it lands in the chart's top gutter, which is the room reserved so
-           * that a summit touching the ceiling is not clipped — and on a route
-           * whose big col is also its highest point, that is exactly where the
-           * terrain is.
-           */}
-          <span className="absolute top-1 left-0 text-[10px] leading-none font-semibold text-[var(--ink-2)] tabular-nums">
-            {index + 1}
-          </span>
-        </button>
-      ))}
+      {climbs
+        // Ordinal fixed to the full route before the window filters which brackets draw,
+        // so a climb keeps the number it has in ClimbsSidebar however the chart is zoomed.
+        .map((climb, index) => ({ climb, ordinal: index + 1 }))
+        .filter(({ climb }) => climb.endMetres > startMetres && climb.startMetres < endMetres)
+        .map(({ climb, ordinal }) => {
+          const clampedStart = Math.max(climb.startMetres, startMetres);
+          const clampedEnd = Math.min(climb.endMetres, endMetres);
+
+          return (
+            <button
+              key={climb.startMetres}
+              type="button"
+              onClick={() => onSelect((climb.startMetres + climb.endMetres) / 2)}
+              aria-label={`Climb ${ordinal}`}
+              className="pointer-events-auto absolute rounded-full bg-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+              style={{
+                top: BRACKET_TOP,
+                height: 3,
+                opacity: 0.55,
+                left: `${((clampedStart - startMetres) / span) * 100}%`,
+                width: `${((clampedEnd - clampedStart) / span) * 100}%`,
+              }}
+            >
+              {/*
+               * The ordinal hangs below its bracket rather than above it. Above,
+               * it lands in the chart's top gutter, which is the room reserved so
+               * that a summit touching the ceiling is not clipped — and on a route
+               * whose big col is also its highest point, that is exactly where the
+               * terrain is.
+               */}
+              <span className="absolute top-1 left-0 text-[10px] leading-none font-semibold text-[var(--ink-2)] tabular-nums">
+                {ordinal}
+              </span>
+            </button>
+          );
+        })}
     </div>
   );
 }

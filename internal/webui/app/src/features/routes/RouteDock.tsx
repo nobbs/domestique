@@ -238,6 +238,7 @@ function ProfileStop({
 > & { climbsOpen: boolean; onClimbsOpenChange: (open: boolean) => void }) {
   // A touch pointer arms the zoom by holding, so the hint names that gesture.
   const coarse = useCoarsePointer();
+  const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
   const line = (() => {
     if (activeMetres !== null && profile) {
       return profileReadout({ profile, surface, activeMetres, unitSystem });
@@ -312,12 +313,18 @@ function ProfileStop({
               caption={false}
               zoomBack={false}
             />
-            <ClimbMarkers climbs={climbs} totalMetres={distanceMetres} onSelect={onActiveChange} />
+            <ClimbMarkers
+              climbs={climbs}
+              startMetres={shown.startMetres}
+              endMetres={shown.endMetres}
+              onSelect={onActiveChange}
+            />
           </div>
           <div style={GUTTER}>
             <GroundRibbon
-              segments={groundSegments(surface)}
+              segments={groundSegments(surface, shown)}
               surface={surface}
+              window={shown}
               thin
               unmarked={["asphalt"]}
               labelled

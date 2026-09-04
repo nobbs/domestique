@@ -17,7 +17,7 @@ import type { Highlight } from "./highlight";
 import type { BandShare, SignedBandShare } from "./profile";
 import { GRADIENT_BANDS } from "./profile";
 import type { SurfaceSummary } from "./surface";
-import { SURFACE_STYLES } from "./surface";
+import { SURFACE_STYLES, surfaceBandsWithin } from "./surface";
 
 export function bandVariable(band: number): string {
   return `var(--grade-${band})`;
@@ -156,15 +156,27 @@ export function gradientSegments(runs: BandShare[]): Segment[] {
   }));
 }
 
-export function groundSegments(surface: SurfaceSummary | null): Segment[] {
+/** Segments of the whole route, or — given `window` — of one shown stretch of it. */
+export function groundSegments(
+  surface: SurfaceSummary | null,
+  window?: { startMetres: number; endMetres: number },
+): Segment[] {
   if (surface === null || surface.totalMetres <= 0) {
     return [];
   }
+  if (window && window.endMetres <= window.startMetres) {
+    return [];
+  }
 
-  return surface.bands.map((band, index) => ({
+  const bands = window
+    ? surfaceBandsWithin(surface, window.startMetres, window.endMetres)
+    : surface.bands;
+  const span = window ? window.endMetres - window.startMetres : surface.totalMetres;
+
+  return bands.map((band, index) => ({
     key: `${index}`,
     colour: surfaceVariable(band.kind),
-    share: (band.endMetres - band.startMetres) / surface.totalMetres,
+    share: (band.endMetres - band.startMetres) / span,
     highlight: { type: "surface", kind: band.kind },
   }));
 }
