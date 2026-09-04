@@ -260,6 +260,7 @@ function ProfileStop({
         <Panel
           line={line}
           lineLabel="Elevation summary"
+          gutter={false}
           control={
             <div className="flex items-center gap-2">
               {zoomWindow && onZoomChange ? (
