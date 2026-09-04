@@ -25,7 +25,6 @@ func TestDecodeFITReadsActivityRecordsAndSession(t *testing.T) {
 		SetTimestamp(start).
 		SetPositionLatDegrees(50.0).
 		SetPositionLongDegrees(8.0).
-		SetAltitudeScaled(100).
 		SetEnhancedAltitudeScaled(100.4).
 		SetDistanceScaled(12.5).
 		SetCadence(84).
@@ -47,8 +46,9 @@ func TestDecodeFITReadsActivityRecordsAndSession(t *testing.T) {
 	assert.Equal(t, start, decoded.Records[0].Time)
 	assert.True(t, decoded.Records[0].HasPosition)
 	assert.InDelta(t, 50.0, decoded.Records[0].Latitude, 0.0001)
+	assert.InDelta(t, 8.0, decoded.Records[0].Longitude, 0.0001)
 	assert.True(t, decoded.Records[0].HasAltitude)
-	assert.InDelta(t, 100, decoded.Records[0].AltitudeMetres, 0.1)
+	assert.InDelta(t, 100.4, decoded.Records[0].AltitudeMetres, 0.05, "enhanced altitude wins over plain")
 	assert.True(t, decoded.Records[0].HasDistance)
 	assert.InDelta(t, 12.5, decoded.Records[0].DistanceMetres, 0.1)
 	assert.True(t, decoded.Records[0].HasCadence)

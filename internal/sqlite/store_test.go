@@ -436,7 +436,7 @@ func TestActivityTablesBelongToATargetAndCascade(t *testing.T) {
 	_, err = store.database.ExecContext(ctx, `INSERT INTO activity_records (target_slot, workout_id, record_index, recorded_at_unix) VALUES ('rider-a', 2, 0, 1)`)
 	require.Error(t, err, "records need their summary first")
 
-	_, err = store.database.ExecContext(ctx, `DELETE FROM activities WHERE workout_id = 1`)
+	_, err = store.database.ExecContext(ctx, `DELETE FROM activities WHERE target_slot = 'rider-a' AND workout_id = 1`)
 	require.NoError(t, err)
 	var records int
 	require.NoError(t, store.database.QueryRowContext(ctx, `SELECT COUNT(*) FROM activity_records`).Scan(&records))
