@@ -214,6 +214,28 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 	}
 }
 
+// The map's worker is the one build artefact that is not public. A worker reads
+// its Content-Security-Policy from its own response rather than from the
+// document that started it, so a worker served to anyone is handed a policy
+// naming no tile origin — and MapLibre fetches every tile inside it.
+func TestTheMapWorkerIsServedOnlyToAnIdentityAndNamesTheTileOrigins(t *testing.T) {
+	handler := newTestHandler(t)
+	const worker = "/worker/maplibre-gl-worker-abc123.js"
+
+	anonymous := httptest.NewRecorder()
+	handler.ServeHTTP(anonymous, httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, worker, http.NoBody))
+	assert.Equal(t, http.StatusUnauthorized, anonymous.Code, "the worker was served without an identity")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, worker))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Contains(t, response.Header().Get("Content-Security-Policy"), "connect-src 'self' https://tiles.example.test",
+		"the worker's own policy must admit the tile origins it fetches from")
+	// Content-hashed like anything under /assets/, so it is cached the same way.
+	assert.Equal(t, cacheImmutable, response.Header().Get("Cache-Control"), "worker Cache-Control")
+}
+
 // The sign-in page is the application bundle, so what it names is fetched
 // before any identity exists. These carry build output and no state.
 func TestBuildArtefactsAreServedWithoutASession(t *testing.T) {

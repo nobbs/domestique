@@ -48,7 +48,21 @@ export default defineConfig({
   },
   // MapLibre instantiates its worker with `{ type: "module" }`, so the worker
   // bundle has to be emitted as an ES module rather than the default IIFE.
-  worker: { format: "es" },
+  //
+  // It is emitted outside `assets/` because the service serves that directory to
+  // callers without an identity, and a worker is governed by the policy on its
+  // own response rather than the document's: a worker under `assets/` is handed
+  // a policy naming no tile origin and every tile fetch inside it is refused.
+  worker: {
+    format: "es",
+    rollupOptions: {
+      output: {
+        entryFileNames: "worker/[name]-[hash].js",
+        chunkFileNames: "worker/[name]-[hash].js",
+        assetFileNames: "worker/[name]-[hash][extname]",
+      },
+    },
+  },
   build: {
     // One level below the embedded root. `emptyOutDir` clears what it is pointed
     // at, and the directory Go embeds holds a committed placeholder keeping the

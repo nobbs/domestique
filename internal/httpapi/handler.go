@@ -254,6 +254,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
 	h.mux.HandleFunc("GET /oauth/wahoo/callback", h.CompleteOAuth)
 	h.mux.HandleFunc("GET /assets/{asset}", h.GetAsset)
+	h.mux.HandleFunc("GET /worker/{asset}", h.GetWorkerAsset)
 	h.mux.HandleFunc("GET /favicon.svg", h.GetFavicon)
 	h.mux.HandleFunc("GET /icon-256.png", h.GetIcon256)
 	h.mux.HandleFunc("GET /icon-512.png", h.GetIcon512)
@@ -323,6 +324,9 @@ func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 
 // publicAsset reports a path served to anyone: the bundle and stylesheet the
 // sign-in page loads, and the icons a browser asks for without being told to.
+//
+// The map's worker is deliberately not among them, and is emitted outside
+// `assets/` so it cannot become one by accident: see GetWorkerAsset.
 func publicAsset(path string) bool {
 	switch path {
 	case "/favicon.svg", "/icon-256.png", "/icon-512.png", "/manifest.webmanifest":
@@ -471,6 +475,11 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 //   - worker-src 'self' and blob: it loads a bundled worker and spawns blob ones;
 //   - style-src 'unsafe-inline': it styles its own controls inline;
 //   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
+//
+// A worker does not read this header from the document that started it: it is
+// governed by the policy on its own response. The map's worker is therefore
+// served from behind the identity gate, so that it is sent this policy rather
+// than the one a public asset gets — see GetWorkerAsset.
 //
 // A basemap's own origin is only the host the style document is read from. The
 // document is free to name another for its glyphs, its sprite, or its tiles,

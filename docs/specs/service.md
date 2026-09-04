@@ -146,7 +146,16 @@ application entry document, offering a sign-in and writing nothing — `POST
 artefacts that document loads: the hashed assets under `/assets/`, the
 favicon, the two installed-copy icons, and the manifest. Those artefacts are
 compiled output holding no state and no route data, and the sign-in page
-cannot render without them. `GET /healthz` reads nothing and
+cannot render without them.
+
+The map's worker is the one build artefact **not** on that surface. It is
+emitted under `/worker/` rather than `/assets/` and requires a session like
+anything else. A worker takes its Content-Security-Policy from its own response
+rather than from the document that started it, so a worker served to
+unauthenticated callers is handed the policy those get — one naming no tile
+origin — and every tile fetch it makes is refused, because the map loads its
+tiles inside it. The sign-in page never asks for it: no map exists until a
+session does. `GET /healthz` reads nothing and
 answers static fields; the proxy example refuses it with `404`, but the
 service is correct whether or not the proxy does. Everything else requires a
 session: a page request without one is redirected to `/auth/login`, and an
@@ -243,7 +252,9 @@ Those two document reads are the whole of what it asks a tile origin for on its
 own behalf: no tile, glyph, or sprite is ever fetched by the service, and the
 requests carry nothing about any route or any reader. The policy names
 which origins the page *may* reach; only the basemap on screen is ever
-requested. A second style may be configured for a dark system colour scheme, and
+requested. It reaches the map's worker as well as the document, which is why
+that worker is served from behind the session gate rather than as a public
+build artefact. A second style may be configured for a dark system colour scheme, and
 must be on **its own basemap's** origin.
 
 The reader's pick is remembered in the browser's own storage, under one key
