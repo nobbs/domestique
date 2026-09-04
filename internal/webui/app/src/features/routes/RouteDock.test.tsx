@@ -187,6 +187,20 @@ describe("RouteDock", () => {
     expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
   });
 
+  // jsdom does no real CSS layout, so this cannot exercise the browser bug
+  // itself — a grid item's default min-width let the chart hold its old,
+  // wider size open across the sidebar rather than shrinking back — only
+  // guard the class that stops it recurring.
+  it("keeps the chart's wrapper shrinkable so folding the climbs cannot wedge it open", () => {
+    renderDock();
+
+    const wrapper = screen
+      .getByRole("img", { name: /^Elevation profile of / })
+      .closest(".relative.min-w-0");
+
+    expect(wrapper).not.toBeNull();
+  });
+
   it("folds the climbs list to a chip and back", async () => {
     const user = userEvent.setup();
     renderDock();

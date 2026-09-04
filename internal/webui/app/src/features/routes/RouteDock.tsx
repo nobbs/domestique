@@ -279,7 +279,12 @@ function ProfileStop({
             />
           }
         >
-          <div className="relative">
+          {/*
+           * `min-w-0`: a grid item's default min-width is its content's, and the
+           * chart's own explicit pixel width would hold this open above the
+           * climbs sidebar rather than shrinking back when it reopens.
+           */}
+          <div className="relative min-w-0">
             <ElevationProfile
               profile={profile}
               title={title}
