@@ -115,8 +115,11 @@ interface Frame {
 function frameFor(coordinates: Position[]): Frame {
   const origin = coordinates[0] ?? [0, 0];
   const middle = coordinates[Math.floor(coordinates.length / 2)] ?? origin;
+  // Clamped the way routeCues.ts's offsetPosition() clamps the same cosine:
+  // near a pole it runs to nought, and toGeographic() divides by it.
+  const longitudeScale = Math.max(Math.cos((middle[1] * Math.PI) / 180), 1e-6);
 
-  return { origin, longitudeScale: Math.cos((middle[1] * Math.PI) / 180) };
+  return { origin, longitudeScale };
 }
 
 function toPlanar(frame: Frame, position: Position): Pair {

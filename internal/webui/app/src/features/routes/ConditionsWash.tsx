@@ -93,16 +93,21 @@ export function bandRuns(
   measure: Measure,
 ): BandRun[] {
   const interval = Math.max(BAND_SCAN_METRES, totalMetres / MAX_BAND_SCANS);
+  const steps = Math.ceil(totalMetres / interval);
   const starts: Array<{ metres: number; band: number }> = [];
   let previous: number | null = null;
-  for (let metres = 0; metres <= totalMetres; metres += interval) {
+  // Stepped by fraction of the route rather than by repeated addition, so the
+  // last scan always lands exactly on totalMetres instead of overshooting it
+  // by a partial interval and never reading the route's true end.
+  for (let step = 0; step <= steps; step++) {
+    const metres = Math.min(step * interval, totalMetres);
     const value = sampleScalarAt(readings, metres);
     if (value === null) {
       continue;
     }
     const band = measure.band(value);
     if (band !== previous) {
-      starts.push({ metres: Math.min(metres, totalMetres), band });
+      starts.push({ metres, band });
       previous = band;
     }
   }
