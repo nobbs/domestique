@@ -99,7 +99,7 @@ describe("the key beside the choice", () => {
     show({ measure: "rain" });
     const swatch = document.querySelector<HTMLElement>("li span[aria-hidden]");
 
-    expect(swatch?.style.backgroundColor).toBe("var(--rain-0)");
+    expect(swatch?.style.backgroundColor).toContain("var(--rain-0)");
   });
 
   it("says plainly which band the map paints nothing for", () => {

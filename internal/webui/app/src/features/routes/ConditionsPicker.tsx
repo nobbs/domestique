@@ -36,11 +36,12 @@ function Legend({ measure }: { measure: Measure }) {
             aria-hidden="true"
             className="h-2.5 w-4 rounded-xs border border-[var(--rule)]"
             style={{
-              backgroundColor: measureVariable(measure.key, index),
               // Exactly what the map paints, so a band that washes nothing —
               // rain's dry, cloud's clear — shows here as an empty swatch
-              // rather than as a colour the route never wears.
-              opacity: measure.opacity(index),
+              // rather than as a colour the route never wears. Blended into
+              // the fill alone, not the element's own opacity, which would
+              // fade the border too and erase the swatch outline entirely.
+              backgroundColor: `color-mix(in srgb, ${measureVariable(measure.key, index)} ${measure.opacity(index) * 100}%, transparent)`,
             }}
           />
           {band.description}
