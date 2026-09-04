@@ -184,11 +184,17 @@ export function corridorRadii(metresPerCell: number): CorridorRadii {
 export function corridorWeight(offsetMetres: number, metresPerCell: number): number {
   const { coreMetres, edgeMetres } = corridorRadii(metresPerCell);
   const offset = Math.abs(offsetMetres);
-  if (!Number.isFinite(offset) || offset >= edgeMetres) {
+  if (!Number.isFinite(offset)) {
     return 0;
   }
+  // Checked before the edge: an unreadable grid collapses both radii to
+  // nought, and the road itself still deserves full strength rather than
+  // reading as beyond its own vanished edge.
   if (offset <= coreMetres) {
     return 1;
+  }
+  if (offset >= edgeMetres) {
+    return 0;
   }
   const fade = (offset - coreMetres) / (edgeMetres - coreMetres);
 
