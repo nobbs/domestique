@@ -88,13 +88,20 @@ function Panel({
   control?: ReactNode;
   children: ReactNode;
 }) {
+  const [lead, ...tail] = line.split(" · ");
+  const rest = tail.length === 0 ? undefined : tail.join(" · ");
+
   return (
     <div className="grid gap-1.5">
       <div
         className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1"
         style={GUTTER}
       >
-        <output className="text-xs text-[var(--ink-2)] tabular-nums">{line}</output>
+        <output className="text-xs text-[var(--ink-2)] tabular-nums">
+          {/* The first figure carries the line; the rest qualifies it. */}
+          <span className="text-sm font-semibold text-[var(--ink)]">{lead}</span>
+          {rest === undefined ? null : ` · ${rest}`}
+        </output>
         {control}
       </div>
       {children}
