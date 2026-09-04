@@ -113,11 +113,15 @@ func NewResolver(options Options) (*Resolver, error) {
 // removed on the settings page stops being named by the next response rather
 // than at the next refresh.
 func (r *Resolver) Origins() []string {
+	// Read before the lock is taken: this callback reaches the settings, and
+	// holding a reader against whatever it locks would tie the two together.
+	styles := r.styles()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	origins := make([]string, 0, len(r.byStyle))
-	for _, style := range r.styles() {
+	for _, style := range styles {
 		origins = append(origins, r.byStyle[style]...)
 	}
 	slices.Sort(origins)

@@ -636,3 +636,20 @@ func TestPredictorFollowsTheConfiguredCoefficientFile(t *testing.T) {
 	_, _, err = predictor.Predict(t.Context(), nil)
 	require.Error(t, err, "Predict() with a coefficient file that will not load")
 }
+
+// Every style a browser may be told to load has to be read, or the policy is
+// complete for a reader on one colour scheme and short for a reader on the
+// other.
+func TestConfiguredStyleURLsCoversBothColourSchemes(t *testing.T) {
+	styles := configuredStyleURLs([]runtimeconfig.Basemap{
+		{Name: "Streets", StyleURL: "https://tiles.example.test/bright", StyleURLDark: "https://tiles.example.test/dark"},
+		{Name: "Satellite", StyleURL: "https://imagery.example.test/satellite", DarkCartography: true},
+	})
+
+	assert.Equal(t, []string{
+		"https://tiles.example.test/bright",
+		"https://tiles.example.test/dark",
+		"https://imagery.example.test/satellite",
+	}, styles, "the styles a browser may load")
+	assert.Empty(t, configuredStyleURLs(nil), "an unconfigured list")
+}
