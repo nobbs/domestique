@@ -22,7 +22,7 @@
  * was the same reading in a worse place.
  */
 
-import { IconChevronRight, IconStairs } from "@tabler/icons-react";
+import { IconStairs } from "@tabler/icons-react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
@@ -117,28 +117,17 @@ export function ClimbsSidebar({
       className="w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3"
     >
       <div ref={headerRef}>
-        <h3>
-          <button
-            type="button"
-            aria-expanded
-            aria-label={`Hide ${count}`}
-            onClick={() => onOpenChange(false)}
-            className="flex w-full items-baseline gap-2 rounded py-0.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-          >
-            <span className="text-[10px] font-semibold tracking-[0.08em] text-[var(--ink-2)] uppercase">
-              {count}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--ink-2)]">
-              {summary}
-            </span>
-            <IconChevronRight
-              size={12}
-              stroke={2}
-              aria-hidden="true"
-              className="shrink-0 rotate-90 text-[var(--ink-2)]"
-            />
-          </button>
-        </h3>
+        {/* The closed chip itself, still the way back to it: count and toggle, nothing to read. */}
+        <button
+          type="button"
+          aria-expanded
+          aria-label={`Hide ${count}`}
+          onClick={() => onOpenChange(false)}
+          className="flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+        >
+          <IconStairs size={13} stroke={2} aria-hidden="true" />
+          {count}
+        </button>
         {/*
          * Outside the scroller, so the names stay put while the climbs move
          * under them — a header that scrolls away is a header that is absent
