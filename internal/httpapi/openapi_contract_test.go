@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	activities "github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/route"
 	validator "github.com/pb33f/libopenapi-validator"
 	"github.com/stretchr/testify/assert"
@@ -227,12 +229,20 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 		SourceRouteName: "Contract route", PointCount: 2,
 	}}
 	state.coordinates = json.RawMessage(`[[8,49],[8.1,49.1]]`)
+	// A target the contract caller owns, carrying one activity, so the activity
+	// list is validated against real rows rather than an empty array.
+	state.targets = []fakeTarget{{id: testSubject, authorization: "authorized", owner: testSubject}}
+	state.activities = map[string][]activities.Stored{testSubject: {{
+		ID: 1, StartedAt: time.Now().Add(-time.Hour), DistanceMetres: 1000,
+		MovingSeconds: 60, ElapsedSeconds: 90, AscentMetres: 10, TypeID: 15, LocationID: 1,
+	}}}
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	for _, target := range []string{
 		"/healthz",
 		"/v1/status",
 		"/v1/routes",
+		"/v1/activities",
 		"/v1/sync/runs",
 		"/v1/tasks/runs",
 		"/v1/webui/config",

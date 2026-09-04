@@ -95,3 +95,54 @@ func storeTestActivity(t *testing.T, store *Store, targetID string, id int64, di
 		activityNow(),
 	)
 }
+
+// The window is half-open: an activity starting exactly at from is served, one
+// starting exactly at to is not.
+func TestActivitiesBetweenServesAHalfOpenWindowNewestFirst(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+
+	from := activityNow()
+	for index, starts := range []time.Time{
+		from.Add(-time.Hour), from, from.Add(time.Hour), from.Add(2 * time.Hour),
+	} {
+		require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+			activity.Listing{ID: int64(index + 1), TypeID: 15, LocationID: 1, Starts: starts},
+			activity.Summary{
+				DistanceMetres: 1000, MovingSeconds: 60, ElapsedSeconds: 90, AscentMetres: 10,
+				Raw: []byte(`{}`),
+			},
+			activityNow(),
+		), "StoreActivity()")
+	}
+	require.NoError(t, storeTestActivity(t, store, "rider-b", 9, 500), "StoreActivity() for another rider")
+
+	stored, err := store.ActivitiesBetween(t.Context(), "rider-a", from, from.Add(2*time.Hour), 5000)
+	require.NoError(t, err, "ActivitiesBetween()")
+	require.Len(t, stored, 2)
+	assert.Equal(t, []int64{3, 2}, []int64{stored[0].ID, stored[1].ID}, "newest first")
+	assert.Equal(t, from.Add(time.Hour), stored[0].StartedAt)
+	assert.InDelta(t, 1000.0, stored[0].DistanceMetres, 1e-9)
+	assert.Equal(t, 15, stored[0].TypeID)
+	assert.Equal(t, 1, stored[0].LocationID)
+}
+
+func TestActivitiesBetweenHonoursTheLimit(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	stored, err := store.ActivitiesBetween(
+		t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 0)
+	require.NoError(t, err, "ActivitiesBetween()")
+	assert.Empty(t, stored)
+}
+
+func TestActivitiesBetweenReportsAnUnreadableStore(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.ActivitiesBetween(t.Context(), "rider-a", activityNow(), activityNow().Add(time.Hour), 10)
+	require.ErrorContains(t, err, "reading stored activities")
+}

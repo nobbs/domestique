@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	activities "github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
@@ -168,6 +169,15 @@ type State interface {
 	StageState
 	RunState
 	TaskRunState
+	ActivityState
+}
+
+// ActivityState is what a poll recorded about each target's rides. The
+// provider's own summary document stays in the store: only the totals leave.
+type ActivityState interface {
+	// ActivitiesBetween lists one target's activities that started within the
+	// half-open window [from, to), newest first, at most limit of them.
+	ActivitiesBetween(ctx context.Context, targetID string, from, to time.Time, limit int) ([]activities.Stored, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.

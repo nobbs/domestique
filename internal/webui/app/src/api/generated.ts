@@ -218,6 +218,21 @@ export interface SyncRunPage {
   next?: string;
 }
 
+export interface Activity {
+  id: number;
+  startedAt: string;
+  distanceMetres: number;
+  movingSeconds: number;
+  elapsedSeconds: number;
+  ascentMetres: number;
+  typeId: number;
+  locationId: number;
+}
+
+export interface ActivityList {
+  activities: Activity[];
+}
+
 export interface RouteValidation {
   biasPercent: number;
   maePercent: number;
@@ -592,6 +607,21 @@ export type GetSyncRunsParams = {
    * @maximum 100
    */
   limit?: number;
+};
+
+export type GetActivitiesParams = {
+  /**
+   * Inclusive start of the window. Defaults to 365 days before `to`.
+   */
+  from?: string;
+  /**
+   * Exclusive end of the window. Defaults to now.
+   */
+  to?: string;
+  /**
+   * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so the surface never confirms which targets exist.
+   */
+  target?: string;
 };
 
 export type GetWeatherParams = {
@@ -1977,6 +2007,213 @@ export function useGetSyncRuns<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetSyncRunsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getActivitiesResponse200 = {
+  data: ActivityList;
+  status: 200;
+};
+
+export type getActivitiesResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getActivitiesResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getActivitiesResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getActivitiesResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getActivitiesResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getActivitiesResponseSuccess = getActivitiesResponse200 & {
+  headers: Headers;
+};
+export type getActivitiesResponseError = (
+  | getActivitiesResponse400
+  | getActivitiesResponse401
+  | getActivitiesResponse403
+  | getActivitiesResponse404
+  | getActivitiesResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetActivitiesUrl = (params?: GetActivitiesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/activities?${stringifiedParams}` : `/v1/activities`;
+};
+
+/**
+ * The recorded activities of one target, newest first. A caller reads only the target they own; an admin may name any. The window is half-open on the start time and defaults to the last 365 days, may span no more than two years, and no more than 5000 activities are served in one response.
+ */
+export const getActivities = async (
+  params?: GetActivitiesParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getActivitiesResponseSuccess> => {
+  return domestiqueRequest<getActivitiesResponseSuccess>(getGetActivitiesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetActivitiesQueryKey = (params?: GetActivitiesParams) => {
+  return [`/v1/activities`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetActivitiesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetActivitiesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetActivitiesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivities>>> = ({ signal }) =>
+    getActivities(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getActivities>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetActivitiesQueryResult = NonNullable<Awaited<ReturnType<typeof getActivities>>>;
+export type GetActivitiesQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetActivities<
+  TData = Awaited<ReturnType<typeof getActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: undefined | GetActivitiesParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivities>>,
+          TError,
+          Awaited<ReturnType<typeof getActivities>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivities<
+  TData = Awaited<ReturnType<typeof getActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetActivitiesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivities>>,
+          TError,
+          Awaited<ReturnType<typeof getActivities>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivities<
+  TData = Awaited<ReturnType<typeof getActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetActivitiesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetActivities<
+  TData = Awaited<ReturnType<typeof getActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetActivitiesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivities>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetActivitiesQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

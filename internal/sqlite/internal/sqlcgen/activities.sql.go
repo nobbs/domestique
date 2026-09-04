@@ -9,6 +9,70 @@ import (
 	"context"
 )
 
+const listActivitiesBetween = `-- name: ListActivitiesBetween :many
+SELECT workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres
+FROM activities
+WHERE target_slot = ?1 AND started_at_unix >= ?2 AND started_at_unix < ?3
+ORDER BY started_at_unix DESC
+LIMIT ?4
+`
+
+type ListActivitiesBetweenParams struct {
+	TargetSlot string
+	FromUnix   int64
+	ToUnix     int64
+	RowLimit   int64
+}
+
+type ListActivitiesBetweenRow struct {
+	WorkoutID             int64
+	WorkoutTypeID         int64
+	WorkoutTypeLocationID int64
+	StartedAtUnix         int64
+	DistanceMetres        float64
+	MovingSeconds         float64
+	ElapsedSeconds        float64
+	AscentMetres          float64
+}
+
+func (q *Queries) ListActivitiesBetween(ctx context.Context, arg ListActivitiesBetweenParams) ([]ListActivitiesBetweenRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivitiesBetween,
+		arg.TargetSlot,
+		arg.FromUnix,
+		arg.ToUnix,
+		arg.RowLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivitiesBetweenRow{}
+	for rows.Next() {
+		var i ListActivitiesBetweenRow
+		if err := rows.Scan(
+			&i.WorkoutID,
+			&i.WorkoutTypeID,
+			&i.WorkoutTypeLocationID,
+			&i.StartedAtUnix,
+			&i.DistanceMetres,
+			&i.MovingSeconds,
+			&i.ElapsedSeconds,
+			&i.AscentMetres,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActivityIDs = `-- name: ListActivityIDs :many
 SELECT workout_id FROM activities WHERE target_slot = ? ORDER BY workout_id
 `

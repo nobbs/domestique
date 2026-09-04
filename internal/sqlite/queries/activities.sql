@@ -16,3 +16,11 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   ascent_metres = excluded.ascent_metres,
   raw_summary_json = excluded.raw_summary_json,
   updated_at_unix = excluded.updated_at_unix;
+
+-- name: ListActivitiesBetween :many
+SELECT workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres
+FROM activities
+WHERE target_slot = sqlc.arg(target_slot) AND started_at_unix >= sqlc.arg(from_unix) AND started_at_unix < sqlc.arg(to_unix)
+ORDER BY started_at_unix DESC
+LIMIT sqlc.arg(row_limit);

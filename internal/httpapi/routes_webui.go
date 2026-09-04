@@ -157,6 +157,11 @@ func (h *Handler) GetSyncPage(writer http.ResponseWriter, request *http.Request)
 	h.index(writer, request)
 }
 
+// GetVolumePage serves the application document for the recorded-volume view.
+func (h *Handler) GetVolumePage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
 // GetFavicon serves the tab icon. It and the two methods below are separate
 // operations because the contract names each file the manifest may point at.
 func (h *Handler) GetFavicon(writer http.ResponseWriter, request *http.Request) {
