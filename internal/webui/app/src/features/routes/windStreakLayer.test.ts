@@ -81,6 +81,11 @@ function recorder(overrides: Overrides = {}): Recorder {
       if (name in overrides) {
         return overrides[name];
       }
+      // A boolean method returning its own name would be truthy regardless of
+      // what it is asked, which is exactly the bug this fake exists to catch.
+      if (name === "isEnabled") {
+        return false;
+      }
 
       return name === "getAttribLocation" ? 0 : name;
     });
@@ -159,6 +164,27 @@ describe("what the layer asks of the context", () => {
     const [uploaded] = context.called("bufferData")[0]?.slice(1) ?? [];
 
     expect((uploaded as Float32Array).length).toBe(4 * FLOATS_PER_VERTEX);
+  });
+
+  it("leaves the depth test off after drawing when it found it already off", () => {
+    const context = recorder({ isEnabled: false });
+    const layer = spread(windStreakLayer("route-wind-field", () => frame(4)));
+    layer.onAdd?.(NO_MAP, context.gl);
+
+    draw(layer, context.gl);
+
+    expect(context.called("disable")).toEqual([[context.gl.DEPTH_TEST]]);
+    expect(context.called("enable")).toEqual([[context.gl.BLEND]]);
+  });
+
+  it("restores the depth test after drawing when it found it already on", () => {
+    const context = recorder({ isEnabled: true });
+    const layer = spread(windStreakLayer("route-wind-field", () => frame(4)));
+    layer.onAdd?.(NO_MAP, context.gl);
+
+    draw(layer, context.gl);
+
+    expect(context.called("enable")).toEqual([[context.gl.BLEND], [context.gl.DEPTH_TEST]]);
   });
 
   it("hands the matrix over as the single precision WebGL takes", () => {
