@@ -179,17 +179,21 @@ func TestStartOAuthAllowsAdminToStartAnotherExistingTarget(t *testing.T) {
 	assert.Equal(t, "rider-b", oauthService.targetID)
 }
 
-// A non-admin's own sync:target run is accepted: it is the one task they may
-// start at all.
+// A non-admin's own target sync and activity poll are accepted: they are the
+// only tasks they may start at all.
 func TestRunTaskAllowsNonAdminToRunTheirOwnTarget(t *testing.T) {
-	tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskSyncTarget}}}
-	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
+	for _, name := range []string{TaskSyncTarget, TaskActivityPoll} {
+		t.Run(name, func(t *testing.T) {
+			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
+			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
 
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response,
-		signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(TaskSyncTarget)+"/run/rider-a"))
-	assert.Equal(t, http.StatusAccepted, response.Code, "run status")
-	assert.Equal(t, []startedTask{{name: TaskSyncTarget, argument: "rider-a"}}, tasks.started)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response,
+				signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(name)+"/run/rider-a"))
+			assert.Equal(t, http.StatusAccepted, response.Code, "run status")
+			assert.Equal(t, []startedTask{{name: name, argument: "rider-a"}}, tasks.started)
+		})
+	}
 }
 
 // Clearing a target is service administration, so a non-admin is refused even
@@ -208,7 +212,7 @@ func TestRunTaskRefusesSyncClearOverTheOwnTargetForNonAdmin(t *testing.T) {
 // A non-admin cannot start sync:target/sync:clear against another subject's
 // target, nor run it over every target by leaving the argument empty.
 func TestRunTaskRefusesAnotherSubjectsTargetForNonAdmin(t *testing.T) {
-	for _, name := range []string{TaskSyncTarget, TaskSyncClear} {
+	for _, name := range []string{TaskSyncTarget, TaskSyncClear, TaskActivityPoll} {
 		t.Run(name, func(t *testing.T) {
 			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
 			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
@@ -221,16 +225,20 @@ func TestRunTaskRefusesAnotherSubjectsTargetForNonAdmin(t *testing.T) {
 	}
 }
 
-// Leaving the argument empty runs sync:target/sync:clear over every target,
-// which only an admin may ask for.
+// Leaving the argument empty runs a target-scoped task over every target, which
+// only an admin may ask for.
 func TestRunTaskRefusesAnEmptyArgumentForNonAdmin(t *testing.T) {
-	tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskSyncTarget}}}
-	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
+	for _, name := range []string{TaskSyncTarget, TaskActivityPoll} {
+		t.Run(name, func(t *testing.T) {
+			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
+			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
 
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(TaskSyncTarget)+"/run"))
-	assert.Equal(t, http.StatusNotFound, response.Code, "run status")
-	assert.Empty(t, tasks.asked, "the task must not have been reached")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, signedInRequest(http.MethodPost, "/v1/tasks/"+encodedTaskName(name)+"/run"))
+			assert.Equal(t, http.StatusNotFound, response.Code, "run status")
+			assert.Empty(t, tasks.asked, "the task must not have been reached")
+		})
+	}
 }
 
 // An admin may run sync:target/sync:clear over any target, including every

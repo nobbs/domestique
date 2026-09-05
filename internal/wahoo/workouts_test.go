@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,8 +51,12 @@ func TestClientReadsTheRawWorkoutSummary(t *testing.T) {
 		assert.Equal(t, "Bearer access-token", request.Header.Get("Authorization"))
 		assert.Equal(t, "/v1/workouts/42/workout_summary", request.URL.Path)
 		writeJSON(t, writer, map[string]any{"workout_summary": map[string]any{
-			"id":   42,
-			"file": map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"},
+			"id":                    42,
+			"file":                  map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"},
+			"distance_accum":        "1234.5",
+			"duration_active_accum": "3600.0",
+			"duration_total_accum":  3900,
+			"ascent_accum":          "120.25",
 		}})
 	}))
 	defer server.Close()
@@ -58,7 +64,63 @@ func TestClientReadsTheRawWorkoutSummary(t *testing.T) {
 	summary, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
 	require.NoError(t, err)
 	assert.Equal(t, "https://cdn.wahooligan.com/workouts/42.fit", summary.FileURL)
-	assert.JSONEq(t, `{"id":42,"file":{"url":"https://cdn.wahooligan.com/workouts/42.fit"}}`, string(summary.Raw))
+	assert.InDelta(t, 1234.5, summary.DistanceMetres, 1e-9)
+	assert.InDelta(t, 3600.0, summary.ActiveSeconds, 1e-9)
+	assert.InDelta(t, 3900.0, summary.TotalSeconds, 1e-9)
+	assert.InDelta(t, 120.25, summary.AscentMetres, 1e-9)
+	assert.Contains(t, string(summary.Raw), `"distance_accum":"1234.5"`)
+}
+
+// Wahoo sends the totals as strings holding decimals; a missing one is zero and
+// a value that is not a number at all is refused rather than read as zero.
+func TestClientReadsWorkoutSummaryTotalsWahooSendsAsStrings(t *testing.T) {
+	cases := map[string]struct {
+		summary map[string]any
+		wantErr string
+		want    float64
+	}{
+		"missing":     {summary: map[string]any{}, want: 0},
+		"null":        {summary: map[string]any{"distance_accum": nil}, want: 0},
+		"empty":       {summary: map[string]any{"distance_accum": ""}, want: 0},
+		"number":      {summary: map[string]any{"distance_accum": 12.5}, want: 12.5},
+		"non-numeric": {summary: map[string]any{"distance_accum": "later"}, wantErr: "totals were not numbers"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			body := map[string]any{"file": map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"}}
+			maps.Copy(body, tc.summary)
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writeJSON(t, writer, map[string]any{"workout_summary": body})
+			}))
+			defer server.Close()
+
+			summary, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.InDelta(t, tc.want, summary.DistanceMetres, 1e-9)
+		})
+	}
+}
+
+// The listing carries when each ride started, which is what decides the order
+// summaries are read in.
+func TestClientReadsWhenAWorkoutStarted(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]any{
+			"workouts": []map[string]any{{"id": 1, "starts": "2026-04-01T06:30:00Z"}},
+			"total":    1, "page": 1, "per_page": 100,
+		})
+	}))
+	defer server.Close()
+
+	workouts, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	require.NoError(t, err)
+	require.Len(t, workouts, 1)
+	assert.Equal(t, time.Date(2026, 4, 1, 6, 30, 0, 0, time.UTC), workouts[0].Starts.UTC())
 }
 
 func TestClientRejectsInvalidWorkoutPagination(t *testing.T) {
@@ -222,6 +284,16 @@ func TestClientRejectsWorkoutFITDownloadsItCannotTrust(t *testing.T) {
 			require.ErrorContains(t, err, tc.want)
 		})
 	}
+}
+
+func TestDecimalResetsOnNull(t *testing.T) {
+	value := decimal(12)
+	require.NoError(t, value.UnmarshalJSON([]byte("null")))
+	assert.Zero(t, value)
+	require.NoError(t, value.UnmarshalJSON([]byte(`"3.5"`)))
+	assert.InDelta(t, 3.5, float64(value), 0)
+	require.NoError(t, value.UnmarshalJSON([]byte(`""`)))
+	assert.Zero(t, value)
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

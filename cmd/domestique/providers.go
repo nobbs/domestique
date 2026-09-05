@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/auth0"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/komoot"
@@ -255,6 +256,66 @@ func (p *wahooProvider) DeleteRoute(ctx context.Context, routeID int64, accessTo
 	}
 
 	return client.DeleteRoute(ctx, routeID, accessToken) //nolint:wrapcheck // forwarding to the client this holds
+}
+
+// ListActivities reads the rider's recorded activities in this service's own
+// vocabulary, so the activity package never learns Wahoo's word for them.
+func (p *wahooProvider) ListActivities(ctx context.Context, accessToken string) ([]activity.Listing, error) {
+	client, err := p.current()
+	if err != nil {
+		return nil, err
+	}
+	workouts, err := client.ListWorkouts(ctx, accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("listing Wahoo workouts: %w", err)
+	}
+
+	return activityListings(workouts), nil
+}
+
+// activityListings narrows Wahoo's workouts to what the activity package reads,
+// split out so the field mapping is directly testable without a live client.
+func activityListings(workouts []wahoo.Workout) []activity.Listing {
+	listings := make([]activity.Listing, len(workouts))
+	for index, workout := range workouts {
+		listings[index] = activity.Listing{
+			ID:         workout.ID,
+			TypeID:     workout.WorkoutTypeID,
+			LocationID: workout.WorkoutTypeLocationID,
+			Starts:     workout.Starts,
+		}
+	}
+
+	return listings
+}
+
+// ActivitySummary reads one activity's totals and Wahoo's own summary document.
+// The FIT file the summary names is deliberately not downloaded here.
+func (p *wahooProvider) ActivitySummary(
+	ctx context.Context, accessToken string, id int64,
+) (activity.Summary, error) {
+	client, err := p.current()
+	if err != nil {
+		return activity.Summary{}, err
+	}
+	summary, err := client.WorkoutSummary(ctx, accessToken, id)
+	if err != nil {
+		return activity.Summary{}, fmt.Errorf("reading a Wahoo workout summary: %w", err)
+	}
+
+	return activitySummaryOf(summary), nil
+}
+
+// activitySummaryOf maps one Wahoo summary to the totals this service stores.
+// Wahoo's active and total durations are this service's moving and elapsed ones.
+func activitySummaryOf(summary wahoo.WorkoutSummary) activity.Summary {
+	return activity.Summary{
+		Raw:            summary.Raw,
+		DistanceMetres: summary.DistanceMetres,
+		MovingSeconds:  summary.ActiveSeconds,
+		ElapsedSeconds: summary.TotalSeconds,
+		AscentMetres:   summary.AscentMetres,
+	}
 }
 
 // IsUnauthorized classifies an error this provider returned. It answers without

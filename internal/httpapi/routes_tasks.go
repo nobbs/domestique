@@ -20,6 +20,11 @@ const (
 	TaskSyncClear  = "sync:clear"
 )
 
+// TaskActivityPoll is the registered name of the task that reads a rider's
+// recorded activities. Like TaskSyncTarget it names one rider's own target, and
+// RunTask checks its argument the same way.
+const TaskActivityPoll = "activity:poll"
+
 // TaskSurfaceIndex is the registered name of the task that rebuilds the
 // surface index, also used by the surface settings route below.
 const TaskSurfaceIndex = "surface:index"
@@ -101,11 +106,12 @@ func (h *Handler) registers(name string) bool {
 }
 
 // RunTask starts one attempt of a named task, over an argument when the path
-// carries one. A non-admin may run exactly one thing: sync:target over their
-// own subject. Naming another subject's target, or none, stays not found rather
-// than forbidden, so the surface never confirms which targets exist. An admin
-// may name any target, and may leave sync:target's argument empty to mean every
-// target; sync:clear has no such meaning and is refused as invalid without one.
+// carries one. A non-admin may run two things, each over their own subject:
+// sync:target and activity:poll. Naming another subject's target, or none, stays
+// not found rather than forbidden, so the surface never confirms which targets
+// exist. An admin may name any target, and may leave sync:target's or
+// activity:poll's argument empty to mean every target; sync:clear has no such
+// meaning and is refused as invalid without one.
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {
@@ -115,7 +121,7 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	}
 	argument := request.PathValue("argument")
 	identity := identityOf(request.Context())
-	if name == TaskSyncTarget || name == TaskSyncClear {
+	if name == TaskSyncTarget || name == TaskSyncClear || name == TaskActivityPoll {
 		if !identity.Admin && argument != identity.Subject {
 			h.notFound(writer)
 
@@ -128,7 +134,8 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 		}
 	}
 	// Every other task is service administration, and so is clearing a target.
-	if !identity.Admin && (name != TaskSyncTarget || argument != identity.Subject) {
+	if !identity.Admin &&
+		((name != TaskSyncTarget && name != TaskActivityPoll) || argument != identity.Subject) {
 		h.forbidden(writer)
 
 		return
