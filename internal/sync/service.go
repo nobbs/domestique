@@ -566,6 +566,9 @@ func (s *Service) handleTargetError(ctx context.Context, targetID string, err er
 
 		return FailureDestination
 	}
+	// Logged before the mark, and worded as the rejection rather than the mark,
+	// so a state store that then refuses the write still leaves the cause on record.
+	slog.Error("wahoo rejected the target authorization", "target", targetID, "error", err)
 	if markErr := s.state.MarkNeedsReauthorization(ctx, targetID); markErr != nil {
 		return FailureState
 	}

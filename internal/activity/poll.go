@@ -195,6 +195,9 @@ func (p *Poller) classify(ctx context.Context, targetID string, err error) Failu
 
 		return FailureUpstream
 	}
+	// Logged before the mark, and worded as the rejection rather than the mark,
+	// so a store that then refuses the write still leaves the cause on record.
+	slog.Error("activity source rejected the target authorization", "target", targetID, "error", err)
 	if markErr := p.store.MarkNeedsReauthorization(ctx, targetID); markErr != nil {
 		return FailureState
 	}

@@ -396,6 +396,18 @@ func TestClientTransportFailureKeepsItsCauseWithoutTheRequestURL(t *testing.T) {
 	assert.NotContains(t, err.Error(), unreachable, "the error carries the request URL")
 }
 
+func TestClientClassifiesARejectedAPIRequest(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListOwnedRoutes(t.Context(), "access-token")
+	require.ErrorIs(t, err, ErrUnauthorized)
+	require.ErrorContains(t, err, "HTTP 401")
+	assert.NotContains(t, err.Error(), "access-token")
+}
+
 func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusBadRequest)
@@ -404,6 +416,10 @@ func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
 
 	_, _, err := newTestClient(t, server).RefreshAccessToken(t.Context(), "refresh-token")
 	require.ErrorIs(t, err, ErrUnauthorized)
+	// The status is what tells a withdrawn grant from a throttled request once
+	// the credential that would allow a retest has already been discarded.
+	require.ErrorContains(t, err, "HTTP 400")
+	assert.NotContains(t, err.Error(), "refresh-token")
 }
 
 // The token endpoint spends the same quota as everything else, so it has to

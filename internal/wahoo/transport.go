@@ -157,9 +157,8 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 	}()
 
 	c.observeRateLimit(response)
-	if response.StatusCode == http.StatusUnauthorized ||
-		(response.StatusCode == http.StatusBadRequest && request.URL.Path == "/oauth/token") {
-		return ErrUnauthorized
+	if response.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("wahoo: api request rejected with HTTP %d: %w", response.StatusCode, ErrUnauthorized)
 	}
 	if response.StatusCode == http.StatusTooManyRequests {
 		return ErrRateLimited
