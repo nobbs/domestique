@@ -1,4 +1,4 @@
-// Package wahoo speaks Wahoo's OAuth and route APIs.
+// Package wahoo speaks Wahoo's OAuth, route, and activity APIs.
 package wahoo
 
 import (

@@ -108,7 +108,7 @@ owns a distinct responsibility in this tree.
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route | VeloPlanner or Komoot requests, OAuth, HTTP |
-| wahoo | authorisation URL, exchange, refresh, user lookup, FIT route operations, rate headers | route-source parsing, SQLite queries, Pushover |
+| wahoo | authorisation URL, exchange, refresh, user lookup, FIT route and activity reads, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |
 | pushover | delivery of an already safe notification | run aggregation or secret resolution |
 | session | the sign-in flow's one-time state, nonce, and PKCE verifier; the sessions it issues; sliding expiry; revocation; the allowed-subject check | HTTP routing, SQL, how the issuer is spoken to |

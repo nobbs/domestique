@@ -281,6 +281,10 @@ The endpoint values must match the chosen Wahoo environment. The callback the
 application is registered with is derived from `http.browser_origin_url` and is
 not a setting here.
 
+The OAuth scopes are fixed by the binary: `routes_read`, `routes_write`,
+`user_read`, `workouts_read`, and `offline_data`. A scope change needs every
+configured target to authorise again; no operator setting can silently expand it.
+
 ### Synchronisation
 
 The **empty-source deletion gate** decides whether a source that reported an
