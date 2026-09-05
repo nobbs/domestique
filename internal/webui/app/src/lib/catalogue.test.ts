@@ -102,14 +102,14 @@ describe("readView", () => {
 
   it("reads a search, an order, and the bounds", () => {
     const view = readView(
-      new URLSearchParams("q=rhine&sort=ascent&dir=desc&distanceMin=8000&gradientMax=12"),
+      new URLSearchParams("q=rhine&sort=ascent&dir=desc&distanceMin=8000&durationMax=7200"),
     );
 
     expect(view.query).toBe("rhine");
     expect(view.sort).toBe("ascent");
     expect(view.direction).toBe("desc");
     expect(view.filters.distanceMetres).toEqual({ min: 8_000, max: null });
-    expect(view.filters.maxGradientPercent).toEqual({ min: null, max: 12 });
+    expect(view.filters.movingSeconds).toEqual({ min: null, max: 7200 });
   });
 
   it("falls back rather than failing on anything it does not recognise", () => {
@@ -118,12 +118,6 @@ describe("readView", () => {
     expect(view.sort).toBe(DEFAULT_VIEW.sort);
     expect(view.direction).toBe(DEFAULT_VIEW.direction);
     expect(view.filters.distanceMetres.min).toBeNull();
-  });
-
-  it("reads each named surface class, and drops one it does not know", () => {
-    const view = readView(new URLSearchParams("surface=asphalt&surface=gravel&surface=lunar"));
-
-    expect(view.filters.surfaces).toEqual(["asphalt", "gravel"]);
   });
 });
 
@@ -141,7 +135,7 @@ describe("writeView", () => {
         ...EMPTY_FILTERS,
         distanceMetres: { min: 8_000, max: 120_000 },
         ascentMetres: { min: null, max: 900 },
-        surfaces: ["asphalt", "gravel"],
+        movingSeconds: { min: 1800, max: null },
       },
     };
 

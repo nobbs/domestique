@@ -327,13 +327,11 @@ export function CataloguePage() {
   const shown = useMemo(
     () =>
       sortRoutes(
-        matchingRoutes(library, view.query).filter((route) =>
-          matchesFilters(route, view.filters, drawn.surfaces.get(routeKey(route))),
-        ),
+        matchingRoutes(library, view.query).filter((route) => matchesFilters(route, view.filters)),
         view.sort,
         view.direction,
       ),
-    [library, view.query, view.filters, view.sort, view.direction, drawn.surfaces],
+    [library, view.query, view.filters, view.sort, view.direction],
   );
 
   const hasQuery = view.query.trim() !== "";
@@ -367,6 +365,7 @@ export function CataloguePage() {
             />
           </InputGroup>
           <FilterPanel
+            library={library}
             filters={view.filters}
             onFiltersChange={(filters) => update(() => ({ filters }))}
             expanded={filtersExpanded}

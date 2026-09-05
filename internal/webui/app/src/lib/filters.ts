@@ -1,14 +1,9 @@
 /**
  * Narrowing the library by what a route measures, beside searching it by name.
- *
- * Distance, ascent, and steepest gradient come straight off the safe listing
- * every route already carries. Surface composition has no field of its own
- * there — it rides along with the geometry the map already fetches for every
- * route to draw the whole library, so filtering by it costs no request this
- * page was not already making.
+ * Every bound reads straight off the safe listing each route already carries.
  */
 
-import type { Route, SurfaceKind } from "../api/types";
+import type { Route } from "../api/types";
 
 /** An inclusive bound on either side; `null` means unbounded on that side. */
 export interface NumericRange {
@@ -19,75 +14,53 @@ export interface NumericRange {
 export interface LibraryFilters {
   distanceMetres: NumericRange;
   ascentMetres: NumericRange;
-  maxGradientPercent: NumericRange;
-  /** Empty means every surface passes — the filter is not narrowing on it. */
-  surfaces: SurfaceKind[];
+  movingSeconds: NumericRange;
 }
 
-// Three separate objects, deliberately: every existing edit path replaces a
-// range with a new one rather than mutating it in place, but a range that
-// were the same object across all three fields would make that an invariant
-// this file has to keep rather than one the type system already guarantees.
+// Three separate objects, deliberately: every edit path replaces a range with
+// a new one, and distinct objects keep that a guarantee rather than a rule.
 export const EMPTY_FILTERS: LibraryFilters = {
   distanceMetres: { min: null, max: null },
   ascentMetres: { min: null, max: null },
-  maxGradientPercent: { min: null, max: null },
-  surfaces: [],
+  movingSeconds: { min: null, max: null },
 };
+
+function isActive(range: NumericRange): boolean {
+  return range.min !== null || range.max !== null;
+}
 
 export function hasActiveFilters(filters: LibraryFilters): boolean {
   return (
-    filters.distanceMetres.min !== null ||
-    filters.distanceMetres.max !== null ||
-    filters.ascentMetres.min !== null ||
-    filters.ascentMetres.max !== null ||
-    filters.maxGradientPercent.min !== null ||
-    filters.maxGradientPercent.max !== null ||
-    filters.surfaces.length > 0
+    isActive(filters.distanceMetres) ||
+    isActive(filters.ascentMetres) ||
+    isActive(filters.movingSeconds)
   );
 }
 
 function inRange(value: number, range: NumericRange): boolean {
-  if (range.min !== null && value < range.min) {
+  // A crossed range, which only a hand-edited address can produce, reads as
+  // the span between its two bounds rather than as nothing at all.
+  const crossed = range.min !== null && range.max !== null && range.min > range.max;
+  const min = crossed ? range.max : range.min;
+  const max = crossed ? range.min : range.max;
+  if (min !== null && value < min) {
     return false;
   }
 
-  return !(range.max !== null && value > range.max);
+  return !(max !== null && value > max);
 }
 
 /**
  * Whether one route passes the filters.
  *
- * `surfaceKinds` is the set of ground classes actually present on this
- * route's geometry, once fetched and classified — absent or empty for a
- * route the enrichment pass has not reached yet, or whose geometry has not
- * arrived. That must never read as though it matched a surface filter it has
- * no answer for: a surface filter only narrows to routes with a confirmed
- * class among the ones checked.
- *
- * A numeric bound is compared exactly as the field is stored, including
- * zero: a route with no elevation data reports zero ascent and zero max
- * gradient the same way a genuinely flat one does, and a filter that
- * excluded zero specially would need information neither this page nor the
- * service has.
+ * A bound is compared exactly as the field is stored, including zero: a route
+ * with no elevation data reports zero ascent the same way a flat one does, and
+ * a route nothing has predicted a moving time for reports zero seconds.
  */
-export function matchesFilters(
-  route: Route,
-  filters: LibraryFilters,
-  surfaceKinds: ReadonlySet<SurfaceKind> | undefined,
-): boolean {
-  if (!inRange(route.distanceMetres, filters.distanceMetres)) {
-    return false;
-  }
-  if (!inRange(route.ascentMetres, filters.ascentMetres)) {
-    return false;
-  }
-  if (!inRange(route.maxGradientPercent, filters.maxGradientPercent)) {
-    return false;
-  }
-  if (filters.surfaces.length === 0) {
-    return true;
-  }
-
-  return filters.surfaces.some((kind) => surfaceKinds?.has(kind) ?? false);
+export function matchesFilters(route: Route, filters: LibraryFilters): boolean {
+  return (
+    inRange(route.distanceMetres, filters.distanceMetres) &&
+    inRange(route.ascentMetres, filters.ascentMetres) &&
+    inRange(route.movingSeconds ?? 0, filters.movingSeconds)
+  );
 }

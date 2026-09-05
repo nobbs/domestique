@@ -20,6 +20,7 @@ export const Filters: Story = {
 
     return (
       <FilterPanel
+        library={[]}
         filters={filters}
         onFiltersChange={setFilters}
         expanded={expanded}
