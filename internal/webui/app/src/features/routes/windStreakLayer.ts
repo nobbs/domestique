@@ -66,6 +66,11 @@ export interface StreakFrame {
   colour: readonly [number, number, number];
   /** How strongly the whole field is drawn, over the alpha each streak carries. */
   strength: number;
+  /**
+   * Hairlines by default; `"triangles"` for a caller that writes each streak as
+   * a quad, since WebGL draws every line one device pixel wide whatever is asked.
+   */
+  primitive?: "lines" | "triangles";
 }
 
 function compile(gl: WebGL2RenderingContext, kind: number, source: string): WebGLShader | null {
@@ -184,7 +189,7 @@ export function windStreakLayer(id: string, frame: () => StreakFrame): CustomLay
     },
 
     render(gl, options) {
-      const { vertices, vertexCount, colour, strength } = frame();
+      const { vertices, vertexCount, colour, strength, primitive } = frame();
       if (!program || !vertexArray || !buffer || vertexCount === 0) {
         return;
       }
@@ -201,9 +206,12 @@ export function windStreakLayer(id: string, frame: () => StreakFrame): CustomLay
         vertices.subarray(0, vertexCount * FLOATS_PER_VERTEX),
         gl.DYNAMIC_DRAW,
       );
+      // MapLibre hands a 2D custom layer its last depth range and test still
+      // on, and a streak at z=0 sits at the far edge of it and fails LEQUAL.
+      gl.disable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.drawArrays(gl.LINES, 0, vertexCount);
+      gl.drawArrays(primitive === "triangles" ? gl.TRIANGLES : gl.LINES, 0, vertexCount);
       gl.bindVertexArray(null);
     },
   };

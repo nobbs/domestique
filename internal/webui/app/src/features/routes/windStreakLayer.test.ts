@@ -49,6 +49,7 @@ const NAMES = [
   "uniform1f",
   "bufferData",
   "enable",
+  "disable",
   "blendFunc",
   "drawArrays",
 ] as const;
@@ -65,6 +66,7 @@ function recorder(overrides: Overrides = {}): Recorder {
     FLOAT: 4,
     DYNAMIC_DRAW: 5,
     BLEND: 6,
+    DEPTH_TEST: 12,
     ONE: 7,
     ONE_MINUS_SRC_ALPHA: 8,
     LINES: 9,
