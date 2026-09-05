@@ -95,6 +95,16 @@ test("the two schemes do not render the same map", async ({ browser, baseURL }) 
   expect(light && dark && light.equals(dark)).toBe(false);
 });
 
+/**
+ * The bar's toggle cycles system, then light, then dark. From a light system
+ * scheme the first press changes nothing anyone can see — light over light —
+ * which is exactly why the second press is what these assert on.
+ */
+async function chooseDarkTheme(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /^Theme: / }).click();
+  await page.getByRole("button", { name: /^Theme: / }).click();
+}
+
 test.describe("the theme override", () => {
   test.use({ colorScheme: "light" });
 
@@ -105,23 +115,37 @@ test.describe("the theme override", () => {
     await openLibrary(page);
     expect(await backgroundOfBody(page)).toBe(LIGHT_SURFACE);
 
-    await page.getByRole("link", { name: "Settings" }).click();
-    await page.getByRole("radio", { name: "Dark" }).check();
+    // From the map itself: the scheme is in the bar, so it is reached without
+    // leaving the page being read.
+    await chooseDarkTheme(page);
 
     // The page repaints in JavaScript-set state rather than a stylesheet
     // recomputing on its own, so this is read back rather than asserted the
-    // instant the radio is checked.
+    // instant the button is pressed.
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
-    await page.getByRole("link", { name: "Atlas" }).click();
     // The same override reaches the basemap, which cannot follow CSS at all —
     // see the dark-scheme test above for why the request is the proof.
     await expect.poll(() => basemapRequests.some((url) => url.includes("dark"))).toBe(true);
   });
 
+  test("holds across a page the control is not on", async ({ offlinePage: page }) => {
+    await openLibrary(page);
+    await chooseDarkTheme(page);
+    await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
+
+    await page.getByRole("link", { name: "Settings" }).click();
+
+    await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
+    // And the bar on that page agrees about which scheme is in force, rather
+    // than each mounting of the toggle keeping a choice of its own.
+    await expect(
+      page.getByRole("button", { name: "Theme: dark. Switch to system." }),
+    ).toBeVisible();
+  });
+
   test("survives a reload", async ({ offlinePage: page, baseURL }) => {
     await openLibrary(page);
-    await page.getByRole("link", { name: "Settings" }).click();
-    await page.getByRole("radio", { name: "Dark" }).check();
+    await chooseDarkTheme(page);
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
     await page.goto(baseURL ?? "");
@@ -150,6 +174,24 @@ test.describe("on a narrow viewport", () => {
     expect(panel.width).toBeLessThan(436);
     expect(panel.x + panel.width).toBeLessThanOrEqual(375);
     expect(map.width).toBeLessThanOrEqual(375);
+  });
+
+  /*
+   * The scheme is still a control here rather than something only a wide
+   * viewport gets. It sits at the same end of the bar as the session pill,
+   * which at this width is already reached by scrolling the bar sideways — the
+   * bar has never fitted 375 px, and this asserts the toggle is no worse off
+   * than the mark beside it, not that either is on screen.
+   */
+  test("the colour scheme is still in the bar", async ({ offlinePage: page }) => {
+    await openLibrary(page);
+
+    const toggle = page.getByRole("button", { name: /^Theme: / });
+    await expect(toggle).toHaveCount(1);
+    await toggle.click();
+    await expect(page.getByRole("button", { name: "Theme: light. Switch to dark." })).toHaveCount(
+      1,
+    );
   });
 
   // The tile credit is read out of a style document the page fetched, which is

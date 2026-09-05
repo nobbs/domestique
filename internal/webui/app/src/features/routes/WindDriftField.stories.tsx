@@ -99,17 +99,10 @@ function Wind({ washed = true, tinted = false }: { washed?: boolean; tinted?: bo
   return (
     <>
       {washed ? (
-        <ConditionsWash
-          coordinates={coordinates}
-          samples={weatherSamples}
-          measure="wind"
-          unitSystem="metric"
-        />
+        <ConditionsWash coordinates={coordinates} samples={weatherSamples} measure="wind" />
       ) : null}
       <WindDriftField coordinates={coordinates} samples={weatherSamples} measure="wind" />
-      {tinted ? (
-        <WindRelationTint runs={runs} coordinates={coordinates} unitSystem="metric" />
-      ) : null}
+      {tinted ? <WindRelationTint runs={runs} coordinates={coordinates} /> : null}
     </>
   );
 }

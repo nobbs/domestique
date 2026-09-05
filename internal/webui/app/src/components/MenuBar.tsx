@@ -12,10 +12,11 @@
  * The links are named rather than drawn, because a bar has the room the pill
  * did not and a glyph is only ever a guess at a word.
  *
- * Navigation runs from the left and the session sits at the right end, with the
- * gap between them doing the separating: where a reader can go and which
- * session they are in are two different questions, and a row that answers both
- * in one run of items invites the second to be read as a third destination.
+ * Navigation runs from the left, and the colour scheme and the session sit at
+ * the right end, with the gap between them doing the separating: where a reader
+ * can go and which session they are in are two different questions, and a row
+ * that answers both in one run of items invites the second to be read as a
+ * third destination.
  */
 
 import { useQuery } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ import { statusQuery } from "../api/queries";
 import { useEffectiveAdmin } from "../lib/identity";
 import { syncState } from "../lib/syncState";
 import { Wordmark } from "./brand/Wordmark";
+import { ThemeToggle } from "./ThemeToggle";
 import { UserPill } from "./UserPill";
 
 /**
@@ -90,7 +92,8 @@ export function MenuBar() {
           </NavLink>
         ))}
       </nav>
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
+        <ThemeToggle />
         <UserPill />
       </div>
     </header>

@@ -486,13 +486,7 @@ describe("LibraryMap", () => {
     expect(screen.queryByTestId("picker")).not.toBeInTheDocument();
   });
 
-  it("tells the scale bar which system to report distance in", () => {
-    show({ unitSystem: "imperial" });
-
-    expect(drawn.scaleUnit).toBe("imperial");
-  });
-
-  it("reports the scale bar in metric by default", () => {
+  it("reports the scale bar in metric", () => {
     show();
 
     expect(drawn.scaleUnit).toBe("metric");

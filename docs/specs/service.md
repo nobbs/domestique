@@ -560,12 +560,12 @@ session is answered not found rather than `403`, since a document is not one
 of the contract's operations. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
 ordering, searching and narrowing it offers all happen in the browser. Settings
-holds two kinds of preference and keeps them apart, and lists the data sources
-this service credits: the theme and the units are this browser's alone and stay
-in its local storage, while the service's runtime settings are read and written
-over the endpoints above and are the same for every browser. It does not alter
-the route or moving-time contracts, and unknown paths remain JSON `404`
-responses.
+holds this rider's own Wahoo connection and lists the data sources this service
+credits, while the service's runtime settings are read and written over the
+endpoints above and are the same for every browser. The colour scheme is
+neither: it is a control in the bar on every page, this browser's alone, and
+kept in its local storage. None of this alters the route or moving-time
+contracts, and unknown paths remain JSON `404` responses.
 
 The response schemas are defined in
 [the sync lifecycle specification](sync-lifecycle.md). They must never expose

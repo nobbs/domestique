@@ -4,7 +4,7 @@
  *
  * The toggle is a UI preview only: the server still admits an admin session
  * regardless of it, so this is not a privilege drop. Remembered the same way
- * `units.ts` remembers a unit system — one namespaced `localStorage` key,
+ * `basemap.ts` remembers a basemap choice — one namespaced `localStorage` key,
  * guarded against a browser that refuses storage outright.
  */
 

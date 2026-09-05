@@ -25,27 +25,8 @@ describe("formatDistance", () => {
     [1500, "1.5 km"],
     [42_500, "42.5 km"],
     [180_400, "180 km"],
-  ])("formats %p as %p in metric", (metres, expected) => {
-    expect(formatDistance(metres, "metric")).toBe(expected);
-  });
-
-  it.each([
-    [0, "—"],
-    [-5, "—"],
-    [Number.NaN, "—"],
-    [420, "1378 ft"],
-    [1609.344, "1.0 mi"],
-    [42_500, "26.4 mi"],
-    [290_000, "180 mi"],
-  ])("formats %p as %p in imperial", (metres, expected) => {
-    expect(formatDistance(metres, "imperial")).toBe(expected);
-  });
-
-  // A metre count whose feet fall just short of 5280 but round up to it must
-  // not print "5280 ft" — the cutover is judged on the rounded value, the same
-  // one the string prints, so the two can never disagree.
-  it("crosses over to miles once the rounded foot count reaches the mile, not before", () => {
-    expect(formatDistance(1609.2, "imperial")).toBe("1.0 mi");
+  ])("formats %p as %p", (metres, expected) => {
+    expect(formatDistance(metres)).toBe(expected);
   });
 });
 
@@ -117,47 +98,35 @@ describe("formatElevation", () => {
     [-4, "-4 m"],
     [960.4, "960 m"],
     [960.6, "961 m"],
-  ])("formats %p as %p in metric", (metres, expected) => {
-    expect(formatElevation(metres, "metric")).toBe(expected);
-  });
-
-  it("formats a height in feet for the imperial system", () => {
-    expect(formatElevation(960.4, "imperial")).toBe("3,151 ft");
+  ])("formats %p as %p", (metres, expected) => {
+    expect(formatElevation(metres)).toBe(expected);
   });
 
   it("says nothing rather than NaN for a height it does not have", () => {
-    expect(formatElevation(Number.NaN, "metric")).toBe("—");
-    expect(formatElevation(Number.POSITIVE_INFINITY, "metric")).toBe("—");
+    expect(formatElevation(Number.NaN)).toBe("—");
+    expect(formatElevation(Number.POSITIVE_INFINITY)).toBe("—");
   });
 });
 
 describe("formatAscent", () => {
   it("says nothing for a route with no usable elevation profile", () => {
-    expect(formatAscent(0, "metric")).toBe("—");
-    expect(formatAscent(-4, "metric")).toBe("—");
+    expect(formatAscent(0)).toBe("—");
+    expect(formatAscent(-4)).toBe("—");
   });
 
-  it("reports total climbing in metres for the metric system", () => {
-    expect(formatAscent(2730, "metric")).toBe("2,730 m");
-  });
-
-  it("reports total climbing in feet for the imperial system", () => {
-    expect(formatAscent(2730, "imperial")).toBe("8,957 ft");
+  it("reports total climbing in metres", () => {
+    expect(formatAscent(2730)).toBe("2,730 m");
   });
 });
 
 describe("formatDescent", () => {
   it("says nothing for a route that only climbs, or has no usable elevation profile", () => {
-    expect(formatDescent(0, "metric")).toBe("—");
-    expect(formatDescent(-4, "metric")).toBe("—");
+    expect(formatDescent(0)).toBe("—");
+    expect(formatDescent(-4)).toBe("—");
   });
 
-  it("reports total descending in metres for the metric system", () => {
-    expect(formatDescent(2690, "metric")).toBe("2,690 m");
-  });
-
-  it("reports total descending in feet for the imperial system", () => {
-    expect(formatDescent(2690, "imperial")).toBe("8,825 ft");
+  it("reports total descending in metres", () => {
+    expect(formatDescent(2690)).toBe("2,690 m");
   });
 });
 
@@ -241,64 +210,36 @@ describe("formatMovingTimeUncertainty", () => {
 
 describe("formatTemperature", () => {
   it("says nothing for a reading it does not have", () => {
-    expect(formatTemperature(Number.NaN, "metric")).toBe("—");
-    expect(formatTemperature(Number.POSITIVE_INFINITY, "metric")).toBe("—");
+    expect(formatTemperature(Number.NaN)).toBe("—");
+    expect(formatTemperature(Number.POSITIVE_INFINITY)).toBe("—");
   });
 
-  it("keeps a decimal near freezing, in metric", () => {
-    expect(formatTemperature(0.4, "metric")).toBe("0.4°C");
+  it("keeps a decimal near freezing", () => {
+    expect(formatTemperature(0.4)).toBe("0.4°C");
   });
 
-  it("drops the decimal once safely away from freezing, in metric", () => {
-    expect(formatTemperature(18.2, "metric")).toBe("18°C");
-  });
-
-  it("converts to Fahrenheit for the imperial system", () => {
-    expect(formatTemperature(18.2, "imperial")).toBe("65°F");
-  });
-
-  /*
-   * Freezing is 0 on one scale and 32 on the other, so a threshold applied to
-   * the converted number keeps the decimal in the wrong places: it would drop
-   * it at freezing point — the one reading where the digit decides between
-   * rain and ice — and hand it back on a hard frost at −10°C, which reads 14°F.
-   */
-  it("keeps the decimal near freezing in imperial too, and drops it far from it", () => {
-    expect(formatTemperature(0.4, "imperial")).toBe("32.7°F");
-    expect(formatTemperature(-18, "imperial")).toBe("0°F");
+  it("drops the decimal once safely away from freezing", () => {
+    expect(formatTemperature(18.2)).toBe("18°C");
   });
 });
 
 describe("formatWindSpeed", () => {
   it("says nothing for a reading it does not have", () => {
-    expect(formatWindSpeed(Number.NaN, "metric")).toBe("—");
+    expect(formatWindSpeed(Number.NaN)).toBe("—");
   });
 
-  it("holds a decimal under ten and drops it at ten and above, in metric", () => {
-    expect(formatWindSpeed(4.2, "metric")).toBe("4.2 km/h");
-    expect(formatWindSpeed(18, "metric")).toBe("18 km/h");
-  });
-
-  it("converts to miles per hour for the imperial system", () => {
-    expect(formatWindSpeed(18, "imperial")).toBe("11 mph");
-    expect(formatWindSpeed(3, "imperial")).toBe("1.9 mph");
+  it("holds a decimal under ten and drops it at ten and above", () => {
+    expect(formatWindSpeed(4.2)).toBe("4.2 km/h");
+    expect(formatWindSpeed(18)).toBe("18 km/h");
   });
 });
 
 describe("formatPrecipitation", () => {
   it("says nothing for a reading it does not have", () => {
-    expect(formatPrecipitation(Number.NaN, "metric")).toBe("—");
+    expect(formatPrecipitation(Number.NaN)).toBe("—");
   });
 
-  it("reports one decimal of millimetres in metric", () => {
-    expect(formatPrecipitation(0.4, "metric")).toBe("0.4 mm");
-  });
-
-  // An inch is roughly twenty-five millimetres, so the same one-decimal
-  // precision would round a light shower away to nothing in inches — two
-  // decimals keeps the same real resolution as one decimal of millimetres.
-  it("reports two decimals of inches in imperial", () => {
-    expect(formatPrecipitation(25.4, "imperial")).toBe("1.00 in");
-    expect(formatPrecipitation(0.4, "imperial")).toBe("0.02 in");
+  it("reports one decimal of millimetres", () => {
+    expect(formatPrecipitation(0.4)).toBe("0.4 mm");
   });
 });

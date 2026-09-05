@@ -40,7 +40,6 @@ import { useSeenRoutes } from "../../lib/seenRoutes";
 import { useStartTime } from "../../lib/startTime";
 import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
-import { useUnitSystem } from "../../lib/units";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { LibraryMap, type MapLine } from "./LibraryMap";
 import { RouteDock } from "./RouteDock";
@@ -141,7 +140,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    * map is handed a style rather than a choice.
    */
   const [basemapChoice, chooseBasemap] = useBasemapChoice();
-  const [unitSystem] = useUnitSystem();
   // Remembered across visits, and the next half hour where nothing is. See
   // lib/startTime.ts.
   const [startAt, setStartAt] = useStartTime();
@@ -415,7 +413,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             basemaps={config.data?.basemaps ?? []}
             selectedBasemap={basemap.name}
             onBasemapChange={chooseBasemap}
-            unitSystem={unitSystem}
             lines={drawn.lines}
             pickedKey={focusKey}
             bounds={bounds}
@@ -439,7 +436,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
                 onZoomChange={onZoomChange}
                 highlight={highlight}
                 measure={measure}
-                unitSystem={unitSystem}
               />
             ) : null}
           </LibraryMap>
@@ -468,7 +464,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             onHighlightChange={scopeHighlight}
             measure={measure}
             onMeasureChange={setMeasure}
-            unitSystem={unitSystem}
             open={dockOpen}
             onOpenChange={setDockOpen}
           />
@@ -541,7 +536,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           libraryCount={library.length}
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
-          unitSystem={unitSystem}
         />
       ) : library.length > 0 ? (
         <SearchPanel
@@ -569,7 +563,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           shapes={drawn.shapes}
           readAt={readAt ? formatReadTime(readAt) : null}
           changeOf={changeOf}
-          unitSystem={unitSystem}
         />
       ) : null}
     </Layout>

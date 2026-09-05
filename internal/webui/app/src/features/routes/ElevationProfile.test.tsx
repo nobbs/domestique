@@ -96,12 +96,10 @@ function Harness({
 function ZoomHarness({
   surface = null,
   onZoom,
-  unitSystem = "metric",
   caption = true,
 }: {
   surface?: SurfaceSummary | null;
   onZoom?: (window: DistanceWindow | null) => void;
-  unitSystem?: "metric" | "imperial";
   caption?: boolean;
 }) {
   const coordinates = useMemo(() => climb(), []);
@@ -122,7 +120,6 @@ function ZoomHarness({
         setZoomWindow(next);
         setActiveMetres(null);
       }}
-      unitSystem={unitSystem}
       caption={caption}
     />
   );
@@ -271,35 +268,19 @@ describe("ElevationProfile", () => {
     expect(screen.getByText(/100–295 m/)).toBeInTheDocument();
   });
 
-  it("reports the same range in feet for the imperial system", () => {
+  it("says the summary in kilometres and metres", () => {
     render(
       <ElevationProfile
         profile={buildProfile(climb())}
         title="Eich Rundkurs 90"
         activeMetres={null}
         onActiveChange={() => {}}
-        unitSystem="imperial"
-      />,
-    );
-
-    // 100 m to 295 m converts to 328 ft and 968 ft.
-    expect(screen.getByText(/328–968 ft/)).toBeInTheDocument();
-  });
-
-  it("says the summary in miles and feet for the imperial system", () => {
-    render(
-      <ElevationProfile
-        profile={buildProfile(climb())}
-        title="Eich Rundkurs 90"
-        activeMetres={null}
-        onActiveChange={() => {}}
-        unitSystem="imperial"
       />,
     );
 
     const figure = screen.getByRole("img", { name: /Eich Rundkurs 90/ });
-    expect(figure).toHaveAccessibleName(/miles/);
-    expect(figure).toHaveAccessibleName(/feet above sea level/);
+    expect(figure).toHaveAccessibleName(/kilometres/);
+    expect(figure).toHaveAccessibleName(/metres above sea level/);
   });
 });
 
@@ -533,18 +514,19 @@ describe("ElevationProfile zooming", () => {
     expect(screen.getByRole("button", { name: /Whole route/ })).toHaveAccessibleName(shown);
     expect(screen.getByRole("slider")).toHaveAccessibleName(shown);
     expect(screen.getByRole("img")).toHaveAccessibleName(shown);
-    expect(Number(screen.getByRole("slider").getAttribute("aria-valuemin"))).toBeCloseTo(0.5, 5);
+    // To the tenth the label prints, not exactly: the range carries the window's
+    // own start in metres, which is what the label rounded to get "0.5".
+    expect(Number(screen.getByRole("slider").getAttribute("aria-valuemin"))).toBeCloseTo(0.5, 1);
   });
 
   /*
-   * A mile is coarse enough that a fixed tenth can hold still for a couple of
-   * hundred metres of drag — the same adaptive precision the axis labels use
-   * has to carry `aria-valuenow` too, or a fine zoom in imperial announces the
-   * same position for every step a reader takes.
+   * A gridline's own precision is far too coarse for the number: a tenth of a
+   * kilometre holds still for a hundred metres of drag, so `aria-valuenow`
+   * carries metres and leaves the rounded words to `aria-valuetext`.
    */
-  it("keeps enough precision in imperial for a fine zoom's positions to read apart", async () => {
+  it("keeps enough precision for a fine zoom's positions to read apart", async () => {
     const user = userEvent.setup();
-    render(<ZoomHarness unitSystem="imperial" />);
+    render(<ZoomHarness />);
 
     await dragAcross(user, measured(screen.getByRole("slider")), 20, 40);
 
@@ -763,15 +745,7 @@ describe("profileReadout", () => {
   }
 
   it("matches the resting range the chart shows without a position active", () => {
-    expect(
-      profileReadout({ profile, surface: null, activeMetres: null, unitSystem: "metric" }),
-    ).toMatch(/100–295 m/);
-  });
-
-  it("matches the resting range in imperial units", () => {
-    expect(
-      profileReadout({ profile, surface: null, activeMetres: null, unitSystem: "imperial" }),
-    ).toMatch(/328–968 ft/);
+    expect(profileReadout({ profile, surface: null, activeMetres: null })).toMatch(/100–295 m/);
   });
 
   it("names the ground at an active position, matching what the chart shows", () => {
@@ -780,9 +754,9 @@ describe("profileReadout", () => {
       { kind: "gravel", startIndex: 0, endIndex: coordinates.length - 1 },
     ]);
 
-    expect(
-      profileReadout({ profile, surface, activeMetres: profile.startMetres, unitSystem: "metric" }),
-    ).toMatch(/Gravel$/);
+    expect(profileReadout({ profile, surface, activeMetres: profile.startMetres })).toMatch(
+      /Gravel$/,
+    );
   });
 
   it("says nothing of the ground on an unclassified stage", () => {
@@ -791,7 +765,6 @@ describe("profileReadout", () => {
         profile,
         surface: null,
         activeMetres: profile.startMetres,
-        unitSystem: "metric",
       }),
     ).not.toMatch(/gravel|asphalt/i);
   });

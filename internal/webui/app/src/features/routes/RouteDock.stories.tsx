@@ -69,7 +69,6 @@ function Docked({ startOpen }: { startOpen: boolean }) {
           onHighlightChange={setHighlight}
           measure={measure}
           onMeasureChange={setMeasure}
-          unitSystem="metric"
           open={open}
           onOpenChange={setOpen}
         />

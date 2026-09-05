@@ -400,8 +400,8 @@ describe("the position tooltip", () => {
 
     // How far along is the figure; how far is left is the bar under it, which
     // is why there is no second distance here to read.
-    expect(screen.getByText(formatDistance(active.distanceMetres, "metric"))).toBeInTheDocument();
-    expect(screen.getByText(formatElevation(active.elevationMetres, "metric"))).toBeInTheDocument();
+    expect(screen.getByText(formatDistance(active.distanceMetres))).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(active.elevationMetres))).toBeInTheDocument();
     expect(screen.getByText(`${active.gradientPercent.toFixed(1)}%`)).toBeInTheDocument();
   });
 
@@ -483,7 +483,7 @@ describe("the position tooltip", () => {
 
     show({ activeMetres: ACTIVE_METRES, activeProfile: climbing });
 
-    expect(screen.getByText(formatElevation(active.elevationMetres, "metric"))).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(active.elevationMetres))).toBeInTheDocument();
     expect(screen.getByText(`${active.gradientPercent.toFixed(1)}%`)).toBeInTheDocument();
   });
 
@@ -516,9 +516,7 @@ describe("the position tooltip", () => {
     show({ activeMetres: OUTSIDE_WINDOW_METRES, activeProfile: zoomed });
 
     expect(document.querySelector(".route-position-tooltip")).toBeInTheDocument();
-    expect(
-      screen.getByText(formatElevation(wholeSample.elevationMetres, "metric")),
-    ).toBeInTheDocument();
+    expect(screen.getByText(formatElevation(wholeSample.elevationMetres))).toBeInTheDocument();
   });
 
   /*

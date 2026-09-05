@@ -60,12 +60,7 @@ function Washed({ measure, dark = false }: { measure: MeasureKey; dark?: boolean
       <CartographyProvider dark={dark}>
         <MapWidget styleUrl={dark ? styles.dark : styles.light}>
           <MapViewport bounds={bounds} maxZoom={12} />
-          <ConditionsWash
-            coordinates={coordinates}
-            samples={weatherSamples}
-            measure={measure}
-            unitSystem="metric"
-          />
+          <ConditionsWash coordinates={coordinates} samples={weatherSamples} measure={measure} />
         </MapWidget>
       </CartographyProvider>
     </Forecast>

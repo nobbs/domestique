@@ -47,7 +47,6 @@ import { formatDistance } from "../../lib/format";
 import type { Measure, MeasureKey } from "../../lib/measures";
 import { MEASURES } from "../../lib/measures";
 import { cumulativeMetres } from "../../lib/profile";
-import type { UnitSystem } from "../../lib/units";
 
 const SOURCE_ID = "route-conditions";
 
@@ -154,17 +153,9 @@ export interface ConditionsWashProps {
   measure: MeasureKey | null;
   /** The layer the wash is drawn beneath, so it stays under the route itself. */
   beforeId?: string | undefined;
-  /** The units the wash's written equivalent reports in. */
-  unitSystem?: UnitSystem;
 }
 
-export function ConditionsWash({
-  coordinates,
-  samples,
-  measure,
-  beforeId,
-  unitSystem = "metric",
-}: ConditionsWashProps) {
+export function ConditionsWash({ coordinates, samples, measure, beforeId }: ConditionsWashProps) {
   // The wash is ink on the map, so its ramp follows the loaded basemap rather
   // than the page's scheme — the same split `bandColour` and `bandVariable`
   // make between a mark on the ground and a swatch in a panel.
@@ -280,8 +271,8 @@ export function ConditionsWash({
         <tbody>
           {readings.map((reading) => (
             <tr key={reading.distanceMetres}>
-              <th scope="row">{formatDistance(reading.distanceMetres, unitSystem)}</th>
-              <td>{chosen.words(reading.value, unitSystem)}</td>
+              <th scope="row">{formatDistance(reading.distanceMetres)}</th>
+              <td>{chosen.words(reading.value)}</td>
             </tr>
           ))}
         </tbody>

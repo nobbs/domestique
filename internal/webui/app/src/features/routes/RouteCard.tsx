@@ -11,7 +11,6 @@ import {
 import { gradientMix } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import type { RouteChange } from "../../lib/seenRoutes";
-import type { UnitSystem } from "../../lib/units";
 import { RouteChangeBadge } from "./RouteChangeBadge";
 import type { RouteShape } from "./SearchPanel";
 
@@ -29,14 +28,12 @@ export function RouteCard({
   readAt,
   change,
   onOpen,
-  unitSystem,
 }: {
   route: Route;
   shape: RouteShape | undefined;
   readAt: string | null;
   change: RouteChange;
   onOpen: () => void;
-  unitSystem: UnitSystem;
 }) {
   /*
    * The card brings itself into view when it appears.
@@ -77,11 +74,11 @@ export function RouteCard({
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
         <div>
           <dt>Distance</dt>
-          <dd>{formatDistance(route.distanceMetres, unitSystem)}</dd>
+          <dd>{formatDistance(route.distanceMetres)}</dd>
         </div>
         <div>
           <dt>Ascent</dt>
-          <dd>{formatAscent(route.ascentMetres, unitSystem)}</dd>
+          <dd>{formatAscent(route.ascentMetres)}</dd>
         </div>
         <div>
           <dt>Max</dt>

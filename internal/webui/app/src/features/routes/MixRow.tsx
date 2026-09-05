@@ -31,8 +31,6 @@ import type { Highlight } from "../../lib/highlight";
 import { sameHighlight } from "../../lib/highlight";
 import type { MixEntry } from "../../lib/mix";
 import { formatShare } from "../../lib/mix";
-import type { UnitSystem } from "../../lib/units";
-import { metresToFeet, metresToMiles } from "../../lib/units";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { HighlightToggle } from "./HighlightToggle";
 
@@ -55,29 +53,14 @@ const TAG_GAP = 6;
 /** The card's own content width, until the bar has been measured. */
 const ASSUMED_WIDTH = 344;
 
-/** Below this many feet, a bar reads in feet rather than fractions of a mile. */
-const FEET_LIMIT = 5280;
-
 /**
- * One length, in the unit its bar is using.
+ * One length, as its bar tags it.
  *
- * `formatDistance` chooses per value, which is right for a figure standing on
- * its own and wrong for a row of them: in miles and feet it gives a bar reading
- * `3598 ft`, `4707 ft`, `16.5 mi`, in which the largest number names the
- * shortest stretch. So imperial picks its unit once, from the longest, and
- * draws every tag in it. Metric has no such ft/mi split — only a decimal
- * place that gets coarser once the longest is over 100 km — so a short tag
- * still reads in metres beside a row of kilometres.
+ * Not `formatDistance`, which picks its decimal place per value: a row takes
+ * that place from the longest bar in it, so the tags stay comparable across
+ * the row rather than each rounding to a precision of its own.
  */
-function barLength(metres: number, unitSystem: UnitSystem, longest: number): string {
-  if (unitSystem === "imperial") {
-    if (Math.round(metresToFeet(longest)) < FEET_LIMIT) {
-      return `${Math.round(metresToFeet(metres))} ft`;
-    }
-
-    return `${metresToMiles(metres).toFixed(metresToMiles(longest) < 100 ? 1 : 0)} mi`;
-  }
-
+function barLength(metres: number, longest: number): string {
   if (metres < 1_000) {
     return `${Math.round(metres)} m`;
   }
@@ -150,7 +133,6 @@ export interface MixRowProps {
   tagSide: "above" | "below";
   highlight: Highlight | null;
   onHighlightChange: (next: Highlight | null) => void;
-  unitSystem: UnitSystem;
 }
 
 export function MixRow({
@@ -160,7 +142,6 @@ export function MixRow({
   tagSide,
   highlight,
   onHighlightChange,
-  unitSystem,
 }: MixRowProps) {
   const above = tagSide === "above";
   const { ref, width } = useElementWidth<HTMLDivElement>();
@@ -255,13 +236,13 @@ export function MixRow({
               onChange={onHighlightChange}
               // Both quantities spoken whichever one is drawn: the figure on
               // screen is a choice about space, not about what the class is.
-              label={`${entry.label}, ${entry.description}, ${barLength(entry.metres, unitSystem, longest)}, ${formatShare(entry.share)} of the route`}
+              label={`${entry.label}, ${entry.description}, ${barLength(entry.metres, longest)}, ${formatShare(entry.share)} of the route`}
               title={entry.description}
               className="grid size-full content-center rounded px-0.5 text-center leading-tight hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]"
             >
               <span className="truncate text-[10px] text-[var(--ink-2)]">{entry.label}</span>
               <span className="truncate text-[11px] font-semibold tabular-nums">
-                {barLength(entry.metres, unitSystem, longest)}
+                {barLength(entry.metres, longest)}
               </span>
             </HighlightToggle>
           </li>

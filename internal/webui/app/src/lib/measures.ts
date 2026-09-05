@@ -23,15 +23,6 @@
  */
 
 import type { WeatherPoint } from "../api/types";
-import type { UnitSystem } from "./units";
-import {
-  precipitationUnitLabel,
-  precipitationValue,
-  speedUnitLabel,
-  speedValue,
-  temperatureUnitLabel,
-  temperatureValue,
-} from "./units";
 import { TEMPERATURE_FLOORS, temperatureBand } from "./weather";
 import type { WindRelation } from "./wind";
 
@@ -219,39 +210,34 @@ const CLOUD_BANDS: readonly BandCut[] = [
 /** What every `words` function reports for a reading with nothing to say — the same placeholder `format.ts` uses. */
 const NO_READING = "—";
 
-function temperatureWords(celsius: number, system: UnitSystem): string {
+function temperatureWords(celsius: number): string {
   if (!Number.isFinite(celsius)) {
     return NO_READING;
   }
   const band = TEMPERATURE_BANDS[temperatureBand(celsius)];
-  const value = Math.round(temperatureValue(celsius, system));
 
-  return `${band?.label}, ${value}${temperatureUnitLabel(system)}`;
+  return `${band?.label}, ${Math.round(celsius)}°C`;
 }
 
-function windWords(kmh: number, system: UnitSystem): string {
+function windWords(kmh: number): string {
   if (!Number.isFinite(kmh)) {
     return NO_READING;
   }
   const band = WIND_BANDS[bandFor(WIND_BANDS, kmh)];
-  const value = Math.round(speedValue(kmh, system));
 
-  return `${band?.label}, ${value} ${speedUnitLabel(system)}`;
+  return `${band?.label}, ${Math.round(kmh)} km/h`;
 }
 
-function rainWords(millimetres: number, system: UnitSystem): string {
+function rainWords(millimetres: number): string {
   if (!Number.isFinite(millimetres)) {
     return NO_READING;
   }
   const band = RAIN_BANDS[bandFor(RAIN_BANDS, millimetres)];
-  const value = precipitationValue(millimetres, system);
-  const decimals = system === "imperial" ? 2 : 1;
 
-  return `${band?.label}, ${value.toFixed(decimals)} ${precipitationUnitLabel(system)}`;
+  return `${band?.label}, ${millimetres.toFixed(1)} mm`;
 }
 
-/** Cloud cover is a share, so it reads the same regardless of `system`; the parameter stays for the shape every measure's `words` shares. */
-function cloudWords(percent: number, _system: UnitSystem): string {
+function cloudWords(percent: number): string {
   if (!Number.isFinite(percent)) {
     return NO_READING;
   }
@@ -289,7 +275,7 @@ export interface Measure {
    */
   opacity: (band: number) => number;
   /** The reading in words, in the reader's chosen units. */
-  words: (value: number, system: UnitSystem) => string;
+  words: (value: number) => string;
 }
 
 const ALWAYS_OPAQUE = () => 1;
@@ -428,17 +414,17 @@ export function windRelationVariable(stop: number | null): string {
 }
 
 /**
- * The rider-relative wind in words, in the reader's own units: which way it
- * sits against the road, and how hard it is blowing there.
+ * The rider-relative wind in words: which way it sits against the road, and
+ * how hard it is blowing there.
  *
  * The wind's own speed rather than its along-road share — that is the figure
  * the strip and the corridor already report, and putting the share here would
  * give the same stretch two different wind speeds.
  */
-export function windRelationWords(stop: number | null, kmh: number, system: UnitSystem): string {
+export function windRelationWords(stop: number | null, kmh: number): string {
   const band = stop === null ? WIND_MIXED_BAND : WIND_RELATION_BANDS[stop];
 
-  return `${band?.label}, ${Math.round(speedValue(kmh, system))} ${speedUnitLabel(system)}`;
+  return `${band?.label}, ${Math.round(kmh)} km/h`;
 }
 
 /**
@@ -454,41 +440,29 @@ const BAND_CUTS: Record<MeasureKey, readonly number[]> = {
   cloud: CLOUD_BANDS.slice(0, -1).map((cut) => cut.limit),
 };
 
-/** A cut in the reader's units, one decimal place with a trailing `.0` dropped. */
-function formatCut(
-  value: number,
-  system: UnitSystem,
-  convert: (v: number, s: UnitSystem) => number,
-) {
-  return String(Math.round(convert(value, system) * 10) / 10);
+/** A cut at one decimal place, with a trailing `.0` dropped. */
+function formatCut(value: number) {
+  return String(Math.round(value * 10) / 10);
 }
 
-const MEASURE_CONVERT: Record<MeasureKey, (value: number, system: UnitSystem) => number> = {
-  wind: speedValue,
-  temperature: temperatureValue,
-  rain: precipitationValue,
-  cloud: (percent) => percent,
-};
-
-const MEASURE_UNIT_LABEL: Record<MeasureKey, (system: UnitSystem) => string> = {
-  wind: speedUnitLabel,
-  temperature: temperatureUnitLabel,
-  // The forecast reading is a rate, which `precipitationUnitLabel` alone does
-  // not say — it names the depth unit `format.ts` also uses for a rain total.
-  rain: (system) => `${precipitationUnitLabel(system)}/h`,
-  cloud: () => "%",
+const MEASURE_UNIT_LABEL: Record<MeasureKey, string> = {
+  wind: "km/h",
+  temperature: "°C",
+  // The forecast reading is a rate, which the depth unit `format.ts` uses for
+  // a rain total does not say on its own.
+  rain: "mm/h",
+  cloud: "%",
 };
 
 /**
- * One band's cut, in the reader's own units — `"under 15 km/h"`, `"15–30
- * km/h"`, `"over 45 km/h"` — for a key that has to say where a band starts
- * and ends without reading the private cut tables above.
+ * One band's cut — `"under 15 km/h"`, `"15–30 km/h"`, `"over 45 km/h"` — for a
+ * key that has to say where a band starts and ends without reading the private
+ * cut tables above.
  */
-export function bandRange(measure: Measure, band: number, system: UnitSystem): string {
+export function bandRange(measure: Measure, band: number): string {
   const cuts = BAND_CUTS[measure.key];
-  const convert = MEASURE_CONVERT[measure.key];
-  const unit = MEASURE_UNIT_LABEL[measure.key](system);
-  const cut = (index: number) => formatCut(cuts[index] as number, system, convert);
+  const unit = MEASURE_UNIT_LABEL[measure.key];
+  const cut = (index: number) => formatCut(cuts[index] as number);
 
   if (band === 0) {
     return `under ${cut(0)} ${unit}`;

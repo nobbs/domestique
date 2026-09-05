@@ -29,7 +29,6 @@ import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import { gradientSharesBySign } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
-import type { UnitSystem } from "../../lib/units";
 import { ClimbMarkers } from "./ClimbMarkers";
 import { ClimbsSidebar, ClimbsToggle } from "./ClimbsSidebar";
 import { ConditionsChoices, ConditionsKey } from "./ConditionsPicker";
@@ -116,11 +115,9 @@ function Panel({
 function SteepnessTable({
   coordinates,
   distanceMetres,
-  unitSystem,
 }: {
   coordinates: Position[];
   distanceMetres: number;
-  unitSystem: UnitSystem;
 }) {
   const rows = steepnessEntries(gradientSharesBySign(coordinates), distanceMetres);
   const cell = "px-2 py-1 text-right text-xs tabular-nums";
@@ -159,10 +156,10 @@ function SteepnessTable({
               {row.label}
             </th>
             <td className={cell}>
-              {row.climbingMetres < 1 ? "–" : formatDistance(row.climbingMetres, unitSystem)}
+              {row.climbingMetres < 1 ? "–" : formatDistance(row.climbingMetres)}
             </td>
             <td className={`${cell} text-[var(--ink-2)]`}>
-              {row.descendingMetres < 1 ? "–" : formatDistance(row.descendingMetres, unitSystem)}
+              {row.descendingMetres < 1 ? "–" : formatDistance(row.descendingMetres)}
             </td>
           </tr>
         ))}
@@ -199,7 +196,6 @@ export interface RouteDockProps {
   /** The forecast measure the map is washed in, and null for none. */
   measure: MeasureKey | null;
   onMeasureChange: (measure: MeasureKey | null) => void;
-  unitSystem: UnitSystem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -219,7 +215,6 @@ function ProfileStop({
   onZoomChange,
   highlight,
   onHighlightChange,
-  unitSystem,
   climbsOpen,
   onClimbsOpenChange,
 }: Pick<
@@ -238,24 +233,23 @@ function ProfileStop({
   | "onZoomChange"
   | "highlight"
   | "onHighlightChange"
-  | "unitSystem"
 > & { climbsOpen: boolean; onClimbsOpenChange: (open: boolean) => void }) {
   // A touch pointer arms the zoom by holding, so the hint names that gesture.
   const coarse = useCoarsePointer();
   const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
   const line = (() => {
     if (activeMetres !== null && profile) {
-      return profileReadout({ profile, surface, activeMetres, unitSystem });
+      return profileReadout({ profile, surface, activeMetres });
     }
     if (zoomWindow) {
-      return `${formatDistance(zoomWindow.startMetres, unitSystem)}–${formatDistance(zoomWindow.endMetres, unitSystem)} shown · Escape returns`;
+      return `${formatDistance(zoomWindow.startMetres)}–${formatDistance(zoomWindow.endMetres)} shown · Escape returns`;
     }
     if (!profile) {
       return "";
     }
-    const range = ` · ${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`;
+    const range = ` · ${formatElevation(profile.minElevationMetres)}–${formatElevation(profile.maxElevationMetres)}`;
     const hint = coarse ? "press and hold to look closer" : "drag across to look closer";
-    return `${formatDistance(distanceMetres, unitSystem)} · ${formatAscent(ascentMetres, unitSystem)} up${range} · ${hint}`;
+    return `${formatDistance(distanceMetres)} · ${formatAscent(ascentMetres)} up${range} · ${hint}`;
   })();
 
   return (
@@ -280,13 +274,7 @@ function ProfileStop({
               <ClimbsToggle climbs={climbs} open={climbsOpen} onOpenChange={onClimbsOpenChange} />
             </div>
           }
-          info={
-            <SteepnessTable
-              coordinates={coordinates}
-              distanceMetres={distanceMetres}
-              unitSystem={unitSystem}
-            />
-          }
+          info={<SteepnessTable coordinates={coordinates} distanceMetres={distanceMetres} />}
         >
           {/*
            * `min-w-0`: a grid item's default min-width is its content's, and the
@@ -303,7 +291,6 @@ function ProfileStop({
               zoomWindow={zoomWindow}
               onZoomChange={onZoomChange}
               highlight={highlight}
-              unitSystem={unitSystem}
               caption={false}
               zoomBack={false}
             />
@@ -328,14 +315,7 @@ function ProfileStop({
           </div>
         </Panel>
       </div>
-      {climbsOpen ? (
-        <ClimbsSidebar
-          climbs={climbs}
-          onSelect={onSelectClimb}
-          unitSystem={unitSystem}
-          fixedHeight
-        />
-      ) : null}
+      {climbsOpen ? <ClimbsSidebar climbs={climbs} onSelect={onSelectClimb} fixedHeight /> : null}
     </div>
   );
 }
@@ -350,7 +330,6 @@ function ForecastStop({
   zoomWindow,
   measure,
   onMeasureChange,
-  unitSystem,
 }: Pick<
   RouteDockProps,
   | "distanceMetres"
@@ -362,7 +341,6 @@ function ForecastStop({
   | "zoomWindow"
   | "measure"
   | "onMeasureChange"
-  | "unitSystem"
 >) {
   const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
   const back = samples[samples.length - 1]?.arrivalAt;
@@ -385,13 +363,12 @@ function ForecastStop({
           coordinates={coordinates}
           startMetres={shown.startMetres}
           endMetres={shown.endMetres}
-          unitSystem={unitSystem}
           inset={false}
           caption={false}
           fill
         />
       </div>
-      <ConditionsKey measure={measure} samples={samples} unitSystem={unitSystem} />
+      <ConditionsKey measure={measure} samples={samples} />
       {/* Pinned to the panel's own foot rather than following the key up
           against the strip, so the departure and the wash choice stay put
           however tall the key beside them gets. */}
@@ -443,7 +420,6 @@ export function RouteDock({
   onHighlightChange,
   measure,
   onMeasureChange,
-  unitSystem,
   open,
   onOpenChange,
 }: RouteDockProps) {
@@ -541,7 +517,6 @@ export function RouteDock({
               onZoomChange={onZoomChange}
               highlight={highlight}
               onHighlightChange={onHighlightChange}
-              unitSystem={unitSystem}
               climbsOpen={climbsOpen}
               onClimbsOpenChange={setClimbsOpen}
             />
@@ -557,7 +532,6 @@ export function RouteDock({
               zoomWindow={zoomWindow}
               measure={measure}
               onMeasureChange={onMeasureChange}
-              unitSystem={unitSystem}
             />
           </Tabs.Panel>
         </div>

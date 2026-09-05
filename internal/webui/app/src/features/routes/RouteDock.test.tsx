@@ -56,7 +56,6 @@ function renderDock(overrides: Partial<RouteDockProps> = {}) {
     onHighlightChange: vi.fn(),
     measure: null,
     onMeasureChange: vi.fn(),
-    unitSystem: "metric",
     open: true,
     onOpenChange: vi.fn(),
     ...overrides,
@@ -171,7 +170,6 @@ describe("RouteDock", () => {
           onHighlightChange={vi.fn()}
           measure={null}
           onMeasureChange={vi.fn()}
-          unitSystem="metric"
           open={open}
           onOpenChange={setOpen}
         />

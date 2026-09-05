@@ -96,30 +96,15 @@ describe("MEASURES", () => {
   });
 
   it("still describes the dry and clear bands in words, despite painting nothing", () => {
-    expect(measure("rain").words(0.1, "metric")).toContain("dry");
-    expect(measure("cloud").words(10, "metric")).toContain("clear");
+    expect(measure("rain").words(0.1)).toContain("dry");
+    expect(measure("cloud").words(10)).toContain("clear");
   });
 
-  it("renders wind, temperature and rain words in both unit systems", () => {
-    const wind = measure("wind").words(25, "metric");
-    const windImperial = measure("wind").words(25, "imperial");
-    expect(wind).toContain("km/h");
-    expect(windImperial).toContain("mph");
-
-    const temperature = measure("temperature").words(3, "metric");
-    const temperatureImperial = measure("temperature").words(3, "imperial");
-    expect(temperature).toContain("°C");
-    expect(temperatureImperial).toContain("°F");
-
-    const rain = measure("rain").words(3, "metric");
-    const rainImperial = measure("rain").words(3, "imperial");
-    expect(rain).toContain("mm");
-    expect(rainImperial).toContain("in");
-  });
-
-  it("renders cloud words in both unit systems, cover being unit-agnostic", () => {
-    expect(measure("cloud").words(60, "metric")).toBe(measure("cloud").words(60, "imperial"));
-    expect(measure("cloud").words(60, "metric")).toContain("60%");
+  it("names each measure's unit in its words", () => {
+    expect(measure("wind").words(25)).toContain("km/h");
+    expect(measure("temperature").words(3)).toContain("°C");
+    expect(measure("rain").words(3)).toContain("mm");
+    expect(measure("cloud").words(60)).toContain("60%");
   });
 
   it("reads temperature apparent rather than actual, and wind and rain and cloud their own field", () => {
@@ -186,12 +171,11 @@ describe("the head-to-tail ramp", () => {
     }
   });
 
-  it("says which way the wind sits in words, in the reader's own units", () => {
-    expect(windRelationWords(0, 24, "metric")).toBe("headwind, 24 km/h");
-    expect(windRelationWords(3, 24, "metric")).toBe("tailwind, 24 km/h");
-    expect(windRelationWords(1, 24, "metric")).toContain("crosswind");
-    expect(windRelationWords(null, 24, "metric")).toContain("wind shifting");
-    expect(windRelationWords(0, 24, "imperial")).toBe("headwind, 15 mph");
+  it("says which way the wind sits in words", () => {
+    expect(windRelationWords(0, 24)).toBe("headwind, 24 km/h");
+    expect(windRelationWords(3, 24)).toBe("tailwind, 24 km/h");
+    expect(windRelationWords(1, 24)).toContain("crosswind");
+    expect(windRelationWords(null, 24)).toContain("wind shifting");
   });
 });
 
@@ -199,43 +183,37 @@ describe("bandRange", () => {
   it("gives wind's cuts in km/h", () => {
     const wind = measure("wind");
 
-    expect(bandRange(wind, 0, "metric")).toBe("under 15 km/h");
-    expect(bandRange(wind, 1, "metric")).toBe("15–30 km/h");
-    expect(bandRange(wind, 2, "metric")).toBe("30–45 km/h");
-    expect(bandRange(wind, 3, "metric")).toBe("over 45 km/h");
+    expect(bandRange(wind, 0)).toBe("under 15 km/h");
+    expect(bandRange(wind, 1)).toBe("15–30 km/h");
+    expect(bandRange(wind, 2)).toBe("30–45 km/h");
+    expect(bandRange(wind, 3)).toBe("over 45 km/h");
   });
 
   it("gives temperature's cuts in °C, coldest band first", () => {
     const temperature = measure("temperature");
 
-    expect(bandRange(temperature, 0, "metric")).toBe("under 5 °C");
-    expect(bandRange(temperature, 1, "metric")).toBe("5–12 °C");
-    expect(bandRange(temperature, 2, "metric")).toBe("12–20 °C");
-    expect(bandRange(temperature, 3, "metric")).toBe("20–27 °C");
-    expect(bandRange(temperature, 4, "metric")).toBe("over 27 °C");
+    expect(bandRange(temperature, 0)).toBe("under 5 °C");
+    expect(bandRange(temperature, 1)).toBe("5–12 °C");
+    expect(bandRange(temperature, 2)).toBe("12–20 °C");
+    expect(bandRange(temperature, 3)).toBe("20–27 °C");
+    expect(bandRange(temperature, 4)).toBe("over 27 °C");
   });
 
   it("gives rain's cuts in mm/h", () => {
     const rain = measure("rain");
 
-    expect(bandRange(rain, 0, "metric")).toBe("under 0.2 mm/h");
-    expect(bandRange(rain, 1, "metric")).toBe("0.2–2 mm/h");
-    expect(bandRange(rain, 2, "metric")).toBe("2–6 mm/h");
-    expect(bandRange(rain, 3, "metric")).toBe("over 6 mm/h");
+    expect(bandRange(rain, 0)).toBe("under 0.2 mm/h");
+    expect(bandRange(rain, 1)).toBe("0.2–2 mm/h");
+    expect(bandRange(rain, 2)).toBe("2–6 mm/h");
+    expect(bandRange(rain, 3)).toBe("over 6 mm/h");
   });
 
   it("gives cloud's cuts as a percentage", () => {
     const cloud = measure("cloud");
 
-    expect(bandRange(cloud, 0, "metric")).toBe("under 20 %");
-    expect(bandRange(cloud, 1, "metric")).toBe("20–50 %");
-    expect(bandRange(cloud, 2, "metric")).toBe("50–85 %");
-    expect(bandRange(cloud, 3, "metric")).toBe("over 85 %");
-  });
-
-  it("converts to the reader's own units", () => {
-    const wind = measure("wind");
-
-    expect(bandRange(wind, 0, "imperial")).toBe("under 9.3 mph");
+    expect(bandRange(cloud, 0)).toBe("under 20 %");
+    expect(bandRange(cloud, 1)).toBe("20–50 %");
+    expect(bandRange(cloud, 2)).toBe("50–85 %");
+    expect(bandRange(cloud, 3)).toBe("over 85 %");
   });
 });
