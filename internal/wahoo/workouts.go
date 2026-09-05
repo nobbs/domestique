@@ -84,34 +84,61 @@ func (c *Client) ListWorkouts(ctx context.Context, accessToken string) ([]Workou
 
 	var workouts []Workout
 	for page := 1; ; page++ {
-		endpoint := c.endpoint(c.apiBaseURL, "/v1/workouts")
-		endpoint.RawQuery = url.Values{
-			"page":     {fmt.Sprint(page)},
-			"per_page": {fmt.Sprint(workoutPageSize)},
-		}.Encode()
-		request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
+		response, err := c.workoutPage(ctx, accessToken, page, len(workouts))
 		if err != nil {
 			return nil, err
-		}
-
-		var response workoutPage
-		if err := c.doJSON(request, &response); err != nil {
-			return nil, err
-		}
-		if response.Page != page || response.PerPage <= 0 || response.Total < len(workouts)+len(response.Workouts) {
-			return nil, errors.New("wahoo: workout listing pagination was invalid")
-		}
-		if response.Total > maximumWorkouts {
-			return nil, errors.New("wahoo: workout listing exceeded configured bounds")
 		}
 		workouts = append(workouts, response.Workouts...)
 		if len(workouts) >= response.Total {
 			return workouts, nil
 		}
-		if len(response.Workouts) == 0 {
-			return nil, errors.New("wahoo: workout listing ended before its total")
-		}
 	}
+}
+
+// WorkoutListingHead returns the account's first page of workouts and how many
+// it holds in all, at the cost of one request. It is what tells a caller
+// whether walking the whole list is worth the rest of the requests.
+func (c *Client) WorkoutListingHead(ctx context.Context, accessToken string) (workouts []Workout, total int, err error) {
+	if accessToken == "" {
+		return nil, 0, errors.New("wahoo: access token is required")
+	}
+	response, err := c.workoutPage(ctx, accessToken, 1, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return response.Workouts, response.Total, nil
+}
+
+// workoutPage reads one page of the workout list. preceding is how many
+// workouts the caller already holds, which the page's own total must account
+// for alongside the ones it carries.
+func (c *Client) workoutPage(ctx context.Context, accessToken string, page, preceding int) (workoutPage, error) {
+	endpoint := c.endpoint(c.apiBaseURL, "/v1/workouts")
+	endpoint.RawQuery = url.Values{
+		"page":     {fmt.Sprint(page)},
+		"per_page": {fmt.Sprint(workoutPageSize)},
+	}.Encode()
+	request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
+	if err != nil {
+		return workoutPage{}, err
+	}
+
+	var response workoutPage
+	if err := c.doJSON(request, &response); err != nil {
+		return workoutPage{}, err
+	}
+	if response.Page != page || response.PerPage <= 0 || response.Total < preceding+len(response.Workouts) {
+		return workoutPage{}, errors.New("wahoo: workout listing pagination was invalid")
+	}
+	if response.Total > maximumWorkouts {
+		return workoutPage{}, errors.New("wahoo: workout listing exceeded configured bounds")
+	}
+	if len(response.Workouts) == 0 && response.Total > preceding {
+		return workoutPage{}, errors.New("wahoo: workout listing ended before its total")
+	}
+
+	return response, nil
 }
 
 // WorkoutSummary returns the original Wahoo summary and its FIT file URL.

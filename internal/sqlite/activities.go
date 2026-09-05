@@ -94,6 +94,65 @@ func (s *Store) RecordActivitySkip(ctx context.Context, targetID string, id int6
 	return nil
 }
 
+// ActivityListings are the activities one target's account holds, oldest first,
+// as the last full reading of that account left them, and when that reading was
+// taken. A target never read has no listings and a zero time.
+func (s *Store) ActivityListings(
+	ctx context.Context, targetID string,
+) (listings []activity.Listing, readAt time.Time, err error) {
+	rows, err := s.queries.ListActivityListings(ctx, targetID)
+	if err != nil {
+		return nil, time.Time{}, fmt.Errorf("reading activity listings: %w", err)
+	}
+	listings = make([]activity.Listing, 0, len(rows))
+	for _, row := range rows {
+		listings = append(listings, activity.Listing{
+			ID:         row.WorkoutID,
+			Starts:     time.Unix(row.StartedAtUnix, 0).UTC(),
+			TypeID:     int(row.WorkoutTypeID),
+			LocationID: int(row.WorkoutTypeLocationID),
+		})
+		readAt = time.Unix(row.ReadAtUnix, 0).UTC()
+	}
+
+	return listings, readAt, nil
+}
+
+// ReplaceActivityListings makes the kept listings exactly those a fresh reading
+// of the account found. It is one transaction because a poll that read a
+// partial listing would treat the account as smaller than it is, and read it
+// again on every poll after.
+func (s *Store) ReplaceActivityListings(
+	ctx context.Context, targetID string, listings []activity.Listing, now time.Time,
+) error {
+	if targetID == "" {
+		return errors.New("a target is required")
+	}
+
+	return s.withTx(ctx, "activity listings", func(queries *sqlcgen.Queries) error {
+		if err := queries.DeleteActivityListings(ctx, targetID); err != nil {
+			return fmt.Errorf("clearing activity listings: %w", err)
+		}
+		for _, listing := range listings {
+			if listing.ID <= 0 {
+				return errors.New("an activity id is required")
+			}
+			if err := queries.InsertActivityListing(ctx, sqlcgen.InsertActivityListingParams{
+				TargetSlot:            targetID,
+				WorkoutID:             listing.ID,
+				StartedAtUnix:         listing.Starts.Unix(),
+				WorkoutTypeID:         int64(listing.TypeID),
+				WorkoutTypeLocationID: int64(listing.LocationID),
+				ReadAtUnix:            now.Unix(),
+			}); err != nil {
+				return fmt.Errorf("recording an activity listing: %w", err)
+			}
+		}
+
+		return nil
+	})
+}
+
 // ActivitiesBetween is one target's recorded activities that started within
 // the half-open window [from, to), newest first, at most limit of them.
 func (s *Store) ActivitiesBetween(
