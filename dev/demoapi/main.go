@@ -240,6 +240,7 @@ func newHandler(
 		httpapi.SyncFuncs{},
 		bundleAssets(),
 		httpapi.WeatherFunc(syntheticWeather),
+		syntheticWeatherGrid{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP handler: %w", err)

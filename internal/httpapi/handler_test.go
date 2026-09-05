@@ -723,7 +723,7 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -759,7 +759,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -779,7 +779,7 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -802,7 +802,7 @@ func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -894,7 +894,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -913,7 +913,7 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -967,7 +967,7 @@ func TestHandlerNamesTheHostsAStyleReachesBeyondItsOwn(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -997,7 +997,7 @@ func TestHandlerWithholdsAStylesFurtherHostsBeforeAnIdentityExists(t *testing.T)
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1021,7 +1021,7 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1048,7 +1048,7 @@ func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1934,7 +1934,7 @@ func TestNewRejectsIncompleteOptions(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{})
+			_, err := New(test.options, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{})
 			require.Error(t, err, "New() accepted the options")
 		})
 	}
@@ -1954,7 +1954,7 @@ func newHandlerWithSessions(t *testing.T, sessions Sessions) *Handler {
 			Sessions:         sessions,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1974,7 +1974,7 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 			BrowserOriginURL: testBrowserOriginURL,
 			SurfaceIndexFunc: index,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -1994,10 +1994,30 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, weather,
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, weather, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 	handler.now = func() time.Time { return time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC) }
+
+	return handler
+}
+
+// newHandlerWithWeatherGrid builds a handler over a given weather grid relay,
+// which is how a test observes the request Object or Latest is called with,
+// or forces one to fail.
+func newHandlerWithWeatherGrid(t *testing.T, weatherGrid WeatherGrid) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
+			Settings:         settingsWith(testBasemaps()),
+			Sessions:         newFakeSessions(),
+			BrowserOriginURL: testBrowserOriginURL,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, weatherGrid,
+	)
+	require.NoError(t, err, "New()")
 
 	return handler
 }
@@ -2020,7 +2040,7 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 	handler.now = func() time.Time { return now }
@@ -2042,7 +2062,7 @@ func newHandlerWithTargets(t *testing.T, state State, _ ...string) *Handler {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -2061,7 +2081,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, state, &fakeSync{accepted: true, activity: activity}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true, activity: activity}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -2082,7 +2102,7 @@ func newHandlerWithRideModelValidation(t *testing.T, state State, validation *Ri
 			BrowserOriginURL:        testBrowserOriginURL,
 			RideModelValidationFunc: func() *RideModelValidation { return validation },
 		},
-		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -2103,7 +2123,7 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		oauthService, state, syncRuns, &fakeAssets{}, &fakeWeather{},
+		oauthService, state, syncRuns, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -2246,6 +2266,47 @@ func (f *fakeWeather) Forecast(
 	}
 
 	return series, nil
+}
+
+// fakeWeatherGrid stands in for openmeteogrid.Client. Its defaults answer a
+// minimal 200 with an empty body, which is enough for a test that only cares
+// whether a call reached it and with what arguments; LatestFunc and
+// ObjectFunc let a test control the response or force an error.
+type fakeWeatherGrid struct {
+	LatestFunc func(ctx context.Context) (*http.Response, error)
+	ObjectFunc func(ctx context.Context, referenceTime, validTime time.Time, method, rangeHeader string) (*http.Response, error)
+}
+
+func (f *fakeWeatherGrid) Latest(ctx context.Context) (*http.Response, error) {
+	if f.LatestFunc != nil {
+		return f.LatestFunc(ctx)
+	}
+
+	return fakeWeatherGridResponse(http.StatusOK, nil), nil
+}
+
+func (f *fakeWeatherGrid) Object(
+	ctx context.Context, referenceTime, validTime time.Time, method, rangeHeader string,
+) (*http.Response, error) {
+	if f.ObjectFunc != nil {
+		return f.ObjectFunc(ctx, referenceTime, validTime, method, rangeHeader)
+	}
+
+	return fakeWeatherGridResponse(http.StatusOK, nil), nil
+}
+
+// fakeWeatherGridResponse builds a *http.Response the way http.Client.Do
+// would hand one back, for a fake that has no real connection to read one
+// from.
+func fakeWeatherGridResponse(status int, body []byte) *http.Response {
+	recorder := httptest.NewRecorder()
+	recorder.WriteHeader(status)
+	if body != nil {
+		//nolint:errcheck,gosec // httptest.ResponseRecorder.Write never fails.
+		recorder.Write(body)
+	}
+
+	return recorder.Result()
 }
 
 // recordedRun is one run of the fake's history, which it holds newest first.

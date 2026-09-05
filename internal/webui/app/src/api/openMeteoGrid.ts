@@ -1,10 +1,12 @@
 /**
- * Slices of Open-Meteo's spatial files for one hour, read straight from S3
- * with range requests. Nothing here goes through the service, so two things
- * the service's Content-Security-Policy does not yet grant are needed before
- * this works outside `ui-dev`: the bucket named in `connect-src`, and
- * `'wasm-unsafe-eval'` in `script-src` for the reader's own WebAssembly
- * module (`@openmeteo/file-reader`'s dependency on `@openmeteo/file-format-wasm`).
+ * Slices of Open-Meteo's spatial files for one hour, relayed by the service
+ * itself rather than read straight from the provider's bucket: the browser
+ * only ever reaches this service's own origin for this data, so the
+ * Content-Security-Policy needs no new `connect-src` entry for it. The one
+ * grant this still needs is `'wasm-unsafe-eval'` in `script-src`, for the
+ * reader's own WebAssembly module (`@openmeteo/file-reader`'s dependency on
+ * `@openmeteo/file-format-wasm`) — decoding still happens in the browser,
+ * only the bytes' origin moved.
  */
 
 import {
@@ -14,9 +16,8 @@ import {
   OmHttpBackendPool,
 } from "@openmeteo/file-reader";
 import type { Bbox, GridGeometry, ScalarGrid, WindGrid } from "../lib/windGrid";
+import { getGetWeatherGridObjectUrl, getWeatherGridLatest } from "./generated";
 
-const BUCKET = "https://openmeteo.s3.amazonaws.com/data_spatial";
-const MODEL = "dwd_icon_d2";
 // From the layer package's domain table; the .om file carries no georeference.
 const GRID = { lonMin: -3.94, latMin: 43.18, dx: 0.02, dy: 0.02, nx: 1215, ny: 746 } as const;
 /** Slices are cut on the file's 32-cell chunks, so a small pan re-reads nothing. */
@@ -50,15 +51,10 @@ let latestCache: { fetchedAt: number; value: Promise<Latest> } | null = null;
 function fetchLatest(): Promise<Latest> {
   const now = Date.now();
   if (!latestCache || now - latestCache.fetchedAt >= LATEST_TTL_MS) {
-    const value = fetch(`${BUCKET}/${MODEL}/latest.json`).then((response) => {
-      // fetch only rejects on a network failure; an HTTP error still resolves
-      // and would otherwise surface later as a confusing JSON parse error.
-      if (!response.ok) {
-        throw new Error(`${MODEL}/latest.json: HTTP ${response.status}`);
-      }
-
-      return response.json() as Promise<Latest>;
-    });
+    // Cast rather than typed at the generated call: the operation's success
+    // response carries no schema (it is a relay, not this service's own
+    // shape), so Orval types it as the union of its error responses alone.
+    const value = getWeatherGridLatest() as unknown as Promise<Latest>;
     // Evicted on failure so the next read retries instead of replaying the
     // same rejection for the rest of the minute.
     value.catch(() => {
@@ -70,21 +66,15 @@ function fetchLatest(): Promise<Latest> {
   return latestCache.value;
 }
 
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-/** `2026-09-05T15:00Z` → the object key that hour is stored under. */
+/** The relay's own URL for one run's hour, built the same way every other generated operation's is. */
 export function omUrl(referenceTime: Date, validTime: string): string {
-  const stamp = validTime.replace(/:(\d\d)Z$/, "$1");
-  const dir = [
-    referenceTime.getUTCFullYear(),
-    pad(referenceTime.getUTCMonth() + 1),
-    pad(referenceTime.getUTCDate()),
-    `${pad(referenceTime.getUTCHours())}00Z`,
-  ].join("/");
-
-  return `${BUCKET}/${MODEL}/${dir}/${stamp}.om`;
+  return getGetWeatherGridObjectUrl({
+    // Normalised to a full timestamp with seconds: Open-Meteo's own
+    // valid_times omit them ("2026-09-05T15:00Z"), which Go's RFC3339
+    // parser refuses outright rather than defaulting to :00.
+    referenceTime: referenceTime.toISOString(),
+    validTime: new Date(validTime).toISOString(),
+  });
 }
 
 /** Whichever of the model's published hours falls closest to `at`. */
@@ -122,7 +112,7 @@ async function readSlice(
 ): Promise<Float32Array> {
   const variable = await root.getChildByName(name);
   if (!variable) {
-    throw new Error(`${name} missing from ${MODEL}`);
+    throw new Error(`${name} missing from the model`);
   }
   try {
     return await variable.read({
@@ -150,7 +140,7 @@ async function readSlices(
   const latest = await fetchLatest();
   const [firstValidTime, ...restValidTimes] = latest.valid_times;
   if (!firstValidTime) {
-    throw new Error(`${MODEL}'s latest.json has no valid times`);
+    throw new Error("the model's latest.json has no valid times");
   }
   const url = omUrl(
     new Date(latest.reference_time),

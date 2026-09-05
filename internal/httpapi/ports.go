@@ -308,3 +308,18 @@ type WeatherFunc func(ctx context.Context, latitudes, longitudes []float64, from
 func (f WeatherFunc) Forecast(ctx context.Context, latitudes, longitudes []float64, from, to time.Time) ([]WeatherSeries, error) {
 	return f(ctx, latitudes, longitudes, from, to)
 }
+
+// WeatherGrid relays Open-Meteo's spatial data files to whoever asks, so the
+// browser's own reader never reaches a third party directly. It is satisfied
+// by internal/openmeteogrid's concrete client, which returns *http.Response —
+// a stdlib type, so this package needs no adapter-specific type to declare it
+// and no Func wrapper to adapt one, the way Weather needs WeatherFunc. The
+// caller closes the returned response's body.
+type WeatherGrid interface {
+	// Latest returns the model's own capture manifest.
+	Latest(ctx context.Context) (*http.Response, error)
+	// Object returns one .om file's bytes, or answers a HEAD, for the run
+	// named by referenceTime and the hour named by validTime. rangeHeader is
+	// forwarded verbatim when non-empty. method must be GET or HEAD.
+	Object(ctx context.Context, referenceTime, validTime time.Time, method, rangeHeader string) (*http.Response, error)
+}

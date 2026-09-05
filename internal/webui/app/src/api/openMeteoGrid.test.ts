@@ -2,16 +2,15 @@ import { describe, expect, it } from "vitest";
 import { gridWindow, nearestValidTime, omUrl } from "./openMeteoGrid";
 
 describe("omUrl", () => {
-  it("names the run's hour directory and drops the colon and Z from the stamp", () => {
+  it("asks the service's own relay, not the provider, with full-precision timestamps", () => {
     expect(omUrl(new Date("2026-09-05T12:00:00Z"), "2026-09-05T15:00Z")).toBe(
-      "https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon_d2/2026/09/05/1200Z/2026-09-05T1500.om",
+      "/v1/weather-grid/object?referenceTime=2026-09-05T12%3A00%3A00.000Z&validTime=2026-09-05T15%3A00%3A00.000Z",
     );
   });
 
-  it("pads a single-digit month, day and hour", () => {
-    expect(omUrl(new Date("2026-01-02T03:00:00Z"), "2026-01-02T03:00Z")).toBe(
-      "https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon_d2/2026/01/02/0300Z/2026-01-02T0300.om",
-    );
+  it("normalises a valid time that omits seconds, which Go's RFC3339 parser refuses outright", () => {
+    const url = omUrl(new Date("2026-01-02T03:00:00Z"), "2026-01-02T03:00Z");
+    expect(url).toContain("validTime=2026-01-02T03%3A00%3A00.000Z");
   });
 });
 

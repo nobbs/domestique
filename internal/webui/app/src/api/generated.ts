@@ -635,6 +635,11 @@ export type GetWeatherParams = {
   point: string[];
 };
 
+export type GetWeatherGridObjectParams = {
+  referenceTime: string;
+  validTime: string;
+};
+
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKey: K } => {
@@ -4647,6 +4652,354 @@ export function useGetWeather<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetWeatherQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getWeatherGridLatestResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getWeatherGridLatestResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getWeatherGridLatestResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+export type getWeatherGridLatestResponseError = (
+  | getWeatherGridLatestResponse401
+  | getWeatherGridLatestResponse403
+  | getWeatherGridLatestResponse502
+) & {
+  headers: Headers;
+};
+
+export type getWeatherGridLatestResponse = getWeatherGridLatestResponseError;
+
+export const getGetWeatherGridLatestUrl = () => {
+  return `/v1/weather-grid/latest`;
+};
+
+/**
+ * Relays the model's own capture manifest — its reference time and the valid times it currently publishes — from Open-Meteo's spatial data files, so the browser's reader never reaches a third party directly.
+ */
+export const getWeatherGridLatest = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getWeatherGridLatestResponse> => {
+  return domestiqueRequest<getWeatherGridLatestResponse>(getGetWeatherGridLatestUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetWeatherGridLatestQueryKey = () => {
+  return [`/v1/weather-grid/latest`] as const;
+};
+
+export const getGetWeatherGridLatestQueryOptions = <
+  TData = Awaited<ReturnType<typeof getWeatherGridLatest>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridLatest>>, TError, TData>>;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetWeatherGridLatestQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getWeatherGridLatest>>> = ({ signal }) =>
+    getWeatherGridLatest({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getWeatherGridLatest>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetWeatherGridLatestQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getWeatherGridLatest>>
+>;
+export type GetWeatherGridLatestQueryError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse
+>;
+
+export function useGetWeatherGridLatest<
+  TData = Awaited<ReturnType<typeof getWeatherGridLatest>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse>,
+>(
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridLatest>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWeatherGridLatest>>,
+          TError,
+          Awaited<ReturnType<typeof getWeatherGridLatest>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetWeatherGridLatest<
+  TData = Awaited<ReturnType<typeof getWeatherGridLatest>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridLatest>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWeatherGridLatest>>,
+          TError,
+          Awaited<ReturnType<typeof getWeatherGridLatest>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetWeatherGridLatest<
+  TData = Awaited<ReturnType<typeof getWeatherGridLatest>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridLatest>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetWeatherGridLatest<
+  TData = Awaited<ReturnType<typeof getWeatherGridLatest>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridLatest>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetWeatherGridLatestQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getWeatherGridObjectResponse200 = {
+  data: Blob;
+  status: 200;
+};
+
+export type getWeatherGridObjectResponse206 = {
+  data: Blob;
+  status: 206;
+};
+
+export type getWeatherGridObjectResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getWeatherGridObjectResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getWeatherGridObjectResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getWeatherGridObjectResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type getWeatherGridObjectResponseSuccess = (
+  | getWeatherGridObjectResponse200
+  | getWeatherGridObjectResponse206
+) & {
+  headers: Headers;
+};
+export type getWeatherGridObjectResponseError = (
+  | getWeatherGridObjectResponse400
+  | getWeatherGridObjectResponse401
+  | getWeatherGridObjectResponse403
+  | getWeatherGridObjectResponse502
+) & {
+  headers: Headers;
+};
+
+export const getGetWeatherGridObjectUrl = (params: GetWeatherGridObjectParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/weather-grid/object?${stringifiedParams}`
+    : `/v1/weather-grid/object`;
+};
+
+/**
+ * Relays one .om file's bytes for the run named by referenceTime and the hour named by validTime, or answers a HEAD. The browser's own reader decides which byte ranges it needs and asks for them with its own Range header, which this operation forwards unchanged.
+ */
+export const getWeatherGridObject = async (
+  params: GetWeatherGridObjectParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getWeatherGridObjectResponseSuccess> => {
+  return domestiqueRequest<getWeatherGridObjectResponseSuccess>(
+    getGetWeatherGridObjectUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetWeatherGridObjectQueryKey = (params?: GetWeatherGridObjectParams) => {
+  return [`/v1/weather-grid/object`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetWeatherGridObjectQueryOptions = <
+  TData = Awaited<ReturnType<typeof getWeatherGridObject>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse
+  >,
+>(
+  params: GetWeatherGridObjectParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetWeatherGridObjectQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getWeatherGridObject>>> = ({ signal }) =>
+    getWeatherGridObject(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getWeatherGridObject>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetWeatherGridObjectQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getWeatherGridObject>>
+>;
+export type GetWeatherGridObjectQueryError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse
+>;
+
+export function useGetWeatherGridObject<
+  TData = Awaited<ReturnType<typeof getWeatherGridObject>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse
+  >,
+>(
+  params: GetWeatherGridObjectParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWeatherGridObject>>,
+          TError,
+          Awaited<ReturnType<typeof getWeatherGridObject>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetWeatherGridObject<
+  TData = Awaited<ReturnType<typeof getWeatherGridObject>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse
+  >,
+>(
+  params: GetWeatherGridObjectParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getWeatherGridObject>>,
+          TError,
+          Awaited<ReturnType<typeof getWeatherGridObject>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetWeatherGridObject<
+  TData = Awaited<ReturnType<typeof getWeatherGridObject>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse
+  >,
+>(
+  params: GetWeatherGridObjectParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetWeatherGridObject<
+  TData = Awaited<ReturnType<typeof getWeatherGridObject>>,
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | ProviderUnavailableResponse
+  >,
+>(
+  params: GetWeatherGridObjectParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetWeatherGridObjectQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

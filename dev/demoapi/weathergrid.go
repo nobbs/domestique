@@ -1,0 +1,34 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"time"
+)
+
+// syntheticWeatherGrid stands in for internal/openmeteogrid.Client. Every
+// provider below this handler is unroutable on purpose, and unlike
+// syntheticWeather the map overlay's own .om binary format is not
+// something worth reproducing in Go for a demo: it answers unavailable
+// rather than fabricate bytes the browser's real reader would reject anyway.
+//
+// ponytail: the weather-grid overlay has nothing to show in demo mode.
+// Upgrade path, if this is ever worth demonstrating offline: bundle one
+// small captured .om fixture and serve its bytes verbatim.
+type syntheticWeatherGrid struct{}
+
+func (syntheticWeatherGrid) Latest(context.Context) (*http.Response, error) {
+	return unavailableWeatherGridResponse(), nil
+}
+
+func (syntheticWeatherGrid) Object(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
+	return unavailableWeatherGridResponse(), nil
+}
+
+func unavailableWeatherGridResponse() *http.Response {
+	recorder := httptest.NewRecorder()
+	recorder.WriteHeader(http.StatusServiceUnavailable)
+
+	return recorder.Result()
+}
