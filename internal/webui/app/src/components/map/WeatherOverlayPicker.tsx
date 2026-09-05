@@ -18,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
+import { useHourTick } from "../../lib/clock";
 import type { Measure, MeasureKey } from "../../lib/measures";
 
 /** The forecast horizon ICON-D2 publishes past its reference run. */
@@ -61,6 +62,11 @@ export function WeatherOverlayPicker({
   onExpandedChange,
 }: WeatherOverlayPickerProps) {
   const anyOn = selected.size > 0;
+  // Nothing else re-renders this component on the hour: `hourLabel` below
+  // reads straight off the clock, so a picker left open across an hour
+  // boundary would otherwise show a label a step behind the data the
+  // overlays it names have already moved on to.
+  useHourTick(anyOn);
 
   return (
     <Popover open={expanded} onOpenChange={onExpandedChange}>

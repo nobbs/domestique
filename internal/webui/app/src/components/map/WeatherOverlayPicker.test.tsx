@@ -1,6 +1,6 @@
 import { IconTemperature, IconWind } from "@tabler/icons-react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeatherOverlayPicker } from "./WeatherOverlayPicker";
 
 const MEASURES = [
@@ -109,5 +109,60 @@ describe("WeatherOverlayPicker", () => {
       />,
     );
     expect(screen.getByRole("slider")).toBeEnabled();
+  });
+
+  describe("the hour label over time", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-05T12:59:00Z"));
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("re-reads the clock on its own once an hour passes with a measure on", () => {
+      const spy = vi.spyOn(Date.prototype, "toLocaleTimeString");
+      render(
+        <WeatherOverlayPicker
+          measures={MEASURES}
+          selected={new Set(["wind"])}
+          onToggle={vi.fn()}
+          hoursAhead={0}
+          onHoursAheadChange={vi.fn()}
+          expanded={true}
+          onExpandedChange={vi.fn()}
+        />,
+      );
+      const callsBefore = spy.mock.calls.length;
+
+      act(() => {
+        vi.advanceTimersByTime(70 * 60_000);
+      });
+
+      expect(spy.mock.calls.length).toBeGreaterThan(callsBefore);
+      spy.mockRestore();
+    });
+
+    it("does not keep ticking while nothing is on", () => {
+      const spy = vi.spyOn(Date.prototype, "toLocaleTimeString");
+      render(
+        <WeatherOverlayPicker
+          measures={MEASURES}
+          selected={new Set()}
+          onToggle={vi.fn()}
+          hoursAhead={0}
+          onHoursAheadChange={vi.fn()}
+          expanded={true}
+          onExpandedChange={vi.fn()}
+        />,
+      );
+      const callsBefore = spy.mock.calls.length;
+
+      vi.advanceTimersByTime(70 * 60_000);
+
+      expect(spy.mock.calls.length).toBe(callsBefore);
+      spy.mockRestore();
+    });
   });
 });
