@@ -171,9 +171,10 @@ export function ForecastStrip({
             const icon = cellWidth >= MIN_ICON_WIDTH;
             const wind = cellWidth >= MIN_WIND_WIDTH;
             const clock = formatClock(cell.sample.arrivalAt);
+            const kilometres = cell.sample.distanceMetres / 1000;
             const place =
               cellWidth >= MIN_PLACE_WIDTH
-                ? `${(cell.sample.distanceMetres / 1000).toFixed(1)} km · ${clock}`
+                ? `${kilometres.toFixed(kilometres < 100 ? 1 : 0)} km · ${clock}`
                 : cellWidth >= MIN_CLOCK_WIDTH
                   ? clock
                   : null;
