@@ -457,7 +457,7 @@ export function RouteDock({
       <div
         role="group"
         aria-label="Route detail, folded"
-        className="flex h-9 w-full items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)] ring-1 ring-black/5"
+        className="flex h-9 w-fit items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)] ring-1 ring-black/5"
       >
         <button
           type="button"
@@ -484,7 +484,7 @@ export function RouteDock({
           Forecast
         </button>
         {back === undefined ? null : (
-          <span className="ml-auto text-[10px] text-[var(--ink-2)]">back {clockAt(back)}</span>
+          <span className="px-1 text-[10px] text-[var(--ink-2)]">back {clockAt(back)}</span>
         )}
       </div>
     );
