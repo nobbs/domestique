@@ -126,10 +126,11 @@ describe("a route with no forecast to wash it in", () => {
 });
 
 describe("the key beside the choice", () => {
-  it("renders nothing while the wash is off", () => {
+  it("holds an empty row while the wash is off, so the strip above keeps its height", () => {
     const { container } = render(<ConditionsKey measure={null} samples={SAMPLES} />);
 
-    expect(container).toBeEmptyDOMElement();
+    expect(container).not.toBeEmptyDOMElement();
+    expect(container.textContent?.trim()).toBe("");
   });
 
   it("renders nothing without samples, even with a measure chosen", () => {

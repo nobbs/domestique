@@ -36,14 +36,14 @@ import type { Position } from "../../api/types";
 import { forecastResolution } from "../../lib/forecastResolution";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { forecastLeadHours } from "../../lib/forecastSamples";
-import { formatWindSpeed } from "../../lib/format";
+import { formatClock, formatKilometres, formatWindSpeed } from "../../lib/format";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import { compassPoint } from "../../lib/routeCues";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { temperatureColour, weatherIcon } from "../../lib/weather";
 import { buildCells, windWeight } from "./forecastCells";
 
-const TILE_HEIGHT = 62;
+const TILE_HEIGHT = 76;
 
 /**
  * Corners on the strip, not on the tiles.
@@ -64,6 +64,9 @@ const STRIP_RADIUS = "0.375rem";
  * that is decorated but says nothing.
  */
 const MIN_WIND_WIDTH = 34;
+/** Room for "12.3 km · 14:20"; narrower tiles keep the clock alone. */
+const MIN_PLACE_WIDTH = 84;
+const MIN_CLOCK_WIDTH = 34;
 const MIN_ICON_WIDTH = 26;
 const MIN_FIGURE_WIDTH = 18;
 
@@ -167,6 +170,12 @@ export function ForecastStrip({
             const figures = cellWidth >= MIN_FIGURE_WIDTH;
             const icon = cellWidth >= MIN_ICON_WIDTH;
             const wind = cellWidth >= MIN_WIND_WIDTH;
+            const place =
+              cellWidth >= MIN_PLACE_WIDTH
+                ? `${formatKilometres(cell.sample.distanceMetres)} · ${formatClock(cell.sample.arrivalAt)}`
+                : cellWidth >= MIN_CLOCK_WIDTH
+                  ? formatClock(cell.sample.arrivalAt)
+                  : null;
             const wet = (cell.point.precipitationProbabilityPercent / 100) * 0.5;
 
             return (
@@ -180,6 +189,11 @@ export function ForecastStrip({
                   backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
                 }}
               >
+                {place === null ? null : (
+                  <span className="text-[10px] text-[var(--ink-2)] tabular-nums whitespace-nowrap">
+                    {place}
+                  </span>
+                )}
                 <span className="text-[var(--ink-2)]">
                   {icon ? <Condition size={15} stroke={1.7} /> : null}
                 </span>

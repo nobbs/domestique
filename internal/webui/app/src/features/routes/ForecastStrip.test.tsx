@@ -20,6 +20,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { weatherQuery } from "../../api/queries";
 import type { Position, WeatherForecast } from "../../api/types";
 import { forecastSamples } from "../../lib/forecastSamples";
+import { formatClock } from "../../lib/format";
+import { PADDING } from "../../lib/plotAxis";
 import { cumulativeMetres } from "../../lib/profile";
 import { ForecastStrip } from "./ForecastStrip";
 
@@ -132,17 +134,65 @@ describe("ForecastStrip", () => {
     );
   });
 
+  it("says where and when each reading is reached", () => {
+    const restore = widen(1200);
+    try {
+      const coordinates = road();
+      const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+      const { container } = renderStrip({
+        coordinates,
+        samples,
+        seed: forecastFor(samples.length),
+      });
+      const first = samples[0];
+
+      expect(first).toBeDefined();
+      expect(container).toHaveTextContent(`0.0 km · ${formatClock(first?.arrivalAt ?? START_AT)}`);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps only the clock on a tile too narrow for the distance, and neither when narrower", () => {
+    // A long enough ride for the axis's own minimum width to still leave
+    // every tile narrow.
+    const coordinates = road(160);
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    const second = samples[1];
+    expect(second).toBeDefined();
+    const clock = formatClock(second?.arrivalAt ?? START_AT);
+    expect(samples.length).toBeGreaterThanOrEqual(10);
+
+    let restore = widen(50 * samples.length + PADDING.left + PADDING.right);
+    try {
+      const { container } = renderStrip({ coordinates, samples, seed });
+      expect(container).toHaveTextContent(clock);
+      expect(container).not.toHaveTextContent("km ·");
+    } finally {
+      restore();
+    }
+
+    restore = widen(20 * samples.length + PADDING.left + PADDING.right);
+    try {
+      const { container } = renderStrip({ coordinates, samples, seed });
+      expect(container).not.toHaveTextContent(clock);
+    } finally {
+      restore();
+    }
+  });
+
   it("grows the tile row to its flex parent's height instead of a fixed one, when asked", () => {
     const coordinates = road();
     const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
     const seed = forecastFor(samples.length);
     const fixed = renderStrip({ coordinates, samples, seed });
     const fixedBox = fixed.container.querySelector(".border") as HTMLElement;
-    expect(fixedBox.style.height).toBe("62px");
+    expect(fixedBox.style.height).toBe("76px");
     // The tiles themselves, not just the box around them — a fixed height left
     // on a tile after this box grows would strand it at the box's own top.
     for (const tile of fixed.container.querySelectorAll<HTMLElement>(".absolute.top-0")) {
-      expect(tile.style.height).toBe("62px");
+      expect(tile.style.height).toBe("76px");
       expect(tile.style.bottom).toBe("");
     }
     fixed.unmount();
