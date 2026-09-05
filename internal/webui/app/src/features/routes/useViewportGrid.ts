@@ -59,7 +59,13 @@ export function useViewportGrid<T>(
   const bboxRef = useRef<Bbox | null>(null);
 
   useEffect(() => {
-    if (!map || typeof map.on !== "function") {
+    // Every overlay calls this hook whether or not a reader has switched it
+    // on, so an unconditional subscription here would be four or five sets
+    // of map listeners doing work on every pan for overlays drawing nothing.
+    if (!on || !map || typeof map.on !== "function") {
+      bboxRef.current = null;
+      setBbox(null);
+
       return;
     }
     // Live on every frame of the pan: a frame loop reading `bboxRef` respawns
@@ -82,7 +88,7 @@ export function useViewportGrid<T>(
       map.off("move", track);
       map.off("moveend", settle);
     };
-  }, [map]);
+  }, [on, map]);
 
   // Floored, not rounded: rounding would flip to the next hour at :30, jumping
   // the fetched data — and the picker's own label — half an hour early.
