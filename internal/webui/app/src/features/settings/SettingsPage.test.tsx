@@ -51,7 +51,7 @@ function renderPage(statusValue: Status, configValue: WebUIConfig = config()) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <SettingsPage themeChoice="system" onThemeChoiceChange={() => {}} />
+        <SettingsPage />
       </MemoryRouter>
     </QueryClientProvider>,
   );
