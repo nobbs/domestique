@@ -37,7 +37,8 @@ import {
 const CHOICE =
   "flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
 
-const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
+/** The mark each measure goes by, wherever it is offered. */
+export const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
   wind: IconWind,
   temperature: IconTemperature,
   rain: IconCloudRain,

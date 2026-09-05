@@ -134,14 +134,29 @@ export async function fetchWindGrid(bbox: Bbox, at: Date): Promise<WindGrid | nu
   return u && v ? { ...geometry, u, v } : null;
 }
 
-/** 2 m air temperature in °C. */
-export async function fetchTemperatureGrid(bbox: Bbox, at: Date): Promise<ScalarGrid | null> {
-  const slices = await readSlices(bbox, at, ["temperature_2m"]);
-  if (!slices) {
-    return null;
-  }
-  const { values, ...geometry } = slices;
-  const [cells] = values;
+/**
+ * A reader for one scalar variable, memoised so a hook keyed on it sees the
+ * same function each render. Units are the model's: °C, mm in the hour, %.
+ */
+const readers = new Map<string, (bbox: Bbox, at: Date) => Promise<ScalarGrid | null>>();
 
-  return cells ? { ...geometry, values: cells } : null;
+export function scalarGridReader(
+  variable: string,
+): (bbox: Bbox, at: Date) => Promise<ScalarGrid | null> {
+  let reader = readers.get(variable);
+  if (!reader) {
+    reader = async (bbox, at) => {
+      const slices = await readSlices(bbox, at, [variable]);
+      if (!slices) {
+        return null;
+      }
+      const { values, ...geometry } = slices;
+      const [cells] = values;
+
+      return cells ? { ...geometry, values: cells } : null;
+    };
+    readers.set(variable, reader);
+  }
+
+  return reader;
 }
