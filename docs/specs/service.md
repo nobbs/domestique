@@ -818,8 +818,19 @@ the skip. A rate limit, a transport failure, a rejected refresh or any failure
 the service does not recognise still stops the poll and skips nothing. A poll
 that skipped something reports so, distinctly from one that did not.
 
-No FIT record stream is fetched yet: the file each summary names is left where
-it is, and the per-sample table stays empty.
+Each stored activity's FIT file is then fetched from Wahoo's CDN — outside the
+API request budget and without credentials — and decoded into per-sample rows:
+position, altitude, distance, cadence, heart rate, power and temperature, with
+a sensor the ride did not carry left absent rather than recorded as zero. One
+poll fills in at most twenty-five activities, oldest first, because decoding
+and storing thousands of samples per ride is the cost that bounds this rather
+than the request budget. A file that does not decode, and one the CDN says is
+gone or forbidden, is recorded as unreadable and never downloaded again; a file
+whose checksum failed but which still reads is stored, with that fact kept
+beside it. Any other download failure — a rate limit or an outage among them —
+stops the records phase, marks nothing, and is retried by the next poll, so one
+outage never condemns a day's rides. Nothing is deleted: a file downloaded
+again replaces that activity's samples.
 
 ## Sync lifecycle and safety
 

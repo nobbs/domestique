@@ -17,6 +17,11 @@ const authorizedState = "authorized"
 // allows 250 requests a day across every target and every task sharing it.
 const MaxNewPerPoll = 25
 
+// MaxRecordsPerPoll bounds how many activities one poll fills records for.
+// CDN downloads sit outside the API quota; decoding and inserting a ride's
+// samples is what this bounds.
+const MaxRecordsPerPoll = 25
+
 // Listing is one recorded activity as the rider's account lists it.
 type Listing struct {
 	Starts     time.Time
@@ -59,6 +64,17 @@ func retryDue(skip Skip, now time.Time) bool {
 	return !now.Before(skip.LastAttempt.Add(wait))
 }
 
+// ErrNoActivityFile reports a stored summary that names no readable file. It is
+// the activity's own fault, not the provider's, so a poll marks it unreadable.
+var ErrNoActivityFile = errors.New("activity: the summary names no file")
+
+// PendingActivity is one stored activity whose FIT records are still absent,
+// carrying the provider's summary document so its file can be found again.
+type PendingActivity struct {
+	Summary Summary
+	ID      int64
+}
+
 // Stored is one recorded activity as the read model serves it: the listing and
 // the summary totals, without the provider's own summary document.
 type Stored struct {
@@ -77,6 +93,7 @@ type Source interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)
 	ListActivities(ctx context.Context, accessToken string) ([]Listing, error)
 	ActivitySummary(ctx context.Context, accessToken string, id int64) (Summary, error)
+	DownloadActivityFIT(ctx context.Context, summary Summary) ([]byte, error)
 	IsUnauthorized(err error) bool
 	// IsUnreadable reports a summary rejection that belongs to that one
 	// activity rather than to the connection, the quota or the grant.
@@ -96,6 +113,15 @@ type Store interface {
 	// RecordActivitySkip counts one more failed read of an activity. observed is
 	// the source's protocol-level error text, never a ride's name or a credential.
 	RecordActivitySkip(ctx context.Context, targetID string, id int64, observed string, now time.Time) error
+	recordStore
+}
+
+// recordStore is the records phase's half of the store, kept apart so neither
+// half grows past what one reader can hold.
+type recordStore interface {
+	ActivitiesAwaitingRecords(ctx context.Context, targetID string, limit int) ([]PendingActivity, error)
+	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit FIT) error
+	MarkActivityUnreadable(ctx context.Context, targetID string, id int64) error
 }
 
 // Outcome is what one poll came to. Its zero value is Failed, so a result
@@ -138,6 +164,11 @@ type Result struct {
 	// Skipped counts the activities this poll could not read and set aside to
 	// try again later.
 	Skipped int
+	// RecordsStored counts the activities whose FIT samples this poll wrote.
+	RecordsStored int
+	// RecordsUnreadable counts the activities this poll marked as having no
+	// readable FIT file; a mark is a change, so such a poll is not unchanged.
+	RecordsUnreadable int
 }
 
 // Poller reads one target's recorded activities into the store. It adds and
@@ -189,13 +220,8 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
-	pending := unstored(listings, append(known, deferred(skips, p.now())...))
-	if len(pending) == 0 {
-		return Result{Outcome: Unchanged}
-	}
-
 	var stored, skipped int
-	for _, listing := range pending {
+	for _, listing := range unstored(listings, append(known, deferred(skips, p.now())...)) {
 		summary, summaryErr := p.source.ActivitySummary(ctx, accessToken, listing.ID)
 		if summaryErr != nil && p.source.IsUnreadable(summaryErr) {
 			if skipErr := p.store.RecordActivitySkip(ctx, targetID, listing.ID, summaryErr.Error(), p.now()); skipErr != nil {
@@ -213,9 +239,22 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 		}
 		stored++
 	}
-	slog.Info("activities polled", "target", targetID, "stored", stored, "skipped", skipped)
 
-	return Result{Outcome: Polled, Stored: stored, Skipped: skipped}
+	records, unreadable, failure := p.fillRecords(ctx, targetID)
+	result := Result{Stored: stored, Skipped: skipped, RecordsStored: records, RecordsUnreadable: unreadable}
+	if failure != FailureNone {
+		result.Outcome, result.Failure = Failed, failure
+
+		return result
+	}
+	if stored == 0 && skipped == 0 && records == 0 && unreadable == 0 {
+		return Result{Outcome: Unchanged}
+	}
+	slog.Info("activities polled", "target", targetID,
+		"stored", stored, "skipped", skipped, "records", records, "unreadable", unreadable)
+	result.Outcome = Polled
+
+	return result
 }
 
 // deferred is the skipped activities whose retry is not yet due.
@@ -228,6 +267,43 @@ func deferred(skips []Skip, now time.Time) []int64 {
 	}
 
 	return ids
+}
+
+// fillRecords downloads and decodes the FIT file of each stored activity whose
+// samples are still absent, oldest first and at most MaxRecordsPerPoll of them.
+// It reports how many it stored and how many it marked unreadable.
+func (p *Poller) fillRecords(ctx context.Context, targetID string) (stored, unreadable int, failure Failure) {
+	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, MaxRecordsPerPoll)
+	if err != nil {
+		return 0, 0, FailureState
+	}
+
+	for _, pendingActivity := range pending {
+		raw, downloadErr := p.source.DownloadActivityFIT(ctx, pendingActivity.Summary)
+		if downloadErr != nil && !errors.Is(downloadErr, ErrNoActivityFile) {
+			// A download that failed for anything but this file's own sake stops
+			// the phase; the next poll retries it, and nothing is marked here.
+			return stored, unreadable, p.classify(ctx, targetID, downloadErr)
+		}
+		decoded, decodeErr := FIT{}, downloadErr
+		if decodeErr == nil {
+			decoded, decodeErr = DecodeFIT(raw)
+		}
+		if decodeErr != nil {
+			if markErr := p.store.MarkActivityUnreadable(ctx, targetID, pendingActivity.ID); markErr != nil {
+				return stored, unreadable, FailureState
+			}
+			unreadable++
+
+			continue
+		}
+		if storeErr := p.store.StoreActivityRecords(ctx, targetID, pendingActivity.ID, decoded); storeErr != nil {
+			return stored, unreadable, FailureState
+		}
+		stored++
+	}
+
+	return stored, unreadable, FailureNone
 }
 
 // accessToken refreshes the target's credentials, replacing the stored refresh

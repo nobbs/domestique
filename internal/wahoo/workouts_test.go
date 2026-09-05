@@ -326,10 +326,24 @@ func TestClientRejectsWorkoutFITDownloadsItCannotTrust(t *testing.T) {
 	cases := map[string]struct {
 		respond func(*http.Request) (*http.Response, error)
 		want    string
+		refused bool
 	}{
 		"transport failure": {
 			respond: func(*http.Request) (*http.Response, error) { return nil, errors.New("dial failed") },
 			want:    "request failed: dial failed",
+		},
+		"refused by the CDN": {
+			respond: func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusNotFound, Header: make(http.Header), Body: http.NoBody}, nil
+			},
+			want:    "was refused: HTTP 404",
+			refused: true,
+		},
+		"rate limited by the CDN": {
+			respond: func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusTooManyRequests, Header: make(http.Header), Body: http.NoBody}, nil
+			},
+			want: "returned HTTP 429",
 		},
 		"redirect": {
 			respond: func(*http.Request) (*http.Response, error) {
@@ -359,6 +373,11 @@ func TestClientRejectsWorkoutFITDownloadsItCannotTrust(t *testing.T) {
 
 			_, err := client.DownloadWorkoutFIT(t.Context(), "https://cdn.wahooligan.com/workouts/42.fit")
 			require.ErrorContains(t, err, tc.want)
+			if tc.refused {
+				assert.ErrorIs(t, err, ErrWorkoutFileRefused)
+			} else {
+				assert.NotErrorIs(t, err, ErrWorkoutFileRefused)
+			}
 		})
 	}
 }

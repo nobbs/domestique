@@ -9,6 +9,20 @@ import (
 	"context"
 )
 
+const deleteActivityRecords = `-- name: DeleteActivityRecords :exec
+DELETE FROM activity_records WHERE target_slot = ? AND workout_id = ?
+`
+
+type DeleteActivityRecordsParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) DeleteActivityRecords(ctx context.Context, arg DeleteActivityRecordsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteActivityRecords, arg.TargetSlot, arg.WorkoutID)
+	return err
+}
+
 const deleteActivitySkip = `-- name: DeleteActivitySkip :exec
 DELETE FROM activity_skips WHERE target_slot = ? AND workout_id = ?
 `
@@ -21,6 +35,47 @@ type DeleteActivitySkipParams struct {
 func (q *Queries) DeleteActivitySkip(ctx context.Context, arg DeleteActivitySkipParams) error {
 	_, err := q.db.ExecContext(ctx, deleteActivitySkip, arg.TargetSlot, arg.WorkoutID)
 	return err
+}
+
+const listActivitiesAwaitingRecords = `-- name: ListActivitiesAwaitingRecords :many
+SELECT workout_id, raw_summary_json
+FROM activities
+WHERE target_slot = ?1 AND records_state = 'pending'
+ORDER BY started_at_unix, workout_id
+LIMIT ?2
+`
+
+type ListActivitiesAwaitingRecordsParams struct {
+	TargetSlot string
+	RowLimit   int64
+}
+
+type ListActivitiesAwaitingRecordsRow struct {
+	WorkoutID      int64
+	RawSummaryJson []byte
+}
+
+func (q *Queries) ListActivitiesAwaitingRecords(ctx context.Context, arg ListActivitiesAwaitingRecordsParams) ([]ListActivitiesAwaitingRecordsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingRecords, arg.TargetSlot, arg.RowLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivitiesAwaitingRecordsRow{}
+	for rows.Next() {
+		var i ListActivitiesAwaitingRecordsRow
+		if err := rows.Scan(&i.WorkoutID, &i.RawSummaryJson); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listActivitiesBetween = `-- name: ListActivitiesBetween :many
@@ -145,6 +200,36 @@ func (q *Queries) ListActivitySkips(ctx context.Context, targetSlot string) ([]L
 		return nil, err
 	}
 	return items, nil
+}
+
+const markActivityRecordsStored = `-- name: MarkActivityRecordsStored :exec
+UPDATE activities SET records_state = 'stored', fit_checksum_failed = ?1
+WHERE target_slot = ?2 AND workout_id = ?3
+`
+
+type MarkActivityRecordsStoredParams struct {
+	FitChecksumFailed int64
+	TargetSlot        string
+	WorkoutID         int64
+}
+
+func (q *Queries) MarkActivityRecordsStored(ctx context.Context, arg MarkActivityRecordsStoredParams) error {
+	_, err := q.db.ExecContext(ctx, markActivityRecordsStored, arg.FitChecksumFailed, arg.TargetSlot, arg.WorkoutID)
+	return err
+}
+
+const markActivityRecordsUnreadable = `-- name: MarkActivityRecordsUnreadable :exec
+UPDATE activities SET records_state = 'unreadable' WHERE target_slot = ? AND workout_id = ?
+`
+
+type MarkActivityRecordsUnreadableParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) MarkActivityRecordsUnreadable(ctx context.Context, arg MarkActivityRecordsUnreadableParams) error {
+	_, err := q.db.ExecContext(ctx, markActivityRecordsUnreadable, arg.TargetSlot, arg.WorkoutID)
+	return err
 }
 
 const upsertActivity = `-- name: UpsertActivity :exec

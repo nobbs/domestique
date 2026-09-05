@@ -164,3 +164,45 @@ func TestMigration032DownDropsActivitySkipsOnly(t *testing.T) {
 
 	require.NoError(t, migration.Migrate(32), "must be able to re-migrate up after rolling back")
 }
+
+// 033's down drops two columns from a table activity_records references, which
+// is why it drops columns rather than rebuilding; exercised with such a record
+// present so a regression is the foreign key failure a rebuild would hit.
+func TestMigration033DownDropsRecordStateColumnsOnly(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "records-state-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(33))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix, records_state)
+		VALUES ('rider-a', 1, 15, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000, 'stored')`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO activity_records (target_slot, workout_id, record_index, recorded_at_unix, power_watts)
+		 VALUES ('rider-a', 1, 0, 1700000001, 240)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(32), "must roll back cleanly despite the referencing record row")
+
+	var records int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM activity_records`).Scan(&records))
+	require.Equal(t, 1, records, "the sample row must survive the rollback")
+
+	var columns int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM pragma_table_info('activities') WHERE name IN ('records_state', 'fit_checksum_failed')`).Scan(&columns))
+	require.Zero(t, columns, "both columns must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(33), "must be able to re-migrate up after rolling back")
+}

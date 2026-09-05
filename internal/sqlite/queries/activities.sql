@@ -38,3 +38,20 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
 
 -- name: DeleteActivitySkip :exec
 DELETE FROM activity_skips WHERE target_slot = ? AND workout_id = ?;
+
+-- name: ListActivitiesAwaitingRecords :many
+SELECT workout_id, raw_summary_json
+FROM activities
+WHERE target_slot = sqlc.arg(target_slot) AND records_state = 'pending'
+ORDER BY started_at_unix, workout_id
+LIMIT sqlc.arg(row_limit);
+
+-- name: DeleteActivityRecords :exec
+DELETE FROM activity_records WHERE target_slot = ? AND workout_id = ?;
+
+-- name: MarkActivityRecordsStored :exec
+UPDATE activities SET records_state = 'stored', fit_checksum_failed = sqlc.arg(fit_checksum_failed)
+WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id);
+
+-- name: MarkActivityRecordsUnreadable :exec
+UPDATE activities SET records_state = 'unreadable' WHERE target_slot = ? AND workout_id = ?;
