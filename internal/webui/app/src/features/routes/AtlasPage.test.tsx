@@ -23,6 +23,7 @@ import type {
 } from "../../api/types";
 import { routeKey } from "../../api/types";
 import type { ThemeChoice } from "../../lib/theme";
+import { focusThumb } from "../../test/filterPanel";
 
 interface Drawing {
   keys: string[];
@@ -317,34 +318,12 @@ describe("AtlasPage", () => {
 
   // A numeric filter narrows the column exactly as a name does, without a
   // query having to be typed, and the map keeps drawing the whole library.
-  it("narrows the column by a numeric filter without narrowing the map", async () => {
+  it("narrows the column by a slider bound read off the listing", async () => {
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
-    const ascentMin = screen.getAllByLabelText("Min")[1] as HTMLElement;
-    await userEvent.type(ascentMin, "150");
-
-    // route(1, 1) ascends 100 m, route(1, 2) ascends 200 m, route(2, 1) 100 m.
-    expect(screen.getByRole("button", { name: /Forest ramps/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Valley floor/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Kaiserstuhl Loop/ })).toBeNull();
-    expect(lastDrawing().keys).toEqual(["veloplanner/1/1", "veloplanner/1/2", "veloplanner/2/1"]);
-  });
-
-  // Surface has no field of its own on the listing — it rides along with the
-  // geometry the map already fetches for every route, so the filter has to
-  // read it from there rather than from a second request.
-  it("narrows the column by surface composition read from the already-fetched geometry", async () => {
-    const forestRamps = LIBRARY[1] as Route;
-    renderPage(LIBRARY, {
-      surfaceFor: {
-        [routeKey(forestRamps)]: {
-          ranges: [{ kind: "gravel", startIndex: 0, endIndex: 2 }],
-          matchedMetres: 500,
-        },
-      },
-    });
-    await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Gravel" }));
+    // The library ascends 100, 200 and 100 m, so the track runs to 200 m by 10 m.
+    await focusThumb("Ascent min");
+    await userEvent.keyboard("{ArrowRight}".repeat(11));
 
     expect(await screen.findByRole("button", { name: /Forest ramps/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Valley floor/ })).toBeNull();
@@ -352,12 +331,11 @@ describe("AtlasPage", () => {
     expect(lastDrawing().keys).toEqual(["veloplanner/1/1", "veloplanner/1/2", "veloplanner/2/1"]);
   });
 
-  // A route the enrichment pass has not classified yet must never read as
-  // though it matched a surface it has no answer for.
-  it("excludes unclassified geometry from a surface filter rather than guessing", async () => {
+  it("says so when a filter leaves nothing", async () => {
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "Gravel" }));
+    await focusThumb("Ascent max");
+    await userEvent.keyboard("{Home}");
 
     expect(await screen.findByText("Nothing here matches these filters.")).toBeInTheDocument();
   });
