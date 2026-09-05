@@ -34,6 +34,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/**
+ * A clock held still, so a comparison against `nextHalfHour()` cannot land on
+ * either side of a half-hour boundary depending on when the test ran.
+ */
+function freezeClock(): void {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-24T12:05:00"));
+}
+
 describe("isWithinForecastWindow", () => {
   const now = new Date("2026-08-24T12:00:00Z");
 
@@ -101,8 +110,7 @@ describe("nextHalfHour", () => {
 
 describe("useStartTime", () => {
   it("opens on the next half hour before the reader picks anything", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-24T12:05:00"));
+    freezeClock();
     stubStorage();
     const { result } = renderHook(() => useStartTime());
 
@@ -147,6 +155,7 @@ describe("useStartTime", () => {
   // out of the window the endpoint will accept — it would only ever be sent
   // as a request the endpoint is certain to refuse with a 400.
   it("replaces a stale stored value with the next half hour", () => {
+    freezeClock();
     const entries = stubStorage();
     entries.set("domestique.start-time", "2020-01-01T00:00:00Z");
 
@@ -156,6 +165,7 @@ describe("useStartTime", () => {
   });
 
   it("replaces a far-future stored value with the next half hour", () => {
+    freezeClock();
     const entries = stubStorage();
     entries.set("domestique.start-time", "2099-01-01T00:00:00Z");
 
@@ -165,6 +175,7 @@ describe("useStartTime", () => {
   });
 
   it("replaces an unparseable stored value with the next half hour", () => {
+    freezeClock();
     const entries = stubStorage();
     entries.set("domestique.start-time", "not-a-time");
 
@@ -190,6 +201,7 @@ describe("useStartTime", () => {
    * long as the page is open; only its outliving the page is lost.
    */
   it("keeps working where the browser refuses storage", () => {
+    freezeClock();
     vi.stubGlobal("localStorage", {
       getItem: () => {
         throw new Error("denied");
