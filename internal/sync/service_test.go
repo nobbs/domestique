@@ -1210,6 +1210,7 @@ type fakeTarget struct {
 	routes             map[string]map[string]int64
 	rejectRefreshToken map[string]bool
 	listErr            error
+	refreshErr         error
 	failUpdateAccess   string
 	failDeleteAccess   string
 	deletedAccess      []string
@@ -1236,6 +1237,10 @@ func newFakeTarget() *fakeTarget {
 func (t *fakeTarget) RefreshAccessToken(_ context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error) {
 	t.refreshTokens = append(t.refreshTokens, refreshToken)
 	if t.rejectRefreshToken[refreshToken] {
+		if t.refreshErr != nil {
+			return "", "", t.refreshErr
+		}
+
 		return "", "", fmt.Errorf("wahoo: token request rejected with HTTP 400: %w", errUnauthorized)
 	}
 
@@ -1661,6 +1666,43 @@ func TestServiceLogsWhyATargetWasMarkedForReauthorization(t *testing.T) {
 	assert.Contains(t, line, "target=a")
 	assert.Contains(t, line, "HTTP 400")
 	assert.NotContains(t, line, "secret-refresh-token")
+}
+
+// namedError is a destination error that names its own refusal, the way the
+// Wahoo adapter's does.
+type namedError struct{ category string }
+
+func (e *namedError) Error() string    { return "wahoo: token request rejected with HTTP 400" }
+func (e *namedError) Unwrap() error    { return errUnauthorized }
+func (e *namedError) Category() string { return e.category }
+
+// An exhausted token quota is not cleared by reauthorizing — the operator has to
+// revoke elsewhere first — so the mark alone would send them in a circle.
+func TestServiceLogsTheDestinationsRefusalCategory(t *testing.T) {
+	for name, test := range map[string]struct {
+		refusal  error
+		category string
+	}{
+		"named refusal":   {refusal: &namedError{category: "token_quota_exhausted"}, category: "token_quota_exhausted"},
+		"unnamed refusal": {refusal: nil, category: "unrecognised"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logged := captureLogs(t)
+			desired := testStage(t, 1, 1, "current", "current-hash")
+			state := newFakeState("a", "b")
+			state.refreshTokens["a"] = "secret-refresh-token"
+			target := newFakeTarget()
+			target.rejectRefreshToken["secret-refresh-token"] = true
+			target.refreshErr = test.refusal
+			service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
+
+			runBoth(t.Context(), service)
+
+			require.Equal(t, "needs_reauthorization", state.authorizations["a"])
+			assert.Contains(t, logged.String(), "wahoo="+test.category, "logged category")
+			assert.NotContains(t, logged.String(), "secret-refresh-token")
+		})
+	}
 }
 
 func TestServiceDoesNotLogAnAuthorizationLossForAnUpstreamFailure(t *testing.T) {

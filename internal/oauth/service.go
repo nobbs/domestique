@@ -110,9 +110,10 @@ func (s *Service) Complete(ctx context.Context, callerLogin, state, code string)
 
 	accessToken, refreshToken, err := s.wahoo.ExchangeAuthorizationCode(ctx, code)
 	if err != nil || accessToken == "" || refreshToken == "" {
-		// The step alone: an x/oauth2 retrieval error carries the token
-		// endpoint's raw response body.
-		slog.Warn("wahoo authorization refused", "reason", "code_exchange_failed")
+		// The step, plus the adapter's own name for the refusal. Never the error
+		// itself: an x/oauth2 retrieval error carries the token endpoint's raw
+		// response body.
+		slog.Warn("wahoo authorization refused", "reason", "code_exchange_failed", "wahoo", refusalCategory(err))
 
 		return ErrAuthorizationFailed
 	}
@@ -129,6 +130,18 @@ func (s *Service) Complete(ctx context.Context, callerLogin, state, code string)
 	}
 
 	return nil
+}
+
+// refusalCategory reads the destination's own name for a refusal through an
+// interface rather than an import, so this package still depends on no adapter.
+// A failure that carries no name stays unnamed.
+func refusalCategory(err error) string {
+	var named interface{ Category() string }
+	if errors.As(err, &named) {
+		return named.Category()
+	}
+
+	return "unrecognised"
 }
 
 func newState() (state string, digest []byte, err error) {

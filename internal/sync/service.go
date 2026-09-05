@@ -558,6 +558,18 @@ func (s *Service) reconcileTarget(
 	return result, FailureNone
 }
 
+// refusalCategory reads the destination's own name for a refusal through an
+// interface rather than an import, so this package still depends on no adapter.
+// A failure that carries no name stays unnamed.
+func refusalCategory(err error) string {
+	var named interface{ Category() string }
+	if errors.As(err, &named) {
+		return named.Category()
+	}
+
+	return "unrecognised"
+}
+
 func (s *Service) handleTargetError(ctx context.Context, targetID string, err error) FailureCategory {
 	if !s.target.IsUnauthorized(err) {
 		// The wahoo package's errors are protocol-level — a status, a rate-limit
@@ -568,7 +580,11 @@ func (s *Service) handleTargetError(ctx context.Context, targetID string, err er
 	}
 	// Logged before the mark, and worded as the rejection rather than the mark,
 	// so a state store that then refuses the write still leaves the cause on record.
-	slog.Error("wahoo rejected the target authorization", "target", targetID, "error", err)
+	// The destination's own category comes with it: a rejection an operator has to
+	// act on elsewhere — an exhausted token quota — reads the same as any other
+	// without it.
+	slog.Error("wahoo rejected the target authorization",
+		"target", targetID, "error", err, "wahoo", refusalCategory(err))
 	if markErr := s.state.MarkNeedsReauthorization(ctx, targetID); markErr != nil {
 		return FailureState
 	}

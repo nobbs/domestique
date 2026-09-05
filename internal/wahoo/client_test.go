@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/oauth2"
 
 	"github.com/nobbs/domestique/internal/route"
 )
@@ -517,6 +518,201 @@ func TestClientDoesNotMisclassifyAnUnreachableTokenEndpoint(t *testing.T) {
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrUnauthorized)
 	require.NotErrorIs(t, err, ErrRateLimited)
+}
+
+// Wahoo caps unrevoked access tokens per application and user and has no
+// per-token revoke, so a token minted per run would eventually lock the account
+// out of authorizing. One request, then reuse.
+func TestClientReusesAHeldAccessToken(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		writer.Header().Set("Content-Type", "application/json")
+		writeJSON(t, writer, map[string]any{
+			"access_token": "access-1", "refresh_token": "refresh-token", "expires_in": 3600, "token_type": "bearer"})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	for range 3 {
+		access, rotated, err := client.RefreshAccessToken(t.Context(), "refresh-token")
+		require.NoError(t, err)
+		assert.Equal(t, "access-1", access, "access token")
+		assert.Equal(t, "refresh-token", rotated, "refresh token")
+	}
+	assert.Equal(t, 1, requests, "Wahoo was asked for a token more than once")
+}
+
+// A held token is retired before Wahoo stops honouring it, so a caller is never
+// handed one that expires part-way through its run.
+func TestClientRetiresAHeldTokenBeforeItExpires(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		writer.Header().Set("Content-Type", "application/json")
+		writeJSON(t, writer, map[string]any{
+			"access_token": "access", "refresh_token": "refresh-token", "expires_in": 300, "token_type": "bearer"})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Now()
+	client.now = func() time.Time { return now }
+
+	_, _, err := client.RefreshAccessToken(t.Context(), "refresh-token")
+	require.NoError(t, err)
+	// A 300s token with a 120s margin is spent to this client from 180s on; 200s
+	// is past that without depending on when the reply was actually stamped.
+	now = now.Add(200 * time.Second)
+
+	_, _, err = client.RefreshAccessToken(t.Context(), "refresh-token")
+	require.NoError(t, err)
+	assert.Equal(t, 2, requests, "a token inside its expiry margin was reused")
+}
+
+// The rotated token is the only handle that still reaches the account, so the
+// spent one must not keep an entry alive.
+func TestClientHoldsARotatedTokenUnderItsNewKey(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		writer.Header().Set("Content-Type", "application/json")
+		writeJSON(t, writer, map[string]any{
+			"access_token": "access", "refresh_token": "rotated", "expires_in": 3600, "token_type": "bearer"})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, rotated, err := client.RefreshAccessToken(t.Context(), "refresh-token")
+	require.NoError(t, err)
+	require.Equal(t, "rotated", rotated)
+
+	_, _, err = client.RefreshAccessToken(t.Context(), rotated)
+	require.NoError(t, err)
+	assert.Equal(t, 1, requests, "the rotated token was not held")
+	assert.Len(t, client.held, 1, "the spent refresh token still holds an entry")
+}
+
+// Without an expiry this client cannot know when a token stops working, so it
+// holds nothing rather than holding it forever.
+func TestClientHoldsNoTokenWithoutAnExpiry(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		writer.Header().Set("Content-Type", "application/json")
+		writeJSON(t, writer, map[string]any{
+			"access_token": "access", "refresh_token": "refresh-token", "token_type": "bearer"})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	for range 2 {
+		_, _, err := client.RefreshAccessToken(t.Context(), "refresh-token")
+		require.NoError(t, err)
+	}
+	assert.Equal(t, 2, requests, "a token with no stated expiry was held anyway")
+	assert.Empty(t, client.held, "a token with no stated expiry was held")
+}
+
+// x/oauth2 can raise a retrieval error carrying no response at all. Reporting
+// that as HTTP 0 would read as a status Wahoo sent.
+func TestClientReportsATokenRefusalCarryingNoResponse(t *testing.T) {
+	err := classifyRetrieveError(&oauth2.RetrieveError{Body: []byte(`{"error":"invalid_grant"}`)})
+
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "HTTP 0", "an absent response was reported as a status")
+	assert.Contains(t, err.Error(), "without an HTTP response")
+	var named interface{ Category() string }
+	require.ErrorAs(t, err, &named)
+	assert.Equal(t, "invalid_grant", named.Category(), "the reply still names the refusal")
+}
+
+// A status this package does not classify still reaches a log through sync, and
+// x/oauth2's own error quotes the reply. Only the status crosses this boundary.
+func TestClientDoesNotQuoteAnUnclassifiedTokenRefusal(t *testing.T) {
+	const reply = "upstream said something quotable"
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusInternalServerError)
+		writeJSON(t, writer, map[string]string{"error": reply})
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).RefreshAccessToken(t.Context(), "refresh-token")
+	require.Error(t, err)
+	require.NotErrorIs(t, err, ErrUnauthorized, "a 500 is not a withdrawn grant")
+	require.NotErrorIs(t, err, ErrRateLimited)
+	assert.Contains(t, err.Error(), "HTTP 500", "the status a reader needs")
+	assert.NotContains(t, err.Error(), reply, "the token endpoint's reply reached the error")
+}
+
+// A refresh that fails must not leave the spent token held. Nothing would reuse
+// it, and nothing else would ever remove it — a withdrawn grant would keep a
+// dead entry for as long as the process runs.
+func TestClientDropsAHeldTokenItCanNoLongerUse(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			writeJSON(t, writer, map[string]any{
+				"access_token": "access", "refresh_token": "refresh-token", "expires_in": 300, "token_type": "bearer"})
+
+			return
+		}
+		writer.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	now := time.Now()
+	client.now = func() time.Time { return now }
+
+	_, _, err := client.RefreshAccessToken(t.Context(), "refresh-token")
+	require.NoError(t, err)
+	require.Len(t, client.held, 1, "the first token was not held")
+
+	now = now.Add(200 * time.Second)
+	_, _, err = client.RefreshAccessToken(t.Context(), "refresh-token")
+	require.ErrorIs(t, err, ErrUnauthorized)
+	assert.Empty(t, client.held, "a token that can no longer be used is still held")
+}
+
+// Wahoo does not keep to the OAuth error codes: the refusal that matters most
+// here arrives as an English sentence, and anything unrecognised is not quoted
+// onward into a log.
+func TestTokenErrorCategory(t *testing.T) {
+	for name, test := range map[string]struct{ body, category string }{
+		"exhausted quota": {
+			body: `{"error":"Too many unrevoked access tokens exist for this app and user. ` +
+				`You can only create a new token if you revoke an old one first."}`,
+			category: "token_quota_exhausted",
+		},
+		"rejected grant":  {body: `{"error":"invalid_grant"}`, category: "invalid_grant"},
+		"rejected client": {body: `{"error":"invalid_client"}`, category: "invalid_client"},
+		"unknown wording": {body: `{"error":"something new"}`, category: "unrecognised"},
+		"not json":        {body: `<html>gateway</html>`, category: "unrecognised"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, test.category, tokenErrorCategory([]byte(test.body)))
+		})
+	}
+}
+
+// The category rides along with the sentinel rather than replacing it: sync
+// still reads ErrUnauthorized to know a target needs reauthorizing.
+func TestClientNamesAnExhaustedTokenQuota(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusBadRequest)
+		writeJSON(t, writer, map[string]string{"error": "Too many unrevoked access tokens exist for this app and user."})
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).RefreshAccessToken(t.Context(), "refresh-token")
+	require.ErrorIs(t, err, ErrUnauthorized)
+	var named interface{ Category() string }
+	require.ErrorAs(t, err, &named)
+	assert.Equal(t, "token_quota_exhausted", named.Category())
+	assert.NotContains(t, err.Error(), "unrevoked", "the upstream wording reached the error")
 }
 
 func newTestClient(t *testing.T, server *httptest.Server) *Client {

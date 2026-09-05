@@ -791,6 +791,22 @@ request can use stale credentials. The Wahoo application is rate-limited across
 all configured targets: API calls are serial, obey advertised limits, and resume only
 when safe to do so.
 
+An access token is held in memory for as long as Wahoo says it lasts and reused
+across runs and polls; a new one is requested only once the held one is spent or
+none is held. This is a correctness requirement rather than an optimisation.
+Wahoo caps how many unrevoked access tokens may exist for one application and
+one user, and offers no way to revoke a single token — only a deauthorization
+that revokes every token the application holds. A token minted per run and per
+poll therefore fills that cap, at which point Wahoo issues no further token for
+that account and the target can neither refresh nor be reauthorized until the
+rider revokes the application's access. A reply that states no expiry is not
+held, because nothing can then know when it stopped working.
+
+Where the token endpoint refuses, the refusal is logged as a category in this
+service's own vocabulary — never the reply. Wahoo does not keep to the OAuth
+error codes, and an exhausted token quota is the one refusal an operator cannot
+act on from here, so it is named rather than left among the rest.
+
 Domestique deletes only Wahoo routes it owns through its `external_id`. A
 route deletion removes the corresponding owned Wahoo route from every
 target. It never deletes manually created Wahoo routes.

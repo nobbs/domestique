@@ -137,6 +137,41 @@ func TestServiceNamesACallbackMissingItsCode(t *testing.T) {
 	assert.False(t, store.used, "an empty code still spent the one-time state")
 }
 
+// namedError is a destination error that names its own refusal, the way the
+// Wahoo adapter's does.
+type namedError struct{ category string }
+
+func (e *namedError) Error() string    { return "refused" }
+func (e *namedError) Category() string { return e.category }
+
+// The step says where it failed; the category says what the destination called
+// it. Without the second, an exhausted token quota — which no retry can clear —
+// reads exactly like a rejected credential.
+func TestServiceLogsTheDestinationsOwnRefusal(t *testing.T) {
+	for name, test := range map[string]struct {
+		exchangeErr error
+		category    string
+	}{
+		"named refusal":   {exchangeErr: &namedError{category: "token_quota_exhausted"}, category: "token_quota_exhausted"},
+		"unnamed refusal": {exchangeErr: errors.New("refused"), category: "unrecognised"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logged := captureLogs(t)
+			service, err := New(&fakeStateStore{}, &fakeWahoo{exchangeErr: test.exchangeErr})
+			require.NoError(t, err)
+
+			url, err := service.Start(t.Context(), "rider@example.ts.net", "rider-a")
+			require.NoError(t, err)
+			state := strings.TrimPrefix(url, "https://wahoo.example.test/authorize?state=")
+
+			require.ErrorIs(t,
+				service.Complete(t.Context(), "rider@example.ts.net", state, "code"), ErrAuthorizationFailed)
+			assert.Contains(t, logged.String(), "reason=code_exchange_failed", "logged step")
+			assert.Contains(t, logged.String(), "wahoo="+test.category, "logged category")
+		})
+	}
+}
+
 // captureLogs redirects the default logger for one test. Package-level state, so
 // these tests must not run in parallel.
 func captureLogs(t *testing.T) *bytes.Buffer {
