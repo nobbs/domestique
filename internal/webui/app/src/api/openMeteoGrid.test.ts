@@ -4,6 +4,7 @@ const latestResponse = vi.hoisted(() => ({
   value: Promise.resolve({
     data: { reference_time: "2026-09-05T12:00:00Z", valid_times: ["2026-09-05T12:00Z"] },
     status: 200,
+    headers: new Headers(),
   }) as Promise<unknown>,
 }));
 const getWeatherGridLatest = vi.hoisted(() => vi.fn(() => latestResponse.value));
@@ -103,6 +104,7 @@ describe("fetchWindGrid", () => {
     const manifest = (referenceTime: string) => ({
       data: { reference_time: referenceTime, valid_times: [`${referenceTime.slice(0, 16)}Z`] },
       status: 200,
+      headers: new Headers(),
     });
     let rejectStale: (reason: unknown) => void = () => {};
     getWeatherGridLatest.mockReturnValueOnce(

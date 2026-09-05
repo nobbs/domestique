@@ -74,14 +74,23 @@ describe("domestiqueBinaryRequest", () => {
 
 describe("unwrap", () => {
   it("reads the body out of domestiqueRequest's own envelope", () => {
-    expect(unwrap({ data: { reference_time: "2026-09-05T12:00:00Z" } })).toEqual({
-      reference_time: "2026-09-05T12:00:00Z",
-    });
+    expect(
+      unwrap({
+        data: { reference_time: "2026-09-05T12:00:00Z" },
+        status: 200,
+        headers: new Headers(),
+      }),
+    ).toEqual({ reference_time: "2026-09-05T12:00:00Z" });
   });
 
   it("passes a value straight through when it is not an envelope", () => {
     expect(unwrap({ reference_time: "2026-09-05T12:00:00Z" })).toEqual({
       reference_time: "2026-09-05T12:00:00Z",
     });
+  });
+
+  it("does not unwrap a legitimate payload that merely has its own data field", () => {
+    const payload = { data: [1, 2, 3] };
+    expect(unwrap<typeof payload>(payload)).toBe(payload);
   });
 });
