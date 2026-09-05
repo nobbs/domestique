@@ -157,9 +157,8 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 	}()
 
 	c.observeRateLimit(response)
-	if response.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("wahoo: api request rejected with HTTP %d: %w", response.StatusCode, ErrUnauthorized)
-	}
+	// A rejected data request says nothing about the refresh token, which the
+	// token endpoint alone judges (classifyTokenError); a 401 here is upstream.
 	if response.StatusCode == http.StatusTooManyRequests {
 		return ErrRateLimited
 	}

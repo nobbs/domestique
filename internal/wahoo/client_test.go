@@ -310,6 +310,20 @@ func TestClientRefusesAListingWithoutAnAccessToken(t *testing.T) {
 	require.ErrorContains(t, err, "access token")
 }
 
+// Only the token endpoint judges the refresh token. A 401 on a data read may be
+// throttling, a scope gap or an upstream fault, none of which spend the grant.
+func TestClientDoesNotClassifyARejectedReadAsUnauthorized(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListOwnedRoutes(t.Context(), "access-token")
+	require.ErrorContains(t, err, "HTTP 401")
+	require.NotErrorIs(t, err, ErrUnauthorized)
+	require.NotErrorIs(t, err, ErrRateLimited)
+}
+
 func TestClientReportsAFailedListing(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusInternalServerError)
@@ -394,18 +408,6 @@ func TestClientTransportFailureKeepsItsCauseWithoutTheRequestURL(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "connect", "the underlying transport cause was discarded")
 	assert.NotContains(t, err.Error(), unreachable, "the error carries the request URL")
-}
-
-func TestClientClassifiesARejectedAPIRequest(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.WriteHeader(http.StatusUnauthorized)
-	}))
-	defer server.Close()
-
-	_, err := newTestClient(t, server).ListOwnedRoutes(t.Context(), "access-token")
-	require.ErrorIs(t, err, ErrUnauthorized)
-	require.ErrorContains(t, err, "HTTP 401")
-	assert.NotContains(t, err.Error(), "access-token")
 }
 
 func TestClientClassifiesRejectedRefreshToken(t *testing.T) {

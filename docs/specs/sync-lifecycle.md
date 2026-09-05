@@ -247,6 +247,11 @@ Wahoo access and refresh tokens are handled per target:
 3. It performs the required API request with the in-memory access token.
 4. A rejected refresh token sets only that target to
    `needs_reauthorization`; every other target is still attempted.
+5. Only the token endpoint judges the refresh token. An API request the
+   provider rejects as unauthorised is an upstream failure like any other: the
+   run fails, what it already stored is kept, and the target's authorisation
+   state and refresh token are left alone, so the next run resumes without
+   operator action.
 
 All Wahoo calls are serial across configured targets. The client observes
 advertised limits and request-response boundaries before the next target call
