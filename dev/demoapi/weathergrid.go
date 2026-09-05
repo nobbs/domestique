@@ -13,9 +13,9 @@ import (
 // something worth reproducing in Go for a demo: it answers unavailable
 // rather than fabricate bytes the browser's real reader would reject anyway.
 //
-// ponytail: the weather-grid overlay has nothing to show in demo mode.
-// Upgrade path, if this is ever worth demonstrating offline: bundle one
-// small captured .om fixture and serve its bytes verbatim.
+// The weather-grid overlay has nothing to show in demo mode as a result. If
+// that is ever worth fixing, bundle one small captured .om fixture and serve
+// its bytes verbatim instead.
 type syntheticWeatherGrid struct{}
 
 func (syntheticWeatherGrid) Latest(context.Context) (*http.Response, error) {
