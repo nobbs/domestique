@@ -248,8 +248,8 @@ func TestServiceWritesNothingWhenTheTargetListingFails(t *testing.T) {
 	assert.Equal(t, FailureDestination, result.Failure, "RunTargets() failure")
 	assert.Zero(t, result.Created, "created")
 	assert.Empty(t, target.deletedRouteIDs, "deleted route ids")
-	assert.Equal(t, authorizedState, state.authorizations["a"], "a rejected read changed the authorization state")
-	assert.Equal(t, "a-replacement", state.refreshTokens["a"], "a rejected read discarded the replacement refresh token")
+	assert.Equal(t, authorizedState, state.authorizations["a"], "a failed target listing changed the authorization state")
+	assert.Equal(t, "a-replacement", state.refreshTokens["a"], "a failed target listing discarded the replacement refresh token")
 }
 
 func TestServiceClearTargetRemovesEveryOwnedRouteAndItsMappings(t *testing.T) {
