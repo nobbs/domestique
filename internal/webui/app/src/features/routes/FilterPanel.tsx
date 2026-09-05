@@ -8,6 +8,7 @@ import type { Route } from "../../api/types";
 import { Button } from "../../components/Button";
 import { RangeSlider } from "../../components/RangeSlider";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { domainOf } from "../../lib/domain";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, hasActiveFilters } from "../../lib/filters";
 import { formatMovingTime } from "../../lib/format";
@@ -31,6 +32,12 @@ export function FilterPanel({
   onExpandedChange,
 }: FilterPanelProps) {
   const active = hasActiveFilters(filters);
+  const distances = library.map((route) => route.distanceMetres);
+  const ascents = library.map((route) => route.ascentMetres);
+  const durations = library.map((route) => route.movingSeconds ?? 0);
+  const distance = domainOf(distances, [1_000, 2_000, 5_000, 10_000]);
+  const ascent = domainOf(ascents, [10, 20, 50, 100, 200]);
+  const duration = domainOf(durations, [5 * 60, 10 * 60, 15 * 60, 30 * 60]);
 
   return (
     <Popover open={expanded} onOpenChange={onExpandedChange}>
@@ -61,32 +68,32 @@ export function FilterPanel({
           <RangeSlider
             legend="Distance"
             min={0}
-            max={300_000}
-            step={5_000}
+            max={distance.max}
+            step={distance.step}
             range={filters.distanceMetres}
             onChange={(next) => onFiltersChange({ ...filters, distanceMetres: next })}
             format={(metres) => `${metres / 1000} km`}
-            values={library.map((route) => route.distanceMetres)}
+            values={distances}
           />
           <RangeSlider
             legend="Ascent"
             min={0}
-            max={5_000}
-            step={100}
+            max={ascent.max}
+            step={ascent.step}
             range={filters.ascentMetres}
             onChange={(next) => onFiltersChange({ ...filters, ascentMetres: next })}
             format={(metres) => `${metres} m`}
-            values={library.map((route) => route.ascentMetres)}
+            values={ascents}
           />
           <RangeSlider
             legend="Duration"
             min={0}
-            max={12 * 3600}
-            step={15 * 60}
+            max={duration.max}
+            step={duration.step}
             range={filters.movingSeconds}
             onChange={(next) => onFiltersChange({ ...filters, movingSeconds: next })}
             format={(seconds) => (seconds === 0 ? "0 min" : formatMovingTime(seconds))}
-            values={library.map((route) => route.movingSeconds ?? 0)}
+            values={durations}
           />
           <Button
             variant="outline"

@@ -321,8 +321,9 @@ describe("AtlasPage", () => {
   it("narrows the column by a slider bound read off the listing", async () => {
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
+    // The library ascends 100, 200 and 100 m, so the track runs to 200 m by 10 m.
     await focusThumb("Ascent min");
-    await userEvent.keyboard("{ArrowRight}{ArrowRight}");
+    await userEvent.keyboard("{ArrowRight}".repeat(11));
 
     expect(await screen.findByRole("button", { name: /Forest ramps/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Valley floor/ })).toBeNull();
@@ -333,8 +334,8 @@ describe("AtlasPage", () => {
   it("says so when a filter leaves nothing", async () => {
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
-    await focusThumb("Ascent min");
-    await userEvent.keyboard("{End}");
+    await focusThumb("Ascent max");
+    await userEvent.keyboard("{Home}");
 
     expect(await screen.findByText("Nothing here matches these filters.")).toBeInTheDocument();
   });

@@ -23,9 +23,8 @@ export interface RangeSliderProps {
 }
 
 /**
- * Two thumbs on one track, bounded on both sides by a fixed domain rather
- * than by the library: the ends read as "no bound" so an untouched slider
- * filters nothing, and a route past the domain's edge still passes.
+ * Two thumbs on one track. The ends read as "no bound", so an untouched
+ * slider filters nothing and a route past the domain's edge still passes.
  */
 export function RangeSlider({
   legend,
@@ -100,7 +99,7 @@ export function RangeSlider({
       </div>
       <div className="flex justify-between px-2 text-[11px] text-[var(--ink-2)] tabular-nums">
         <span>{format(min)}</span>
-        <span>{format(max)}+</span>
+        <span>{format(max)}</span>
       </div>
     </div>
   );

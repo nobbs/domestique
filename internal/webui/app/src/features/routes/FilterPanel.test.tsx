@@ -1,13 +1,41 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { Route } from "../../api/types";
 import { EMPTY_FILTERS, type LibraryFilters } from "../../lib/filters";
 import { focusThumb } from "../../test/filterPanel";
 import { FilterPanel } from "./FilterPanel";
 
+function route(overrides: Partial<Route>): Route {
+  return {
+    provider: "veloplanner",
+    sourceRouteId: 1,
+    stageOrder: 1,
+    title: "Loop",
+    sourceRouteName: "Loop",
+    routeName: "",
+    sourceRevision: "1",
+    contentHash: "hash",
+    distanceMetres: 10_000,
+    ascentMetres: 100,
+    descentMetres: 100,
+    maxGradientPercent: 5,
+    movingSeconds: 3600,
+    pointCount: 10,
+    ...overrides,
+  };
+}
+
+// Sets the domains: distance 0–48 km by 1 km, ascent 0–1200 m by 20 m,
+// duration 0–4 h by 5 min.
+const LIBRARY = [
+  route({ sourceRouteId: 1 }),
+  route({ sourceRouteId: 2, distanceMetres: 47_500, ascentMetres: 1_190, movingSeconds: 4 * 3600 }),
+];
+
 function renderPanel(overrides: Partial<React.ComponentProps<typeof FilterPanel>> = {}) {
   const props: React.ComponentProps<typeof FilterPanel> = {
-    library: [],
+    library: LIBRARY,
     filters: EMPTY_FILTERS,
     onFiltersChange: () => {},
     expanded: false,
@@ -53,7 +81,7 @@ describe("FilterPanel", () => {
     }
   });
 
-  it("stores a distance minimum in metres from a kilometre step", async () => {
+  it("stores a distance minimum in metres, one library-derived step in", async () => {
     const onFiltersChange = vi.fn();
     renderPanel({ expanded: true, onFiltersChange });
 
@@ -62,7 +90,7 @@ describe("FilterPanel", () => {
 
     expect(onFiltersChange).toHaveBeenLastCalledWith({
       ...EMPTY_FILTERS,
-      distanceMetres: { min: 5000, max: null },
+      distanceMetres: { min: 1000, max: null },
     });
   });
 
@@ -75,7 +103,7 @@ describe("FilterPanel", () => {
 
     expect(onFiltersChange).toHaveBeenLastCalledWith({
       ...EMPTY_FILTERS,
-      movingSeconds: { min: null, max: 11.75 * 3600 },
+      movingSeconds: { min: null, max: 4 * 3600 - 300 },
     });
   });
 
@@ -85,7 +113,7 @@ describe("FilterPanel", () => {
     const onFiltersChange = vi.fn();
     renderPanel({
       expanded: true,
-      filters: { ...EMPTY_FILTERS, ascentMetres: { min: 100, max: null } },
+      filters: { ...EMPTY_FILTERS, ascentMetres: { min: 20, max: null } },
       onFiltersChange,
     });
 
@@ -100,14 +128,23 @@ describe("FilterPanel", () => {
       expanded: true,
       filters: {
         ...EMPTY_FILTERS,
-        distanceMetres: { min: 20_000, max: 80_000 },
+        distanceMetres: { min: 10_000, max: 40_000 },
         movingSeconds: { min: 3600, max: null },
       },
     });
 
-    expect(screen.getByText("20 km – 80 km")).toBeInTheDocument();
-    expect(screen.getByText("1 h – 12 h")).toBeInTheDocument();
+    expect(screen.getByText("10 km – 40 km")).toBeInTheDocument();
+    expect(screen.getByText("1 h – 4 h")).toBeInTheDocument();
     expect(screen.getByText("any")).toBeInTheDocument();
+  });
+
+  it("ends each track where the library does", () => {
+    renderPanel({ expanded: true });
+
+    expect(screen.getByRole("slider", { name: "Distance max" })).toHaveAttribute("max", "48000");
+    expect(screen.getByRole("slider", { name: "Ascent max" })).toHaveAttribute("max", "1200");
+    expect(screen.getByRole("slider", { name: "Duration max" })).toHaveAttribute("max", "14400");
+    expect(screen.getByText("48 km")).toBeInTheDocument();
   });
 
   it("disables clearing when nothing is set", () => {

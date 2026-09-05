@@ -315,8 +315,9 @@ describe("CataloguePage", () => {
     show();
 
     await user.click(screen.getByRole("button", { name: /Show the library filters/ }));
+    // Ascents of 900, 300 and 100 m give a track to 900 m by 20 m.
     await focusThumb("Ascent min");
-    await user.keyboard("{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}");
+    await user.keyboard("{ArrowRight}".repeat(20));
 
     expect(shownTitles()).toEqual([expect.stringContaining("Alpine loop")]);
     expect(screen.getByTestId("address")).toHaveTextContent("ascentMin=400");
