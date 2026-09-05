@@ -1,10 +1,11 @@
+import { IconTemperature, IconWind } from "@tabler/icons-react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { WeatherOverlayPicker } from "./WeatherOverlayPicker";
 
 const MEASURES = [
-  { key: "wind" as const, label: "Wind" },
-  { key: "temperature" as const, label: "Temperature" },
+  { key: "wind" as const, label: "Wind", icon: IconWind },
+  { key: "temperature" as const, label: "Temperature", icon: IconTemperature },
 ];
 
 describe("WeatherOverlayPicker", () => {

@@ -22,6 +22,9 @@
  * so the boundary lives in one place.
  */
 
+import type { IconProps } from "@tabler/icons-react";
+import { IconCloud, IconCloudRain, IconTemperature, IconWind } from "@tabler/icons-react";
+import type { ComponentType } from "react";
 import type { WeatherPoint } from "../api/types";
 import { TEMPERATURE_FLOORS, temperatureBand } from "./weather";
 import type { WindRelation } from "./wind";
@@ -258,6 +261,8 @@ function cloudWords(percent: number): string {
 export interface Measure {
   key: MeasureKey;
   label: string;
+  /** The mark this measure goes by, wherever it is offered. */
+  icon: ComponentType<IconProps>;
   kind: "scalar" | "vector";
   /** The bands this measure has, gentlest first, for a legend to list. */
   bands: readonly MeasureBand[];
@@ -294,6 +299,7 @@ export const MEASURES: readonly Measure[] = [
   {
     key: "wind",
     label: "Wind",
+    icon: IconWind,
     kind: "vector",
     bands: WIND_BANDS,
     reading: (point) => point.windSpeedKmh,
@@ -305,6 +311,7 @@ export const MEASURES: readonly Measure[] = [
   {
     key: "temperature",
     label: "Temperature",
+    icon: IconTemperature,
     kind: "scalar",
     bands: TEMPERATURE_BANDS,
     // Apparent rather than actual: a rider dresses for what the wind and the
@@ -318,6 +325,7 @@ export const MEASURES: readonly Measure[] = [
   {
     key: "rain",
     label: "Rain",
+    icon: IconCloudRain,
     kind: "scalar",
     bands: RAIN_BANDS,
     reading: (point) => point.precipitationMillimetres,
@@ -329,6 +337,7 @@ export const MEASURES: readonly Measure[] = [
   {
     key: "cloud",
     label: "Cloud",
+    icon: IconCloud,
     kind: "scalar",
     bands: CLOUD_BANDS,
     reading: (point) => point.cloudCoverPercent,
