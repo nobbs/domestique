@@ -70,14 +70,26 @@ function fetchLatest(): Promise<WeatherGridManifest> {
   return latestCache.value;
 }
 
+/**
+ * Open-Meteo's own valid_times omit seconds ("2026-09-05T15:00Z"), a form
+ * only some runtimes' Date parsers accept — normalised to ":00Z" so parsing
+ * never depends on which one this code happens to run in.
+ */
+function parseValidTime(value: string): number {
+  const normalised = value.replace(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})Z$/, "$1:00Z");
+  const parsed = Date.parse(normalised);
+  if (Number.isNaN(parsed)) {
+    throw new Error(`not a parseable valid time: ${value}`);
+  }
+
+  return parsed;
+}
+
 /** The relay's own URL for one run's hour, built the same way every other generated operation's is. */
 export function omUrl(referenceTime: Date, validTime: string): string {
   return getGetWeatherGridObjectUrl({
-    // Normalised to a full timestamp with seconds: Open-Meteo's own
-    // valid_times omit them ("2026-09-05T15:00Z"), which Go's RFC3339
-    // parser refuses outright rather than defaulting to :00.
     referenceTime: referenceTime.toISOString(),
-    validTime: new Date(validTime).toISOString(),
+    validTime: new Date(parseValidTime(validTime)).toISOString(),
   });
 }
 
@@ -87,7 +99,7 @@ export function nearestValidTime(first: string, rest: readonly string[], at: Dat
 
   return rest.reduce(
     (best, candidate) =>
-      Math.abs(Date.parse(candidate) - wanted) < Math.abs(Date.parse(best) - wanted)
+      Math.abs(parseValidTime(candidate) - wanted) < Math.abs(parseValidTime(best) - wanted)
         ? candidate
         : best,
     first,

@@ -66,6 +66,15 @@ describe("nearestValidTime", () => {
       "2026-09-05T12:00Z",
     );
   });
+
+  it("throws rather than silently treating an unparseable time as the nearest one", () => {
+    // Without normalisation this would compare NaN < NaN (always false) and
+    // quietly return the first candidate regardless of which is actually
+    // closer — a wrong answer with no sign anything went wrong.
+    expect(() => nearestValidTime("not-a-time", ["also-not-a-time"], new Date())).toThrow(
+      /not a parseable valid time/,
+    );
+  });
 });
 
 describe("gridWindow", () => {
