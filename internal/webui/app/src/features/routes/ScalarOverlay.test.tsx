@@ -151,4 +151,76 @@ describe("ScalarOverlay", () => {
     // No further `<Source>` render: the component returned null instead.
     expect(seen.sources.length).toBe(sourcesBefore);
   });
+
+  it("stops pointing at the old blob once a canvas cannot get a 2D context", async () => {
+    gridState.data = GRID;
+    const { rerender } = render(
+      <ScalarOverlay measure={TEMPERATURE} variable="temperature_2m" on={true} />,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(seen.sources.at(-1)?.url).toBe("blob:fake-0");
+
+    // The next grid's canvas fails to hand back a context, the way an
+    // exhausted WebGL/canvas context budget would in a real browser. Cleanup
+    // from the render above has already revoked "blob:fake-0" by this point.
+    HTMLCanvasElement.prototype.getContext = vi.fn(
+      () => null,
+    ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+    gridState.data = { ...GRID, values: new Float32Array([21, 21, 21, 21]) };
+    rerender(<ScalarOverlay measure={TEMPERATURE} variable="temperature_2m" on={true} />);
+    // React renders once synchronously on the new props before this effect
+    // runs, which still carries yesterday's `image` state — normal ordering,
+    // not the bug, and indistinguishable at this point from the fixed
+    // behaviour: nothing pushes a further `<Source>` yet either way.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // What actually tells the two apart: a render for any other reason,
+    // once the failed effect has run. `seen.sources` only ever grows, so a
+    // stale `image` and a cleared one look the same until something forces
+    // one more render — unfixed, `image` never changed, so this still
+    // carries the revoked "blob:fake-0" into one more `<Source>` push; fixed,
+    // `image` is null and the component renders nothing, adding no entry.
+    const sourcesBeforeExtraRender = seen.sources.length;
+    rerender(<ScalarOverlay measure={TEMPERATURE} variable="temperature_2m" on={true} />);
+
+    expect(seen.sources.length).toBe(sourcesBeforeExtraRender);
+  });
+
+  it("stops pointing at the old blob once toBlob calls back with nothing", async () => {
+    gridState.data = GRID;
+    const { rerender } = render(
+      <ScalarOverlay measure={TEMPERATURE} variable="temperature_2m" on={true} />,
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(seen.sources.at(-1)?.url).toBe("blob:fake-0");
+
+    // The next grid's encode fails, the way a canvas too large for the
+    // platform's own limits would. Cleanup from the render above has already
+    // revoked "blob:fake-0" by this point.
+    HTMLCanvasElement.prototype.toBlob = vi.fn((callback: BlobCallback) => {
+      setTimeout(() => callback(null), 0);
+    });
+    gridState.data = { ...GRID, values: new Float32Array([21, 21, 21, 21]) };
+    rerender(<ScalarOverlay measure={TEMPERATURE} variable="temperature_2m" on={true} />);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // What actually tells the two apart: a render for any other reason,
+    // once the failed effect has run. `seen.sources` only ever grows, so a
+    // stale `image` and a cleared one look the same until something forces
+    // one more render — unfixed, `image` never changed, so this still
+    // carries the revoked "blob:fake-0" into one more `<Source>` push; fixed,
+    // `image` is null and the component renders nothing, adding no entry.
+    const sourcesBeforeExtraRender = seen.sources.length;
+    rerender(<ScalarOverlay measure={TEMPERATURE} variable="temperature_2m" on={true} />);
+
+    expect(seen.sources.length).toBe(sourcesBeforeExtraRender);
+  });
 });

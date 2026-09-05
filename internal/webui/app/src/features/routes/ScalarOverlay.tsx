@@ -64,6 +64,11 @@ export function ScalarOverlay({
     canvas.height = rows;
     const context = canvas.getContext("2d");
     if (!context) {
+      // The previous grid's URL was just revoked by the effect this one
+      // replaced; leaving `image` as it was would hand the map a source
+      // already pointing at nothing.
+      setImage(null);
+
       return;
     }
     const pixels = context.createImageData(data.nx, rows);
@@ -78,7 +83,14 @@ export function ScalarOverlay({
     let cancelled = false;
     let objectUrl: string | null = null;
     canvas.toBlob((blob) => {
-      if (cancelled || !blob) {
+      if (cancelled) {
+        return;
+      }
+      if (!blob) {
+        // Same reasoning as the missing context above: the URL this effect
+        // would have replaced is already gone.
+        setImage(null);
+
         return;
       }
       objectUrl = URL.createObjectURL(blob);
