@@ -109,8 +109,9 @@ type Store interface {
 	RefreshToken(ctx context.Context, targetID string) (string, error)
 	ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error
 	MarkNeedsReauthorization(ctx context.Context, targetID string) error
-	// StoreActivity also forgets any skip and any pending listing recorded for
-	// the same activity.
+	// StoreActivity also forgets any skip recorded for the same activity. It
+	// leaves the kept listings alone: those mirror the account, not what is
+	// left to read.
 	StoreActivity(ctx context.Context, targetID string, listing Listing, summary Summary, now time.Time) error
 	ActivitySkips(ctx context.Context, targetID string) ([]Skip, error)
 	// RecordActivitySkip counts one more failed read of an activity. observed is
