@@ -162,17 +162,17 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 	if err := json.Unmarshal(body, &summary); err != nil {
 		var numErr *strconv.NumError
 		if errors.As(err, &numErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
-			return WorkoutSummary{}, fmt.Errorf("wahoo: workout summary totals were not numbers: %w", ErrWorkoutUnreadable)
+			return WorkoutSummary{}, fmt.Errorf("%w: totals were not numbers", ErrWorkoutUnreadable)
 		}
 
 		// Syntax cannot be what failed: doJSON decoded this body into a
 		// json.RawMessage, which validates the whole document first.
-		return WorkoutSummary{}, fmt.Errorf("wahoo: workout summary was not the shape expected: %w", ErrWorkoutUnreadable)
+		return WorkoutSummary{}, fmt.Errorf("%w: not the shape expected", ErrWorkoutUnreadable)
 	}
 	// A workout Wahoo holds no summary for decodes to a zero value, whether it
 	// answers with a null body or an object carrying nothing of its own.
 	if summary.ID <= 0 {
-		return WorkoutSummary{}, fmt.Errorf("wahoo: workout summary was missing: %w", ErrWorkoutUnreadable)
+		return WorkoutSummary{}, fmt.Errorf("%w: missing", ErrWorkoutUnreadable)
 	}
 	return WorkoutSummary{
 		Raw:            body,
