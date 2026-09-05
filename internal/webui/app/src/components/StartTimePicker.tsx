@@ -127,10 +127,10 @@ export function StartTimePicker({
   };
 
   /**
-   * Proposes whatever the time field holds, from either the event that reports
-   * it. WebKit fires neither `input` nor `change` while a time field's segments
-   * are being edited, so a departure typed into one and left focused reached
-   * nothing: the reader saw a day, a time, and no forecast.
+   * Proposes whatever the time field holds, from any of the events that report
+   * it. A time field is silent until both of its halves are filled — no
+   * `input`, no `change` — and WebKit stays silent past that while the field
+   * keeps focus, so the keys themselves are what a departure has to arrive on.
    */
   const proposeTime = (raw: string) => {
     // Clearing the field is not a proposal. An empty string splits to [""] and
@@ -227,8 +227,18 @@ export function StartTimePicker({
         // so an enabled field would be a control that swallows keystrokes.
         disabled={shownDay === null}
         value={value ? toTimeValue(value) : ""}
+        onKeyUp={(event) => proposeTime(event.currentTarget.value)}
         onChange={(event) => proposeTime(event.target.value)}
-        onBlur={(event) => proposeTime(event.target.value)}
+        onBlur={(event) => {
+          // Half a time reads as an empty one, so a field left holding "--:30"
+          // proposes nothing; say that rather than let the control look broken.
+          if (event.target.validity.badInput) {
+            setRefusal("That time is only half typed.");
+
+            return;
+          }
+          proposeTime(event.target.value);
+        }}
       />
     </div>
   );
