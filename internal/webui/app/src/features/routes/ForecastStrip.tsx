@@ -64,8 +64,9 @@ const STRIP_RADIUS = "0.375rem";
  * that is decorated but says nothing.
  */
 const MIN_WIND_WIDTH = 34;
-/** Room for "12 km · 14:20"; narrower tiles keep the clock alone. */
-const MIN_PLACE_WIDTH = 72;
+/** Room for "12.3 km · 14:20"; narrower tiles keep the clock alone. */
+const MIN_PLACE_WIDTH = 84;
+const MIN_CLOCK_WIDTH = 34;
 const MIN_ICON_WIDTH = 26;
 const MIN_FIGURE_WIDTH = 18;
 
@@ -172,8 +173,8 @@ export function ForecastStrip({
             const clock = formatClock(cell.sample.arrivalAt);
             const place =
               cellWidth >= MIN_PLACE_WIDTH
-                ? `${Math.floor(cell.sample.distanceMetres / 1000)} km · ${clock}`
-                : wind
+                ? `${(cell.sample.distanceMetres / 1000).toFixed(1)} km · ${clock}`
+                : cellWidth >= MIN_CLOCK_WIDTH
                   ? clock
                   : null;
             const wet = (cell.point.precipitationProbabilityPercent / 100) * 0.5;

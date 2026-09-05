@@ -147,7 +147,7 @@ describe("ForecastStrip", () => {
       const first = samples[0];
 
       expect(first).toBeDefined();
-      expect(container).toHaveTextContent(`0 km · ${formatClock(first?.arrivalAt ?? START_AT)}`);
+      expect(container).toHaveTextContent(`0.0 km · ${formatClock(first?.arrivalAt ?? START_AT)}`);
     } finally {
       restore();
     }
@@ -168,7 +168,7 @@ describe("ForecastStrip", () => {
     try {
       const { container } = renderStrip({ coordinates, samples, seed });
       expect(container).toHaveTextContent(clock);
-      expect(container).not.toHaveTextContent("0 km ·");
+      expect(container).not.toHaveTextContent("km ·");
     } finally {
       restore();
     }
