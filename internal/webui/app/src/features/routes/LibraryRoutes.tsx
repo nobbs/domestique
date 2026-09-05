@@ -12,6 +12,8 @@ const HIT_WIDTH = 18;
 
 /** The transparent layer that MapWidget asks MapLibre to pick from. */
 export const LIBRARY_HIT_LAYER = "library-hit";
+/** Every route as one line, always mounted, so an overlay can be ordered under it. */
+export const LIBRARY_LINE_LAYER = "library-line";
 
 export interface MapLine {
   key: string;
@@ -63,7 +65,7 @@ export function LibraryRoutes({
        * uploaded, so leaving a route does not re-upload the whole library.
        */}
       <Layer
-        id="library-line"
+        id={LIBRARY_LINE_LAYER}
         type="line"
         layout={{
           "line-cap": "round",

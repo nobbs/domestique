@@ -450,7 +450,7 @@ export function isSpent(particle: FieldParticle, geometry: FieldGeometry): boole
 }
 
 /** How present a particle is across its life: in, held, then out again. */
-export function lifeAlpha(particle: FieldParticle): number {
+export function lifeAlpha(particle: Pick<FieldParticle, "ageSeconds" | "lifeSeconds">): number {
   if (particle.lifeSeconds <= 0) {
     return 0;
   }
