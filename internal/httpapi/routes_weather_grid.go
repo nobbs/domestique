@@ -63,6 +63,11 @@ func (h *Handler) GetWeatherGridObject(writer http.ResponseWriter, request *http
 // underneath it does not actually reach — a malformed response a client can
 // hang or error on rather than a clean failure.
 func (h *Handler) relayWeatherGrid(writer http.ResponseWriter, request *http.Request, response *http.Response) {
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider could not be reached")
+
+		return
+	}
 	if request.Method != http.MethodHead &&
 		response.ContentLength >= 0 && response.ContentLength > maximumWeatherGridBytes {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable",

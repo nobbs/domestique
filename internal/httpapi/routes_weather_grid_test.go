@@ -183,6 +183,29 @@ func TestWeatherGridObjectAllowsAHeadWithALargeContentLength(t *testing.T) {
 	assert.Equal(t, "9999999999", response.Header().Get("Content-Length"))
 }
 
+func TestWeatherGridObjectMapsANonSuccessUpstreamStatusToACleanError(t *testing.T) {
+	weatherGrid := &fakeWeatherGrid{
+		ObjectFunc: func(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
+			recorder := httptest.NewRecorder()
+			recorder.Header().Set("Content-Type", "application/xml")
+			recorder.WriteHeader(http.StatusForbidden)
+			_, err := recorder.WriteString("<Error><Message>bucket policy details</Message></Error>")
+			require.NoError(t, err)
+
+			return recorder.Result(), nil
+		},
+	}
+	handler := newHandlerWithWeatherGrid(t, weatherGrid)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet,
+		"/v1/weather-grid/object?referenceTime=2026-09-05T12:00:00Z&validTime=2026-09-05T15:00:00Z"))
+
+	require.Equal(t, http.StatusBadGateway, response.Code)
+	assert.NotContains(t, response.Body.String(), "bucket policy details")
+	assert.NotEqual(t, "application/xml", response.Header().Get("Content-Type"))
+}
+
 func TestWeatherGridObjectReturnsBadGatewayOnProviderFailure(t *testing.T) {
 	handler := newHandlerWithWeatherGrid(t, &fakeWeatherGrid{
 		ObjectFunc: func(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
