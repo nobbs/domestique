@@ -23,7 +23,6 @@ import { type ForecastSample, forecastLeadHours } from "../../lib/forecastSample
 import { formatAscent, formatClock, formatDistance, formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import type { MeasureKey } from "../../lib/measures";
-import { useCoarsePointer } from "../../lib/mediaQuery";
 import { groundSegments, steepnessEntries } from "../../lib/mix";
 import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile } from "../../lib/profile";
@@ -229,8 +228,6 @@ function ProfileStop({
   | "highlight"
   | "onHighlightChange"
 > & { climbsOpen: boolean; onClimbsOpenChange: (open: boolean) => void }) {
-  // A touch pointer arms the zoom by holding, so the hint names that gesture.
-  const coarse = useCoarsePointer();
   const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
   const line = (() => {
     if (activeMetres !== null && profile) {
@@ -243,8 +240,7 @@ function ProfileStop({
       return "";
     }
     const range = ` · ${formatElevation(profile.minElevationMetres)}–${formatElevation(profile.maxElevationMetres)}`;
-    const hint = coarse ? "press and hold to look closer" : "drag across to look closer";
-    return `${formatDistance(distanceMetres)} · ${formatAscent(ascentMetres)} up${range} · ${hint}`;
+    return `${formatDistance(distanceMetres)} · ${formatAscent(ascentMetres)} up${range}`;
   })();
 
   return (
