@@ -325,6 +325,11 @@ func (p *wahooProvider) IsUnauthorized(err error) bool {
 	return errors.Is(err, wahoo.ErrUnauthorized)
 }
 
+// IsUnreadable reports a summary rejection that belongs to one workout alone.
+func (p *wahooProvider) IsUnreadable(err error) bool {
+	return errors.Is(err, wahoo.ErrWorkoutUnreadable)
+}
+
 // RateLimit reports the budget the current client observed. An unconfigured
 // service has spent nothing and knows nothing.
 func (p *wahooProvider) RateLimit() (remaining int, resetAt time.Time, ok bool) {

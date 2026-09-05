@@ -43,6 +43,11 @@ type WorkoutSummary struct {
 	AscentMetres   float64
 }
 
+// ErrWorkoutUnreadable reports a summary rejection that belongs to that one
+// workout — Wahoo refuses or cannot find it, or answers something that is not a
+// summary — rather than to the connection, the quota or the grant.
+var ErrWorkoutUnreadable = errors.New("wahoo: workout summary was unreadable")
+
 // decimal is one of Wahoo's accumulated totals, which it encodes as a JSON
 // string holding a decimal rather than as a number.
 type decimal float64
@@ -132,6 +137,12 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 
 	var body json.RawMessage
 	if err := c.doJSON(request, &body); err != nil {
+		var status *statusError
+		if errors.As(err, &status) &&
+			(status.status == http.StatusUnauthorized || status.status == http.StatusNotFound) {
+			return WorkoutSummary{}, fmt.Errorf("%w: HTTP %d", ErrWorkoutUnreadable, status.status)
+		}
+
 		return WorkoutSummary{}, err
 	}
 	var summary struct {
@@ -151,17 +162,17 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 	if err := json.Unmarshal(body, &summary); err != nil {
 		var numErr *strconv.NumError
 		if errors.As(err, &numErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
-			return WorkoutSummary{}, errors.New("wahoo: workout summary totals were not numbers")
+			return WorkoutSummary{}, fmt.Errorf("wahoo: workout summary totals were not numbers: %w", ErrWorkoutUnreadable)
 		}
 
 		// Syntax cannot be what failed: doJSON decoded this body into a
 		// json.RawMessage, which validates the whole document first.
-		return WorkoutSummary{}, errors.New("wahoo: workout summary was not the shape expected")
+		return WorkoutSummary{}, fmt.Errorf("wahoo: workout summary was not the shape expected: %w", ErrWorkoutUnreadable)
 	}
 	// A workout Wahoo holds no summary for decodes to a zero value, whether it
 	// answers with a null body or an object carrying nothing of its own.
 	if summary.ID <= 0 {
-		return WorkoutSummary{}, errors.New("wahoo: workout summary was missing")
+		return WorkoutSummary{}, fmt.Errorf("wahoo: workout summary was missing: %w", ErrWorkoutUnreadable)
 	}
 	return WorkoutSummary{
 		Raw:            body,

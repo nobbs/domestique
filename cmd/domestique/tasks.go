@@ -85,6 +85,9 @@ const (
 	detailActivityAuthorization task.Detail = "authorization"
 	detailActivityUpstream      task.Detail = "upstream"
 	detailActivityState         task.Detail = "state"
+	// detailActivitySkipped marks a poll that set an unreadable activity aside,
+	// so an account quietly missing rides is visible in its run record.
+	detailActivitySkipped task.Detail = "skipped"
 )
 
 // synchronizer is the sync work the task layer starts; indexBuilder is the
@@ -302,7 +305,11 @@ func activityPollTask(
 func pollEveryTarget(ctx context.Context, poller activityPoller, targetIDs []string) task.Result {
 	aggregate := task.Result{Outcome: task.NotReady}
 	for _, targetID := range targetIDs {
-		if result := activityResult(poller.Poll(ctx, targetID)); severity(result.Outcome) >= severity(aggregate.Outcome) {
+		result := activityResult(poller.Poll(ctx, targetID))
+		// At equal severity a result with something to say wins, so one
+		// slot's skip is not hidden behind another's clean success.
+		if severity(result.Outcome) > severity(aggregate.Outcome) ||
+			(severity(result.Outcome) == severity(aggregate.Outcome) && (result.Detail != "" || aggregate.Detail == "")) {
 			aggregate = result
 		}
 	}
@@ -329,6 +336,10 @@ func severity(outcome task.Outcome) int {
 func activityResult(result activity.Result) task.Result {
 	switch result.Outcome {
 	case activity.Polled:
+		if result.Skipped > 0 {
+			return task.Result{Outcome: task.Succeeded, Detail: detailActivitySkipped}
+		}
+
 		return task.Result{Outcome: task.Succeeded}
 	case activity.Unchanged:
 		return task.Result{Outcome: task.Unchanged}

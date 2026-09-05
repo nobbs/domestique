@@ -172,6 +172,54 @@ func TestClientReportsAMissingWorkoutSummary(t *testing.T) {
 	}
 }
 
+// A rejection that belongs to one workout is told apart from one that belongs
+// to the provider, so a poll knows which it may step past.
+func TestClientTellsAnUnreadableWorkoutFromAFailedProvider(t *testing.T) {
+	cases := map[string]struct {
+		body       any
+		status     int
+		unreadable bool
+	}{
+		"refused":      {status: http.StatusUnauthorized, unreadable: true},
+		"missing":      {status: http.StatusNotFound, unreadable: true},
+		"no summary":   {status: http.StatusOK, body: nil, unreadable: true},
+		"wrong shape":  {status: http.StatusOK, body: "x", unreadable: true},
+		"provider":     {status: http.StatusInternalServerError},
+		"rate limited": {status: http.StatusTooManyRequests},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				if tc.status != http.StatusOK {
+					writer.WriteHeader(tc.status)
+
+					return
+				}
+				writeJSON(t, writer, tc.body)
+			}))
+			defer server.Close()
+
+			_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
+			require.Error(t, err)
+			assert.Equal(t, tc.unreadable, errors.Is(err, ErrWorkoutUnreadable), "%v", err)
+			assert.NotContains(t, err.Error(), "access-token")
+		})
+	}
+}
+
+// Only a summary read may answer for one workout; a listing that is refused or
+// missing says something about the account, and is never a skip.
+func TestClientNeverMarksAWorkoutListingUnreadable(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	require.ErrorContains(t, err, "HTTP 404")
+	require.NotErrorIs(t, err, ErrWorkoutUnreadable)
+}
+
 func TestClientRejectsAWorkoutListingBeyondItsBounds(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, map[string]any{"workouts": []any{}, "total": maximumWorkouts + 1, "page": 1, "per_page": 100})

@@ -751,6 +751,22 @@ func TestActivityPollTaskWithoutAnArgumentPollsEveryTarget(t *testing.T) {
 	assert.Equal(t, []string{"rider-a", "rider-b", "rider-c"}, poller.polled, "every slot was polled")
 }
 
+// One slot's skip is reported whichever side of a clean success it polled on.
+func TestActivityPollTaskReportsASkipAcrossEverySlot(t *testing.T) {
+	t.Parallel()
+
+	for _, order := range [][]string{{"rider-a", "rider-b"}, {"rider-b", "rider-a"}} {
+		poller := &fakePoller{results: map[string]activity.Result{
+			"rider-a": {Outcome: activity.Polled},
+			"rider-b": {Outcome: activity.Polled, Skipped: 1},
+		}}
+		definition := activityPollTask(poller, allEnabled, func() []string { return order })
+
+		result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityPoll})
+		assert.Equal(t, task.Result{Outcome: task.Succeeded, Detail: detailActivitySkipped}, result, "%v", order)
+	}
+}
+
 // With nothing connected there is nothing to poll, which is not a failure.
 func TestActivityPollTaskWithoutATargetIsNotReady(t *testing.T) {
 	t.Parallel()
@@ -769,8 +785,10 @@ func TestActivityResultCarriesEveryOutcomeAcross(t *testing.T) {
 		detail  task.Detail
 		failure activity.Failure
 		outcome activity.Outcome
+		skipped int
 	}{
 		"polled":        {want: task.Succeeded, outcome: activity.Polled},
+		"skipped":       {want: task.Succeeded, detail: detailActivitySkipped, outcome: activity.Polled, skipped: 1},
 		"unchanged":     {want: task.Unchanged, outcome: activity.Unchanged},
 		"not ready":     {want: task.NotReady, outcome: activity.NotReady},
 		"authorization": {want: task.Failed, detail: detailActivityAuthorization, failure: activity.FailureAuthorization},
@@ -781,7 +799,7 @@ func TestActivityResultCarriesEveryOutcomeAcross(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			result := activityResult(activity.Result{Outcome: test.outcome, Failure: test.failure})
+			result := activityResult(activity.Result{Outcome: test.outcome, Failure: test.failure, Skipped: test.skipped})
 			assert.Equal(t, test.want, result.Outcome, "outcome")
 			assert.Equal(t, test.detail, result.Detail, "detail")
 		})

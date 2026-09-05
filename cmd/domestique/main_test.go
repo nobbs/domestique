@@ -210,6 +210,8 @@ func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing
 	_, _, ok := provider.RateLimit()
 	assert.False(t, ok, "a request budget was reported for an application that does not exist")
 	assert.True(t, provider.IsUnauthorized(wahoo.ErrUnauthorized), "IsUnauthorized()")
+	assert.True(t, provider.IsUnreadable(wahoo.ErrWorkoutUnreadable), "IsUnreadable()")
+	assert.False(t, provider.IsUnreadable(wahoo.ErrUnauthorized), "IsUnreadable() took a rejected grant for a dead workout")
 }
 
 func TestWeatherCoordinatesPairsParallelSlices(t *testing.T) {

@@ -83,6 +83,70 @@ func TestStoreActivityRefusesAnUnknownTarget(t *testing.T) {
 	require.Error(t, storeTestActivity(t, store, "rider-a", 1, 1))
 }
 
+// A skip counts its attempts and keeps only the latest observation; a second
+// poll sees one row, not two.
+func TestRecordActivitySkipCountsAttempts(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 404", activityNow()), "RecordActivitySkip()")
+	later := activityNow().Add(25 * time.Hour)
+	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 401", later), "RecordActivitySkip() again")
+
+	skips, err := store.ActivitySkips(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivitySkips()")
+	assert.Equal(t, []activity.Skip{{ID: 7, Attempts: 2, LastAttempt: later}}, skips)
+
+	var observed string
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		"SELECT observed FROM activity_skips WHERE target_slot = ? AND workout_id = ?", "rider-a", 7).Scan(&observed))
+	assert.Equal(t, "HTTP 401", observed)
+}
+
+// A skipped activity is not a stored one: it must not reach the read model.
+func TestASkippedActivityIsNotAStoredOne(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 404", activityNow()), "RecordActivitySkip()")
+
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	require.NoError(t, err, "KnownActivityIDs()")
+	assert.Empty(t, ids, "a skip was reported as a known activity")
+	stored, err := store.ActivitiesBetween(t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	assert.Empty(t, stored, "a skip was served as an activity")
+}
+
+// A read that succeeds after a skip leaves no trace that would hold it back.
+func TestStoreActivityForgetsASkip(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 404", activityNow()), "RecordActivitySkip()")
+
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 7, 100), "StoreActivity()")
+
+	skips, err := store.ActivitySkips(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivitySkips()")
+	assert.Empty(t, skips)
+}
+
+func TestRecordActivitySkipRefusesWhatItCannotAddress(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	require.ErrorContains(t, store.RecordActivitySkip(t.Context(), "", 7, "", activityNow()), "are required")
+	require.ErrorContains(t, store.RecordActivitySkip(t.Context(), "rider-a", 0, "", activityNow()), "are required")
+	require.Error(t, store.RecordActivitySkip(t.Context(), "rider-b", 7, "", activityNow()), "an unknown target was accepted")
+}
+
+func TestActivitySkipsReportsAnUnreadableStore(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.ActivitySkips(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "reading activity skips")
+}
+
 func storeTestActivity(t *testing.T, store *Store, targetID string, id int64, distance float64) error {
 	t.Helper()
 

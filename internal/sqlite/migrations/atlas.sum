@@ -1,4 +1,4 @@
-h1:5TLE94EogReWaGMBSiH/ELd8pOeUWS3T8wTV+61EDb4=
+h1:Jho8b2/lji4K4Ns9ifu+/oCgkZMZIWzhzF5w9ADB8YY=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -9,3 +9,5 @@ h1:5TLE94EogReWaGMBSiH/ELd8pOeUWS3T8wTV+61EDb4=
 000030_target_ownership.up.sql h1:lXF1h5Doc8jNTVNKkTZc5q6gS188cSofFqO3pA5Tjhs=
 000031_activities.down.sql h1:I5bAKhUq6wkY2hGJAzNX0t6oTyDQtc3/mD9PHiECpgQ=
 000031_activities.up.sql h1:aebnAj+nNIKIvnureVwpW79JIxrhcq0QFwy3ilQqldo=
+000032_activity_skips.down.sql h1:Ia9WcaXnevDoLEFmH7x1BV2Hnune2TPR6cHPsyBtvPM=
+000032_activity_skips.up.sql h1:NcCtGZFKr+ADFKJ/lEUHpy8ZDNy5InG8lyDvL8QV9f0=

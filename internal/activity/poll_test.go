@@ -13,7 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var errUpstream = errors.New("upstream failed")
+var (
+	errUpstream   = errors.New("upstream failed")
+	errUnreadable = errors.New("this activity is unreadable")
+)
 
 var errUnauthorized = errors.New("unauthorized")
 
@@ -159,6 +162,98 @@ func TestPollKeepsWhatItStoredBeforeASummaryFailed(t *testing.T) {
 	assert.Equal(t, "refresh-token-next", store.refreshToken, "a failed summary read discarded the replacement refresh token")
 }
 
+// One activity whose own summary is refused is set aside, and every activity
+// after it is still read: the account keeps filling in past it.
+func TestPollSkipsAnActivityOnlyItsOwnSummaryRejects(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource()
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}}
+	source.summaryErrs = map[int64]error{2: fmt.Errorf("HTTP 404: %w", errUnreadable)}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Result{Outcome: Polled, Stored: 2, Skipped: 1}, result)
+	assert.Equal(t, []int64{1, 3}, source.summarized)
+	require.Len(t, store.skipped, 1)
+	assert.Equal(t, recordedSkip{id: 2, observed: "HTTP 404: this activity is unreadable", now: pollNow()}, store.skipped[0])
+	assert.False(t, store.markedForReauthorization, "a skipped activity marked the slot for reauthorization")
+}
+
+// A failure that belongs to the connection, the quota or the grant — or one the
+// poll does not recognise — still stops the run and condemns no activity.
+func TestPollStopsWithoutSkippingOnAFailureThatIsNotTheActivitysOwn(t *testing.T) {
+	cases := map[string]struct {
+		err     error
+		failure Failure
+	}{
+		"upstream":     {err: errUpstream, failure: FailureUpstream},
+		"unrecognised": {err: errors.New("something new"), failure: FailureUpstream},
+		"unauthorized": {err: errUnauthorized, failure: FailureAuthorization},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := newFakeStore()
+			source := newFakeSource()
+			source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+			source.summaryErrs = map[int64]error{1: tc.err}
+
+			result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+			assert.Equal(t, Result{Outcome: Failed, Failure: tc.failure}, result)
+			assert.Empty(t, store.skipped, "a run-level failure was recorded as a skip")
+			assert.Empty(t, source.summarized, "the poll went on past a run-level failure")
+		})
+	}
+}
+
+// A skipped activity is offered again only once its wait has passed, so a
+// handful of unreadable rides cannot spend the request window every poll.
+func TestPollRetriesASkipOnlyAfterItsBackoff(t *testing.T) {
+	cases := map[string]struct {
+		skip Skip
+		want []int64
+	}{
+		"waiting":   {skip: Skip{ID: 2, Attempts: 1, LastAttempt: pollNow().Add(-23 * time.Hour)}, want: []int64{1}},
+		"due":       {skip: Skip{ID: 2, Attempts: 1, LastAttempt: pollNow().Add(-24 * time.Hour)}, want: []int64{1, 2}},
+		"backedOff": {skip: Skip{ID: 2, Attempts: 3, LastAttempt: pollNow().Add(-3 * 24 * time.Hour)}, want: []int64{1}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := newFakeStore()
+			store.skips = []Skip{tc.skip}
+			source := newFakeSource()
+			source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+
+			result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+			assert.Equal(t, Polled, result.Outcome)
+			assert.Equal(t, tc.want, source.summarized)
+		})
+	}
+}
+
+// Nothing new and every skip still waiting is a quiet poll, not a failure.
+func TestPollWithOnlyWaitingSkipsIsUnchanged(t *testing.T) {
+	store := newFakeStore()
+	store.skips = []Skip{{ID: 1, Attempts: 1, LastAttempt: pollNow()}}
+	source := newFakeSource()
+	source.listings = []Listing{{ID: 1, Starts: at(1)}}
+
+	assert.Equal(t, Unchanged, newTestPoller(t, source, store).Poll(t.Context(), "rider-a").Outcome)
+}
+
+func TestRetryDueDoublesTheWaitUpToFourWeeks(t *testing.T) {
+	waits := map[int]time.Duration{
+		0: 24 * time.Hour, 1: 24 * time.Hour, 2: 48 * time.Hour, 3: 96 * time.Hour,
+		5: 16 * 24 * time.Hour, 6: 28 * 24 * time.Hour, 40: 28 * 24 * time.Hour,
+	}
+	for attempts, wait := range waits {
+		skip := Skip{Attempts: attempts, LastAttempt: pollNow()}
+		assert.Falsef(t, retryDue(skip, pollNow().Add(wait-time.Second)), "attempt %d due before %s", attempts, wait)
+		assert.Truef(t, retryDue(skip, pollNow().Add(wait)), "attempt %d not due at %s", attempts, wait)
+	}
+}
+
 // Every read or write of local state that fails stops the poll as a state
 // failure rather than as anything an operator would chase upstream.
 func TestPollReportsStateItCouldNotReadOrWrite(t *testing.T) {
@@ -170,6 +265,15 @@ func TestPollReportsStateItCouldNotReadOrWrite(t *testing.T) {
 		"reauthorization": func(store *fakeStore, source *fakeSource) {
 			store.markErr = failing
 			source.refreshErr = errUnauthorized
+		},
+		"skips": func(store *fakeStore, source *fakeSource) {
+			store.skipsErr = failing
+			source.listings = []Listing{{ID: 1}}
+		},
+		"skip": func(store *fakeStore, source *fakeSource) {
+			store.skipErr = failing
+			source.listings = []Listing{{ID: 1}}
+			source.summaryErrs = map[int64]error{1: errUnreadable}
 		},
 	}
 	for name, arrange := range cases {
@@ -272,6 +376,16 @@ func (s *fakeSource) IsUnauthorized(err error) bool {
 	return errors.Is(err, errUnauthorized)
 }
 
+func (s *fakeSource) IsUnreadable(err error) bool {
+	return errors.Is(err, errUnreadable)
+}
+
+type recordedSkip struct {
+	now      time.Time
+	observed string
+	id       int64
+}
+
 type storedActivity struct {
 	now     time.Time
 	listing Listing
@@ -285,10 +399,14 @@ type fakeStore struct {
 	refreshTokenErr          error
 	replaceErr               error
 	markErr                  error
+	skipsErr                 error
+	skipErr                  error
 	authorization            string
 	refreshToken             string
 	known                    []int64
+	skips                    []Skip
 	stored                   []storedActivity
+	skipped                  []recordedSkip
 	markedForReauthorization bool
 }
 
@@ -321,6 +439,19 @@ func (s *fakeStore) MarkNeedsReauthorization(_ context.Context, _ string) error 
 
 func (s *fakeStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, error) {
 	return s.known, s.knownErr
+}
+
+func (s *fakeStore) ActivitySkips(_ context.Context, _ string) ([]Skip, error) {
+	return s.skips, s.skipsErr
+}
+
+func (s *fakeStore) RecordActivitySkip(_ context.Context, _ string, id int64, observed string, now time.Time) error {
+	if s.skipErr != nil {
+		return s.skipErr
+	}
+	s.skipped = append(s.skipped, recordedSkip{id: id, observed: observed, now: now})
+
+	return nil
 }
 
 func (s *fakeStore) StoreActivity(

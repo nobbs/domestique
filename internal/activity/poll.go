@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"time"
@@ -35,6 +36,30 @@ type Summary struct {
 	AscentMetres   float64
 }
 
+// Skip is one activity a poll could not read: how often it has been tried and
+// when it was last tried decide when it is offered again.
+type Skip struct {
+	LastAttempt time.Time
+	ID          int64
+	Attempts    int
+}
+
+const (
+	skipRetryBase = 24 * time.Hour
+	skipRetryCap  = 28 * 24 * time.Hour
+)
+
+// retryDue reports whether a skipped activity's wait has passed. The wait
+// doubles with each attempt from a day to a four-week ceiling and never becomes
+// permanent: a workout unreadable today may be readable next month, and each
+// retry spends one request from a window that fits roughly MaxNewPerPoll.
+func retryDue(skip Skip, now time.Time) bool {
+	doublings := min(max(skip.Attempts, 1), 6) - 1
+	wait := min(skipRetryBase<<doublings, skipRetryCap)
+
+	return !now.Before(skip.LastAttempt.Add(wait))
+}
+
 // Stored is one recorded activity as the read model serves it: the listing and
 // the summary totals, without the provider's own summary document.
 type Stored struct {
@@ -54,6 +79,9 @@ type Source interface {
 	ListActivities(ctx context.Context, accessToken string) ([]Listing, error)
 	ActivitySummary(ctx context.Context, accessToken string, id int64) (Summary, error)
 	IsUnauthorized(err error) bool
+	// IsUnreadable reports a summary rejection that belongs to that one
+	// activity rather than to the connection, the quota or the grant.
+	IsUnreadable(err error) bool
 }
 
 // Store is the durable state one poll reads and adds to. It never deletes.
@@ -63,7 +91,12 @@ type Store interface {
 	ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error
 	MarkNeedsReauthorization(ctx context.Context, targetID string) error
 	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
+	// StoreActivity also forgets any skip recorded for the same activity.
 	StoreActivity(ctx context.Context, targetID string, listing Listing, summary Summary, now time.Time) error
+	ActivitySkips(ctx context.Context, targetID string) ([]Skip, error)
+	// RecordActivitySkip counts one more failed read of an activity. observed is
+	// the source's protocol-level error text, never a ride's name or a credential.
+	RecordActivitySkip(ctx context.Context, targetID string, id int64, observed string, now time.Time) error
 }
 
 // Outcome is what one poll came to. Its zero value is Failed, so a result
@@ -73,7 +106,7 @@ type Outcome int
 const (
 	// Failed means the poll stopped early; whatever it stored before that stays.
 	Failed Outcome = iota
-	// Polled means at least one new activity was stored.
+	// Polled means at least one new activity was stored or skipped.
 	Polled
 	// Unchanged means the account held nothing this service had not stored.
 	Unchanged
@@ -103,6 +136,9 @@ type Result struct {
 	// Stored counts the activities this poll added, including those a failed
 	// poll managed before it stopped.
 	Stored int
+	// Skipped counts the activities this poll could not read and set aside to
+	// try again later.
+	Skipped int
 }
 
 // Poller reads one target's recorded activities into the store. It adds and
@@ -124,7 +160,9 @@ func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error
 
 // Poll stores a summary for every activity of one target this service has not
 // stored yet, oldest first and at most MaxNewPerPoll of them. A read that fails
-// part way keeps what it already stored: the next poll continues from there.
+// part way keeps what it already stored: the next poll continues from there. An
+// activity only its own summary rejects is skipped and retried later, so one
+// unreadable ride never stops the ones after it.
 func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	authorization, err := p.store.TargetAuthorization(ctx, targetID)
 	if err != nil {
@@ -147,26 +185,55 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	if knownErr != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
+	deferred, deferErr := p.deferred(ctx, targetID)
+	if deferErr != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
 
-	pending := unstored(listings, known)
+	pending := unstored(listings, append(known, deferred...))
 	if len(pending) == 0 {
 		return Result{Outcome: Unchanged}
 	}
 
-	var stored int
+	var stored, skipped int
 	for _, listing := range pending {
 		summary, summaryErr := p.source.ActivitySummary(ctx, accessToken, listing.ID)
+		if summaryErr != nil && p.source.IsUnreadable(summaryErr) {
+			if skipErr := p.store.RecordActivitySkip(ctx, targetID, listing.ID, summaryErr.Error(), p.now()); skipErr != nil {
+				return Result{Outcome: Failed, Failure: FailureState, Stored: stored, Skipped: skipped}
+			}
+			skipped++
+
+			continue
+		}
 		if summaryErr != nil {
-			return Result{Outcome: Failed, Failure: p.classify(ctx, targetID, summaryErr), Stored: stored}
+			return Result{Outcome: Failed, Failure: p.classify(ctx, targetID, summaryErr), Stored: stored, Skipped: skipped}
 		}
 		if storeErr := p.store.StoreActivity(ctx, targetID, listing, summary, p.now()); storeErr != nil {
-			return Result{Outcome: Failed, Failure: FailureState, Stored: stored}
+			return Result{Outcome: Failed, Failure: FailureState, Stored: stored, Skipped: skipped}
 		}
 		stored++
 	}
-	slog.Info("activities polled", "target", targetID, "stored", stored)
+	slog.Info("activities polled", "target", targetID, "stored", stored, "skipped", skipped)
 
-	return Result{Outcome: Polled, Stored: stored}
+	return Result{Outcome: Polled, Stored: stored, Skipped: skipped}
+}
+
+// deferred is the skipped activities whose retry is not yet due.
+func (p *Poller) deferred(ctx context.Context, targetID string) ([]int64, error) {
+	skips, err := p.store.ActivitySkips(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("reading activity skips: %w", err)
+	}
+	now := p.now()
+	var ids []int64
+	for _, skip := range skips {
+		if !retryDue(skip, now) {
+			ids = append(ids, skip.ID)
+		}
+	}
+
+	return ids, nil
 }
 
 // accessToken refreshes the target's credentials, replacing the stored refresh

@@ -22,27 +22,71 @@ func (s *Store) KnownActivityIDs(ctx context.Context, targetID string) ([]int64,
 }
 
 // StoreActivity records one activity summary against the target whose account
-// recorded it, overwriting the row a prior poll stored for the same workout.
+// recorded it, overwriting the row a prior poll stored for the same workout and
+// forgetting any skip recorded for it.
 func (s *Store) StoreActivity(
 	ctx context.Context, targetID string, listing activity.Listing, summary activity.Summary, now time.Time,
 ) error {
 	if targetID == "" || listing.ID <= 0 {
 		return errors.New("a target and an activity id are required")
 	}
-	if err := s.queries.UpsertActivity(ctx, sqlcgen.UpsertActivityParams{
-		TargetSlot:            targetID,
-		WorkoutID:             listing.ID,
-		WorkoutTypeID:         int64(listing.TypeID),
-		WorkoutTypeLocationID: int64(listing.LocationID),
-		StartedAtUnix:         listing.Starts.Unix(),
-		DistanceMetres:        summary.DistanceMetres,
-		MovingSeconds:         summary.MovingSeconds,
-		ElapsedSeconds:        summary.ElapsedSeconds,
-		AscentMetres:          summary.AscentMetres,
-		RawSummaryJson:        summary.Raw,
-		UpdatedAtUnix:         now.Unix(),
+
+	return s.withTx(ctx, "activity", func(queries *sqlcgen.Queries) error {
+		if err := queries.UpsertActivity(ctx, sqlcgen.UpsertActivityParams{
+			TargetSlot:            targetID,
+			WorkoutID:             listing.ID,
+			WorkoutTypeID:         int64(listing.TypeID),
+			WorkoutTypeLocationID: int64(listing.LocationID),
+			StartedAtUnix:         listing.Starts.Unix(),
+			DistanceMetres:        summary.DistanceMetres,
+			MovingSeconds:         summary.MovingSeconds,
+			ElapsedSeconds:        summary.ElapsedSeconds,
+			AscentMetres:          summary.AscentMetres,
+			RawSummaryJson:        summary.Raw,
+			UpdatedAtUnix:         now.Unix(),
+		}); err != nil {
+			return fmt.Errorf("recording an activity: %w", err)
+		}
+		if err := queries.DeleteActivitySkip(ctx, sqlcgen.DeleteActivitySkipParams{TargetSlot: targetID, WorkoutID: listing.ID}); err != nil {
+			return fmt.Errorf("forgetting an activity skip: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// ActivitySkips are the activities a poll set aside for one target, with how
+// often and how recently each was tried.
+func (s *Store) ActivitySkips(ctx context.Context, targetID string) ([]activity.Skip, error) {
+	rows, err := s.queries.ListActivitySkips(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("reading activity skips: %w", err)
+	}
+	skips := make([]activity.Skip, 0, len(rows))
+	for _, row := range rows {
+		skips = append(skips, activity.Skip{
+			ID:          row.WorkoutID,
+			Attempts:    int(row.Attempts),
+			LastAttempt: time.Unix(row.LastAttemptUnix, 0).UTC(),
+		})
+	}
+
+	return skips, nil
+}
+
+// RecordActivitySkip counts one more failed read of an activity, keeping what
+// the source answered so the next occurrence can be told from the last.
+func (s *Store) RecordActivitySkip(ctx context.Context, targetID string, id int64, observed string, now time.Time) error {
+	if targetID == "" || id <= 0 {
+		return errors.New("a target and an activity id are required")
+	}
+	if err := s.queries.UpsertActivitySkip(ctx, sqlcgen.UpsertActivitySkipParams{
+		TargetSlot:      targetID,
+		WorkoutID:       id,
+		LastAttemptUnix: now.Unix(),
+		Observed:        observed,
 	}); err != nil {
-		return fmt.Errorf("recording an activity: %w", err)
+		return fmt.Errorf("recording an activity skip: %w", err)
 	}
 
 	return nil

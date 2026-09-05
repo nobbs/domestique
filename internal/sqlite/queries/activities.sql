@@ -24,3 +24,17 @@ FROM activities
 WHERE target_slot = sqlc.arg(target_slot) AND started_at_unix >= sqlc.arg(from_unix) AND started_at_unix < sqlc.arg(to_unix)
 ORDER BY started_at_unix DESC
 LIMIT sqlc.arg(row_limit);
+
+-- name: ListActivitySkips :many
+SELECT workout_id, attempts, last_attempt_unix FROM activity_skips WHERE target_slot = ? ORDER BY workout_id;
+
+-- name: UpsertActivitySkip :exec
+INSERT INTO activity_skips (target_slot, workout_id, attempts, last_attempt_unix, observed)
+VALUES (?, ?, 1, ?, ?)
+ON CONFLICT(target_slot, workout_id) DO UPDATE SET
+  attempts = attempts + 1,
+  last_attempt_unix = excluded.last_attempt_unix,
+  observed = excluded.observed;
+
+-- name: DeleteActivitySkip :exec
+DELETE FROM activity_skips WHERE target_slot = ? AND workout_id = ?;
