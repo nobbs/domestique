@@ -26,6 +26,5 @@ export const Default: Story = {
     coordinates,
     startMetres: 0,
     endMetres: 3_000,
-    unitSystem: "metric",
   },
 };

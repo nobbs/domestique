@@ -561,11 +561,10 @@ of the contract's operations. The catalogue reads the same inventory listing `/`
 service for nothing of its own: it is the library as a sortable table, and the
 ordering, searching and narrowing it offers all happen in the browser. Settings
 holds two kinds of preference and keeps them apart, and lists the data sources
-this service credits: the theme and the units are this browser's alone and stay
-in its local storage, while the service's runtime settings are read and written
-over the endpoints above and are the same for every browser. It does not alter
-the route or moving-time contracts, and unknown paths remain JSON `404`
-responses.
+this service credits: the theme is this browser's alone and stays in its local
+storage, while the service's runtime settings are read and written over the
+endpoints above and are the same for every browser. It does not alter the
+route or moving-time contracts, and unknown paths remain JSON `404` responses.
 
 The response schemas are defined in
 [the sync lifecycle specification](sync-lifecycle.md). They must never expose

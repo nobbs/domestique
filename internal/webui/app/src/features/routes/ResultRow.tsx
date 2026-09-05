@@ -9,7 +9,6 @@ import {
 } from "../../lib/format";
 import { gradientBand } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
-import type { UnitSystem } from "../../lib/units";
 import { RouteChangeBadge } from "./RouteChangeBadge";
 import type { RouteShape } from "./SearchPanel";
 
@@ -19,13 +18,11 @@ export function ResultRow({
   shape,
   change,
   onSelect,
-  unitSystem,
 }: {
   route: Route;
   shape: RouteShape | undefined;
   change: RouteChange;
   onSelect: () => void;
-  unitSystem: UnitSystem;
 }) {
   return (
     <li>
@@ -44,8 +41,8 @@ export function ResultRow({
         <span className="min-w-0 truncate font-semibold">{route.title}</span>
         <RouteChangeBadge change={change} />
         <span className="col-start-2 col-end-4 flex flex-wrap gap-x-2 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums">
-          <span>{formatDistance(route.distanceMetres, unitSystem)}</span>
-          <span>{formatAscent(route.ascentMetres, unitSystem)}</span>
+          <span>{formatDistance(route.distanceMetres)}</span>
+          <span>{formatAscent(route.ascentMetres)}</span>
           <span>{formatGradient(route.maxGradientPercent)}</span>
           <span>
             {formatMovingTime(route.movingSeconds)}

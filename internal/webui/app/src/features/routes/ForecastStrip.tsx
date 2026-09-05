@@ -39,8 +39,6 @@ import { forecastLeadHours } from "../../lib/forecastSamples";
 import { formatWindSpeed } from "../../lib/format";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import { compassPoint } from "../../lib/routeCues";
-import type { UnitSystem } from "../../lib/units";
-import { speedValue, temperatureValue } from "../../lib/units";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { temperatureColour, weatherIcon } from "../../lib/weather";
 import { buildCells, windWeight } from "./forecastCells";
@@ -75,7 +73,6 @@ export interface ForecastStripProps {
   /** The stretch on show — the same window `ElevationProfile` is drawing. */
   startMetres: number;
   endMetres: number;
-  unitSystem: UnitSystem;
   /** Whether the strip reserves the chart's own left/right gutters. */
   inset?: boolean;
   /** Whether the resolution sentence below the strip is shown. */
@@ -89,7 +86,6 @@ export function ForecastStrip({
   coordinates,
   startMetres,
   endMetres,
-  unitSystem,
   inset = true,
   caption = true,
   fill = false,
@@ -199,9 +195,7 @@ export function ForecastStrip({
                    * scale needs saying once rather than per tile — which the
                    * hidden label below does.
                    */}
-                  {figures
-                    ? `${Math.round(temperatureValue(cell.point.temperatureCelsius, unitSystem))}°`
-                    : null}
+                  {figures ? `${Math.round(cell.point.temperatureCelsius)}°` : null}
                 </span>
                 <span
                   className="flex items-center gap-0.5 text-[10px] text-[var(--ink-2)] tabular-nums"
@@ -211,7 +205,7 @@ export function ForecastStrip({
                   // a reader who is not looking at the strip.
                   aria-label={
                     wind
-                      ? `Wind ${formatWindSpeed(cell.point.windSpeedKmh, unitSystem)} toward the ${compassPoint(cell.flowDegrees)}`
+                      ? `Wind ${formatWindSpeed(cell.point.windSpeedKmh)} toward the ${compassPoint(cell.flowDegrees)}`
                       : undefined
                   }
                 >
@@ -222,7 +216,7 @@ export function ForecastStrip({
                       style={{ transform: `rotate(${cell.flowDegrees}deg)` }}
                     />
                   ) : null}
-                  {wind ? Math.round(speedValue(cell.point.windSpeedKmh, unitSystem)) : null}
+                  {wind ? Math.round(cell.point.windSpeedKmh) : null}
                 </span>
               </div>
             );

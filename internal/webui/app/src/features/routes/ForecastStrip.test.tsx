@@ -73,7 +73,6 @@ function renderStrip(options: {
         coordinates={coordinates}
         startMetres={0}
         endMetres={distances[distances.length - 1] ?? 0}
-        unitSystem="metric"
         fill={options.fill ?? false}
       />
     </QueryClientProvider>,
@@ -287,7 +286,6 @@ describe("ForecastStrip", () => {
           coordinates={coordinates}
           startMetres={0}
           endMetres={distances[distances.length - 1] ?? 0}
-          unitSystem="metric"
         />
       </QueryClientProvider>,
     );
@@ -301,7 +299,6 @@ describe("ForecastStrip", () => {
           coordinates={coordinates}
           startMetres={0}
           endMetres={distances[distances.length - 1] ?? 0}
-          unitSystem="metric"
           inset={false}
         />
       </QueryClientProvider>,
@@ -323,7 +320,6 @@ describe("ForecastStrip", () => {
           coordinates={coordinates}
           startMetres={0}
           endMetres={cumulativeMetres(coordinates).at(-1) ?? 0}
-          unitSystem="metric"
           caption={false}
         />
       </QueryClientProvider>,

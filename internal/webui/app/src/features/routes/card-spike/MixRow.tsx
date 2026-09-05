@@ -204,13 +204,13 @@ export function MixRow({
                   highlight={entry.highlight}
                   current={highlight}
                   onChange={onHighlightChange}
-                  label={`${entry.label}, ${entry.description}, ${formatDistance(entry.metres, "metric")}`}
+                  label={`${entry.label}, ${entry.description}, ${formatDistance(entry.metres)}`}
                   title={entry.description}
                   className="grid size-full content-center rounded px-0.5 text-center leading-tight hover:bg-[var(--base)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]"
                 >
                   <span className="truncate text-[10px] text-[var(--ink-2)]">{entry.label}</span>
                   <span className="truncate text-[11px] font-semibold tabular-nums">
-                    {formatDistance(entry.metres, "metric")}
+                    {formatDistance(entry.metres)}
                   </span>
                 </HighlightToggle>
               </li>

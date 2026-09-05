@@ -125,7 +125,6 @@ const meta = {
     coordinates,
     samples: [],
     announce: false,
-    unitSystem: "metric",
   },
   decorators: [
     (Story) => (

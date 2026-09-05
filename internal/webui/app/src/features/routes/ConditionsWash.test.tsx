@@ -151,7 +151,6 @@ function show(options: {
           samples={samples}
           measure={options.measure === undefined ? "rain" : options.measure}
           beforeId="route-window-halo"
-          unitSystem="metric"
         />
       </CartographyProvider>
     </QueryClientProvider>,
@@ -423,11 +422,11 @@ describe("the bands the wash is painted in", () => {
 });
 
 describe("what the wash says without the map", () => {
-  it("gives every reading in words, in the reader's own units", () => {
+  it("gives every reading in words", () => {
     show({ points: RISING_RAIN });
 
     for (const millimetres of [0, 3, 8]) {
-      expect(screen.getByText(RAIN.words(millimetres, "metric"))).toBeInTheDocument();
+      expect(screen.getByText(RAIN.words(millimetres))).toBeInTheDocument();
     }
   });
 

@@ -16,7 +16,6 @@ import type { Position } from "../../api/types";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { windRelationColour, windRelationWords } from "../../lib/measures";
 import type { CoordinateRange } from "../../lib/profile";
-import type { UnitSystem } from "../../lib/units";
 import type { WindRun } from "./forecastCells";
 
 interface LayerRecord {
@@ -70,7 +69,6 @@ function show(options: {
   runs?: WindRun[];
   lit?: readonly CoordinateRange[] | null;
   dark?: boolean;
-  unitSystem?: UnitSystem;
 }) {
   return render(
     <CartographyProvider dark={options.dark ?? false}>
@@ -79,7 +77,6 @@ function show(options: {
         coordinates={ROAD}
         lit={options.lit ?? null}
         beforeId="route-casing"
-        unitSystem={options.unitSystem ?? "metric"}
       />
     </CartographyProvider>,
   );
@@ -160,11 +157,11 @@ describe("the route drawn in what the wind is doing", () => {
 });
 
 describe("what the tint says without the map", () => {
-  it("names every stretch's wind in words, in the reader's own units", () => {
-    show({ unitSystem: "imperial" });
+  it("names every stretch's wind in words", () => {
+    show({});
 
-    expect(screen.getByText(windRelationWords(0, 24, "imperial"))).toBeInTheDocument();
-    expect(screen.getByText(windRelationWords(null, 24, "imperial"))).toBeInTheDocument();
+    expect(screen.getByText(windRelationWords(0, 24))).toBeInTheDocument();
+    expect(screen.getByText(windRelationWords(null, 24))).toBeInTheDocument();
     expect(screen.getByText(/headwind/)).toBeInTheDocument();
     expect(screen.getByText(/wind shifting/)).toBeInTheDocument();
   });

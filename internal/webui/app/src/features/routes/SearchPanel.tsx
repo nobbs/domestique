@@ -23,7 +23,6 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "../../components/u
 import type { LibraryFilters } from "../../lib/filters";
 import { hasActiveFilters } from "../../lib/filters";
 import type { RouteChange } from "../../lib/seenRoutes";
-import type { UnitSystem } from "../../lib/units";
 import { FilterPanel } from "./FilterPanel";
 import { ResultRow } from "./ResultRow";
 import { RouteCard } from "./RouteCard";
@@ -68,8 +67,6 @@ export interface SearchPanelProps {
   readAt: string | null;
   /** Whether a route is new or changed since this reader last opened it. */
   changeOf: (route: Route) => RouteChange;
-  /** The units the figures report distance and elevation in. */
-  unitSystem: UnitSystem;
 }
 
 export function SearchPanel({
@@ -87,7 +84,6 @@ export function SearchPanel({
   shapes,
   readAt,
   changeOf,
-  unitSystem,
 }: SearchPanelProps) {
   const filtersActive = hasActiveFilters(filters);
   const hasQuery = query.trim() !== "";
@@ -195,7 +191,6 @@ export function SearchPanel({
                     readAt={readAt}
                     change={changeOf(route)}
                     onOpen={() => onOpen(key)}
-                    unitSystem={unitSystem}
                   />
                 ) : (
                   <ResultRow
@@ -204,7 +199,6 @@ export function SearchPanel({
                     shape={shape}
                     change={changeOf(route)}
                     onSelect={() => onSelect(key)}
-                    unitSystem={unitSystem}
                   />
                 );
               })}
@@ -218,7 +212,6 @@ export function SearchPanel({
                 readAt={readAt}
                 change={changeOf(pickedRoute)}
                 onOpen={() => onOpen(routeKey(pickedRoute))}
-                unitSystem={unitSystem}
               />
             </ul>
           ) : null}

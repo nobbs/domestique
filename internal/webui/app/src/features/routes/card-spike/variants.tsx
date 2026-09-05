@@ -73,7 +73,6 @@ function Mixes({ highlight, onHighlightChange }: BodyProps) {
         absence="No elevation data."
         highlight={highlight}
         onHighlightChange={onHighlightChange}
-        unitSystem="metric"
       />
       <MixColumn
         name="Surface"
@@ -82,7 +81,6 @@ function Mixes({ highlight, onHighlightChange }: BodyProps) {
         absence="Surface not classified yet."
         highlight={highlight}
         onHighlightChange={onHighlightChange}
-        unitSystem="metric"
       />
     </div>
   );

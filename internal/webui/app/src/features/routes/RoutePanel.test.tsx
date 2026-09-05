@@ -51,7 +51,6 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}, admin?: boolean) 
     libraryCount: 0,
     onClose: () => {},
     sourceBaseUrls: {},
-    unitSystem: "metric",
     ...overrides,
   };
 
@@ -163,7 +162,6 @@ describe("RoutePanel", () => {
           libraryCount={0}
           onClose={() => {}}
           sourceBaseUrls={{}}
-          unitSystem="metric"
         />
       </QueryClientProvider>,
     );

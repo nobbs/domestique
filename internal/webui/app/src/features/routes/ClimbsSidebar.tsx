@@ -25,7 +25,6 @@
 import { IconStairs } from "@tabler/icons-react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
-import type { UnitSystem } from "../../lib/units";
 import { useElementHeight } from "../../lib/useElementHeight";
 
 /**
@@ -102,13 +101,11 @@ function climbCount(climbs: Climb[]): string | null {
 export function ClimbsSidebar({
   climbs,
   onSelect,
-  unitSystem,
   fixedHeight = false,
 }: {
   climbs: Climb[];
   /** Opens the shared map/chart window on one climb, as the brackets do. */
   onSelect: (climb: Climb) => void;
-  unitSystem: UnitSystem;
   /**
    * Snaps the list to a whole number of rows rather than letting a partial
    * one show at the foot — for a caller (the rail dock) that stretches this
@@ -173,7 +170,7 @@ export function ClimbsSidebar({
                 {index + 1}
               </span>
               <span className="text-right text-xs tabular-nums">
-                {formatDistance(climb.distanceMetres, unitSystem)}
+                {formatDistance(climb.distanceMetres)}
               </span>
               <span className="text-right text-xs tabular-nums">
                 {formatGradient(climb.averageGradePercent)}
@@ -182,11 +179,11 @@ export function ClimbsSidebar({
                 {formatGradient(climb.maxGradePercent)}
               </span>
               <span className="text-right text-xs text-[var(--ink-2)] tabular-nums">
-                {formatAscent(climb.ascentMetres, unitSystem)}
+                {formatAscent(climb.ascentMetres)}
               </span>
               <span className="truncate text-right text-[11px] text-[var(--ink-2)] tabular-nums">
                 {/* No "from": the column is called Starts. */}
-                {formatDistance(climb.startMetres, unitSystem)}
+                {formatDistance(climb.startMetres)}
               </span>
             </button>
           </li>

@@ -46,7 +46,6 @@ describe("MixRow", () => {
         tagSide="below"
         highlight={null}
         onHighlightChange={() => {}}
-        unitSystem="metric"
       />,
     );
 
@@ -63,7 +62,6 @@ describe("MixRow", () => {
         tagSide="above"
         highlight={null}
         onHighlightChange={() => {}}
-        unitSystem="metric"
       />,
     );
 
@@ -80,7 +78,6 @@ describe("MixRow", () => {
         tagSide="above"
         highlight={null}
         onHighlightChange={() => {}}
-        unitSystem="metric"
       />,
     );
 

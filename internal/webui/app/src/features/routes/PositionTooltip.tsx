@@ -11,7 +11,6 @@ import type { ProfileSample } from "../../lib/profile";
 import { bandColour, cumulativeMetres, gradientBand } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES, surfaceColour, surfaceKindAt } from "../../lib/surface";
-import type { UnitSystem } from "../../lib/units";
 import { BEARING_WINDOW_METRES, bearingAt, bearingIsMixed, windRelation } from "../../lib/wind";
 
 /** Between the dot and the nearest edge of the box. */
@@ -58,8 +57,8 @@ function clamp(value: number, low: number, high: number): number {
  * is right for a stage with no climbing and wrong at the finish of a ride,
  * where zero metres to go is exactly the fact this line exists to state.
  */
-function tooltipDistance(metres: number, system: UnitSystem): string {
-  return metres > 0 ? formatDistance(metres, system) : system === "imperial" ? "0 ft" : "0 m";
+function tooltipDistance(metres: number): string {
+  return metres > 0 ? formatDistance(metres) : "0 m";
 }
 
 interface Wind {
@@ -90,7 +89,6 @@ function windAt(
   windSpeedKmh: number,
   mapBearingDegrees: number,
   onDarkGround: boolean,
-  unitSystem: UnitSystem,
 ): Wind | null {
   if (bearingIsMixed(coordinates, distances, atMetres, BEARING_WINDOW_METRES)) {
     return null;
@@ -129,7 +127,7 @@ function windAt(
         : reading.relation === "head"
           ? "Headwind"
           : "Crosswind",
-    speed: formatWindSpeed(speedKmh, unitSystem),
+    speed: formatWindSpeed(speedKmh),
   };
 }
 
@@ -150,7 +148,6 @@ export interface PositionTooltipProps {
   /** The forecast requests for this ride, empty until a start time is picked. */
   samples: ForecastSample[];
   announce: boolean;
-  unitSystem: UnitSystem;
 }
 
 /**
@@ -180,7 +177,6 @@ export function PositionTooltip({
   coordinates,
   samples,
   announce,
-  unitSystem,
 }: PositionTooltipProps) {
   // Whether the ground under this is dark, which is what its colours follow.
   const { dark: darkBasemap } = useCartography();
@@ -285,7 +281,6 @@ export function PositionTooltip({
         reading.windSpeedKmh,
         map?.getBearing() ?? 0,
         onDarkGround,
-        unitSystem,
       )
     : null;
 
@@ -326,12 +321,8 @@ export function PositionTooltip({
         >
           <div className="grid gap-y-1 px-2.5 py-2">
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-              <span className="font-semibold">
-                {tooltipDistance(content.distanceMetres, unitSystem)}
-              </span>
-              <span className="opacity-70">
-                {formatElevation(content.elevationMetres, unitSystem)}
-              </span>
+              <span className="font-semibold">{tooltipDistance(content.distanceMetres)}</span>
+              <span className="opacity-70">{formatElevation(content.elevationMetres)}</span>
               <span className="font-medium" style={{ color: grade }}>
                 {content.gradientPercent.toFixed(1)}%
               </span>

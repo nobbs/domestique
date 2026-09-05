@@ -13,7 +13,6 @@ const meta = {
     readAt: "19:38",
     change: null,
     onOpen: fn(),
-    unitSystem: "metric",
   },
   decorators: [
     (Story) => (

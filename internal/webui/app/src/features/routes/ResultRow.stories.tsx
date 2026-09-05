@@ -12,7 +12,6 @@ const meta = {
     shape: { coordinates },
     change: null,
     onSelect: fn(),
-    unitSystem: "metric",
   },
   decorators: [
     (Story) => (

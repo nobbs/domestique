@@ -44,13 +44,7 @@ function showKey(
     samples?: ForecastSample[];
   } = {},
 ) {
-  render(
-    <ConditionsKey
-      measure={options.measure ?? null}
-      samples={options.samples ?? SAMPLES}
-      unitSystem="metric"
-    />,
-  );
+  render(<ConditionsKey measure={options.measure ?? null} samples={options.samples ?? SAMPLES} />);
 }
 
 describe("choosing what the map is washed in", () => {
@@ -133,23 +127,19 @@ describe("a route with no forecast to wash it in", () => {
 
 describe("the key beside the choice", () => {
   it("renders nothing while the wash is off", () => {
-    const { container } = render(
-      <ConditionsKey measure={null} samples={SAMPLES} unitSystem="metric" />,
-    );
+    const { container } = render(<ConditionsKey measure={null} samples={SAMPLES} />);
 
     expect(container).toBeEmptyDOMElement();
   });
 
   it("renders nothing without samples, even with a measure chosen", () => {
-    const { container } = render(<ConditionsKey measure="rain" samples={[]} unitSystem="metric" />);
+    const { container } = render(<ConditionsKey measure="rain" samples={[]} />);
 
     expect(container).toBeEmptyDOMElement();
   });
 
   it("sits on one line", () => {
-    const { container } = render(
-      <ConditionsKey measure="cloud" samples={SAMPLES} unitSystem="metric" />,
-    );
+    const { container } = render(<ConditionsKey measure="cloud" samples={SAMPLES} />);
 
     expect(container.firstElementChild?.className).toContain("flex-wrap");
   });
@@ -176,7 +166,7 @@ describe("the key beside the choice", () => {
     const tooltip = await screen.findByRole("tooltip");
 
     expect(tooltip).toHaveTextContent(firstBand.description);
-    expect(tooltip).toHaveTextContent(bandRange(cloud, 0, "metric"));
+    expect(tooltip).toHaveTextContent(bandRange(cloud, 0));
   });
 
   it("says plainly which band the map paints nothing for", async () => {

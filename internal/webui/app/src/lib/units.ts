@@ -1,141 +1,26 @@
 /**
- * Whether distance and elevation display in metric or imperial units.
+ * Distance as the elevation chart's axis reads it: kilometres off a metric
+ * store, at a resolution its gridlines can tell apart.
  *
- * The service stores and transmits metric values throughout — this is a
- * display preference only, read by the formatters in `format.ts` and by the
- * elevation chart's own axis and readout. Remembered the same way
- * `basemap.ts` remembers a basemap choice: one namespaced `localStorage` key,
- * guarded against a browser that refuses storage outright.
+ * Everything the service stores and transmits is metric and everything shown
+ * is metric, so nothing here converts — `format.ts` holds the formatters that
+ * put a figure in words, and this is only the pair the chart needs to label an
+ * axis rather than name a value.
  */
 
-import { useCallback, useState } from "react";
-
-const STORAGE_KEY = "domestique.units";
-
-export type UnitSystem = "metric" | "imperial";
-
-const METRES_PER_MILE = 1609.344;
-const FEET_PER_METRE = 3.28084;
-
-export function metresToFeet(metres: number): number {
-  return metres * FEET_PER_METRE;
-}
-
-export function metresToMiles(metres: number): number {
-  return metres / METRES_PER_MILE;
-}
-
-/** The name of this system's long-distance unit: a kilometre or a mile. */
-export function distanceUnitLabel(system: UnitSystem): string {
-  return system === "imperial" ? "mi" : "km";
-}
-
-/** The name of this system's height unit: a metre or a foot. */
-export function elevationUnitLabel(system: UnitSystem): string {
-  return system === "imperial" ? "ft" : "m";
-}
-
-/** A height or a climb, converted for display. */
-export function elevationValue(metres: number, system: UnitSystem): number {
-  return system === "imperial" ? metresToFeet(metres) : metres;
-}
-
-/** A distance in the display unit — kilometres or miles — as a bare number. */
-export function distanceValue(metres: number, system: UnitSystem): number {
-  return system === "imperial" ? metresToMiles(metres) : metres / 1000;
+/** A distance in kilometres, as a bare number. */
+export function distanceValue(metres: number): number {
+  return metres / 1000;
 }
 
 /**
- * A distance in the display unit, with just enough decimals that a step this
- * size still tells neighbouring labels apart. Whole kilometres or miles are
- * right for a whole route and useless for a four-hundred-metre window, where
- * every label would read the same number.
- *
- * `stepKilometres` is always in kilometres, whichever system is on screen —
- * the chart it labels chooses its gridlines in kilometre-space regardless, so
- * that a change of unit only ever changes the numbers a label reads, never
- * where the gridlines themselves fall.
+ * A distance in kilometres, with just enough decimals that a step this size
+ * still tells neighbouring labels apart. Whole kilometres are right for a
+ * whole route and useless for a four-hundred-metre window, where every label
+ * would read the same number.
  */
-export function distanceLabel(metres: number, stepKilometres: number, system: UnitSystem): string {
-  const value = distanceValue(metres, system);
-  const step = distanceValue(stepKilometres * 1000, system);
-  const decimals = Math.min(Math.max(Math.ceil(-Math.log10(step)), 0), 3);
+export function distanceLabel(metres: number, stepKilometres: number): string {
+  const decimals = Math.min(Math.max(Math.ceil(-Math.log10(stepKilometres)), 0), 3);
 
-  return value.toFixed(decimals);
-}
-
-const FAHRENHEIT_DEGREES_PER_CELSIUS_DEGREE = 9 / 5;
-const FAHRENHEIT_FREEZING_POINT = 32;
-const KMH_PER_MPH = 1.609344;
-const MILLIMETRES_PER_INCH = 25.4;
-
-export function celsiusToFahrenheit(celsius: number): number {
-  return celsius * FAHRENHEIT_DEGREES_PER_CELSIUS_DEGREE + FAHRENHEIT_FREEZING_POINT;
-}
-
-export function kmhToMph(kmh: number): number {
-  return kmh / KMH_PER_MPH;
-}
-
-export function millimetresToInches(millimetres: number): number {
-  return millimetres / MILLIMETRES_PER_INCH;
-}
-
-/** The name of this system's temperature unit: a degree Celsius or Fahrenheit. */
-export function temperatureUnitLabel(system: UnitSystem): string {
-  return system === "imperial" ? "°F" : "°C";
-}
-
-/** The name of this system's speed unit: kilometres or miles per hour. */
-export function speedUnitLabel(system: UnitSystem): string {
-  return system === "imperial" ? "mph" : "km/h";
-}
-
-/** The name of this system's precipitation unit: a millimetre or an inch. */
-export function precipitationUnitLabel(system: UnitSystem): string {
-  return system === "imperial" ? "in" : "mm";
-}
-
-/** A temperature, converted for display. */
-export function temperatureValue(celsius: number, system: UnitSystem): number {
-  return system === "imperial" ? celsiusToFahrenheit(celsius) : celsius;
-}
-
-/** A speed, converted for display. */
-export function speedValue(kmh: number, system: UnitSystem): number {
-  return system === "imperial" ? kmhToMph(kmh) : kmh;
-}
-
-/** A precipitation depth, converted for display. */
-export function precipitationValue(millimetres: number, system: UnitSystem): number {
-  return system === "imperial" ? millimetresToInches(millimetres) : millimetres;
-}
-
-/** The reader's chosen unit system, remembered across visits. Metric by default. */
-export function useUnitSystem(): [UnitSystem, (system: UnitSystem) => void] {
-  const [system, setSystem] = useState<UnitSystem>(readSystem);
-
-  const choose = useCallback((next: UnitSystem) => {
-    setSystem(next);
-    writeSystem(next);
-  }, []);
-
-  return [system, choose];
-}
-
-function readSystem(): UnitSystem {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === "imperial" ? "imperial" : "metric";
-  } catch {
-    return "metric";
-  }
-}
-
-function writeSystem(system: UnitSystem): void {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, system);
-  } catch {
-    // Remembering is the whole of what is lost, and the pick still stands for
-    // as long as the page is open.
-  }
+  return distanceValue(metres).toFixed(decimals);
 }

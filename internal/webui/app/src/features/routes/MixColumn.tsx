@@ -27,8 +27,6 @@ import type { Highlight } from "../../lib/highlight";
 import { sameHighlight } from "../../lib/highlight";
 import type { MixEntry } from "../../lib/mix";
 import { formatShare } from "../../lib/mix";
-import type { UnitSystem } from "../../lib/units";
-import { metresToFeet, metresToMiles } from "../../lib/units";
 import { HighlightToggle } from "./HighlightToggle";
 
 const COLUMN_HEIGHT = 104;
@@ -46,30 +44,14 @@ const LABEL_HEIGHT = 15;
 const BAR_WIDTH = 8;
 const LEADER_WIDTH = 12;
 
-/** Below this many feet, a column reads in feet rather than fractions of a mile. */
-const FEET_COLUMN_LIMIT = 5280;
-
 /**
  * One length, in the unit the rest of its column is using.
  *
- * `formatDistance` chooses per value, which is right for a figure standing on
- * its own and wrong for a stack of them: in miles and feet it gives a column
- * reading `3598 ft`, `4707 ft`, `16.5 mi`, in which the largest number names
- * the shortest stretch. So the unit is chosen once, from the longest row, and
- * every row is drawn in it — at the cost of a two-hundred-metre class reading
- * `0.2 km` rather than `200 m`, which is the right way round: a column exists
- * to be compared down, and a class that small is being looked for rather than
- * read off.
+ * The unit is chosen once, from the longest row, at the cost of a
+ * two-hundred-metre class reading `0.2 km` rather than `200 m` — the right way
+ * round, because a column exists to be compared down.
  */
-function columnLength(metres: number, unitSystem: UnitSystem, longest: number): string {
-  if (unitSystem === "imperial") {
-    if (Math.round(metresToFeet(longest)) < FEET_COLUMN_LIMIT) {
-      return `${Math.round(metresToFeet(metres))} ft`;
-    }
-
-    return `${metresToMiles(metres).toFixed(metresToMiles(longest) < 100 ? 1 : 0)} mi`;
-  }
-
+function columnLength(metres: number, longest: number): string {
   return longest < 1_000
     ? `${Math.round(metres)} m`
     : `${(metres / 1_000).toFixed(longest < 100_000 ? 1 : 0)} km`;
@@ -130,7 +112,6 @@ export interface MixColumnProps {
   absence: string;
   highlight: Highlight | null;
   onHighlightChange: (next: Highlight | null) => void;
-  unitSystem: UnitSystem;
 }
 
 export function MixColumn({
@@ -140,7 +121,6 @@ export function MixColumn({
   absence,
   highlight,
   onHighlightChange,
-  unitSystem,
 }: MixColumnProps) {
   const stacked = [...entries].reverse();
   const places = placeLabels(stacked.map((entry) => entry.share));
@@ -214,13 +194,13 @@ export function MixColumn({
                   onChange={onHighlightChange}
                   // Both quantities spoken whichever one is drawn: the figure on
                   // screen is a choice about space, not about what the class is.
-                  label={`${entry.label}, ${entry.description}, ${columnLength(entry.metres, unitSystem, longest)}, ${formatShare(entry.share)} of the route`}
+                  label={`${entry.label}, ${entry.description}, ${columnLength(entry.metres, longest)}, ${formatShare(entry.share)} of the route`}
                   title={entry.description}
                   className="flex size-full min-w-0 items-center gap-1 rounded px-1 text-left text-[11px] leading-none hover:bg-[var(--base)] aria-pressed:bg-[color-mix(in_srgb,var(--accent)_16%,transparent)]"
                 >
                   <span className="truncate text-[var(--ink-2)]">{entry.label}</span>
                   <span className="ml-auto shrink-0 font-semibold tabular-nums">
-                    {columnLength(entry.metres, unitSystem, longest)}
+                    {columnLength(entry.metres, longest)}
                   </span>
                 </HighlightToggle>
               </li>
