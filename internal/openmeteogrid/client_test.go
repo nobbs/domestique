@@ -89,6 +89,23 @@ func TestObjectForwardsTheRangeHeaderAndTheMethod(t *testing.T) {
 	assert.Equal(t, "bytes 0-99/200", response.Header.Get("Content-Range"))
 }
 
+func TestRequestsAskTheUpstreamNotToCompressTheBody(t *testing.T) {
+	var gotAcceptEncoding string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotAcceptEncoding = request.Header.Get("Accept-Encoding")
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	response, err := newTestClient(t, server).Latest(t.Context())
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, response.Body.Close()) }()
+	// net/http transparently gzips and decompresses otherwise, desyncing the
+	// relayed ETag/Content-Length from the body this package must pass
+	// through byte-for-byte.
+	assert.Equal(t, "identity", gotAcceptEncoding)
+}
+
 func TestObjectRefusesAnyMethodButGetOrHead(t *testing.T) {
 	client, err := New(&Options{BaseURL: "https://example.test"})
 	require.NoError(t, err)

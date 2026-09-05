@@ -116,6 +116,10 @@ func (c *Client) do(ctx context.Context, method, endpoint, rangeHeader string) (
 	if rangeHeader != "" {
 		request.Header.Set("Range", rangeHeader)
 	}
+	// net/http adds Accept-Encoding: gzip and transparently decompresses
+	// otherwise, desyncing the relayed ETag/Content-Length from the body this
+	// package promises to pass through unchanged.
+	request.Header.Set("Accept-Encoding", "identity")
 
 	response, err := c.client.Do(request)
 	if err != nil {
