@@ -71,6 +71,7 @@ function recorder(overrides: Overrides = {}): Recorder {
     ONE: 7,
     ONE_MINUS_SRC_ALPHA: 8,
     LINES: 9,
+    TRIANGLES: 13,
     COMPILE_STATUS: 10,
     LINK_STATUS: 11,
     createProgram: () => "program",
@@ -99,11 +100,20 @@ function recorder(overrides: Overrides = {}): Recorder {
 }
 
 /** A frame of two streaks, with room in the buffer for three. */
-function frame(vertexCount: number): StreakFrame {
+function frame(
+  vertexCount: number,
+  primitive?: NonNullable<StreakFrame["primitive"]>,
+): StreakFrame {
   const vertices = new Float32Array(6 * FLOATS_PER_VERTEX);
   vertices.fill(0.5);
 
-  return { vertices, vertexCount, colour: [0.1, 0.2, 0.3], strength: 0.45 };
+  return {
+    vertices,
+    vertexCount,
+    colour: [0.1, 0.2, 0.3],
+    strength: 0.45,
+    ...(primitive === undefined ? {} : { primitive }),
+  };
 }
 
 /** The layer as MapLibre actually receives it: spread, never handed over whole. */
@@ -164,6 +174,16 @@ describe("what the layer asks of the context", () => {
     const [uploaded] = context.called("bufferData")[0]?.slice(1) ?? [];
 
     expect((uploaded as Float32Array).length).toBe(4 * FLOATS_PER_VERTEX);
+  });
+
+  it("draws triangles instead once the frame asks for them", () => {
+    const context = recorder();
+    const layer = spread(windStreakLayer("route-wind-field", () => frame(6, "triangles")));
+    layer.onAdd?.(NO_MAP, context.gl);
+
+    draw(layer, context.gl);
+
+    expect(context.called("drawArrays")).toEqual([[context.gl.TRIANGLES, 0, 6]]);
   });
 
   it("leaves the depth test off after drawing when it found it already off", () => {

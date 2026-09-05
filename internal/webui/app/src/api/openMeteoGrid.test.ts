@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gridWindow, omUrl } from "./openMeteoGrid";
+import { gridWindow, nearestValidTime, omUrl } from "./openMeteoGrid";
 
 describe("omUrl", () => {
   it("names the run's hour directory and drops the colon and Z from the stamp", () => {
@@ -11,6 +11,22 @@ describe("omUrl", () => {
   it("pads a single-digit month, day and hour", () => {
     expect(omUrl(new Date("2026-01-02T03:00:00Z"), "2026-01-02T03:00Z")).toBe(
       "https://openmeteo.s3.amazonaws.com/data_spatial/dwd_icon_d2/2026/01/02/0300Z/2026-01-02T0300.om",
+    );
+  });
+});
+
+describe("nearestValidTime", () => {
+  const times = ["2026-09-05T12:00Z", "2026-09-05T13:00Z", "2026-09-05T15:00Z"];
+
+  it("picks the published hour closest to the one asked for", () => {
+    expect(
+      nearestValidTime(times[0] as string, times.slice(1), new Date("2026-09-05T13:40:00Z")),
+    ).toBe("2026-09-05T13:00Z");
+  });
+
+  it("returns the only hour offered when there is nothing to compare it against", () => {
+    expect(nearestValidTime("2026-09-05T12:00Z", [], new Date("2026-09-06T00:00:00Z"))).toBe(
+      "2026-09-05T12:00Z",
     );
   });
 });

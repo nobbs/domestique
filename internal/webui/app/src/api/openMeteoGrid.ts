@@ -50,9 +50,15 @@ let latestCache: { fetchedAt: number; value: Promise<Latest> } | null = null;
 function fetchLatest(): Promise<Latest> {
   const now = Date.now();
   if (!latestCache || now - latestCache.fetchedAt >= LATEST_TTL_MS) {
-    const value = fetch(`${BUCKET}/${MODEL}/latest.json`).then(
-      (response) => response.json() as Promise<Latest>,
-    );
+    const value = fetch(`${BUCKET}/${MODEL}/latest.json`).then((response) => {
+      // fetch only rejects on a network failure; an HTTP error still resolves
+      // and would otherwise surface later as a confusing JSON parse error.
+      if (!response.ok) {
+        throw new Error(`${MODEL}/latest.json: HTTP ${response.status}`);
+      }
+
+      return response.json() as Promise<Latest>;
+    });
     // Evicted on failure so the next read retries instead of replaying the
     // same rejection for the rest of the minute.
     value.catch(() => {
@@ -79,6 +85,19 @@ export function omUrl(referenceTime: Date, validTime: string): string {
   ].join("/");
 
   return `${BUCKET}/${MODEL}/${dir}/${stamp}.om`;
+}
+
+/** Whichever of the model's published hours falls closest to `at`. */
+export function nearestValidTime(first: string, rest: readonly string[], at: Date): string {
+  const wanted = at.getTime();
+
+  return rest.reduce(
+    (best, candidate) =>
+      Math.abs(Date.parse(candidate) - wanted) < Math.abs(Date.parse(best) - wanted)
+        ? candidate
+        : best,
+    first,
+  );
 }
 
 /** The slice of the model grid covering `bbox`, aligned to chunk edges. */
@@ -133,15 +152,10 @@ async function readSlices(
   if (!firstValidTime) {
     throw new Error(`${MODEL}'s latest.json has no valid times`);
   }
-  const wanted = at.getTime();
-  const validTime = restValidTimes.reduce(
-    (best, candidate) =>
-      Math.abs(Date.parse(candidate) - wanted) < Math.abs(Date.parse(best) - wanted)
-        ? candidate
-        : best,
-    firstValidTime,
+  const url = omUrl(
+    new Date(latest.reference_time),
+    nearestValidTime(firstValidTime, restValidTimes, at),
   );
-  const url = omUrl(new Date(latest.reference_time), validTime);
   const values = await backends.withReader(url, blocks, (root) =>
     Promise.all(names.map((name) => readSlice(root, name, window))),
   );

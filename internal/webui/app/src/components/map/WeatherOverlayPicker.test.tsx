@@ -38,7 +38,7 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByText(/^Now · \w+ \d/)).toBeInTheDocument();
+    expect(screen.getByText(/^Now · \p{L}+ \d/u)).toBeInTheDocument();
 
     rerender(
       <WeatherOverlayPicker
@@ -51,7 +51,7 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByText(/^\+3h · \w+ \d/)).toBeInTheDocument();
+    expect(screen.getByText(/^\+3h · \p{L}+ \d/u)).toBeInTheDocument();
   });
 
   it("disables the hour scale until a measure is on", () => {

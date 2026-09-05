@@ -62,15 +62,25 @@ export function useViewportGrid<T>(
     if (!map || typeof map.on !== "function") {
       return;
     }
-    const update = () => {
+    // Live on every frame of the pan: a frame loop reading `bboxRef` respawns
+    // particles into the view actually on screen, not the one before the pan
+    // started. `setBbox` — which triggers a fetch — waits for `moveend`
+    // instead, so a pan mid-flight never queues a slice for ground the reader
+    // has already scrolled past.
+    const track = () => {
       bboxRef.current = viewBbox(map);
+    };
+    const settle = () => {
+      track();
       setBbox(bboxRef.current);
     };
-    update();
-    map.on("moveend", update);
+    settle();
+    map.on("move", track);
+    map.on("moveend", settle);
 
     return () => {
-      map.off("moveend", update);
+      map.off("move", track);
+      map.off("moveend", settle);
     };
   }, [map]);
 
