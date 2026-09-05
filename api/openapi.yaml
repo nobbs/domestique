@@ -852,7 +852,9 @@ paths:
         "200":
           description: The manifest, exactly as the provider publishes it.
           content:
-            application/json: {}
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherGridManifest'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -2298,3 +2300,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WeatherPoint'
+    WeatherGridManifest:
+      description: >-
+        The provider's own capture manifest, relayed rather than reshaped:
+        additional fields it publishes are passed through rather than
+        rejected.
+      type: object
+      additionalProperties: true
+      required:
+        - reference_time
+        - valid_times
+      properties:
+        reference_time:
+          type: string
+        valid_times:
+          type: array
+          items:
+            type: string

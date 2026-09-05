@@ -542,3 +542,9 @@ type WeatherPoint struct {
 type WeatherForecast struct {
 	Points []WeatherPoint `json:"points"`
 }
+
+// WeatherGridManifest The provider's own capture manifest, relayed rather than reshaped: additional fields it publishes are passed through rather than rejected.
+type WeatherGridManifest struct {
+	ReferenceTime string   `json:"reference_time"`
+	ValidTimes    []string `json:"valid_times"`
+}

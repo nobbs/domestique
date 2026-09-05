@@ -66,6 +66,22 @@ export async function domestiqueRequest<T>(url: string, options: RequestInit): P
   return { data: payload, headers: response.headers, status: response.status } as T;
 }
 
+/**
+ * Same transport as `domestiqueRequest`, for the one operation whose body is
+ * bytes rather than JSON: no `Accept` override, no `response.json()`.
+ */
+export async function domestiqueBinaryRequest<T>(url: string, options: RequestInit): Promise<T> {
+  const response = await fetch(url, { ...options, credentials: "same-origin" });
+  if (!response.ok) {
+    if (response.status === 401) {
+      window.location.assign("/auth/login");
+    }
+    throw new ApiError(response.status, "unknown", `request failed with status ${response.status}`);
+  }
+
+  return { data: await response.blob(), headers: response.headers, status: response.status } as T;
+}
+
 /** Keeps a generated operation's response envelope at the transport boundary. */
 export function unwrap<T>(value: { data: T } | T): T {
   if (value && typeof value === "object" && "data" in value) {

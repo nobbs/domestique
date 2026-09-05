@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, domestiqueRequest, unwrap } from "./request";
+import { ApiError, domestiqueBinaryRequest, domestiqueRequest, unwrap } from "./request";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -41,6 +41,34 @@ describe("domestiqueRequest", () => {
     );
 
     expect(assign).not.toHaveBeenCalled();
+  });
+});
+
+describe("domestiqueBinaryRequest", () => {
+  it("resolves a blob without parsing it as JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not json", { status: 200 })),
+    );
+
+    const result = await domestiqueBinaryRequest<{ data: Blob; status: number }>(
+      "/v1/weather-grid/object",
+      { method: "GET" },
+    );
+
+    expect(result.status).toBe(200);
+    expect(await result.data.text()).toBe("not json");
+  });
+
+  it("throws without reading the body on failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("gateway error text", { status: 502 })),
+    );
+
+    await expect(
+      domestiqueBinaryRequest("/v1/weather-grid/object", { method: "GET" }),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 });
 

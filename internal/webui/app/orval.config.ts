@@ -20,6 +20,11 @@ export default defineConfig({
         operations: {
           getSyncRuns: { query: { useInfinite: true, useInfiniteQueryParam: "after" } },
           getTaskRuns: { query: { useInfinite: true, useInfiniteQueryParam: "after" } },
+          // The only relayed body that isn't JSON: domestiqueRequest's Accept
+          // override and response.json() would reject it outright.
+          getWeatherGridObject: {
+            mutator: { name: "domestiqueBinaryRequest", path: "./src/api/request.ts" },
+          },
         },
       },
     },

@@ -31,7 +31,7 @@ import type {
 } from "@tanstack/react-query";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import type { ErrorType } from "./request";
-import { domestiqueRequest } from "./request";
+import { domestiqueBinaryRequest, domestiqueRequest } from "./request";
 export interface Build {
   revision: string;
   imageDigest?: string;
@@ -528,6 +528,15 @@ export interface WeatherPoint {
 
 export interface WeatherForecast {
   points: WeatherPoint[];
+}
+
+/**
+ * The provider's own capture manifest, relayed rather than reshaped: additional fields it publishes are passed through rather than rejected.
+ */
+export interface WeatherGridManifest {
+  reference_time: string;
+  valid_times: string[];
+  [key: string]: unknown;
 }
 
 export type ErrorError = {
@@ -4660,6 +4669,11 @@ export function useGetWeather<
   return withQueryKey(query, queryOptions.queryKey);
 }
 
+export type getWeatherGridLatestResponse200 = {
+  data: WeatherGridManifest;
+  status: 200;
+};
+
 export type getWeatherGridLatestResponse401 = {
   data: UnauthorizedResponse;
   status: 401;
@@ -4674,6 +4688,10 @@ export type getWeatherGridLatestResponse502 = {
   data: ProviderUnavailableResponse;
   status: 502;
 };
+
+export type getWeatherGridLatestResponseSuccess = getWeatherGridLatestResponse200 & {
+  headers: Headers;
+};
 export type getWeatherGridLatestResponseError = (
   | getWeatherGridLatestResponse401
   | getWeatherGridLatestResponse403
@@ -4681,8 +4699,6 @@ export type getWeatherGridLatestResponseError = (
 ) & {
   headers: Headers;
 };
-
-export type getWeatherGridLatestResponse = getWeatherGridLatestResponseError;
 
 export const getGetWeatherGridLatestUrl = () => {
   return `/v1/weather-grid/latest`;
@@ -4693,8 +4709,8 @@ export const getGetWeatherGridLatestUrl = () => {
  */
 export const getWeatherGridLatest = async (
   options?: Parameters<typeof domestiqueRequest>[1],
-): Promise<getWeatherGridLatestResponse> => {
-  return domestiqueRequest<getWeatherGridLatestResponse>(getGetWeatherGridLatestUrl(), {
+): Promise<getWeatherGridLatestResponseSuccess> => {
+  return domestiqueRequest<getWeatherGridLatestResponseSuccess>(getGetWeatherGridLatestUrl(), {
     ...options,
     method: "GET",
   });
@@ -4872,9 +4888,9 @@ export const getGetWeatherGridObjectUrl = (params: GetWeatherGridObjectParams) =
  */
 export const getWeatherGridObject = async (
   params: GetWeatherGridObjectParams,
-  options?: Parameters<typeof domestiqueRequest>[1],
+  options?: Parameters<typeof domestiqueBinaryRequest>[1],
 ): Promise<getWeatherGridObjectResponseSuccess> => {
-  return domestiqueRequest<getWeatherGridObjectResponseSuccess>(
+  return domestiqueBinaryRequest<getWeatherGridObjectResponseSuccess>(
     getGetWeatherGridObjectUrl(params),
     {
       ...options,
@@ -4898,7 +4914,7 @@ export const getGetWeatherGridObjectQueryOptions = <
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
     >;
-    request?: SecondParameter<typeof domestiqueRequest>;
+    request?: SecondParameter<typeof domestiqueBinaryRequest>;
   },
 ) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
@@ -4941,7 +4957,7 @@ export function useGetWeatherGridObject<
         >,
         "initialData"
       >;
-    request?: SecondParameter<typeof domestiqueRequest>;
+    request?: SecondParameter<typeof domestiqueBinaryRequest>;
   },
   queryClient?: QueryClient,
 ): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
@@ -4964,7 +4980,7 @@ export function useGetWeatherGridObject<
         >,
         "initialData"
       >;
-    request?: SecondParameter<typeof domestiqueRequest>;
+    request?: SecondParameter<typeof domestiqueBinaryRequest>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
@@ -4979,7 +4995,7 @@ export function useGetWeatherGridObject<
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
     >;
-    request?: SecondParameter<typeof domestiqueRequest>;
+    request?: SecondParameter<typeof domestiqueBinaryRequest>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
@@ -4995,7 +5011,7 @@ export function useGetWeatherGridObject<
     query?: Partial<
       UseQueryOptions<Awaited<ReturnType<typeof getWeatherGridObject>>, TError, TData>
     >;
-    request?: SecondParameter<typeof domestiqueRequest>;
+    request?: SecondParameter<typeof domestiqueBinaryRequest>;
   },
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
