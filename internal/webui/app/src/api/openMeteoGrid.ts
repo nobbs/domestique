@@ -16,7 +16,11 @@ import {
   OmHttpBackendPool,
 } from "@openmeteo/file-reader";
 import type { Bbox, GridGeometry, ScalarGrid, WindGrid } from "../lib/windGrid";
-import { getGetWeatherGridObjectUrl, getWeatherGridLatest } from "./generated";
+import {
+  getGetWeatherGridObjectUrl,
+  getWeatherGridLatest,
+  type WeatherGridManifest,
+} from "./generated";
 import { unwrap } from "./request";
 
 // From the layer package's domain table; the .om file carries no georeference.
@@ -36,28 +40,20 @@ const BLOCKS_HELD = 64;
 const backends = new OmHttpBackendPool();
 const blocks = new LruBlockCache(BLOCK_BYTES, BLOCKS_HELD);
 
-interface Latest {
-  reference_time: string;
-  valid_times: string[];
-}
-
 /**
  * How long a fetched `latest.json` is trusted, matching the model's own
  * publishing package. It changes once a run, not once a pan — without this
  * every overlay's every hour re-fetched it on every slice read.
  */
 const LATEST_TTL_MS = 60_000;
-let latestCache: { fetchedAt: number; value: Promise<Latest> } | null = null;
+let latestCache: { fetchedAt: number; value: Promise<WeatherGridManifest> } | null = null;
 
-function fetchLatest(): Promise<Latest> {
+function fetchLatest(): Promise<WeatherGridManifest> {
   const now = Date.now();
   if (!latestCache || now - latestCache.fetchedAt >= LATEST_TTL_MS) {
     // domestiqueRequest wraps every generated call in { data, status, headers
-    // } — unwrap gets past that envelope to the actual body. Cast beyond
-    // that: the operation's success response carries no schema (it is a
-    // relay, not this service's own shape), so Orval types the envelope's
-    // data as the union of its error responses alone.
-    const value = getWeatherGridLatest().then((response) => unwrap(response) as unknown as Latest);
+    // } — unwrap gets past that envelope to the manifest itself.
+    const value = getWeatherGridLatest().then(unwrap);
     const entry = { fetchedAt: now, value };
     // Evicted on failure so the next read retries instead of replaying the
     // same rejection for the rest of the minute — but only if this is still
