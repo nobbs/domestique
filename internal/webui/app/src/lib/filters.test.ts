@@ -76,6 +76,12 @@ describe("matchesFilters", () => {
     expect(matchesFilters(rest, filters)).toBe(false);
   });
 
+  it("reads a crossed range as the span between its bounds", () => {
+    const filters = { ...EMPTY_FILTERS, ascentMetres: { min: 900, max: 700 } };
+    expect(matchesFilters(route({ ascentMetres: 800 }), filters)).toBe(true);
+    expect(matchesFilters(route({ ascentMetres: 950 }), filters)).toBe(false);
+  });
+
   it("requires every active bound to hold at once", () => {
     const filters = {
       ...EMPTY_FILTERS,

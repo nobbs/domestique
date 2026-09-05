@@ -13,4 +13,10 @@ describe("domainOf", () => {
   it("gives an empty library one step of track", () => {
     expect(domainOf([], [100, 500])).toEqual({ max: 100, step: 100 });
   });
+
+  it("survives a library too large to spread into arguments", () => {
+    const values = new Array<number>(200_000).fill(1_000);
+    values[123_456] = 61_500;
+    expect(domainOf(values, [1_000, 2_000])).toEqual({ max: 62_000, step: 2_000 });
+  });
 });

@@ -13,7 +13,12 @@ const MAX_STEPS = 60;
  * track under `MAX_STEPS` stops. An empty library gets one step of track.
  */
 export function domainOf(values: number[], steps: number[]): Domain {
-  const largest = Math.max(0, ...values);
+  // A loop rather than `Math.max(...values)`: a large library spread into
+  // arguments can exceed the engine's limit.
+  let largest = 0;
+  for (const value of values) {
+    largest = Math.max(largest, value);
+  }
   const step = steps.find((candidate) => largest / candidate <= MAX_STEPS) ?? steps.at(-1) ?? 1;
 
   return { max: Math.max(step, Math.ceil(largest / step) * step), step };

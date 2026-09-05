@@ -38,11 +38,16 @@ export function hasActiveFilters(filters: LibraryFilters): boolean {
 }
 
 function inRange(value: number, range: NumericRange): boolean {
-  if (range.min !== null && value < range.min) {
+  // A crossed range, which only a hand-edited address can produce, reads as
+  // the span between its two bounds rather than as nothing at all.
+  const crossed = range.min !== null && range.max !== null && range.min > range.max;
+  const min = crossed ? range.max : range.min;
+  const max = crossed ? range.min : range.max;
+  if (min !== null && value < min) {
     return false;
   }
 
-  return !(range.max !== null && value > range.max);
+  return !(max !== null && value > max);
 }
 
 /**

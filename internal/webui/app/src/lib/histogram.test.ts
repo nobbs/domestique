@@ -9,4 +9,9 @@ describe("histogram", () => {
   it("answers no values with empty bins", () => {
     expect(histogram([], 0, 100, 3)).toEqual([0, 0, 0]);
   });
+
+  it("leaves every bin empty over a domain with no width", () => {
+    expect(histogram([1, 2], 5, 5, 3)).toEqual([0, 0, 0]);
+    expect(histogram([1, 2], 5, 5, 0)).toEqual([]);
+  });
 });
