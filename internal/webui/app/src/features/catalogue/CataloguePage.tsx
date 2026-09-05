@@ -57,8 +57,6 @@ import { useNarrowViewport } from "../../lib/mediaQuery";
 import { gradientBand } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { useSeenRoutes } from "../../lib/seenRoutes";
-import type { UnitSystem } from "../../lib/units";
-import { useUnitSystem } from "../../lib/units";
 import { FilterPanel } from "../routes/FilterPanel";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
 import { CatalogueHeader } from "./CatalogueHeader";
@@ -78,11 +76,10 @@ function atlasLink(route: Route): string {
  */
 function measures(
   route: Route,
-  unitSystem: UnitSystem,
 ): Array<{ key: string; figure: string; qualifier?: string | undefined }> {
   return [
-    { key: "distance", figure: formatDistance(route.distanceMetres, unitSystem) },
-    { key: "ascent", figure: formatAscent(route.ascentMetres, unitSystem) },
+    { key: "distance", figure: formatDistance(route.distanceMetres) },
+    { key: "ascent", figure: formatAscent(route.ascentMetres) },
     { key: "gradient", figure: formatGradient(route.maxGradientPercent) },
     {
       key: "movingTime",
@@ -167,12 +164,10 @@ function CatalogueCard({
   route,
   coordinates,
   change,
-  unitSystem,
 }: {
   route: Route;
   coordinates: Position[];
   change: RouteChange;
-  unitSystem: UnitSystem;
 }) {
   const where = secondName(route);
 
@@ -204,7 +199,7 @@ function CatalogueCard({
             </span>
           )}
           <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums">
-            {measures(route, unitSystem).map(({ key, figure }) => (
+            {measures(route).map(({ key, figure }) => (
               <span key={key}>{figure}</span>
             ))}
           </span>
@@ -217,7 +212,6 @@ function CatalogueCard({
 export function CataloguePage() {
   const routes = useQuery(routesQuery());
   const status = useQuery(statusQuery());
-  const [unitSystem] = useUnitSystem();
   // Read, never written: a row is not an opened route, so nothing here marks a
   // stage seen. Only the atlas does, from the moment a route's own panel shows.
   const { changeOf } = useSeenRoutes();
@@ -421,7 +415,6 @@ export function CataloguePage() {
                 route={route}
                 coordinates={drawn.shapes.get(routeKey(route)) ?? []}
                 change={changeOf(route)}
-                unitSystem={unitSystem}
               />
             ))}
           </ul>
@@ -458,7 +451,6 @@ export function CataloguePage() {
                     coordinates={drawn.shapes.get(routeKey(route)) ?? []}
                     surface={drawn.ranges.get(routeKey(route))}
                     change={changeOf(route)}
-                    unitSystem={unitSystem}
                     to={atlasLink(route)}
                   />
                 ))}

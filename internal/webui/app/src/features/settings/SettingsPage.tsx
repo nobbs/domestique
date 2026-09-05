@@ -3,7 +3,6 @@ import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/componen
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { PageShell } from "../../components/Layout";
 import { THEME_CHOICES, type ThemeChoice } from "../../lib/theme";
-import { useUnitSystem } from "../../lib/units";
 import { DataSources } from "./DataSources";
 import { WahooAccountCard } from "./WahooAccountCard";
 
@@ -19,8 +18,6 @@ export interface SettingsPageProps {
 }
 
 export function SettingsPage({ themeChoice, onThemeChoiceChange }: SettingsPageProps) {
-  const [unitSystem, setUnitSystem] = useUnitSystem();
-
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6">
@@ -32,32 +29,6 @@ export function SettingsPage({ themeChoice, onThemeChoiceChange }: SettingsPageP
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-8">
-            <FieldSet>
-              <FieldLegend>Units</FieldLegend>
-              <RadioGroup
-                value={unitSystem}
-                onValueChange={(value) => {
-                  if (value === "metric" || value === "imperial") {
-                    setUnitSystem(value);
-                  }
-                }}
-              >
-                <FieldGroup>
-                  <FieldLabel>
-                    <Field orientation="horizontal">
-                      <RadioGroupItem value="metric" />
-                      <span>Metric (km)</span>
-                    </Field>
-                  </FieldLabel>
-                  <FieldLabel>
-                    <Field orientation="horizontal">
-                      <RadioGroupItem value="imperial" />
-                      <span>Imperial (mi)</span>
-                    </Field>
-                  </FieldLabel>
-                </FieldGroup>
-              </RadioGroup>
-            </FieldSet>
             <FieldSet>
               <FieldLegend>Theme</FieldLegend>
               <RadioGroup

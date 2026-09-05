@@ -38,7 +38,6 @@ export const FilteringAndResults: Story = {
         shapes={new Map([[routeKey(route), { coordinates }]])}
         readAt="19:38"
         changeOf={() => "new"}
-        unitSystem="metric"
       />
     );
   },

@@ -28,7 +28,6 @@ import { cuesDescription, routeCues } from "../../lib/routeCues";
 import { gradientSlices, routeLinesWithin } from "../../lib/routeLines";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_LINE_WIDTH, surfaceColour, surfaceLinesWithin } from "../../lib/surface";
-import type { UnitSystem } from "../../lib/units";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { ConditionsWash } from "./ConditionsWash";
 import { DirectionCues } from "./DirectionCues";
@@ -174,8 +173,6 @@ export interface RouteOverlayProps {
    * none. Read from the same samples above; nothing is drawn without both.
    */
   measure?: MeasureKey | null;
-  /** The units the tooltip and the route's own screen-reader summary report in. */
-  unitSystem?: UnitSystem;
 }
 
 export function RouteOverlay({
@@ -192,7 +189,6 @@ export function RouteOverlay({
   onZoomChange,
   highlight = null,
   measure = null,
-  unitSystem = "metric",
 }: RouteOverlayProps) {
   // Picks the steepness ramp: the edging has to match the ground it is drawn
   // on, which is the loaded basemap rather than the page's scheme.
@@ -449,7 +445,6 @@ export function RouteOverlay({
         samples={samples}
         measure={measure}
         beforeId={HALO_LAYER_ID}
-        unitSystem={unitSystem}
       />
       {/*
        * Which way the air is going, drifting through the corridor it was washed
@@ -474,7 +469,6 @@ export function RouteOverlay({
         coordinates={coordinates}
         lit={lit}
         beforeId="route-casing"
-        unitSystem={unitSystem}
       />
       {surfaceFeatures.map(({ kind, data }) => (
         <Source key={kind} id={`route-surface-${kind}`} type="geojson" data={data}>
@@ -525,7 +519,6 @@ export function RouteOverlay({
           // it: the profile card is folded away, or — even open — a windowed
           // chart has no sample to announce for a hover outside its window.
           announce={profileCollapsed || windowedSample === null}
-          unitSystem={unitSystem}
         />
       ) : null}
       {/*
@@ -534,7 +527,7 @@ export function RouteOverlay({
        * visible — for a reader who is not looking at the canvas it is the whole
        * of what the cues say.
        */}
-      {cues ? <p className="visually-hidden">{cuesDescription(cues, unitSystem)}</p> : null}
+      {cues ? <p className="visually-hidden">{cuesDescription(cues)}</p> : null}
     </>
   );
 }

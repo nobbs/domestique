@@ -37,7 +37,6 @@ export const RouteDetail: Story = {
           libraryCount={47}
           onClose={() => {}}
           sourceBaseUrls={{ veloplanner: "https://veloplanner.com" }}
-          unitSystem="metric"
         />
       </StoryProviders>
     );

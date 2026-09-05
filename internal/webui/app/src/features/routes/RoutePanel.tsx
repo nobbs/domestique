@@ -60,7 +60,6 @@ import { useEffectiveAdmin } from "../../lib/identity";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
-import { elevationValue, type UnitSystem } from "../../lib/units";
 import { MixRow } from "./MixRow";
 import { ReprocessButton } from "./ReprocessButton";
 
@@ -139,7 +138,6 @@ export interface RoutePanelProps {
   onClose: () => void;
   /** Each configured source's web application, keyed by provider. */
   sourceBaseUrls: Record<string, string>;
-  unitSystem: UnitSystem;
 }
 
 export function RoutePanel({
@@ -159,7 +157,6 @@ export function RoutePanel({
   libraryCount,
   onClose,
   sourceBaseUrls,
-  unitSystem,
 }: RoutePanelProps) {
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
   const effectiveAdmin = useEffectiveAdmin();
@@ -219,8 +216,7 @@ export function RoutePanel({
              */}
             {collapsed ? (
               <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
-                {formatDistance(route.distanceMetres, unitSystem)} ·{" "}
-                {formatAscent(route.ascentMetres, unitSystem)}
+                {formatDistance(route.distanceMetres)} · {formatAscent(route.ascentMetres)}
               </span>
             ) : null}
           </button>
@@ -291,7 +287,7 @@ export function RoutePanel({
                   </>
                 }
               >
-                {formatDistance(route.distanceMetres, unitSystem)}
+                {formatDistance(route.distanceMetres)}
               </Figure>
               {/*
                * Predicted, not measured — the label says "moving time", not
@@ -334,7 +330,7 @@ export function RoutePanel({
                     // ends the pair is the widest figure on the card, and in
                     // feet — where both ends are four digits — it is wide
                     // enough to start eating its own label.
-                    `${Math.round(elevationValue(lowestMetres, unitSystem)).toLocaleString()}–${formatElevation(highestMetres, unitSystem)}`}
+                    `${Math.round(lowestMetres).toLocaleString()}–${formatElevation(highestMetres)}`}
               </Figure>
               {/*
                * One row rather than two: a point-to-point route's climb and
@@ -352,7 +348,7 @@ export function RoutePanel({
                 <span className="inline-flex items-center gap-px">
                   <IconArrowBarUp stroke={2} aria-hidden="true" className="size-3 shrink-0" />
                   <span className="sr-only">ascent</span>
-                  {formatAscent(route.ascentMetres, unitSystem)}
+                  {formatAscent(route.ascentMetres)}
                 </span>
                 <span aria-hidden="true" className="mx-0.5 text-[var(--ink-2)]">
                   /
@@ -360,7 +356,7 @@ export function RoutePanel({
                 <span className="inline-flex items-center gap-px">
                   <IconArrowBarDown stroke={2} aria-hidden="true" className="size-3 shrink-0" />
                   <span className="sr-only">descent</span>
-                  {formatDescent(route.descentMetres, unitSystem)}
+                  {formatDescent(route.descentMetres)}
                 </span>
               </Figure>
               <Figure
@@ -433,7 +429,6 @@ export function RoutePanel({
                 tagSide="above"
                 highlight={highlight}
                 onHighlightChange={onHighlightChange}
-                unitSystem={unitSystem}
               />
               <MixRow
                 classesLabel="Surface classes"
@@ -442,7 +437,6 @@ export function RoutePanel({
                 tagSide="below"
                 highlight={highlight}
                 onHighlightChange={onHighlightChange}
-                unitSystem={unitSystem}
               />
             </div>
           </div>

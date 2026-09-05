@@ -15,7 +15,6 @@ import { activitiesQuery } from "../../api/queries";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatAscent, formatCount, formatDistance, formatMovingTime } from "../../lib/format";
-import { type UnitSystem, useUnitSystem } from "../../lib/units";
 import {
   bucketActivities,
   type Granularity,
@@ -31,7 +30,6 @@ const GRANULARITIES: ReadonlyArray<{ value: Granularity; label: string; heading:
 
 export function VolumePage() {
   const [granularity, setGranularity] = useState<Granularity>("week");
-  const [system] = useUnitSystem();
   const from = useMemo(() => windowStart(), []);
   const { data, isPending, isError } = useQuery(activitiesQuery(from));
   const activities = useMemo(() => data ?? [], [data]);
@@ -63,7 +61,7 @@ export function VolumePage() {
           </p>
         ) : (
           <>
-            <Totals totals={totals} system={system} />
+            <Totals totals={totals} />
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-semibold text-lg">{heading}</h2>
               <ToggleGroup
@@ -104,9 +102,9 @@ export function VolumePage() {
                       {bucket.count === 0
                         ? "No rides"
                         : [
-                            formatDistance(bucket.distanceMetres, system),
+                            formatDistance(bucket.distanceMetres),
                             formatMovingTime(bucket.movingSeconds),
-                            formatAscent(bucket.ascentMetres, system),
+                            formatAscent(bucket.ascentMetres),
                             formatCount(bucket.count, "ride"),
                           ].join(" · ")}
                     </span>
@@ -121,11 +119,11 @@ export function VolumePage() {
   );
 }
 
-function Totals({ totals, system }: { totals: VolumeTotals; system: UnitSystem }) {
+function Totals({ totals }: { totals: VolumeTotals }) {
   const figures = [
-    { label: "Distance", value: formatDistance(totals.distanceMetres, system) },
+    { label: "Distance", value: formatDistance(totals.distanceMetres) },
     { label: "Moving time", value: formatMovingTime(totals.movingSeconds) },
-    { label: "Ascent", value: formatAscent(totals.ascentMetres, system) },
+    { label: "Ascent", value: formatAscent(totals.ascentMetres) },
     { label: "Rides", value: totals.count.toLocaleString() },
   ];
 

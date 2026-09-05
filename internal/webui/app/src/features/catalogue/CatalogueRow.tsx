@@ -22,7 +22,6 @@ import { formatAscent, formatDistance, formatGradient, formatMovingTime } from "
 import { GRADIENT_BANDS, gradientBand, gradientShares } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { SURFACE_STYLES, summariseSurface } from "../../lib/surface";
-import type { UnitSystem } from "../../lib/units";
 import { SharePill } from "./SharePill";
 
 /** The custom property each surface class is painted from. */
@@ -63,19 +62,11 @@ export interface CatalogueRowProps {
   /** Its classified ground, or undefined where nothing has classified it. */
   surface: SurfaceRange[] | undefined;
   change: RouteChange;
-  unitSystem: UnitSystem;
   /** The atlas address this route opens at. */
   to: string;
 }
 
-export function CatalogueRow({
-  route,
-  coordinates,
-  surface,
-  change,
-  unitSystem,
-  to,
-}: CatalogueRowProps) {
+export function CatalogueRow({ route, coordinates, surface, change, to }: CatalogueRowProps) {
   const where = secondName(route);
   /*
    * Whether this route's geometry is in hand at all. Both divisions below come
@@ -116,7 +107,7 @@ export function CatalogueRow({
       </td>
       <td className="w-80 px-3 py-3">
         <span className="block text-right tabular-nums">
-          {formatDistance(route.distanceMetres, unitSystem)}
+          {formatDistance(route.distanceMetres)}
           {route.movingSeconds === undefined ? null : (
             <span className="ml-2 text-[var(--ink-2)]">
               {formatMovingTime(route.movingSeconds)}
@@ -148,7 +139,7 @@ export function CatalogueRow({
             <span className="text-[var(--ink-2)]">{measured ? "no elevation data" : ""}</span>
           ) : (
             <>
-              {formatAscent(route.ascentMetres, unitSystem)}
+              {formatAscent(route.ascentMetres)}
               <span className="ml-2 text-[var(--ink-2)]">
                 max {formatGradient(route.maxGradientPercent)}
               </span>

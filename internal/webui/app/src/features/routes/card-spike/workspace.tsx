@@ -188,7 +188,6 @@ export function Workspace({ card }: { card: "slide" | "fold" | "plain" | "rows" 
                 activeMetres={active}
                 onActiveChange={setActive}
                 highlight={highlight}
-                unitSystem="metric"
               />
               <ClimbMarkers
                 climbs={MARKED}

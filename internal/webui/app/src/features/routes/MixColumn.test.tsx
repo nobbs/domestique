@@ -38,7 +38,6 @@ function renderColumn(onHighlightChange = vi.fn(), highlight = null) {
       absence="Surface not classified yet."
       highlight={highlight}
       onHighlightChange={onHighlightChange}
-      unitSystem="metric"
     />,
   );
 
@@ -71,7 +70,6 @@ describe("MixColumn", () => {
         absence="Surface not classified yet."
         highlight={null}
         onHighlightChange={() => {}}
-        unitSystem="metric"
       />,
     );
 
@@ -88,7 +86,6 @@ describe("MixColumn", () => {
         absence="Surface not classified yet."
         highlight={null}
         onHighlightChange={onHighlightChange}
-        unitSystem="metric"
       />,
     );
 
@@ -103,7 +100,6 @@ describe("MixColumn", () => {
         absence="Surface not classified yet."
         highlight={{ type: "surface", kind: "gravel" }}
         onHighlightChange={onHighlightChange}
-        unitSystem="metric"
       />,
     );
     await userEvent.click(screen.getByRole("button", { name: /^Gravel,/ }));
@@ -121,7 +117,6 @@ describe("MixColumn", () => {
         absence="Surface not classified yet."
         highlight={{ type: "surface", kind: "gravel" }}
         onHighlightChange={onHighlightChange}
-        unitSystem="metric"
       />,
     );
 

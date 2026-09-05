@@ -33,7 +33,6 @@ import {
   WIND_RELATION_KEY,
   windRelationVariable,
 } from "../../lib/measures";
-import type { UnitSystem } from "../../lib/units";
 
 const CHOICE =
   "flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
@@ -166,11 +165,10 @@ function Stroke({ colour }: { colour: string }) {
 export interface ConditionsKeyProps {
   measure: MeasureKey | null;
   samples: ForecastSample[];
-  unitSystem: UnitSystem;
 }
 
 /** The key for one measure's wash, on one line: the corridor, and for wind the route line too. */
-export function ConditionsKey({ measure, samples, unitSystem }: ConditionsKeyProps) {
+export function ConditionsKey({ measure, samples }: ConditionsKeyProps) {
   const chosen: Measure | undefined = MEASURES.find((entry) => entry.key === measure);
   if (chosen === undefined || samples.length === 0) {
     return null;
@@ -191,7 +189,7 @@ export function ConditionsKey({ measure, samples, unitSystem }: ConditionsKeyPro
                   key={band.label}
                   mark={<Bar colour={measureVariable(chosen.key, index)} opacity={opacity} />}
                   label={band.label}
-                  detail={`${band.description} · ${bandRange(chosen, index, unitSystem)}${opacity === 0 ? " · not washed" : ""}`}
+                  detail={`${band.description} · ${bandRange(chosen, index)}${opacity === 0 ? " · not washed" : ""}`}
                 />
               );
             })}

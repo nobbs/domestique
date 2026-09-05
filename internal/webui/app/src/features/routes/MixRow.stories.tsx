@@ -18,7 +18,6 @@ function Pair({ gradient, surfaceMix }: { gradient: MixEntry[]; surfaceMix: MixE
         tagSide="above"
         highlight={highlight}
         onHighlightChange={setHighlight}
-        unitSystem="metric"
       />
       <MixRow
         classesLabel="Surface classes"
@@ -27,7 +26,6 @@ function Pair({ gradient, surfaceMix }: { gradient: MixEntry[]; surfaceMix: MixE
         tagSide="below"
         highlight={highlight}
         onHighlightChange={setHighlight}
-        unitSystem="metric"
       />
     </div>
   );

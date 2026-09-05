@@ -58,14 +58,9 @@ function Tint({ withWash = false }: { withWash?: boolean }) {
   return (
     <>
       {withWash ? (
-        <ConditionsWash
-          coordinates={coordinates}
-          samples={weatherSamples}
-          measure="wind"
-          unitSystem="metric"
-        />
+        <ConditionsWash coordinates={coordinates} samples={weatherSamples} measure="wind" />
       ) : null}
-      <WindRelationTint runs={runs} coordinates={coordinates} unitSystem="metric" />
+      <WindRelationTint runs={runs} coordinates={coordinates} />
     </>
   );
 }

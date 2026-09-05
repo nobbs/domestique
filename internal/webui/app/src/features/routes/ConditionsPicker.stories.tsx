@@ -27,7 +27,7 @@ function Picking({
         samples={samples}
         movingSeconds={movingSeconds}
       />
-      <ConditionsKey measure={measure} samples={samples} unitSystem="metric" />
+      <ConditionsKey measure={measure} samples={samples} />
     </div>
   );
 }

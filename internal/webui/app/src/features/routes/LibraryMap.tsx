@@ -11,7 +11,6 @@ import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import type { Insets } from "../../lib/overlayInsets";
-import type { UnitSystem } from "../../lib/units";
 import { LIBRARY_HIT_LAYER, LibraryRoutes, type MapLine } from "./LibraryRoutes";
 
 export type { MapLine } from "./LibraryRoutes";
@@ -22,7 +21,6 @@ export interface LibraryMapProps {
   basemaps?: Basemap[];
   selectedBasemap?: string;
   onBasemapChange?: (name: string) => void;
-  unitSystem?: UnitSystem;
   lines: MapLine[];
   pickedKey: string | null;
   bounds: BoundingBox | null;
@@ -46,7 +44,6 @@ export function LibraryMap({
   basemaps = [],
   selectedBasemap = "",
   onBasemapChange,
-  unitSystem = "metric",
   lines,
   pickedKey,
   bounds,
@@ -84,7 +81,7 @@ export function LibraryMap({
         // from under the hand that just used them.
         furniture={
           <>
-            <ScaleControl position="bottom-left" unit={unitSystem} />
+            <ScaleControl position="bottom-left" unit="metric" />
             <MapControls>
               {onBasemapChange ? (
                 <BasemapPicker

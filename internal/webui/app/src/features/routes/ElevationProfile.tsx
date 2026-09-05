@@ -60,14 +60,7 @@ import { niceStep, sampleAt, ticksFor } from "../../lib/profile";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../../lib/selection";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../../lib/surface";
-import type { UnitSystem } from "../../lib/units";
-import {
-  distanceLabel,
-  distanceUnitLabel,
-  distanceValue,
-  elevationUnitLabel,
-  elevationValue,
-} from "../../lib/units";
+import { distanceLabel, distanceValue } from "../../lib/units";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 
@@ -80,6 +73,21 @@ import { useEscapeKey } from "../../lib/useEscapeKey";
  * read alongside.
  */
 const PLOT_HEIGHT = { wide: 92, narrow: 74 } as const;
+
+/** The chart's two units spelled out, for the summary a screen reader hears rather than an axis tick. */
+const DISTANCE_WORD = "kilometres";
+const ELEVATION_WORD = "metres";
+
+/**
+ * The slider's position in kilometres, to the metre.
+ *
+ * Not the axis labels' adaptive precision: `aria-valuetext` carries the words,
+ * and rounding the number to what a gridline prints makes two keyboard steps at
+ * a fine zoom announce the same position.
+ */
+function sliderValue(metres: number): number {
+  return Math.round(distanceValue(metres) * 1000) / 1000;
+}
 
 /** The ordinal ramp the terrain is banded with, as values a gradient can take. */
 const BAND_COLOURS = [
@@ -110,19 +118,16 @@ export function profileReadout({
   profile,
   surface,
   activeMetres,
-  unitSystem,
 }: {
   profile: Profile;
   surface: SurfaceSummary | null;
   activeMetres: number | null;
-  unitSystem: UnitSystem;
 }): string {
   const active = activeMetres === null ? null : sampleAt(profile, activeMetres);
   if (!active) {
     return (
-      `${Math.round(elevationValue(profile.minElevationMetres, unitSystem))}–` +
-      `${Math.round(elevationValue(profile.maxElevationMetres, unitSystem))} ` +
-      `${elevationUnitLabel(unitSystem)} above sea level`
+      `${Math.round(profile.minElevationMetres)}–` +
+      `${Math.round(profile.maxElevationMetres)} m above sea level`
     );
   }
 
@@ -132,8 +137,8 @@ export function profileReadout({
   const distanceStep = niceStep(shown / 1000, 5);
 
   return (
-    `${Math.round(elevationValue(active.elevationMetres, unitSystem))} ${elevationUnitLabel(unitSystem)}` +
-    ` at ${distanceLabel(active.distanceMetres, distanceStep, unitSystem)} ${distanceUnitLabel(unitSystem)}` +
+    `${Math.round(active.elevationMetres)} m` +
+    ` at ${distanceLabel(active.distanceMetres, distanceStep)} km` +
     ` · ${active.gradientPercent.toFixed(1)}%` +
     (activeSurface ? ` · ${activeSurface}` : "")
   );
@@ -178,8 +183,6 @@ export interface ElevationProfileProps {
    * legends can share a line.
    */
   highlight?: Highlight | null;
-  /** The units the axis, the tooltip, and the accessible readout report in. */
-  unitSystem?: UnitSystem;
   /** Whether the footer's range/readout paragraph is shown. */
   caption?: boolean;
   /** Whether the zoom-back button is shown here, for a caller that places its own elsewhere. */
@@ -275,7 +278,6 @@ export function ElevationProfile({
   zoomWindow = null,
   onZoomChange,
   highlight = null,
-  unitSystem = "metric",
   caption = true,
   zoomBack = true,
 }: ElevationProfileProps) {
@@ -539,20 +541,18 @@ export function ElevationProfile({
   const active = activeMetres === null ? null : sampleAt(profile, activeMetres);
   const activeKind = active && surface ? surfaceKindAt(surface, active.distanceMetres) : null;
   const activeSurface = activeKind ? SURFACE_STYLES[activeKind].label : null;
-  const distanceWord = unitSystem === "imperial" ? "miles" : "kilometres";
-  const elevationWord = unitSystem === "imperial" ? "feet" : "metres";
   const shownLabel =
-    `${distanceLabel(profile.startMetres, geometry.distanceStep, unitSystem)}–` +
-    `${distanceLabel(profile.endMetres, geometry.distanceStep, unitSystem)} ${distanceUnitLabel(unitSystem)}`;
+    `${distanceLabel(profile.startMetres, geometry.distanceStep)}–` +
+    `${distanceLabel(profile.endMetres, geometry.distanceStep)} km`;
   // The picked class is said in words as well as in light: a chart that is
   // mostly veiled has to explain itself to a reader who cannot see the veil.
   const picked = highlight ? highlightLabel(highlight) : "";
   const summary =
     `Elevation profile of ${title}` +
     (zoomed ? `, ${shownLabel}` : "") +
-    `: ${distanceValue(profile.endMetres - profile.startMetres, unitSystem).toFixed(1)} ${distanceWord}, ` +
-    `between ${Math.round(elevationValue(profile.minElevationMetres, unitSystem))} and ` +
-    `${Math.round(elevationValue(profile.maxElevationMetres, unitSystem))} ${elevationWord} above sea level.` +
+    `: ${distanceValue(profile.endMetres - profile.startMetres).toFixed(1)} ${DISTANCE_WORD}, ` +
+    `between ${Math.round(profile.minElevationMetres)} and ` +
+    `${Math.round(profile.maxElevationMetres)} ${ELEVATION_WORD} above sea level.` +
     (picked ? ` Only the ${picked} stretches are lit.` : "");
 
   return (
@@ -603,9 +603,7 @@ export function ElevationProfile({
             type="number"
             domain={[profile.startMetres, profile.endMetres]}
             ticks={geometry.distanceTicks}
-            tickFormatter={(metres: number) =>
-              distanceLabel(metres, geometry.distanceStep, unitSystem)
-            }
+            tickFormatter={(metres: number) => distanceLabel(metres, geometry.distanceStep)}
             tick={{ fill: "var(--ink-2)", fontSize: 12 }}
             tickLine={false}
             axisLine={false}
@@ -615,9 +613,7 @@ export function ElevationProfile({
             type="number"
             domain={[geometry.low, geometry.high]}
             ticks={geometry.elevationTicks}
-            tickFormatter={(metres: number) =>
-              String(Math.round(elevationValue(metres, unitSystem)))
-            }
+            tickFormatter={(metres: number) => String(Math.round(metres))}
             tick={{ fill: "var(--ink-2)", fontSize: 12 }}
             tickLine={false}
             axisLine={false}
@@ -751,24 +747,14 @@ export function ElevationProfile({
         aria-label={
           zoomed ? `Position along ${title}, ${shownLabel} shown` : `Position along ${title}`
         }
-        aria-valuemin={Number(
-          distanceLabel(profile.startMetres, geometry.distanceStep, unitSystem),
-        )}
-        aria-valuemax={Number(distanceLabel(profile.endMetres, geometry.distanceStep, unitSystem))}
+        aria-valuemin={sliderValue(profile.startMetres)}
+        aria-valuemax={sliderValue(profile.endMetres)}
         // Falls back to the start of the stretch on show, not zero: zoomed into
-        // the far end, zero is outside the range this slider declares. The same
-        // adaptive precision the axis labels use, since a fixed decimal can hold
-        // still for hundreds of metres of drag.
-        aria-valuenow={Number(
-          distanceLabel(
-            active?.distanceMetres ?? profile.startMetres,
-            geometry.distanceStep,
-            unitSystem,
-          ),
-        )}
+        // the far end, zero is outside the range this slider declares.
+        aria-valuenow={sliderValue(active?.distanceMetres ?? profile.startMetres)}
         aria-valuetext={
           active
-            ? `${Math.round(elevationValue(active.elevationMetres, unitSystem))} ${elevationWord} at ${distanceLabel(active.distanceMetres, geometry.distanceStep, unitSystem)} ${distanceWord}, ${active.gradientPercent.toFixed(1)} percent` +
+            ? `${Math.round(active.elevationMetres)} ${ELEVATION_WORD} at ${distanceLabel(active.distanceMetres, geometry.distanceStep)} ${DISTANCE_WORD}, ${active.gradientPercent.toFixed(1)} percent` +
               (activeSurface ? `, ${activeSurface.toLowerCase()}` : "")
             : "No position selected"
         }
@@ -812,7 +798,7 @@ export function ElevationProfile({
         ) : null}
         {caption ? (
           <p className="text-xs text-[var(--ink-2)] tabular-nums" aria-live="polite">
-            {profileReadout({ profile, surface, activeMetres, unitSystem })}
+            {profileReadout({ profile, surface, activeMetres })}
           </p>
         ) : null}
       </div>

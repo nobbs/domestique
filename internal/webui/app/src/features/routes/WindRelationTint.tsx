@@ -33,7 +33,6 @@ import { windRelationColour, windRelationWords } from "../../lib/measures";
 import type { CoordinateRange } from "../../lib/profile";
 import { cumulativeMetres } from "../../lib/profile";
 import { distanceSlices } from "../../lib/routeLines";
-import type { UnitSystem } from "../../lib/units";
 import type { WindRun } from "./forecastCells";
 import { buildCells, windRuns } from "./forecastCells";
 import { dimmedOutside, EDGING_WIDTH, taggedCollection } from "./routeFeatures";
@@ -80,8 +79,6 @@ export interface WindRelationTintProps {
   lit?: readonly CoordinateRange[] | null;
   /** The layer the tint is drawn beneath, so it stays under the casing. */
   beforeId?: string | undefined;
-  /** The units the tint's written equivalent reports in. */
-  unitSystem?: UnitSystem;
 }
 
 export function WindRelationTint({
@@ -89,7 +86,6 @@ export function WindRelationTint({
   coordinates,
   lit = null,
   beforeId,
-  unitSystem = "metric",
 }: WindRelationTintProps) {
   // The tint is ink on the map, so its ramp follows the loaded basemap rather
   // than the page's scheme — the same split every other mark on the route makes.
@@ -158,11 +154,11 @@ export function WindRelationTint({
           {runs.map((run) => (
             <tr key={`${run.fromMetres}-${run.toMetres}`}>
               <th scope="row">
-                {formatDistance(run.fromMetres, unitSystem)}
+                {formatDistance(run.fromMetres)}
                 {"–"}
-                {formatDistance(run.toMetres, unitSystem)}
+                {formatDistance(run.toMetres)}
               </th>
-              <td>{windRelationWords(run.stop, run.windSpeedKmh, unitSystem)}</td>
+              <td>{windRelationWords(run.stop, run.windSpeedKmh)}</td>
             </tr>
           ))}
         </tbody>
