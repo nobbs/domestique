@@ -25,7 +25,7 @@ describe("WeatherOverlayPicker", () => {
     expect(onToggle).toHaveBeenCalledWith("wind", true);
   });
 
-  it("hides the hour scale until something is on, then reads it out", () => {
+  it("shows the hour scale whether or not a measure is on, with the weekday in its label", () => {
     const { rerender } = render(
       <WeatherOverlayPicker
         measures={MEASURES}
@@ -37,7 +37,7 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.queryByText("Now")).not.toBeInTheDocument();
+    expect(screen.getByText(/^Now · \w+ \d/)).toBeInTheDocument();
 
     rerender(
       <WeatherOverlayPicker
@@ -50,6 +50,34 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByText(/^\+3h/)).toBeInTheDocument();
+    expect(screen.getByText(/^\+3h · \w+ \d/)).toBeInTheDocument();
+  });
+
+  it("disables the hour scale until a measure is on", () => {
+    const { rerender } = render(
+      <WeatherOverlayPicker
+        measures={MEASURES}
+        selected={new Set()}
+        onToggle={vi.fn()}
+        hoursAhead={0}
+        onHoursAheadChange={vi.fn()}
+        expanded={true}
+        onExpandedChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("slider")).toBeDisabled();
+
+    rerender(
+      <WeatherOverlayPicker
+        measures={MEASURES}
+        selected={new Set(["wind"])}
+        onToggle={vi.fn()}
+        hoursAhead={0}
+        onHoursAheadChange={vi.fn()}
+        expanded={true}
+        onExpandedChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("slider")).toBeEnabled();
   });
 });

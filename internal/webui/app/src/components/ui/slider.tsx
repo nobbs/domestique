@@ -6,7 +6,10 @@ function Slider({ className, ...props }: SliderPrimitive.Root.Props) {
   return (
     <SliderPrimitive.Root
       data-slot="slider"
-      className={cn("relative flex w-full touch-none items-center select-none", className)}
+      className={cn(
+        "relative flex w-full touch-none items-center select-none data-disabled:opacity-50",
+        className,
+      )}
       {...props}
     >
       <SliderPrimitive.Control className="flex w-full items-center py-1">

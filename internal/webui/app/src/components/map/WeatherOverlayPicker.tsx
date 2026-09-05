@@ -32,14 +32,20 @@ const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
   cloud: IconCloud,
 };
 
-/** What the hour scale reads at zero and past it, matching `hoursAhead`'s own units. */
+/**
+ * What the hour scale reads: the weekday always, since a scale running past 24h
+ * turns "Now" into a claim about today specifically, and a reader scrubbed past
+ * midnight has no other way to tell which day they are looking at.
+ */
 function hourLabel(hoursAhead: number): string {
-  if (hoursAhead === 0) {
-    return "Now";
-  }
   const at = new Date(Math.round(Date.now() / 3_600_000 + hoursAhead) * 3_600_000);
+  const when = at.toLocaleTimeString(undefined, {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-  return `+${hoursAhead}h · ${at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+  return hoursAhead === 0 ? `Now · ${when}` : `+${hoursAhead}h · ${when}`;
 }
 
 export interface WeatherOverlayPickerProps {
@@ -97,25 +103,33 @@ export function WeatherOverlayPicker({
             );
           })}
         </div>
-        {/* The clock only matters once something is drawing from it. */}
-        {anyOn ? (
-          <div className="grid gap-1.5 border-[var(--rule)] border-t pt-3">
-            <Label htmlFor="map-overlay-hour" className="flex justify-between font-normal text-xs">
-              <span>When</span>
-              <span className="text-[var(--ink-2)]">{hourLabel(hoursAhead)}</span>
-            </Label>
-            <Slider
-              id="map-overlay-hour"
-              min={0}
-              max={MAX_HOURS_AHEAD}
-              step={1}
-              value={hoursAhead}
-              onValueChange={(value) =>
-                onHoursAheadChange(Array.isArray(value) ? (value[0] ?? 0) : value)
-              }
-            />
-          </div>
-        ) : null}
+        {/*
+         * Always shown, on or off: a reader who has scrubbed the hour and then
+         * unchecks every measure should find the scale exactly where they left
+         * it once they check one again, not reset to "Now". Disabled rather
+         * than hidden while nothing is on, since it has nothing to move yet.
+         */}
+        <div className="grid gap-1.5 border-[var(--rule)] border-t pt-3">
+          <Label
+            htmlFor="map-overlay-hour"
+            className="flex justify-between font-normal text-xs data-disabled:opacity-50"
+            data-disabled={anyOn ? undefined : ""}
+          >
+            <span>When</span>
+            <span className="text-[var(--ink-2)]">{hourLabel(hoursAhead)}</span>
+          </Label>
+          <Slider
+            id="map-overlay-hour"
+            disabled={!anyOn}
+            min={0}
+            max={MAX_HOURS_AHEAD}
+            step={1}
+            value={hoursAhead}
+            onValueChange={(value) =>
+              onHoursAheadChange(Array.isArray(value) ? (value[0] ?? 0) : value)
+            }
+          />
+        </div>
       </PopoverContent>
     </Popover>
   );
