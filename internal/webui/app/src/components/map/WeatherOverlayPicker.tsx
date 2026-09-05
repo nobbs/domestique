@@ -113,6 +113,7 @@ export function WeatherOverlayPicker({
           </Label>
           <Slider
             id="map-overlay-hour"
+            aria-label={`When, ${hourLabel(hoursAhead)}`}
             disabled={!anyOn}
             min={0}
             max={MAX_HOURS_AHEAD}

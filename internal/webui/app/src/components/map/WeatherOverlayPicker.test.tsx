@@ -39,6 +39,10 @@ describe("WeatherOverlayPicker", () => {
       />,
     );
     expect(screen.getByText(/^Now · \p{L}+ \d/u)).toBeInTheDocument();
+    // Screen-reader access, not just sight: a slider whose thumb carries no
+    // name of its own announces as "slider", unlabelled, on every platform
+    // that does not happen to render the sighted layout beside it.
+    expect(screen.getByRole("slider", { name: /^When, /u })).toBeInTheDocument();
 
     rerender(
       <WeatherOverlayPicker
