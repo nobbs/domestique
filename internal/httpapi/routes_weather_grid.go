@@ -106,7 +106,9 @@ func parseWeatherGridTime(raw string) (time.Time, bool) {
 	if raw == "" {
 		return time.Time{}, false
 	}
-	parsed, err := time.Parse(time.RFC3339, raw)
+	// Nano, not RFC3339: the browser sends Date.toISOString()'s fractional
+	// seconds, matching routes_activities.go's own query-timestamp parsing.
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
 
 	return parsed, err == nil
 }
