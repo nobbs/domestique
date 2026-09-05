@@ -33,6 +33,10 @@ const TaskSurfaceIndex = "surface:index"
 // time over the stored inventory, also used by the ride-model settings route.
 const TaskRideModelPredict = "ridemodel:predict"
 
+// TaskRideModelCalibrate is the registered name of the task that fits the
+// coefficient pair from every target's recorded activities.
+const TaskRideModelCalibrate = "ridemodel:calibrate"
+
 const (
 	// codeTaskInProgress is what a refused attempt is told.
 	codeTaskInProgress = "task_in_progress"

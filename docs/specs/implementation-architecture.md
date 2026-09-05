@@ -103,7 +103,7 @@ owns a distinct responsibility in this tree.
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
 | surface | OSM surface and tracktype classification, snapping a route to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a route | classification rules, SQL of the state store, what a route is |
-| ridemodel | the calibrated coefficient pair and its built-in default, the forward model — distance and ascent priced by those two terms — that turns a route's geometry into a predicted moving time, caching that prediction against geometry and coefficient fingerprints | calibrating the coefficients from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a route's surface is classified |
+| ridemodel | the calibrated coefficient pair and its built-in default, fitting the pair from recorded rides, the forward model — distance and ascent priced by those two terms — that turns a route's geometry into a predicted moving time, caching that prediction against geometry and coefficient fingerprints | reading the rides to fit (SQL), the offline corpus tooling in `dev/fitter`, HTTP routing, how a route's surface is classified |
 | activity | decoded activity FIT values and their validation, and polling a target's activity summaries into the store | SQL, Wahoo URLs, OAuth, scheduling, HTTP routing |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |

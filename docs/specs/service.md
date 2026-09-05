@@ -410,8 +410,8 @@ The read-only JSON surface is small:
   read that takes query parameters: a bounded page size, and the cursor the
   previous page ended with.
 - `GET /v1/routes` lists every stored route with its source route and titles,
-  aggregate geometry facts, and — when a ride-model coefficient file is
-  configured and has predicted this exact geometry — a predicted moving time.
+  aggregate geometry facts, and — when the ride model has predicted this exact
+  geometry with the coefficient pair in force — a predicted moving time.
   It is omitted, never zero, for a route nothing has predicted yet.
 - `GET /v1/activities` returns one target's recorded activities, newest first:
   each one's Wahoo workout id, start time, distance, moving and elapsed time,
@@ -427,9 +427,9 @@ The read-only JSON surface is small:
   address redirect to it with `308`.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/geometry`
   returns the stored geometry of one route for map rendering, together with the
-  surface classification of that geometry when one has been cached, and — when a
-  ride-model coefficient file is configured and has predicted this exact
-  geometry — the predicted cumulative moving time at each coordinate, indexed
+  surface classification of that geometry when one has been cached, and — when
+  the ride model has predicted this exact geometry with the coefficient pair in
+  force — the predicted cumulative moving time at each coordinate, indexed
   1:1 with the geometry. It is omitted, never empty, for a route nothing has
   predicted yet.
 - `GET /v1/webui/config` returns the settings the browser UI needs at runtime so
@@ -831,6 +831,19 @@ beside it. Any other download failure — a rate limit or an outage among them �
 stops the records phase, marks nothing, and is retried by the next poll, so one
 outage never condemns a day's rides. Nothing is deleted: a file downloaded
 again replaces that activity's samples.
+
+These summaries are also what the ride model is calibrated from. Once a week the
+service refits the coefficient pair over every target's stored rides pooled
+together — each ride's moving time against its distance and ascent — by a robust
+regression, so one mis-recorded ride bends the result rather than setting it. A
+ride shorter than a kilometre or briefer than a minute is not riding and is left
+out, and so is one dated after the moment the fit runs.
+
+A fit needs ten usable rides, and is refused below that or when the rides cannot
+tell distance apart from climbing. A refused fit is not a failure of prediction:
+the pair in force stays in force, and the service keeps predicting with it.
+Fitting the same pair again stores nothing, so a cached prediction survives a
+calibration that found no change.
 
 ## Sync lifecycle and safety
 
