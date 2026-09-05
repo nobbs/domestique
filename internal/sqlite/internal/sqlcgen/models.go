@@ -24,6 +24,14 @@ type Activity struct {
 	FitChecksumFailed     int64
 }
 
+type ActivityListing struct {
+	TargetSlot            string
+	WorkoutID             int64
+	StartedAtUnix         int64
+	WorkoutTypeID         int64
+	WorkoutTypeLocationID int64
+}
+
 type ActivityRecord struct {
 	TargetSlot         string
 	WorkoutID          int64

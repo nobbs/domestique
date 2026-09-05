@@ -643,6 +643,9 @@ A SQLite database on a Docker volume stores:
 - the corresponding remote Wahoo route identity where available;
 - activities a poll could not read, with how often and how recently each was
   tried, kept apart from the activities themselves;
+- activities the rider's account lists that are not stored yet, as the last
+  full reading of that account left them, kept apart from the activities
+  themselves so a poll can work through them without reading the account again;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.
 
@@ -807,6 +810,22 @@ most twenty-five summaries, oldest first, because the Wahoo application's daily
 request budget is shared with every target's reconciliation; a longer history
 fills in over successive polls rather than spending the day's quota at once. A
 poll that fails part way keeps what it already stored.
+
+Those summaries are chosen from the activities the account lists that are not
+stored yet, which the service keeps rather than re-derives. A poll reads the
+first page of the account's list, which costs one request and carries the
+account's own count of activities. It reads the whole list only when that count
+differs from the activities it has accounted for — those stored plus those still
+waiting — or when the first page holds an activity it has not seen, which is
+what an addition the rider balanced by a deletion looks like. Otherwise it works
+through what it kept, so a long history is read once and drained over the polls
+that follow rather than re-read by each of them.
+
+The comparison is a count, not an ordering: an activity may be added out of
+order or recorded with an earlier start than the ones already stored, and either
+still changes what the account holds. An activity a poll set aside as unreadable
+stays among those waiting, so its retry is offered from there when its backoff
+has passed even though no poll in between read the account's list again.
 
 A summary Wahoo rejects for that one activity alone — unauthorised, not found,
 or not a summary at all — is skipped rather than allowed to stop the poll: the

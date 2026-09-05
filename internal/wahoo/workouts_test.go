@@ -45,6 +45,42 @@ func TestClientListsEveryWorkoutPage(t *testing.T) {
 	}, workouts)
 }
 
+// The head is one request: it reads the first page and the account's own total
+// without walking the pages behind it.
+func TestClientReadsTheWorkoutListingHeadInOneRequest(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		assert.Equal(t, "1", request.URL.Query().Get("page"))
+		writeJSON(t, writer, map[string]any{
+			"workouts": []map[string]int{{"id": 1, "workout_type_id": 15, "workout_type_location_id": 1}},
+			"total":    7, "page": 1, "per_page": 100,
+		})
+	}))
+	defer server.Close()
+
+	workouts, total, err := newTestClient(t, server).WorkoutListingHead(t.Context(), "access-token")
+	require.NoError(t, err)
+	assert.Equal(t, []Workout{{ID: 1, WorkoutTypeID: 15, WorkoutTypeLocationID: 1}}, workouts)
+	assert.Equal(t, 7, total)
+	assert.Equal(t, 1, requests)
+}
+
+func TestClientRefusesAWorkoutListingHeadWithoutAToken(t *testing.T) {
+	_, _, err := (&Client{}).WorkoutListingHead(t.Context(), "")
+	require.ErrorContains(t, err, "access token is required")
+}
+
+func TestClientReportsAnInvalidWorkoutListingHead(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]any{"workouts": []any{}, "total": 1, "page": 2, "per_page": 100})
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).WorkoutListingHead(t.Context(), "access-token")
+	require.ErrorContains(t, err, "pagination was invalid")
+}
+
 func TestClientReadsTheRawWorkoutSummary(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, http.MethodGet, request.Method)

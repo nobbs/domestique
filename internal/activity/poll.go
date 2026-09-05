@@ -91,6 +91,9 @@ type Stored struct {
 // Source is the rider's activity provider, in this package's own vocabulary.
 type Source interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)
+	// ActivityListingHead returns the account's first page of activities and how
+	// many it holds in all, at the cost of one request.
+	ActivityListingHead(ctx context.Context, accessToken string) (listings []Listing, total int, err error)
 	ListActivities(ctx context.Context, accessToken string) ([]Listing, error)
 	ActivitySummary(ctx context.Context, accessToken string, id int64) (Summary, error)
 	DownloadActivityFIT(ctx context.Context, summary Summary) ([]byte, error)
@@ -106,14 +109,27 @@ type Store interface {
 	RefreshToken(ctx context.Context, targetID string) (string, error)
 	ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error
 	MarkNeedsReauthorization(ctx context.Context, targetID string) error
-	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
-	// StoreActivity also forgets any skip recorded for the same activity.
+	// StoreActivity also forgets any skip and any pending listing recorded for
+	// the same activity.
 	StoreActivity(ctx context.Context, targetID string, listing Listing, summary Summary, now time.Time) error
 	ActivitySkips(ctx context.Context, targetID string) ([]Skip, error)
 	// RecordActivitySkip counts one more failed read of an activity. observed is
 	// the source's protocol-level error text, never a ride's name or a credential.
 	RecordActivitySkip(ctx context.Context, targetID string, id int64, observed string, now time.Time) error
+	listingStore
 	recordStore
+}
+
+// listingStore is what a poll reads to know which of the account's activities
+// it has yet to store, kept apart so neither half grows past what one reader
+// can hold.
+type listingStore interface {
+	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
+	// PendingActivityListings are the listings the account holds that are not
+	// stored yet, as the last full reading of the account left them.
+	PendingActivityListings(ctx context.Context, targetID string) ([]Listing, error)
+	// ReplaceActivityListings makes the pending listings exactly these.
+	ReplaceActivityListings(ctx context.Context, targetID string, listings []Listing) error
 }
 
 // recordStore is the records phase's half of the store, kept apart so neither
@@ -192,7 +208,9 @@ func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error
 // stored yet, oldest first and at most MaxNewPerPoll of them. A read that fails
 // part way keeps what it already stored: the next poll continues from there. An
 // activity only its own summary rejects is skipped and retried later, so one
-// unreadable ride never stops the ones after it.
+// unreadable ride never stops the ones after it. The account's whole list is
+// read only when its own count of activities no longer matches what the store
+// has accounted for; otherwise the poll works from the backlog it kept.
 func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	authorization, err := p.store.TargetAuthorization(ctx, targetID)
 	if err != nil {
@@ -207,13 +225,9 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 		return Result{Outcome: Failed, Failure: failure}
 	}
 
-	listings, listErr := p.source.ListActivities(ctx, accessToken)
-	if listErr != nil {
-		return Result{Outcome: Failed, Failure: p.classify(ctx, targetID, listErr)}
-	}
-	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
-	if knownErr != nil {
-		return Result{Outcome: Failed, Failure: FailureState}
+	pending, failure := p.pending(ctx, targetID, accessToken)
+	if failure != FailureNone {
+		return Result{Outcome: Failed, Failure: failure}
 	}
 	skips, skipsErr := p.store.ActivitySkips(ctx, targetID)
 	if skipsErr != nil {
@@ -221,7 +235,7 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	}
 
 	var stored, skipped int
-	for _, listing := range unstored(listings, append(known, deferred(skips, p.now())...)) {
+	for _, listing := range due(pending, deferred(skips, p.now())) {
 		summary, summaryErr := p.source.ActivitySummary(ctx, accessToken, listing.ID)
 		if summaryErr != nil && p.source.IsUnreadable(summaryErr) {
 			if skipErr := p.store.RecordActivitySkip(ctx, targetID, listing.ID, summaryErr.Error(), p.now()); skipErr != nil {
@@ -342,27 +356,101 @@ func (p *Poller) classify(ctx context.Context, targetID string, err error) Failu
 	return FailureAuthorization
 }
 
-// unstored is the oldest activities the store has not seen, at most
-// MaxNewPerPoll of them. Oldest first so an account with a long history fills in
-// chronologically over successive polls rather than restarting each time.
-func unstored(listings []Listing, known []int64) []Listing {
-	seen := make(map[int64]struct{}, len(known))
-	for _, id := range known {
-		seen[id] = struct{}{}
+// pending is the listings the account holds that are not stored, taken from the
+// store and re-read from the account only when the account no longer agrees
+// with it. The agreement is a count rather than an ordering, because a workout
+// may be added out of order or backdated: an account holding exactly as many
+// activities as the store has accounted for, whose newest page this service has
+// already seen, holds nothing new to read.
+func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]Listing, Failure) {
+	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
+	if knownErr != nil {
+		return nil, FailureState
 	}
+	pending, pendingErr := p.store.PendingActivityListings(ctx, targetID)
+	if pendingErr != nil {
+		return nil, FailureState
+	}
+	head, total, headErr := p.source.ActivityListingHead(ctx, accessToken)
+	if headErr != nil {
+		return nil, p.classify(ctx, targetID, headErr)
+	}
+	if total == len(known)+len(pending) && accountedFor(head, known, pending) {
+		return pending, FailureNone
+	}
+
+	listings, listErr := p.source.ListActivities(ctx, accessToken)
+	if listErr != nil {
+		return nil, p.classify(ctx, targetID, listErr)
+	}
+	pending = unstored(listings, known)
+	if replaceErr := p.store.ReplaceActivityListings(ctx, targetID, pending); replaceErr != nil {
+		return nil, FailureState
+	}
+
+	return pending, FailureNone
+}
+
+// accountedFor reports whether every listing on the account's newest page is
+// one this service has already seen, so that an addition balanced by a deletion
+// does not read as no change at all.
+func accountedFor(head []Listing, known []int64, pending []Listing) bool {
+	seen := identities(known, pending)
+	for _, listing := range head {
+		if _, ok := seen[listing.ID]; !ok {
+			return false
+		}
+	}
+
+	return true
+}
+
+// unstored is every listing the store has not stored, oldest first.
+func unstored(listings []Listing, known []int64) []Listing {
+	seen := identities(known, nil)
 	pending := make([]Listing, 0, len(listings))
 	for _, listing := range listings {
 		if _, ok := seen[listing.ID]; !ok {
 			pending = append(pending, listing)
 		}
 	}
-	slices.SortFunc(pending, func(a, b Listing) int {
-		if !a.Starts.Equal(b.Starts) {
-			return a.Starts.Compare(b.Starts)
+	slices.SortFunc(pending, byStart)
+
+	return pending
+}
+
+// due is the oldest pending activities whose read is not deferred, at most
+// MaxNewPerPoll of them. Oldest first so an account with a long history fills
+// in chronologically over successive polls rather than restarting each time.
+func due(pending []Listing, waiting []int64) []Listing {
+	deferredIDs := identities(waiting, nil)
+	ready := make([]Listing, 0, len(pending))
+	for _, listing := range pending {
+		if _, ok := deferredIDs[listing.ID]; !ok {
+			ready = append(ready, listing)
 		}
+	}
+	slices.SortFunc(ready, byStart)
 
-		return cmp.Compare(a.ID, b.ID)
-	})
+	return ready[:min(len(ready), MaxNewPerPoll)]
+}
 
-	return pending[:min(len(pending), MaxNewPerPoll)]
+func byStart(a, b Listing) int {
+	if !a.Starts.Equal(b.Starts) {
+		return a.Starts.Compare(b.Starts)
+	}
+
+	return cmp.Compare(a.ID, b.ID)
+}
+
+func identities(ids []int64, listings []Listing) map[int64]struct{} {
+	seen := make(map[int64]struct{}, len(ids)+len(listings))
+	for _, id := range ids {
+		seen[id] = struct{}{}
+	}
+	for _, listing := range listings {
+		seen[listing.ID] = struct{}{}
+	}
+
+	return seen
 }

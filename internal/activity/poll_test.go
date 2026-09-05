@@ -88,6 +88,7 @@ func TestPollReplacesTheRefreshToken(t *testing.T) {
 func TestPollReportsAListingThatFailed(t *testing.T) {
 	store := newFakeStore()
 	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}}
 	source.listErr = errUpstream
 
 	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
@@ -431,6 +432,170 @@ func TestPollReportsBothWhatItStoredAndWhatItRecorded(t *testing.T) {
 
 // pollNow is the fixed clock every poll in this file reads; no test waits on a
 // wall clock.
+// The point of the backlog: the account's whole list is read once, and the polls
+// that drain it afterwards do not read it again.
+func TestPollDoesNotReadTheWholeListAgainWhileDrainingTheBacklog(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	for id := 1; id <= MaxNewPerPoll+5; id++ {
+		source.listings = append(source.listings, Listing{ID: int64(id), Starts: at(id)})
+	}
+	poller := newTestPoller(t, source, store)
+
+	first := poller.Poll(t.Context(), "rider-a")
+	require.Equal(t, Polled, first.Outcome)
+	require.Equal(t, MaxNewPerPoll, first.Stored)
+	require.Equal(t, 1, source.listed, "the first poll did not read the account")
+
+	second := poller.Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, second.Outcome)
+	assert.Equal(t, 5, second.Stored, "the backlog did not carry the rest of the account")
+	assert.Equal(t, 1, source.listed, "the second poll read the whole list again")
+	assert.Equal(t, 2, source.headed, "each poll costs exactly one listing request beyond its summaries")
+}
+
+// A steady-state poll pays for the head request and nothing else.
+func TestPollReadsOnlyTheListingHeadWhenNothingChanged(t *testing.T) {
+	store := newFakeStore()
+	store.known = []int64{1, 2}
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Unchanged, result.Outcome)
+	assert.Zero(t, source.listed, "an unchanged account was listed in full")
+	assert.Equal(t, 1, source.headed)
+}
+
+// An account holding more activities than the store has accounted for is read
+// in full, wherever in the list the extra ones sit.
+func TestPollReadsTheWholeListWhenTheAccountHoldsMore(t *testing.T) {
+	store := newFakeStore()
+	store.known = []int64{1, 2}
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+	source.hasTotal, source.total = true, 3
+
+	require.Equal(t, Unchanged, newTestPoller(t, source, store).Poll(t.Context(), "rider-a").Outcome)
+	assert.Equal(t, 1, source.listed, "an account with more activities was not read in full")
+}
+
+// A ride uploaded with an old start time sits wherever the account puts it, so
+// what triggers the re-read is the account holding one more activity, not where
+// that activity appears.
+func TestPollPicksUpABackdatedActivity(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 2, Starts: at(20)}}
+	poller := newTestPoller(t, source, store)
+	require.Equal(t, 1, poller.Poll(t.Context(), "rider-a").Stored)
+
+	source.listings = append(source.listings, Listing{ID: 3, Starts: at(-500)})
+
+	result := poller.Poll(t.Context(), "rider-a")
+
+	require.Equal(t, Polled, result.Outcome)
+	require.Len(t, store.stored, 2)
+	assert.Equal(t, int64(3), store.stored[1].listing.ID)
+}
+
+// An addition the rider balanced by deleting another ride leaves the account's
+// count unchanged, so the count alone would read as nothing new.
+func TestPollPicksUpAnAdditionBalancedByADeletion(t *testing.T) {
+	store := newFakeStore()
+	store.known = []int64{1, 2}
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	require.Equal(t, Polled, result.Outcome)
+	require.Len(t, store.stored, 1)
+	assert.Equal(t, int64(3), store.stored[0].listing.ID)
+}
+
+// The constraint the skip backoff puts on the backlog: a skipped activity stays
+// pending, so its retry is still offered once its wait has passed even though
+// no poll in between read the account's list again.
+func TestPollReoffersASkippedActivityFromTheBacklog(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 7, Starts: at(1)}}
+	source.summaryErrs[7] = fmt.Errorf("HTTP 404: %w", errUnreadable)
+	poller := newTestPoller(t, source, store)
+	require.Equal(t, 1, poller.Poll(t.Context(), "rider-a").Skipped)
+
+	store.skips = []Skip{{ID: 7, Attempts: 1, LastAttempt: pollNow().Add(-23 * time.Hour)}}
+	require.Equal(t, Unchanged, poller.Poll(t.Context(), "rider-a").Outcome, "a deferred skip was read early")
+
+	store.skips = []Skip{{ID: 7, Attempts: 1, LastAttempt: pollNow().Add(-24 * time.Hour)}}
+	delete(source.summaryErrs, 7)
+
+	result := poller.Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	require.Len(t, store.stored, 1)
+	assert.Equal(t, int64(7), store.stored[0].listing.ID)
+	assert.Equal(t, 1, source.listed, "the retry re-read the whole account")
+}
+
+// A poll that stops part way keeps what it stored, and the next one carries on
+// from the backlog rather than from the account.
+func TestPollResumesTheBacklogAfterAFailedRead(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}}
+	source.summaryErrs[2] = errUpstream
+	poller := newTestPoller(t, source, store)
+
+	first := poller.Poll(t.Context(), "rider-a")
+	require.Equal(t, Failed, first.Outcome)
+	require.Equal(t, 1, first.Stored)
+
+	delete(source.summaryErrs, 2)
+	second := poller.Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, 2, second.Stored)
+	assert.Equal(t, 1, source.listed, "the resumed poll read the whole account again")
+}
+
+func TestPollReportsAnUnreadableBacklog(t *testing.T) {
+	store := newFakeStore()
+	store.listingsErr = errors.New("state failed")
+
+	result := newTestPoller(t, newFakeSource(t), store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.Equal(t, FailureState, result.Failure)
+}
+
+func TestPollReportsABacklogItCouldNotReplace(t *testing.T) {
+	store := newFakeStore()
+	store.replaceListingsErr = errors.New("state failed")
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.Equal(t, FailureState, result.Failure)
+	assert.Empty(t, store.stored, "an unrecorded backlog was read anyway")
+}
+
+func TestPollReportsAListingHeadThatFailed(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.headErr = errUpstream
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.Equal(t, FailureUpstream, result.Failure)
+	assert.Zero(t, source.listed, "a failed head request listed the account in full")
+}
+
 func pollNow() time.Time {
 	return time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
 }
@@ -452,12 +617,16 @@ type fakeSource struct {
 	fitFor      map[string][]byte
 	refreshErr  error
 	listErr     error
+	headErr     error
 	downloadErr error
 	fit         []byte
 	listings    []Listing
 	summarized  []int64
 	downloaded  []string
 	listed      int
+	headed      int
+	total       int
+	hasTotal    bool
 }
 
 func newFakeSource(t *testing.T) *fakeSource {
@@ -485,6 +654,21 @@ func (s *fakeSource) RefreshAccessToken(
 	}
 
 	return "access-token", "refresh-token-next", nil
+}
+
+// ActivityListingHead answers with the account's whole listing as its first
+// page, which is what a hundred-workout page size means for these fixtures, and
+// with the account's own count of activities.
+func (s *fakeSource) ActivityListingHead(_ context.Context, _ string) (listings []Listing, total int, err error) {
+	s.headed++
+	if s.headErr != nil {
+		return nil, 0, s.headErr
+	}
+	if s.hasTotal {
+		return s.listings, s.total, nil
+	}
+
+	return s.listings, len(s.listings), nil
 }
 
 func (s *fakeSource) ListActivities(_ context.Context, _ string) ([]Listing, error) {
@@ -546,6 +730,8 @@ type fakeStore struct {
 	markErr                  error
 	skipsErr                 error
 	skipErr                  error
+	listingsErr              error
+	replaceListingsErr       error
 	pendingErr               error
 	recordsErr               error
 	unreadableErr            error
@@ -553,6 +739,7 @@ type fakeStore struct {
 	authorization            string
 	refreshToken             string
 	known                    []int64
+	listings                 []Listing
 	skips                    []Skip
 	stored                   []storedActivity
 	skipped                  []recordedSkip
@@ -601,6 +788,19 @@ func (s *fakeStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, erro
 	return s.known, s.knownErr
 }
 
+func (s *fakeStore) PendingActivityListings(_ context.Context, _ string) ([]Listing, error) {
+	return slices.Clone(s.listings), s.listingsErr
+}
+
+func (s *fakeStore) ReplaceActivityListings(_ context.Context, _ string, listings []Listing) error {
+	if s.replaceListingsErr != nil {
+		return s.replaceListingsErr
+	}
+	s.listings = slices.Clone(listings)
+
+	return nil
+}
+
 func (s *fakeStore) ActivitySkips(_ context.Context, _ string) ([]Skip, error) {
 	return s.skips, s.skipsErr
 }
@@ -621,6 +821,8 @@ func (s *fakeStore) StoreActivity(
 		return s.storeErr
 	}
 	s.stored = append(s.stored, storedActivity{listing: listing, summary: summary, now: now})
+	s.known = append(s.known, listing.ID)
+	s.listings = slices.DeleteFunc(s.listings, func(pending Listing) bool { return pending.ID == listing.ID })
 	s.pending = append(s.pending, PendingActivity{ID: listing.ID, Summary: summary})
 
 	return nil

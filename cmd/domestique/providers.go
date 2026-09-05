@@ -274,6 +274,21 @@ func (p *wahooProvider) ListActivities(ctx context.Context, accessToken string) 
 	return activityListings(workouts), nil
 }
 
+// ActivityListingHead reads the account's first page of activities and how many
+// it holds, which is what tells a poll whether the whole list is worth reading.
+func (p *wahooProvider) ActivityListingHead(ctx context.Context, accessToken string) (listings []activity.Listing, total int, err error) {
+	client, err := p.current()
+	if err != nil {
+		return nil, 0, err
+	}
+	workouts, total, err := client.WorkoutListingHead(ctx, accessToken)
+	if err != nil {
+		return nil, 0, fmt.Errorf("reading the Wahoo workout listing head: %w", err)
+	}
+
+	return activityListings(workouts), total, nil
+}
+
 // activityListings narrows Wahoo's workouts to what the activity package reads,
 // split out so the field mapping is directly testable without a live client.
 func activityListings(workouts []wahoo.Workout) []activity.Listing {

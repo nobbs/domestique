@@ -60,3 +60,24 @@ UPDATE activities SET records_state = 'unreadable' WHERE target_slot = ? AND wor
 SELECT started_at_unix, distance_metres, moving_seconds, ascent_metres
 FROM activities
 ORDER BY started_at_unix;
+
+-- name: ListPendingActivityListings :many
+SELECT workout_id, started_at_unix, workout_type_id, workout_type_location_id
+FROM activity_listings
+WHERE target_slot = ?
+ORDER BY started_at_unix, workout_id;
+
+-- name: DeleteActivityListings :exec
+DELETE FROM activity_listings WHERE target_slot = ?;
+
+-- name: InsertActivityListing :exec
+INSERT INTO activity_listings (
+  target_slot, workout_id, started_at_unix, workout_type_id, workout_type_location_id
+) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(target_slot, workout_id) DO UPDATE SET
+  started_at_unix = excluded.started_at_unix,
+  workout_type_id = excluded.workout_type_id,
+  workout_type_location_id = excluded.workout_type_location_id;
+
+-- name: DeleteActivityListing :exec
+DELETE FROM activity_listings WHERE target_slot = ? AND workout_id = ?;

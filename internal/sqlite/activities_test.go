@@ -131,6 +131,75 @@ func TestStoreActivityForgetsASkip(t *testing.T) {
 	assert.Empty(t, skips)
 }
 
+// A replacement is the whole backlog: a listing the account no longer holds is
+// gone from it, and one it still holds keeps its listing fields.
+func TestReplaceActivityListingsMakesTheBacklogWhatTheAccountHolds(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{
+		{ID: 2, Starts: activityNow().Add(time.Hour), TypeID: 15, LocationID: 1},
+		{ID: 1, Starts: activityNow(), TypeID: 40, LocationID: 0},
+	}), "ReplaceActivityListings()")
+
+	listings, err := store.PendingActivityListings(t.Context(), "rider-a")
+	require.NoError(t, err, "PendingActivityListings()")
+	require.Len(t, listings, 2)
+	assert.Equal(t, activity.Listing{ID: 1, Starts: activityNow(), TypeID: 40, LocationID: 0}, listings[0],
+		"the backlog is not oldest first, or lost a listing field")
+
+	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{
+		{ID: 2, Starts: activityNow().Add(time.Hour), TypeID: 15, LocationID: 1},
+	}), "ReplaceActivityListings()")
+
+	listings, err = store.PendingActivityListings(t.Context(), "rider-a")
+	require.NoError(t, err, "PendingActivityListings()")
+	require.Len(t, listings, 1)
+	assert.Equal(t, int64(2), listings[0].ID)
+}
+
+// The backlog is one target's own, and storing an activity takes it out, which
+// is what keeps the stored rows plus the backlog equal to what the account holds.
+func TestStoreActivityTakesTheListingOutOfTheBacklog(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	pending := []activity.Listing{{ID: 1, Starts: activityNow()}, {ID: 2, Starts: activityNow()}}
+	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", pending), "ReplaceActivityListings()")
+	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-b", pending), "ReplaceActivityListings()")
+
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	listings, err := store.PendingActivityListings(t.Context(), "rider-a")
+	require.NoError(t, err, "PendingActivityListings()")
+	require.Len(t, listings, 1)
+	assert.Equal(t, int64(2), listings[0].ID)
+
+	others, err := store.PendingActivityListings(t.Context(), "rider-b")
+	require.NoError(t, err, "PendingActivityListings()")
+	assert.Len(t, others, 2, "another target's backlog was changed")
+}
+
+func TestReplaceActivityListingsRefusesWhatItCannotAddress(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	require.ErrorContains(t, store.ReplaceActivityListings(t.Context(), "", nil), "is required")
+	require.ErrorContains(t,
+		store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{{ID: 0}}), "is required")
+	require.Error(t,
+		store.ReplaceActivityListings(t.Context(), "rider-b", []activity.Listing{{ID: 1}}),
+		"an unknown target was accepted")
+}
+
+func TestPendingActivityListingsReportsAnUnreadableStore(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.PendingActivityListings(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "reading pending activity listings")
+}
+
 func TestRecordActivitySkipRefusesWhatItCannotAddress(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
