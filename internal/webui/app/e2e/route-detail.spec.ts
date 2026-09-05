@@ -341,22 +341,20 @@ test("the way back to the library is reachable from the keyboard", async ({
 });
 
 /*
- * There is no default start time — see lib/startTime.ts — so a reader has to
- * choose one before the strip draws anything, and the value it chooses proves
- * the forecast is really landing under the elevation chart rather than beside
- * it by coincidence.
+ * A route opens on the next half hour where nothing is remembered — see
+ * lib/startTime.ts — so the strip draws straight away, and a chosen departure
+ * proves the forecast is really landing under the elevation chart rather than
+ * beside it by coincidence.
  */
-test("choosing a start time draws a forecast strip under the profile", async ({
-  offlinePage: page,
-}) => {
+test("a route opens with a forecast strip under the profile", async ({ offlinePage: page }) => {
   const strip = page.getByRole("group", { name: /^Forecast along the way/ });
   const forecastStop = page.getByRole("tab", { name: "Forecast" });
 
-  // Without a departure there is nothing to time a sample against, so the strip
-  // draws nothing at all.
+  // Nothing remembered: the departure is the next half hour, and the strip has
+  // a moment to time every sample against from the first paint.
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
   await forecastStop.click();
-  await expect(strip).toHaveCount(0);
+  await expect(strip).toBeVisible();
 
   // Seeded and reopened. The subject here is the strip, not the picker —
   // driving a calendar popover to reach it would make this test fail for
