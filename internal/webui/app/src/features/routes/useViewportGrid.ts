@@ -2,13 +2,22 @@
  * A slice of the current hour's model grid, kept up with the viewport.
  *
  * Shared by every overlay that drapes the map: the bbox is the padded view,
- * rounded so a small pan re-reads nothing, and the previous slice stays under
- * the overlay while the next loads so a pan never blanks it.
+ * and the previous slice stays under the overlay while the next loads so a
+ * pan never blanks it.
+ *
+ * Keyed on `gridWindow(bbox)` rather than the bbox itself, rounded or not: the
+ * file is read in 32-cell chunks, so two bboxes a few pixels apart usually
+ * round to the same chunks and ought to share a fetch, but a plain numeric
+ * rounding cannot promise that — its own buckets fall wherever they fall, and
+ * a pan that happens to straddle a chunk edge inside one bucket would key the
+ * same while the read behind it silently changed. `gridWindow` is the one
+ * function that already knows where those edges are.
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { useMap } from "react-map-gl/maplibre";
+import { gridWindow } from "../../api/openMeteoGrid";
 import type { Bbox } from "../../lib/windGrid";
 
 /** The viewport is widened by this share so a pan does not start on empty ground. */
@@ -68,7 +77,7 @@ export function useViewportGrid<T>(
   // Floored, not rounded: rounding would flip to the next hour at :30, jumping
   // the fetched data — and the picker's own label — half an hour early.
   const hourKey = Math.floor(Date.now() / 3_600_000) + hoursAhead;
-  const bboxKey = bbox ? bbox.map((value) => Math.round(value * 10) / 10) : null;
+  const bboxKey = bbox ? gridWindow(bbox) : null;
   const grid = useQuery({
     queryKey: [key, hourKey, bboxKey],
     queryFn: () => (bbox ? read(bbox, new Date(hourKey * 3_600_000)) : null),
