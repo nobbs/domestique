@@ -35,6 +35,19 @@ type Summary struct {
 	AscentMetres   float64
 }
 
+// Stored is one recorded activity as the read model serves it: the listing and
+// the summary totals, without the provider's own summary document.
+type Stored struct {
+	StartedAt      time.Time
+	ID             int64
+	DistanceMetres float64
+	MovingSeconds  float64
+	ElapsedSeconds float64
+	AscentMetres   float64
+	TypeID         int
+	LocationID     int
+}
+
 // Source is the rider's activity provider, in this package's own vocabulary.
 type Source interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)

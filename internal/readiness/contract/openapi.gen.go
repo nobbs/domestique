@@ -97,6 +97,21 @@ type Route struct {
 	Validation         *RouteValidation `json:"validation,omitempty"`
 }
 
+type Activity struct {
+	ID             int64     `json:"id"`
+	StartedAt      time.Time `json:"startedAt"`
+	DistanceMetres float64   `json:"distanceMetres"`
+	MovingSeconds  float64   `json:"movingSeconds"`
+	ElapsedSeconds float64   `json:"elapsedSeconds"`
+	AscentMetres   float64   `json:"ascentMetres"`
+	TypeID         int       `json:"typeId"`
+	LocationID     int       `json:"locationId"`
+}
+
+type ActivityList struct {
+	Activities []Activity `json:"activities"`
+}
+
 type RouteList struct {
 	Routes []Route `json:"routes"`
 }

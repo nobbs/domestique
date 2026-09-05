@@ -256,6 +256,55 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/activities:
+    get:
+      tags:
+        - browser-api
+      operationId: getActivities
+      description: >-
+        The recorded activities of one target, newest first. A caller reads
+        only the target they own; an admin may name any. The window is
+        half-open on the start time and defaults to the last 365 days, may
+        span no more than two years, and no more than 5000 activities are
+        served in one response.
+      parameters:
+        - name: from
+          in: query
+          description: Inclusive start of the window. Defaults to 365 days before `to`.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          description: Exclusive end of the window. Defaults to now.
+          schema:
+            type: string
+            format: date-time
+        - name: target
+          in: query
+          description: >-
+            The target to read. Omitted means the caller's own. A target the
+            caller does not own is answered not found rather than forbidden,
+            so the surface never confirms which targets exist.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Recorded activities, newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityList'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/routes:
     get:
       tags:
@@ -1212,6 +1261,51 @@ components:
           format: double
         validation:
           $ref: '#/components/schemas/RouteValidation'
+    Activity:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - startedAt
+        - distanceMetres
+        - movingSeconds
+        - elapsedSeconds
+        - ascentMetres
+        - typeId
+        - locationId
+      properties:
+        id:
+          type: integer
+          format: int64
+        startedAt:
+          type: string
+          format: date-time
+        distanceMetres:
+          type: number
+          format: double
+        movingSeconds:
+          type: number
+          format: double
+        elapsedSeconds:
+          type: number
+          format: double
+        ascentMetres:
+          type: number
+          format: double
+        typeId:
+          type: integer
+        locationId:
+          type: integer
+    ActivityList:
+      type: object
+      additionalProperties: false
+      required:
+        - activities
+      properties:
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/Activity'
     RouteList:
       type: object
       additionalProperties: false

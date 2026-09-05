@@ -413,6 +413,15 @@ The read-only JSON surface is small:
   aggregate geometry facts, and — when a ride-model coefficient file is
   configured and has predicted this exact geometry — a predicted moving time.
   It is omitted, never zero, for a route nothing has predicted yet.
+- `GET /v1/activities` returns one target's recorded activities, newest first:
+  each one's Wahoo workout id, start time, distance, moving and elapsed time,
+  ascent, and Wahoo's workout type and location ids — never the verbatim
+  summary document. The optional `from` and `to` bound the start time as a
+  half-open window, defaulting to the last 365 days and refused beyond two
+  years; at most 5000 activities are served in one response. A caller reads
+  the target they own, or the one `target` names when they are an admin;
+  naming another's is `404` rather than `403`, and a caller who has no target
+  yet reads an empty list.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.
@@ -785,8 +794,9 @@ target. It never deletes manually created Wahoo routes.
 Domestique stores a summary of every activity the rider's own Wahoo account
 recorded, against the target that owns that account: when it started, its
 distance, moving and elapsed time and ascent, and Wahoo's own summary document
-kept verbatim. Nothing else reads it; an activity is the owning target's, the
-same as its routes are.
+kept verbatim. An activity is the owning target's, the same as its
+routes are, and is served only to the subject that owns that target or to an
+admin.
 
 Polling only adds. An activity the account no longer lists is never removed,
 and a summary read again replaces the row it already had. One poll reads at

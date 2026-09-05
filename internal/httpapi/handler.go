@@ -216,6 +216,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /v1/status", h.GetStatus)
 	h.mux.HandleFunc("GET /v1/sync/runs", h.GetSyncRuns)
 	h.mux.HandleFunc("GET /v1/routes", h.GetRoutes)
+	h.mux.HandleFunc("GET /v1/activities", h.GetActivities)
 	h.mux.HandleFunc("GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}", h.GetRoute)
 	h.mux.HandleFunc(
 		"GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/geometry",
@@ -269,6 +270,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /routes/{routeId}/{stage}", h.RedirectLegacyRoutePage)
 	h.mux.HandleFunc("GET /catalogue", h.GetCataloguePage)
 	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
+	h.mux.HandleFunc("GET /volume", h.GetVolumePage)
 	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
 	h.mux.HandleFunc("GET /settings/tasks", h.GetTasksPage)
 	h.mux.HandleFunc("GET /admin", h.GetAdminPage)

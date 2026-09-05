@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
@@ -183,6 +184,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/v1/status",
 		"/v1/sync/runs",
 		"/v1/routes",
+		"/v1/activities",
 		"/v1/providers/veloplanner/sourceRoutes/1/routes/1",
 		"/v1/providers/veloplanner/sourceRoutes/1/routes/1/geometry",
 		"/v1/webui/config",
@@ -197,6 +199,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/admin",
 		"/admin/tasks",
 		"/sync",
+		"/volume",
 		"/unknown",
 	}
 
@@ -305,6 +308,7 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/routes/1/1",
 		"/catalogue",
 		"/sync",
+		"/volume",
 		"/settings",
 		"/settings/tasks",
 		"/admin",
@@ -1087,7 +1091,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
 	for _, path := range []string{
-		"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/settings/tasks", "/sync",
+		"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/settings/tasks", "/sync", "/volume",
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -2281,6 +2285,8 @@ type fakeState struct {
 	cumulativeSeconds    json.RawMessage
 	sourceStages         []storedStage
 	targetRuns           []fakeTargetRun
+	activities           map[string][]activities.Stored
+	activitiesErr        error
 	targets              []fakeTarget
 	history              []recordedRun
 	taskHistory          []recordedTaskRun
@@ -2293,6 +2299,29 @@ type fakeState struct {
 	surfaceMetres        float64
 	surfaceClassified    int
 	surfaceTotal         int
+}
+
+// ActivitiesBetween reports the recorded activities the test gave this target,
+// filtered the way the store filters them: half-open on the start time,
+// newest first, and no more than limit of them.
+func (s *fakeState) ActivitiesBetween(
+	_ context.Context, targetID string, from, to time.Time, limit int,
+) ([]activities.Stored, error) {
+	if s.activitiesErr != nil {
+		return nil, s.activitiesErr
+	}
+	stored := []activities.Stored{}
+	for _, recorded := range s.activities[targetID] {
+		if !recorded.StartedAt.Before(from) && recorded.StartedAt.Before(to) {
+			stored = append(stored, recorded)
+		}
+	}
+	slices.SortFunc(stored, func(a, b activities.Stored) int { return b.StartedAt.Compare(a.StartedAt) })
+	if len(stored) > limit {
+		stored = stored[:limit]
+	}
+
+	return stored, nil
 }
 
 // fakeTarget is one configured slot, the authorisation state it is in, and
