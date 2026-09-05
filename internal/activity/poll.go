@@ -393,18 +393,18 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 	return unstored(listings, known), FailureNone
 }
 
-// accountedFor reports whether every listing on the account's first page is one
-// the last reading already held, so that an addition the rider balanced by a
-// deletion does not read as no change at all.
+// accountedFor reports whether the last reading held every activity on the
+// account's first page — the bounded side, which is what it keeps in memory.
 func accountedFor(head, listings []Listing) bool {
-	seen := identities(nil, listings)
-	for _, listing := range head {
-		if _, ok := seen[listing.ID]; !ok {
-			return false
+	unseen := identities(nil, head)
+	for _, listing := range listings {
+		delete(unseen, listing.ID)
+		if len(unseen) == 0 {
+			return true
 		}
 	}
 
-	return true
+	return len(unseen) == 0
 }
 
 // unstored is the listings the store has not stored, in the order they came.
