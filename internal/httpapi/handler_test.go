@@ -1907,6 +1907,51 @@ func TestHandlerRejectsInactiveTarget(t *testing.T) {
 	assert.Empty(t, oauthService.targetID, "an unknown target still started an OAuth request")
 }
 
+// Wahoo answers a request its Cloud application cannot serve — an unregistered
+// scope, or a rider who declined — by sending the browser back here with no
+// code at all. Consuming the pending state over an empty code would spend it on
+// a callback that never carried an authorization.
+func TestHandlerRefusesCallbackWahooItselfRejected(t *testing.T) {
+	for name, query := range map[string]string{
+		"scope not registered": "?error=invalid_scope&state=state",
+		"rider declined":       "?error=access_denied&state=state",
+		"no code":              "?state=state",
+		"no state":             "?code=code",
+	} {
+		t.Run(name, func(t *testing.T) {
+			oauthService := &fakeOAuth{}
+			handler := newHandler(t, oauthService, &fakeState{})
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/oauth/wahoo/callback"+query))
+			assert.Equal(t, http.StatusBadRequest, response.Code, "callback status")
+			assert.Zero(t, oauthService.completeCalls, "a callback carrying no authorization was still completed")
+		})
+	}
+}
+
+func TestHandlerRefusesAStartItCannotBegin(t *testing.T) {
+	handler := newHandler(t, &fakeOAuth{startErr: errors.New("private-token")}, &fakeState{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/oauth/wahoo/start/rider-a"))
+	assert.Equal(t, http.StatusBadRequest, response.Code, "start status")
+	assert.NotContains(t, response.Body.String(), "private-token", "the start body exposed the upstream error")
+}
+
+// The callback URL is reachable by any signed-in caller, so whatever arrives in
+// `error` is theirs to choose and never reaches a log line as it came.
+func TestCallbackRefusalIsAFixedCategory(t *testing.T) {
+	for errorCode, reason := range map[string]string{
+		"invalid_scope":     "scope_not_registered",
+		"access_denied":     "rider_declined",
+		"server_error":      "rejected_by_wahoo",
+		"anything\nforged=": "rejected_by_wahoo",
+	} {
+		assert.Equal(t, reason, refusalReason(errorCode), "refusal category for %q", errorCode)
+	}
+}
+
 func TestHandlerHidesOAuthFailure(t *testing.T) {
 	handler := newHandler(t, &fakeOAuth{completeErr: errors.New("private-token")}, &fakeState{})
 	response := httptest.NewRecorder()
@@ -2134,17 +2179,22 @@ func withBrowserOrigin(request *http.Request) {
 }
 
 type fakeOAuth struct {
-	completeErr        error
-	location, targetID string
+	completeErr, startErr error
+	location, targetID    string
+	completeCalls         int
 }
 
 func (o *fakeOAuth) Start(_ context.Context, _, targetID string) (string, error) {
 	o.targetID = targetID
 
-	return o.location, nil
+	return o.location, o.startErr
 }
 
-func (o *fakeOAuth) Complete(context.Context, string, string, string) error { return o.completeErr }
+func (o *fakeOAuth) Complete(context.Context, string, string, string) error {
+	o.completeCalls++
+
+	return o.completeErr
+}
 
 type fakeSync struct {
 	rateLimitResetAt   time.Time
