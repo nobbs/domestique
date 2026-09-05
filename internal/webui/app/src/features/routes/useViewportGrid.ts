@@ -15,7 +15,7 @@
  */
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useReducer, useRef, useState } from "react";
 import { useMap } from "react-map-gl/maplibre";
 import { gridWindow } from "../../api/openMeteoGrid";
 import type { Bbox } from "../../lib/windGrid";
@@ -57,6 +57,31 @@ export function useViewportGrid<T>(
   const { current: map } = useMap();
   const [bbox, setBbox] = useState<Bbox | null>(null);
   const bboxRef = useRef<Bbox | null>(null);
+  // Nothing else re-renders this hook on the hour: `hourKey` below is read
+  // straight off the clock, so an overlay left open across an hour boundary
+  // with no pan and no toggle would otherwise keep asking for the hour that
+  // was current when it last rendered.
+  const [, tickClock] = useReducer((count: number) => count + 1, 0);
+
+  useEffect(() => {
+    if (!on) {
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleNextHour = () => {
+      // A second past the boundary, not right on it: `Date.now()` and the
+      // timer's own firing both carry a little slack, and `hourKey` only
+      // needs to have moved on by the time this runs, never exactly at it.
+      const msUntilNextHour = 3_600_000 - (Date.now() % 3_600_000) + 1_000;
+      timer = setTimeout(() => {
+        tickClock();
+        scheduleNextHour();
+      }, msUntilNextHour);
+    };
+    scheduleNextHour();
+
+    return () => clearTimeout(timer);
+  }, [on]);
 
   useEffect(() => {
     // Every overlay calls this hook whether or not a reader has switched it
