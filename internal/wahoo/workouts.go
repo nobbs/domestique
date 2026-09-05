@@ -33,6 +33,8 @@ type Workout struct {
 // WorkoutSummary contains Wahoo's original summary, the URL of its FIT file,
 // and the totals decoded from it.
 type WorkoutSummary struct {
+	// FileURL is empty for a summary Wahoo holds no FIT file for, which a
+	// manually entered ride never has.
 	FileURL        string
 	Raw            json.RawMessage
 	DistanceMetres float64
@@ -108,6 +110,10 @@ func (c *Client) ListWorkouts(ctx context.Context, accessToken string) ([]Workou
 }
 
 // WorkoutSummary returns the original Wahoo summary and its FIT file URL.
+//
+// The summary is the response body itself. Only a workout listing wraps one in
+// a "workout_summary" key; this endpoint does not, and reading it as though it
+// did fails every summary in an account rather than none.
 func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workoutID int64) (WorkoutSummary, error) {
 	if accessToken == "" || workoutID <= 0 {
 		return WorkoutSummary{}, errors.New("wahoo: access token and workout id are required")
@@ -124,15 +130,9 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 		return WorkoutSummary{}, err
 	}
 
-	var envelope struct {
-		//nolint:tagliatelle // Wahoo's API uses snake_case.
-		WorkoutSummary *json.RawMessage `json:"workout_summary"`
-	}
-	if err := c.doJSON(request, &envelope); err != nil {
+	var body json.RawMessage
+	if err := c.doJSON(request, &body); err != nil {
 		return WorkoutSummary{}, err
-	}
-	if envelope.WorkoutSummary == nil {
-		return WorkoutSummary{}, errors.New("wahoo: workout summary was missing")
 	}
 	var summary struct {
 		File struct {
@@ -146,21 +146,25 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 		DurationTotalAccum decimal `json:"duration_total_accum"`
 		//nolint:tagliatelle // Wahoo's API uses snake_case.
 		AscentAccum decimal `json:"ascent_accum"`
+		ID          int64   `json:"id"`
 	}
-	if err := json.Unmarshal(*envelope.WorkoutSummary, &summary); err != nil {
+	if err := json.Unmarshal(body, &summary); err != nil {
 		var numErr *strconv.NumError
 		if errors.As(err, &numErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
 			return WorkoutSummary{}, errors.New("wahoo: workout summary totals were not numbers")
 		}
 
-		return WorkoutSummary{}, errors.New("wahoo: workout summary was not valid json")
+		// Syntax cannot be what failed: doJSON decoded this body into a
+		// json.RawMessage, which validates the whole document first.
+		return WorkoutSummary{}, errors.New("wahoo: workout summary was not the shape expected")
 	}
-	if summary.File.URL == "" {
-		return WorkoutSummary{}, errors.New("wahoo: workout summary did not contain a file url")
+	// A workout Wahoo holds no summary for decodes to a zero value, whether it
+	// answers with a null body or an object carrying nothing of its own.
+	if summary.ID <= 0 {
+		return WorkoutSummary{}, errors.New("wahoo: workout summary was missing")
 	}
-
 	return WorkoutSummary{
-		Raw:            *envelope.WorkoutSummary,
+		Raw:            body,
 		FileURL:        summary.File.URL,
 		DistanceMetres: float64(summary.DistanceAccum),
 		ActiveSeconds:  float64(summary.DurationActiveAccum),
