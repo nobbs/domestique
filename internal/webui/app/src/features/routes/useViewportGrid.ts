@@ -105,7 +105,13 @@ export function useViewportGrid<T>(
     queryFn: () => (bbox ? read(bbox, new Date(hourKey * 3_600_000)) : null),
     enabled: on && bbox !== null,
     staleTime: GRID_STALE_MS,
-    placeholderData: keepPreviousData,
+    // Only while on: `keepPreviousData` carries a query's last data forward
+    // for a caller with no live fetch behind it at all, disabled or not, so
+    // an overlay switched off would otherwise keep reporting the slice from
+    // before — never the `null` its own consumers' cleanup depends on. Left
+    // out entirely rather than set to `undefined`, which the option's own
+    // type refuses under this project's strict optional properties.
+    ...(on ? { placeholderData: keepPreviousData } : {}),
   });
 
   return { data: grid.data ?? null, bboxRef };
