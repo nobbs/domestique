@@ -6,6 +6,12 @@
 
 import type { RouteValidation } from "../api/types";
 
+/** A tenth below 100 km, a whole number at or above it — always in kilometres, no unit switch to metres. */
+export function formatKilometres(metres: number): string {
+  const kilometres = Math.max(metres, 0) / 1000;
+  return `${kilometres.toFixed(kilometres < 100 ? 1 : 0)} km`;
+}
+
 export function formatDistance(metres: number): string {
   if (!Number.isFinite(metres) || metres <= 0) {
     return "—";
@@ -13,12 +19,14 @@ export function formatDistance(metres: number): string {
   if (metres < 1000) {
     return `${Math.round(metres)} m`;
   }
-  const kilometres = metres / 1000;
-  return `${kilometres.toFixed(kilometres < 100 ? 1 : 0)} km`;
+  return formatKilometres(metres);
 }
 
-/** `14:20` or `02:20 PM`, in the reader's own zone and clock convention. */
+/** `14:20` or `02:20 PM`, in the reader's own zone and clock convention; `""` for a date that failed to parse. */
 export function formatClock(at: Date): string {
+  if (Number.isNaN(at.getTime())) {
+    return "";
+  }
   return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 

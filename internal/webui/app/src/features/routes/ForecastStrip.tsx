@@ -36,7 +36,7 @@ import type { Position } from "../../api/types";
 import { forecastResolution } from "../../lib/forecastResolution";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import { forecastLeadHours } from "../../lib/forecastSamples";
-import { formatClock, formatWindSpeed } from "../../lib/format";
+import { formatClock, formatKilometres, formatWindSpeed } from "../../lib/format";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import { compassPoint } from "../../lib/routeCues";
 import { useElementWidth } from "../../lib/useElementWidth";
@@ -171,10 +171,9 @@ export function ForecastStrip({
             const icon = cellWidth >= MIN_ICON_WIDTH;
             const wind = cellWidth >= MIN_WIND_WIDTH;
             const clock = formatClock(cell.sample.arrivalAt);
-            const kilometres = cell.sample.distanceMetres / 1000;
             const place =
               cellWidth >= MIN_PLACE_WIDTH
-                ? `${kilometres.toFixed(kilometres < 100 ? 1 : 0)} km · ${clock}`
+                ? `${formatKilometres(cell.sample.distanceMetres)} · ${clock}`
                 : cellWidth >= MIN_CLOCK_WIDTH
                   ? clock
                   : null;
