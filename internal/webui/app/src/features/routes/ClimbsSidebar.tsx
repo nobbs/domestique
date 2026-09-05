@@ -12,9 +12,9 @@
  * pushes the forecast off the foot; beside it, it costs width the full-width
  * dock has and height it does not.
  *
- * Folded it keeps its count, turned on its side. A rail is a poor thing to
- * read but a good thing to find, and what a reader folding this away wants
- * back is the chart's width rather than the memory of where the control went.
+ * Folded it keeps its count, a chip on the panel's own top line rather than a
+ * column of its own — what a reader folding this away wants back is the
+ * chart's width rather than the memory of where the control went.
  *
  * Climb data and nothing else. Everything the forecast knows about a col is
  * drawn along the band below — tile by tile, at every reading rather than only
@@ -22,10 +22,11 @@
  * was the same reading in a worse place.
  */
 
-import { IconChevronRight, IconLayoutSidebarRightCollapse } from "@tabler/icons-react";
+import { IconStairs } from "@tabler/icons-react";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import type { UnitSystem } from "../../lib/units";
+import { useElementHeight } from "../../lib/useElementHeight";
 
 /**
  * The row's columns: ordinal, length, average gradient, steepest gradient,
@@ -42,108 +43,123 @@ import type { UnitSystem } from "../../lib/units";
  */
 const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr)";
 const ROW_HEIGHT = 28;
+/** The list's own `mt-1`, which `clientHeight` on the header above it does not include. */
+const LIST_GAP = 4;
 
 /**
- * The route's climbs in one line: how many, and the one that decides the day.
- *
- * What a reader deciding whether to open the list needs before opening it.
+ * How many whole rows fit below the header, snapped down rather than up — a
+ * fractional row left over would be the very row this whole feature exists to
+ * avoid showing cut in half.
  */
-export function climbSentence(climbs: Climb[], unitSystem: UnitSystem): string | null {
-  const biggest = climbs.reduce<Climb | null>(
-    (worst, climb) => (worst === null || climb.ascentMetres > worst.ascentMetres ? climb : worst),
-    null,
-  );
-  if (biggest === null) {
-    return null;
-  }
-
-  return `biggest ${formatDistance(biggest.distanceMetres, unitSystem)} at ${formatGradient(biggest.averageGradePercent)}`;
+export function rowsToShow(
+  fixedHeight: boolean,
+  sectionHeight: number,
+  headerHeight: number,
+): number | null {
+  return fixedHeight && sectionHeight > 0
+    ? Math.max(1, Math.floor((sectionHeight - headerHeight - LIST_GAP) / ROW_HEIGHT))
+    : null;
 }
 
-export function ClimbsSidebar({
+/**
+ * The one way to open or fold the sidebar, wherever it sits: the same count,
+ * the same look, whichever state it names.
+ */
+export function ClimbsToggle({
   climbs,
   open,
   onOpenChange,
-  onSelect,
-  unitSystem,
 }: {
   climbs: Climb[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Opens the shared map/chart window on one climb, as the brackets do. */
-  onSelect: (climb: Climb) => void;
-  unitSystem: UnitSystem;
 }) {
-  const summary = climbSentence(climbs, unitSystem);
-  // A route with no climbs has no sidebar: an empty column beside the chart
-  // spends width saying that a flat route is flat.
-  if (summary === null) {
+  const count = climbCount(climbs);
+  if (count === null) {
     return null;
-  }
-  const count = `${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`;
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        aria-expanded={false}
-        aria-label={`Show ${count}`}
-        onClick={() => onOpenChange(true)}
-        className="flex shrink-0 items-center gap-1.5 self-stretch rounded-lg border border-[var(--rule)] px-2 text-[11px] text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-      >
-        <IconLayoutSidebarRightCollapse size={14} stroke={2} aria-hidden="true" />
-        <span className="rotate-180 [writing-mode:vertical-rl]">{count}</span>
-      </button>
-    );
   }
 
   return (
-    <section className="w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3">
-      <h3>
-        <button
-          type="button"
-          aria-expanded
-          aria-label={`Hide ${count}`}
-          onClick={() => onOpenChange(false)}
-          className="flex w-full items-baseline gap-2 rounded py-0.5 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-label={`${open ? "Hide" : "Show"} ${count}`}
+      onClick={() => onOpenChange(!open)}
+      className="flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+    >
+      <IconStairs size={13} stroke={2} aria-hidden="true" />
+      {count}
+    </button>
+  );
+}
+
+function climbCount(climbs: Climb[]): string | null {
+  return climbs.length === 0
+    ? null
+    : `${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`;
+}
+
+export function ClimbsSidebar({
+  climbs,
+  onSelect,
+  unitSystem,
+  fixedHeight = false,
+}: {
+  climbs: Climb[];
+  /** Opens the shared map/chart window on one climb, as the brackets do. */
+  onSelect: (climb: Climb) => void;
+  unitSystem: UnitSystem;
+  /**
+   * Snaps the list to a whole number of rows rather than letting a partial
+   * one show at the foot — for a caller (the rail dock) that stretches this
+   * to a fixed height rather than letting it size to its own content.
+   */
+  fixedHeight?: boolean;
+}) {
+  const { ref: sectionRef, height: sectionHeight } = useElementHeight<HTMLElement>();
+  const { ref: headerRef, height: headerHeight } = useElementHeight<HTMLDivElement>();
+  // A route with no climbs has no sidebar: an empty column beside the chart
+  // spends width saying that a flat route is flat.
+  if (climbs.length === 0) {
+    return null;
+  }
+  const rows = rowsToShow(fixedHeight, sectionHeight, headerHeight);
+
+  return (
+    <section
+      ref={sectionRef}
+      className="w-80 shrink-0 self-stretch border-l border-[var(--rule)] pl-3"
+    >
+      <div ref={headerRef}>
+        {/*
+         * Outside the scroller, so the names stay put while the climbs move
+         * under them — a header that scrolls away is a header that is absent
+         * exactly when a reader has lost track of which column is which.
+         */}
+        <div
+          className="mt-1 grid gap-2 px-1.5 text-[10px] leading-none text-[var(--ink-2)]"
+          style={{ gridTemplateColumns: ROW_COLUMNS }}
+          aria-hidden="true"
         >
-          <span className="text-[10px] font-semibold tracking-[0.08em] text-[var(--ink-2)] uppercase">
-            {count}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--ink-2)]">{summary}</span>
-          <IconChevronRight
-            size={12}
-            stroke={2}
-            aria-hidden="true"
-            className="shrink-0 rotate-90 text-[var(--ink-2)]"
-          />
-        </button>
-      </h3>
-      {/*
-       * Outside the scroller, so the names stay put while the climbs move
-       * under them — a header that scrolls away is a header that is absent
-       * exactly when a reader has lost track of which column is which.
-       */}
-      <div
-        className="mt-1 grid gap-2 px-1.5 text-[10px] leading-none text-[var(--ink-2)]"
-        style={{ gridTemplateColumns: ROW_COLUMNS }}
-        aria-hidden="true"
-      >
-        <span />
-        <span className="text-right">Length</span>
-        <span className="text-right">Avg</span>
-        <span className="text-right">Max</span>
-        <span className="text-right">Ascent</span>
-        <span className="text-right">Starts</span>
+          <span />
+          <span className="text-right">Length</span>
+          <span className="text-right">Avg</span>
+          <span className="text-right">Max</span>
+          <span className="text-right">Ascent</span>
+          <span className="text-right">Starts</span>
+        </div>
       </div>
       {/*
        * `snap-mandatory` rather than `proximity`: this list is short and its
        * rows are uniform, so there is never a reading where landing between two
-       * of them is what the reader meant. It scrolls against the dock's own
-       * height rather than a row count, because beside the chart that height is
-       * whatever the chart came to.
+       * of them is what the reader meant. Fixed height snaps to whole rows so
+       * the fixed-height rail panel never shows a row cut in half; otherwise it
+       * scrolls against whatever height the chart beside it came to.
        */}
-      <ol className="mt-1 max-h-full snap-y snap-mandatory overflow-y-auto">
+      <ol
+        className="mt-1 max-h-full snap-y snap-mandatory overflow-y-auto"
+        style={rows === null ? undefined : { height: rows * ROW_HEIGHT }}
+      >
         {climbs.map((climb, index) => (
           <li key={climb.startMetres} className="snap-start" style={{ height: ROW_HEIGHT }}>
             <button

@@ -23,7 +23,7 @@
  * labels of its own still reserves the same left and right margin, which is
  * what keeps its horizontal axis lined up with the chart that does.
  */
-export const PADDING = { top: 8, right: 8, bottom: 22, left: 40 } as const;
+export const PADDING = { top: 15, right: 8, bottom: 22, left: 40 } as const;
 
 /** Below this, a card too narrow to measure yet is drawn at this width instead. */
 export const MIN_WIDTH = 240;

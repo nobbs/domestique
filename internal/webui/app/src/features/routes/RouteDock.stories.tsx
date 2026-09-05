@@ -1,14 +1,14 @@
 /**
  * The dock, at the width the map's foot actually gives it.
  *
- * Two states, because they are the two things it is: the three lanes on one
- * distance axis, and the pill it leaves behind. Everything between — the ground
- * key folding, the forecast folding, the departure moving — is reachable from
- * the first.
+ * A rail of two stops on one distance axis, and the pill it leaves behind.
+ * Everything between — switching stops, the departure moving — is reachable
+ * from the first.
  */
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+import { userEvent } from "storybook/test";
 import type { Highlight } from "../../lib/highlight";
 import type { MeasureKey } from "../../lib/measures";
 import type { DistanceWindow } from "../../lib/profile";
@@ -44,8 +44,6 @@ function Docked({ startOpen }: { startOpen: boolean }) {
   // An hour before the first sample, and always inside the forecast window —
   // see `rideStart` for why a pinned date is not an option here.
   const [startAt, setStartAt] = useState<Date | null>(new Date(rideStart.getTime() - 60 * 60_000));
-  const [groundLabelled, setGroundLabelled] = useState(true);
-  const [forecastOpen, setForecastOpen] = useState(true);
 
   return (
     <StoryProviders>
@@ -54,6 +52,7 @@ function Docked({ startOpen }: { startOpen: boolean }) {
           title={route.title}
           profile={profile}
           distanceMetres={route.distanceMetres}
+          ascentMetres={route.ascentMetres}
           surface={surface}
           climbs={climbs}
           onSelectClimb={() => {}}
@@ -73,10 +72,6 @@ function Docked({ startOpen }: { startOpen: boolean }) {
           unitSystem="metric"
           open={open}
           onOpenChange={setOpen}
-          groundLabelled={groundLabelled}
-          onGroundLabelledChange={setGroundLabelled}
-          forecastOpen={forecastOpen}
-          onForecastOpenChange={setForecastOpen}
         />
       </div>
     </StoryProviders>
@@ -87,3 +82,11 @@ export const Open: Story = { render: () => <Docked startOpen /> };
 
 /** Folded, which is most of the map back. */
 export const Folded: Story = { render: () => <Docked startOpen={false} /> };
+
+/** The forecast stop, reached by clicking its rail stop. */
+export const Forecast: Story = {
+  render: () => <Docked startOpen />,
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole("tab", { name: /Forecast/ }));
+  },
+};

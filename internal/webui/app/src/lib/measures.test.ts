@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MeasureKey } from "./measures";
 import {
+  bandRange,
   MEASURES,
   WIND_RELATION_KEY,
   windRelationColour,
@@ -191,5 +192,50 @@ describe("the head-to-tail ramp", () => {
     expect(windRelationWords(1, 24, "metric")).toContain("crosswind");
     expect(windRelationWords(null, 24, "metric")).toContain("wind shifting");
     expect(windRelationWords(0, 24, "imperial")).toBe("headwind, 15 mph");
+  });
+});
+
+describe("bandRange", () => {
+  it("gives wind's cuts in km/h", () => {
+    const wind = measure("wind");
+
+    expect(bandRange(wind, 0, "metric")).toBe("under 15 km/h");
+    expect(bandRange(wind, 1, "metric")).toBe("15–30 km/h");
+    expect(bandRange(wind, 2, "metric")).toBe("30–45 km/h");
+    expect(bandRange(wind, 3, "metric")).toBe("over 45 km/h");
+  });
+
+  it("gives temperature's cuts in °C, coldest band first", () => {
+    const temperature = measure("temperature");
+
+    expect(bandRange(temperature, 0, "metric")).toBe("under 5 °C");
+    expect(bandRange(temperature, 1, "metric")).toBe("5–12 °C");
+    expect(bandRange(temperature, 2, "metric")).toBe("12–20 °C");
+    expect(bandRange(temperature, 3, "metric")).toBe("20–27 °C");
+    expect(bandRange(temperature, 4, "metric")).toBe("over 27 °C");
+  });
+
+  it("gives rain's cuts in mm/h", () => {
+    const rain = measure("rain");
+
+    expect(bandRange(rain, 0, "metric")).toBe("under 0.2 mm/h");
+    expect(bandRange(rain, 1, "metric")).toBe("0.2–2 mm/h");
+    expect(bandRange(rain, 2, "metric")).toBe("2–6 mm/h");
+    expect(bandRange(rain, 3, "metric")).toBe("over 6 mm/h");
+  });
+
+  it("gives cloud's cuts as a percentage", () => {
+    const cloud = measure("cloud");
+
+    expect(bandRange(cloud, 0, "metric")).toBe("under 20 %");
+    expect(bandRange(cloud, 1, "metric")).toBe("20–50 %");
+    expect(bandRange(cloud, 2, "metric")).toBe("50–85 %");
+    expect(bandRange(cloud, 3, "metric")).toBe("over 85 %");
+  });
+
+  it("converts to the reader's own units", () => {
+    const wind = measure("wind");
+
+    expect(bandRange(wind, 0, "imperial")).toBe("under 9.3 mph");
   });
 });

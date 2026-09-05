@@ -1,47 +1,39 @@
 /**
- * The route, drawn against distance, along the foot of the map.
- *
- * Almost everything this service knows about a route is a function of one
- * variable: how far along it you are. Height is, steepness is, the ground is,
- * and — once a start time is chosen — so is the weather, because when you
- * arrive somewhere is decided by how far away it is. Plotted against separate
- * axes those are readings a reader has to align by hand; plotted against the
- * same one they align themselves, and the dock can say the thing no single
- * instrument does: *the rain arrives on the second col, and the col is gravel*.
- *
- * It costs height, which is why it folds. Away, it leaves a pill centred on the
- * map's foot — centred because the dock is the full width of the page and
- * belongs to the middle, and because a reader who put it away looks for it
- * where it went.
- *
- * The route panel says what the route *is*; this says what it *does*, and the
- * two do not repeat each other. The panel totals each mix per class — thirteen
- * kilometres of gravel, which decides the bike — and this keeps the order it is
- * ridden in — the gravel falling on the second col, which decides the day.
- * `gradientShares` and `gradientMix` are separate functions for exactly that.
+ * The route, drawn against distance, along the foot of the map: a profile
+ * stop and a forecast stop on one rail, folding to a pill when put away.
  */
 
-import { IconChevronsRight } from "@tabler/icons-react";
+import { Tabs } from "@base-ui/react/tabs";
+import {
+  IconArrowDownRight,
+  IconArrowUpRight,
+  IconCloud,
+  IconInfoCircle,
+  IconLayoutBottombarCollapse,
+  IconMountain,
+} from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Position } from "../../api/types";
 import { StartTimePicker } from "../../components/StartTimePicker";
+import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import type { Climb } from "../../lib/climbs";
-import type { ForecastSample } from "../../lib/forecastSamples";
-import { formatElevation } from "../../lib/format";
+import { forecastResolution } from "../../lib/forecastResolution";
+import { type ForecastSample, forecastLeadHours } from "../../lib/forecastSamples";
+import { formatAscent, formatDistance, formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import type { MeasureKey } from "../../lib/measures";
 import { useCoarsePointer } from "../../lib/mediaQuery";
-import { groundSegments } from "../../lib/mix";
+import { groundSegments, steepnessEntries } from "../../lib/mix";
 import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile } from "../../lib/profile";
+import { gradientSharesBySign } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { UnitSystem } from "../../lib/units";
-import { distanceUnitLabel, distanceValue } from "../../lib/units";
 import { ClimbMarkers } from "./ClimbMarkers";
-import { ClimbsSidebar } from "./ClimbsSidebar";
-import { ConditionsPicker } from "./ConditionsPicker";
-import { ElevationProfile } from "./ElevationProfile";
-import { ForecastFrame } from "./ForecastFrame";
+import { ClimbsSidebar, ClimbsToggle } from "./ClimbsSidebar";
+import { ConditionsChoices, ConditionsKey } from "./ConditionsPicker";
+import { ElevationProfile, profileReadout } from "./ElevationProfile";
 import { ForecastStrip } from "./ForecastStrip";
 import { GroundRibbon } from "./GroundRibbon";
 
@@ -50,17 +42,148 @@ function clockAt(at: Date): string {
   return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }
 
+const GUTTER = { paddingLeft: PADDING.left, paddingRight: PADDING.right };
+
+/**
+ * The frame every stop shares: one line of figures across the top, a control
+ * at its end where the stop has one, and the body beneath. The line is data
+ * rather than a heading — a reader on the profile stop already knows it is the
+ * profile; what they do not know is how high it goes.
+ */
+function Panel({
+  line,
+  lineLabel,
+  control,
+  info,
+  gutter = true,
+  children,
+}: {
+  line: string;
+  /** Names the line for assistive tech and the e2e suite, where a plain readout is not enough. */
+  lineLabel?: string;
+  control?: ReactNode;
+  /** What waits behind the ⓘ at the line's end: the figures a glance does not need. */
+  info?: ReactNode;
+  /** Whether the line sits over the chart's plotted area; off where there is no axis. */
+  gutter?: boolean;
+  children: ReactNode;
+}) {
+  const [lead, ...tail] = line.split(" · ");
+  const rest = tail.length === 0 ? undefined : tail.join(" · ");
+
+  return (
+    <div className="flex h-full flex-col gap-1.5">
+      <div
+        className="flex min-h-7 flex-wrap items-center justify-between gap-x-3 gap-y-1"
+        style={gutter ? GUTTER : undefined}
+      >
+        <output
+          aria-label={lineLabel}
+          aria-live="polite"
+          className="text-xs text-[var(--ink-2)] tabular-nums"
+        >
+          <span className="text-sm font-semibold text-[var(--ink)]">{lead}</span>
+          {rest === undefined ? null : ` · ${rest}`}
+        </output>
+        <div className="flex items-center gap-3">
+          {control}
+          {info === undefined ? null : (
+            <Popover>
+              <PopoverTrigger
+                openOnHover
+                delay={150}
+                aria-label="More about this"
+                className="rounded-full p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[popup-open]:text-[var(--ink)]"
+              >
+                <IconInfoCircle size={16} stroke={1.8} aria-hidden="true" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-auto p-3">
+                {info}
+              </PopoverContent>
+            </Popover>
+          )}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The steepness bands as a table, climbing and descending apart: how much of
+ * the route goes up steeply is a different fact from how much comes down it.
+ */
+function SteepnessTable({
+  coordinates,
+  distanceMetres,
+  unitSystem,
+}: {
+  coordinates: Position[];
+  distanceMetres: number;
+  unitSystem: UnitSystem;
+}) {
+  const rows = steepnessEntries(gradientSharesBySign(coordinates), distanceMetres);
+  const cell = "px-2 py-1 text-right text-xs tabular-nums";
+
+  return (
+    <table className="border-collapse">
+      <thead>
+        <tr className="border-b border-[var(--rule)] text-[10px] tracking-[0.06em] text-[var(--ink-2)] uppercase">
+          <th scope="col" className="px-2 py-1 text-left font-semibold">
+            Steepness
+          </th>
+          <th scope="col" className="px-2 py-1 text-right font-semibold">
+            <span className="inline-flex items-center gap-0.5">
+              Up <IconArrowUpRight size={11} stroke={2} aria-hidden="true" />
+            </span>
+          </th>
+          <th scope="col" className="px-2 py-1 text-right font-semibold">
+            <span className="inline-flex items-center gap-0.5">
+              Down <IconArrowDownRight size={11} stroke={2} aria-hidden="true" />
+            </span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row.label}>
+            <th
+              scope="row"
+              className="flex items-center gap-1.5 px-2 py-1 text-left text-xs font-normal"
+            >
+              <span
+                aria-hidden="true"
+                className="size-2.5 rounded-xs"
+                style={{ backgroundColor: row.colour }}
+              />
+              {row.label}
+            </th>
+            <td className={cell}>
+              {row.climbingMetres < 1 ? "–" : formatDistance(row.climbingMetres, unitSystem)}
+            </td>
+            <td className={`${cell} text-[var(--ink-2)]`}>
+              {row.descendingMetres < 1 ? "–" : formatDistance(row.descendingMetres, unitSystem)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export interface RouteDockProps {
   title: string;
-  /** The stretch on show: the whole route, or the window the reader chose. */
+  /** Already restricted to the stretch on show, when there is a zoom. */
   profile: Profile | null;
   /** The whole route's length, which the ribbon and the strip are laid along. */
   distanceMetres: number;
+  /** The whole route's total climb, for the profile stop's resting line. */
+  ascentMetres: number;
   surface: SurfaceSummary | null;
   climbs: Climb[];
   /** Opens the shared map/chart window on one climb, as the brackets do. */
   onSelectClimb: (climb: Climb) => void;
-  /** The route's own geometry, which the strip's wind reading is measured against. */
+  /** The route's own geometry, which the strip's wind reading and the steepness table are measured against. */
   coordinates: Position[];
   samples: ForecastSample[];
   startAt: Date | null;
@@ -79,17 +202,231 @@ export interface RouteDockProps {
   unitSystem: UnitSystem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Whether the ground key beneath the ribbon is shown. */
-  groundLabelled: boolean;
-  onGroundLabelledChange: (labelled: boolean) => void;
-  forecastOpen: boolean;
-  onForecastOpenChange: (open: boolean) => void;
 }
+
+function ProfileStop({
+  profile,
+  title,
+  distanceMetres,
+  ascentMetres,
+  surface,
+  climbs,
+  onSelectClimb,
+  coordinates,
+  activeMetres,
+  onActiveChange,
+  zoomWindow,
+  onZoomChange,
+  highlight,
+  onHighlightChange,
+  unitSystem,
+  climbsOpen,
+  onClimbsOpenChange,
+}: Pick<
+  RouteDockProps,
+  | "profile"
+  | "title"
+  | "distanceMetres"
+  | "ascentMetres"
+  | "surface"
+  | "climbs"
+  | "onSelectClimb"
+  | "coordinates"
+  | "activeMetres"
+  | "onActiveChange"
+  | "zoomWindow"
+  | "onZoomChange"
+  | "highlight"
+  | "onHighlightChange"
+  | "unitSystem"
+> & { climbsOpen: boolean; onClimbsOpenChange: (open: boolean) => void }) {
+  // A touch pointer arms the zoom by holding, so the hint names that gesture.
+  const coarse = useCoarsePointer();
+  const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
+  const line = (() => {
+    if (activeMetres !== null && profile) {
+      return profileReadout({ profile, surface, activeMetres, unitSystem });
+    }
+    if (zoomWindow) {
+      return `${formatDistance(zoomWindow.startMetres, unitSystem)}–${formatDistance(zoomWindow.endMetres, unitSystem)} shown · Escape returns`;
+    }
+    if (!profile) {
+      return "";
+    }
+    const range = ` · ${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`;
+    const hint = coarse ? "press and hold to look closer" : "drag across to look closer";
+    return `${formatDistance(distanceMetres, unitSystem)} · ${formatAscent(ascentMetres, unitSystem)} up${range} · ${hint}`;
+  })();
+
+  return (
+    <div className="flex h-full items-stretch gap-3">
+      <div className="min-w-0 flex-1">
+        <Panel
+          line={line}
+          lineLabel="Elevation summary"
+          gutter={false}
+          control={
+            <div className="flex items-center gap-2">
+              {zoomWindow && onZoomChange ? (
+                <button
+                  type="button"
+                  aria-keyshortcuts="Escape"
+                  onClick={() => onZoomChange(null)}
+                  className="rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+                >
+                  Whole route
+                </button>
+              ) : null}
+              <ClimbsToggle climbs={climbs} open={climbsOpen} onOpenChange={onClimbsOpenChange} />
+            </div>
+          }
+          info={
+            <SteepnessTable
+              coordinates={coordinates}
+              distanceMetres={distanceMetres}
+              unitSystem={unitSystem}
+            />
+          }
+        >
+          {/*
+           * `min-w-0`: a grid item's default min-width is its content's, and the
+           * chart's own explicit pixel width would hold this open above the
+           * climbs sidebar rather than shrinking back when it reopens.
+           */}
+          <div className="relative min-w-0">
+            <ElevationProfile
+              profile={profile}
+              title={title}
+              surface={surface}
+              activeMetres={activeMetres}
+              onActiveChange={onActiveChange}
+              zoomWindow={zoomWindow}
+              onZoomChange={onZoomChange}
+              highlight={highlight}
+              unitSystem={unitSystem}
+              caption={false}
+              zoomBack={false}
+            />
+            <ClimbMarkers
+              climbs={climbs}
+              startMetres={shown.startMetres}
+              endMetres={shown.endMetres}
+              onSelect={onActiveChange}
+            />
+          </div>
+          <div style={GUTTER}>
+            <GroundRibbon
+              segments={groundSegments(surface, shown)}
+              surface={surface}
+              window={shown}
+              thin
+              unmarked={["asphalt"]}
+              labelled
+              highlight={highlight}
+              onHighlightChange={onHighlightChange}
+            />
+          </div>
+        </Panel>
+      </div>
+      {climbsOpen ? (
+        <ClimbsSidebar
+          climbs={climbs}
+          onSelect={onSelectClimb}
+          unitSystem={unitSystem}
+          fixedHeight
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ForecastStop({
+  distanceMetres,
+  coordinates,
+  samples,
+  startAt,
+  onStartAtChange,
+  movingSeconds,
+  zoomWindow,
+  measure,
+  onMeasureChange,
+  unitSystem,
+}: Pick<
+  RouteDockProps,
+  | "distanceMetres"
+  | "coordinates"
+  | "samples"
+  | "startAt"
+  | "onStartAtChange"
+  | "movingSeconds"
+  | "zoomWindow"
+  | "measure"
+  | "onMeasureChange"
+  | "unitSystem"
+>) {
+  const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
+  const back = samples[samples.length - 1]?.arrivalAt;
+
+  return (
+    <Panel
+      gutter={false}
+      line={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
+      info={
+        samples.length === 0 ? undefined : (
+          <p className="max-w-64 text-xs text-[var(--ink-2)]">
+            {forecastResolution(forecastLeadHours(samples)).sentence}
+          </p>
+        )
+      }
+    >
+      <div className="min-h-0 flex-1">
+        <ForecastStrip
+          samples={samples}
+          coordinates={coordinates}
+          startMetres={shown.startMetres}
+          endMetres={shown.endMetres}
+          unitSystem={unitSystem}
+          inset={false}
+          caption={false}
+          fill
+        />
+      </div>
+      <ConditionsKey measure={measure} samples={samples} unitSystem={unitSystem} />
+      {/* Pinned to the panel's own foot rather than following the key up
+          against the strip, so the departure and the wash choice stay put
+          however tall the key beside them gets. */}
+      <div className="mt-auto flex flex-wrap items-end justify-between gap-3">
+        <StartTimePicker
+          value={startAt}
+          onChange={onStartAtChange}
+          movingSeconds={movingSeconds}
+          inline
+        />
+        <ConditionsChoices
+          measure={measure}
+          onMeasureChange={onMeasureChange}
+          samples={samples}
+          movingSeconds={movingSeconds}
+        />
+      </div>
+    </Panel>
+  );
+}
+
+const RAIL_TAB =
+  "flex w-14 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[active]:bg-[var(--base)] data-[active]:font-semibold data-[active]:text-[var(--ink)]";
+
+/** A stop on the rail, open or folded — matches the `Tabs.Tab` values below. */
+type Stop = "profile" | "forecast";
+
+const FOLDED_CONTROL =
+  "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
 
 export function RouteDock({
   title,
   profile,
   distanceMetres,
+  ascentMetres,
   surface,
   climbs,
   onSelectClimb,
@@ -109,54 +446,47 @@ export function RouteDock({
   unitSystem,
   open,
   onOpenChange,
-  groundLabelled,
-  onGroundLabelledChange,
-  forecastOpen,
-  onForecastOpenChange,
 }: RouteDockProps) {
   const back = samples[samples.length - 1]?.arrivalAt;
-  const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
-  /*
-   * A finger cannot hover, and a card that scrolls cannot give every downward
-   * swipe over the chart to the chart — so on a touch pointer the gesture is
-   * armed by holding rather than by landing, and the hint says which of the two
-   * this reader has.
-   */
-  const coarse = useCoarsePointer();
   const [climbsOpen, setClimbsOpen] = useState(true);
-  const range =
-    profile === null
-      ? ""
-      : `${formatElevation(profile.minElevationMetres, unitSystem)}–${formatElevation(profile.maxElevationMetres, unitSystem)}`;
-  /*
-   * Zoomed, the line says which stretch is on show and how to leave it —
-   * without that, a reader who dragged into two kilometres of a hundred has no
-   * written way back. Otherwise it says what the chart will do if it is
-   * dragged across, which is the only place that gesture is advertised.
-   */
-  const summary = zoomWindow
-    ? `${distanceValue(zoomWindow.startMetres, unitSystem).toFixed(1)}–${distanceValue(zoomWindow.endMetres, unitSystem).toFixed(1)} ${distanceUnitLabel(unitSystem)} shown · Escape returns`
-    : range === ""
-      ? ""
-      : `${range} · ${coarse ? "press and hold to look closer" : "drag across to look closer"}`;
+  // The stop shown while open, and the one Show reopens on — kept across folds.
+  const [stop, setStop] = useState<Stop>("profile");
 
   if (!open) {
     return (
-      <button
-        type="button"
-        aria-expanded={false}
-        onClick={() => onOpenChange(true)}
-        className="flex items-center gap-1.5 rounded-full bg-[var(--panel)] py-1.5 pr-3.5 pl-3 text-xs shadow-[var(--shadow)] ring-1 ring-black/5 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+      <div
+        role="group"
+        aria-label="Route detail, folded"
+        className="flex h-9 w-full items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)] ring-1 ring-black/5"
       >
-        <IconChevronsRight
-          size={13}
-          stroke={2}
-          aria-hidden="true"
-          className="-rotate-90 text-[var(--ink-2)]"
-        />
-        Profile, ground and forecast
-        {back === undefined ? null : ` · back ${clockAt(back)}`}
-      </button>
+        <button
+          type="button"
+          aria-label="Show the profile"
+          onClick={() => {
+            setStop("profile");
+            onOpenChange(true);
+          }}
+          className={FOLDED_CONTROL}
+        >
+          <IconMountain size={15} stroke={2} aria-hidden="true" />
+          Profile
+        </button>
+        <button
+          type="button"
+          aria-label="Show the forecast"
+          onClick={() => {
+            setStop("forecast");
+            onOpenChange(true);
+          }}
+          className={FOLDED_CONTROL}
+        >
+          <IconCloud size={15} stroke={2} aria-hidden="true" />
+          Forecast
+        </button>
+        {back === undefined ? null : (
+          <span className="ml-auto text-[10px] text-[var(--ink-2)]">back {clockAt(back)}</span>
+        )}
+      </div>
     );
   }
 
@@ -165,127 +495,73 @@ export function RouteDock({
       aria-label="Route detail"
       className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
     >
-      {/*
-       * On the top edge, centred: that edge is the seam the dock folds along,
-       * and it is where the pill will be. The control does not move when the
-       * thing it controls goes away. Shaped like the drawer's own swipe handle,
-       * which is the vocabulary this application already uses for the top edge
-       * of a sheet — with a chevron, because a bare bar promises a drag and
-       * this only ever takes a press.
-       */}
-      <button
-        type="button"
-        aria-expanded
-        aria-label="Hide the route detail"
-        onClick={() => onOpenChange(false)}
-        className="absolute -top-3 left-1/2 flex h-6 w-14 -translate-x-1/2 items-center justify-center rounded-full border border-[var(--rule)] bg-[var(--panel)] text-[var(--ink-2)] shadow-[var(--shadow)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+      <Tabs.Root
+        value={stop}
+        onValueChange={(value) => setStop(value as Stop)}
+        orientation="vertical"
+        className="flex gap-3"
       >
-        <IconChevronsRight size={15} stroke={2} aria-hidden="true" className="rotate-90" />
-      </button>
-      {/*
-       * The lanes and the climbs side by side. The lanes are everything drawn
-       * against distance and take the width that is left; the list is a column
-       * of figures and takes a fixed one, because a table that reflows with the
-       * window is a table whose columns move while you read down them.
-       */}
-      <div className="flex items-stretch gap-3">
-        <div className="grid min-w-0 flex-1 gap-1.5">
-          {summary === "" ? null : (
-            <output aria-label="Elevation summary" className="text-xs text-[var(--ink-2)]">
-              {summary}
-            </output>
-          )}
-          <div className="relative">
-            <ElevationProfile
+        <div className="flex shrink-0 flex-col border-r border-[var(--rule)] pr-2">
+          <Tabs.List className="flex flex-col gap-0.5">
+            <Tabs.Tab value="profile" className={RAIL_TAB}>
+              <IconMountain size={15} stroke={2} aria-hidden="true" />
+              Profile
+            </Tabs.Tab>
+            <Tabs.Tab value="forecast" className={RAIL_TAB}>
+              <IconCloud size={15} stroke={2} aria-hidden="true" />
+              Forecast
+            </Tabs.Tab>
+          </Tabs.List>
+          <button
+            type="button"
+            aria-expanded
+            aria-label="Hide the route detail"
+            onClick={() => onOpenChange(false)}
+            className={`${RAIL_TAB} mt-auto`}
+          >
+            <IconLayoutBottombarCollapse size={15} stroke={2} aria-hidden="true" />
+            Hide
+          </button>
+        </div>
+        {/* One height for every stop, so switching never moves the map's foot. */}
+        <div className="h-52 min-w-0 flex-1 [&>[role=tabpanel]]:h-full">
+          <Tabs.Panel value="profile" className="min-w-0">
+            <ProfileStop
               profile={profile}
               title={title}
+              distanceMetres={distanceMetres}
+              ascentMetres={ascentMetres}
               surface={surface}
+              climbs={climbs}
+              onSelectClimb={onSelectClimb}
+              coordinates={coordinates}
               activeMetres={activeMetres}
               onActiveChange={onActiveChange}
               zoomWindow={zoomWindow}
               onZoomChange={onZoomChange}
               highlight={highlight}
+              onHighlightChange={onHighlightChange}
               unitSystem={unitSystem}
+              climbsOpen={climbsOpen}
+              onClimbsOpenChange={setClimbsOpen}
             />
-            <ClimbMarkers climbs={climbs} totalMetres={distanceMetres} onSelect={onActiveChange} />
-          </div>
-          {/*
-           * Ground only. The chart above already paints the area under it by
-           * steepness band, so a gradient ribbon here would be the same fact
-           * drawn twice one row apart — which reads as two measurements until you
-           * work out that it is not.
-           */}
-          <div className="relative">
-            <button
-              type="button"
-              aria-expanded={groundLabelled}
-              aria-label={groundLabelled ? "Hide the ground key" : "Show the ground key"}
-              onClick={() => onGroundLabelledChange(!groundLabelled)}
-              className="absolute top-0 left-0 rounded p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-            >
-              <IconChevronsRight
-                size={12}
-                stroke={2}
-                aria-hidden="true"
-                className={
-                  groundLabelled ? "rotate-90 transition-transform" : "transition-transform"
-                }
-              />
-            </button>
-            <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
-              <GroundRibbon
-                segments={groundSegments(surface)}
-                surface={surface}
-                labelled={groundLabelled}
-                highlight={highlight}
-                onHighlightChange={onHighlightChange}
-              />
-            </div>
-          </div>
-          <ForecastFrame
-            caption={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
-            open={forecastOpen}
-            onOpenChange={onForecastOpenChange}
-            controls={
-              <StartTimePicker
-                value={startAt}
-                onChange={onStartAtChange}
-                movingSeconds={movingSeconds}
-                inline
-              />
-            }
-          >
-            <ForecastStrip
-              samples={samples}
+          </Tabs.Panel>
+          <Tabs.Panel value="forecast" className="min-w-0">
+            <ForecastStop
+              distanceMetres={distanceMetres}
               coordinates={coordinates}
-              startMetres={shown.startMetres}
-              endMetres={shown.endMetres}
-              unitSystem={unitSystem}
-            />
-          </ForecastFrame>
-          {/*
-           * Outside the frame, not inside it. The band folds away and the wash
-           * on the map does not fold with it — a reader who put the strip away
-           * with the rain still painted across the ground would have no way
-           * left to turn it off.
-           */}
-          <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
-            <ConditionsPicker
+              samples={samples}
+              startAt={startAt}
+              onStartAtChange={onStartAtChange}
+              movingSeconds={movingSeconds}
+              zoomWindow={zoomWindow}
               measure={measure}
               onMeasureChange={onMeasureChange}
-              samples={samples}
-              movingSeconds={movingSeconds}
+              unitSystem={unitSystem}
             />
-          </div>
+          </Tabs.Panel>
         </div>
-        <ClimbsSidebar
-          climbs={climbs}
-          open={climbsOpen}
-          onOpenChange={setClimbsOpen}
-          onSelect={onSelectClimb}
-          unitSystem={unitSystem}
-        />
-      </div>
+      </Tabs.Root>
     </section>
   );
 }

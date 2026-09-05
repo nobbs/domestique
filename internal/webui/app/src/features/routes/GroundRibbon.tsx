@@ -23,7 +23,7 @@ import type { Highlight } from "../../lib/highlight";
 import type { Segment } from "../../lib/mix";
 import { surfaceVariable } from "../../lib/mix";
 import type { SurfaceSummary } from "../../lib/surface";
-import { SURFACE_STYLES } from "../../lib/surface";
+import { SURFACE_STYLES, surfaceBandsWithin } from "../../lib/surface";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { HighlightToggle } from "./HighlightToggle";
 import { MixRibbon } from "./MixRibbon";
@@ -52,12 +52,28 @@ interface Anchor {
  * hundred metres at kilometre three and then rides it for eleven kilometres
  * over the col should be pointing at the col.
  */
-function anchorsFor(surface: SurfaceSummary | null): Anchor[] {
+function anchorsFor(
+  surface: SurfaceSummary | null,
+  unmarked: readonly SurfaceKind[],
+  window?: { startMetres: number; endMetres: number },
+): Anchor[] {
   if (surface === null || surface.totalMetres <= 0) {
     return [];
   }
+  if (window && window.endMetres <= window.startMetres) {
+    return [];
+  }
+  const bands = window
+    ? surfaceBandsWithin(surface, window.startMetres, window.endMetres)
+    : surface.bands;
+  const start = window?.startMetres ?? 0;
+  const span = window ? window.endMetres - window.startMetres : surface.totalMetres;
+
   const longest = new Map<SurfaceKind, { start: number; end: number }>();
-  for (const band of surface.bands) {
+  for (const band of bands) {
+    if (unmarked.includes(band.kind)) {
+      continue;
+    }
     const held = longest.get(band.kind);
     if (held === undefined || band.endMetres - band.startMetres > held.end - held.start) {
       longest.set(band.kind, { start: band.startMetres, end: band.endMetres });
@@ -70,7 +86,7 @@ function anchorsFor(surface: SurfaceSummary | null): Anchor[] {
       label: SURFACE_STYLES[kind].label,
       description: SURFACE_STYLES[kind].description,
       colour: surfaceVariable(kind),
-      at: (band.start + band.end) / 2 / surface.totalMetres,
+      at: ((band.start + band.end) / 2 - start) / span,
       width: SURFACE_STYLES[kind].label.length * CHARACTER + GAP,
     }))
     .sort((left, right) => left.at - right.at);
@@ -105,12 +121,17 @@ function place(anchors: Anchor[], width: number): number[] {
 export function GroundRibbon({
   segments,
   surface,
+  window,
   labelled = true,
+  thin = false,
+  unmarked = [],
   highlight,
   onHighlightChange,
 }: {
   segments: Segment[];
   surface: SurfaceSummary | null;
+  /** The stretch `segments` was drawn for — the whole route when omitted. */
+  window?: { startMetres: number; endMetres: number };
   /**
    * Whether the class names are shown.
    *
@@ -120,16 +141,29 @@ export function GroundRibbon({
    * a reader who knows the palette does not need on screen.
    */
   labelled?: boolean;
+  /** Draws the bar at `h-1.5` rather than `h-3`. */
+  thin?: boolean;
+  /**
+   * Classes drawn as transparent segments with no label — the width they hold
+   * in the route still keeps the others in place, so a route that is mostly
+   * one class shows only where it departs from it.
+   */
+  unmarked?: readonly SurfaceKind[];
   highlight: Highlight | null;
   onHighlightChange: (next: Highlight | null) => void;
 }) {
   const { ref, width } = useElementWidth<HTMLDivElement>();
-  const anchors = anchorsFor(surface);
+  const anchors = anchorsFor(surface, unmarked, window);
   const placed = place(anchors, width);
+  const drawn = segments.map((segment) =>
+    segment.highlight.type === "surface" && unmarked.includes(segment.highlight.kind)
+      ? { ...segment, colour: "transparent" }
+      : segment,
+  );
 
   return (
     <div ref={ref}>
-      <MixRibbon segments={segments} className="h-3" highlight={highlight} />
+      <MixRibbon segments={drawn} className={thin ? "h-1.5" : "h-3"} highlight={highlight} />
       {!labelled ? null : (
         <div className="relative" style={{ height: LEADER_HEIGHT + LABEL_HEIGHT }}>
           <svg

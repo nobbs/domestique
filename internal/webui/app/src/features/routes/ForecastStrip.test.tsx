@@ -56,6 +56,7 @@ function renderStrip(options: {
   samples?: ReturnType<typeof forecastSamples>;
   coordinates?: Position[];
   seed?: WeatherForecast;
+  fill?: boolean;
 }) {
   const coordinates = options.coordinates ?? road();
   const samples =
@@ -73,6 +74,7 @@ function renderStrip(options: {
         startMetres={0}
         endMetres={distances[distances.length - 1] ?? 0}
         unitSystem="metric"
+        fill={options.fill ?? false}
       />
     </QueryClientProvider>,
   );
@@ -129,6 +131,31 @@ describe("ForecastStrip", () => {
     expect(container.querySelectorAll("[style*='color-mix']").length).toBeGreaterThanOrEqual(
       samples.length,
     );
+  });
+
+  it("grows the tile row to its flex parent's height instead of a fixed one, when asked", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    const fixed = renderStrip({ coordinates, samples, seed });
+    const fixedBox = fixed.container.querySelector(".border") as HTMLElement;
+    expect(fixedBox.style.height).toBe("62px");
+    // The tiles themselves, not just the box around them — a fixed height left
+    // on a tile after this box grows would strand it at the box's own top.
+    for (const tile of fixed.container.querySelectorAll<HTMLElement>(".absolute.top-0")) {
+      expect(tile.style.height).toBe("62px");
+      expect(tile.style.bottom).toBe("");
+    }
+    fixed.unmount();
+
+    const grown = renderStrip({ coordinates, samples, seed, fill: true });
+    const grownBox = grown.container.querySelector(".border") as HTMLElement;
+    expect(grownBox.style.height).toBe("");
+    expect(grownBox).toHaveClass("h-full");
+    for (const tile of grown.container.querySelectorAll<HTMLElement>(".absolute.top-0")) {
+      expect(tile.style.height).toBe("");
+      expect(tile.style.bottom).toBe("0px");
+    }
   });
 
   /*
@@ -244,5 +271,64 @@ describe("ForecastStrip", () => {
     renderStrip({});
 
     expect(await screen.findByText(/could not be requested/i)).toBeInTheDocument();
+  });
+
+  it("reserves the chart's gutters by default, and drops them when inset is false", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(weatherQuery(samples).queryKey, forecastFor(samples.length));
+    const distances = cumulativeMetres(coordinates);
+
+    const { container, rerender } = render(
+      <QueryClientProvider client={client}>
+        <ForecastStrip
+          samples={samples}
+          coordinates={coordinates}
+          startMetres={0}
+          endMetres={distances[distances.length - 1] ?? 0}
+          unitSystem="metric"
+        />
+      </QueryClientProvider>,
+    );
+    const gutter = container.querySelector("[role='group'] > div") as HTMLElement;
+    expect(gutter.style.paddingLeft).not.toBe("0px");
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <ForecastStrip
+          samples={samples}
+          coordinates={coordinates}
+          startMetres={0}
+          endMetres={distances[distances.length - 1] ?? 0}
+          unitSystem="metric"
+          inset={false}
+        />
+      </QueryClientProvider>,
+    );
+    const insetOff = container.querySelector("[role='group'] > div") as HTMLElement;
+    expect(insetOff.style.paddingLeft).toBe("0px");
+  });
+
+  it("omits the resolution sentence when caption is false", () => {
+    const coordinates = road();
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(weatherQuery(samples).queryKey, forecastFor(samples.length));
+
+    render(
+      <QueryClientProvider client={client}>
+        <ForecastStrip
+          samples={samples}
+          coordinates={coordinates}
+          startMetres={0}
+          endMetres={cumulativeMetres(coordinates).at(-1) ?? 0}
+          unitSystem="metric"
+          caption={false}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.queryByText(/ICON-D2|ICON-EU|coarser global guidance/)).not.toBeInTheDocument();
   });
 });

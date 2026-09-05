@@ -68,9 +68,9 @@ test("the route draws its map, its facts and its profile", async ({ offlinePage:
 /*
  * The climbs are the dock's, beside the chart that brackets them. They open
  * with it, because the reader who opened the dock opened it to study the
- * route, and fold to a rail when the chart wants the width back.
+ * route, and fold to a chip when the chart wants the width back.
  */
-test("the climbs sit beside the chart and fold to a rail", async ({ offlinePage: page }) => {
+test("the climbs sit beside the chart and fold to a chip", async ({ offlinePage: page }) => {
   await openRoute(page, CLIMB_ROUTE.provider, CLIMB_ROUTE.sourceRouteId, CLIMB_ROUTE.stageOrder);
 
   const dock = page.getByRole("region", { name: "Route detail" });
@@ -259,7 +259,7 @@ test("the detail dock folds away and leaves the route open", async ({ offlinePag
   // The route is still open around it: the dock was put away, not the route.
   await expect(routePanel(page)).toContainText("km");
 
-  await page.getByRole("button", { name: /^Profile, ground and forecast/ }).click();
+  await page.getByRole("button", { name: "Show the profile" }).click();
   await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 });
 
@@ -350,10 +350,12 @@ test("choosing a start time draws a forecast strip under the profile", async ({
   offlinePage: page,
 }) => {
   const strip = page.getByRole("group", { name: /^Forecast along the way/ });
+  const forecastStop = page.getByRole("tab", { name: "Forecast" });
 
   // Without a departure there is nothing to time a sample against, so the strip
   // draws nothing at all.
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
+  await forecastStop.click();
   await expect(strip).toHaveCount(0);
 
   // Seeded and reopened. The subject here is the strip, not the picker —
@@ -362,18 +364,18 @@ test("choosing a start time draws a forecast strip under the profile", async ({
   await chooseStartTime(page);
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
-  await expect(strip).toBeVisible();
-
   /*
-   * The alignment is the whole point of drawing the strip here rather than
-   * anywhere else, and it is invisible to every assertion above: the strip
+   * The alignment is the whole point of drawing the strip at this width rather
+   * than at any other, and it is invisible to every assertion above: the strip
    * shipped once measuring nothing, drawing itself at the fallback width and
    * stretching that over the card, which reads as a strip until you notice the
-   * rain sitting a kilometre from the climb it falls on. Both are laid out by
-   * `plotAxis` against their own measured width, so the two boxes agree to the
-   * pixel or one of them is measuring something the other is not.
+   * rain sitting a kilometre from the climb it falls on. Both stops share one
+   * fixed-width panel, so the two boxes agree to the pixel or one of them is
+   * measuring something the other is not.
    */
   const chartBox = await page.getByRole("img", { name: /^Elevation profile of / }).boundingBox();
+  await forecastStop.click();
+  await expect(strip).toBeVisible();
   const stripBox = await strip.boundingBox();
   expect(chartBox).not.toBeNull();
   expect(stripBox).not.toBeNull();

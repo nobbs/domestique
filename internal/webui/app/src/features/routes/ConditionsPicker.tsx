@@ -1,105 +1,51 @@
 /**
- * Which forecast measure the map is washed in, and what the wash means.
+ * The choice of what to wash the route in, and the key for what was chosen —
+ * two components rather than one, so a caller can place the choice beside the
+ * departure time and the key beside the strip without the two dragging each
+ * other along.
  *
- * In the dock rather than in the map's corner. That corner already carries
- * zoom, locate, compass and basemap — controls for the *view* — while every
- * other forecast control already lives down here beside the departure and the
- * strip. It also keeps the forecast out of `LibraryMap`, which the library
- * shares and which has no forecast at all.
+ * `ConditionsKey`'s bands are the "keyed" look from the dock spike: a short
+ * bar for a corridor band, a thin stroke for a route-line one, each a
+ * tooltip trigger so the cut it means waits under the pointer rather than
+ * crowding a key that has to fit on one line.
  *
- * One exclusive choice, iterated over `MEASURES` so a fifth measure appears
- * here by being added to the registry. Off is a choice of its own and the
- * default: an overlay that tints the ground before anybody asked is an overlay
- * covering the map.
- *
- * The legend's swatches are custom properties, not the hex `measures.ts` hands
- * MapLibre — nothing here is on the map, so it follows the page's theme, which
- * is the split `mix.ts` states for the steepness and ground keys. Every band is
- * named as well as coloured; a key that only shows colours is unreadable to the
- * readers this legend exists for.
- *
- * Wind gets two keys, because it is drawn twice: a corridor for how hard it
- * blows, and the route itself for what that does to the rider.
+ * Wind gets a second group in that line, because it is drawn twice: a
+ * corridor for how hard it blows, and the route itself for what that does to
+ * the rider.
  */
 
+import { Tooltip } from "@base-ui/react/tooltip";
+import {
+  IconCircleOff,
+  IconCloud,
+  IconCloudRain,
+  type IconProps,
+  IconTemperature,
+  IconWind,
+} from "@tabler/icons-react";
+import type { ComponentType, ReactNode } from "react";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import type { Measure, MeasureKey } from "../../lib/measures";
 import {
+  bandRange,
   MEASURES,
   measureVariable,
   WIND_RELATION_KEY,
   windRelationVariable,
 } from "../../lib/measures";
+import type { UnitSystem } from "../../lib/units";
 
-/** The pill every choice wears, pressed or not. */
 const CHOICE =
-  "rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
+  "flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
 
-/**
- * One row of the key: a swatch and the words for what it means.
- *
- * `opacity` blends into the fill alone via `color-mix()`, not the element's
- * own CSS opacity — that would fade the border too, erasing a "not washed"
- * band's outline along with its colour.
- */
-function Swatch({ colour, opacity = 1 }: { colour: string; opacity?: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="h-2.5 w-4 rounded-xs border border-[var(--rule)]"
-      style={{ backgroundColor: `color-mix(in srgb, ${colour} ${opacity * 100}%, transparent)` }}
-    />
-  );
-}
+const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
+  wind: IconWind,
+  temperature: IconTemperature,
+  rain: IconCloudRain,
+  cloud: IconCloud,
+};
 
-/**
- * What the route line itself is drawn in while the wind is on show, which is a
- * second thing to say and not a second colour for the same one: the corridor
- * carries the wind's speed, the route carries what it does to the rider.
- *
- * It also says plainly that the steepness edging has stood down. The map cannot
- * carry two ramps along one line, so the reader is told which one is on rather
- * than left to notice that the gradient colours went away.
- */
-function WindRelationKey() {
-  return (
-    <div className="grid gap-1">
-      <p className="text-[11px] text-[var(--ink-2)]">
-        The route itself shows the wind against the way you are riding, in place of its steepness
-        edging.
-      </p>
-      <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--ink-2)]">
-        {WIND_RELATION_KEY.map((band) => (
-          <li key={band.description} className="flex items-center gap-1.5">
-            <Swatch colour={windRelationVariable(band.stop)} />
-            {band.description}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function Legend({ measure }: { measure: Measure }) {
-  return (
-    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--ink-2)]">
-      {measure.bands.map((band, index) => (
-        <li key={band.label} className="flex items-center gap-1.5">
-          {/*
-           * The opacity is exactly what the map paints, so a band that washes
-           * nothing — rain's dry, cloud's clear — shows here as an empty swatch
-           * rather than as a colour the route never wears.
-           */}
-          <Swatch colour={measureVariable(measure.key, index)} opacity={measure.opacity(index)} />
-          {band.description}
-          {measure.opacity(index) === 0 ? " (not washed)" : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-export interface ConditionsPickerProps {
+export interface ConditionsChoicesProps {
   /** The measure the reader asked for, and null — the default — for none. */
   measure: MeasureKey | null;
   onMeasureChange: (next: MeasureKey | null) => void;
@@ -112,13 +58,13 @@ export interface ConditionsPickerProps {
   movingSeconds?: number | undefined;
 }
 
-export function ConditionsPicker({
+/** The Off + measures button group, each choice named and iconed. */
+export function ConditionsChoices({
   measure,
   onMeasureChange,
   samples,
   movingSeconds,
-}: ConditionsPickerProps) {
-  const chosen = MEASURES.find((entry) => entry.key === measure) ?? null;
+}: ConditionsChoicesProps) {
   const available = samples.length > 0;
   // Two different absences, and only one of them is the reader's to fix.
   const absence =
@@ -140,26 +86,135 @@ export function ConditionsPicker({
           onClick={() => onMeasureChange(null)}
           className={CHOICE}
         >
+          <IconCircleOff size={12} stroke={2} aria-hidden="true" />
           Off
         </button>
-        {MEASURES.map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            aria-pressed={measure === entry.key}
-            disabled={!available}
-            // Pressing the pressed one is the way back out, the same gesture
-            // the ground key offers for a class already picked.
-            onClick={() => onMeasureChange(measure === entry.key ? null : entry.key)}
-            className={CHOICE}
-          >
-            {entry.label}
-          </button>
-        ))}
+        {MEASURES.map((entry) => {
+          const Icon = MEASURE_ICON[entry.key];
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              aria-pressed={measure === entry.key}
+              disabled={!available}
+              // Pressing the pressed one is the way back out, the same gesture
+              // the ground key offers for a class already picked.
+              onClick={() => onMeasureChange(measure === entry.key ? null : entry.key)}
+              className={CHOICE}
+            >
+              <Icon size={12} stroke={2} aria-hidden="true" />
+              {entry.label}
+            </button>
+          );
+        })}
       </div>
       {available ? null : <p className="text-[11px] text-[var(--ink-2)]">{absence}</p>}
-      {available && chosen ? <Legend measure={chosen} /> : null}
-      {available && chosen?.key === "wind" ? <WindRelationKey /> : null}
     </div>
+  );
+}
+
+const TRIGGER =
+  "flex items-center gap-1 rounded px-0.5 text-[11px] leading-none text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
+
+/** A tooltip-triggering key entry: a mark and its label. */
+function Entry({ mark, label, detail }: { mark: ReactNode; label: string; detail: string }) {
+  return (
+    <li>
+      <Tooltip.Root>
+        <Tooltip.Trigger className={TRIGGER}>
+          {mark}
+          {label}
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Positioner sideOffset={6}>
+            {/* This build of Base UI leaves the popup's role to its consumer. */}
+            <Tooltip.Popup
+              role="tooltip"
+              className="max-w-56 rounded-md bg-[var(--ink)] px-2 py-1 text-[11px] text-[var(--panel)] shadow-[var(--shadow)]"
+            >
+              {detail}
+            </Tooltip.Popup>
+          </Tooltip.Positioner>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </li>
+  );
+}
+
+/** A corridor band: a short filled bar, empty and outlined at zero opacity. */
+function Bar({ colour, opacity }: { colour: string; opacity: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-2 w-4 rounded-full border border-[var(--rule)]"
+      style={{ backgroundColor: `color-mix(in srgb, ${colour} ${opacity * 100}%, transparent)` }}
+    />
+  );
+}
+
+/** A route-line band: a thin stroke in the band's own colour. */
+function Stroke({ colour }: { colour: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-0.5 w-4 rounded-full"
+      style={{ backgroundColor: colour }}
+    />
+  );
+}
+
+export interface ConditionsKeyProps {
+  measure: MeasureKey | null;
+  samples: ForecastSample[];
+  unitSystem: UnitSystem;
+}
+
+/** The key for one measure's wash, on one line: the corridor, and for wind the route line too. */
+export function ConditionsKey({ measure, samples, unitSystem }: ConditionsKeyProps) {
+  const chosen: Measure | undefined = MEASURES.find((entry) => entry.key === measure);
+  if (chosen === undefined || samples.length === 0) {
+    return null;
+  }
+
+  return (
+    <Tooltip.Provider>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--ink-2)]">
+        <div className="flex items-center gap-x-1.5">
+          <span className="text-[10px] tracking-[0.06em] text-[var(--ink-2)] uppercase">
+            Corridor
+          </span>
+          <ul className="flex items-center gap-x-1.5">
+            {chosen.bands.map((band, index) => {
+              const opacity = chosen.opacity(index);
+              return (
+                <Entry
+                  key={band.label}
+                  mark={<Bar colour={measureVariable(chosen.key, index)} opacity={opacity} />}
+                  label={band.label}
+                  detail={`${band.description} · ${bandRange(chosen, index, unitSystem)}${opacity === 0 ? " · not washed" : ""}`}
+                />
+              );
+            })}
+          </ul>
+        </div>
+        {chosen.key === "wind" ? (
+          <div className="flex items-center gap-x-1.5">
+            <span className="text-[10px] tracking-[0.06em] text-[var(--ink-2)] uppercase">
+              Route line
+            </span>
+            <ul className="flex items-center gap-x-1.5">
+              {WIND_RELATION_KEY.map((band) => (
+                <Entry
+                  key={band.description}
+                  mark={<Stroke colour={windRelationVariable(band.stop)} />}
+                  label={band.label}
+                  detail={`${band.description} · replaces the steepness edging`}
+                />
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </Tooltip.Provider>
   );
 }

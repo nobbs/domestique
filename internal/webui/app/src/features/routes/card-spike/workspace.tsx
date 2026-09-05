@@ -192,7 +192,8 @@ export function Workspace({ card }: { card: "slide" | "fold" | "plain" | "rows" 
               />
               <ClimbMarkers
                 climbs={MARKED}
-                totalMetres={SPIKE_DISTANCE_METRES}
+                startMetres={0}
+                endMetres={SPIKE_DISTANCE_METRES}
                 onSelect={setActive}
               />
             </div>

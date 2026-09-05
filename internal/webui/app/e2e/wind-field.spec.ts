@@ -86,6 +86,7 @@ async function changedPixels(page: Page, before: Buffer, after: Buffer): Promise
 async function showWind(page: Page): Promise<void> {
   await chooseStartTime(page);
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
+  await page.getByRole("tab", { name: "Forecast" }).click();
   await page
     .getByRole("group", { name: "Conditions washed along the route" })
     .getByRole("button", { name: "Wind", exact: true })

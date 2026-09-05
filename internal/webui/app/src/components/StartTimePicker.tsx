@@ -19,7 +19,7 @@
  * either re-checks the pair.
  */
 
-import { IconCalendar, IconX } from "@tabler/icons-react";
+import { IconCalendar } from "@tabler/icons-react";
 import { useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -90,8 +90,8 @@ export function StartTimePicker({
    * A day the reader has picked while no departure exists yet. Held rather
    * than proposed: there is deliberately no default start time, and proposing
    * the day at midnight would draw a confident forecast for a ride nobody
-   * planned — the very thing the clear button's comment promises not to do.
-   * The departure is proposed once the time field fills the other half in.
+   * planned. The departure is proposed once the time field fills the other
+   * half in. There is no clear: a start once set can only be changed.
    */
   const [pendingDay, setPendingDay] = useState<Date | null>(null);
   const now = new Date();
@@ -214,27 +214,13 @@ export function StartTimePicker({
           />
         </PopoverContent>
       </Popover>
-      {shownDay === null ? null : (
-        // The way back to nothing chosen. There is no default start time on
-        // purpose — an invented one draws a confident forecast for a ride
-        // nobody planned — so a reader who set one has to be able to unset it.
-        <button
-          type="button"
-          aria-label="Clear the ride start"
-          onClick={() => {
-            setRefusal(null);
-            setPendingDay(null);
-            onChange(null);
-          }}
-          className="rounded p-1 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
-        >
-          <IconX size={14} stroke={2} aria-hidden="true" />
-        </button>
-      )}
       <Input
         id={TIME_ID}
         type="time"
-        className={inline ? "h-7 w-[6.5rem] px-2 text-xs tabular-nums" : "w-[7.5rem] tabular-nums"}
+        // Typed, not picked: the field takes hours and minutes from the keys,
+        // and WebKit's clock button opened a dropdown styled by nobody here.
+        // Five digit-widths for "hh:mm" plus the padding, so the box fits its text.
+        className={`appearance-none tabular-nums [&::-webkit-calendar-picker-indicator]:hidden ${inline ? "h-7 w-[calc(5ch+1.25rem)] px-2 text-xs" : "w-[calc(5ch+1.75rem)]"}`}
         aria-label="The time the ride starts"
         aria-describedby={refusal || hint ? "start-time-refusal" : undefined}
         // Nothing for it to set a time on: no day is chosen and none pending,

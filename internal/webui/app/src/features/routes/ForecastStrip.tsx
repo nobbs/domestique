@@ -35,6 +35,7 @@ import { ApiError } from "../../api/request";
 import type { Position } from "../../api/types";
 import { forecastResolution } from "../../lib/forecastResolution";
 import type { ForecastSample } from "../../lib/forecastSamples";
+import { forecastLeadHours } from "../../lib/forecastSamples";
 import { formatWindSpeed } from "../../lib/format";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import { compassPoint } from "../../lib/routeCues";
@@ -75,6 +76,12 @@ export interface ForecastStripProps {
   startMetres: number;
   endMetres: number;
   unitSystem: UnitSystem;
+  /** Whether the strip reserves the chart's own left/right gutters. */
+  inset?: boolean;
+  /** Whether the resolution sentence below the strip is shown. */
+  caption?: boolean;
+  /** Grows the strip to fill a flex parent's height instead of sitting at a fixed one. */
+  fill?: boolean;
 }
 
 export function ForecastStrip({
@@ -83,6 +90,9 @@ export function ForecastStrip({
   startMetres,
   endMetres,
   unitSystem,
+  inset = true,
+  caption = true,
+  fill = false,
 }: ForecastStripProps) {
   // Nothing to ask about without samples: the endpoint refuses an empty
   // request, and the strip renders nothing for one anyway.
@@ -125,25 +135,34 @@ export function ForecastStrip({
   }
 
   const { x } = plotAxis(width, startMetres, endMetres);
-  const firstArrival = samples[0]?.arrivalAt;
-  const leadHours = firstArrival
-    ? Math.max(0, (firstArrival.getTime() - Date.now()) / 3_600_000)
-    : 0;
+  const leadHours = forecastLeadHours(samples);
 
   return (
     // Named as a group rather than as an image: the old strip was one graphic
     // with a hidden table beside it, and this one is tiles carrying their own
     // readings — marking it `img` would hide every figure on it.
-    <div ref={ref} role="group" aria-label={`Forecast along the way, ${cells.length} readings`}>
+    <div
+      ref={ref}
+      role="group"
+      aria-label={`Forecast along the way, ${cells.length} readings`}
+      className={fill ? "flex h-full flex-col" : undefined}
+    >
       {/*
        * The chart's own gutters, left clear rather than drawn in: this strip
        * has no axis labels of its own but reserves the same margin, which is
        * what keeps its tiles under the terrain they describe.
        */}
-      <div style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
+      <div
+        className={fill ? "min-h-0 flex-1" : undefined}
+        style={{ paddingLeft: inset ? PADDING.left : 0, paddingRight: inset ? PADDING.right : 0 }}
+      >
         <div
-          className="relative overflow-hidden border border-[var(--rule)]"
-          style={{ height: TILE_HEIGHT, borderRadius: STRIP_RADIUS }}
+          className="relative h-full overflow-hidden border border-[var(--rule)]"
+          style={
+            fill
+              ? { borderRadius: STRIP_RADIUS }
+              : { height: TILE_HEIGHT, borderRadius: STRIP_RADIUS }
+          }
         >
           {cells.map((cell) => {
             const left = x(cell.startMetres);
@@ -161,7 +180,7 @@ export function ForecastStrip({
                 style={{
                   left,
                   width: cellWidth,
-                  height: TILE_HEIGHT,
+                  ...(fill ? { bottom: 0 } : { height: TILE_HEIGHT }),
                   backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
                 }}
               >
@@ -210,9 +229,14 @@ export function ForecastStrip({
           })}
         </div>
       </div>
-      <p className="mt-1 text-xs text-[var(--ink-2)]" style={{ paddingLeft: PADDING.left }}>
-        {forecastResolution(leadHours).sentence}
-      </p>
+      {caption ? (
+        <p
+          className="mt-1 text-xs text-[var(--ink-2)]"
+          style={{ paddingLeft: inset ? PADDING.left : 0 }}
+        >
+          {forecastResolution(leadHours).sentence}
+        </p>
+      ) : null}
     </div>
   );
 }

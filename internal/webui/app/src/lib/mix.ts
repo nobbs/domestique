@@ -14,10 +14,10 @@
 
 import type { SurfaceKind } from "../api/types";
 import type { Highlight } from "./highlight";
-import type { BandShare } from "./profile";
+import type { BandShare, SignedBandShare } from "./profile";
 import { GRADIENT_BANDS } from "./profile";
 import type { SurfaceSummary } from "./surface";
-import { SURFACE_STYLES } from "./surface";
+import { SURFACE_STYLES, surfaceBandsWithin } from "./surface";
 
 export function bandVariable(band: number): string {
   return `var(--grade-${band})`;
@@ -94,6 +94,36 @@ export function bandEntries(bands: BandShare[], totalMetres: number): MixEntry[]
   }));
 }
 
+/** One steepness band as a row, with its ground told apart by climbing and descending. */
+export interface SteepnessEntry extends MixEntry {
+  climbingMetres: number;
+  descendingMetres: number;
+}
+
+/**
+ * The steepness bands as rows, split by sign.
+ *
+ * Mirrors `bandEntries`: `metres` and `share` are the band's climbing and
+ * descending ground added back together, so a caller that does not care
+ * about the split can still read a `SteepnessEntry` as a plain `MixEntry`.
+ */
+export function steepnessEntries(shares: SignedBandShare[], totalMetres: number): SteepnessEntry[] {
+  return shares.map((entry) => {
+    const share = entry.climbing + entry.descending;
+
+    return {
+      highlight: { type: "band", band: entry.band },
+      label: bandLabel(entry.band),
+      description: GRADIENT_BANDS[entry.band]?.description ?? "",
+      share,
+      metres: share * totalMetres,
+      climbingMetres: entry.climbing * totalMetres,
+      descendingMetres: entry.descending * totalMetres,
+      colour: bandVariable(entry.band),
+    };
+  });
+}
+
 export function surfaceEntries(surface: SurfaceSummary | null): MixEntry[] {
   return (surface?.shares ?? []).map((entry) => ({
     highlight: { type: "surface", kind: entry.kind },
@@ -126,15 +156,27 @@ export function gradientSegments(runs: BandShare[]): Segment[] {
   }));
 }
 
-export function groundSegments(surface: SurfaceSummary | null): Segment[] {
+/** Segments of the whole route, or — given `window` — of one shown stretch of it. */
+export function groundSegments(
+  surface: SurfaceSummary | null,
+  window?: { startMetres: number; endMetres: number },
+): Segment[] {
   if (surface === null || surface.totalMetres <= 0) {
     return [];
   }
+  if (window && window.endMetres <= window.startMetres) {
+    return [];
+  }
 
-  return surface.bands.map((band, index) => ({
+  const bands = window
+    ? surfaceBandsWithin(surface, window.startMetres, window.endMetres)
+    : surface.bands;
+  const span = window ? window.endMetres - window.startMetres : surface.totalMetres;
+
+  return bands.map((band, index) => ({
     key: `${index}`,
     colour: surfaceVariable(band.kind),
-    share: (band.endMetres - band.startMetres) / surface.totalMetres,
+    share: (band.endMetres - band.startMetres) / span,
     highlight: { type: "surface", kind: band.kind },
   }));
 }

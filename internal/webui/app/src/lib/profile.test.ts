@@ -11,6 +11,7 @@ import {
   gradientMix,
   gradientRanges,
   gradientShares,
+  gradientSharesBySign,
   gradientSummary,
   movingSecondsForWindow,
   nearestSample,
@@ -796,5 +797,56 @@ describe("gradientMix", () => {
         [8, 49, 140],
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("gradientSharesBySign", () => {
+  it("puts a pure climb entirely under climbing", () => {
+    const shares = gradientSharesBySign(ramp(Array(40).fill(10)));
+
+    expect(shares).toEqual([{ band: 3, climbing: expect.any(Number), descending: 0 }]);
+    expect(shares[0]?.climbing).toBeCloseTo(1, 10);
+  });
+
+  it("puts a pure descent entirely under descending", () => {
+    const shares = gradientSharesBySign(ramp(Array(40).fill(-10)));
+
+    expect(shares).toEqual([{ band: 3, climbing: 0, descending: expect.any(Number) }]);
+    expect(shares[0]?.descending).toBeCloseTo(1, 10);
+  });
+
+  it("splits a climb then a descent across two different bands", () => {
+    const shares = gradientSharesBySign(ramp([...Array(40).fill(10), ...Array(40).fill(-4)]));
+
+    const steep = shares.find((entry) => entry.band === 3);
+    const shallow = shares.find((entry) => entry.band === 1);
+    expect(steep?.climbing ?? 0).toBeGreaterThan(0);
+    expect(steep?.descending).toBe(0);
+    expect(shallow?.climbing).toBe(0);
+    expect(shallow?.descending ?? 0).toBeGreaterThan(0);
+  });
+
+  // The invariant the whole split rests on: however the bands are cut apart by
+  // sign, adding the pair back together must land on the one figure the key
+  // already shows for that band.
+  it("sums climbing and descending back to gradientShares' own share, per band", () => {
+    const coordinates = ramp([
+      ...Array(40).fill(10),
+      ...Array(40).fill(-4),
+      ...Array(40).fill(1),
+      ...Array(40).fill(-10),
+    ]);
+    const bySign = gradientSharesBySign(coordinates);
+    const plain = gradientShares(coordinates);
+
+    for (const entry of plain) {
+      const signed = bySign.find((candidate) => candidate.band === entry.band);
+      expect((signed?.climbing ?? 0) + (signed?.descending ?? 0)).toBeCloseTo(entry.share, 10);
+    }
+  });
+
+  it("refuses geometry the profile refuses", () => {
+    expect(gradientSharesBySign([])).toEqual([]);
+    expect(gradientSharesBySign(route([100, undefined, 300]))).toEqual([]);
   });
 });
