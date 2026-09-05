@@ -1,5 +1,41 @@
-import { describe, expect, it } from "vitest";
-import { gridWindow, nearestValidTime, omUrl } from "./openMeteoGrid";
+import { describe, expect, it, vi } from "vitest";
+
+const latestResponse = vi.hoisted(() => ({
+  value: Promise.resolve({
+    data: { reference_time: "2026-09-05T12:00:00Z", valid_times: ["2026-09-05T12:00Z"] },
+    status: 200,
+  }),
+}));
+
+vi.mock("./generated", () => ({
+  getWeatherGridLatest: () => latestResponse.value,
+  getGetWeatherGridObjectUrl: (params: { referenceTime: string; validTime: string }) =>
+    `/v1/weather-grid/object?referenceTime=${encodeURIComponent(params.referenceTime)}&validTime=${encodeURIComponent(params.validTime)}`,
+}));
+
+const seenOmUrls = vi.hoisted(() => ({ urls: [] as string[] }));
+
+vi.mock("@openmeteo/file-reader", () => ({
+  OmDataType: { FloatArray: "FloatArray" },
+  LruBlockCache: class {},
+  OmHttpBackendPool: class {
+    async withReader<T>(
+      url: string,
+      _cache: unknown,
+      fn: (root: unknown) => Promise<T>,
+    ): Promise<T> {
+      seenOmUrls.urls.push(url);
+      const variable = {
+        read: async () => new Float32Array([1, 2, 3, 4]),
+        dispose: () => {},
+      };
+
+      return fn({ getChildByName: async () => variable });
+    }
+  },
+}));
+
+const { fetchWindGrid, gridWindow, nearestValidTime, omUrl } = await import("./openMeteoGrid");
 
 describe("omUrl", () => {
   it("asks the service's own relay, not the provider, with full-precision timestamps", () => {
@@ -41,5 +77,20 @@ describe("gridWindow", () => {
 
   it("collapses to an empty window for a bbox entirely outside the domain", () => {
     expect(gridWindow([50, 60, 51, 61])).toEqual({ x0: 1215, x1: 1215, y0: 746, y1: 746 });
+  });
+});
+
+describe("fetchWindGrid", () => {
+  it("reads the manifest out of getWeatherGridLatest's response envelope, not the envelope itself", async () => {
+    // domestiqueRequest wraps every generated call in { data, status, headers
+    // }: a caller that read reference_time/valid_times straight off that
+    // envelope would see undefined and build the .om request from garbage.
+    seenOmUrls.urls.length = 0;
+    const grid = await fetchWindGrid([7, 48, 8, 49], new Date("2026-09-05T12:00:00Z"));
+
+    expect(grid).not.toBeNull();
+    const [omUrlSeen] = seenOmUrls.urls;
+    expect(omUrlSeen).toContain("referenceTime=2026-09-05T12%3A00%3A00.000Z");
+    expect(omUrlSeen).toContain("validTime=2026-09-05T12%3A00%3A00.000Z");
   });
 });

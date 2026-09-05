@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, domestiqueRequest } from "./request";
+import { ApiError, domestiqueRequest, unwrap } from "./request";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -41,5 +41,19 @@ describe("domestiqueRequest", () => {
     );
 
     expect(assign).not.toHaveBeenCalled();
+  });
+});
+
+describe("unwrap", () => {
+  it("reads the body out of domestiqueRequest's own envelope", () => {
+    expect(unwrap({ data: { reference_time: "2026-09-05T12:00:00Z" } })).toEqual({
+      reference_time: "2026-09-05T12:00:00Z",
+    });
+  });
+
+  it("passes a value straight through when it is not an envelope", () => {
+    expect(unwrap({ reference_time: "2026-09-05T12:00:00Z" })).toEqual({
+      reference_time: "2026-09-05T12:00:00Z",
+    });
   });
 });

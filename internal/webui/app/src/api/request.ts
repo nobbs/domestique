@@ -65,3 +65,12 @@ export async function domestiqueRequest<T>(url: string, options: RequestInit): P
 
   return { data: payload, headers: response.headers, status: response.status } as T;
 }
+
+/** Keeps a generated operation's response envelope at the transport boundary. */
+export function unwrap<T>(value: { data: T } | T): T {
+  if (value && typeof value === "object" && "data" in value) {
+    return value.data;
+  }
+
+  return value;
+}

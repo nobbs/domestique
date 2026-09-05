@@ -137,6 +137,52 @@ func TestWeatherGridObjectAnswersHeadWithNoBody(t *testing.T) {
 	assert.Empty(t, response.Body.String())
 }
 
+func TestWeatherGridObjectRefusesAResponseLargerThanTheLimit(t *testing.T) {
+	weatherGrid := &fakeWeatherGrid{
+		ObjectFunc: func(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
+			recorder := httptest.NewRecorder()
+			// A promise this relay cannot keep without buffering the whole
+			// body, which it deliberately never does — refusing up front is
+			// what stops a client from being handed that promise and a
+			// truncated body underneath it.
+			recorder.Header().Set("Content-Length", "9999999999")
+			recorder.WriteHeader(http.StatusOK)
+
+			return recorder.Result(), nil
+		},
+	}
+	handler := newHandlerWithWeatherGrid(t, weatherGrid)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet,
+		"/v1/weather-grid/object?referenceTime=2026-09-05T12:00:00Z&validTime=2026-09-05T15:00:00Z"))
+
+	require.Equal(t, http.StatusBadGateway, response.Code)
+	assert.Empty(t, response.Header().Get("Content-Length"))
+}
+
+func TestWeatherGridObjectAllowsAHeadWithALargeContentLength(t *testing.T) {
+	// HEAD carries no body to truncate, so the same Content-Length that a GET
+	// must refuse is exactly what a HEAD exists to report.
+	weatherGrid := &fakeWeatherGrid{
+		ObjectFunc: func(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
+			recorder := httptest.NewRecorder()
+			recorder.Header().Set("Content-Length", "9999999999")
+			recorder.WriteHeader(http.StatusOK)
+
+			return recorder.Result(), nil
+		},
+	}
+	handler := newHandlerWithWeatherGrid(t, weatherGrid)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodHead,
+		"/v1/weather-grid/object?referenceTime=2026-09-05T12:00:00Z&validTime=2026-09-05T15:00:00Z"))
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "9999999999", response.Header().Get("Content-Length"))
+}
+
 func TestWeatherGridObjectReturnsBadGatewayOnProviderFailure(t *testing.T) {
 	handler := newHandlerWithWeatherGrid(t, &fakeWeatherGrid{
 		ObjectFunc: func(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {

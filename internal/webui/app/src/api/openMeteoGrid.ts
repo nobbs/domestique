@@ -17,6 +17,7 @@ import {
 } from "@openmeteo/file-reader";
 import type { Bbox, GridGeometry, ScalarGrid, WindGrid } from "../lib/windGrid";
 import { getGetWeatherGridObjectUrl, getWeatherGridLatest } from "./generated";
+import { unwrap } from "./request";
 
 // From the layer package's domain table; the .om file carries no georeference.
 const GRID = { lonMin: -3.94, latMin: 43.18, dx: 0.02, dy: 0.02, nx: 1215, ny: 746 } as const;
@@ -51,10 +52,12 @@ let latestCache: { fetchedAt: number; value: Promise<Latest> } | null = null;
 function fetchLatest(): Promise<Latest> {
   const now = Date.now();
   if (!latestCache || now - latestCache.fetchedAt >= LATEST_TTL_MS) {
-    // Cast rather than typed at the generated call: the operation's success
-    // response carries no schema (it is a relay, not this service's own
-    // shape), so Orval types it as the union of its error responses alone.
-    const value = getWeatherGridLatest() as unknown as Promise<Latest>;
+    // domestiqueRequest wraps every generated call in { data, status, headers
+    // } — unwrap gets past that envelope to the actual body. Cast beyond
+    // that: the operation's success response carries no schema (it is a
+    // relay, not this service's own shape), so Orval types the envelope's
+    // data as the union of its error responses alone.
+    const value = getWeatherGridLatest().then((response) => unwrap(response) as unknown as Latest);
     // Evicted on failure so the next read retries instead of replaying the
     // same rejection for the rest of the minute.
     value.catch(() => {

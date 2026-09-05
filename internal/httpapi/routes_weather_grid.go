@@ -55,7 +55,22 @@ func (h *Handler) GetWeatherGridObject(writer http.ResponseWriter, request *http
 // relayWeatherGrid writes the upstream's status and named headers, then its
 // body unless the request was HEAD — matching how GET /healthz already
 // answers HEAD without a body.
+//
+// A HEAD's Content-Length names bytes nobody asks for next, so it is relayed
+// as-is; a GET's is a promise this relay then has to keep. Refusing before
+// any byte is written, rather than truncating mid-response, is what keeps a
+// too-large upstream from handing a client a Content-Length that the body
+// underneath it does not actually reach — a malformed response a client can
+// hang or error on rather than a clean failure.
 func (h *Handler) relayWeatherGrid(writer http.ResponseWriter, request *http.Request, response *http.Response) {
+	if request.Method != http.MethodHead &&
+		response.ContentLength >= 0 && response.ContentLength > maximumWeatherGridBytes {
+		h.error(writer, http.StatusBadGateway, "provider_unavailable",
+			"the weather provider returned a response larger than this relay allows")
+
+		return
+	}
+
 	// The response headers a relay carries over from the upstream, verbatim.
 	// Nothing else of the upstream response is trusted: no cookie, no
 	// redirect, nothing naming the provider by name.
@@ -71,8 +86,15 @@ func (h *Handler) relayWeatherGrid(writer http.ResponseWriter, request *http.Req
 	if request.Method == http.MethodHead {
 		return
 	}
+	// Bounded by the length just checked when the upstream reported one, so a
+	// truthful Content-Length is exactly how many bytes follow it; the flat
+	// cap only still matters when the upstream reports none at all.
+	limit := int64(maximumWeatherGridBytes)
+	if response.ContentLength >= 0 {
+		limit = response.ContentLength
+	}
 	//nolint:errcheck // A write that fails partway is the client disconnecting; nothing left to report it to.
-	_, _ = io.Copy(writer, io.LimitReader(response.Body, maximumWeatherGridBytes))
+	_, _ = io.Copy(writer, io.LimitReader(response.Body, limit))
 }
 
 func parseWeatherGridTime(raw string) (time.Time, bool) {
