@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { weatherQuery } from "../../api/queries";
 import type { Position, WeatherForecast } from "../../api/types";
 import { forecastSamples } from "../../lib/forecastSamples";
+import { PADDING } from "../../lib/plotAxis";
 import { cumulativeMetres } from "../../lib/profile";
 import { ForecastStrip } from "./ForecastStrip";
 
@@ -148,6 +149,36 @@ describe("ForecastStrip", () => {
       expect(container).toHaveTextContent(
         `0 km · ${first?.arrivalAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`,
       );
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps only the clock on a tile too narrow for the distance, and neither when narrower", () => {
+    // A long enough ride for the axis's own minimum width to still leave
+    // every tile narrow.
+    const coordinates = road(160);
+    const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+    const seed = forecastFor(samples.length);
+    const clock = samples[1]?.arrivalAt.toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    expect(samples.length).toBeGreaterThanOrEqual(10);
+
+    let restore = widen(50 * samples.length + PADDING.left + PADDING.right);
+    try {
+      const { container } = renderStrip({ coordinates, samples, seed });
+      expect(container).toHaveTextContent(clock ?? "");
+      expect(container).not.toHaveTextContent("0 km ·");
+    } finally {
+      restore();
+    }
+
+    restore = widen(20 * samples.length + PADDING.left + PADDING.right);
+    try {
+      const { container } = renderStrip({ coordinates, samples, seed });
+      expect(container).not.toHaveTextContent(clock ?? "");
     } finally {
       restore();
     }

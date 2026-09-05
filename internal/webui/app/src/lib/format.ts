@@ -17,7 +17,7 @@ export function formatDistance(metres: number): string {
   return `${kilometres.toFixed(kilometres < 100 ? 1 : 0)} km`;
 }
 
-/** `14:20`, in the reader's own zone, which is where they will be riding. */
+/** `14:20` or `02:20 PM`, in the reader's own zone and clock convention. */
 export function formatClock(at: Date): string {
   return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 }

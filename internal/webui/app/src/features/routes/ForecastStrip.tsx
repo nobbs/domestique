@@ -189,9 +189,11 @@ export function ForecastStrip({
                   backgroundColor: `color-mix(in srgb, var(--accent) ${wet * 100}%, transparent)`,
                 }}
               >
-                <span className="text-[10px] text-[var(--ink-2)] tabular-nums whitespace-nowrap">
-                  {place}
-                </span>
+                {place === null ? null : (
+                  <span className="text-[10px] text-[var(--ink-2)] tabular-nums whitespace-nowrap">
+                    {place}
+                  </span>
+                )}
                 <span className="text-[var(--ink-2)]">
                   {icon ? <Condition size={15} stroke={1.7} /> : null}
                 </span>

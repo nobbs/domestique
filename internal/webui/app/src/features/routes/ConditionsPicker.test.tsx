@@ -130,7 +130,7 @@ describe("the key beside the choice", () => {
     const { container } = render(<ConditionsKey measure={null} samples={SAMPLES} />);
 
     expect(container).not.toBeEmptyDOMElement();
-    expect(container).toHaveTextContent("");
+    expect(container.textContent?.trim()).toBe("");
   });
 
   it("renders nothing without samples, even with a measure chosen", () => {
