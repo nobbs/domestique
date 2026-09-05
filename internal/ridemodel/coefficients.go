@@ -1,5 +1,5 @@
-// Package ridemodel is the forward physical model that turns a stage's geometry
-// and a set of hybrid coefficients into a predicted moving time. It is a pure
+// Package ridemodel is the forward model that turns a stage's geometry and a
+// calibrated coefficient pair into a predicted moving time. It is a pure
 // function of its inputs, and dev/fitter's benchmark runs exactly this model.
 package ridemodel
 
@@ -9,41 +9,20 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
-
-	"github.com/nobbs/domestique/internal/surface"
 )
 
-// Physical plausibility bounds for a loaded coefficient file: wide enough to
-// admit any rider and machine, narrow enough to catch a transposed unit or a
-// fit that did not converge.
-const (
-	minMassKG     = 20.0
-	maxMassKG     = 300.0
-	minPowerWatts = 20.0
-	maxPowerWatts = 1000.0
-	// minCdAM2 is below anything a person on a bicycle presents to the wind; an
-	// hour-record position sits around 0.19 m². Below this the powered solver's
-	// fixed speed bracket can fail to contain the true root at high power.
-	minCdAM2 = 0.15
-	maxCdAM2 = 2.0
-	maxCrr   = 0.05
-)
-
-// Coefficients are the values the hybrid model can legitimately vary. The blend
-// weight, drivetrain efficiency, air density and descent cap are versioned model
-// constants in model.go, not operator inputs. They arrive as one file, loaded
-// once at startup.
+// Coefficients are the values the model can legitimately vary: the two fitted
+// terms, and the metadata describing the fit that produced them. They arrive as
+// one file, loaded once at startup.
 type Coefficients struct {
-	CrrBySurface      map[surface.Kind]float64 // every surface.Kind mapped to the same scalar Crr — see crr's doc comment
 	Fingerprint       string
 	CalibrationCutoff string // "2025-08-01"; the last calibration ride's date, recorded as-is rather than computed from anything at load time
-	MassKG            float64
-	PowerWatts        float64
-	CdAM2             float64
 	SecondsPerKM      float64
 	SecondsPerAscentM float64
 	// EvaluatedRides, BiasPercent, MAEPercent, and P90Percent are the profile's
@@ -68,27 +47,9 @@ func (c Coefficients) HasValidation() bool {
 	return c.EvaluatedRides > 0
 }
 
-// crr returns the rolling resistance for a segment, selecting by kind with a
-// KindUnknown-to-asphalt fallback. Load currently fills CrrBySurface with one
-// scalar for every kind, so kind has no effect in practice; the lookup stays in
-// case a future profile varies it again.
-//
-//nolint:gocritic // value receiver: Coefficients is immutable once loaded, and a pointer would let a caller mutate the shared instance mid-prediction.
-func (c Coefficients) crr(kind surface.Kind) float64 {
-	if kind == surface.KindUnknown {
-		kind = surface.KindAsphalt
-	}
-
-	return c.CrrBySurface[kind]
-}
-
-// rawCoefficients is the TOML shape of the hybrid profile #239 emits.
+// rawCoefficients is the TOML shape of the profile #239 emits.
 type rawCoefficients struct {
 	CalibrationCutoff string  `toml:"calibration_cutoff"`
-	MassKG            float64 `toml:"mass_kg"`
-	PowerWatts        float64 `toml:"power_watts"`
-	CdAM2             float64 `toml:"cda_m2"`
-	Crr               float64 `toml:"crr"`
 	SecondsPerKM      float64 `toml:"seconds_per_km"`
 	SecondsPerAscentM float64 `toml:"seconds_per_ascent_m"`
 	EvaluatedRides    int     `toml:"evaluated_rides"`
@@ -99,9 +60,9 @@ type rawCoefficients struct {
 	TrainingWindowMonths int `toml:"training_window_months"`
 }
 
-// Load reads, parses, and validates a coefficient file. A missing, malformed, or
-// physically impossible file is a startup failure. A file in the old
-// physics-fitted schema fails here too: no compatibility path is carried.
+// Load reads, parses, and validates a coefficient file, returning an error for
+// a missing, malformed or implausible one; the caller decides whether that stops
+// the service or only prediction. Retired physics keys in the file are ignored.
 func Load(path string) (Coefficients, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path is an operator-configured absolute file, not user input.
 	if err != nil {
@@ -121,9 +82,16 @@ func Load(path string) (Coefficients, error) {
 	// modelVersion is mixed into the hash, not just the file's bytes: a code
 	// upgrade that changes a versioned constant must invalidate a cached
 	// prediction even when the file is byte-for-byte unchanged.
-	coefficients.Fingerprint = fingerprintOf(modelVersion, data)
+	// Hashed from the two terms rather than the file's bytes, so a retired key
+	// or a reformatted file leaves every cached prediction standing.
+	coefficients.Fingerprint = fingerprintOf(modelVersion, []byte(termsOf(coefficients.SecondsPerKM, coefficients.SecondsPerAscentM)))
 
 	return coefficients, nil
+}
+
+// termsOf is the canonical spelling of what the equation reads from a profile.
+func termsOf(secondsPerKM, secondsPerAscentM float64) string {
+	return strconv.FormatFloat(secondsPerKM, 'g', -1, 64) + "\n" + strconv.FormatFloat(secondsPerAscentM, 'g', -1, 64)
 }
 
 // fingerprintOf hashes version and data with version's length written ahead of
@@ -143,17 +111,9 @@ func fingerprintOf(version string, data []byte) string {
 }
 
 func (r *rawCoefficients) build() (Coefficients, error) {
-	if r.MassKG < minMassKG || r.MassKG > maxMassKG {
-		return Coefficients{}, fmt.Errorf("ridemodel: mass_kg must be between %g and %g", minMassKG, maxMassKG)
-	}
-	if r.PowerWatts < minPowerWatts || r.PowerWatts > maxPowerWatts {
-		return Coefficients{}, fmt.Errorf("ridemodel: power_watts must be between %g and %g", minPowerWatts, maxPowerWatts)
-	}
-	if r.CdAM2 < minCdAM2 || r.CdAM2 > maxCdAM2 {
-		return Coefficients{}, fmt.Errorf("ridemodel: cda_m2 must be between %g and %g", minCdAM2, maxCdAM2)
-	}
-	if r.Crr <= 0 || r.Crr > maxCrr {
-		return Coefficients{}, fmt.Errorf("ridemodel: crr must be greater than 0 and at most %g", maxCrr)
+	if math.IsNaN(r.SecondsPerKM) || math.IsInf(r.SecondsPerKM, 0) ||
+		math.IsNaN(r.SecondsPerAscentM) || math.IsInf(r.SecondsPerAscentM, 0) {
+		return Coefficients{}, errors.New("ridemodel: the coefficient terms must be finite")
 	}
 	if r.SecondsPerKM <= 0 {
 		return Coefficients{}, errors.New("ridemodel: seconds_per_km must be positive")
@@ -188,22 +148,10 @@ func (r *rawCoefficients) build() (Coefficients, error) {
 		)
 	}
 
-	crr := map[surface.Kind]float64{
-		surface.KindAsphalt:   r.Crr,
-		surface.KindPaving:    r.Crr,
-		surface.KindCompacted: r.Crr,
-		surface.KindGravel:    r.Crr,
-		surface.KindGround:    r.Crr,
-	}
-
 	return Coefficients{
 		CalibrationCutoff: r.CalibrationCutoff,
-		MassKG:            r.MassKG,
-		PowerWatts:        r.PowerWatts,
-		CdAM2:             r.CdAM2,
 		SecondsPerKM:      r.SecondsPerKM,
 		SecondsPerAscentM: r.SecondsPerAscentM,
-		CrrBySurface:      crr,
 		EvaluatedRides:    r.EvaluatedRides,
 		BiasPercent:       r.BiasPercent,
 		MAEPercent:        r.MAEPercent,

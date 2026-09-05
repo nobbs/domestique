@@ -373,7 +373,7 @@ run = "./dev/demo.sh"
 description = "Turn a Strava bulk export into a ride sample corpus"
 run = "go run ./dev/ridemodel"
 
-# Benchmarks the accepted hybrid ETA model (#213, #239, #240) — the real
+# Benchmarks the accepted ETA model (#213, #239, #240) — the real
 # internal/ridemodel.Predict, never a second implementation of it — against
 # the corpus dev/ridemodel emits, and can recalibrate its two route
 # coefficients when explicitly asked (#241). Never built into the image and
@@ -387,7 +387,7 @@ run = "go run ./dev/ridemodel"
 # -eta-training-months of the corpus, validate that recipe against the
 # rolling-origin folds of #251, and print a copy-ready profile.
 [fitter]
-description = "Benchmark and recalibrate the hybrid ETA model against the ride corpus"
+description = "Benchmark and recalibrate the ETA model against the ride corpus"
 run = "go run ./dev/fitter"
 
 # The only thing that installs node_modules. It declares the lockfile as its
