@@ -70,6 +70,10 @@ type Options struct {
 	// value per profile, so every stage carries the same. Nil when absent.
 	RideModelValidationFunc func() *RideModelValidation
 
+	// RideModelStatusFunc reports the coefficient pair in force, so the settings
+	// page can show what a prediction was priced with. Optional.
+	RideModelStatusFunc func() RideModelStatus
+
 	// Settings are the runtime settings this handler serves and edits. Required.
 	// Read per request, never held: an edit reaches the page and the CSP at once.
 	Settings SettingsState
@@ -119,6 +123,16 @@ type RideModelValidation struct {
 	EvaluatedRides int
 }
 
+// RideModelStatus is the coefficient pair predictions are priced with, and
+// whether it came from a calibration or is still the built-in one.
+type RideModelStatus struct {
+	CalibrationCutoff string
+	SecondsPerKM      float64
+	SecondsPerAscentM float64
+	EvaluatedRides    int
+	Calibrated        bool
+}
+
 // Handler enforces browser-session identity and exposes the v1 HTTP surface.
 type Handler struct {
 	oauth    OAuth
@@ -134,6 +148,7 @@ type Handler struct {
 	now                 func() time.Time
 	mux                 *http.ServeMux
 	rideModelValidation func() *RideModelValidation
+	rideModelStatus     func() RideModelStatus
 	settings            SettingsState
 	styleOrigins        StyleOrigins
 	alerts              Alerts
@@ -197,6 +212,7 @@ func New(
 		authOrigin:          authOrigin,
 		surfaceIndex:        options.SurfaceIndexFunc,
 		rideModelValidation: options.RideModelValidationFunc,
+		rideModelStatus:     options.RideModelStatusFunc,
 		now:                 time.Now,
 
 		sessions: options.Sessions,
@@ -245,7 +261,6 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /v1/tasks/{name}/run/{argument}", h.RunTask)
 	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.adminOnly(h.SetBasemaps))
 	h.mux.HandleFunc("PUT /v1/settings/surface", h.adminOnly(h.SetSurface))
-	h.mux.HandleFunc("PUT /v1/settings/ridemodel", h.adminOnly(h.SetRideModel))
 	h.mux.HandleFunc("PUT /v1/settings/sync", h.adminOnly(h.SetSync))
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)

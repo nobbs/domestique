@@ -30,7 +30,6 @@ func TestStoreSeedsTheDocumentedRuntimeSettings(t *testing.T) {
 	assert.Empty(t, values.Surface.Regions, "surface classification is off until regions are named")
 	assert.Equal(t, 7*24*time.Hour, values.Surface.RebuildInterval, "Surface.RebuildInterval")
 	assert.Equal(t, time.Minute, values.Sync.InitialDelay, "Sync.InitialDelay")
-	assert.Empty(t, values.RideModel.CoefficientsFile, "prediction is off until a profile is named")
 }
 
 // Everything that names an upstream is seeded unconfigured instead, because
@@ -70,7 +69,6 @@ func TestStoreKeepsTheRuntimeSettingsItWasGiven(t *testing.T) {
 			{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
 			{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.com"},
 		},
-		RideModel: runtimeconfig.RideModel{CoefficientsFile: "/etc/domestique/ridemodel.toml"},
 		Notifications: runtimeconfig.Notifications{
 			Enabled:         false,
 			PushoverBaseURL: "https://pushover.example.test",

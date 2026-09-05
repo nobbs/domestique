@@ -462,77 +462,64 @@ func newSource(source runtimeconfig.Source, email, password []byte) (syncservice
 	return nil, fmt.Errorf("unknown source provider %q", source.Provider)
 }
 
-// rideModelProvider predicts moving time from the coefficient file in force,
-// reloading it when an operator points the setting elsewhere. No file configured
-// means no stage carries a guessed rider figure, and a file that will not load is
-// a failed prediction rather than a substituted one.
+// rideModelProvider predicts moving time from the coefficient pair stored in
+// the state database, or from the built-in default until a calibration replaces
+// it. Nothing here re-reads the row: whatever stores a new pair calls reload.
 type rideModelProvider struct {
 	store      *sqlite.Store
 	predictor  *ridemodel.Predictor
 	validation *httpapi.RideModelValidation
-	path       string
+	status     httpapi.RideModelStatus
 	mutex      sync.Mutex
-	loaded     bool
 }
 
+// newRideModelProvider reports the built-in pair until reload has read the row,
+// so a startup that fails to read it still shows what prediction would use.
 func newRideModelProvider(store *sqlite.Store) *rideModelProvider {
-	return &rideModelProvider{store: store}
+	defaults := ridemodel.Default()
+
+	return &rideModelProvider{store: store, status: httpapi.RideModelStatus{
+		SecondsPerKM: defaults.SecondsPerKM, SecondsPerAscentM: defaults.SecondsPerAscentM,
+	}}
 }
 
-// reload resolves the configured file, replacing what is loaded when it moved.
-// Predictions cached against a different file are dropped as part of the swap.
-func (p *rideModelProvider) reload(ctx context.Context, settings *runtimeconfig.Current) error {
-	path := settings.Values().RideModel.CoefficientsFile
+// reload reads the stored pair and rebuilds the predictor around it. Predictions
+// cached against a different pair are dropped as part of the swap.
+func (p *rideModelProvider) reload(ctx context.Context) error {
+	coefficients, calibrated, err := p.store.RideModelCoefficients(ctx)
+	if err != nil {
+		return fmt.Errorf("reading ride model coefficients: %w", err)
+	}
+	if !calibrated {
+		coefficients = ridemodel.Default()
+	}
+	if validateErr := coefficients.Validate(); validateErr != nil {
+		return fmt.Errorf("ride model coefficients: %w", validateErr)
+	}
 
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	if p.loaded && p.path == path {
-		return nil
-	}
-
-	var fingerprint string
-	var predictor *ridemodel.Predictor
-	var validation *httpapi.RideModelValidation
-	if path != "" {
-		coefficients, err := ridemodel.Load(path)
-		if err != nil {
-			// A file that will not load leaves no prediction standing: the pair
-			// they were priced with is unknown, so cached durations go too.
-			if pruneErr := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, ""); pruneErr != nil {
-				return fmt.Errorf("pruning stale ride model predictions: %w", pruneErr)
-			}
-			if clearErr := p.store.ClearStageDurationFailures(ctx); clearErr != nil {
-				return fmt.Errorf("clearing stale ride model failures: %w", clearErr)
-			}
-			// Not marked loaded: the next reload tries the file again, so a fixed
-			// file is picked up without a restart.
-			p.predictor, p.validation, p.loaded = nil, nil, false
-
-			return fmt.Errorf("loading ride model coefficients: %w", err)
-		}
-		fingerprint = coefficients.Fingerprint
-		predictor = ridemodel.NewPredictor(p.store, coefficients)
-		if coefficients.HasValidation() {
-			validation = &httpapi.RideModelValidation{
-				BiasPercent:    coefficients.BiasPercent,
-				MAEPercent:     coefficients.MAEPercent,
-				P90Percent:     coefficients.P90Percent,
-				EvaluatedRides: coefficients.EvaluatedRides,
-			}
-		}
-	}
-	if err := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, fingerprint); err != nil {
+	if err := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, coefficients.Fingerprint); err != nil {
 		return fmt.Errorf("pruning stale ride model predictions: %w", err)
 	}
-	// Only clear stale failures when no file replaces the old one; a
-	// replacement's predictions are already pruned above.
-	if path == "" {
-		if err := p.store.ClearStageDurationFailures(ctx); err != nil {
-			return fmt.Errorf("clearing stale ride model failures: %w", err)
+	p.predictor = ridemodel.NewPredictor(p.store, coefficients)
+	p.validation = nil
+	if coefficients.HasValidation() {
+		p.validation = &httpapi.RideModelValidation{
+			BiasPercent:    coefficients.BiasPercent,
+			MAEPercent:     coefficients.MAEPercent,
+			P90Percent:     coefficients.P90Percent,
+			EvaluatedRides: coefficients.EvaluatedRides,
 		}
 	}
-	p.predictor, p.validation, p.path, p.loaded = predictor, validation, path, true
+	p.status = httpapi.RideModelStatus{
+		CalibrationCutoff: coefficients.CalibrationCutoff,
+		SecondsPerKM:      coefficients.SecondsPerKM,
+		SecondsPerAscentM: coefficients.SecondsPerAscentM,
+		EvaluatedRides:    coefficients.EvaluatedRides,
+		Calibrated:        calibrated,
+	}
 
 	return nil
 }
@@ -544,8 +531,8 @@ func (p *rideModelProvider) current() *ridemodel.Predictor {
 	return p.predictor
 }
 
-// validationView is what the stage endpoint reports about the loaded model's
-// measured accuracy, or nothing when no model is loaded or it carries none.
+// validationView is what the stage endpoint reports about the model's measured
+// accuracy, or nothing when the pair in force carries none.
 func (p *rideModelProvider) validationView() *httpapi.RideModelValidation {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
@@ -553,13 +540,18 @@ func (p *rideModelProvider) validationView() *httpapi.RideModelValidation {
 	return p.validation
 }
 
-// predictorFor binds a provider to the settings it reloads from, so that
-// synchronization keeps seeing nothing but Predict.
-func predictorFor(provider *rideModelProvider, settings *runtimeconfig.Current) syncservice.Predictor {
+// statusView is the coefficient pair the settings page shows.
+func (p *rideModelProvider) statusView() httpapi.RideModelStatus {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	return p.status
+}
+
+// predictorFor hides the provider behind the one method synchronization needs.
+// It predicts with the pair the last reload put in force, never re-reading it.
+func predictorFor(provider *rideModelProvider) syncservice.Predictor {
 	return predictorFunc(func(ctx context.Context, stages []route.Route) (predicted, failed int, err error) {
-		if reloadErr := provider.reload(ctx, settings); reloadErr != nil {
-			return 0, 0, reloadErr
-		}
 		predictor := provider.current()
 		if predictor == nil {
 			return 0, 0, nil

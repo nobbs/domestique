@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/openmeteo"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/sqlite"
@@ -463,176 +463,101 @@ func testStore(t *testing.T, directory string) *sqlite.Store {
 	return store
 }
 
-// An operator who configures no coefficients file keeps every stage exactly
-// as it is today: no rider figure is ever guessed.
-func TestRideModelIsAbsentWithNoCoefficientsFileConfigured(t *testing.T) {
+// A service nobody has calibrated still predicts: the built-in pair is what
+// makes a first deploy show a moving time at all.
+func TestRideModelFallsBackToTheBuiltInPair(t *testing.T) {
 	t.Parallel()
 
 	store := testStore(t, t.TempDir())
 	provider := newRideModelProvider(store)
-	require.NoError(t, provider.reload(t.Context(), testSettings(t, store)), "reload()")
-	assert.Nil(t, provider.current(), "a predictor was built with no coefficients file configured")
-	assert.Nil(t, provider.validationView(), "validation metadata was built with no coefficients file configured")
+
+	require.NoError(t, provider.reload(t.Context()), "reload()")
+	assert.NotNil(t, provider.current(), "no predictor was built from the built-in pair")
+	assert.Nil(t, provider.validationView(), "the built-in pair has never been measured")
+	status := provider.statusView()
+	assert.False(t, status.Calibrated, "nothing has calibrated this service")
+	assert.InDelta(t, ridemodel.Default().SecondsPerKM, status.SecondsPerKM, 0, "seconds per km")
 }
 
-func TestRideModelLoadsAPredictorFromAValidFile(t *testing.T) {
-	t.Parallel()
-
-	directory := t.TempDir()
-	store := testStore(t, directory)
-	provider := newRideModelProvider(store)
-	settings := rideModelSettings(t, store, writeTestCoefficients(t, directory))
-
-	require.NoError(t, provider.reload(t.Context(), settings), "reload()")
-	assert.NotNil(t, provider.current(), "no predictor was built from a valid coefficients file")
-	assert.Nil(t, provider.validationView(), "validation metadata was built from a file with no measured benchmark result")
-}
-
-// A file that does carry the optional benchmark fields makes its measured
+// A stored pair that carries the optional benchmark fields makes its measured
 // unseen-route error available to the HTTP layer.
-func TestRideModelSurfacesValidationFromAFileThatHasIt(t *testing.T) {
+func TestRideModelSurfacesAStoredPairAndItsValidation(t *testing.T) {
 	t.Parallel()
 
-	directory := t.TempDir()
-	path := filepath.Join(directory, "ridemodel.toml")
-	document := `
-calibration_cutoff = "2025-08-01"
-seconds_per_km = 145.3578
-seconds_per_ascent_m = 3.2190
-evaluated_rides = 42
-bias_percent = -1.20
-mae_percent = 6.80
-p90_percent = 14.10
-`
-	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
-	store := testStore(t, directory)
+	store := testStore(t, t.TempDir())
+	require.NoError(t, store.StoreRideModelCoefficients(t.Context(), ridemodel.Coefficients{
+		CalibrationCutoff: "2025-08-01", SecondsPerKM: 145.3578, SecondsPerAscentM: 3.2190,
+		EvaluatedRides: 42, BiasPercent: -1.20, MAEPercent: 6.80, P90Percent: 14.10,
+	}, time.Unix(1700000000, 0)), "storing a calibrated pair")
 	provider := newRideModelProvider(store)
 
-	require.NoError(t, provider.reload(t.Context(), rideModelSettings(t, store, path)), "reload()")
-	assert.NotNil(t, provider.current(), "no predictor was built from a valid coefficients file")
+	require.NoError(t, provider.reload(t.Context()), "reload()")
+	assert.NotNil(t, provider.current(), "no predictor was built from the stored pair")
 	validation := provider.validationView()
-	require.NotNil(t, validation, "no validation metadata was built from a file that carries it")
+	require.NotNil(t, validation, "no validation metadata was built from a pair that carries it")
 	assert.Equal(t, 42, validation.EvaluatedRides, "EvaluatedRides")
 	assert.InDelta(t, -1.20, validation.BiasPercent, 1e-9, "BiasPercent")
 	assert.InDelta(t, 6.80, validation.MAEPercent, 1e-9, "MAEPercent")
 	assert.InDelta(t, 14.10, validation.P90Percent, 1e-9, "P90Percent")
+	status := provider.statusView()
+	assert.True(t, status.Calibrated, "a stored pair is a calibrated one")
+	assert.Equal(t, "2025-08-01", status.CalibrationCutoff, "the cutoff")
 }
 
-// A malformed or implausible file leaves nothing loaded: the service refuses to
-// serve a prediction it cannot stand behind.
-func TestRideModelRefusesAnImplausibleFile(t *testing.T) {
+// A stored pair that could not have come from a real fit is refused rather
+// than predicted with: nothing is served that the model does not stand behind.
+func TestRideModelNeverStoresAnImplausiblePair(t *testing.T) {
 	t.Parallel()
 
-	directory := t.TempDir()
-	path := filepath.Join(directory, "ridemodel.toml")
-	require.NoError(t, os.WriteFile(path, []byte("seconds_per_km = -1.0\n"), 0o600), "writing coefficient file")
-	store := testStore(t, directory)
+	store := testStore(t, t.TempDir())
+	require.Error(t, store.StoreRideModelCoefficients(t.Context(), ridemodel.Coefficients{
+		SecondsPerKM: -1, SecondsPerAscentM: 3.2190,
+	}, time.Unix(1700000000, 0)), "an implausible pair must be refused at the store")
 	provider := newRideModelProvider(store)
 
-	require.Error(t, provider.reload(t.Context(), rideModelSettings(t, store, path)),
-		"reload() with an implausible coefficient file")
-	assert.Nil(t, provider.current(), "a predictor was built from an implausible coefficients file")
+	require.NoError(t, provider.reload(t.Context()), "reload() after a refused store")
+	status := provider.statusView()
+	assert.False(t, status.Calibrated, "the default pair stays in force")
+	assert.InDelta(t, ridemodel.Default().SecondsPerKM, status.SecondsPerKM, 0)
 }
 
-// A coefficient file pointed somewhere else must not leave the previous file's
+// A calibration that changes the pair must not leave the previous pair's
 // predictions being served as current: nothing else would ever notice they no
-// longer match what is loaded now, since they still address the same,
-// unchanged geometry.
-func TestRideModelPrunesPredictionsFromADifferentCoefficientFile(t *testing.T) {
+// longer match, since they still address the same, unchanged geometry.
+func TestRideModelPrunesPredictionsFromADifferentPair(t *testing.T) {
 	t.Parallel()
 
-	directory := t.TempDir()
-	store := testStore(t, directory)
+	store := testStore(t, t.TempDir())
 	seconds := 123.0
 	require.NoError(t, store.StoreStageDuration(
-		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "an-earlier-coefficient-file", &seconds, nil,
+		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "an-earlier-fingerprint", &seconds, nil,
 	), "seeding a stale prediction")
 
 	provider := newRideModelProvider(store)
-	settings := rideModelSettings(t, store, writeTestCoefficients(t, directory))
-	require.NoError(t, provider.reload(t.Context(), settings), "reload()")
+	require.NoError(t, provider.reload(t.Context()), "reload()")
 
 	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
 	require.NoError(t, err, "StageDurationFingerprint()")
-	assert.False(t, found, "a prediction from a different coefficient file was still being served")
+	assert.False(t, found, "a prediction from a different coefficient pair was still being served")
 }
 
-// The mirror case: switching ride model prediction off entirely must not
-// leave a previous configuration's predictions being served either.
-func TestRideModelPrunesEverythingWhenUnconfigured(t *testing.T) {
+// Synchronization sees nothing but Predict, and predicts with whatever the
+// last reload put in force.
+func TestPredictorFollowsTheLoadedPair(t *testing.T) {
 	t.Parallel()
 
-	directory := t.TempDir()
-	store := testStore(t, directory)
-	seconds := 123.0
-	require.NoError(t, store.StoreStageDuration(
-		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "a-since-removed-coefficient-file", &seconds, nil,
-	), "seeding a stale prediction")
-
+	store := testStore(t, t.TempDir())
 	provider := newRideModelProvider(store)
-	require.NoError(t, provider.reload(t.Context(), testSettings(t, store)), "reload()")
-
-	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
-	require.NoError(t, err, "StageDurationFingerprint()")
-	assert.False(t, found, "a prediction survived switching ride model prediction off")
-}
-
-func rideModelSettings(t *testing.T, store *sqlite.Store, path string) *runtimeconfig.Current {
-	t.Helper()
-
-	current := testSettings(t, store)
-	values := current.Values()
-	values.RideModel.CoefficientsFile = path
-	storeSettings(t, current, values)
-
-	return current
-}
-
-func writeTestCoefficients(t *testing.T, directory string) string {
-	t.Helper()
-
-	path := filepath.Join(directory, "ridemodel.toml")
-	const document = `
-calibration_cutoff = "2025-08-01"
-seconds_per_km = 145.3578
-seconds_per_ascent_m = 3.2190
-`
-	require.NoError(t, os.WriteFile(path, []byte(document), 0o600), "writing coefficient file")
-
-	return path
-}
-
-// Synchronization sees nothing but Predict, and what it predicts with is the
-// coefficient file in force at the time of the run rather than the one the
-// process started with.
-func TestPredictorFollowsTheConfiguredCoefficientFile(t *testing.T) {
-	t.Parallel()
-
-	directory := t.TempDir()
-	store := testStore(t, directory)
-	current := testSettings(t, store)
-	predictor := predictorFor(newRideModelProvider(store), current)
+	predictor := predictorFor(provider)
 
 	predicted, failed, err := predictor.Predict(t.Context(), nil)
-	require.NoError(t, err, "Predict() with prediction switched off")
-	assert.Zero(t, predicted, "a stage was predicted with no coefficient file configured")
-	assert.Zero(t, failed, "a prediction failed with no coefficient file configured")
+	require.NoError(t, err, "Predict() before any reload")
+	assert.Zero(t, predicted, "a stage was predicted before a pair was loaded")
+	assert.Zero(t, failed, "a prediction failed before a pair was loaded")
 
-	values := current.Values()
-	values.RideModel.CoefficientsFile = writeTestCoefficients(t, directory)
-	storeSettings(t, current, values)
-
+	require.NoError(t, provider.reload(t.Context()), "reload()")
 	_, _, err = predictor.Predict(t.Context(), nil)
-	require.NoError(t, err, "Predict() after a coefficient file was configured")
-
-	// A file that will not load is a failed prediction rather than a
-	// substituted one: nothing is served that the loaded model does not
-	// stand behind.
-	values.RideModel.CoefficientsFile = filepath.Join(directory, "not-a-file.toml")
-	storeSettings(t, current, values)
-
-	_, _, err = predictor.Predict(t.Context(), nil)
-	require.Error(t, err, "Predict() with a coefficient file that will not load")
+	require.NoError(t, err, "Predict() with the built-in pair loaded")
 }
 
 // Every style a browser may be told to load has to be read, or the policy is
@@ -650,23 +575,4 @@ func TestConfiguredStyleURLsCoversBothColourSchemes(t *testing.T) {
 		"https://imagery.example.test/satellite",
 	}, styles, "the styles a browser may load")
 	assert.Empty(t, configuredStyleURLs(nil), "an unconfigured list")
-}
-
-// A file that will not load must not leave the previous pair's predictions
-// being served: nothing else would notice they no longer match anything.
-func TestRideModelPrunesPredictionsWhenTheFileWillNotLoad(t *testing.T) {
-	t.Parallel()
-
-	store := testStore(t, t.TempDir())
-	seconds := 123.0
-	require.NoError(t, store.StoreStageDuration(
-		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "an-earlier-fingerprint", &seconds, nil,
-	))
-	provider := newRideModelProvider(store)
-
-	require.Error(t, provider.reload(t.Context(), rideModelSettings(t, store, filepath.Join(t.TempDir(), "missing.toml"))))
-	assert.Nil(t, provider.current())
-	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
-	require.NoError(t, err)
-	assert.False(t, found, "the stale prediction must be gone")
 }

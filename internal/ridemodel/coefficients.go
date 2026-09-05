@@ -10,16 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"time"
-
-	"github.com/pelletier/go-toml/v2"
 )
 
 // Coefficients are the values the model can legitimately vary: the two fitted
-// terms, and the metadata describing the fit that produced them. They arrive as
-// one file, loaded once at startup.
+// terms, and the metadata describing the fit that produced them. They live as
+// one row in the state database, replaced by a calibration.
 type Coefficients struct {
 	Fingerprint       string
 	CalibrationCutoff string // "2025-08-01"; the last calibration ride's date, recorded as-is rather than computed from anything at load time
@@ -39,7 +36,13 @@ type Coefficients struct {
 	TrainingWindowMonths int
 }
 
-// HasValidation reports whether the loaded file carries a measured
+// Default is the built-in pair every deployment predicts with until a
+// calibration replaces it, carrying no measured error of its own.
+func Default() Coefficients {
+	return Coefficients{SecondsPerKM: 145.3578, SecondsPerAscentM: 3.2190}.WithFingerprint()
+}
+
+// HasValidation reports whether these coefficients carry a measured
 // unseen-route benchmark result.
 //
 //nolint:gocritic // value receiver: Coefficients is immutable once loaded, and a pointer would let a caller mutate the shared instance mid-prediction.
@@ -47,116 +50,73 @@ func (c Coefficients) HasValidation() bool {
 	return c.EvaluatedRides > 0
 }
 
-// rawCoefficients is the TOML shape of the profile #239 emits.
-type rawCoefficients struct {
-	CalibrationCutoff string  `toml:"calibration_cutoff"`
-	SecondsPerKM      float64 `toml:"seconds_per_km"`
-	SecondsPerAscentM float64 `toml:"seconds_per_ascent_m"`
-	EvaluatedRides    int     `toml:"evaluated_rides"`
-	BiasPercent       float64 `toml:"bias_percent"`
-	MAEPercent        float64 `toml:"mae_percent"`
-	P90Percent        float64 `toml:"p90_percent"`
+// Validate rejects a pair that could not have come from a real fit. The metrics
+// are optional, but a value present must be one that could mean something.
+//
+//nolint:gocritic // value receiver: see HasValidation.
+func (c Coefficients) Validate() error {
+	if math.IsNaN(c.SecondsPerKM) || math.IsInf(c.SecondsPerKM, 0) ||
+		math.IsNaN(c.SecondsPerAscentM) || math.IsInf(c.SecondsPerAscentM, 0) {
+		return errors.New("ridemodel: the coefficient terms must be finite")
+	}
+	if c.SecondsPerKM <= 0 {
+		return errors.New("ridemodel: seconds_per_km must be positive")
+	}
+	if c.SecondsPerAscentM <= 0 {
+		return errors.New("ridemodel: seconds_per_ascent_m must be positive")
+	}
+	if c.CalibrationCutoff != "" {
+		if _, err := time.Parse(time.DateOnly, c.CalibrationCutoff); err != nil {
+			return fmt.Errorf("ridemodel: calibration_cutoff must be a date in %s form: %w", time.DateOnly, err)
+		}
+	}
+	if c.EvaluatedRides < 0 {
+		return errors.New("ridemodel: evaluated_rides must not be negative")
+	}
+	if c.EvaluatedRides == 0 && (c.BiasPercent != 0 || c.MAEPercent != 0 || c.P90Percent != 0) {
+		return errors.New("ridemodel: a measured error needs the rides it was measured over")
+	}
+	if c.TrainingWindowMonths < 0 {
+		return errors.New("ridemodel: training_window_months must not be negative")
+	}
+	for _, percent := range []float64{c.BiasPercent, c.MAEPercent, c.P90Percent} {
+		if math.IsNaN(percent) || math.IsInf(percent, 0) {
+			return errors.New("ridemodel: bias_percent, mae_percent, and p90_percent must be finite")
+		}
+	}
+	if c.MAEPercent < 0 || c.P90Percent < 0 {
+		return errors.New("ridemodel: mae_percent and p90_percent must not be negative")
+	}
 
-	TrainingWindowMonths int `toml:"training_window_months"`
+	return nil
 }
 
-// Load reads, parses, and validates a coefficient file, returning an error for
-// a missing, malformed or implausible one; the caller decides whether that stops
-// the service or only prediction. Retired physics keys in the file are ignored.
-func Load(path string) (Coefficients, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // path is an operator-configured absolute file, not user input.
-	if err != nil {
-		return Coefficients{}, fmt.Errorf("ridemodel: reading coefficient file: %w", err)
-	}
+// WithFingerprint returns the same coefficients stamped with the fingerprint a
+// cached prediction is keyed by. Only the two terms enter it: the metrics
+// describe a fit rather than a prediction, so re-measuring one must not
+// invalidate a stored duration.
+//
+//nolint:gocritic // value receiver: see HasValidation.
+func (c Coefficients) WithFingerprint() Coefficients {
+	canonical := strconv.FormatFloat(c.SecondsPerKM, 'g', -1, 64) + "\n" +
+		strconv.FormatFloat(c.SecondsPerAscentM, 'g', -1, 64)
+	c.Fingerprint = fingerprintOf(modelVersion, []byte(canonical))
 
-	var raw rawCoefficients
-	if unmarshalErr := toml.Unmarshal(data, &raw); unmarshalErr != nil {
-		return Coefficients{}, fmt.Errorf("ridemodel: parsing coefficient file: %w", unmarshalErr)
-	}
-
-	coefficients, err := raw.build()
-	if err != nil {
-		return Coefficients{}, err
-	}
-
-	// modelVersion is mixed into the hash, not just the file's bytes: a code
-	// upgrade that changes a versioned constant must invalidate a cached
-	// prediction even when the file is byte-for-byte unchanged.
-	// Hashed from the two terms rather than the file's bytes, so a retired key
-	// or a reformatted file leaves every cached prediction standing.
-	coefficients.Fingerprint = fingerprintOf(modelVersion, []byte(termsOf(coefficients.SecondsPerKM, coefficients.SecondsPerAscentM)))
-
-	return coefficients, nil
-}
-
-// termsOf is the canonical spelling of what the equation reads from a profile.
-func termsOf(secondsPerKM, secondsPerAscentM float64) string {
-	return strconv.FormatFloat(secondsPerKM, 'g', -1, 64) + "\n" + strconv.FormatFloat(secondsPerAscentM, 'g', -1, 64)
+	return c
 }
 
 // fingerprintOf hashes version and data with version's length written ahead of
 // it, so the two can never be reinterpreted as a different (version, data) pair
 // that concatenates to the same bytes.
 func fingerprintOf(version string, data []byte) string {
-	hash := sha256.New()
+	digest := sha256.New()
 	var versionLength [8]byte
 	binary.BigEndian.PutUint64(versionLength[:], uint64(len(version)))
 	// hash.Hash.Write never returns an error — the interface carries one only
 	// because it embeds io.Writer.
-	_, _ = hash.Write(versionLength[:])
-	_, _ = hash.Write([]byte(version))
-	_, _ = hash.Write(data)
+	_, _ = digest.Write(versionLength[:])
+	_, _ = digest.Write([]byte(version))
+	_, _ = digest.Write(data)
 
-	return hex.EncodeToString(hash.Sum(nil))
-}
-
-func (r *rawCoefficients) build() (Coefficients, error) {
-	if math.IsNaN(r.SecondsPerKM) || math.IsInf(r.SecondsPerKM, 0) ||
-		math.IsNaN(r.SecondsPerAscentM) || math.IsInf(r.SecondsPerAscentM, 0) {
-		return Coefficients{}, errors.New("ridemodel: the coefficient terms must be finite")
-	}
-	if r.SecondsPerKM <= 0 {
-		return Coefficients{}, errors.New("ridemodel: seconds_per_km must be positive")
-	}
-	if r.SecondsPerAscentM <= 0 {
-		return Coefficients{}, errors.New("ridemodel: seconds_per_ascent_m must be positive")
-	}
-	if _, parseErr := time.Parse(time.DateOnly, r.CalibrationCutoff); parseErr != nil {
-		return Coefficients{}, fmt.Errorf("ridemodel: calibration_cutoff must be a date in %s form: %w", time.DateOnly, parseErr)
-	}
-	// Optional, but a value present must be one that could mean something:
-	// EvaluatedRides is a count and the two percentages are magnitudes, so none
-	// can be negative. BiasPercent is signed and gets no such check.
-	if r.EvaluatedRides < 0 {
-		return Coefficients{}, errors.New("ridemodel: evaluated_rides must not be negative")
-	}
-	if r.MAEPercent < 0 {
-		return Coefficients{}, errors.New("ridemodel: mae_percent must not be negative")
-	}
-	if r.P90Percent < 0 {
-		return Coefficients{}, errors.New("ridemodel: p90_percent must not be negative")
-	}
-	if r.TrainingWindowMonths < 0 {
-		return Coefficients{}, errors.New("ridemodel: training_window_months must not be negative")
-	}
-	// A partially-updated file — percentages set without evaluated_rides — must
-	// not silently load and drop the metadata: HasValidation() would read it as
-	// "not measured" and serve none of it.
-	if r.EvaluatedRides == 0 && (r.BiasPercent != 0 || r.MAEPercent != 0 || r.P90Percent != 0) {
-		return Coefficients{}, errors.New(
-			"ridemodel: bias_percent, mae_percent, and p90_percent require evaluated_rides",
-		)
-	}
-
-	return Coefficients{
-		CalibrationCutoff: r.CalibrationCutoff,
-		SecondsPerKM:      r.SecondsPerKM,
-		SecondsPerAscentM: r.SecondsPerAscentM,
-		EvaluatedRides:    r.EvaluatedRides,
-		BiasPercent:       r.BiasPercent,
-		MAEPercent:        r.MAEPercent,
-		P90Percent:        r.P90Percent,
-
-		TrainingWindowMonths: r.TrainingWindowMonths,
-	}, nil
+	return hex.EncodeToString(digest.Sum(nil))
 }

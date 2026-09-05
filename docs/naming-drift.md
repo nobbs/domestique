@@ -106,6 +106,18 @@ rename would have to satisfy on its own terms, and folding it into the auth
 cutover would obscure which part of that change was the rename and which was
 the behaviour.
 
+## 18. `runtime_settings.ridemodel_coefficients_file` is a dead column
+
+The ride model's coefficient pair moved into its own `ridemodel_coefficients`
+row, and the setting that named a file on the host went with it. Nothing reads
+or writes `runtime_settings.ridemodel_coefficients_file` any more; it stays as
+an ignored column, possibly still holding the path an earlier release stored.
+
+**Proposed:** drop it, once the previous release no longer has to read this
+schema — the compatibility harness requires that release to open the database,
+and the column is `NOT NULL` with a default, so removing it needs a table
+rebuild rather than a `DROP COLUMN`.
+
 ## Suggested order
 
 1. Item 16's comments, which touch no contract and need no compiler.
@@ -115,3 +127,5 @@ the behaviour.
    sync-phase sense of *half* from the ordinary English one the rest of the
    tree uses.
 5. Item 17, a migration and a rename together, on its own terms.
+6. Item 18, whenever a release that never read the column is the oldest one
+   supported.

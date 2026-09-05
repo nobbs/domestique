@@ -206,3 +206,38 @@ func TestMigration033DownDropsRecordStateColumnsOnly(t *testing.T) {
 
 	require.NoError(t, migration.Migrate(33), "must be able to re-migrate up after rolling back")
 }
+
+// 034's down drops the singleton coefficient row's table and nothing else.
+func TestMigration034DownDropsTheCoefficientTableOnly(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "ridemodel-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(34))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO ridemodel_coefficients (id, seconds_per_km, seconds_per_ascent_m, updated_at_unix)
+		VALUES (1, 145.3578, 3.2190, 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO ridemodel_coefficients (id, seconds_per_km, seconds_per_ascent_m, updated_at_unix)
+		VALUES (2, 1, 1, 1700000000)`)
+	require.Error(t, err, "the table holds one row: a second id must be refused")
+
+	require.NoError(t, migration.Migrate(33))
+
+	var tables int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ridemodel_coefficients'`).Scan(&tables))
+	require.Zero(t, tables, "the coefficient table must be gone")
+	var settings int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM runtime_settings`).Scan(&settings))
+	require.Equal(t, 1, settings, "the settings row must survive the rollback")
+
+	require.NoError(t, migration.Migrate(34), "must be able to re-migrate up after rolling back")
+}

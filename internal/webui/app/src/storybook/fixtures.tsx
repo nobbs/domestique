@@ -227,7 +227,13 @@ export const settings: Settings = {
     clientId: "wahoo-client-id",
   },
   sources: [{ provider: "veloplanner", baseUrl: "https://veloplanner.com" }],
-  rideModel: { coefficientsFile: "/var/lib/domestique/coefficients.json" },
+  rideModel: {
+    secondsPerKm: 145.36,
+    secondsPerAscentM: 3.22,
+    source: "calibrated",
+    calibrationCutoff: "2025-08-01",
+    evaluatedRides: 42,
+  },
   // A configured deployment: every credential stored, and nothing outstanding.
   secretsSet: {
     "wahoo.client_secret": true,
