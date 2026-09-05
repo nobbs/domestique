@@ -26,7 +26,7 @@ describe("WeatherOverlayPicker", () => {
     expect(onToggle).toHaveBeenCalledWith("wind", true);
   });
 
-  it("shows the hour scale whether or not a measure is on, with the weekday in its label", () => {
+  it("shows the hour scale whether or not a measure is on", () => {
     const { rerender } = render(
       <WeatherOverlayPicker
         measures={MEASURES}
@@ -38,7 +38,10 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByText(/^Now · \p{L}+/u)).toBeInTheDocument();
+    // Only the prefix this component itself writes, never the formatted
+    // weekday and time after it: `toLocaleTimeString` renders those however
+    // the runtime's own locale does, which is not this component's to assert.
+    expect(screen.getByText(/^Now · /)).toBeInTheDocument();
     // Screen-reader access, not just sight: a slider whose thumb carries no
     // name of its own announces as "slider", unlabelled, on every platform
     // that does not happen to render the sighted layout beside it.
@@ -55,7 +58,29 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByText(/^\+3h · \p{L}+/u)).toBeInTheDocument();
+    expect(screen.getByText(/^\+3h · /)).toBeInTheDocument();
+  });
+
+  it("asks for the weekday in the hour label, whatever script or order the runtime renders it in", () => {
+    // The label's own promise is that a reader scrubbed past midnight can
+    // still tell which day they are looking at — a promise the DOM text
+    // cannot check without assuming a locale, so this checks the request
+    // the component makes instead of the locale-dependent string it gets back.
+    const spy = vi.spyOn(Date.prototype, "toLocaleTimeString");
+    render(
+      <WeatherOverlayPicker
+        measures={MEASURES}
+        selected={new Set()}
+        onToggle={vi.fn()}
+        hoursAhead={0}
+        onHoursAheadChange={vi.fn()}
+        expanded={true}
+        onExpandedChange={vi.fn()}
+      />,
+    );
+
+    expect(spy).toHaveBeenCalledWith(undefined, expect.objectContaining({ weekday: "short" }));
+    spy.mockRestore();
   });
 
   it("disables the hour scale until a measure is on", () => {
