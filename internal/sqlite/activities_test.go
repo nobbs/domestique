@@ -131,9 +131,9 @@ func TestStoreActivityForgetsASkip(t *testing.T) {
 	assert.Empty(t, skips)
 }
 
-// A replacement is the whole backlog: a listing the account no longer holds is
+// A replacement is the whole reading: a listing the account no longer holds is
 // gone from it, and one it still holds keeps its listing fields.
-func TestReplaceActivityListingsMakesTheBacklogWhatTheAccountHolds(t *testing.T) {
+func TestReplaceActivityListingsMakesThemWhatTheAccountHolds(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -142,25 +142,26 @@ func TestReplaceActivityListingsMakesTheBacklogWhatTheAccountHolds(t *testing.T)
 		{ID: 1, Starts: activityNow(), TypeID: 40, LocationID: 0},
 	}), "ReplaceActivityListings()")
 
-	listings, err := store.PendingActivityListings(t.Context(), "rider-a")
-	require.NoError(t, err, "PendingActivityListings()")
+	listings, err := store.ActivityListings(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityListings()")
 	require.Len(t, listings, 2)
 	assert.Equal(t, activity.Listing{ID: 1, Starts: activityNow(), TypeID: 40, LocationID: 0}, listings[0],
-		"the backlog is not oldest first, or lost a listing field")
+		"the listings are not oldest first, or lost a listing field")
 
 	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{
 		{ID: 2, Starts: activityNow().Add(time.Hour), TypeID: 15, LocationID: 1},
 	}), "ReplaceActivityListings()")
 
-	listings, err = store.PendingActivityListings(t.Context(), "rider-a")
-	require.NoError(t, err, "PendingActivityListings()")
+	listings, err = store.ActivityListings(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityListings()")
 	require.Len(t, listings, 1)
 	assert.Equal(t, int64(2), listings[0].ID)
 }
 
-// The backlog is one target's own, and storing an activity takes it out, which
-// is what keeps the stored rows plus the backlog equal to what the account holds.
-func TestStoreActivityTakesTheListingOutOfTheBacklog(t *testing.T) {
+// The kept listings mirror the account rather than what is left to read, so
+// storing an activity leaves its listing in place; only a fresh reading of the
+// account takes one away.
+func TestStoreActivityLeavesTheListingInPlace(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -170,14 +171,13 @@ func TestStoreActivityTakesTheListingOutOfTheBacklog(t *testing.T) {
 
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 
-	listings, err := store.PendingActivityListings(t.Context(), "rider-a")
-	require.NoError(t, err, "PendingActivityListings()")
-	require.Len(t, listings, 1)
-	assert.Equal(t, int64(2), listings[0].ID)
+	listings, err := store.ActivityListings(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityListings()")
+	assert.Len(t, listings, 2, "a stored activity was dropped from the account's listings")
 
-	others, err := store.PendingActivityListings(t.Context(), "rider-b")
-	require.NoError(t, err, "PendingActivityListings()")
-	assert.Len(t, others, 2, "another target's backlog was changed")
+	others, err := store.ActivityListings(t.Context(), "rider-b")
+	require.NoError(t, err, "ActivityListings()")
+	assert.Len(t, others, 2, "another target's listings were changed")
 }
 
 func TestReplaceActivityListingsRefusesWhatItCannotAddress(t *testing.T) {
@@ -192,12 +192,12 @@ func TestReplaceActivityListingsRefusesWhatItCannotAddress(t *testing.T) {
 		"an unknown target was accepted")
 }
 
-func TestPendingActivityListingsReportsAnUnreadableStore(t *testing.T) {
+func TestActivityListingsReportsAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.PendingActivityListings(t.Context(), "rider-a")
-	require.ErrorContains(t, err, "reading pending activity listings")
+	_, err := store.ActivityListings(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "reading activity listings")
 }
 
 func TestRecordActivitySkipRefusesWhatItCannotAddress(t *testing.T) {

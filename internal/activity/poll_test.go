@@ -461,14 +461,35 @@ func TestPollDoesNotReadTheWholeListAgainWhileDrainingTheBacklog(t *testing.T) {
 func TestPollReadsOnlyTheListingHeadWhenNothingChanged(t *testing.T) {
 	store := newFakeStore()
 	store.known = []int64{1, 2}
+	store.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
 	source := newFakeSource(t)
-	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+	source.listings = store.listings
 
 	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
 
 	assert.Equal(t, Unchanged, result.Outcome)
 	assert.Zero(t, source.listed, "an unchanged account was listed in full")
 	assert.Equal(t, 1, source.headed)
+}
+
+// The kept listings are the account's, not what is left to read, so a ride the
+// rider deleted after it was stored settles after one reading rather than
+// leaving the store permanently holding more than the account lists.
+func TestPollSettlesAfterAStoredActivityIsDeletedFromTheAccount(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+	poller := newTestPoller(t, source, store)
+	require.Equal(t, 2, poller.Poll(t.Context(), "rider-a").Stored)
+	require.Equal(t, 1, source.listed)
+
+	source.listings = []Listing{{ID: 2, Starts: at(2)}}
+
+	require.Equal(t, Unchanged, poller.Poll(t.Context(), "rider-a").Outcome)
+	require.Equal(t, 2, source.listed, "the deletion was not taken up")
+
+	assert.Equal(t, Unchanged, poller.Poll(t.Context(), "rider-a").Outcome)
+	assert.Equal(t, 2, source.listed, "the account is read in full on every poll after a deletion")
 }
 
 // An account holding more activities than the store has accounted for is read
@@ -790,7 +811,7 @@ func (s *fakeStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, erro
 	return s.known, s.knownErr
 }
 
-func (s *fakeStore) PendingActivityListings(_ context.Context, _ string) ([]Listing, error) {
+func (s *fakeStore) ActivityListings(_ context.Context, _ string) ([]Listing, error) {
 	return slices.Clone(s.listings), s.listingsErr
 }
 
@@ -824,7 +845,6 @@ func (s *fakeStore) StoreActivity(
 	}
 	s.stored = append(s.stored, storedActivity{listing: listing, summary: summary, now: now})
 	s.known = append(s.known, listing.ID)
-	s.listings = slices.DeleteFunc(s.listings, func(pending Listing) bool { return pending.ID == listing.ID })
 	s.pending = append(s.pending, PendingActivity{ID: listing.ID, Summary: summary})
 
 	return nil

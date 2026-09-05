@@ -52,9 +52,6 @@ func (s *Store) StoreActivity(
 		if err := queries.DeleteActivitySkip(ctx, sqlcgen.DeleteActivitySkipParams{TargetSlot: targetID, WorkoutID: listing.ID}); err != nil {
 			return fmt.Errorf("forgetting an activity skip: %w", err)
 		}
-		if err := queries.DeleteActivityListing(ctx, sqlcgen.DeleteActivityListingParams{TargetSlot: targetID, WorkoutID: listing.ID}); err != nil {
-			return fmt.Errorf("forgetting a pending activity listing: %w", err)
-		}
 
 		return nil
 	})
@@ -97,12 +94,12 @@ func (s *Store) RecordActivitySkip(ctx context.Context, targetID string, id int6
 	return nil
 }
 
-// PendingActivityListings are the activities one target's account listed that
-// this service has not stored, oldest first, as the last listing left them.
-func (s *Store) PendingActivityListings(ctx context.Context, targetID string) ([]activity.Listing, error) {
-	rows, err := s.queries.ListPendingActivityListings(ctx, targetID)
+// ActivityListings are the activities one target's account holds, oldest first,
+// as the last full reading of that account left them.
+func (s *Store) ActivityListings(ctx context.Context, targetID string) ([]activity.Listing, error) {
+	rows, err := s.queries.ListActivityListings(ctx, targetID)
 	if err != nil {
-		return nil, fmt.Errorf("reading pending activity listings: %w", err)
+		return nil, fmt.Errorf("reading activity listings: %w", err)
 	}
 	listings := make([]activity.Listing, 0, len(rows))
 	for _, row := range rows {
@@ -117,9 +114,10 @@ func (s *Store) PendingActivityListings(ctx context.Context, targetID string) ([
 	return listings, nil
 }
 
-// ReplaceActivityListings makes the pending listings exactly those a fresh
-// reading of the account found unstored. It is one transaction because a poll
-// that read a partial backlog would treat the account as smaller than it is.
+// ReplaceActivityListings makes the kept listings exactly those a fresh reading
+// of the account found. It is one transaction because a poll that read a
+// partial listing would treat the account as smaller than it is, and read it
+// again on every poll after.
 func (s *Store) ReplaceActivityListings(ctx context.Context, targetID string, listings []activity.Listing) error {
 	if targetID == "" {
 		return errors.New("a target is required")
@@ -127,7 +125,7 @@ func (s *Store) ReplaceActivityListings(ctx context.Context, targetID string, li
 
 	return s.withTx(ctx, "activity listings", func(queries *sqlcgen.Queries) error {
 		if err := queries.DeleteActivityListings(ctx, targetID); err != nil {
-			return fmt.Errorf("clearing pending activity listings: %w", err)
+			return fmt.Errorf("clearing activity listings: %w", err)
 		}
 		for _, listing := range listings {
 			if listing.ID <= 0 {
@@ -140,7 +138,7 @@ func (s *Store) ReplaceActivityListings(ctx context.Context, targetID string, li
 				WorkoutTypeID:         int64(listing.TypeID),
 				WorkoutTypeLocationID: int64(listing.LocationID),
 			}); err != nil {
-				return fmt.Errorf("recording a pending activity listing: %w", err)
+				return fmt.Errorf("recording an activity listing: %w", err)
 			}
 		}
 

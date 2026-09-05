@@ -125,11 +125,11 @@ type Store interface {
 // can hold.
 type listingStore interface {
 	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
-	// PendingActivityListings are the listings the account holds that are not
-	// stored yet, oldest first, as the last full reading of the account left
-	// them. The order is what a poll fills from; it does not sort them again.
-	PendingActivityListings(ctx context.Context, targetID string) ([]Listing, error)
-	// ReplaceActivityListings makes the pending listings exactly these.
+	// ActivityListings are the activities the account holds, oldest first, as
+	// the last full reading of it left them. The order is what a poll fills
+	// from; it does not sort them again.
+	ActivityListings(ctx context.Context, targetID string) ([]Listing, error)
+	// ReplaceActivityListings makes the kept listings exactly these.
 	ReplaceActivityListings(ctx context.Context, targetID string, listings []Listing) error
 }
 
@@ -210,8 +210,8 @@ func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error
 // part way keeps what it already stored: the next poll continues from there. An
 // activity only its own summary rejects is skipped and retried later, so one
 // unreadable ride never stops the ones after it. The account's whole list is
-// read only when its own count of activities no longer matches what the store
-// has accounted for; otherwise the poll works from the backlog it kept.
+// read only when the account no longer matches the last reading of it the store
+// kept; otherwise the poll works from those listings.
 func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	authorization, err := p.store.TargetAuthorization(ctx, targetID)
 	if err != nil {
@@ -357,46 +357,46 @@ func (p *Poller) classify(ctx context.Context, targetID string, err error) Failu
 	return FailureAuthorization
 }
 
-// pending is the listings the account holds that are not stored, taken from the
-// store and re-read from the account only when the account no longer agrees
-// with it. The agreement is a count rather than an ordering, because a workout
-// may be added out of order or backdated: an account holding exactly as many
-// activities as the store has accounted for, whose newest page this service has
-// already seen, holds nothing new to read.
+// pending is the activities the account holds that are not stored, taken from
+// the listings the store kept and re-read from the account only when the
+// account no longer agrees with them. What is compared is the account against
+// its own last reading, not against what this service has stored: a ride
+// deleted after it was stored leaves the store holding more than the account
+// lists, which would otherwise read as a disagreement no poll could settle.
 func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]Listing, Failure) {
-	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
-	if knownErr != nil {
-		return nil, FailureState
-	}
-	pending, pendingErr := p.store.PendingActivityListings(ctx, targetID)
-	if pendingErr != nil {
+	listings, listingsErr := p.store.ActivityListings(ctx, targetID)
+	if listingsErr != nil {
 		return nil, FailureState
 	}
 	head, total, headErr := p.source.ActivityListingHead(ctx, accessToken)
 	if headErr != nil {
 		return nil, p.classify(ctx, targetID, headErr)
 	}
-	if total == len(known)+len(pending) && accountedFor(head, known, pending) {
-		return pending, FailureNone
+	if total != len(listings) || !accountedFor(head, listings) {
+		fresh, listErr := p.source.ListActivities(ctx, accessToken)
+		if listErr != nil {
+			return nil, p.classify(ctx, targetID, listErr)
+		}
+		slices.SortFunc(fresh, byStart)
+		if replaceErr := p.store.ReplaceActivityListings(ctx, targetID, fresh); replaceErr != nil {
+			return nil, FailureState
+		}
+		listings = fresh
 	}
 
-	listings, listErr := p.source.ListActivities(ctx, accessToken)
-	if listErr != nil {
-		return nil, p.classify(ctx, targetID, listErr)
-	}
-	pending = unstored(listings, known)
-	if replaceErr := p.store.ReplaceActivityListings(ctx, targetID, pending); replaceErr != nil {
+	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
+	if knownErr != nil {
 		return nil, FailureState
 	}
 
-	return pending, FailureNone
+	return unstored(listings, known), FailureNone
 }
 
-// accountedFor reports whether every listing on the account's newest page is
-// one this service has already seen, so that an addition balanced by a deletion
-// does not read as no change at all.
-func accountedFor(head []Listing, known []int64, pending []Listing) bool {
-	seen := identities(known, pending)
+// accountedFor reports whether every listing on the account's first page is one
+// the last reading already held, so that an addition the rider balanced by a
+// deletion does not read as no change at all.
+func accountedFor(head, listings []Listing) bool {
+	seen := identities(nil, listings)
 	for _, listing := range head {
 		if _, ok := seen[listing.ID]; !ok {
 			return false
@@ -406,7 +406,7 @@ func accountedFor(head []Listing, known []int64, pending []Listing) bool {
 	return true
 }
 
-// unstored is every listing the store has not stored, oldest first.
+// unstored is the listings the store has not stored, in the order they came.
 func unstored(listings []Listing, known []int64) []Listing {
 	seen := identities(known, nil)
 	pending := make([]Listing, 0, len(listings))
@@ -415,7 +415,6 @@ func unstored(listings []Listing, known []int64) []Listing {
 			pending = append(pending, listing)
 		}
 	}
-	slices.SortFunc(pending, byStart)
 
 	return pending
 }
@@ -423,7 +422,7 @@ func unstored(listings []Listing, known []int64) []Listing {
 // due is the oldest pending activities whose read is not deferred, at most
 // MaxNewPerPoll of them. Oldest first so an account with a long history fills
 // in chronologically over successive polls rather than restarting each time,
-// which is the order pending already arrives in.
+// which is the order the kept listings already arrive in.
 func due(pending []Listing, waiting []int64) []Listing {
 	deferredIDs := identities(waiting, nil)
 	ready := make([]Listing, 0, min(len(pending), MaxNewPerPoll))

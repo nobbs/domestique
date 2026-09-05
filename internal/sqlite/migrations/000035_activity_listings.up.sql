@@ -1,7 +1,7 @@
--- Listings the account holds that are not stored yet, kept so a poll can drain
--- its backlog without re-reading the account's whole workout list. A stored
--- activity's row is removed, which makes the account's own total comparable to
--- the stored rows plus these.
+-- The rider's account as the last full reading of it left them, so a poll can
+-- tell what the account holds from what it has stored without reading the list
+-- again. Comparing this against the account's own count is what notices a ride
+-- added, or one deleted after it was stored.
 CREATE TABLE activity_listings (
   target_slot              TEXT    NOT NULL REFERENCES targets(slot),
   workout_id               INTEGER NOT NULL,
@@ -10,4 +10,5 @@ CREATE TABLE activity_listings (
   workout_type_location_id INTEGER NOT NULL,
   PRIMARY KEY (target_slot, workout_id)
 );
+CREATE INDEX activity_listings_started_index ON activity_listings(target_slot, started_at_unix);
 INSERT INTO schema_migrations (version, applied_at_unix) VALUES (35, CAST(strftime('%s', 'now') AS INTEGER));
