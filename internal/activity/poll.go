@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"slices"
 	"time"
@@ -185,12 +184,12 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	if knownErr != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
-	deferred, deferErr := p.deferred(ctx, targetID)
-	if deferErr != nil {
+	skips, skipsErr := p.store.ActivitySkips(ctx, targetID)
+	if skipsErr != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
-	pending := unstored(listings, append(known, deferred...))
+	pending := unstored(listings, append(known, deferred(skips, p.now())...))
 	if len(pending) == 0 {
 		return Result{Outcome: Unchanged}
 	}
@@ -220,12 +219,7 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 }
 
 // deferred is the skipped activities whose retry is not yet due.
-func (p *Poller) deferred(ctx context.Context, targetID string) ([]int64, error) {
-	skips, err := p.store.ActivitySkips(ctx, targetID)
-	if err != nil {
-		return nil, fmt.Errorf("reading activity skips: %w", err)
-	}
-	now := p.now()
+func deferred(skips []Skip, now time.Time) []int64 {
 	var ids []int64
 	for _, skip := range skips {
 		if !retryDue(skip, now) {
@@ -233,7 +227,7 @@ func (p *Poller) deferred(ctx context.Context, targetID string) ([]int64, error)
 		}
 	}
 
-	return ids, nil
+	return ids
 }
 
 // accessToken refreshes the target's credentials, replacing the stored refresh

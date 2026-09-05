@@ -306,10 +306,10 @@ func pollEveryTarget(ctx context.Context, poller activityPoller, targetIDs []str
 	aggregate := task.Result{Outcome: task.NotReady}
 	for _, targetID := range targetIDs {
 		result := activityResult(poller.Poll(ctx, targetID))
-		// At equal severity a result with something to say wins, so one
-		// slot's skip is not hidden behind another's clean success.
+		// At equal severity the aggregate gives way only while it has no
+		// detail, so one slot's skip is not hidden behind another's clean success.
 		if severity(result.Outcome) > severity(aggregate.Outcome) ||
-			(severity(result.Outcome) == severity(aggregate.Outcome) && (result.Detail != "" || aggregate.Detail == "")) {
+			(severity(result.Outcome) == severity(aggregate.Outcome) && aggregate.Detail == "") {
 			aggregate = result
 		}
 	}
