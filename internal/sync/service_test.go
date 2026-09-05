@@ -1670,7 +1670,7 @@ func TestServiceDoesNotLogAnAuthorizationLossForAnUpstreamFailure(t *testing.T) 
 
 	runBoth(t.Context(), service)
 
-	assert.NotContains(t, logged.String(), "reauthorization")
+	assert.NotContains(t, logged.String(), "rejected the target authorization")
 }
 
 // captureLogs redirects the default logger for one test. Package-level state, so

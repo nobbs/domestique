@@ -355,7 +355,7 @@ func TestPollDoesNotLogAnAuthorizationLossForAnUpstreamFailure(t *testing.T) {
 
 	newTestPoller(t, source, newFakeStore()).Poll(t.Context(), "rider-a")
 
-	assert.NotContains(t, logged.String(), "reauthorization")
+	assert.NotContains(t, logged.String(), "rejected the target authorization")
 }
 
 // captureLogs redirects the default logger for one test. Package-level state, so
