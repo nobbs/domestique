@@ -4,11 +4,12 @@ const latestResponse = vi.hoisted(() => ({
   value: Promise.resolve({
     data: { reference_time: "2026-09-05T12:00:00Z", valid_times: ["2026-09-05T12:00Z"] },
     status: 200,
-  }),
+  }) as Promise<unknown>,
 }));
+const getWeatherGridLatest = vi.hoisted(() => vi.fn(() => latestResponse.value));
 
 vi.mock("./generated", () => ({
-  getWeatherGridLatest: () => latestResponse.value,
+  getWeatherGridLatest,
   getGetWeatherGridObjectUrl: (params: { referenceTime: string; validTime: string }) =>
     `/v1/weather-grid/object?referenceTime=${encodeURIComponent(params.referenceTime)}&validTime=${encodeURIComponent(params.validTime)}`,
 }));
@@ -92,5 +93,40 @@ describe("fetchWindGrid", () => {
     const [omUrlSeen] = seenOmUrls.urls;
     expect(omUrlSeen).toContain("referenceTime=2026-09-05T12%3A00%3A00.000Z");
     expect(omUrlSeen).toContain("validTime=2026-09-05T12%3A00%3A00.000Z");
+  });
+
+  it("does not let a stale in-flight manifest fetch evict a fresher one it lost the race to", async () => {
+    // Comfortably past any cache the earlier tests in this file left behind,
+    // so this test's first call is guaranteed to see it as expired too.
+    const realNow = Date.now() + 600_000;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(realNow);
+    const manifest = (referenceTime: string) => ({
+      data: { reference_time: referenceTime, valid_times: [`${referenceTime.slice(0, 16)}Z`] },
+      status: 200,
+    });
+    let rejectStale: (reason: unknown) => void = () => {};
+    getWeatherGridLatest.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectStale = reject;
+      }),
+    );
+
+    // The stale request that will fail late, once something fresher has
+    // already taken its place in the cache.
+    const staleFetch = fetchWindGrid([7, 48, 8, 49], new Date()).catch(() => "rejected");
+    nowSpy.mockReturnValue(realNow + 61_000); // past the manifest TTL
+
+    getWeatherGridLatest.mockReturnValueOnce(Promise.resolve(manifest("2026-09-05T13:00:00Z")));
+    const freshGrid = await fetchWindGrid([7, 48, 8, 49], new Date());
+    expect(freshGrid).not.toBeNull();
+
+    rejectStale(new Error("stale request failed late"));
+    expect(await staleFetch).toBe("rejected");
+
+    getWeatherGridLatest.mockClear();
+    await fetchWindGrid([7, 48, 8, 49], new Date());
+    expect(getWeatherGridLatest).not.toHaveBeenCalled();
+
+    nowSpy.mockRestore();
   });
 });

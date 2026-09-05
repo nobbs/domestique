@@ -58,12 +58,17 @@ function fetchLatest(): Promise<Latest> {
     // relay, not this service's own shape), so Orval types the envelope's
     // data as the union of its error responses alone.
     const value = getWeatherGridLatest().then((response) => unwrap(response) as unknown as Latest);
+    const entry = { fetchedAt: now, value };
     // Evicted on failure so the next read retries instead of replaying the
-    // same rejection for the rest of the minute.
+    // same rejection for the rest of the minute — but only if this is still
+    // the current entry, so a stale request's late rejection can't clear a
+    // newer one already fetched in its place.
     value.catch(() => {
-      latestCache = null;
+      if (latestCache === entry) {
+        latestCache = null;
+      }
     });
-    latestCache = { fetchedAt: now, value };
+    latestCache = entry;
   }
 
   return latestCache.value;
