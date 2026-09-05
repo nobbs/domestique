@@ -103,7 +103,7 @@ owns a distinct responsibility in this tree.
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
 | surface | OSM surface and tracktype classification, snapping a route to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a route | classification rules, SQL of the state store, what a route is |
-| ridemodel | the calibrated coefficient pair and its loading, the forward model — distance and ascent priced by those two terms — that turns a route's geometry into a predicted moving time, caching that prediction against geometry and coefficient fingerprints | calibrating the coefficients from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a route's surface is classified |
+| ridemodel | the calibrated coefficient pair and its built-in default, the forward model — distance and ascent priced by those two terms — that turns a route's geometry into a predicted moving time, caching that prediction against geometry and coefficient fingerprints | calibrating the coefficients from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a route's surface is classified |
 | activity | decoded activity FIT values and their validation, and polling a target's activity summaries into the store | SQL, Wahoo URLs, OAuth, scheduling, HTTP routing |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
@@ -274,21 +274,21 @@ stored on `Summary`, in the manner of surface classification: the route's
 distance and its ascent, each priced by one calibrated coefficient.
 
 It belongs to Go because there is exactly one answer per route to store. The
-inputs come from one configured profile, calibrated once against a corpus of
-recorded rides, rather than from a value each reader supplies. Two coefficients
-are all the corpus can identify, and the ground classification is not among the
+inputs come from one coefficient pair, calibrated against a corpus of recorded
+rides, rather than from a value each reader supplies. Two coefficients are all
+the corpus can identify, and the ground classification is not among the
 prediction's inputs.
 
-No endpoint accepts a rider-shaped value. The profile arrives as a setting
-naming a file on the host, `ridemodel.coefficients_file`, never as a request
-field.
+No endpoint accepts a rider-shaped value, and none writes the pair. It is a
+singleton row `internal/sqlite` owns, read at startup and again after a
+calibration, with `ridemodel.Default()` standing in until the first one lands.
 
-The same boundary holds for the profile's measured unseen-route error.
+The same boundary holds for the pair's measured unseen-route error.
 `internal/httpapi` reads it once, straight off the loaded
 `ridemodel.Coefficients`, and attaches it to every route response that carries a
 prediction. It is metadata about the frozen profile, not a value this service
-computes at serve time; `dev/fitter -recalibrate` measures it, the same way it
-measures `seconds_per_km` and `seconds_per_ascent_m`.
+computes at serve time; the calibration that fitted the pair measures it, the
+same way it measures `seconds_per_km` and `seconds_per_ascent_m`.
 
 ## Dependency direction
 

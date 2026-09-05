@@ -9,12 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/nobbs/domestique/internal/ridemodel"
 )
 
 // The copy-ready profile is pasted verbatim into ridemodel.toml, so whatever
-// it prints has to be a file internal/ridemodel.Load actually accepts.
+// it prints has to be a file loadCoefficients actually accepts.
 func TestPrintCopyReadyProfileEmitsALoadableFile(t *testing.T) {
 	rides, samplesByRide := monthlySyntheticCorpus(60)
 	coefficients := testCoefficients()
@@ -38,7 +36,7 @@ func TestPrintCopyReadyProfileEmitsALoadableFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ridemodel.toml")
 	require.NoError(t, os.WriteFile(path, []byte(profile.String()), 0o600))
 
-	loaded, err := ridemodel.Load(path)
+	loaded, err := loadCoefficients(path)
 	require.NoError(t, err, "the printed profile must load:\n%s", profile.String())
 	assert.InDelta(t, eval.secondsPerKM, loaded.SecondsPerKM, 1e-4)
 	assert.Equal(t, cfg.etaTrainingMonths, loaded.TrainingWindowMonths)

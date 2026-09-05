@@ -279,8 +279,8 @@ type Settings struct {
 	Surface       SurfaceSettings      `json:"surface"`
 	Wahoo         WahooSettings        `json:"wahoo"`
 	// Sources The libraries a run reads, in the order it reads them. An empty list is a service nobody has configured yet, not an error.
-	Sources   []SourceSettings  `json:"sources"`
-	RideModel RideModelSettings `json:"rideModel"`
+	Sources   []SourceSettings `json:"sources"`
+	RideModel RideModelStatus  `json:"rideModel"`
 	// Alerts Every alert this service can raise, and whether it is delivered. An alert nobody has ruled on is delivered: a fault nobody has heard of is the one worth hearing about.
 	Alerts []AlertSetting `json:"alerts"`
 	// SecretsSet Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace.
@@ -438,9 +438,26 @@ type SourceSettings struct {
 	BaseURL string `json:"baseUrl"`
 }
 
-type RideModelSettings struct {
-	// CoefficientsFile The coefficient file the offline fitting tooling emits, named by an absolute path the service can read. Empty is predicted moving time switched off, which is also the default.
-	CoefficientsFile string `json:"coefficientsFile"`
+// RideModelStatus_Source Whether these are the built-in values every deployment starts with or the ones a calibration fitted.
+type RideModelStatus_Source string
+
+const (
+	RideModelStatus_SourceDefault    RideModelStatus_Source = "default"
+	RideModelStatus_SourceCalibrated RideModelStatus_Source = "calibrated"
+)
+
+// RideModelStatus The coefficient pair predicted moving time is priced with. Read-only: it is replaced by a calibration, not by an operator.
+type RideModelStatus struct {
+	// SecondsPerKm Seconds added per kilometre ridden.
+	SecondsPerKm float64 `json:"secondsPerKm"`
+	// SecondsPerAscentM Seconds added per metre climbed.
+	SecondsPerAscentM float64 `json:"secondsPerAscentM"`
+	// Source Whether these are the built-in values every deployment starts with or the ones a calibration fitted.
+	Source RideModelStatus_Source `json:"source"`
+	// CalibrationCutoff The last day of riding the fit that produced them read.
+	CalibrationCutoff *string `json:"calibrationCutoff,omitempty"`
+	// EvaluatedRides How many unseen rides the fit's error was measured over. Zero is not measured, which is what the built-in pair always reports.
+	EvaluatedRides int `json:"evaluatedRides"`
 }
 
 type SurfaceSettings struct {

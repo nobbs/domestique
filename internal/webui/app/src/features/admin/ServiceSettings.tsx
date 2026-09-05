@@ -47,7 +47,6 @@ import {
   useSetAlerts,
   useSetBasemaps,
   useSetNotifications,
-  useSetRideModel,
   useSetSource,
   useSetSurface,
   useSetSync,
@@ -64,6 +63,7 @@ import {
 } from "../../api/types";
 import { Button } from "../../components/Button";
 import { BasemapStrip } from "../../components/map/BasemapPreview";
+import { formatCount } from "../../lib/format";
 import { providerLabel } from "../../lib/provider";
 import { RegionPicker } from "../settings/regions/RegionPicker";
 
@@ -934,33 +934,36 @@ function SurfaceClassification({ settings }: { settings: Settings }) {
 }
 
 function RideModel({ settings }: { settings: Settings }) {
-  const id = useId();
-  const invalidate = useSettingsInvalidation();
-  const [draft, setDraft] = useState<string | null>(null);
-  const save = useSetRideModel(saving(() => setDraft(null), invalidate));
-
-  const coefficientsFile = draft ?? settings.rideModel.coefficientsFile;
+  const model = settings.rideModel;
+  const cutoff = model.calibrationCutoff;
+  const provenance =
+    model.source === "calibrated"
+      ? `Calibrated${cutoff ? ` on ${cutoff}` : ""}${
+          model.evaluatedRides > 0 ? ` from ${formatCount(model.evaluatedRides, "ride")}` : ""
+        }.`
+      : "Built-in default, in force until the first calibration succeeds.";
 
   return (
-    <Section
-      title="Ride model"
-      save={save}
-      edited={draft !== null}
-      onSave={() => save.mutate({ data: { coefficientsFile } })}
-    >
-      <Field>
-        <FieldLabel htmlFor={`${id}-coefficients`}>Coefficient file</FieldLabel>
-        <Input
-          id={`${id}-coefficients`}
-          value={coefficientsFile}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        <FieldDescription>
-          An absolute path, on the machine the service runs on, to the file the fitting tooling
-          produced. Empty leaves routes without a predicted moving time.
-        </FieldDescription>
-      </Field>
-    </Section>
+    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
+      <CardHeader>
+        <CardTitle role="heading" aria-level={3}>
+          Ride model
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        <dl className="grid gap-1 text-sm">
+          <div className="flex justify-between gap-4">
+            <dt className="text-[var(--ink-2)]">Seconds per kilometre</dt>
+            <dd>{model.secondsPerKm.toFixed(2)}</dd>
+          </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-[var(--ink-2)]">Seconds per metre climbed</dt>
+            <dd>{model.secondsPerAscentM.toFixed(2)}</dd>
+          </div>
+        </dl>
+        <FieldDescription>{provenance}</FieldDescription>
+      </CardContent>
+    </Card>
   );
 }
 

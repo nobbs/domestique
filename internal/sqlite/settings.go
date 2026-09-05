@@ -30,7 +30,6 @@ func (s *Store) RuntimeSettings(ctx context.Context) (runtimeconfig.Values, erro
 	values.Wahoo.APIBaseURL = row.WahooApiBaseUrl
 	values.Wahoo.OAuthBaseURL = row.WahooOauthBaseUrl
 	values.Wahoo.ClientID = row.WahooClientID
-	values.RideModel.CoefficientsFile = row.RidemodelCoefficientsFile
 	values.Timezone = row.Timezone
 
 	basemaps, err := s.runtimeBasemaps(ctx)
@@ -72,8 +71,8 @@ func (s *Store) writeRuntimeSettings(ctx context.Context, queries *sqlcgen.Queri
 		PushoverBaseUrl:               values.Notifications.PushoverBaseURL,
 		SurfaceRebuildIntervalSeconds: int64(values.Surface.RebuildInterval / time.Second),
 		WahooApiBaseUrl:               values.Wahoo.APIBaseURL, WahooOauthBaseUrl: values.Wahoo.OAuthBaseURL,
-		WahooClientID: values.Wahoo.ClientID, RidemodelCoefficientsFile: values.RideModel.CoefficientsFile,
-		Timezone: values.Timezone, UpdatedAtUnix: time.Now().Unix(),
+		WahooClientID: values.Wahoo.ClientID,
+		Timezone:      values.Timezone, UpdatedAtUnix: time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("storing the runtime settings: %w", err)
 	}

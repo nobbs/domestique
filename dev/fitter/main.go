@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/nobbs/domestique/internal/ridemodel"
 )
 
 func main() {
@@ -71,7 +69,7 @@ func run(cfg *runConfig) error {
 		return err
 	}
 
-	coefficients, err := ridemodel.Load(cfg.coefficientsPath)
+	coefficients, err := loadCoefficients(cfg.coefficientsPath)
 	if err != nil {
 		return fmt.Errorf("loading coefficients: %w", err)
 	}

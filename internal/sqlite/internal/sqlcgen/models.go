@@ -78,6 +78,19 @@ type OauthTransaction struct {
 	CallerLogin   string
 }
 
+type RidemodelCoefficient struct {
+	ID                    int64
+	SecondsPerKm          float64
+	SecondsPerAscentM     float64
+	CalibrationCutoffUnix sql.NullInt64
+	EvaluatedRides        int64
+	BiasPercent           float64
+	MaePercent            float64
+	P90Percent            float64
+	TrainingWindowMonths  int64
+	UpdatedAtUnix         int64
+}
+
 type RuntimeBasemap struct {
 	Position        int64
 	Name            string

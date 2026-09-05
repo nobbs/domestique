@@ -446,8 +446,10 @@ The read-only JSON surface is small:
 - `GET /v1/settings` (admin-only) returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
   the basemap list, the surface settings, the Wahoo application, the source
-  libraries, and the ride model. It is one document and the whole of it every
-  time, whichever section is about to be edited. Which targets exist is not
+  libraries, and — read-only — the ride model's coefficient pair, whether it is
+  the built-in default or a calibrated one, and what that calibration read. It
+  is one document and the whole of it every time, whichever section is about to
+  be edited. Which targets exist is not
   among these settings: each is created by its own owning subject, on their own
   first connection, not written here.
 
@@ -518,13 +520,11 @@ browser origin described above, and answer 403 without it.
   section: `PUT /v1/settings/wahoo` for the registered application,
   `/v1/settings/sources/{provider}` for one library and the account it is read
   with, and `/v1/settings/notifications`, `/v1/settings/basemaps`,
-  `/v1/settings/surface`, `/v1/settings/ridemodel` and `/v1/settings/sync` for
-  the rest. The `{provider}` a source path names is one of the libraries the
+  `/v1/settings/surface` and `/v1/settings/sync` for the rest. The `{provider}` a source path names is one of the libraries the
   service reads; any other is refused. Writing the surface section also starts
-  a surface-index rebuild, and writing the ride-model section a prediction
-  pass, on the terms a manual trigger starts one: the change is what those
-  passes consume, and the next scheduled run is otherwise up to a rebuild
-  interval away.
+  a surface-index rebuild, on the terms a manual trigger starts one: the change
+  is what that pass consumes, and the next scheduled run is otherwise up to a
+  rebuild interval away.
 
   Each replaces the whole of the section it names. A body naming only some of
   that section's fields is refused. Sections the request does not name are not
@@ -593,7 +593,7 @@ The service has a provider-neutral configuration contract:
   the state database's path and key file. Who may sign in is not among them —
   that is the tenant's own Action, not this file.
 - Everything that decides what work the service does is not in that file. The
-  provider endpoints, source libraries, ride model, schedule and credentials
+  provider endpoints, source libraries, ride model coefficients, schedule and credentials
   are held in the state database, edited over the settings endpoints, and in
   force without a restart; the
   [configuration specification](configuration.md#runtime-settings) defines them.

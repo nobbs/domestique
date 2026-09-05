@@ -278,10 +278,9 @@ index rebuild, and runs after each: either alone leaves stages wanting it.
 `ridemodel:predict` follows the read, alongside classification and for the same
 reason: a new inventory leaves stages wanting a prediction.
 
-Two settings ask for a pass themselves: a written surface section starts the
-index rebuild, and a written ride-model section starts prediction. What a pass
-consumes changing is a reason to run it, and the operator who changed it is
-already watching.
+One setting asks for a pass itself: a written surface section starts the index
+rebuild. What a pass consumes changing is a reason to run it, and the operator
+who changed it is already watching.
 `sync:target`'s own schedule is a backstop behind its edge — what it catches is a
 slot that failed on its own, and an operator who has the read switched off.
 

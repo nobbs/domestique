@@ -2,7 +2,7 @@
 SELECT allow_empty_source_deletion, stale_after_seconds, sync_initial_delay_seconds,
   notifications_enabled, pushover_base_url, surface_rebuild_interval_seconds,
   wahoo_api_base_url, wahoo_oauth_base_url, wahoo_client_id,
-  ridemodel_coefficients_file, timezone
+  timezone
 FROM runtime_settings
 WHERE id = 1;
 
@@ -11,7 +11,7 @@ UPDATE runtime_settings
 SET allow_empty_source_deletion = ?, stale_after_seconds = ?, sync_initial_delay_seconds = ?,
   notifications_enabled = ?, pushover_base_url = ?, surface_rebuild_interval_seconds = ?,
   wahoo_api_base_url = ?, wahoo_oauth_base_url = ?, wahoo_client_id = ?,
-  ridemodel_coefficients_file = ?, timezone = ?, updated_at_unix = ?
+  timezone = ?, updated_at_unix = ?
 WHERE id = 1;
 
 -- name: DeleteRuntimeBasemaps :exec

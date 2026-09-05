@@ -6,10 +6,10 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 )
 
-// modelVersion identifies the equation below, which does not live in a
-// coefficient file. Load mixes it into a loaded file's fingerprint: bump it
-// whenever the equation changes, or a stale cached duration would look as
-// current as it did before the upgrade.
+// modelVersion identifies the equation below, which no calibration can vary.
+// WithFingerprint mixes it into a pair's fingerprint: bump it whenever the
+// equation changes, or a stale cached duration would look as current as it did
+// before the upgrade.
 const modelVersion = "linear-v1"
 
 // Result is one stage's predicted moving time: the total, and the running time at
