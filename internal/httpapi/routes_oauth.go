@@ -103,8 +103,9 @@ func (h *Handler) CompleteOAuth(writer http.ResponseWriter, request *http.Reques
 
 		return
 	}
+	// Unlogged here on purpose: the OAuth service names which of its four steps
+	// refused, and a second line at this boundary would only blur that.
 	if err := h.oauth.Complete(request.Context(), login, state, code); err != nil {
-		slog.Warn("wahoo authorization refused", "reason", "exchange_failed")
 		h.authorizationFailed(writer)
 
 		return
