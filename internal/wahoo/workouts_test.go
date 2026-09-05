@@ -50,14 +50,14 @@ func TestClientReadsTheRawWorkoutSummary(t *testing.T) {
 		assert.Equal(t, http.MethodGet, request.Method)
 		assert.Equal(t, "Bearer access-token", request.Header.Get("Authorization"))
 		assert.Equal(t, "/v1/workouts/42/workout_summary", request.URL.Path)
-		writeJSON(t, writer, map[string]any{"workout_summary": map[string]any{
+		writeJSON(t, writer, map[string]any{
 			"id":                    42,
 			"file":                  map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"},
 			"distance_accum":        "1234.5",
 			"duration_active_accum": "3600.0",
 			"duration_total_accum":  3900,
 			"ascent_accum":          "120.25",
-		}})
+		})
 	}))
 	defer server.Close()
 
@@ -87,10 +87,13 @@ func TestClientReadsWorkoutSummaryTotalsWahooSendsAsStrings(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			body := map[string]any{"file": map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"}}
+			body := map[string]any{
+				"id":   42,
+				"file": map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"},
+			}
 			maps.Copy(body, tc.summary)
 			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-				writeJSON(t, writer, map[string]any{"workout_summary": body})
+				writeJSON(t, writer, body)
 			}))
 			defer server.Close()
 
@@ -133,14 +136,26 @@ func TestClientRejectsInvalidWorkoutPagination(t *testing.T) {
 	require.ErrorContains(t, err, "ended before its total")
 }
 
+// The summary endpoint answers with the summary itself. A body wrapped in a
+// "workout_summary" key is the listing's shape, not this one's, and reading it
+// as though it were carried nothing out of any real account.
 func TestClientReportsAMissingWorkoutSummary(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writeJSON(t, writer, map[string]any{"workout_summary": nil})
-	}))
-	defer server.Close()
+	cases := map[string]any{
+		"null body":              nil,
+		"object without its own": map[string]any{"file": map[string]string{"url": "https://cdn.wahooligan.com/42.fit"}},
+		"listing envelope":       map[string]any{"workout_summary": map[string]any{"id": 42}},
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writeJSON(t, writer, body)
+			}))
+			defer server.Close()
 
-	_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
-	require.ErrorContains(t, err, "summary was missing")
+			_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
+			require.ErrorContains(t, err, "summary was missing")
+		})
+	}
 }
 
 func TestClientRejectsAWorkoutListingBeyondItsBounds(t *testing.T) {
@@ -218,14 +233,14 @@ func TestClientRejectsWorkoutReadsItCannotTrust(t *testing.T) {
 		},
 		"summary that is not an object": {
 			handler: func(writer http.ResponseWriter, _ *http.Request) {
-				writeJSON(t, writer, map[string]any{"workout_summary": "x"})
+				writeJSON(t, writer, "x")
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
 			want: "summary was not valid json",
 		},
 		"summary without a file": {
 			handler: func(writer http.ResponseWriter, _ *http.Request) {
-				writeJSON(t, writer, map[string]any{"workout_summary": map[string]any{"id": 42}})
+				writeJSON(t, writer, map[string]any{"id": 42})
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
 			want: "did not contain a file url",
