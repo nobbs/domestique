@@ -4,7 +4,12 @@
  * bucket has to be named in the Content-Security-Policy's `connect-src`.
  */
 
-import { OmDataType, OmFileReader, OmHttpBackend } from "@openmeteo/file-reader";
+import {
+  LruBlockCache,
+  OmDataType,
+  type OmFileReader,
+  OmHttpBackendPool,
+} from "@openmeteo/file-reader";
 import type { Bbox, GridGeometry, ScalarGrid, WindGrid } from "../lib/windGrid";
 
 const BUCKET = "https://openmeteo.s3.amazonaws.com/data_spatial";
@@ -13,6 +18,18 @@ const MODEL = "dwd_icon_d2";
 const GRID = { lonMin: -3.94, latMin: 43.18, dx: 0.02, dy: 0.02, nx: 1215, ny: 746 } as const;
 /** Slices are cut on the file's 32-cell chunks, so a small pan re-reads nothing. */
 const CHUNK = 32;
+/**
+ * Reads go through aligned blocks rather than one range per chunk row: a
+ * variable is under half a megabyte for the whole domain, and a plain range
+ * backend spends twenty seconds on a hundred sequential requests for it.
+ */
+const BLOCK_BYTES = 256 * 1024;
+const BLOCKS_HELD = 64;
+
+// Module-wide on purpose: the cache is keyed by file, so both overlays and
+// every hour share it, and a slice read once is never fetched again.
+const backends = new OmHttpBackendPool();
+const blocks = new LruBlockCache(BLOCK_BYTES, BLOCKS_HELD);
 
 interface Latest {
   reference_time: string;
@@ -90,24 +107,20 @@ async function readSlices(
       ? candidate
       : best,
   );
-  const root = await OmFileReader.create(
-    new OmHttpBackend({ url: omUrl(new Date(latest.reference_time), validTime) }),
+  const url = omUrl(new Date(latest.reference_time), validTime);
+  const values = await backends.withReader(url, blocks, (root) =>
+    Promise.all(names.map((name) => readSlice(root, name, window))),
   );
-  try {
-    const values = await Promise.all(names.map((name) => readSlice(root, name, window)));
 
-    return {
-      lonMin: GRID.lonMin + window.x0 * GRID.dx,
-      latMin: GRID.latMin + window.y0 * GRID.dy,
-      dx: GRID.dx,
-      dy: GRID.dy,
-      nx: window.x1 - window.x0,
-      ny: window.y1 - window.y0,
-      values,
-    };
-  } finally {
-    root.dispose();
-  }
+  return {
+    lonMin: GRID.lonMin + window.x0 * GRID.dx,
+    latMin: GRID.latMin + window.y0 * GRID.dy,
+    dx: GRID.dx,
+    dy: GRID.dy,
+    nx: window.x1 - window.x0,
+    ny: window.y1 - window.y0,
+    values,
+  };
 }
 
 export async function fetchWindGrid(bbox: Bbox, at: Date): Promise<WindGrid | null> {
