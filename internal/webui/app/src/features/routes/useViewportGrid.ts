@@ -65,8 +65,9 @@ export function useViewportGrid<T>(
     };
   }, [map]);
 
-  // The hour on the clock, offset by however far ahead the reader has scrubbed.
-  const hourKey = Math.round(Date.now() / 3_600_000) + hoursAhead;
+  // Floored, not rounded: rounding would flip to the next hour at :30, jumping
+  // the fetched data — and the picker's own label — half an hour early.
+  const hourKey = Math.floor(Date.now() / 3_600_000) + hoursAhead;
   const bboxKey = bbox ? bbox.map((value) => Math.round(value * 10) / 10) : null;
   const grid = useQuery({
     queryKey: [key, hourKey, bboxKey],

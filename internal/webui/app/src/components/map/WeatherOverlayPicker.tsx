@@ -12,25 +12,16 @@
  * leaves one measure a step out of sync with another.
  */
 
-import type { IconProps } from "@tabler/icons-react";
-import { IconCloud, IconCloudRain, IconTemperature, IconWind } from "@tabler/icons-react";
-import type { ComponentType } from "react";
+import { IconCloud } from "@tabler/icons-react";
 import { Button } from "@/components/Button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
-import type { MeasureKey } from "../../lib/measures";
+import type { Measure, MeasureKey } from "../../lib/measures";
 
 /** The forecast horizon ICON-D2 publishes past its reference run. */
 export const MAX_HOURS_AHEAD = 48;
-
-const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
-  wind: IconWind,
-  temperature: IconTemperature,
-  rain: IconCloudRain,
-  cloud: IconCloud,
-};
 
 /**
  * What the hour scale reads: the weekday always, since a scale running past 24h
@@ -38,7 +29,9 @@ const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
  * midnight has no other way to tell which day they are looking at.
  */
 function hourLabel(hoursAhead: number): string {
-  const at = new Date(Math.round(Date.now() / 3_600_000 + hoursAhead) * 3_600_000);
+  // Floored to match `useViewportGrid`'s own hour key, so the label never
+  // names an hour half an hour ahead of the data actually fetched for it.
+  const at = new Date((Math.floor(Date.now() / 3_600_000) + hoursAhead) * 3_600_000);
   const when = at.toLocaleTimeString(undefined, {
     weekday: "short",
     hour: "2-digit",
@@ -49,7 +42,7 @@ function hourLabel(hoursAhead: number): string {
 }
 
 export interface WeatherOverlayPickerProps {
-  measures: readonly { key: MeasureKey; label: string }[];
+  measures: readonly Pick<Measure, "key" | "label" | "icon">[];
   selected: ReadonlySet<MeasureKey>;
   onToggle: (key: MeasureKey, on: boolean) => void;
   hoursAhead: number;
@@ -83,7 +76,7 @@ export function WeatherOverlayPicker({
       >
         <div className="grid gap-1">
           {measures.map((measure) => {
-            const Icon = MEASURE_ICON[measure.key];
+            const Icon = measure.icon;
             const itemID = `map-overlay-${measure.key}`;
 
             return (
