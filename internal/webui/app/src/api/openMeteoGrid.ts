@@ -1,7 +1,10 @@
 /**
  * Slices of Open-Meteo's spatial files for one hour, read straight from S3
- * with range requests. Nothing here goes through the service; the
- * bucket has to be named in the Content-Security-Policy's `connect-src`.
+ * with range requests. Nothing here goes through the service, so two things
+ * the service's Content-Security-Policy does not yet grant are needed before
+ * this works outside `ui-dev`: the bucket named in `connect-src`, and
+ * `'wasm-unsafe-eval'` in `script-src` for the reader's own WebAssembly
+ * module (`@openmeteo/file-reader`'s dependency on `@openmeteo/file-format-wasm`).
  */
 
 import {
