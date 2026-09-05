@@ -203,24 +203,34 @@ export function writeGridStreaks(
     const length = Math.hypot(headX - tailX, headY - tailY) || 1;
     const acrossX = (-(headY - tailY) / length) * halfWidth;
     const acrossY = ((headX - tailX) / length) * halfWidth;
-    const headLeft = [headX + acrossX, headY + acrossY] as const;
-    const headRight = [headX - acrossX, headY - acrossY] as const;
-    // Two triangles sharing the tail: a wedge, which is the taper for free.
-    const wedge: ReadonlyArray<readonly [number, number, number]> = [
-      [tailX, tailY, 0],
-      [headLeft[0], headLeft[1], alpha],
-      [headRight[0], headRight[1], alpha],
-      [tailX, tailY, 0],
-      [headRight[0], headRight[1], alpha],
-      [headLeft[0], headLeft[1], alpha],
-    ];
-    for (const [x, y, a] of wedge) {
-      const at = written * FLOATS_PER_VERTEX;
-      into[at] = x;
-      into[at + 1] = y;
-      into[at + 2] = a;
-      written += 1;
-    }
+    const headLeftX = headX + acrossX;
+    const headLeftY = headY + acrossY;
+    const headRightX = headX - acrossX;
+    const headRightY = headY - acrossY;
+    // Two triangles sharing the tail — a wedge, which is the taper for free —
+    // written straight into the buffer: at up to 2,500 particles a frame, an
+    // array of tuples here would be that many heap allocations sixty times a
+    // second, for a shape fixed enough to lay out by hand.
+    const at = written * FLOATS_PER_VERTEX;
+    into[at] = tailX;
+    into[at + 1] = tailY;
+    into[at + 2] = 0;
+    into[at + 3] = headLeftX;
+    into[at + 4] = headLeftY;
+    into[at + 5] = alpha;
+    into[at + 6] = headRightX;
+    into[at + 7] = headRightY;
+    into[at + 8] = alpha;
+    into[at + 9] = tailX;
+    into[at + 10] = tailY;
+    into[at + 11] = 0;
+    into[at + 12] = headRightX;
+    into[at + 13] = headRightY;
+    into[at + 14] = alpha;
+    into[at + 15] = headLeftX;
+    into[at + 16] = headLeftY;
+    into[at + 17] = alpha;
+    written += GRID_VERTICES_PER_STREAK;
   }
 
   return written;
