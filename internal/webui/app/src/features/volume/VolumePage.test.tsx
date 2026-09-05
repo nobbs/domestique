@@ -11,12 +11,27 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activitiesQuery } from "../../api/queries";
-import type { Activity } from "../../api/types";
+import { activitiesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
+import type { Activity, Status, WebUIConfig } from "../../api/types";
 import { windowStart } from "../../lib/volume";
 import { VolumePage } from "./VolumePage";
 
 const NOW = new Date(2026, 8, 5, 12); // Saturday 5 September 2026
+
+// A zone well away from the test runner's own, so a test that reads the
+// config's zone rather than the browser's fails loudly.
+const CONFIG_ZONE = "Pacific/Auckland";
+
+function config(): WebUIConfig {
+  return {
+    basemaps: [
+      { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
+    ],
+    sourceBaseUrls: {},
+    timezone: CONFIG_ZONE,
+    identity: { display: "rider@example.test", admin: false },
+  };
+}
 
 function activity(startedAt: Date, overrides: Partial<Activity> = {}): Activity {
   return {
@@ -40,8 +55,9 @@ function show(activities: Activity[] | null = ACTIVITIES) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
+  client.setQueryData(webUIConfigQuery().queryKey, config());
   if (activities) {
-    client.setQueryData(activitiesQuery(windowStart()).queryKey, activities);
+    client.setQueryData(activitiesQuery(windowStart(CONFIG_ZONE)).queryKey, activities);
   }
   render(
     <QueryClientProvider client={client}>
@@ -65,6 +81,7 @@ describe("the volume page", () => {
     expect(screen.getByText("60.0 km")).toBeInTheDocument();
     expect(screen.getByText("2 h")).toBeInTheDocument();
     expect(screen.getByText("600 m")).toBeInTheDocument();
+    expect(screen.queryByText(/browser's time zone/)).not.toBeInTheDocument();
   });
 
   it("counts by month once the reader asks for months", async () => {
@@ -103,6 +120,50 @@ describe("the volume page", () => {
     expect(
       await screen.findByText("The service did not say what has been ridden."),
     ).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to the browser zone and says so when the config fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: { code: "unavailable" } }), { status: 503 }),
+      ),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+    // Seeded so the menu bar's own status query does not also reach the
+    // stubbed fetch; only the config query is left to fail.
+    const status: Status = {
+      ready: true,
+      converged: true,
+      targets: [],
+      sync: {
+        state: "idle",
+        sourceRoutes: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        phases: {},
+        surface: { classified: 0, total: 0, incomplete: 0, enrichmentFailures: 0 },
+      },
+    };
+    client.setQueryData(statusQuery().queryKey, status);
+    client.setQueryData(
+      activitiesQuery(windowStart(Intl.DateTimeFormat().resolvedOptions().timeZone)).queryKey,
+      [],
+    );
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <VolumePage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Periods follow this browser's time zone")).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 });

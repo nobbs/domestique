@@ -64,6 +64,7 @@ function config(): WebUIConfig {
   return {
     basemaps: [],
     sourceBaseUrls: {},
+    timezone: "Europe/Berlin",
     identity: { display: "alexej.disterhoft@example.test", admin: false },
   };
 }

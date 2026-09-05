@@ -86,6 +86,7 @@ function withStatus(value?: Status): NonNullable<Meta<typeof MenuBar>["decorator
 const CONFIG: WebUIConfig = {
   basemaps: [],
   sourceBaseUrls: {},
+  timezone: "Europe/Berlin",
   identity: { display: "rider@example.test", admin: false },
 };
 

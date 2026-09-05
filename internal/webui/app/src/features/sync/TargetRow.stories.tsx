@@ -10,6 +10,7 @@ import { TargetRow } from "./TargetRow";
 const config: WebUIConfig = {
   basemaps: [],
   sourceBaseUrls: {},
+  timezone: "Europe/Berlin",
   identity: { display: "admin@example.test", admin: true },
 };
 

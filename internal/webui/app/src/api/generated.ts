@@ -509,6 +509,8 @@ export interface WebUIConfig {
   /** @minItems 1 */
   basemaps: BrowserBasemap[];
   sourceBaseUrls?: SourceBaseUrls;
+  /** The IANA zone the service reads local time in. */
+  timezone: string;
   identity: BrowserIdentity;
 }
 

@@ -144,6 +144,7 @@ function renderPage(
       { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
     ],
     sourceBaseUrls: {},
+    timezone: "Europe/Berlin",
     identity: { display: "rider@example.test", admin: false },
   });
   client.setQueryData(statusQuery().queryKey, {

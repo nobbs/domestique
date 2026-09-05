@@ -10,6 +10,7 @@ function config(basemaps: WebUIConfig["basemaps"]): WebUIConfig {
   return {
     basemaps,
     sourceBaseUrls: {},
+    timezone: "Europe/Berlin",
     identity: { display: "rider@example.test" },
   } as WebUIConfig;
 }
