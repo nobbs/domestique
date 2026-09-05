@@ -42,6 +42,8 @@ export function useViewportGrid<T>(
   key: string,
   on: boolean,
   read: (bbox: Bbox, at: Date) => Promise<T | null>,
+  /** Hours ahead of the current hour to read, for a reader scrubbing the forecast forward. */
+  hoursAhead = 0,
 ): ViewportGrid<T> {
   const { current: map } = useMap();
   const [bbox, setBbox] = useState<Bbox | null>(null);
@@ -63,8 +65,8 @@ export function useViewportGrid<T>(
     };
   }, [map]);
 
-  // The hour on the clock, which is what "now" means to a reader.
-  const hourKey = Math.round(Date.now() / 3_600_000);
+  // The hour on the clock, offset by however far ahead the reader has scrubbed.
+  const hourKey = Math.round(Date.now() / 3_600_000) + hoursAhead;
   const bboxKey = bbox ? bbox.map((value) => Math.round(value * 10) / 10) : null;
   const grid = useQuery({
     queryKey: [key, hourKey, bboxKey],

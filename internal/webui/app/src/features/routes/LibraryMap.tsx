@@ -9,11 +9,10 @@ import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { OverlayToggle } from "../../components/map/OverlayToggle";
+import { WeatherOverlayPicker } from "../../components/map/WeatherOverlayPicker";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { MEASURES, type MeasureKey } from "../../lib/measures";
 import type { Insets } from "../../lib/overlayInsets";
-import { MEASURE_ICON } from "./ConditionsPicker";
 import {
   LIBRARY_HIT_LAYER,
   LIBRARY_LINE_LAYER,
@@ -78,7 +77,9 @@ export function LibraryMap({
 }: LibraryMapProps) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [weatherPickerOpen, setWeatherPickerOpen] = useState(false);
   const [overlays, setOverlays] = useState<ReadonlySet<MeasureKey>>(new Set());
+  const [hoursAhead, setHoursAhead] = useState(0);
   const toggleOverlay = (key: MeasureKey, on: boolean) =>
     setOverlays((current) => {
       const next = new Set(current);
@@ -127,20 +128,15 @@ export function LibraryMap({
                   onExpandedChange={setPickerOpen}
                 />
               ) : null}
-              {MEASURES.map((measure) => {
-                const Icon = MEASURE_ICON[measure.key];
-
-                return (
-                  <OverlayToggle
-                    key={measure.key}
-                    on={overlays.has(measure.key)}
-                    onChange={(on) => toggleOverlay(measure.key, on)}
-                    icon={<Icon stroke={1.6} />}
-                    subject={measure.label.toLowerCase()}
-                    title={`${measure.label} now, from ICON-D2`}
-                  />
-                );
-              })}
+              <WeatherOverlayPicker
+                measures={MEASURES}
+                selected={overlays}
+                onToggle={toggleOverlay}
+                hoursAhead={hoursAhead}
+                onHoursAheadChange={setHoursAhead}
+                expanded={weatherPickerOpen}
+                onExpandedChange={setWeatherPickerOpen}
+              />
             </MapControls>
           </>
         }
@@ -161,10 +157,15 @@ export function LibraryMap({
             measure={measure}
             variable={variable}
             on={overlays.has(measure.key)}
+            hoursAhead={hoursAhead}
             beforeId={LIBRARY_LINE_LAYER}
           />
         ))}
-        <WindOverlay on={overlays.has("wind")} beforeId={LIBRARY_LINE_LAYER} />
+        <WindOverlay
+          on={overlays.has("wind")}
+          hoursAhead={hoursAhead}
+          beforeId={LIBRARY_LINE_LAYER}
+        />
         {children}
       </MapWidget>
     </CartographyProvider>

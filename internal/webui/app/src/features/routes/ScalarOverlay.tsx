@@ -33,12 +33,20 @@ export interface ScalarOverlayProps {
   /** The model's name for the measure's variable, in the units `measure.band` takes. */
   variable: string;
   on: boolean;
+  /** Hours ahead of the current hour the reader has scrubbed the overlay to. */
+  hoursAhead?: number;
   beforeId?: string | undefined;
 }
 
-export function ScalarOverlay({ measure, variable, on, beforeId }: ScalarOverlayProps) {
+export function ScalarOverlay({
+  measure,
+  variable,
+  on,
+  hoursAhead = 0,
+  beforeId,
+}: ScalarOverlayProps) {
   const { dark } = useCartography();
-  const { data } = useViewportGrid(`${variable}-grid`, on, scalarGridReader(variable));
+  const { data } = useViewportGrid(`${variable}-grid`, on, scalarGridReader(variable), hoursAhead);
 
   const image = useMemo(() => {
     if (!data || typeof document === "undefined") {

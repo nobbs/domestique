@@ -38,6 +38,8 @@ const MAX_FRAME_SECONDS = 0.1;
 
 export interface WindOverlayProps {
   on: boolean;
+  /** Hours ahead of the current hour the reader has scrubbed the overlay to. */
+  hoursAhead?: number;
   /** The layer the streaks go beneath, so they never cover a route. */
   beforeId?: string | undefined;
 }
@@ -52,12 +54,12 @@ function mercatorPerPixelAt(zoom: number): number {
   return 1 / (512 * 2 ** zoom);
 }
 
-export function WindOverlay({ on, beforeId }: WindOverlayProps) {
+export function WindOverlay({ on, hoursAhead = 0, beforeId }: WindOverlayProps) {
   const { dark: darkBasemap } = useCartography();
   const { current: map } = useMap();
   const reducedMotion = usePrefersReducedMotion();
   const wanted = on && !reducedMotion;
-  const { data, bboxRef } = useViewportGrid("wind-grid", wanted, fetchWindGrid);
+  const { data, bboxRef } = useViewportGrid("wind-grid", wanted, fetchWindGrid, hoursAhead);
   // What the frame loop reads: a ref, so a fresh grid changes what the
   // particles drift through without stopping the loop or reseeding them.
   const gridRef = useRef<WindGrid | null>(null);
