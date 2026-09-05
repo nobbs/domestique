@@ -15,7 +15,8 @@
  *
  * Each of these is a WebGL context, which browsers ration at around sixteen.
  * They exist only while the list is open, and the list stops drawing them past
- * the handful an operator would plausibly configure — see `BasemapPicker`.
+ * the handful an operator would plausibly configure — see `BasemapPicker` and
+ * the settings page, which draws the strips the same way.
  */
 
 import { Map as MapLibre, useMap } from "react-map-gl/maplibre";
@@ -56,13 +57,40 @@ export function BasemapPreview({ styleUrl, selected }: BasemapPreviewProps) {
 
   return (
     <span aria-hidden="true" className={`size-16 overflow-hidden rounded-lg ring-2 ${edge}`}>
-      <MapLibre
-        attributionControl={false}
-        initialViewState={PREVIEW_VIEW}
-        interactive={false}
-        mapStyle={styleUrl}
-        style={{ width: "100%", height: "100%" }}
-      />
+      <PreviewMap styleUrl={styleUrl} />
     </span>
+  );
+}
+
+/**
+ * The same view as a wide strip, for the settings page: there is no map beside
+ * it there, and the row it sits in already says which basemap it shows.
+ */
+export function BasemapStrip({
+  styleUrl,
+  className = "",
+}: {
+  styleUrl: string;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`block h-40 overflow-hidden rounded-lg ring-1 ring-[var(--rule)] ${className}`}
+    >
+      <PreviewMap styleUrl={styleUrl} />
+    </span>
+  );
+}
+
+function PreviewMap({ styleUrl }: { styleUrl: string }) {
+  return (
+    <MapLibre
+      attributionControl={false}
+      initialViewState={PREVIEW_VIEW}
+      interactive={false}
+      mapStyle={styleUrl}
+      style={{ width: "100%", height: "100%" }}
+    />
   );
 }
