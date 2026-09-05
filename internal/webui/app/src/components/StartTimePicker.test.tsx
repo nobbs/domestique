@@ -218,6 +218,25 @@ describe("StartTimePicker", () => {
     expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
   });
 
+  it("proposes a completed time once, however many events report it", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    const field = timeField();
+    field.value = "08:30";
+    // One completed edit, reported by every event a browser might send, and
+    // the parent has yet to re-render with what the first of them proposed —
+    // so `value` is not what can tell the rest they are repeats.
+    fireEvent.keyUp(field, { key: "0" });
+    fireEvent.change(field, { target: { value: "08:30" } });
+    fireEvent.blur(field);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
   it("says a half-typed time is half typed rather than sitting silent", async () => {
     const onChange = vi.fn();
     render(<StartTimePicker value={null} onChange={onChange} />);

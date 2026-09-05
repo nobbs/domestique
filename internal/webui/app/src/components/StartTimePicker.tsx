@@ -20,7 +20,7 @@
  */
 
 import { IconCalendar } from "@tabler/icons-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -94,6 +94,13 @@ export function StartTimePicker({
    * can only be changed.
    */
   const [pendingDay, setPendingDay] = useState<Date | null>(null);
+  /*
+   * The last departure proposed, so one completed edit stays one proposal.
+   * The events overlap — a browser reports the keystroke that finishes a time
+   * as an input and a keyup both — and `value` cannot tell the second event it
+   * is a repeat while the render carrying it has yet to arrive.
+   */
+  const proposed = useRef<number | null>(null);
   const now = new Date();
   /*
    * The window's own edges carry a time of day, and a calendar offers days.
@@ -123,6 +130,7 @@ export function StartTimePicker({
       return;
     }
     setRefusal(null);
+    proposed.current = next.getTime();
     onChange(next);
   };
 
@@ -146,10 +154,10 @@ export function StartTimePicker({
     }
     const next = new Date(day);
     next.setHours(hours, minutes ?? 0, 0, 0);
-    // Where both events do arrive, the second says nothing the first did not:
-    // every focus and blur of an untouched field would otherwise hand the page
-    // a fresh Date and re-render everything hanging off the departure.
-    if (value !== null && next.getTime() === value.getTime()) {
+    // A repeat says nothing the first report did not: every focus and blur of
+    // an untouched field would otherwise hand the page a fresh Date and
+    // re-render everything hanging off the departure.
+    if (next.getTime() === proposed.current || next.getTime() === value?.getTime()) {
       return;
     }
     propose(next);
