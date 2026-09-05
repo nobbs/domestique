@@ -497,10 +497,22 @@ func (p *rideModelProvider) reload(ctx context.Context, settings *runtimeconfig.
 	if path != "" {
 		coefficients, err := ridemodel.Load(path)
 		if err != nil {
+			// A file that will not load leaves no prediction standing: the pair
+			// they were priced with is unknown, so cached durations go too.
+			if pruneErr := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, ""); pruneErr != nil {
+				return fmt.Errorf("pruning stale ride model predictions: %w", pruneErr)
+			}
+			if clearErr := p.store.ClearStageDurationFailures(ctx); clearErr != nil {
+				return fmt.Errorf("clearing stale ride model failures: %w", clearErr)
+			}
+			// Not marked loaded: the next reload tries the file again, so a fixed
+			// file is picked up without a restart.
+			p.predictor, p.validation, p.loaded = nil, nil, false
+
 			return fmt.Errorf("loading ride model coefficients: %w", err)
 		}
 		fingerprint = coefficients.Fingerprint
-		predictor = ridemodel.NewPredictor(p.store, p.store, coefficients)
+		predictor = ridemodel.NewPredictor(p.store, coefficients)
 		if coefficients.HasValidation() {
 			validation = &httpapi.RideModelValidation{
 				BiasPercent:    coefficients.BiasPercent,

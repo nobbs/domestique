@@ -103,7 +103,7 @@ owns a distinct responsibility in this tree.
 | elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
 | surface | OSM surface and tracktype classification, snapping a route to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a route | classification rules, SQL of the state store, what a route is |
-| ridemodel | the hybrid coefficient type and its loading, the forward model — fixed physics averaged with a rides-calibrated route correction — that turns a route's geometry into a predicted moving time, caching that prediction against geometry, surface, and coefficient fingerprints | calibrating the route correction from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a route's surface is classified |
+| ridemodel | the calibrated coefficient pair and its loading, the forward model — distance and ascent priced by those two terms — that turns a route's geometry into a predicted moving time, caching that prediction against geometry and coefficient fingerprints | calibrating the coefficients from a ride corpus (`dev/fitter`'s job), SQL, HTTP routing, how a route's surface is classified |
 | activity | decoded activity FIT values and their validation, and polling a target's activity summaries into the store | SQL, Wahoo URLs, OAuth, scheduling, HTTP routing |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
@@ -270,21 +270,18 @@ theme and zoom are not, and no endpoint accepts them.
 ### Predicted moving time
 
 A route's predicted moving time is computed in `internal/ridemodel`, once, and
-stored on `Summary`, in the manner of surface classification. It depends on
-rider mass and sustained power, which the rule above places in the browser.
+stored on `Summary`, in the manner of surface classification: the route's
+distance and its ascent, each priced by one calibrated coefficient.
 
 It belongs to Go because there is exactly one answer per route to store. The
-inputs come from one configured hybrid profile — fixed physical priors averaged
-with a route correction calibrated once against a corpus of recorded rides —
-rather than from a value each reader supplies.
+inputs come from one configured profile, calibrated once against a corpus of
+recorded rides, rather than from a value each reader supplies. Two coefficients
+are all the corpus can identify, and the ground classification is not among the
+prediction's inputs.
 
 No endpoint accepts a rider-shaped value. The profile arrives as a setting
 naming a file on the host, `ridemodel.coefficients_file`, never as a request
 field.
-
-Drag, rolling resistance and power are settled reference values rather than
-values fitted per deployment; a two-parameter route correction carries what the
-corpus can identify.
 
 The same boundary holds for the profile's measured unseen-route error.
 `internal/httpapi` reads it once, straight off the loaded

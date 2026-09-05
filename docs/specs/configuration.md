@@ -440,15 +440,11 @@ on disk, both of which are released when it finishes.
 ### Ride model
 
 `ridemodel.coefficients_file` is a path on the host, and the one setting here
-that names something outside the database. It names the hybrid profile the
-offline benchmark tooling emits:
+that names something outside the database. It names the profile the offline
+benchmark tooling emits:
 
 ```toml
 calibration_cutoff = "2025-08-01"
-mass_kg = 90.0
-power_watts = 180.0
-cda_m2 = 0.45
-crr = 0.012
 seconds_per_km = 145.3578
 seconds_per_ascent_m = 3.2190
 evaluated_rides = 42
@@ -483,19 +479,15 @@ fit from, so a quiet season narrows the training set instead of emptying it.
 Twelve months is the default, the shortest span covering a full year of weather
 and daylight.
 
-The predicted moving time is a weighted average of fixed physics and a
-two-parameter route correction, `seconds_per_km` and `seconds_per_ascent_m`,
-calibrated against the route-disjoint rolling-origin protocol above. The physics
-half carries a quarter of the blend and the route correction the remaining three
-quarters. The physics share is not zero: the linear half cannot tell 200 m of
-climbing up a single wall from 200 m spread over rolling ground, and only the
-physics half can.
+The predicted moving time is the two calibrated terms, `seconds_per_km` and
+`seconds_per_ascent_m`, priced against a route's distance and ascent and fitted
+under the route-disjoint rolling-origin protocol above. Nothing else varies: a
+file written for the earlier hybrid model still loads, and the physics keys it
+carries are ignored.
 
-Mass, power, drag area and rolling resistance stay per-file; they vary with the
-rider and the bike. The blend weight, drivetrain efficiency, standard air
-density, and the descent cap do not appear in the file at all. They are fixed
-constants a code upgrade can change, and such an upgrade invalidates a cached
-prediction even when the operator's file is unchanged.
+The equation itself is versioned in code rather than in the file, and a change
+to it invalidates a cached prediction even when the operator's file is
+unchanged.
 
 The service reads the file when the setting names one and computes a predicted
 moving time per route from it, in the manner surface classification is computed.
@@ -506,15 +498,14 @@ where that computation belongs.
 The default is **no file**, which switches prediction off entirely: no
 coefficient is loaded, no route carries a predicted time, and the routes
 endpoints omit the field rather than reporting zero. When set, the path must be
-absolute, and the file is read and validated for physical plausibility rather
-than merely parsed. A path that will not load leaves the routes that would have
+absolute, and the file is read and validated rather than merely parsed. A path that will not load leaves the routes that would have
 carried a prediction without one. It does not substitute a guess, and it does
 not stop the service; the file lives on the host, and the setting that names it
 is edited from a browser that cannot see whether it is there.
 
 Unlike the state key, the only other file this specification names,
-`coefficients_file` is **not a secret**. It carries physical constants and a
-rides-calibrated correction, and no route data, no credential, and no personal
+`coefficients_file` is **not a secret**. It carries a rides-calibrated
+coefficient pair, and no route data, no credential, and no personal
 information. It is a plain path like `surface.regions`' extracts, and the
 settings endpoint serves it back the way it serves any other setting.
 

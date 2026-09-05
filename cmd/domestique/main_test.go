@@ -497,10 +497,6 @@ func TestRideModelSurfacesValidationFromAFileThatHasIt(t *testing.T) {
 	path := filepath.Join(directory, "ridemodel.toml")
 	document := `
 calibration_cutoff = "2025-08-01"
-mass_kg = 90.0
-power_watts = 180.0
-cda_m2 = 0.45
-crr = 0.012
 seconds_per_km = 145.3578
 seconds_per_ascent_m = 3.2190
 evaluated_rides = 42
@@ -522,14 +518,14 @@ p90_percent = 14.10
 	assert.InDelta(t, 14.10, validation.P90Percent, 1e-9, "P90Percent")
 }
 
-// A malformed or physically implausible file leaves nothing loaded: the service
-// refuses to serve a prediction it cannot stand behind.
+// A malformed or implausible file leaves nothing loaded: the service refuses to
+// serve a prediction it cannot stand behind.
 func TestRideModelRefusesAnImplausibleFile(t *testing.T) {
 	t.Parallel()
 
 	directory := t.TempDir()
 	path := filepath.Join(directory, "ridemodel.toml")
-	require.NoError(t, os.WriteFile(path, []byte("mass_kg = 1.0\n"), 0o600), "writing coefficient file")
+	require.NoError(t, os.WriteFile(path, []byte("seconds_per_km = -1.0\n"), 0o600), "writing coefficient file")
 	store := testStore(t, directory)
 	provider := newRideModelProvider(store)
 
@@ -598,10 +594,6 @@ func writeTestCoefficients(t *testing.T, directory string) string {
 	path := filepath.Join(directory, "ridemodel.toml")
 	const document = `
 calibration_cutoff = "2025-08-01"
-mass_kg = 90.0
-power_watts = 180.0
-cda_m2 = 0.45
-crr = 0.012
 seconds_per_km = 145.3578
 seconds_per_ascent_m = 3.2190
 `
@@ -658,4 +650,23 @@ func TestConfiguredStyleURLsCoversBothColourSchemes(t *testing.T) {
 		"https://imagery.example.test/satellite",
 	}, styles, "the styles a browser may load")
 	assert.Empty(t, configuredStyleURLs(nil), "an unconfigured list")
+}
+
+// A file that will not load must not leave the previous pair's predictions
+// being served: nothing else would notice they no longer match anything.
+func TestRideModelPrunesPredictionsWhenTheFileWillNotLoad(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	seconds := 123.0
+	require.NoError(t, store.StoreStageDuration(
+		t.Context(), route.ProviderVeloPlanner, 1, 1, "hash", "", "an-earlier-fingerprint", &seconds, nil,
+	))
+	provider := newRideModelProvider(store)
+
+	require.Error(t, provider.reload(t.Context(), rideModelSettings(t, store, filepath.Join(t.TempDir(), "missing.toml"))))
+	assert.Nil(t, provider.current())
+	_, _, _, found, err := store.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
+	require.NoError(t, err)
+	assert.False(t, found, "the stale prediction must be gone")
 }

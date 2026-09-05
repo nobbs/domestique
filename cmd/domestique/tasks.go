@@ -241,13 +241,9 @@ func inventoryTasks(
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				failed, err := reporter.Annotate(ctx)
 				if err != nil {
-					// Stopped early, not just partial: worth predicting over
-					// whatever it did manage, same as a partial classification.
 					return task.Result{Outcome: task.Failed, Detail: detailStoppedEarly, Advances: true}
 				}
 				if failed > 0 {
-					// A partial classification is still worth predicting over:
-					// prediction falls back to asphalt for unclassified ground.
 					return task.Result{Outcome: task.Failed, Detail: detailIncomplete, Advances: true}
 				}
 
@@ -257,7 +253,7 @@ func inventoryTasks(
 		{
 			Name:      taskRideModelPredict,
 			Resources: inventory,
-			Follows:   []string{taskSurfaceAnnotate},
+			Follows:   []string{taskSyncSource},
 			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				failed, err := reporter.Predict(ctx)

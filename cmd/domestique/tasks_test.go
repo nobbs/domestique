@@ -527,7 +527,7 @@ func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 		"what classification follows")
 
 	predict := definitionNamed(t, definitions, taskRideModelPredict)
-	assert.Equal(t, []string{taskSurfaceAnnotate}, predict.Follows, "what prediction follows")
+	assert.Equal(t, []string{taskSyncSource}, predict.Follows, "what prediction follows")
 }
 
 func alwaysOn() bool { return true }

@@ -12,7 +12,6 @@ import (
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
-	"github.com/nobbs/domestique/internal/surface"
 )
 
 const (
@@ -29,12 +28,7 @@ const (
 	// modelVersionLabel mirrors internal/ridemodel/model.go's unexported
 	// modelVersion constant, for display only: this package never loads or
 	// computes it, it just needs the same label on the profile it prints.
-	modelVersionLabel = "hybrid-v2"
-	// physicsOnlyScaleFactor recovers the physics-only prediction from Predict's
-	// own blend: with route coefficients zeroed, a segment's blended time is
-	// hybridPhysicsWeight of its physics time. It must stay that constant's
-	// reciprocal; TestPhysicsOnlyScaleFactorInvertsTheBlendWeight catches a drift.
-	physicsOnlyScaleFactor = 4.0
+	modelVersionLabel = "linear-v1"
 	// maxMissingGeometryFraction is how much of a ride's moving time may come
 	// from samples missing altitude or position (a GPS/barometer dropout)
 	// before the ride is unscorable here.
@@ -97,7 +91,7 @@ type recalibration struct {
 // runETABenchmark implements the repeat protocol: by default it evaluates the
 // loaded, frozen profile against rides after its own calibration_cutoff, and
 // under -recalibrate walks a monthly origin across the corpus, refitting the two
-// route coefficients per fold. The hybrid model calls ridemodel.Predict directly.
+// route coefficients per fold. The linear model calls ridemodel.Predict directly.
 func runETABenchmark(
 	groups []rideGroup, rides []rideRow, samplesByRide map[string][]sampleRow,
 	coefficients *ridemodel.Coefficients, cfg *runConfig,
@@ -148,7 +142,7 @@ func runETABenchmark(
 				continue
 			}
 			printRecalibration(&report, &eval)
-			printCopyReadyProfile(&report, coefficients, &eval)
+			printCopyReadyProfile(&report, &eval)
 
 			continue
 		}
@@ -235,20 +229,14 @@ func printModelMetrics(report *strings.Builder, eval *splitEvaluation) {
 	fmt.Fprintf(report, "  lowest MAE: %s (%.2f%%)\n", bestName, bestMAE)
 }
 
-// printCandidateComparison reports the hybrid model against the physics-only
-// and route-only diagnostics the issue's "Keep" list names, so a reader can
-// see whether the hybrid is earning its blend rather than being carried by
-// one half.
+// printCandidateComparison reports the model as Predict computes it against the
+// route-only arithmetic diagnostic, so a reader can see the two agree.
 func printCandidateComparison(report *strings.Builder, eval *splitEvaluation) {
-	candidate := eval.errorsByModel["hybrid"]
+	candidate := eval.errorsByModel["linear"]
 	if len(candidate) == 0 {
 		return
 	}
-	fmt.Fprintln(report, "  hybrid vs diagnostic baselines (positive is the hybrid doing better):")
-	if physicsOnly := eval.errorsByModel["physics-only"]; len(physicsOnly) > 0 {
-		improvement, low, high := pairedMAEImprovement(physicsOnly, candidate)
-		fmt.Fprintf(report, "    vs physics-only   %+6.2f pp  95%% bootstrap [%+6.2f, %+6.2f]\n", improvement, low, high)
-	}
+	fmt.Fprintln(report, "  linear vs diagnostic baselines (positive is the linear model doing better):")
 	if routeOnly := eval.errorsByModel["route-only"]; len(routeOnly) > 0 {
 		improvement, low, high := pairedMAEImprovement(routeOnly, candidate)
 		fmt.Fprintf(report, "    vs route-only     %+6.2f pp  95%% bootstrap [%+6.2f, %+6.2f]\n", improvement, low, high)
@@ -256,21 +244,17 @@ func printCandidateComparison(report *strings.Builder, eval *splitEvaluation) {
 }
 
 // printCopyReadyProfile prints the values an operator pastes into ridemodel.toml
-// after a requested recalibration: the fitted route coefficients, the unchanged
-// physics inputs, the window and cutoff bounding their data, and the pooled
-// out-of-sample error. Those metrics measure the procedure, not these numbers.
-func printCopyReadyProfile(report *strings.Builder, coefficients *ridemodel.Coefficients, eval *recalibration) {
-	candidate := eval.errorsByModel["hybrid"]
+// after a requested recalibration: the fitted coefficients, the window and
+// cutoff bounding their data, and the pooled out-of-sample error. Those metrics
+// measure the procedure, not these numbers.
+func printCopyReadyProfile(report *strings.Builder, eval *recalibration) {
+	candidate := eval.errorsByModel["linear"]
 	if len(candidate) == 0 {
 		return
 	}
 	metrics := summarizeBenchmarkErrors(candidate)
 	fmt.Fprintf(report, "  copy-ready profile (%s):\n", modelVersionLabel)
 	fmt.Fprintf(report, "    calibration_cutoff = \"%s\"\n", eval.calibrationCutoff.Format(time.DateOnly))
-	fmt.Fprintf(report, "    mass_kg = %.1f\n", coefficients.MassKG)
-	fmt.Fprintf(report, "    power_watts = %.0f\n", coefficients.PowerWatts)
-	fmt.Fprintf(report, "    cda_m2 = %.2f\n", coefficients.CdAM2)
-	fmt.Fprintf(report, "    crr = %.3f\n", coefficients.CrrBySurface[surface.KindAsphalt])
 	fmt.Fprintf(report, "    seconds_per_km = %.4f\n", eval.secondsPerKM)
 	fmt.Fprintf(report, "    seconds_per_ascent_m = %.4f\n", eval.secondsPerAscentM)
 	fmt.Fprintf(report, "    evaluated_rides = %d\n", metrics.rides)
@@ -542,51 +526,33 @@ func fitRouteCoefficients(train []rideRow, samplesByRide map[string][]sampleRow)
 	return secondsPerKM, secondsPerAscentM, nil
 }
 
-// benchmarkModels builds the three models every evaluation scores from one
-// coefficient set: the production hybrid and the two halves it blends, so a
-// reader can see whether the hybrid is earning its blend.
+// benchmarkModels builds the models every evaluation scores from one
+// coefficient set: the production predictor and the arithmetic diagnostic it
+// should agree with.
 func benchmarkModels(coefficients *ridemodel.Coefficients) []benchmarkModel {
 	return []benchmarkModel{
-		physicsOnlyModel(coefficients),
 		routeOnlyModel(coefficients.SecondsPerKM, coefficients.SecondsPerAscentM),
-		hybridModel(coefficients),
+		linearModel(coefficients),
 	}
 }
 
-// hybridModel is the exact production predictor: internal/ridemodel.Predict,
+// linearModel is the exact production predictor: internal/ridemodel.Predict,
 // called directly with the loaded (or recalibrated) coefficients. Never a
 // second implementation of the equation.
-func hybridModel(coefficients *ridemodel.Coefficients) benchmarkModel {
+func linearModel(coefficients *ridemodel.Coefficients) benchmarkModel {
 	return benchmarkModel{
-		name:   "hybrid",
+		name:   "linear",
 		detail: fmt.Sprintf("%.4f s/km + %.4f s/m", coefficients.SecondsPerKM, coefficients.SecondsPerAscentM),
 		predict: func(samples []sampleRow) float64 {
-			return predictHybrid(samples, coefficients)
+			return predictLinear(samples, coefficients)
 		},
 	}
 }
 
-// physicsOnlyModel isolates the hybrid's physics half by zeroing the route
-// coefficients and doubling internal/ridemodel.Predict's own output — see
-// physicsOnlyScaleFactor's doc comment. Still the real equation, not a copy
-// of it.
-func physicsOnlyModel(coefficients *ridemodel.Coefficients) benchmarkModel {
-	physicsOnly := *coefficients
-	physicsOnly.SecondsPerKM, physicsOnly.SecondsPerAscentM = 0, 0
-
-	return benchmarkModel{
-		name:   "physics-only",
-		detail: fmt.Sprintf("CdA %.2f, %.0f W", coefficients.CdAM2, coefficients.PowerWatts),
-		predict: func(samples []sampleRow) float64 {
-			return physicsOnlyScaleFactor * predictHybrid(samples, &physicsOnly)
-		},
-	}
-}
-
-// routeOnlyModel is the linear route correction alone, with no physics
-// contribution at all — a pure arithmetic diagnostic, never routed through
-// internal/ridemodel.Predict, since Predict has no way to weight the physics
-// half at zero.
+// routeOnlyModel is the same linear terms applied to a ride's total distance
+// and ascent — a pure arithmetic diagnostic, never routed through
+// internal/ridemodel.Predict, so a per-segment accumulation bug shows up as a
+// disagreement with it.
 func routeOnlyModel(secondsPerKM, secondsPerAscentM float64) benchmarkModel {
 	return benchmarkModel{
 		name:   "route-only",
@@ -599,13 +565,13 @@ func routeOnlyModel(secondsPerKM, secondsPerAscentM float64) benchmarkModel {
 	}
 }
 
-func predictHybrid(samples []sampleRow, coefficients *ridemodel.Coefficients) float64 {
+func predictLinear(samples []sampleRow, coefficients *ridemodel.Coefficients) float64 {
 	stage, ok := normalizedRideStage(samples)
 	if !ok {
 		return 0
 	}
 
-	result, ok := ridemodel.Predict(stage.Geometry(), nil, *coefficients)
+	result, ok := ridemodel.Predict(stage.Geometry(), *coefficients)
 	if !ok {
 		return 0
 	}

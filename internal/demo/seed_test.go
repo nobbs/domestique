@@ -130,7 +130,7 @@ func TestSeedStoresAPredictedDurationForAFullyElevatedStage(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, stage.ContentHash(), contentHash)
-	assert.NotEmpty(t, surfaceGeneration)
+	assert.Empty(t, surfaceGeneration)
 	assert.NotEmpty(t, coefficientFingerprint)
 }
 

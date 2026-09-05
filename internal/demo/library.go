@@ -257,9 +257,8 @@ func Classifications(stages []route.Route) ([]Classification, error) {
 }
 
 // stageSurfaceKinds returns each stage's per-point surface class, aligned with
-// stages. A stage with no bands reports nil: Classifications skips it as
-// unclassified, and ridemodel.Predict falls back to asphalt throughout. It exists
-// so both readers assign per-point bands the same way.
+// stages. A stage with no bands reports nil, which Classifications skips as
+// unclassified.
 func stageSurfaceKinds(stages []route.Route) [][]surface.Kind {
 	specs := specs()
 	kinds := make([][]surface.Kind, len(stages))

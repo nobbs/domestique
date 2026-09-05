@@ -9,7 +9,6 @@ import (
 
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
-	"github.com/nobbs/domestique/internal/surface"
 )
 
 // State is what seeding needs from the state database. It is declared here, in
@@ -63,29 +62,18 @@ const demoIndexGeneration = "demo"
 // demoIndexGeneration above.
 const demoCoefficientFingerprint = "demo-coefficients"
 
-// demoCoefficients are a physically plausible hybrid profile for a mid-weight
-// rider in a fairly upright road position, not a claim about any real one. A
-// function rather than a package variable: nothing here may become mutable
-// package-level state.
+// demoCoefficients are a plausible profile for a moderately quick rider, not a
+// claim about any real one. A function rather than a package variable: nothing
+// here may become mutable package-level state.
 func demoCoefficients() ridemodel.Coefficients {
 	return ridemodel.Coefficients{
 		CalibrationCutoff: "2025-08-01",
-		MassKG:            90,
-		PowerWatts:        180,
-		CdAM2:             0.45,
 		SecondsPerKM:      145.0,
 		SecondsPerAscentM: 3.2,
 		EvaluatedRides:    42,
 		BiasPercent:       -1.2,
 		MAEPercent:        6.8,
 		P90Percent:        14.1,
-		CrrBySurface: map[surface.Kind]float64{
-			surface.KindAsphalt:   0.012,
-			surface.KindPaving:    0.012,
-			surface.KindCompacted: 0.012,
-			surface.KindGravel:    0.012,
-			surface.KindGround:    0.012,
-		},
 	}
 }
 
@@ -155,15 +143,14 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 }
 
 // seedDurations predicts and stores one moving-time series per stage, using
-// internal/ridemodel.Predict over the stage's own geometry and classification —
-// the same forward model a real enrichment pass uses, against fixed coefficients.
-// Predict returns false without usable elevation, and those stages store nil.
+// internal/ridemodel.Predict over the stage's own geometry — the same forward
+// model a real enrichment pass uses, against fixed coefficients. Predict returns
+// false without usable elevation, and those stages store nil.
 func seedDurations(ctx context.Context, state State, stages []route.Route) error {
-	kindsByStage := stageSurfaceKinds(stages)
 	for index := range stages {
 		stage := &stages[index]
 		key := stage.Key()
-		result, ok := ridemodel.Predict(stage.Geometry(), kindsByStage[index], demoCoefficients())
+		result, ok := ridemodel.Predict(stage.Geometry(), demoCoefficients())
 
 		var movingSeconds *float64
 		var cumulativeSeconds []byte
@@ -179,7 +166,9 @@ func seedDurations(ctx context.Context, state State, stages []route.Route) error
 
 		if err := state.StoreStageDuration(
 			ctx, key.Provider(), key.SourceRouteID(), key.StageOrder(),
-			stage.ContentHash(), demoIndexGeneration, demoCoefficientFingerprint,
+			// An empty surface generation: prediction no longer reads the ground,
+			// and a seeded row must count as current under the same rule.
+			stage.ContentHash(), "", demoCoefficientFingerprint,
 			movingSeconds, cumulativeSeconds,
 		); err != nil {
 			return fmt.Errorf("demo: storing duration for %d/%d: %w", key.SourceRouteID(), key.StageOrder(), err)

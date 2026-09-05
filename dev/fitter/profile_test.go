@@ -25,7 +25,7 @@ func TestPrintCopyReadyProfileEmitsALoadableFile(t *testing.T) {
 	require.NoError(t, err)
 
 	var report strings.Builder
-	printCopyReadyProfile(&report, &coefficients, &eval)
+	printCopyReadyProfile(&report, &eval)
 
 	var profile strings.Builder
 	for line := range strings.SplitSeq(report.String(), "\n") {
