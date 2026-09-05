@@ -41,7 +41,7 @@ function pad(value: number): string {
 }
 
 /** `2026-09-05T15:00Z` → the object key that hour is stored under. */
-function omUrl(referenceTime: Date, validTime: string): string {
+export function omUrl(referenceTime: Date, validTime: string): string {
   const stamp = validTime.replace(/:(\d\d)Z$/, "$1");
   const dir = [
     referenceTime.getUTCFullYear(),
@@ -101,11 +101,17 @@ async function readSlices(
     return null;
   }
   const latest = (await (await fetch(`${BUCKET}/${MODEL}/latest.json`)).json()) as Latest;
+  const [firstValidTime, ...restValidTimes] = latest.valid_times;
+  if (!firstValidTime) {
+    throw new Error(`${MODEL}'s latest.json has no valid times`);
+  }
   const wanted = at.getTime();
-  const validTime = latest.valid_times.reduce((best, candidate) =>
-    Math.abs(Date.parse(candidate) - wanted) < Math.abs(Date.parse(best) - wanted)
-      ? candidate
-      : best,
+  const validTime = restValidTimes.reduce(
+    (best, candidate) =>
+      Math.abs(Date.parse(candidate) - wanted) < Math.abs(Date.parse(best) - wanted)
+        ? candidate
+        : best,
+    firstValidTime,
   );
   const url = omUrl(new Date(latest.reference_time), validTime);
   const values = await backends.withReader(url, blocks, (root) =>
