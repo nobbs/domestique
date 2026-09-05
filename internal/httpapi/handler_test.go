@@ -674,6 +674,22 @@ func TestHandlerNamesTheIdentityTheGateLetThrough(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), testSubject, "the config exposed the subject claim")
 }
 
+// The service zone reaches a non-admin reader, who is otherwise refused the
+// shared settings that carry it, so the page can bucket in the zone the
+// service itself reads local time in.
+func TestWebUIConfigNamesTheServiceTimezone(t *testing.T) {
+	handler := newTestHandler(t)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/webui/config"))
+	require.Equal(t, http.StatusOK, response.Code, "config status")
+
+	var body struct {
+		Timezone string `json:"timezone"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body), "decoding the config")
+	assert.Equal(t, "Europe/Berlin", body.Timezone, "the config must name the service's zone")
+}
+
 // The admin claim reaches the browser too, so the UI can tell a rider from an
 // admin without a second request.
 func TestWebUIConfigReflectsTheAdminClaim(t *testing.T) {

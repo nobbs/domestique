@@ -29,6 +29,7 @@ function Seeded({ basemaps }: { basemaps: WebUIConfig["basemaps"] }): ReactNode 
     next.setQueryData(webUIConfigQuery().queryKey, {
       basemaps,
       sourceBaseUrls: {},
+      timezone: "Europe/Berlin",
       identity: { display: "rider@example.test" },
     } as WebUIConfig);
     for (const basemap of basemaps) {

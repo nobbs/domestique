@@ -441,7 +441,8 @@ The read-only JSON surface is small:
   provider; the page builds a route's link back to its source route from it. It
   is omitted when unconfigured, and the page then shows no such link. It also
   reports the signed-in subject's display name: the ID token's email, else its
-  name, else the bare `sub`.
+  name, else the bare `sub`. It names the service's own IANA time zone, so the
+  page can bucket by day, week, and month the way the service itself does.
 - `GET /v1/settings` (admin-only) returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
   the basemap list, the surface settings, the Wahoo application, the source

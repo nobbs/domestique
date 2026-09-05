@@ -31,6 +31,7 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}, admin?: boolean) 
     const config: WebUIConfig = {
       basemaps: [],
       sourceBaseUrls: {},
+      timezone: "Europe/Berlin",
       identity: { display: "rider@example.test", admin },
     };
     client.setQueryData(webUIConfigQuery().queryKey, config);

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Activity } from "../api/types";
-import { bucketActivities, volumeTotals } from "./volume";
+import { bucketActivities, volumeTotals, windowStart } from "./volume";
 
-/** Local time throughout: the buckets are read in the browser's own zone. */
+// The runner's own zone, so the pre-existing assertions below (none of which
+// probe a zone edge) keep reading as local wall-clock times.
+const ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 function activity(startedAt: Date, overrides: Partial<Activity> = {}): Activity {
   return {
     id: startedAt.getTime(),
@@ -24,6 +27,7 @@ describe("bucketActivities", () => {
     const buckets = bucketActivities(
       [activity(new Date(2026, 8, 5, 8)), activity(new Date(2026, 7, 31, 8))],
       "week",
+      ZONE,
       NOW,
     );
 
@@ -34,7 +38,7 @@ describe("bucketActivities", () => {
   });
 
   it("keeps the weeks nobody rode in, as zeroes", () => {
-    const buckets = bucketActivities([activity(new Date(2026, 7, 17, 8))], "week", NOW);
+    const buckets = bucketActivities([activity(new Date(2026, 7, 17, 8))], "week", ZONE, NOW);
 
     expect(buckets.map((bucket) => bucket.count)).toEqual([0, 0, 1]);
     expect(buckets.map((bucket) => bucket.start)).toEqual([
@@ -51,6 +55,7 @@ describe("bucketActivities", () => {
         activity(new Date(2026, 7, 31, 8), { ascentMetres: 250 }),
       ],
       "month",
+      ZONE,
       NOW,
     );
 
@@ -59,11 +64,66 @@ describe("bucketActivities", () => {
   });
 
   it("has nothing to bucket without an activity", () => {
-    expect(bucketActivities([], "week", NOW)).toEqual([]);
+    expect(bucketActivities([], "week", ZONE, NOW)).toEqual([]);
   });
 
   it("ignores an activity whose start is not a time", () => {
-    expect(bucketActivities([activity(NOW, { startedAt: "whenever" })], "week", NOW)).toEqual([]);
+    expect(bucketActivities([activity(NOW, { startedAt: "whenever" })], "week", ZONE, NOW)).toEqual(
+      [],
+    );
+  });
+
+  // Buckets run newest first back to the ride's own bucket; a `now` weeks
+  // after the ride keeps the assertion about that one bucket, not position 0.
+  const LATER = new Date("2026-10-15T12:00:00Z");
+
+  it("buckets a ride already into Monday in one zone but still Sunday in another", () => {
+    // 2026-09-06T13:00:00Z is 01:00 Monday in Auckland but only 06:00 Sunday in
+    // Los Angeles: the same instant, two different weeks.
+    const rideInstant = new Date("2026-09-06T13:00:00Z");
+    const auckland = bucketActivities([activity(rideInstant)], "week", "Pacific/Auckland", LATER);
+    const losAngeles = bucketActivities(
+      [activity(rideInstant)],
+      "week",
+      "America/Los_Angeles",
+      LATER,
+    );
+
+    expect(auckland.find((bucket) => bucket.count > 0)?.start.toISOString()).toBe(
+      "2026-09-06T12:00:00.000Z",
+    );
+    expect(losAngeles.find((bucket) => bucket.count > 0)?.start.toISOString()).toBe(
+      "2026-08-31T07:00:00.000Z",
+    );
+  });
+
+  it("moves a month edge with the zone the same way", () => {
+    // 2026-09-01T05:00:00Z is already 1 September in Auckland but still 31
+    // August in Los Angeles.
+    const rideInstant = new Date("2026-09-01T05:00:00Z");
+    const auckland = bucketActivities([activity(rideInstant)], "month", "Pacific/Auckland", LATER);
+    const losAngeles = bucketActivities(
+      [activity(rideInstant)],
+      "month",
+      "America/Los_Angeles",
+      LATER,
+    );
+
+    expect(auckland.find((bucket) => bucket.count > 0)?.start.toISOString()).toBe(
+      "2026-08-31T12:00:00.000Z",
+    );
+    expect(losAngeles.find((bucket) => bucket.count > 0)?.start.toISOString()).toBe(
+      "2026-08-01T07:00:00.000Z",
+    );
+  });
+});
+
+describe("windowStart", () => {
+  it("is midnight in the given zone, not the runner's own", () => {
+    const now = new Date("2026-09-05T10:00:00Z");
+
+    expect(windowStart("Pacific/Auckland", now)).toBe("2025-09-04T12:00:00.000Z");
+    expect(windowStart("America/Los_Angeles", now)).toBe("2025-09-05T07:00:00.000Z");
   });
 });
 

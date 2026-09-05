@@ -250,6 +250,7 @@ const config: WebUIConfig = {
     },
   ],
   sourceBaseUrls: { veloplanner: "https://veloplanner.com" },
+  timezone: "Europe/Berlin",
   // The signed-in identity as every page reads it. Sessions are this service's
   // own now, so there is no external sign-out URL to carry alongside it.
   identity: { display: "rider@example.test", admin: false },
@@ -320,7 +321,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     next.setQueryData(webUIConfigQuery().queryKey, config);
     next.setQueryData(settingsQuery().queryKey, settings);
     next.setQueryData(routesQuery().queryKey, [route]);
-    next.setQueryData(activitiesQuery(windowStart()).queryKey, activities);
+    next.setQueryData(activitiesQuery(windowStart(config.timezone)).queryKey, activities);
     next.setQueryData(
       routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
       routeGeometryFixture,

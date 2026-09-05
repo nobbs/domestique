@@ -32,6 +32,7 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, request *http.Reque
 	identity := identityOf(request.Context())
 	config := openapi.WebUIConfig{
 		Basemaps: basemaps,
+		Timezone: h.settings.Values().Timezone,
 		Identity: openapi.BrowserIdentity{
 			Display: identity.Display,
 			Admin:   identity.Admin,

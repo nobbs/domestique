@@ -460,7 +460,9 @@ type BrowserBasemap struct {
 type WebUIConfig struct {
 	Basemaps       []BrowserBasemap `json:"basemaps"`
 	SourceBaseUrls *SourceBaseUrls  `json:"sourceBaseUrls,omitempty"`
-	Identity       BrowserIdentity  `json:"identity"`
+	// Timezone The IANA zone the service reads local time in.
+	Timezone string          `json:"timezone"`
+	Identity BrowserIdentity `json:"identity"`
 }
 
 // BrowserIdentity Who the gate let through. It names the reader rather than identifying them: it is how a session can be seen to be the one intended.

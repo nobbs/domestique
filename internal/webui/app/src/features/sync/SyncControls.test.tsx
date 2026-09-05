@@ -35,6 +35,7 @@ function config(
       { name: "Streets", styleUrl: "https://tiles.example/style", darkCartography: false },
     ],
     sourceBaseUrls,
+    timezone: "Europe/Berlin",
     identity: { display: "rider@example.test", admin },
   };
 

@@ -2016,6 +2016,7 @@ components:
       additionalProperties: false
       required:
         - basemaps
+        - timezone
         - identity
       properties:
         basemaps:
@@ -2025,6 +2026,9 @@ components:
             $ref: '#/components/schemas/BrowserBasemap'
         sourceBaseUrls:
           $ref: '#/components/schemas/SourceBaseUrls'
+        timezone:
+          type: string
+          description: The IANA zone the service reads local time in.
         identity:
           $ref: '#/components/schemas/BrowserIdentity'
     BrowserIdentity:

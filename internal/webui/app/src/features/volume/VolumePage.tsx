@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { activitiesQuery } from "../../api/queries";
+import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatAscent, formatCount, formatDistance, formatMovingTime } from "../../lib/format";
@@ -28,14 +28,21 @@ const GRANULARITIES: ReadonlyArray<{ value: Granularity; label: string; heading:
   { value: "month", label: "Month", heading: "By month" },
 ];
 
+// Only while the config is unavailable: once it answers, its zone is the one
+// used, whether or not it happens to match the browser's own.
+const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 export function VolumePage() {
   const [granularity, setGranularity] = useState<Granularity>("week");
-  const from = useMemo(() => windowStart(), []);
+  const config = useQuery(webUIConfigQuery());
+  const serviceZone = config.data?.timezone || null;
+  const zone = serviceZone ?? browserZone();
+  const from = useMemo(() => windowStart(zone), [zone]);
   const { data, isPending, isError } = useQuery(activitiesQuery(from));
   const activities = useMemo(() => data ?? [], [data]);
   const buckets = useMemo(
-    () => bucketActivities(activities, granularity),
-    [activities, granularity],
+    () => bucketActivities(activities, granularity, zone),
+    [activities, granularity, zone],
   );
   const totals = useMemo(() => volumeTotals(activities), [activities]);
   const widest = Math.max(...buckets.map((bucket) => bucket.distanceMetres), 1);
@@ -45,6 +52,9 @@ export function VolumePage() {
     <PageShell>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
         <h1 className="font-semibold text-2xl tracking-tight">Volume</h1>
+        {!config.isPending && serviceZone === null && (
+          <p className="text-[var(--ink-2)] text-xs">Periods follow this browser's time zone</p>
+        )}
         {isPending ? (
           <Skeleton className="h-64 w-full" role="status" aria-label="Loading activities" />
         ) : isError ? (
