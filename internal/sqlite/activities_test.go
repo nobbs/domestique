@@ -363,3 +363,42 @@ func TestActivityRecordWritesRefuseInvalidInputs(t *testing.T) {
 	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "", 1), "target and an activity id")
 	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 0), "target and an activity id")
 }
+
+// A calibration pools every target's rides, in the order they were ridden.
+func TestActivityRidesReadsEveryTargetsRidesOldestFirst(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+
+	for index, starts := range []time.Time{
+		activityNow().Add(time.Hour), activityNow(), activityNow().Add(2 * time.Hour),
+	} {
+		require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+			activity.Listing{ID: int64(index + 1), TypeID: 15, LocationID: 1, Starts: starts},
+			activity.Summary{
+				DistanceMetres: 30000, MovingSeconds: 4500, ElapsedSeconds: 4800, AscentMetres: 300,
+				Raw: []byte(`{}`),
+			},
+			activityNow()), "StoreActivity()")
+	}
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-b",
+		activity.Listing{ID: 9, TypeID: 15, LocationID: 1, Starts: activityNow().Add(-time.Hour)},
+		activity.Summary{DistanceMetres: 20000, MovingSeconds: 3600, AscentMetres: 100, Raw: []byte(`{}`)},
+		activityNow()), "StoreActivity() for another rider")
+
+	rides, err := store.ActivityRides(t.Context())
+	require.NoError(t, err, "ActivityRides()")
+	require.Len(t, rides, 4)
+	assert.Equal(t, activityNow().Add(-time.Hour), rides[0].StartedAt, "oldest first")
+	assert.InDelta(t, 20000.0, rides[0].DistanceMetres, 1e-9, "the other rider's ride is pooled in")
+	assert.InDelta(t, 4500.0, rides[3].MovingSeconds, 1e-9)
+	assert.InDelta(t, 300.0, rides[3].AscentMetres, 1e-9)
+}
+
+func TestActivityRidesReportsAnUnreadableStore(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.ActivityRides(t.Context())
+	require.ErrorContains(t, err, "reading activities for calibration")
+}

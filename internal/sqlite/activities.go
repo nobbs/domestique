@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
@@ -227,4 +228,24 @@ func (s *Store) MarkActivityUnreadable(ctx context.Context, targetID string, id 
 
 func nullFloat(value float64, valid bool) sql.NullFloat64 {
 	return sql.NullFloat64{Float64: value, Valid: valid}
+}
+
+// ActivityRides is every target's recorded activity as a calibration reads it:
+// one rider's corpus is one target's, and the fit pools them all.
+func (s *Store) ActivityRides(ctx context.Context) ([]ridemodel.Ride, error) {
+	rows, err := s.queries.ListActivityRides(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading activities for calibration: %w", err)
+	}
+	rides := make([]ridemodel.Ride, 0, len(rows))
+	for _, row := range rows {
+		rides = append(rides, ridemodel.Ride{
+			StartedAt:      time.Unix(row.StartedAtUnix, 0).UTC(),
+			DistanceMetres: row.DistanceMetres,
+			MovingSeconds:  row.MovingSeconds,
+			AscentMetres:   row.AscentMetres,
+		})
+	}
+
+	return rides, nil
 }

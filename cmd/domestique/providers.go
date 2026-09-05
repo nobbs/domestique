@@ -469,8 +469,11 @@ type rideModelProvider struct {
 	store      *sqlite.Store
 	predictor  *ridemodel.Predictor
 	validation *httpapi.RideModelValidation
-	status     httpapi.RideModelStatus
-	mutex      sync.Mutex
+	// fingerprintInForce is what a calibration compares its own fit against, so
+	// an unchanged pair is not stored and does not drop cached predictions.
+	fingerprintInForce string
+	status             httpapi.RideModelStatus
+	mutex              sync.Mutex
 }
 
 // newRideModelProvider reports the built-in pair until reload has read the row,
@@ -478,9 +481,13 @@ type rideModelProvider struct {
 func newRideModelProvider(store *sqlite.Store) *rideModelProvider {
 	defaults := ridemodel.Default()
 
-	return &rideModelProvider{store: store, status: httpapi.RideModelStatus{
-		SecondsPerKM: defaults.SecondsPerKM, SecondsPerAscentM: defaults.SecondsPerAscentM,
-	}}
+	return &rideModelProvider{
+		store:              store,
+		fingerprintInForce: defaults.Fingerprint,
+		status: httpapi.RideModelStatus{
+			SecondsPerKM: defaults.SecondsPerKM, SecondsPerAscentM: defaults.SecondsPerAscentM,
+		},
+	}
 }
 
 // reload reads the stored pair and rebuilds the predictor around it. Predictions
@@ -513,6 +520,7 @@ func (p *rideModelProvider) reload(ctx context.Context) error {
 			EvaluatedRides: coefficients.EvaluatedRides,
 		}
 	}
+	p.fingerprintInForce = coefficients.Fingerprint
 	p.status = httpapi.RideModelStatus{
 		CalibrationCutoff: coefficients.CalibrationCutoff,
 		SecondsPerKM:      coefficients.SecondsPerKM,
@@ -538,6 +546,15 @@ func (p *rideModelProvider) validationView() *httpapi.RideModelValidation {
 	defer p.mutex.Unlock()
 
 	return p.validation
+}
+
+// fingerprint identifies the pair predictions are made with, which is how a
+// calibration tells a new fit from the one already in force.
+func (p *rideModelProvider) fingerprint() string {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	return p.fingerprintInForce
 }
 
 // statusView is the coefficient pair the settings page shows.

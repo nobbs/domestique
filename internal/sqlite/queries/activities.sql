@@ -55,3 +55,8 @@ WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id);
 
 -- name: MarkActivityRecordsUnreadable :exec
 UPDATE activities SET records_state = 'unreadable' WHERE target_slot = ? AND workout_id = ?;
+
+-- name: ListActivityRides :many
+SELECT started_at_unix, distance_metres, moving_seconds, ascent_metres
+FROM activities
+ORDER BY started_at_unix;

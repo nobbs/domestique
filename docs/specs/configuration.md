@@ -445,7 +445,9 @@ no operator setting: an operator names no file and edits no value, and the
 settings page shows the pair read-only alongside where it came from.
 
 A built-in default pair applies until the first calibration replaces it, so
-prediction works from the first deploy rather than waiting on a fit. The row
+prediction works from the first deploy rather than waiting on a fit. The weekly
+calibration replaces it from the rider's own recorded activities, and leaves
+whichever pair is in force alone whenever it refuses to fit. The row
 also records the calibration's cutoff date, the rides it was measured over and
 the resulting error, and the window the fit reached back over.
 

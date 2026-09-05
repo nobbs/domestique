@@ -13,6 +13,7 @@ import (
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/osmindex"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	syncservice "github.com/nobbs/domestique/internal/sync"
@@ -459,7 +460,8 @@ func TestRegisterTasksTakesEveryDefinitionItIsGiven(t *testing.T) {
 	t.Parallel()
 
 	definitions := append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets),
-		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}))
+		surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}),
+		rideModelCalibrateTask(&fakeRideCorpus{}, &fakeCoefficients{}, allEnabled, calibrationClock))
 
 	manager, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, definitions)
 	require.NoError(t, err, "registerTasks()")
@@ -527,7 +529,8 @@ func TestTheGraphDeclaresWhatFollowsEveryRead(t *testing.T) {
 		"what classification follows")
 
 	predict := definitionNamed(t, definitions, taskRideModelPredict)
-	assert.Equal(t, []string{taskSyncSource}, predict.Follows, "what prediction follows")
+	assert.Equal(t, []string{taskSyncSource, taskRideModelCalibrate}, predict.Follows,
+		"what prediction follows")
 }
 
 func alwaysOn() bool { return true }
@@ -815,4 +818,182 @@ func (p *fakePoller) Poll(_ context.Context, targetID string) activity.Result {
 	p.polled = append(p.polled, targetID)
 
 	return p.results[targetID]
+}
+
+// Calibration reads the same rows an activity poll writes, so it takes the
+// activities exclusively rather than the inventory a prediction holds.
+func TestRideModelCalibrateTaskHoldsTheActivities(t *testing.T) {
+	t.Parallel()
+
+	definition := rideModelCalibrateTask(&fakeRideCorpus{}, &fakeCoefficients{}, allEnabled, calibrationClock)
+
+	assert.Equal(t, taskRideModelCalibrate, definition.Name, "name")
+	assert.Equal(t,
+		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
+		definition.Resources(""),
+		"resources",
+	)
+	assert.Nil(t, definition.Notify, "a refused fit is not worth waking anybody")
+	assert.Equal(t, calibrationInitialDelay, definition.InitialDelay(), "InitialDelay()")
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	assert.Equal(t, at.Add(calibrationInterval), definition.Schedule.NextFire(at), "NextFire()")
+}
+
+func TestRideModelCalibrateStoresAFittedPairAndReloadsThePredictor(t *testing.T) {
+	t.Parallel()
+
+	corpus := &fakeRideCorpus{rides: calibrationRides(14)}
+	model := &fakeCoefficients{inForce: "an-older-pair"}
+	definition := rideModelCalibrateTask(corpus, model, allEnabled, calibrationClock)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelCalibrate})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	require.Len(t, corpus.stored, 1, "stored pairs")
+	assert.InDelta(t, 150.0, corpus.stored[0].SecondsPerKM, 1e-6, "seconds per km")
+	assert.Equal(t, 1, model.reloads, "reloads")
+}
+
+// The pair already in force is the pair predictions are cached against, so
+// refitting it must not be recorded as a change.
+func TestRideModelCalibrateLeavesAnUnchangedPairAlone(t *testing.T) {
+	t.Parallel()
+
+	fitted, err := ridemodel.Fit(calibrationRides(14), calibrationClock())
+	require.NoError(t, err, "Fit()")
+
+	corpus := &fakeRideCorpus{rides: calibrationRides(14)}
+	model := &fakeCoefficients{inForce: fitted.Fingerprint}
+	definition := rideModelCalibrateTask(corpus, model, allEnabled, calibrationClock)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelCalibrate})
+	assert.Equal(t, task.Unchanged, result.Outcome, "outcome")
+	assert.Empty(t, corpus.stored, "stored pairs")
+	assert.Equal(t, 0, model.reloads, "reloads")
+}
+
+func TestRideModelCalibrateReportsWhyItDeclined(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		corpus  *fakeRideCorpus
+		detail  task.Detail
+		outcome task.Outcome
+	}{
+		"too few rides": {
+			corpus:  &fakeRideCorpus{rides: calibrationRides(ridemodel.MinRides - 1)},
+			outcome: task.NotReady, detail: detailTooFewRides,
+		},
+		"degenerate": {
+			corpus:  &fakeRideCorpus{rides: flatRides(14)},
+			outcome: task.NotReady, detail: detailDegenerate,
+		},
+		"unreadable corpus": {
+			corpus:  &fakeRideCorpus{readErr: errors.New("no")},
+			outcome: task.Failed, detail: detailModelState,
+		},
+		"unwritable corpus": {
+			corpus:  &fakeRideCorpus{rides: calibrationRides(14), storeErr: errors.New("no")},
+			outcome: task.Failed, detail: detailModelState,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			model := &fakeCoefficients{inForce: "an-older-pair"}
+			definition := rideModelCalibrateTask(test.corpus, model, allEnabled, calibrationClock)
+
+			result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelCalibrate})
+			assert.Equal(t, test.outcome, result.Outcome, "outcome")
+			assert.Equal(t, test.detail, result.Detail, "detail")
+			assert.Equal(t, 0, model.reloads, "nothing is reloaded without a stored pair")
+		})
+	}
+}
+
+// A pair stored but never loaded would leave prediction on the old one without
+// anything saying so, so the reload's failure is the task's.
+func TestRideModelCalibrateFailsWhenThePredictorCannotBeReloaded(t *testing.T) {
+	t.Parallel()
+
+	corpus := &fakeRideCorpus{rides: calibrationRides(14)}
+	model := &fakeCoefficients{inForce: "an-older-pair", reloadErr: errors.New("no")}
+	definition := rideModelCalibrateTask(corpus, model, allEnabled, calibrationClock)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelCalibrate})
+	assert.Equal(t, task.Failed, result.Outcome, "outcome")
+	assert.Equal(t, detailModelState, result.Detail, "detail")
+	assert.Len(t, corpus.stored, 1, "the pair was stored before the reload failed")
+}
+
+func calibrationClock() time.Time {
+	return time.Date(2026, time.September, 5, 12, 0, 0, 0, time.UTC)
+}
+
+// calibrationRides are rides whose moving time is exactly 150 s/km and 4 s per
+// ascent metre, so a stored pair can be checked against known values.
+func calibrationRides(count int) []ridemodel.Ride {
+	rides := make([]ridemodel.Ride, 0, count)
+	for index := range count {
+		distance := float64(20_000 + 3_000*index)
+		ascent := float64(100 + 90*(count-index))
+		rides = append(rides, ridemodel.Ride{
+			StartedAt:      calibrationClock().AddDate(0, 0, -count+index),
+			DistanceMetres: distance,
+			AscentMetres:   ascent,
+			MovingSeconds:  150*(distance/1000) + 4*ascent,
+		})
+	}
+
+	return rides
+}
+
+func flatRides(count int) []ridemodel.Ride {
+	rides := calibrationRides(count)
+	for index := range rides {
+		rides[index].MovingSeconds -= 4 * rides[index].AscentMetres
+		rides[index].AscentMetres = 0
+	}
+
+	return rides
+}
+
+type fakeRideCorpus struct {
+	readErr  error
+	storeErr error
+	rides    []ridemodel.Ride
+	stored   []ridemodel.Coefficients
+}
+
+func (c *fakeRideCorpus) ActivityRides(context.Context) ([]ridemodel.Ride, error) {
+	return c.rides, c.readErr
+}
+
+//nolint:gocritic // value param: matches the store's own signature.
+func (c *fakeRideCorpus) StoreRideModelCoefficients(
+	_ context.Context, coefficients ridemodel.Coefficients, _ time.Time,
+) error {
+	if c.storeErr != nil {
+		return c.storeErr
+	}
+	c.stored = append(c.stored, coefficients)
+
+	return nil
+}
+
+type fakeCoefficients struct {
+	reloadErr error
+	inForce   string
+	reloads   int
+}
+
+func (c *fakeCoefficients) fingerprint() string { return c.inForce }
+
+func (c *fakeCoefficients) reload(context.Context) error {
+	if c.reloadErr != nil {
+		return c.reloadErr
+	}
+	c.reloads++
+
+	return nil
 }

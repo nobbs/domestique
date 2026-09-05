@@ -169,6 +169,47 @@ func (q *Queries) ListActivityIDs(ctx context.Context, targetSlot string) ([]int
 	return items, nil
 }
 
+const listActivityRides = `-- name: ListActivityRides :many
+SELECT started_at_unix, distance_metres, moving_seconds, ascent_metres
+FROM activities
+ORDER BY started_at_unix
+`
+
+type ListActivityRidesRow struct {
+	StartedAtUnix  int64
+	DistanceMetres float64
+	MovingSeconds  float64
+	AscentMetres   float64
+}
+
+func (q *Queries) ListActivityRides(ctx context.Context) ([]ListActivityRidesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityRides)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityRidesRow{}
+	for rows.Next() {
+		var i ListActivityRidesRow
+		if err := rows.Scan(
+			&i.StartedAtUnix,
+			&i.DistanceMetres,
+			&i.MovingSeconds,
+			&i.AscentMetres,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActivitySkips = `-- name: ListActivitySkips :many
 SELECT workout_id, attempts, last_attempt_unix FROM activity_skips WHERE target_slot = ? ORDER BY workout_id
 `

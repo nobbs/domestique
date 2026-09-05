@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/osmindex"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	syncservice "github.com/nobbs/domestique/internal/sync"
@@ -16,13 +18,14 @@ import (
 
 // The background activities this service runs.
 const (
-	taskSyncSource       = httpapi.TaskSyncSource
-	taskSyncTarget       = httpapi.TaskSyncTarget
-	taskSyncClear        = httpapi.TaskSyncClear
-	taskSurfaceAnnotate  = "surface:annotate"
-	taskSurfaceIndex     = httpapi.TaskSurfaceIndex
-	taskRideModelPredict = httpapi.TaskRideModelPredict
-	taskActivityPoll     = httpapi.TaskActivityPoll
+	taskSyncSource         = httpapi.TaskSyncSource
+	taskSyncTarget         = httpapi.TaskSyncTarget
+	taskSyncClear          = httpapi.TaskSyncClear
+	taskSurfaceAnnotate    = "surface:annotate"
+	taskSurfaceIndex       = httpapi.TaskSurfaceIndex
+	taskRideModelPredict   = httpapi.TaskRideModelPredict
+	taskRideModelCalibrate = httpapi.TaskRideModelCalibrate
+	taskActivityPoll       = httpapi.TaskActivityPoll
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -63,11 +66,26 @@ const targetBackstopInterval = 6 * time.Hour
 // the same daily Wahoo budget the reconciliation does.
 const activityPollInterval = 12 * time.Hour
 
+// A rider's form moves over months, so the pair is refitted weekly; the first
+// fit waits an hour rather than spending a restart on regression.
+const (
+	calibrationInterval     = 7 * 24 * time.Hour
+	calibrationInitialDelay = time.Hour
+)
+
 // The reasons a surface index rebuild reports. Both are stable words a status
 // page may show; neither carries an upstream URL or a local path.
 const (
 	detailBuild     task.Detail = "build"
 	detailNoRegions task.Detail = "no_regions"
+)
+
+// The reasons a calibration declines, and the one it fails on. Each is a stable
+// word a status page may show, and none names a ride.
+const (
+	detailTooFewRides task.Detail = "too_few_rides"
+	detailDegenerate  task.Detail = "degenerate"
+	detailModelState  task.Detail = "state"
 )
 
 // detailIncomplete is why a classification or prediction pass that left stages
@@ -105,6 +123,18 @@ type synchronizer interface {
 // activityPoller is the activity work the task layer starts.
 type activityPoller interface {
 	Poll(ctx context.Context, targetID string) activity.Result
+}
+
+// rideCorpus is the stored corpus a calibration fits and where the pair it
+// finds is kept; coefficientHolder is what predicts with the pair in force.
+type rideCorpus interface {
+	ActivityRides(ctx context.Context) ([]ridemodel.Ride, error)
+	StoreRideModelCoefficients(ctx context.Context, coefficients ridemodel.Coefficients, now time.Time) error
+}
+
+type coefficientHolder interface {
+	fingerprint() string
+	reload(ctx context.Context) error
 }
 
 type indexBuilder interface {
@@ -253,7 +283,7 @@ func inventoryTasks(
 		{
 			Name:      taskRideModelPredict,
 			Resources: inventory,
-			Follows:   []string{taskSyncSource},
+			Follows:   []string{taskSyncSource, taskRideModelCalibrate},
 			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				failed, err := reporter.Predict(ctx)
@@ -357,6 +387,56 @@ func activityDetail(failure activity.Failure) task.Detail {
 	}
 
 	return detailActivityUpstream
+}
+
+// rideModelCalibrateTask refits the coefficient pair from every target's
+// recorded activities. It holds the activities so a poll cannot write into the
+// corpus mid-fit, and leaves the pair in force alone when the fit is refused.
+func rideModelCalibrateTask(
+	corpus rideCorpus, model coefficientHolder, enabled func(string) func() bool, now func() time.Time,
+) task.Definition {
+	return task.Definition{
+		Name:    taskRideModelCalibrate,
+		Enabled: enabled(taskRideModelCalibrate),
+		Resources: func(string) []task.Resource {
+			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
+		},
+		Schedule:     task.Every(func() time.Duration { return calibrationInterval }),
+		InitialDelay: func() time.Duration { return calibrationInitialDelay },
+		Backoff:      task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
+		Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
+			return calibrate(ctx, corpus, model, now())
+		}),
+	}
+}
+
+func calibrate(ctx context.Context, corpus rideCorpus, model coefficientHolder, now time.Time) task.Result {
+	rides, err := corpus.ActivityRides(ctx)
+	if err != nil {
+		return task.Result{Outcome: task.Failed, Detail: detailModelState}
+	}
+	fitted, err := ridemodel.Fit(rides, now)
+	switch {
+	case errors.Is(err, ridemodel.ErrTooFewRides):
+		// Both branches are the corpus's own shape rather than a fault: nothing
+		// is wrong, there is just not enough of it yet, or not ever for a rider
+		// whose rides cannot separate distance from ascent.
+		return task.Result{Outcome: task.NotReady, Detail: detailTooFewRides}
+	case err != nil:
+		return task.Result{Outcome: task.NotReady, Detail: detailDegenerate}
+	}
+	// Storing the same pair again would drop every cached prediction for nothing.
+	if fitted.Fingerprint == model.fingerprint() {
+		return task.Result{Outcome: task.Unchanged}
+	}
+	if err := corpus.StoreRideModelCoefficients(ctx, fitted, now); err != nil {
+		return task.Result{Outcome: task.Failed, Detail: detailModelState}
+	}
+	if err := model.reload(ctx); err != nil {
+		return task.Result{Outcome: task.Failed, Detail: detailModelState}
+	}
+
+	return task.Result{Outcome: task.Succeeded}
 }
 
 // surfaceIndexTask rebuilds the surface index; its initial delay counts from

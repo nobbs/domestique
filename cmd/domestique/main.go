@@ -183,6 +183,7 @@ func run(ctx context.Context) error {
 			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs),
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
+			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
 		),
 	)
 	if err != nil {
