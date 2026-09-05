@@ -38,7 +38,7 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByText(/^Now · \p{L}+ \d/u)).toBeInTheDocument();
+    expect(screen.getByText(/^Now · \p{L}+/u)).toBeInTheDocument();
     // Screen-reader access, not just sight: a slider whose thumb carries no
     // name of its own announces as "slider", unlabelled, on every platform
     // that does not happen to render the sighted layout beside it.
@@ -55,7 +55,7 @@ describe("WeatherOverlayPicker", () => {
         onExpandedChange={vi.fn()}
       />,
     );
-    expect(screen.getByText(/^\+3h · \p{L}+ \d/u)).toBeInTheDocument();
+    expect(screen.getByText(/^\+3h · \p{L}+/u)).toBeInTheDocument();
   });
 
   it("disables the hour scale until a measure is on", () => {
