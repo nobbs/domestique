@@ -33,6 +33,8 @@ type Workout struct {
 // WorkoutSummary contains Wahoo's original summary, the URL of its FIT file,
 // and the totals decoded from it.
 type WorkoutSummary struct {
+	// FileURL is empty for a summary Wahoo holds no FIT file for, which a
+	// manually entered ride never has.
 	FileURL        string
 	Raw            json.RawMessage
 	DistanceMetres float64
@@ -159,10 +161,6 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 	if summary.ID <= 0 {
 		return WorkoutSummary{}, errors.New("wahoo: workout summary was missing")
 	}
-	if summary.File.URL == "" {
-		return WorkoutSummary{}, errors.New("wahoo: workout summary did not contain a file url")
-	}
-
 	return WorkoutSummary{
 		Raw:            body,
 		FileURL:        summary.File.URL,

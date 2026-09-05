@@ -126,6 +126,20 @@ func TestClientReadsWhenAWorkoutStarted(t *testing.T) {
 	assert.Equal(t, time.Date(2026, 4, 1, 6, 30, 0, 0, time.UTC), workouts[0].Starts.UTC())
 }
 
+// A manually entered ride has totals but no FIT file, and its summary is still
+// the only place those totals come from.
+func TestClientReadsAWorkoutSummaryWithoutAFile(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]any{"id": 42, "distance_accum": "1234.5", "manual": true})
+	}))
+	defer server.Close()
+
+	summary, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
+	require.NoError(t, err)
+	assert.Empty(t, summary.FileURL)
+	assert.InDelta(t, 1234.5, summary.DistanceMetres, 1e-9)
+}
+
 func TestClientRejectsInvalidWorkoutPagination(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writeJSON(t, writer, map[string]any{"workouts": []any{}, "total": 1, "page": 1, "per_page": 100})
@@ -237,13 +251,6 @@ func TestClientRejectsWorkoutReadsItCannotTrust(t *testing.T) {
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
 			want: "summary was not valid json",
-		},
-		"summary without a file": {
-			handler: func(writer http.ResponseWriter, _ *http.Request) {
-				writeJSON(t, writer, map[string]any{"id": 42})
-			},
-			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
-			want: "did not contain a file url",
 		},
 	}
 	for name, tc := range cases {
