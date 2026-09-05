@@ -154,7 +154,9 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 			return WorkoutSummary{}, errors.New("wahoo: workout summary totals were not numbers")
 		}
 
-		return WorkoutSummary{}, errors.New("wahoo: workout summary was not valid json")
+		// Syntax cannot be what failed: doJSON decoded this body into a
+		// json.RawMessage, which validates the whole document first.
+		return WorkoutSummary{}, errors.New("wahoo: workout summary was not the shape expected")
 	}
 	// A workout Wahoo holds no summary for decodes to a zero value, whether it
 	// answers with a null body or an object carrying nothing of its own.

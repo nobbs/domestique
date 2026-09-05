@@ -250,7 +250,14 @@ func TestClientRejectsWorkoutReadsItCannotTrust(t *testing.T) {
 				writeJSON(t, writer, "x")
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
-			want: "summary was not valid json",
+			want: "summary was not the shape expected",
+		},
+		"summary whose file is not an object": {
+			handler: func(writer http.ResponseWriter, _ *http.Request) {
+				writeJSON(t, writer, map[string]any{"id": 42, "file": "https://cdn.wahooligan.com/42.fit"})
+			},
+			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
+			want: "summary was not the shape expected",
 		},
 	}
 	for name, tc := range cases {
