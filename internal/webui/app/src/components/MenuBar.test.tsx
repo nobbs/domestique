@@ -29,6 +29,16 @@ function renderBar(admin: boolean) {
   );
 }
 
+describe("the colour scheme", () => {
+  // It stands whatever the session is, unlike the pill beside it, which has
+  // nothing to say until the configuration arrives.
+  it("is offered in the bar, beside the session", () => {
+    renderBar(false);
+
+    expect(screen.getByRole("button", { name: /^Theme: / })).toBeInTheDocument();
+  });
+});
+
 describe("the Admin link", () => {
   it("is offered to an admin", () => {
     renderBar(true);

@@ -69,13 +69,13 @@ function OpenedLegacyRoute() {
  * The client routes. These mirror the paths the Go handler serves the entry
  * document for, so a deep link and an in-app navigation resolve identically.
  *
- * The theme choice lives here rather than in `AtlasPage`, even though only
- * Settings offers the control for it: the palette it switches is `index.css`'s
- * own, read by every page, and `data-theme` is a document-level attribute —
- * there is exactly one of it, whichever page happens to be mounted.
+ * The theme choice is read here rather than in `AtlasPage`, even though the
+ * control for it is in the bar: the palette it switches is `index.css`'s own,
+ * read by every page, and `data-theme` is a document-level attribute — there is
+ * exactly one of it, whichever page happens to be mounted.
  */
 export function App() {
-  const [themeChoice, setThemeChoice] = useThemeChoice();
+  const [themeChoice] = useThemeChoice();
 
   // Layout rather than passive: this app renders nothing until React mounts,
   // so the commit this runs after is the first paint there is — an ordinary
@@ -100,10 +100,7 @@ export function App() {
       <Route path="auth/login" element={<SignInPage />} />
       <Route path="sync" element={<SyncPage />} />
       <Route path="volume" element={<VolumePage />} />
-      <Route
-        path="settings"
-        element={<SettingsPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
-      />
+      <Route path="settings" element={<SettingsPage />} />
       <Route
         path="admin"
         element={

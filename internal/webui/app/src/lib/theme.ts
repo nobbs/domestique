@@ -11,7 +11,7 @@
  * attribute switches between, and `App.tsx` for where it is applied.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 export const THEME_CHOICES = ["system", "light", "dark"] as const;
 
@@ -23,31 +23,21 @@ export type ThemeChoice = (typeof THEME_CHOICES)[number];
  */
 const CHOICE_STORAGE_KEY = "domestique.theme";
 
-function isThemeChoice(value: string | null): value is ThemeChoice {
-  return (THEME_CHOICES as readonly string[]).includes(value ?? "");
-}
+// Two consumers share one screen — the bar's toggle and the `data-theme`
+// attribute `App.tsx` sets from the same choice — so a pick must reach both at
+// once rather than wait for a remount. The same store `identity.ts` keeps, for
+// the same reason.
+const listeners = new Set<() => void>();
 
-function readChoice(): ThemeChoice {
-  try {
-    const stored = window.localStorage.getItem(CHOICE_STORAGE_KEY);
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
 
-    return isThemeChoice(stored) ? stored : "system";
-  } catch {
-    return "system";
-  }
-}
-
-function writeChoice(choice: ThemeChoice): void {
-  try {
-    window.localStorage.setItem(CHOICE_STORAGE_KEY, choice);
-  } catch {
-    // Remembering is the whole of what is lost, and the pick still stands for
-    // as long as the page is open.
-  }
+  return () => listeners.delete(listener);
 }
 
 /**
- * The reader's colour-scheme choice, remembered across visits.
+ * The reader's colour-scheme choice, remembered across visits and shared live
+ * across every consumer.
  *
  * Guarded the same way `useBasemapChoice` guards storage: a browser may
  * refuse it outright, in a private window or with third-party storage
@@ -55,14 +45,57 @@ function writeChoice(choice: ThemeChoice): void {
  * theme.
  */
 export function useThemeChoice(): [ThemeChoice, (choice: ThemeChoice) => void] {
-  const [choice, setChoiceState] = useState<ThemeChoice>(readChoice);
+  const choice = useSyncExternalStore(subscribe, readChoice);
 
   const setChoice = useCallback((next: ThemeChoice) => {
-    setChoiceState(next);
     writeChoice(next);
+    for (const listener of listeners) {
+      listener();
+    }
   }, []);
 
   return [choice, setChoice];
+}
+
+/** The next choice round the bar toggle's cycle, wrapping at the end. */
+export function nextThemeChoice(choice: ThemeChoice): ThemeChoice {
+  const at = THEME_CHOICES.indexOf(choice);
+
+  return THEME_CHOICES[(at + 1) % THEME_CHOICES.length] ?? "system";
+}
+
+// A pick made on this page, which outranks whatever storage holds: a browser
+// may refuse the write, and a refusal must cost the choice its memory rather
+// than undo it on the very next read. Until one is made there is nothing to
+// outrank, so storage is read as it stands.
+let picked: ThemeChoice | null = null;
+
+function isThemeChoice(value: string | null): value is ThemeChoice {
+  return (THEME_CHOICES as readonly string[]).includes(value ?? "");
+}
+
+function readChoice(): ThemeChoice {
+  if (picked !== null) {
+    return picked;
+  }
+  try {
+    const stored = window.localStorage.getItem(CHOICE_STORAGE_KEY);
+    if (isThemeChoice(stored)) {
+      return stored;
+    }
+  } catch {}
+
+  return "system";
+}
+
+function writeChoice(choice: ThemeChoice): void {
+  picked = choice;
+  try {
+    window.localStorage.setItem(CHOICE_STORAGE_KEY, choice);
+  } catch {
+    // Remembering is the whole of what is lost, and the pick still stands for
+    // as long as the page is open.
+  }
 }
 
 /**
