@@ -9,8 +9,8 @@ const MAX_STEPS = 60;
 
 /**
  * The domain a library gives one measure: its largest value rounded up to a
- * whole step, with the step the coarsest of `steps` that still keeps the
- * track under `MAX_STEPS` stops. An empty library gets one step of track.
+ * whole step, with the step the finest of `steps`, given smallest first, that
+ * keeps the track under `MAX_STEPS` stops. An empty library gets one step.
  */
 export function domainOf(values: number[], steps: number[]): Domain {
   // A loop rather than `Math.max(...values)`: a large library spread into

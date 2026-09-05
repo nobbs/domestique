@@ -4,6 +4,7 @@
  */
 
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import { useMemo } from "react";
 import type { Route } from "../../api/types";
 import { Button } from "../../components/Button";
 import { RangeSlider } from "../../components/RangeSlider";
@@ -32,12 +33,22 @@ export function FilterPanel({
   onExpandedChange,
 }: FilterPanelProps) {
   const active = hasActiveFilters(filters);
-  const distances = library.map((route) => route.distanceMetres);
-  const ascents = library.map((route) => route.ascentMetres);
-  const durations = library.map((route) => route.movingSeconds ?? 0);
-  const distance = domainOf(distances, [1_000, 2_000, 5_000, 10_000]);
-  const ascent = domainOf(ascents, [10, 20, 50, 100, 200]);
-  const duration = domainOf(durations, [5 * 60, 10 * 60, 15 * 60, 30 * 60]);
+  // By library only: the panel re-renders on every search keystroke.
+  const measures = useMemo(() => {
+    const distances = library.map((route) => route.distanceMetres);
+    const ascents = library.map((route) => route.ascentMetres);
+    const durations = library.map((route) => route.movingSeconds ?? 0);
+
+    return {
+      distances,
+      ascents,
+      durations,
+      distance: domainOf(distances, [1_000, 2_000, 5_000, 10_000]),
+      ascent: domainOf(ascents, [10, 20, 50, 100, 200]),
+      duration: domainOf(durations, [5 * 60, 10 * 60, 15 * 60, 30 * 60]),
+    };
+  }, [library]);
+  const { distances, ascents, durations, distance, ascent, duration } = measures;
 
   return (
     <Popover open={expanded} onOpenChange={onExpandedChange}>
