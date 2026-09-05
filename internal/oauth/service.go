@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -74,25 +75,56 @@ func (s *Service) Start(ctx context.Context, callerLogin, targetID string) (stri
 
 // Complete validates and consumes state, exchanges the code, learns the Wahoo
 // user identity, and durably binds the account to the target slot.
+//
+// Each step names itself when it refuses. The caller answers all four the same
+// way, so the step is the only thing that tells a spent state apart from a
+// rejected client secret or an account already bound to another slot.
 func (s *Service) Complete(ctx context.Context, callerLogin, state, code string) error {
+	if state == "" {
+		slog.Warn("wahoo authorization refused", "reason", "callback_state_missing")
+
+		return ErrInvalidAuthorization
+	}
 	digest, err := stateDigest(state)
-	if err != nil || code == "" {
+	if err != nil {
+		slog.Warn("wahoo authorization refused", "reason", "callback_state_unusable")
+
+		return ErrInvalidAuthorization
+	}
+	// Named apart from the state, and matching the HTTP handler's own reason for
+	// it: the handler refuses an empty code before this, but another entry point
+	// need not, and one reason for two causes is what this change exists to undo.
+	if code == "" {
+		slog.Warn("wahoo authorization refused", "reason", "callback_code_missing")
+
 		return ErrInvalidAuthorization
 	}
 	targetID, err := s.stateStore.ConsumeAuthorization(ctx, callerLogin, digest)
 	if err != nil {
+		// This store's own sentinels — expired, spent, unknown, wrong caller —
+		// name a state of the flow and carry nothing a rider entered.
+		slog.Warn("wahoo authorization refused", "reason", "state_not_consumed", "error", err)
+
 		return ErrInvalidAuthorization
 	}
 
 	accessToken, refreshToken, err := s.wahoo.ExchangeAuthorizationCode(ctx, code)
 	if err != nil || accessToken == "" || refreshToken == "" {
+		// The step alone: an x/oauth2 retrieval error carries the token
+		// endpoint's raw response body.
+		slog.Warn("wahoo authorization refused", "reason", "code_exchange_failed")
+
 		return ErrAuthorizationFailed
 	}
 	wahooUserID, err := s.wahoo.AuthenticatedUser(ctx, accessToken)
 	if err != nil || wahooUserID == "" {
+		slog.Warn("wahoo authorization refused", "reason", "wahoo_user_unknown")
+
 		return ErrAuthorizationFailed
 	}
 	if err := s.stateStore.AuthorizeTarget(ctx, targetID, wahooUserID, refreshToken); err != nil {
+		slog.Warn("wahoo authorization refused", "reason", "target_not_bound", "error", err)
+
 		return ErrAuthorizationFailed
 	}
 

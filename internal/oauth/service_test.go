@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,101 @@ func TestServiceRejectsInvalidOrReusedAuthorization(t *testing.T) {
 		ErrInvalidAuthorization, "reusing the state")
 }
 
+// All four refusals reach the caller as one of two sentinels, so the log line is
+// the only thing that says which step refused — an expired state, a rejected
+// client secret, and an account already bound to another slot are one answer.
+func TestServiceNamesTheStepThatRefused(t *testing.T) {
+	authorized := func() *fakeWahoo {
+		return &fakeWahoo{accessToken: "access", refreshToken: "refresh", userID: "wahoo-user"}
+	}
+	tests := map[string]struct {
+		store  *fakeStateStore
+		wahoo  *fakeWahoo
+		reason string
+	}{
+		"state spent or expired": {
+			store: &fakeStateStore{used: true}, wahoo: authorized(), reason: "state_not_consumed",
+		},
+		"wahoo refused the code": {
+			store: &fakeStateStore{}, wahoo: &fakeWahoo{exchangeErr: errors.New("rejected")},
+			reason: "code_exchange_failed",
+		},
+		"wahoo named no user": {
+			store: &fakeStateStore{}, wahoo: &fakeWahoo{accessToken: "access", refreshToken: "refresh"},
+			reason: "wahoo_user_unknown",
+		},
+		"slot would not bind": {
+			store: &fakeStateStore{authorizeErr: errors.New("already authorized")}, wahoo: authorized(),
+			reason: "target_not_bound",
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			logged := captureLogs(t)
+			service, err := New(test.store, test.wahoo)
+			require.NoError(t, err)
+
+			url, err := service.Start(t.Context(), "rider@example.ts.net", "rider-a")
+			require.NoError(t, err)
+			state := strings.TrimPrefix(url, "https://wahoo.example.test/authorize?state=")
+
+			require.Error(t, service.Complete(t.Context(), "rider@example.ts.net", state, "code"))
+			assert.Contains(t, logged.String(), "reason="+test.reason, "logged refusal")
+		})
+	}
+}
+
+// A callback missing its code is not a callback with an unreadable state, and
+// the reason says which — matching the name the HTTP handler gives the same
+// cause, so one taxonomy covers both entry points.
+func TestServiceNamesAnUnusableCallback(t *testing.T) {
+	for name, test := range map[string]struct{ state, code, reason string }{
+		"state is missing":    {state: "", code: "code", reason: "callback_state_missing"},
+		"state is not base64": {state: "not-base64", code: "code", reason: "callback_state_unusable"},
+		"state is short":      {state: "c2hvcnQ", code: "code", reason: "callback_state_unusable"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logged := captureLogs(t)
+			service, err := New(&fakeStateStore{}, &fakeWahoo{})
+			require.NoError(t, err)
+
+			require.ErrorIs(t,
+				service.Complete(t.Context(), "rider@example.ts.net", test.state, test.code),
+				ErrInvalidAuthorization)
+			assert.Contains(t, logged.String(), "reason="+test.reason, "logged refusal")
+		})
+	}
+}
+
+// The state decodes, so only the missing code can refuse it.
+func TestServiceNamesACallbackMissingItsCode(t *testing.T) {
+	logged := captureLogs(t)
+	store := &fakeStateStore{}
+	service, err := New(store, &fakeWahoo{})
+	require.NoError(t, err)
+
+	url, err := service.Start(t.Context(), "rider@example.ts.net", "rider-a")
+	require.NoError(t, err)
+	state := strings.TrimPrefix(url, "https://wahoo.example.test/authorize?state=")
+
+	require.ErrorIs(t,
+		service.Complete(t.Context(), "rider@example.ts.net", state, ""), ErrInvalidAuthorization)
+	assert.Contains(t, logged.String(), "reason=callback_code_missing", "logged refusal")
+	assert.False(t, store.used, "an empty code still spent the one-time state")
+}
+
+// captureLogs redirects the default logger for one test. Package-level state, so
+// these tests must not run in parallel.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buffer := &bytes.Buffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buffer, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return buffer
+}
+
 func TestServiceHidesUpstreamFailure(t *testing.T) {
 	store := &fakeStateStore{}
 	service, err := New(store, &fakeWahoo{exchangeErr: errors.New("code=private-code")})
@@ -69,6 +165,7 @@ func TestServiceHidesUpstreamFailure(t *testing.T) {
 
 type fakeStateStore struct {
 	expiresAt        time.Time
+	authorizeErr     error
 	authorizedTarget string
 	authorizedUser   string
 	refreshToken     string
@@ -105,6 +202,9 @@ func (s *fakeStateStore) ConsumeAuthorization(_ context.Context, callerLogin str
 }
 
 func (s *fakeStateStore) AuthorizeTarget(_ context.Context, targetID, wahooUserID, refreshToken string) error {
+	if s.authorizeErr != nil {
+		return s.authorizeErr
+	}
 	s.authorizedTarget = targetID
 	s.authorizedUser = wahooUserID
 	s.refreshToken = refreshToken
