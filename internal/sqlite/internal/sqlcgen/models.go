@@ -8,6 +8,35 @@ import (
 	"database/sql"
 )
 
+type Activity struct {
+	TargetSlot            string
+	WorkoutID             int64
+	WorkoutTypeID         int64
+	WorkoutTypeLocationID int64
+	StartedAtUnix         int64
+	DistanceMetres        float64
+	MovingSeconds         float64
+	ElapsedSeconds        float64
+	AscentMetres          float64
+	RawSummaryJson        []byte
+	UpdatedAtUnix         int64
+}
+
+type ActivityRecord struct {
+	TargetSlot         string
+	WorkoutID          int64
+	RecordIndex        int64
+	RecordedAtUnix     int64
+	DistanceMetres     sql.NullFloat64
+	Latitude           sql.NullFloat64
+	Longitude          sql.NullFloat64
+	AltitudeMetres     sql.NullFloat64
+	CadenceRpm         sql.NullFloat64
+	HeartRateBpm       sql.NullFloat64
+	PowerWatts         sql.NullFloat64
+	TemperatureCelsius sql.NullFloat64
+}
+
 type AlertToggle struct {
 	Task          string
 	Scope         string

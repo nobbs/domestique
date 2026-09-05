@@ -94,3 +94,37 @@ func TestMigration030DownDropsOwnerSubjectWithReferencingRowsPresent(t *testing.
 
 	require.NoError(t, migration.Migrate(30), "must be able to re-migrate up after rolling back")
 }
+
+// 031's down drops two tables that reference targets; the referenced target
+// row and everything else must be untouched, and the schema must come back.
+func TestMigration031DownDropsActivityTablesOnly(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "activities-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(31))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix)
+		VALUES ('rider-a', 1, 15, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(30))
+
+	var targets, tables int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM targets`).Scan(&targets))
+	require.Equal(t, 1, targets, "the target row must survive the rollback")
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('activities', 'activity_records')`).Scan(&tables))
+	require.Zero(t, tables, "both activity tables must be gone")
+
+	require.NoError(t, migration.Migrate(31), "must be able to re-migrate up after rolling back")
+}
