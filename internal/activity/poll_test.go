@@ -454,7 +454,8 @@ func TestPollDoesNotReadTheWholeListAgainWhileDrainingTheBacklog(t *testing.T) {
 	assert.Equal(t, int64(MaxNewPerPoll+1), source.summarized[MaxNewPerPoll],
 		"the backlog was not drained oldest first")
 	assert.Equal(t, 1, source.listed, "the second poll read the whole list again")
-	assert.Equal(t, 2, source.headed, "each poll costs exactly one listing request beyond its summaries")
+	assert.Equal(t, 1, source.headed,
+		"the first poll paid for a head it did not need, or the second read more than one page")
 }
 
 // A steady-state poll pays for the head request and nothing else.
@@ -532,6 +533,7 @@ func TestPollTakesTheReadingAgainOnceItHasAgedOut(t *testing.T) {
 
 	assert.Equal(t, Polled, result.Outcome)
 	assert.Equal(t, 1, source.listed, "the aged-out reading was not taken again")
+	assert.Equal(t, 1, source.headed, "the reading it had to take again cost a head request too")
 	require.Len(t, store.stored, 1)
 	assert.Equal(t, int64(4), store.stored[0].listing.ID)
 }
@@ -640,6 +642,8 @@ func TestPollReportsABacklogItCouldNotReplace(t *testing.T) {
 
 func TestPollReportsAListingHeadThatFailed(t *testing.T) {
 	store := newFakeStore()
+	store.listings = []Listing{{ID: 1, Starts: at(1)}}
+	store.readAt = pollNow()
 	source := newFakeSource(t)
 	source.headErr = errUpstream
 

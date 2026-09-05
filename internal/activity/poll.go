@@ -370,11 +370,17 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 	if listingsErr != nil {
 		return nil, FailureState
 	}
-	head, total, headErr := p.source.ActivityListingHead(ctx, accessToken)
-	if headErr != nil {
-		return nil, p.classify(ctx, targetID, headErr)
+	// A reading that has to be taken again asks the account nothing first: the
+	// first page is what decides, and that decision is already made.
+	reread := stale(readAt, p.now())
+	if !reread {
+		head, total, headErr := p.source.ActivityListingHead(ctx, accessToken)
+		if headErr != nil {
+			return nil, p.classify(ctx, targetID, headErr)
+		}
+		reread = total != len(listings) || !accountedFor(head, listings)
 	}
-	if stale(readAt, p.now()) || total != len(listings) || !accountedFor(head, listings) {
+	if reread {
 		fresh, listErr := p.source.ListActivities(ctx, accessToken)
 		if listErr != nil {
 			return nil, p.classify(ctx, targetID, listErr)

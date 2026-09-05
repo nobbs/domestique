@@ -812,11 +812,12 @@ fills in over successive polls rather than spending the day's quota at once. A
 poll that fails part way keeps what it already stored.
 
 Those summaries are chosen from the account's list as the service last read it
-in full, which it keeps rather than re-derives. A poll reads the first page of
-that list, which costs one request and carries the account's own count of
-activities. It reads the whole list only when that count differs from the
-reading it kept, when the first page holds an activity that reading did not, or
-when that reading is more than a week old. Otherwise it works from what it kept,
+in full, which it keeps rather than re-derives. A poll with a reading less than
+a week old reads the first page of that list, which costs one request and
+carries the account's own count of activities; it then reads the whole list only
+when that count differs from the reading it kept, or when the first page holds
+an activity that reading did not. A reading older than that, or a target with
+none, is read in full without asking the first page first. Otherwise it works from what it kept,
 so a long history is read once and filled in over the polls that follow rather
 than re-read by each of them.
 
