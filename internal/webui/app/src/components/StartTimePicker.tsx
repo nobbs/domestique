@@ -3,9 +3,9 @@
  *
  * A `Calendar` in a `Popover` for the day, an `Input` for the time.
  *
- * There is no default. An invented start time would draw a confident forecast
- * for a ride nobody actually planned, so it opens empty and stays that way
- * until the reader picks something.
+ * The page opens on the next half hour rather than on nothing — see
+ * `useStartTime` — but the control still has to hold half a departure, for a
+ * reader who picks a day for a ride they have not timed yet.
  *
  * The window is the point. The service answers a departure whose ride
  * would finish past the sixteen-day horizon with a `400`, so the calendar
@@ -20,7 +20,7 @@
  */
 
 import { IconCalendar } from "@tabler/icons-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -88,12 +88,19 @@ export function StartTimePicker({
   const [open, setOpen] = useState(false);
   /*
    * A day the reader has picked while no departure exists yet. Held rather
-   * than proposed: there is deliberately no default start time, and proposing
-   * the day at midnight would draw a confident forecast for a ride nobody
-   * planned. The departure is proposed once the time field fills the other
-   * half in. There is no clear: a start once set can only be changed.
+   * than proposed: proposing the day at midnight would draw a confident
+   * forecast for a ride nobody planned. The departure is proposed once the
+   * time field fills the other half in. There is no clear: a start once set
+   * can only be changed.
    */
   const [pendingDay, setPendingDay] = useState<Date | null>(null);
+  /*
+   * The last departure proposed, so one completed edit stays one proposal.
+   * The events overlap — a browser reports the keystroke that finishes a time
+   * as an input and a keyup both — and `value` cannot tell the second event it
+   * is a repeat while the render carrying it has yet to arrive.
+   */
+  const proposed = useRef<number | null>(null);
   const now = new Date();
   /*
    * The window's own edges carry a time of day, and a calendar offers days.
@@ -123,14 +130,15 @@ export function StartTimePicker({
       return;
     }
     setRefusal(null);
+    proposed.current = next.getTime();
     onChange(next);
   };
 
   /**
-   * Proposes whatever the time field holds, from either the event that reports
-   * it. WebKit fires neither `input` nor `change` while a time field's segments
-   * are being edited, so a departure typed into one and left focused reached
-   * nothing: the reader saw a day, a time, and no forecast.
+   * Proposes whatever the time field holds, from any of the events that report
+   * it. A time field is silent until both of its halves are filled — no
+   * `input`, no `change` — and WebKit stays silent past that while the field
+   * keeps focus, so the keys themselves are what a departure has to arrive on.
    */
   const proposeTime = (raw: string) => {
     // Clearing the field is not a proposal. An empty string splits to [""] and
@@ -146,10 +154,10 @@ export function StartTimePicker({
     }
     const next = new Date(day);
     next.setHours(hours, minutes ?? 0, 0, 0);
-    // Where both events do arrive, the second says nothing the first did not:
-    // every focus and blur of an untouched field would otherwise hand the page
-    // a fresh Date and re-render everything hanging off the departure.
-    if (value !== null && next.getTime() === value.getTime()) {
+    // A repeat says nothing the first report did not: every focus and blur of
+    // an untouched field would otherwise hand the page a fresh Date and
+    // re-render everything hanging off the departure.
+    if (next.getTime() === proposed.current || next.getTime() === value?.getTime()) {
       return;
     }
     propose(next);
@@ -227,8 +235,18 @@ export function StartTimePicker({
         // so an enabled field would be a control that swallows keystrokes.
         disabled={shownDay === null}
         value={value ? toTimeValue(value) : ""}
+        onKeyUp={(event) => proposeTime(event.currentTarget.value)}
         onChange={(event) => proposeTime(event.target.value)}
-        onBlur={(event) => proposeTime(event.target.value)}
+        onBlur={(event) => {
+          // Half a time reads as an empty one, so a field left holding "--:30"
+          // proposes nothing; say that rather than let the control look broken.
+          if (event.target.validity.badInput) {
+            setRefusal("That time is only half typed.");
+
+            return;
+          }
+          proposeTime(event.target.value);
+        }}
       />
     </div>
   );

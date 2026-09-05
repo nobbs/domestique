@@ -195,6 +195,65 @@ describe("StartTimePicker", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
+  /*
+   * A time field reports nothing at all until both of its halves are filled —
+   * no input, no change — so a departure typed while the field keeps focus
+   * arrives on the keys or not at all.
+   */
+  it("commits a time as soon as the keys complete it", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    const field = timeField();
+    // Half typed: the field reads empty and there is nothing to propose.
+    fireEvent.keyUp(field, { key: "0" });
+    expect(onChange).not.toHaveBeenCalled();
+
+    field.value = "08:30";
+    fireEvent.keyUp(field, { key: "0" });
+
+    expect(onChange).toHaveBeenCalledWith(new Date("2026-08-25T08:30"));
+  });
+
+  it("proposes a completed time once, however many events report it", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    const field = timeField();
+    field.value = "08:30";
+    // One completed edit, reported by every event a browser might send, and
+    // the parent has yet to re-render with what the first of them proposed —
+    // so `value` is not what can tell the rest they are repeats.
+    fireEvent.keyUp(field, { key: "0" });
+    fireEvent.change(field, { target: { value: "08:30" } });
+    fireEvent.blur(field);
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it("says a half-typed time is half typed rather than sitting silent", async () => {
+    const onChange = vi.fn();
+    render(<StartTimePicker value={null} onChange={onChange} />);
+
+    fireEvent.click(dayButton());
+    fireEvent.click(await screen.findByRole("button", { name: /25(th)?/ }));
+
+    // What a field holding "--:30" reports: an empty value, and the partial
+    // input recorded on its validity.
+    const field = timeField();
+    Object.defineProperty(field, "validity", { value: { badInput: true } });
+    fireEvent.blur(field);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText("That time is only half typed.")).toBeInTheDocument();
+  });
+
   it("says which half of the departure is still missing", async () => {
     render(<StartTimePicker value={null} onChange={() => {}} />);
 

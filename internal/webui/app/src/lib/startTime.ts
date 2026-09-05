@@ -10,6 +10,11 @@
  * `isWithinForecastWindow`. A start time left over from an earlier visit must
  * never come back as a request the endpoint is certain to answer with a
  * `400 invalid_request`.
+ *
+ * Where there is nothing to read, the departure is the next half hour rather
+ * than nothing at all: the reader looking at a route is usually deciding
+ * whether to ride it now, and an empty picker made them say so twice before it
+ * would show them anything.
  */
 
 import { useCallback, useState } from "react";
@@ -38,12 +43,27 @@ export function isWithinForecastWindow(at: Date, now: Date = new Date()): boolea
 }
 
 /**
+ * The next half hour, on the clock: 12:05 gives 12:30, and 12:30 gives 13:00.
+ *
+ * `now` is a parameter for the same reason it is elsewhere here — a test holds
+ * time still rather than racing it.
+ */
+export function nextHalfHour(now: Date = new Date()): Date {
+  const next = new Date(now);
+  next.setSeconds(0, 0);
+  // 60 rolls into the next hour, and the next day where that is what it means.
+  next.setMinutes(next.getMinutes() < 30 ? 30 : 60);
+
+  return next;
+}
+
+/**
  * The reader's chosen ride start time, remembered across visits.
  *
  * Guarded the same way `useThemeChoice` guards storage — a browser may refuse
  * it outright, in a private window or with third-party storage blocked — plus
- * the window check above. Either failure reads as `null`, which is the same
- * "nothing chosen" state offered before the reader ever picked a time.
+ * the window check above. Either failure reads as the next half hour, which is
+ * what a visit with nothing remembered opens on anyway.
  */
 export function useStartTime(): [Date | null, (next: Date | null) => void] {
   const [startTime, setStartTimeState] = useState<Date | null>(readStartTime);
@@ -56,17 +76,19 @@ export function useStartTime(): [Date | null, (next: Date | null) => void] {
   return [startTime, setStartTime];
 }
 
-function readStartTime(): Date | null {
+function readStartTime(): Date {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored === null) {
-      return null;
+      return nextHalfHour();
     }
     const parsed = new Date(stored);
 
-    return Number.isNaN(parsed.getTime()) || !isWithinForecastWindow(parsed) ? null : parsed;
+    return Number.isNaN(parsed.getTime()) || !isWithinForecastWindow(parsed)
+      ? nextHalfHour()
+      : parsed;
   } catch {
-    return null;
+    return nextHalfHour();
   }
 }
 

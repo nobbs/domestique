@@ -4,6 +4,7 @@ import {
   FORECAST_HORIZON_MS,
   FORECAST_PAST_ALLOWANCE_MS,
   isWithinForecastWindow,
+  nextHalfHour,
   startTimeRefusal,
   useStartTime,
 } from "./startTime";
@@ -32,6 +33,15 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
+
+/**
+ * A clock held still, so a comparison against `nextHalfHour()` cannot land on
+ * either side of a half-hour boundary depending on when the test ran.
+ */
+function freezeClock(): void {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-08-24T12:05:00"));
+}
 
 describe("isWithinForecastWindow", () => {
   const now = new Date("2026-08-24T12:00:00Z");
@@ -89,12 +99,22 @@ describe("startTimeRefusal", () => {
   });
 });
 
+describe("nextHalfHour", () => {
+  it("rounds up to the half hour, and past it to the next hour", () => {
+    expect(nextHalfHour(new Date("2026-08-24T12:05:31"))).toEqual(new Date("2026-08-24T12:30"));
+    expect(nextHalfHour(new Date("2026-08-24T12:30:00"))).toEqual(new Date("2026-08-24T13:00"));
+    // The last half hour of the day belongs to the next one.
+    expect(nextHalfHour(new Date("2026-08-24T23:45"))).toEqual(new Date("2026-08-25T00:00"));
+  });
+});
+
 describe("useStartTime", () => {
-  it("is unset before the reader picks anything", () => {
+  it("opens on the next half hour before the reader picks anything", () => {
+    freezeClock();
     stubStorage();
     const { result } = renderHook(() => useStartTime());
 
-    expect(result.current[0]).toBeNull();
+    expect(result.current[0]).toEqual(new Date("2026-08-24T12:30"));
   });
 
   it("reports the pick, and remembers it for the next visit", () => {
@@ -134,31 +154,34 @@ describe("useStartTime", () => {
   // A start time from a previous visit must never come back once it has aged
   // out of the window the endpoint will accept — it would only ever be sent
   // as a request the endpoint is certain to refuse with a 400.
-  it("reads a stale stored value as unset", () => {
+  it("replaces a stale stored value with the next half hour", () => {
+    freezeClock();
     const entries = stubStorage();
     entries.set("domestique.start-time", "2020-01-01T00:00:00Z");
 
     const { result } = renderHook(() => useStartTime());
 
-    expect(result.current[0]).toBeNull();
+    expect(result.current[0]).toEqual(nextHalfHour());
   });
 
-  it("reads a far-future stored value as unset", () => {
+  it("replaces a far-future stored value with the next half hour", () => {
+    freezeClock();
     const entries = stubStorage();
     entries.set("domestique.start-time", "2099-01-01T00:00:00Z");
 
     const { result } = renderHook(() => useStartTime());
 
-    expect(result.current[0]).toBeNull();
+    expect(result.current[0]).toEqual(nextHalfHour());
   });
 
-  it("reads an unparseable stored value as unset", () => {
+  it("replaces an unparseable stored value with the next half hour", () => {
+    freezeClock();
     const entries = stubStorage();
     entries.set("domestique.start-time", "not-a-time");
 
     const { result } = renderHook(() => useStartTime());
 
-    expect(result.current[0]).toBeNull();
+    expect(result.current[0]).toEqual(nextHalfHour());
   });
 
   it("reads a valid stored value", () => {
@@ -178,6 +201,7 @@ describe("useStartTime", () => {
    * long as the page is open; only its outliving the page is lost.
    */
   it("keeps working where the browser refuses storage", () => {
+    freezeClock();
     vi.stubGlobal("localStorage", {
       getItem: () => {
         throw new Error("denied");
@@ -190,7 +214,7 @@ describe("useStartTime", () => {
       },
     });
     const { result } = renderHook(() => useStartTime());
-    expect(result.current[0]).toBeNull();
+    expect(result.current[0]).toEqual(nextHalfHour());
 
     const chosen = new Date("2026-08-25T09:00:00Z");
     act(() => {
