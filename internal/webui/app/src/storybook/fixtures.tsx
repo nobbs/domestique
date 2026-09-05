@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MemoryRouter } from "react-router";
 import {
+  activitiesQuery,
   routeGeometryQuery,
   routesQuery,
   settingsQuery,
@@ -13,6 +14,7 @@ import {
   webUIConfigQuery,
 } from "../api/queries";
 import type {
+  Activity,
   BoundingBox,
   Route,
   RouteGeometry,
@@ -27,6 +29,7 @@ import type { Climb } from "../lib/climbs";
 import type { ForecastSample } from "../lib/forecastSamples";
 import { buildProfile, gradientShares } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
+import { windowStart } from "../lib/volume";
 
 export const coordinates = Array.from({ length: 40 }, (_, index): [number, number, number] => [
   8 + index * 0.001,
@@ -286,6 +289,27 @@ export const taskRuns: TaskRun[] = [
   },
 ];
 
+/**
+ * Invented rides, spread back over four months so the week and month views
+ * both have something to show and a gap to leave empty.
+ */
+export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((daysAgo, index) => {
+  const startedAt = new Date();
+  startedAt.setDate(startedAt.getDate() - daysAgo);
+  startedAt.setHours(9, 0, 0, 0);
+
+  return {
+    id: 1000 + index,
+    startedAt: startedAt.toISOString(),
+    distanceMetres: 35_000 + index * 8_000,
+    movingSeconds: 4_800 + index * 900,
+    elapsedSeconds: 5_400 + index * 900,
+    ascentMetres: 280 + index * 120,
+    typeId: 40,
+    locationId: 0,
+  };
+});
+
 export function StoryProviders({ children }: { children: ReactNode }) {
   const [client] = useState(() => {
     const next = new QueryClient({
@@ -296,6 +320,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     next.setQueryData(webUIConfigQuery().queryKey, config);
     next.setQueryData(settingsQuery().queryKey, settings);
     next.setQueryData(routesQuery().queryKey, [route]);
+    next.setQueryData(activitiesQuery(windowStart()).queryKey, activities);
     next.setQueryData(
       routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
       routeGeometryFixture,

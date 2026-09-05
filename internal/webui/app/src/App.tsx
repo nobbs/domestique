@@ -10,6 +10,7 @@ import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SyncPage } from "./features/sync/SyncPage";
+import { VolumePage } from "./features/volume/VolumePage";
 import { useEffectiveAdmin } from "./lib/identity";
 import { useThemeChoice } from "./lib/theme";
 
@@ -98,6 +99,7 @@ export function App() {
           document there, so the sign-in form is the application's own. */}
       <Route path="auth/login" element={<SignInPage />} />
       <Route path="sync" element={<SyncPage />} />
+      <Route path="volume" element={<VolumePage />} />
       <Route
         path="settings"
         element={<SettingsPage themeChoice={themeChoice} onThemeChoiceChange={setThemeChoice} />}
