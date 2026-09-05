@@ -135,6 +135,14 @@ describe("RouteDock", () => {
     expect(await screen.findByText(/resolution/)).toBeInTheDocument();
   });
 
+  it("has nothing behind an info control when there is no forecast to describe", async () => {
+    const user = userEvent.setup();
+    renderDock({ samples: [] });
+    await user.click(screen.getByRole("tab", { name: /Forecast/ }));
+
+    expect(screen.queryByRole("button", { name: "More about this" })).not.toBeInTheDocument();
+  });
+
   it("folds to a strip with only the two stop buttons, reopening on the chosen stop", async () => {
     const user = userEvent.setup();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

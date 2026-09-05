@@ -372,9 +372,11 @@ function ForecastStop({
       gutter={false}
       line={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
       info={
-        <p className="max-w-64 text-xs text-[var(--ink-2)]">
-          {forecastResolution(forecastLeadHours(samples)).sentence}
-        </p>
+        samples.length === 0 ? undefined : (
+          <p className="max-w-64 text-xs text-[var(--ink-2)]">
+            {forecastResolution(forecastLeadHours(samples)).sentence}
+          </p>
+        )
       }
     >
       <div className="min-h-0 flex-1">

@@ -43,6 +43,23 @@ import { useElementHeight } from "../../lib/useElementHeight";
  */
 const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr)";
 const ROW_HEIGHT = 28;
+/** The list's own `mt-1`, which `clientHeight` on the header above it does not include. */
+const LIST_GAP = 4;
+
+/**
+ * How many whole rows fit below the header, snapped down rather than up — a
+ * fractional row left over would be the very row this whole feature exists to
+ * avoid showing cut in half.
+ */
+export function rowsToShow(
+  fixedHeight: boolean,
+  sectionHeight: number,
+  headerHeight: number,
+): number | null {
+  return fixedHeight && sectionHeight > 0
+    ? Math.max(1, Math.floor((sectionHeight - headerHeight - LIST_GAP) / ROW_HEIGHT))
+    : null;
+}
 
 /**
  * The one way to open or fold the sidebar, wherever it sits: the same count,
@@ -106,10 +123,7 @@ export function ClimbsSidebar({
   if (climbs.length === 0) {
     return null;
   }
-  const rows =
-    fixedHeight && sectionHeight > 0
-      ? Math.max(1, Math.floor((sectionHeight - headerHeight) / ROW_HEIGHT))
-      : null;
+  const rows = rowsToShow(fixedHeight, sectionHeight, headerHeight);
 
   return (
     <section
