@@ -502,7 +502,9 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 //     third party — every byte it decodes was already relayed through this
 //     service's own /v1/weather-grid/* routes, never fetched by the browser
 //     from Open-Meteo directly — so unlike a tile origin it is fixed here
-//     rather than following what an operator configured.
+//     rather than following what an operator configured. Like a tile origin,
+//     though, it is only granted once identified: the overlay never renders
+//     before then, so the pre-gate policy has no reason to carry it.
 //
 // A worker does not read this header from the document that started it: it is
 // governed by the policy on its own response. The map's worker is therefore
@@ -523,6 +525,7 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 // there or a browser refuses to follow it.
 func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 	formAction := "form-action 'none'"
+	scriptSrc := "script-src 'self'"
 	var tileOrigins []string
 	signIn := strings.HasPrefix(path, "/auth/")
 	if signIn {
@@ -547,6 +550,10 @@ func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 			slices.Sort(tileOrigins)
 			tileOrigins = slices.Compact(tileOrigins)
 		}
+		// The weather-grid overlay only ever renders behind the identity gate,
+		// so the WASM grant has no reason to reach a sign-in page or a public
+		// asset request.
+		scriptSrc += " 'wasm-unsafe-eval'"
 	}
 
 	return strings.Join([]string{
@@ -555,7 +562,7 @@ func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 		"object-src 'none'",
 		"frame-ancestors 'none'",
 		formAction,
-		"script-src 'self' 'wasm-unsafe-eval'",
+		scriptSrc,
 		"style-src 'self' 'unsafe-inline'",
 		"font-src 'self'",
 		"worker-src 'self' blob:",
