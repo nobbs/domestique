@@ -170,12 +170,11 @@ export function ForecastStrip({
             const figures = cellWidth >= MIN_FIGURE_WIDTH;
             const icon = cellWidth >= MIN_ICON_WIDTH;
             const wind = cellWidth >= MIN_WIND_WIDTH;
-            const clock = formatClock(cell.sample.arrivalAt);
             const place =
               cellWidth >= MIN_PLACE_WIDTH
-                ? `${formatKilometres(cell.sample.distanceMetres)} · ${clock}`
+                ? `${formatKilometres(cell.sample.distanceMetres)} · ${formatClock(cell.sample.arrivalAt)}`
                 : cellWidth >= MIN_CLOCK_WIDTH
-                  ? clock
+                  ? formatClock(cell.sample.arrivalAt)
                   : null;
             const wet = (cell.point.precipitationProbabilityPercent / 100) * 0.5;
 
