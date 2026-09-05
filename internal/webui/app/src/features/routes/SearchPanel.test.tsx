@@ -110,7 +110,11 @@ describe("SearchPanel", () => {
   });
 
   it("blames a filter alone for an empty result when no name was typed", () => {
-    renderPanel({ query: "", filters: { ...EMPTY_FILTERS, surfaces: ["gravel"] }, shown: [] });
+    renderPanel({
+      query: "",
+      filters: { ...EMPTY_FILTERS, ascentMetres: { min: 500, max: null } },
+      shown: [],
+    });
 
     expect(screen.getByText("Nothing here matches these filters.")).toBeInTheDocument();
   });
@@ -121,7 +125,7 @@ describe("SearchPanel", () => {
   it("names both when a search and a filter are narrowing at once", () => {
     renderPanel({
       query: "kaiserstuhl",
-      filters: { ...EMPTY_FILTERS, surfaces: ["gravel"] },
+      filters: { ...EMPTY_FILTERS, ascentMetres: { min: 500, max: null } },
       shown: [],
     });
 

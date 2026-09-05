@@ -1,23 +1,15 @@
 /**
  * Narrowing the library shown, by what a route measures rather than what it
- * is called.
- *
- * Folded away until asked for, the same way the map's basemap choice is: a
- * filter nobody has set is a fact worth confirming rather than a control
- * worth spending room on beside the search field. Expansion is held by the
- * caller for the same reason it is there — see `BasemapPicker`.
+ * is called. Folded away until asked for, the same way the basemap choice is.
  */
 
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
-import { SURFACE_KINDS } from "../../api/types";
 import { Button } from "../../components/Button";
-import { Checkbox } from "../../components/ui/checkbox";
-import { FieldLabel } from "../../components/ui/field";
+import { RangeSlider } from "../../components/RangeSlider";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, hasActiveFilters } from "../../lib/filters";
-import { SURFACE_STYLES } from "../../lib/surface";
-import { RangeRow } from "./RangeRow";
+import { formatMovingTime } from "../../lib/format";
 
 const FILTER_PANEL_ID = "library-filter-panel";
 
@@ -57,53 +49,38 @@ export function FilterPanel({
         }
       />
       <PopoverContent
-        // Named for the same reason the basemap popup is: it is a dialog to a
-        // screen reader, and an unnamed one says nothing about what it holds.
         aria-label="Library filters"
         className="w-[min(23rem,calc(100vw-1.5rem))] gap-4 bg-[var(--panel)] p-3 shadow-[var(--shadow)]"
         id={FILTER_PANEL_ID}
       >
-        <div className="grid gap-4">
-          <RangeRow
+        <div className="grid gap-5">
+          <RangeSlider
             legend="Distance"
-            unit="km"
+            min={0}
+            max={300_000}
+            step={5_000}
             range={filters.distanceMetres}
             onChange={(next) => onFiltersChange({ ...filters, distanceMetres: next })}
-            // Rounded on the way in as well as out, to the same 0.1 km step: a value
-            // typed with finer precision would otherwise keep filtering at that precision
-            // while the field shows a rounder number.
-            toDisplay={(metres) => Math.round((metres / 1000) * 10) / 10}
-            toStored={(km) => Math.round(km * 10) * 100}
+            format={(metres) => `${metres / 1000} km`}
           />
-          <RangeRow
+          <RangeSlider
             legend="Ascent"
-            unit="m"
+            min={0}
+            max={5_000}
+            step={100}
             range={filters.ascentMetres}
             onChange={(next) => onFiltersChange({ ...filters, ascentMetres: next })}
+            format={(metres) => `${metres} m`}
           />
-          <RangeRow
-            legend="Max gradient"
-            unit="%"
-            range={filters.maxGradientPercent}
-            onChange={(next) => onFiltersChange({ ...filters, maxGradientPercent: next })}
+          <RangeSlider
+            legend="Duration"
+            min={0}
+            max={12 * 3600}
+            step={15 * 60}
+            range={filters.movingSeconds}
+            onChange={(next) => onFiltersChange({ ...filters, movingSeconds: next })}
+            format={(seconds) => (seconds === 0 ? "0 min" : formatMovingTime(seconds))}
           />
-          <fieldset className="grid gap-2">
-            <legend className="text-sm font-semibold">Surface</legend>
-            {SURFACE_KINDS.map((kind) => (
-              <FieldLabel className="flex items-center gap-2 text-sm" key={kind}>
-                <Checkbox
-                  checked={filters.surfaces.includes(kind)}
-                  onCheckedChange={(checked) => {
-                    const surfaces = checked
-                      ? [...filters.surfaces, kind]
-                      : filters.surfaces.filter((selected) => selected !== kind);
-                    onFiltersChange({ ...filters, surfaces });
-                  }}
-                />
-                {SURFACE_STYLES[kind].label}
-              </FieldLabel>
-            ))}
-          </fieldset>
           <Button
             variant="outline"
             disabled={!active}
