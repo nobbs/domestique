@@ -73,6 +73,44 @@ func TestActivityListingsNarrowWahooWorkouts(t *testing.T) {
 	assert.Equal(t, []activity.Listing{{ID: 42, TypeID: 15, LocationID: 1, Starts: starts}}, listings)
 }
 
+// A stored summary is what a download is addressed by, and a service with no
+// Wahoo application configured downloads nothing at all.
+func TestDownloadActivityFITRefusesWhatItCannotAddress(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	current := testSettings(t, store)
+	provider := newWahooProvider(current, store, "https://domestique.example.test")
+
+	_, err := provider.DownloadActivityFIT(t.Context(), activity.Summary{Raw: []byte(`{}`)})
+	require.Error(t, err, "an unconfigured service downloaded a file")
+
+	configureWahoo(t, current)
+	_, err = provider.DownloadActivityFIT(t.Context(), activity.Summary{Raw: []byte(`{}`)})
+	require.ErrorContains(t, err, "does not name a file")
+
+	// Anywhere but Wahoo's own CDN is refused by the client, not followed.
+	_, err = provider.DownloadActivityFIT(t.Context(),
+		activity.Summary{Raw: []byte(`{"file":{"url":"https://elsewhere.example.test/a.fit"}}`)})
+	require.ErrorContains(t, err, "downloading a Wahoo workout file")
+}
+
+// Where the FIT file's URL sits inside a summary is Wahoo's shape, so it is
+// read here rather than anywhere the activity package can see.
+func TestSummaryFileURLReadsWahoosOwnShape(t *testing.T) {
+	t.Parallel()
+
+	fileURL, err := summaryFileURL([]byte(`{"id":42,"file":{"url":"https://cdn.wahooligan.com/a.fit"}}`))
+	require.NoError(t, err)
+	assert.Equal(t, "https://cdn.wahooligan.com/a.fit", fileURL)
+
+	_, err = summaryFileURL([]byte(`{"id":42}`))
+	require.ErrorContains(t, err, "does not name a file")
+
+	_, err = summaryFileURL([]byte("not json"))
+	require.ErrorContains(t, err, "could not be read")
+}
+
 func TestActivitySummaryOfCopiesEveryTotal(t *testing.T) {
 	t.Parallel()
 

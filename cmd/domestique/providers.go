@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -289,8 +290,48 @@ func activityListings(workouts []wahoo.Workout) []activity.Listing {
 	return listings
 }
 
+// DownloadActivityFIT reads the FIT file a stored summary names, from Wahoo's
+// CDN. Where the URL sits in that document is Wahoo's shape, so it is read here.
+func (p *wahooProvider) DownloadActivityFIT(ctx context.Context, summary activity.Summary) ([]byte, error) {
+	client, err := p.current()
+	if err != nil {
+		return nil, err
+	}
+	fileURL, err := summaryFileURL(summary.Raw)
+	if err != nil {
+		return nil, err
+	}
+	data, err := client.DownloadWorkoutFIT(ctx, fileURL)
+	if errors.Is(err, wahoo.ErrWorkoutFileRefused) {
+		return nil, fmt.Errorf("%w: %w", activity.ErrNoActivityFile, err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("downloading a Wahoo workout file: %w", err)
+	}
+
+	return data, nil
+}
+
+// summaryFileURL is the FIT file URL inside Wahoo's own summary document.
+func summaryFileURL(raw []byte) (string, error) {
+	var summary struct {
+		File struct {
+			URL string `json:"url"`
+		} `json:"file"`
+	}
+	if err := json.Unmarshal(raw, &summary); err != nil {
+		// The cause names a field or a token, never the file URL, so it may travel.
+		return "", fmt.Errorf("%w: stored Wahoo workout summary could not be read as one: %w", activity.ErrNoActivityFile, err)
+	}
+	if summary.File.URL == "" {
+		return "", fmt.Errorf("%w: stored Wahoo workout summary does not name a file", activity.ErrNoActivityFile)
+	}
+
+	return summary.File.URL, nil
+}
+
 // ActivitySummary reads one activity's totals and Wahoo's own summary document.
-// The FIT file the summary names is deliberately not downloaded here.
+// The FIT file the summary names is downloaded separately, by the records phase.
 func (p *wahooProvider) ActivitySummary(
 	ctx context.Context, accessToken string, id int64,
 ) (activity.Summary, error) {

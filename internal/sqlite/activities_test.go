@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
@@ -203,10 +204,162 @@ func TestActivitiesBetweenHonoursTheLimit(t *testing.T) {
 	assert.Empty(t, stored)
 }
 
+// A stored activity owes its records until they are written; the sensors a ride
+// did not carry are stored as NULL rather than as a zero reading.
+func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	require.NoError(t, err, "ActivitiesAwaitingRecords()")
+	require.Len(t, pending, 1)
+	assert.Equal(t, int64(1), pending[0].ID)
+	assert.JSONEq(t, `{"distance_accum":"100"}`, string(pending[0].Summary.Raw))
+
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		ChecksumFailed: true,
+		Records: []activity.Record{
+			{Time: activityNow(), PowerWatts: 240, HasPower: true},
+			{Time: activityNow().Add(time.Second)},
+		},
+	}), "StoreActivityRecords()")
+
+	var index int64
+	var power, cadence sql.NullFloat64
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT record_index, power_watts, cadence_rpm FROM activity_records
+		 WHERE target_slot = 'rider-a' AND workout_id = 1 ORDER BY record_index`).Scan(&index, &power, &cadence))
+	assert.Zero(t, index)
+	assert.True(t, power.Valid)
+	assert.InDelta(t, 240.0, power.Float64, 1e-9)
+	assert.False(t, cadence.Valid, "an absent sensor must be stored as NULL")
+
+	var state string
+	var checksumFailed int
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT records_state, fit_checksum_failed FROM activities WHERE target_slot = 'rider-a' AND workout_id = 1`).
+		Scan(&state, &checksumFailed))
+	assert.Equal(t, "stored", state)
+	assert.Equal(t, 1, checksumFailed)
+
+	pending, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	require.NoError(t, err, "ActivitiesAwaitingRecords() again")
+	assert.Empty(t, pending, "a settled activity must no longer be awaiting records")
+}
+
+// A re-download replaces that activity's samples rather than adding to them.
+func TestStoreActivityRecordsReplacesWhatWasThere(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}, {Time: activityNow().Add(time.Second)}},
+	}), "StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}), "StoreActivityRecords() again")
+
+	var rows int
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM activity_records WHERE target_slot = 'rider-a' AND workout_id = 1`).Scan(&rows))
+	assert.Equal(t, 1, rows)
+}
+
+// Records are the activity's: removing it removes them, and no other target's.
+func TestActivityRecordsCascadeAndStayWithTheirTarget(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-b", 1, 200), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}), "StoreActivityRecords()")
+
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-b", 10)
+	require.NoError(t, err, "ActivitiesAwaitingRecords()")
+	require.Len(t, pending, 1, "another rider's activity was settled")
+
+	_, err = store.database.ExecContext(t.Context(),
+		`DELETE FROM activities WHERE target_slot = 'rider-a' AND workout_id = 1`)
+	require.NoError(t, err)
+
+	var rows int
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM activity_records`).Scan(&rows))
+	assert.Zero(t, rows, "records outlived the activity they belong to")
+}
+
+// The oldest rides come first and only limit of them, so a long history fills
+// in chronologically over successive polls.
+func TestActivitiesAwaitingRecordsIsOldestFirstAndLimited(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	for index, starts := range []time.Time{
+		activityNow(), activityNow().Add(-2 * time.Hour), activityNow().Add(-time.Hour),
+	} {
+		require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+			activity.Listing{ID: int64(index + 1), TypeID: 15, LocationID: 1, Starts: starts},
+			activity.Summary{Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
+	}
+
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 2)
+	require.NoError(t, err, "ActivitiesAwaitingRecords()")
+	require.Len(t, pending, 2)
+	assert.Equal(t, []int64{2, 3}, []int64{pending[0].ID, pending[1].ID}, "oldest first")
+}
+
+// An undecodable file is recorded as such so no later poll downloads it again.
+func TestMarkActivityUnreadableTakesItOutOfThePendingSet(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	require.NoError(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "MarkActivityUnreadable()")
+
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	require.NoError(t, err, "ActivitiesAwaitingRecords()")
+	assert.Empty(t, pending)
+
+	var state string
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT records_state FROM activities WHERE target_slot = 'rider-a' AND workout_id = 1`).Scan(&state))
+	assert.Equal(t, "unreadable", state)
+}
+
+func TestActivityRecordWritesReportAnUnreadableStore(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	require.ErrorContains(t, err, "reading activities awaiting records")
+	require.Error(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{}))
+	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "marking an activity unreadable")
+}
+
 func TestActivitiesBetweenReportsAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
 	_, err := store.ActivitiesBetween(t.Context(), "rider-a", activityNow(), activityNow().Add(time.Hour), 10)
 	require.ErrorContains(t, err, "reading stored activities")
+}
+
+func TestActivityRecordWritesRefuseInvalidInputs(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+
+	_, err := store.ActivitiesAwaitingRecords(t.Context(), "", 10)
+	require.ErrorContains(t, err, "target and a positive limit")
+	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 0)
+	require.ErrorContains(t, err, "target and a positive limit")
+	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", -1)
+	require.ErrorContains(t, err, "target and a positive limit")
+
+	require.ErrorContains(t, store.StoreActivityRecords(t.Context(), "", 1, activity.FIT{}), "target and an activity id")
+	require.ErrorContains(t, store.StoreActivityRecords(t.Context(), "rider-a", 0, activity.FIT{}), "target and an activity id")
+
+	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "", 1), "target and an activity id")
+	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 0), "target and an activity id")
 }

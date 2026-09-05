@@ -20,6 +20,8 @@ type Activity struct {
 	AscentMetres          float64
 	RawSummaryJson        []byte
 	UpdatedAtUnix         int64
+	RecordsState          string
+	FitChecksumFailed     int64
 }
 
 type ActivityRecord struct {

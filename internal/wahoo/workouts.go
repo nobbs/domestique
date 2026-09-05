@@ -184,6 +184,11 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 	}, nil
 }
 
+// ErrWorkoutFileRefused reports the CDN answering 401, 403, 404 or 410 for one
+// workout's file: that file is gone or forbidden, not an outage worth stopping
+// for. A rate limit or any other status is not this.
+var ErrWorkoutFileRefused = errors.New("wahoo: workout file was refused")
+
 // DownloadWorkoutFIT reads the FIT file Wahoo's workout summary names.
 func (c *Client) DownloadWorkoutFIT(ctx context.Context, fileURL string) (data []byte, err error) {
 	parsed, parseErr := url.Parse(fileURL)
@@ -218,6 +223,10 @@ func (c *Client) DownloadWorkoutFIT(ctx context.Context, fileURL string) (data [
 	defer func() {
 		err = errors.Join(err, response.Body.Close())
 	}()
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden ||
+		response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone {
+		return nil, fmt.Errorf("%w: HTTP %d", ErrWorkoutFileRefused, response.StatusCode)
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("wahoo: workout file request returned HTTP %d", response.StatusCode)
 	}
