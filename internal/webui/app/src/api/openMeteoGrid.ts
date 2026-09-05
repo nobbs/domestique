@@ -1,11 +1,11 @@
 /**
- * The 10 m wind grid for one hour, read straight from Open-Meteo's spatial
- * files on S3 with range requests. Nothing here goes through the service; the
+ * Slices of Open-Meteo's spatial files for one hour, read straight from S3
+ * with range requests. Nothing here goes through the service; the
  * bucket has to be named in the Content-Security-Policy's `connect-src`.
  */
 
 import { OmDataType, OmFileReader, OmHttpBackend } from "@openmeteo/file-reader";
-import type { Bbox, WindGrid } from "../lib/windGrid";
+import type { Bbox, GridGeometry, ScalarGrid, WindGrid } from "../lib/windGrid";
 
 const BUCKET = "https://openmeteo.s3.amazonaws.com/data_spatial";
 const MODEL = "dwd_icon_d2";
@@ -73,8 +73,12 @@ async function readSlice(
   }
 }
 
-/** The grid for the valid hour nearest `at`, over `bbox`; null when the bbox misses the model. */
-export async function fetchWindGrid(bbox: Bbox, at: Date): Promise<WindGrid | null> {
+/** The named variables for the valid hour nearest `at`, over `bbox`; null when the bbox misses the model. */
+async function readSlices(
+  bbox: Bbox,
+  at: Date,
+  names: readonly string[],
+): Promise<(GridGeometry & { values: Float32Array[] }) | null> {
   const window = gridWindow(bbox);
   if (window.x1 <= window.x0 || window.y1 <= window.y0) {
     return null;
@@ -90,10 +94,7 @@ export async function fetchWindGrid(bbox: Bbox, at: Date): Promise<WindGrid | nu
     new OmHttpBackend({ url: omUrl(new Date(latest.reference_time), validTime) }),
   );
   try {
-    const [u, v] = await Promise.all([
-      readSlice(root, "wind_u_component_10m", window),
-      readSlice(root, "wind_v_component_10m", window),
-    ]);
+    const values = await Promise.all(names.map((name) => readSlice(root, name, window)));
 
     return {
       lonMin: GRID.lonMin + window.x0 * GRID.dx,
@@ -102,10 +103,32 @@ export async function fetchWindGrid(bbox: Bbox, at: Date): Promise<WindGrid | nu
       dy: GRID.dy,
       nx: window.x1 - window.x0,
       ny: window.y1 - window.y0,
-      u,
-      v,
+      values,
     };
   } finally {
     root.dispose();
   }
+}
+
+export async function fetchWindGrid(bbox: Bbox, at: Date): Promise<WindGrid | null> {
+  const slices = await readSlices(bbox, at, ["wind_u_component_10m", "wind_v_component_10m"]);
+  if (!slices) {
+    return null;
+  }
+  const { values, ...geometry } = slices;
+  const [u, v] = values;
+
+  return u && v ? { ...geometry, u, v } : null;
+}
+
+/** 2 m air temperature in °C. */
+export async function fetchTemperatureGrid(bbox: Bbox, at: Date): Promise<ScalarGrid | null> {
+  const slices = await readSlices(bbox, at, ["temperature_2m"]);
+  if (!slices) {
+    return null;
+  }
+  const { values, ...geometry } = slices;
+  const [cells] = values;
+
+  return cells ? { ...geometry, values: cells } : null;
 }

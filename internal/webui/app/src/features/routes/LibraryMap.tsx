@@ -1,5 +1,6 @@
 /** The route-library map assembled from reusable MapWidget layers. */
 
+import { IconTemperature, IconWind } from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
 import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { ScaleControl } from "react-map-gl/maplibre";
@@ -9,7 +10,7 @@ import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { WindOverlayToggle } from "../../components/map/WindOverlayToggle";
+import { OverlayToggle } from "../../components/map/OverlayToggle";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import type { Insets } from "../../lib/overlayInsets";
 import {
@@ -18,6 +19,7 @@ import {
   LibraryRoutes,
   type MapLine,
 } from "./LibraryRoutes";
+import { TemperatureOverlay } from "./TemperatureOverlay";
 import { WindOverlay } from "./WindOverlay";
 
 export type { MapLine } from "./LibraryRoutes";
@@ -63,6 +65,7 @@ export function LibraryMap({
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [windOn, setWindOn] = useState(false);
+  const [temperatureOn, setTemperatureOn] = useState(false);
   const hasOverlay = children !== null && children !== undefined;
   // An opened route has the map to itself: the library is put away, so there is
   // nothing under the pointer to light, point at, or land a pick on.
@@ -100,7 +103,20 @@ export function LibraryMap({
                   onExpandedChange={setPickerOpen}
                 />
               ) : null}
-              <WindOverlayToggle on={windOn} onChange={setWindOn} />
+              <OverlayToggle
+                on={windOn}
+                onChange={setWindOn}
+                icon={<IconWind stroke={1.6} />}
+                subject="wind"
+                title="Wind now, from ICON-D2"
+              />
+              <OverlayToggle
+                on={temperatureOn}
+                onChange={setTemperatureOn}
+                icon={<IconTemperature stroke={1.6} />}
+                subject="temperature"
+                title="Temperature now, from ICON-D2"
+              />
             </MapControls>
           </>
         }
@@ -115,6 +131,7 @@ export function LibraryMap({
         />
         {/* After the library, whose line it is ordered beneath; that layer is
             always mounted and only hidden while a route is open. */}
+        <TemperatureOverlay on={temperatureOn} beforeId={LIBRARY_LINE_LAYER} />
         <WindOverlay on={windOn} beforeId={LIBRARY_LINE_LAYER} />
         {children}
       </MapWidget>

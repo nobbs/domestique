@@ -39,14 +39,23 @@ const STREAK_WIDTH_PIXELS = 2;
 const CALM_ALPHA_FLOOR = 0.35;
 const CALM_METRES_PER_SECOND = 8;
 
-/** Row-major `[ny][nx]` u and v components over a regular lon/lat grid. */
-export interface WindGrid {
+/** A regular lon/lat grid: cell `[iy][ix]` is centred at `lonMin + ix*dx`, `latMin + iy*dy`. */
+export interface GridGeometry {
   lonMin: number;
   latMin: number;
   dx: number;
   dy: number;
   nx: number;
   ny: number;
+}
+
+/** One row-major `[ny][nx]` field over the grid. */
+export interface ScalarGrid extends GridGeometry {
+  values: Float32Array;
+}
+
+/** Row-major `[ny][nx]` u and v components over a regular lon/lat grid. */
+export interface WindGrid extends GridGeometry {
   /** Eastward component, m/s, positive toward east. */
   u: Float32Array;
   /** Northward component, m/s, positive toward north. */
@@ -65,7 +74,7 @@ export interface GridParticle {
   v: number;
 }
 
-function bilinear(values: Float32Array, grid: WindGrid, fx: number, fy: number): number {
+function bilinear(values: Float32Array, grid: GridGeometry, fx: number, fy: number): number {
   const x0 = Math.floor(fx);
   const y0 = Math.floor(fy);
   const x1 = Math.min(x0 + 1, grid.nx - 1);
