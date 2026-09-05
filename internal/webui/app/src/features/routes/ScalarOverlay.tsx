@@ -9,12 +9,12 @@
  * one texture however many there are.
  */
 
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import { Layer, Source } from "react-map-gl/maplibre";
 import { scalarGridReader } from "../../api/openMeteoGrid";
 import { useCartography } from "../../components/map/CartographyContext";
 import type { Measure } from "../../lib/measures";
-import type { Rgba } from "../../lib/scalarRaster";
+import type { Corners, Rgba } from "../../lib/scalarRaster";
 import { gridCorners, paintGrid } from "../../lib/scalarRaster";
 import { useViewportGrid } from "./useViewportGrid";
 
@@ -47,10 +47,13 @@ export function ScalarOverlay({
 }: ScalarOverlayProps) {
   const { dark } = useCartography();
   const { data } = useViewportGrid(`${variable}-grid`, on, scalarGridReader(variable), hoursAhead);
+  const [image, setImage] = useState<{ url: string; coordinates: Corners } | null>(null);
 
-  const image = useMemo(() => {
+  useEffect(() => {
     if (!data || typeof document === "undefined") {
-      return null;
+      setImage(null);
+
+      return;
     }
     const bands = measure.bands.map((_, band) =>
       rgba(measure.colour(band, dark), measure.opacity(band)),
@@ -61,13 +64,33 @@ export function ScalarOverlay({
     canvas.height = rows;
     const context = canvas.getContext("2d");
     if (!context) {
-      return null;
+      return;
     }
     const pixels = context.createImageData(data.nx, rows);
     paintGrid(data, rows, (value) => bands[measure.band(value)] ?? [0, 0, 0, 0], pixels.data);
     context.putImageData(pixels, 0, 0);
 
-    return { url: canvas.toDataURL(), coordinates: gridCorners(data) };
+    // A blob and an object URL, not `toDataURL`: that encodes the whole
+    // raster into a base64 string synchronously on the main thread, on every
+    // pan and every hour scrubbed. `toBlob` hands back binary off that
+    // thread, and the URL it is given is revoked once this effect is done
+    // with it — by the next grid, or by the overlay going away.
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    canvas.toBlob((blob) => {
+      if (cancelled || !blob) {
+        return;
+      }
+      objectUrl = URL.createObjectURL(blob);
+      setImage({ url: objectUrl, coordinates: gridCorners(data) });
+    });
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, [data, dark, measure]);
 
   if (!on || !image) {
