@@ -40,7 +40,8 @@ const (
 )
 
 var (
-	// ErrUnauthorized reports a rejected Wahoo authorization or refresh token.
+	// ErrUnauthorized reports an authorization code or refresh token the Wahoo
+	// token endpoint rejected. A rejected data request is never classified so.
 	ErrUnauthorized = errors.New("wahoo authorization was rejected")
 	// ErrRateLimited reports a request rejected by Wahoo's advertised rate limit.
 	ErrRateLimited = errors.New("wahoo rate limit was reached")

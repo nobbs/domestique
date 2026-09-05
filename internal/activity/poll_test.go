@@ -155,6 +155,8 @@ func TestPollKeepsWhatItStoredBeforeASummaryFailed(t *testing.T) {
 	assert.Equal(t, 1, result.Stored)
 	require.Len(t, store.stored, 1)
 	assert.Equal(t, int64(1), store.stored[0].listing.ID)
+	assert.False(t, store.markedForReauthorization, "a rejected read marked the slot for reauthorization")
+	assert.Equal(t, "refresh-token-next", store.refreshToken, "a rejected read discarded the replacement refresh token")
 }
 
 // Every read or write of local state that fails stops the poll as a state
