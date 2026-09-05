@@ -28,7 +28,9 @@ func (syntheticWeatherGrid) Object(context.Context, time.Time, time.Time, string
 
 func unavailableWeatherGridResponse() *http.Response {
 	recorder := httptest.NewRecorder()
-	recorder.WriteHeader(http.StatusServiceUnavailable)
+	// relayWeatherGrid maps any non-2xx upstream status to 502; matching that
+	// here keeps the demo honest about what a real client actually sees.
+	recorder.WriteHeader(http.StatusBadGateway)
 
 	return recorder.Result()
 }
