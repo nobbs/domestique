@@ -537,7 +537,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
       ) : library.length > 0 ? (
         <SearchPanel
           shown={shown}
-          total={library.length}
+          library={library}
           query={query}
           onQueryChange={(next) => {
             setQuery(next);

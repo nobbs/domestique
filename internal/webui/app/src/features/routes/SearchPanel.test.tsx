@@ -35,7 +35,7 @@ const CLIMB: Position[] = Array.from(
 function renderPanel(overrides: Partial<SearchPanelProps> = {}) {
   const props: SearchPanelProps = {
     shown: [route()],
-    total: 47,
+    library: Array.from({ length: 47 }, (_, i) => route({ sourceRouteId: i + 1 })),
     query: "",
     onQueryChange: () => {},
     filters: EMPTY_FILTERS,
@@ -81,13 +81,13 @@ describe("SearchPanel", () => {
   });
 
   it("leaves the result count out of a narrowed library", () => {
-    renderPanel({ query: "alpine", shown: [route()], total: 47 });
+    renderPanel({ query: "alpine", shown: [route()] });
 
     expect(screen.queryByText("1 of 47")).toBeNull();
   });
 
   it("counts the library in its own words for a library of one", async () => {
-    renderPanel({ total: 1 });
+    renderPanel({ library: [route()] });
 
     await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
     expect(screen.getByRole("searchbox")).toHaveAttribute("placeholder", "Search 1 route");

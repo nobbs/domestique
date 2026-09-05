@@ -7,6 +7,7 @@ import { FilterPanel } from "./FilterPanel";
 
 function renderPanel(overrides: Partial<React.ComponentProps<typeof FilterPanel>> = {}) {
   const props: React.ComponentProps<typeof FilterPanel> = {
+    library: [],
     filters: EMPTY_FILTERS,
     onFiltersChange: () => {},
     expanded: false,

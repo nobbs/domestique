@@ -4,6 +4,7 @@
  */
 
 import { IconAdjustmentsHorizontal } from "@tabler/icons-react";
+import type { Route } from "../../api/types";
 import { Button } from "../../components/Button";
 import { RangeSlider } from "../../components/RangeSlider";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
@@ -14,6 +15,8 @@ import { formatMovingTime } from "../../lib/format";
 const FILTER_PANEL_ID = "library-filter-panel";
 
 export interface FilterPanelProps {
+  /** The whole library, whose distribution each slider draws over its track. */
+  library: Route[];
   filters: LibraryFilters;
   onFiltersChange: (next: LibraryFilters) => void;
   expanded: boolean;
@@ -21,6 +24,7 @@ export interface FilterPanelProps {
 }
 
 export function FilterPanel({
+  library,
   filters,
   onFiltersChange,
   expanded,
@@ -62,6 +66,7 @@ export function FilterPanel({
             range={filters.distanceMetres}
             onChange={(next) => onFiltersChange({ ...filters, distanceMetres: next })}
             format={(metres) => `${metres / 1000} km`}
+            values={library.map((route) => route.distanceMetres)}
           />
           <RangeSlider
             legend="Ascent"
@@ -71,6 +76,7 @@ export function FilterPanel({
             range={filters.ascentMetres}
             onChange={(next) => onFiltersChange({ ...filters, ascentMetres: next })}
             format={(metres) => `${metres} m`}
+            values={library.map((route) => route.ascentMetres)}
           />
           <RangeSlider
             legend="Duration"
@@ -80,6 +86,7 @@ export function FilterPanel({
             range={filters.movingSeconds}
             onChange={(next) => onFiltersChange({ ...filters, movingSeconds: next })}
             format={(seconds) => (seconds === 0 ? "0 min" : formatMovingTime(seconds))}
+            values={library.map((route) => route.movingSeconds ?? 0)}
           />
           <Button
             variant="outline"

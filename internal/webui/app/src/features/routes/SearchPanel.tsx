@@ -35,8 +35,8 @@ export interface RouteShape {
 export interface SearchPanelProps {
   /** What the search and the filters left, in the order it is read. */
   shown: Route[];
-  /** The whole library, which is what the pill counts. */
-  total: number;
+  /** The whole library: what the pill counts, and what the filter sliders draw. */
+  library: Route[];
   query: string;
   onQueryChange: (query: string) => void;
   filters: LibraryFilters;
@@ -71,7 +71,7 @@ export interface SearchPanelProps {
 
 export function SearchPanel({
   shown,
-  total,
+  library,
   query,
   onQueryChange,
   filters,
@@ -135,7 +135,7 @@ export function SearchPanel({
               type="search"
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder={`Search ${total} ${total === 1 ? "route" : "routes"}`}
+              placeholder={`Search ${library.length} ${library.length === 1 ? "route" : "routes"}`}
               aria-label="Search the route library"
             />
           </InputGroup>
@@ -151,6 +151,7 @@ export function SearchPanel({
           />
         )}
         <FilterPanel
+          library={library}
           filters={filters}
           onFiltersChange={(next) => {
             onFiltersChange(next);

@@ -365,6 +365,7 @@ export function CataloguePage() {
             />
           </InputGroup>
           <FilterPanel
+            library={library}
             filters={view.filters}
             onFiltersChange={(filters) => update(() => ({ filters }))}
             expanded={filtersExpanded}

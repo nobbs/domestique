@@ -25,7 +25,7 @@ export const FilteringAndResults: Story = {
     return (
       <SearchPanel
         shown={query ? [route] : []}
-        total={47}
+        library={[route]}
         query={query}
         onQueryChange={setQuery}
         filters={filters}
