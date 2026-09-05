@@ -19,7 +19,7 @@ func classifyTokenError(err error) error {
 	if errors.As(err, &retrieve) && retrieve.Response != nil {
 		switch retrieve.Response.StatusCode {
 		case http.StatusBadRequest, http.StatusUnauthorized:
-			return ErrUnauthorized
+			return fmt.Errorf("wahoo: token request rejected with HTTP %d: %w", retrieve.Response.StatusCode, ErrUnauthorized)
 		case http.StatusTooManyRequests:
 			return ErrRateLimited
 		}

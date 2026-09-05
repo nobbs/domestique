@@ -1,9 +1,11 @@
 package sync
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
 	"sort"
@@ -1232,7 +1234,7 @@ func newFakeTarget() *fakeTarget {
 func (t *fakeTarget) RefreshAccessToken(_ context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error) {
 	t.refreshTokens = append(t.refreshTokens, refreshToken)
 	if t.rejectRefreshToken[refreshToken] {
-		return "", "", errUnauthorized
+		return "", "", fmt.Errorf("wahoo: token request rejected with HTTP 400: %w", errUnauthorized)
 	}
 
 	return accessFor(refreshToken), refreshToken + "-replacement", nil
@@ -1639,4 +1641,46 @@ func TestServiceRunSourceProviderReportsALibraryItCannotBuild(t *testing.T) {
 
 	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSourceProvider() outcome")
 	assert.Equal(t, FailureState, result.Failure, "RunSourceProvider() failure")
+}
+
+func TestServiceLogsWhyATargetWasMarkedForReauthorization(t *testing.T) {
+	logged := captureLogs(t)
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	state := newFakeState("a", "b")
+	state.refreshTokens["a"] = "secret-refresh-token"
+	target := newFakeTarget()
+	target.rejectRefreshToken["secret-refresh-token"] = true
+	service := newService(t, state, &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
+
+	runBoth(t.Context(), service)
+
+	require.Equal(t, "needs_reauthorization", state.authorizations["a"])
+	line := logged.String()
+	assert.Contains(t, line, "target=a")
+	assert.Contains(t, line, "HTTP 400")
+	assert.NotContains(t, line, "secret-refresh-token")
+}
+
+func TestServiceDoesNotLogAnAuthorizationLossForAnUpstreamFailure(t *testing.T) {
+	logged := captureLogs(t)
+	desired := testStage(t, 1, 1, "current", "current-hash")
+	target := newFakeTarget()
+	target.listErr = errDestination
+	service := newService(t, newFakeState("a"), &fakeSource{stages: []route.Route{desired}}, &fakeEncoder{}, target, false)
+
+	runBoth(t.Context(), service)
+
+	assert.NotContains(t, logged.String(), "reauthorization")
+}
+
+// captureLogs redirects the default logger for one test. Package-level state, so
+// these tests must not run in parallel.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buffer := &bytes.Buffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buffer, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return buffer
 }

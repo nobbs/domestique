@@ -1,8 +1,11 @@
 package activity
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -327,4 +330,42 @@ func (s *fakeStore) StoreActivity(
 	s.stored = append(s.stored, storedActivity{listing: listing, summary: summary, now: now})
 
 	return nil
+}
+
+func TestPollLogsWhyATargetWasMarkedForReauthorization(t *testing.T) {
+	logged := captureLogs(t)
+	store := newFakeStore()
+	store.refreshToken = "secret-refresh-token"
+	source := newFakeSource()
+	source.refreshErr = fmt.Errorf("wahoo: token request rejected with HTTP 400: %w", errUnauthorized)
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	require.Equal(t, FailureAuthorization, result.Failure)
+	line := logged.String()
+	assert.Contains(t, line, "target=rider-a")
+	assert.Contains(t, line, "HTTP 400")
+	assert.NotContains(t, line, "secret-refresh-token")
+}
+
+func TestPollDoesNotLogAnAuthorizationLossForAnUpstreamFailure(t *testing.T) {
+	logged := captureLogs(t)
+	source := newFakeSource()
+	source.listErr = errUpstream
+
+	newTestPoller(t, source, newFakeStore()).Poll(t.Context(), "rider-a")
+
+	assert.NotContains(t, logged.String(), "reauthorization")
+}
+
+// captureLogs redirects the default logger for one test. Package-level state, so
+// these tests must not run in parallel.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buffer := &bytes.Buffer{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buffer, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	return buffer
 }

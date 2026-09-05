@@ -566,6 +566,9 @@ func (s *Service) handleTargetError(ctx context.Context, targetID string, err er
 
 		return FailureDestination
 	}
+	// Losing the grant is durable and needs an operator, so it is recorded at
+	// error level; the wrapped status says which endpoint class refused it.
+	slog.Error("wahoo target marked for reauthorization", "target", targetID, "error", err)
 	if markErr := s.state.MarkNeedsReauthorization(ctx, targetID); markErr != nil {
 		return FailureState
 	}

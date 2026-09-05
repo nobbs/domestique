@@ -195,6 +195,9 @@ func (p *Poller) classify(ctx context.Context, targetID string, err error) Failu
 
 		return FailureUpstream
 	}
+	// Losing the grant is durable and needs an operator, so it is recorded at
+	// error level; the wrapped status says which endpoint class refused it.
+	slog.Error("activity target marked for reauthorization", "target", targetID, "error", err)
 	if markErr := p.store.MarkNeedsReauthorization(ctx, targetID); markErr != nil {
 		return FailureState
 	}
