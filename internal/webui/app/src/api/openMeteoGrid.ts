@@ -36,6 +36,31 @@ interface Latest {
   valid_times: string[];
 }
 
+/**
+ * How long a fetched `latest.json` is trusted, matching the model's own
+ * publishing package. It changes once a run, not once a pan — without this
+ * every overlay's every hour re-fetched it on every slice read.
+ */
+const LATEST_TTL_MS = 60_000;
+let latestCache: { fetchedAt: number; value: Promise<Latest> } | null = null;
+
+function fetchLatest(): Promise<Latest> {
+  const now = Date.now();
+  if (!latestCache || now - latestCache.fetchedAt >= LATEST_TTL_MS) {
+    const value = fetch(`${BUCKET}/${MODEL}/latest.json`).then(
+      (response) => response.json() as Promise<Latest>,
+    );
+    // Evicted on failure so the next read retries instead of replaying the
+    // same rejection for the rest of the minute.
+    value.catch(() => {
+      latestCache = null;
+    });
+    latestCache = { fetchedAt: now, value };
+  }
+
+  return latestCache.value;
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
@@ -100,7 +125,7 @@ async function readSlices(
   if (window.x1 <= window.x0 || window.y1 <= window.y0) {
     return null;
   }
-  const latest = (await (await fetch(`${BUCKET}/${MODEL}/latest.json`)).json()) as Latest;
+  const latest = await fetchLatest();
   const [firstValidTime, ...restValidTimes] = latest.valid_times;
   if (!firstValidTime) {
     throw new Error(`${MODEL}'s latest.json has no valid times`);
