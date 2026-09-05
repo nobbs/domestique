@@ -50,6 +50,7 @@ const NAMES = [
   "bufferData",
   "enable",
   "disable",
+  "isEnabled",
   "blendFunc",
   "drawArrays",
 ] as const;

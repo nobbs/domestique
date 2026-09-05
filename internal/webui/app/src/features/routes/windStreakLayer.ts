@@ -208,10 +208,16 @@ export function windStreakLayer(id: string, frame: () => StreakFrame): CustomLay
       );
       // MapLibre hands a 2D custom layer its last depth range and test still
       // on, and a streak at z=0 sits at the far edge of it and fails LEQUAL.
+      // Restored afterwards: a later layer in the same pass is entitled to find
+      // the depth test the way MapLibre left it, not the way this one leaves it.
+      const depthWasEnabled = gl.isEnabled(gl.DEPTH_TEST);
       gl.disable(gl.DEPTH_TEST);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.drawArrays(primitive === "triangles" ? gl.TRIANGLES : gl.LINES, 0, vertexCount);
+      if (depthWasEnabled) {
+        gl.enable(gl.DEPTH_TEST);
+      }
       gl.bindVertexArray(null);
     },
   };
