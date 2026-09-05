@@ -451,6 +451,8 @@ func TestPollDoesNotReadTheWholeListAgainWhileDrainingTheBacklog(t *testing.T) {
 
 	assert.Equal(t, Polled, second.Outcome)
 	assert.Equal(t, 5, second.Stored, "the backlog did not carry the rest of the account")
+	assert.Equal(t, int64(MaxNewPerPoll+1), source.summarized[MaxNewPerPoll],
+		"the backlog was not drained oldest first")
 	assert.Equal(t, 1, source.listed, "the second poll read the whole list again")
 	assert.Equal(t, 2, source.headed, "each poll costs exactly one listing request beyond its summaries")
 }

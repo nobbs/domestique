@@ -126,7 +126,8 @@ type Store interface {
 type listingStore interface {
 	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
 	// PendingActivityListings are the listings the account holds that are not
-	// stored yet, as the last full reading of the account left them.
+	// stored yet, oldest first, as the last full reading of the account left
+	// them. The order is what a poll fills from; it does not sort them again.
 	PendingActivityListings(ctx context.Context, targetID string) ([]Listing, error)
 	// ReplaceActivityListings makes the pending listings exactly these.
 	ReplaceActivityListings(ctx context.Context, targetID string, listings []Listing) error
@@ -421,18 +422,22 @@ func unstored(listings []Listing, known []int64) []Listing {
 
 // due is the oldest pending activities whose read is not deferred, at most
 // MaxNewPerPoll of them. Oldest first so an account with a long history fills
-// in chronologically over successive polls rather than restarting each time.
+// in chronologically over successive polls rather than restarting each time,
+// which is the order pending already arrives in.
 func due(pending []Listing, waiting []int64) []Listing {
 	deferredIDs := identities(waiting, nil)
-	ready := make([]Listing, 0, len(pending))
+	ready := make([]Listing, 0, min(len(pending), MaxNewPerPoll))
 	for _, listing := range pending {
-		if _, ok := deferredIDs[listing.ID]; !ok {
-			ready = append(ready, listing)
+		if _, ok := deferredIDs[listing.ID]; ok {
+			continue
+		}
+		ready = append(ready, listing)
+		if len(ready) == MaxNewPerPoll {
+			break
 		}
 	}
-	slices.SortFunc(ready, byStart)
 
-	return ready[:min(len(ready), MaxNewPerPoll)]
+	return ready
 }
 
 func byStart(a, b Listing) int {
