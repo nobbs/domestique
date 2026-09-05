@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { weatherQuery } from "../../api/queries";
 import type { Position, WeatherForecast } from "../../api/types";
 import { forecastSamples } from "../../lib/forecastSamples";
+import { formatClock } from "../../lib/format";
 import { PADDING } from "../../lib/plotAxis";
 import { cumulativeMetres } from "../../lib/profile";
 import { ForecastStrip } from "./ForecastStrip";
@@ -146,9 +147,7 @@ describe("ForecastStrip", () => {
       const first = samples[0];
 
       expect(first).toBeDefined();
-      expect(container).toHaveTextContent(
-        `0 km · ${first?.arrivalAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`,
-      );
+      expect(container).toHaveTextContent(`0 km · ${formatClock(first?.arrivalAt ?? START_AT)}`);
     } finally {
       restore();
     }
@@ -160,16 +159,15 @@ describe("ForecastStrip", () => {
     const coordinates = road(160);
     const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
     const seed = forecastFor(samples.length);
-    const clock = samples[1]?.arrivalAt.toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const second = samples[1];
+    expect(second).toBeDefined();
+    const clock = formatClock(second?.arrivalAt ?? START_AT);
     expect(samples.length).toBeGreaterThanOrEqual(10);
 
     let restore = widen(50 * samples.length + PADDING.left + PADDING.right);
     try {
       const { container } = renderStrip({ coordinates, samples, seed });
-      expect(container).toHaveTextContent(clock ?? "");
+      expect(container).toHaveTextContent(clock);
       expect(container).not.toHaveTextContent("0 km ·");
     } finally {
       restore();
@@ -178,7 +176,7 @@ describe("ForecastStrip", () => {
     restore = widen(20 * samples.length + PADDING.left + PADDING.right);
     try {
       const { container } = renderStrip({ coordinates, samples, seed });
-      expect(container).not.toHaveTextContent(clock ?? "");
+      expect(container).not.toHaveTextContent(clock);
     } finally {
       restore();
     }

@@ -172,7 +172,7 @@ export function ForecastStrip({
             const clock = formatClock(cell.sample.arrivalAt);
             const place =
               cellWidth >= MIN_PLACE_WIDTH
-                ? `${Math.round(cell.sample.distanceMetres / 1000)} km · ${clock}`
+                ? `${Math.floor(cell.sample.distanceMetres / 1000)} km · ${clock}`
                 : wind
                   ? clock
                   : null;
