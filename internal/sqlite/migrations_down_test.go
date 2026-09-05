@@ -128,3 +128,39 @@ func TestMigration031DownDropsActivityTablesOnly(t *testing.T) {
 
 	require.NoError(t, migration.Migrate(31), "must be able to re-migrate up after rolling back")
 }
+
+// 032's down drops the skip table alone; the activities beside it stay.
+func TestMigration032DownDropsActivitySkipsOnly(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "activity-skips-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(32))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix)
+		VALUES ('rider-a', 1, 15, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO activity_skips (target_slot, workout_id, attempts, last_attempt_unix, observed) VALUES ('rider-a', 2, 1, 1700000000, 'HTTP 404')`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(31))
+
+	var activities, tables int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM activities`).Scan(&activities))
+	require.Equal(t, 1, activities, "the activity row must survive the rollback")
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = 'activity_skips'`).Scan(&tables))
+	require.Zero(t, tables, "the skip table must be gone")
+
+	require.NoError(t, migration.Migrate(32), "must be able to re-migrate up after rolling back")
+}

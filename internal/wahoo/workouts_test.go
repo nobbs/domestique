@@ -167,9 +167,57 @@ func TestClientReportsAMissingWorkoutSummary(t *testing.T) {
 			defer server.Close()
 
 			_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
-			require.ErrorContains(t, err, "summary was missing")
+			require.ErrorContains(t, err, "unreadable: missing")
 		})
 	}
+}
+
+// A rejection that belongs to one workout is told apart from one that belongs
+// to the provider, so a poll knows which it may step past.
+func TestClientTellsAnUnreadableWorkoutFromAFailedProvider(t *testing.T) {
+	cases := map[string]struct {
+		body       any
+		status     int
+		unreadable bool
+	}{
+		"refused":      {status: http.StatusUnauthorized, unreadable: true},
+		"missing":      {status: http.StatusNotFound, unreadable: true},
+		"no summary":   {status: http.StatusOK, body: nil, unreadable: true},
+		"wrong shape":  {status: http.StatusOK, body: "x", unreadable: true},
+		"provider":     {status: http.StatusInternalServerError},
+		"rate limited": {status: http.StatusTooManyRequests},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				if tc.status != http.StatusOK {
+					writer.WriteHeader(tc.status)
+
+					return
+				}
+				writeJSON(t, writer, tc.body)
+			}))
+			defer server.Close()
+
+			_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
+			require.Error(t, err)
+			assert.Equal(t, tc.unreadable, errors.Is(err, ErrWorkoutUnreadable), "%v", err)
+			assert.NotContains(t, err.Error(), "access-token")
+		})
+	}
+}
+
+// Only a summary read may answer for one workout; a listing that is refused or
+// missing says something about the account, and is never a skip.
+func TestClientNeverMarksAWorkoutListingUnreadable(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	require.ErrorContains(t, err, "HTTP 404")
+	require.NotErrorIs(t, err, ErrWorkoutUnreadable)
 }
 
 func TestClientRejectsAWorkoutListingBeyondItsBounds(t *testing.T) {
@@ -250,14 +298,14 @@ func TestClientRejectsWorkoutReadsItCannotTrust(t *testing.T) {
 				writeJSON(t, writer, "x")
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
-			want: "summary was not the shape expected",
+			want: "unreadable: not the shape expected",
 		},
 		"summary whose file is not an object": {
 			handler: func(writer http.ResponseWriter, _ *http.Request) {
 				writeJSON(t, writer, map[string]any{"id": 42, "file": "https://cdn.wahooligan.com/42.fit"})
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
-			want: "summary was not the shape expected",
+			want: "unreadable: not the shape expected",
 		},
 	}
 	for name, tc := range cases {

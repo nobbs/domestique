@@ -37,6 +37,14 @@ type ActivityRecord struct {
 	TemperatureCelsius sql.NullFloat64
 }
 
+type ActivitySkip struct {
+	TargetSlot      string
+	WorkoutID       int64
+	Attempts        int64
+	LastAttemptUnix int64
+	Observed        string
+}
+
 type AlertToggle struct {
 	Task          string
 	Scope         string

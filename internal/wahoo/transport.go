@@ -127,6 +127,17 @@ func (c *Client) newRequest(ctx context.Context, method string, endpoint *url.UR
 	return request, nil
 }
 
+// statusError is a response outside 2xx that no sentinel claims. It carries the
+// status so a caller that knows its endpoint can tell a dead resource from a
+// dead provider.
+type statusError struct {
+	status int
+}
+
+func (e *statusError) Error() string {
+	return fmt.Sprintf("wahoo: request returned HTTP %d", e.status)
+}
+
 func (c *Client) doJSON(request *http.Request, output any) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -163,7 +174,7 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 		return ErrRateLimited
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("wahoo: request returned HTTP %d", response.StatusCode)
+		return &statusError{status: response.StatusCode}
 	}
 	if output == nil {
 		return nil

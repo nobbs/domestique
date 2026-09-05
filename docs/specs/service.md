@@ -641,6 +641,8 @@ A SQLite database on a Docker volume stores:
   The rebuild interval is measured between builds rather than from process
   start;
 - the corresponding remote Wahoo route identity where available;
+- activities a poll could not read, with how often and how recently each was
+  tried, kept apart from the activities themselves;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.
 
@@ -805,6 +807,16 @@ most twenty-five summaries, oldest first, because the Wahoo application's daily
 request budget is shared with every target's reconciliation; a longer history
 fills in over successive polls rather than spending the day's quota at once. A
 poll that fails part way keeps what it already stored.
+
+A summary Wahoo rejects for that one activity alone — unauthorised, not found,
+or not a summary at all — is skipped rather than allowed to stop the poll: the
+activity is recorded as unreadable and the poll carries on to the next. A
+skipped activity is not stored and never appears among a target's activities.
+It is offered again after a day, then at intervals that double up to four weeks
+and never stop, and a read that later succeeds stores it normally and forgets
+the skip. A rate limit, a transport failure, a rejected refresh or any failure
+the service does not recognise still stops the poll and skips nothing. A poll
+that skipped something reports so, distinctly from one that did not.
 
 No FIT record stream is fetched yet: the file each summary names is left where
 it is, and the per-sample table stays empty.
