@@ -132,17 +132,38 @@ describe("ForecastStrip", () => {
     );
   });
 
+  it("says where and when each reading is reached", () => {
+    const restore = widen(1200);
+    try {
+      const coordinates = road();
+      const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
+      const { container } = renderStrip({
+        coordinates,
+        samples,
+        seed: forecastFor(samples.length),
+      });
+      const first = samples[0];
+
+      expect(first).toBeDefined();
+      expect(container).toHaveTextContent(
+        `0 km · ${first?.arrivalAt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`,
+      );
+    } finally {
+      restore();
+    }
+  });
+
   it("grows the tile row to its flex parent's height instead of a fixed one, when asked", () => {
     const coordinates = road();
     const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
     const seed = forecastFor(samples.length);
     const fixed = renderStrip({ coordinates, samples, seed });
     const fixedBox = fixed.container.querySelector(".border") as HTMLElement;
-    expect(fixedBox.style.height).toBe("62px");
+    expect(fixedBox.style.height).toBe("76px");
     // The tiles themselves, not just the box around them — a fixed height left
     // on a tile after this box grows would strand it at the box's own top.
     for (const tile of fixed.container.querySelectorAll<HTMLElement>(".absolute.top-0")) {
-      expect(tile.style.height).toBe("62px");
+      expect(tile.style.height).toBe("76px");
       expect(tile.style.bottom).toBe("");
     }
     fixed.unmount();

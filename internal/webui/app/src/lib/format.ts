@@ -17,6 +17,11 @@ export function formatDistance(metres: number): string {
   return `${kilometres.toFixed(kilometres < 100 ? 1 : 0)} km`;
 }
 
+/** `14:20`, in the reader's own zone, which is where they will be riding. */
+export function formatClock(at: Date): string {
+  return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
 export function formatCount(value: number, singular: string, plural = `${singular}s`): string {
   return `${value.toLocaleString()} ${value === 1 ? singular : plural}`;
 }
