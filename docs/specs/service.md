@@ -826,11 +826,14 @@ service holding an activity the account no longer lists — which it never remov
 — and comparing against those rows instead would leave a disagreement no poll
 could settle, and so a full reading on every poll thereafter.
 
-The comparison is a count, not an ordering: an activity may be added out of
+What makes that comparison sound is the count: an activity may be added out of
 order or recorded with an earlier start than the ones already stored, and either
-still changes what the account holds. An activity a poll set aside as unreadable
-stays in the kept reading, so its retry is offered from there when its backoff
-has passed even though no poll in between read the account's list again.
+still changes how many the account holds, wherever the provider then lists it.
+The first page is read on top of that count and can only call for a full
+reading, never excuse one, so no ordering the provider might give its list is
+relied on. An activity a poll set aside as unreadable stays in the kept reading,
+so its retry is offered from there when its backoff has passed even though no
+poll in between read the account's list again.
 
 A summary Wahoo rejects for that one activity alone — unauthorised, not found,
 or not a summary at all — is skipped rather than allowed to stop the poll: the
