@@ -284,6 +284,10 @@ not a setting here.
 The OAuth scopes are fixed by the binary: `routes_read`, `routes_write`,
 `user_read`, `workouts_read`, and `offline_data`. A scope change needs every
 configured target to authorise again; no operator setting can silently expand it.
+It also needs the Wahoo Cloud application to list the new scope before the image
+that requests it is deployed: Wahoo refuses an authorisation naming a scope the
+application is not registered for, returning the rider to the callback with
+`error=invalid_scope` and no code, before any consent screen is shown.
 
 ### Synchronisation
 
