@@ -127,11 +127,11 @@ type Store interface {
 type listingStore interface {
 	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
 	// ActivityListings are the activities the account holds, oldest first, as
-	// the last full reading of it left them. The order is what a poll fills
-	// from; it does not sort them again.
-	ActivityListings(ctx context.Context, targetID string) ([]Listing, error)
-	// ReplaceActivityListings makes the kept listings exactly these.
-	ReplaceActivityListings(ctx context.Context, targetID string, listings []Listing) error
+	// the last full reading of it left them, and when that reading was taken.
+	// The order is what a poll fills from; it does not sort them again.
+	ActivityListings(ctx context.Context, targetID string) (listings []Listing, readAt time.Time, err error)
+	// ReplaceActivityListings makes the kept listings exactly these, read now.
+	ReplaceActivityListings(ctx context.Context, targetID string, listings []Listing, now time.Time) error
 }
 
 // recordStore is the records phase's half of the store, kept apart so neither
@@ -212,7 +212,8 @@ func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error
 // activity only its own summary rejects is skipped and retried later, so one
 // unreadable ride never stops the ones after it. The account's whole list is
 // read only when the account no longer matches the last reading of it the store
-// kept; otherwise the poll works from those listings.
+// kept, or that reading has aged out; otherwise the poll works from those
+// listings.
 func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	authorization, err := p.store.TargetAuthorization(ctx, targetID)
 	if err != nil {
@@ -365,7 +366,7 @@ func (p *Poller) classify(ctx context.Context, targetID string, err error) Failu
 // deleted after it was stored leaves the store holding more than the account
 // lists, which would otherwise read as a disagreement no poll could settle.
 func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]Listing, Failure) {
-	listings, listingsErr := p.store.ActivityListings(ctx, targetID)
+	listings, readAt, listingsErr := p.store.ActivityListings(ctx, targetID)
 	if listingsErr != nil {
 		return nil, FailureState
 	}
@@ -373,13 +374,13 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 	if headErr != nil {
 		return nil, p.classify(ctx, targetID, headErr)
 	}
-	if total != len(listings) || !accountedFor(head, listings) {
+	if stale(readAt, p.now()) || total != len(listings) || !accountedFor(head, listings) {
 		fresh, listErr := p.source.ListActivities(ctx, accessToken)
 		if listErr != nil {
 			return nil, p.classify(ctx, targetID, listErr)
 		}
 		slices.SortFunc(fresh, byStart)
-		if replaceErr := p.store.ReplaceActivityListings(ctx, targetID, fresh); replaceErr != nil {
+		if replaceErr := p.store.ReplaceActivityListings(ctx, targetID, fresh, p.now()); replaceErr != nil {
 			return nil, FailureState
 		}
 		listings = fresh
@@ -391,6 +392,18 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 	}
 
 	return unstored(listings, known), FailureNone
+}
+
+// MaxReadingAge is how long a reading of the account is worked from before it is
+// taken again. A change the account's own count cannot show — one activity added
+// and another deleted between two polls — is otherwise unnoticed until that count
+// next moves, so a poll reads the whole list again this often whatever it holds.
+const MaxReadingAge = 7 * 24 * time.Hour
+
+// stale reports whether the kept reading is due to be taken again. A target
+// never read has no reading to work from and is always due.
+func stale(readAt, now time.Time) bool {
+	return readAt.IsZero() || !now.Before(readAt.Add(MaxReadingAge))
 }
 
 // accountedFor reports whether the last reading held every activity on the

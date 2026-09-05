@@ -48,12 +48,13 @@ func (q *Queries) DeleteActivitySkip(ctx context.Context, arg DeleteActivitySkip
 
 const insertActivityListing = `-- name: InsertActivityListing :exec
 INSERT INTO activity_listings (
-  target_slot, workout_id, started_at_unix, workout_type_id, workout_type_location_id
-) VALUES (?, ?, ?, ?, ?)
+  target_slot, workout_id, started_at_unix, workout_type_id, workout_type_location_id, read_at_unix
+) VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   started_at_unix = excluded.started_at_unix,
   workout_type_id = excluded.workout_type_id,
-  workout_type_location_id = excluded.workout_type_location_id
+  workout_type_location_id = excluded.workout_type_location_id,
+  read_at_unix = excluded.read_at_unix
 `
 
 type InsertActivityListingParams struct {
@@ -62,6 +63,7 @@ type InsertActivityListingParams struct {
 	StartedAtUnix         int64
 	WorkoutTypeID         int64
 	WorkoutTypeLocationID int64
+	ReadAtUnix            int64
 }
 
 func (q *Queries) InsertActivityListing(ctx context.Context, arg InsertActivityListingParams) error {
@@ -71,6 +73,7 @@ func (q *Queries) InsertActivityListing(ctx context.Context, arg InsertActivityL
 		arg.StartedAtUnix,
 		arg.WorkoutTypeID,
 		arg.WorkoutTypeLocationID,
+		arg.ReadAtUnix,
 	)
 	return err
 }
@@ -208,7 +211,7 @@ func (q *Queries) ListActivityIDs(ctx context.Context, targetSlot string) ([]int
 }
 
 const listActivityListings = `-- name: ListActivityListings :many
-SELECT workout_id, started_at_unix, workout_type_id, workout_type_location_id
+SELECT workout_id, started_at_unix, workout_type_id, workout_type_location_id, read_at_unix
 FROM activity_listings
 WHERE target_slot = ?
 ORDER BY started_at_unix, workout_id
@@ -219,6 +222,7 @@ type ListActivityListingsRow struct {
 	StartedAtUnix         int64
 	WorkoutTypeID         int64
 	WorkoutTypeLocationID int64
+	ReadAtUnix            int64
 }
 
 func (q *Queries) ListActivityListings(ctx context.Context, targetSlot string) ([]ListActivityListingsRow, error) {
@@ -235,6 +239,7 @@ func (q *Queries) ListActivityListings(ctx context.Context, targetSlot string) (
 			&i.StartedAtUnix,
 			&i.WorkoutTypeID,
 			&i.WorkoutTypeLocationID,
+			&i.ReadAtUnix,
 		); err != nil {
 			return nil, err
 		}

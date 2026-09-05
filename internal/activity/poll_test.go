@@ -462,6 +462,7 @@ func TestPollReadsOnlyTheListingHeadWhenNothingChanged(t *testing.T) {
 	store := newFakeStore()
 	store.known = []int64{1, 2}
 	store.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+	store.readAt = pollNow()
 	source := newFakeSource(t)
 	source.listings = store.listings
 
@@ -503,6 +504,36 @@ func TestPollReadsTheWholeListWhenTheAccountHoldsMore(t *testing.T) {
 
 	require.Equal(t, Unchanged, newTestPoller(t, source, store).Poll(t.Context(), "rider-a").Outcome)
 	assert.Equal(t, 1, source.listed, "an account with more activities was not read in full")
+}
+
+// The count cannot see an addition the rider balanced by a deletion, and the
+// first page only shows one the provider puts there. Neither is relied on to
+// notice it forever: the reading is taken again once it has aged out.
+func TestPollTakesTheReadingAgainOnceItHasAgedOut(t *testing.T) {
+	store := newFakeStore()
+	store.known = []int64{1, 2, 3}
+	store.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}}
+	store.readAt = pollNow()
+	source := newFakeSource(t)
+	// The rider deleted 1 and uploaded 4 with an older start, which the account
+	// lists behind its first page.
+	source.listings = []Listing{{ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}, {ID: 4, Starts: at(-500)}}
+	source.head = []Listing{{ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}}
+
+	now := pollNow()
+	poller, err := NewPoller(source, store, func() time.Time { return now })
+	require.NoError(t, err, "NewPoller()")
+
+	require.Equal(t, Unchanged, poller.Poll(t.Context(), "rider-a").Outcome)
+	require.Zero(t, source.listed, "a reading still in date was taken again")
+
+	now = pollNow().Add(MaxReadingAge)
+	result := poller.Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, 1, source.listed, "the aged-out reading was not taken again")
+	require.Len(t, store.stored, 1)
+	assert.Equal(t, int64(4), store.stored[0].listing.ID)
 }
 
 // A ride uploaded with an old start time sits wherever the account puts it, so
@@ -644,6 +675,7 @@ type fakeSource struct {
 	downloadErr error
 	fit         []byte
 	listings    []Listing
+	head        []Listing
 	summarized  []int64
 	downloaded  []string
 	listed      int
@@ -687,11 +719,15 @@ func (s *fakeSource) ActivityListingHead(_ context.Context, _ string) (listings 
 	if s.headErr != nil {
 		return nil, 0, s.headErr
 	}
+	page := s.listings
+	if s.head != nil {
+		page = s.head
+	}
 	if s.hasTotal {
-		return s.listings, s.total, nil
+		return page, s.total, nil
 	}
 
-	return s.listings, len(s.listings), nil
+	return page, len(s.listings), nil
 }
 
 func (s *fakeSource) ListActivities(_ context.Context, _ string) ([]Listing, error) {
@@ -759,6 +795,7 @@ type fakeStore struct {
 	recordsErr               error
 	unreadableErr            error
 	records                  map[int64]FIT
+	readAt                   time.Time
 	authorization            string
 	refreshToken             string
 	known                    []int64
@@ -811,15 +848,17 @@ func (s *fakeStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, erro
 	return s.known, s.knownErr
 }
 
-func (s *fakeStore) ActivityListings(_ context.Context, _ string) ([]Listing, error) {
-	return slices.Clone(s.listings), s.listingsErr
+func (s *fakeStore) ActivityListings(_ context.Context, _ string) ([]Listing, time.Time, error) {
+	return slices.Clone(s.listings), s.readAt, s.listingsErr
 }
 
-func (s *fakeStore) ReplaceActivityListings(_ context.Context, _ string, listings []Listing) error {
+func (s *fakeStore) ReplaceActivityListings(
+	_ context.Context, _ string, listings []Listing, now time.Time,
+) error {
 	if s.replaceListingsErr != nil {
 		return s.replaceListingsErr
 	}
-	s.listings = slices.Clone(listings)
+	s.listings, s.readAt = slices.Clone(listings), now
 
 	return nil
 }

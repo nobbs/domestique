@@ -643,9 +643,9 @@ A SQLite database on a Docker volume stores:
 - the corresponding remote Wahoo route identity where available;
 - activities a poll could not read, with how often and how recently each was
   tried, kept apart from the activities themselves;
-- the activities the rider's account listed when it was last read in full,
-  kept apart from the activities themselves so a poll can tell what the account
-  holds without reading its list again;
+- the activities the rider's account listed when it was last read in full, and
+  when that reading was taken, kept apart from the activities themselves so a
+  poll can tell what the account holds without reading its list again;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.
 
@@ -815,10 +815,10 @@ Those summaries are chosen from the account's list as the service last read it
 in full, which it keeps rather than re-derives. A poll reads the first page of
 that list, which costs one request and carries the account's own count of
 activities. It reads the whole list only when that count differs from the
-reading it kept, or when the first page holds an activity that reading did not,
-which is what an addition the rider balanced by a deletion looks like. Otherwise
-it works from what it kept, so a long history is read once and filled in over
-the polls that follow rather than re-read by each of them.
+reading it kept, when the first page holds an activity that reading did not, or
+when that reading is more than a week old. Otherwise it works from what it kept,
+so a long history is read once and filled in over the polls that follow rather
+than re-read by each of them.
 
 What is compared is the account against its own last reading, not against what
 the service has stored. A ride the rider deletes after it was stored leaves the
@@ -826,14 +826,18 @@ service holding an activity the account no longer lists — which it never remov
 — and comparing against those rows instead would leave a disagreement no poll
 could settle, and so a full reading on every poll thereafter.
 
-What makes that comparison sound is the count: an activity may be added out of
-order or recorded with an earlier start than the ones already stored, and either
-still changes how many the account holds, wherever the provider then lists it.
-The first page is read on top of that count and can only call for a full
-reading, never excuse one, so no ordering the provider might give its list is
-relied on. An activity a poll set aside as unreadable stays in the kept reading,
-so its retry is offered from there when its backoff has passed even though no
-poll in between read the account's list again.
+The count is what carries that comparison: an activity may be added out of order
+or recorded with an earlier start than the ones already stored, and either still
+changes how many the account holds, wherever the provider then lists it. What
+the count cannot show is one activity added and another deleted between two
+polls, which leaves it unmoved. Reading the first page catches such a pair when
+the provider lists the addition there, and the week bounds how long one it does
+not stays unnoticed; neither can excuse a reading the count called for, so no
+ordering the provider might give its list is relied on for correctness.
+
+An activity a poll set aside as unreadable stays in the kept reading, so its
+retry is offered from there when its backoff has passed even though no poll in
+between read the account's list again.
 
 A summary Wahoo rejects for that one activity alone — unauthorised, not found,
 or not a summary at all — is skipped rather than allowed to stop the poll: the

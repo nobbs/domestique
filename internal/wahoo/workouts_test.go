@@ -66,6 +66,18 @@ func TestClientReadsTheWorkoutListingHeadInOneRequest(t *testing.T) {
 	assert.Equal(t, 1, requests)
 }
 
+// An empty first page the account says holds workouts is a broken listing, and
+// costs one request to find out rather than a walk that fails at its end.
+func TestClientReportsAWorkoutListingHeadThatEndedEarly(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]any{"workouts": []any{}, "total": 3, "page": 1, "per_page": 100})
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).WorkoutListingHead(t.Context(), "access-token")
+	require.ErrorContains(t, err, "ended before its total")
+}
+
 func TestClientRefusesAWorkoutListingHeadWithoutAToken(t *testing.T) {
 	_, _, err := (&Client{}).WorkoutListingHead(t.Context(), "")
 	require.ErrorContains(t, err, "access token is required")

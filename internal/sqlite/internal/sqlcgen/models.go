@@ -30,6 +30,7 @@ type ActivityListing struct {
 	StartedAtUnix         int64
 	WorkoutTypeID         int64
 	WorkoutTypeLocationID int64
+	ReadAtUnix            int64
 }
 
 type ActivityRecord struct {

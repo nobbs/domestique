@@ -92,9 +92,6 @@ func (c *Client) ListWorkouts(ctx context.Context, accessToken string) ([]Workou
 		if len(workouts) >= response.Total {
 			return workouts, nil
 		}
-		if len(response.Workouts) == 0 {
-			return nil, errors.New("wahoo: workout listing ended before its total")
-		}
 	}
 }
 
@@ -136,6 +133,9 @@ func (c *Client) workoutPage(ctx context.Context, accessToken string, page, prec
 	}
 	if response.Total > maximumWorkouts {
 		return workoutPage{}, errors.New("wahoo: workout listing exceeded configured bounds")
+	}
+	if len(response.Workouts) == 0 && response.Total > preceding {
+		return workoutPage{}, errors.New("wahoo: workout listing ended before its total")
 	}
 
 	return response, nil

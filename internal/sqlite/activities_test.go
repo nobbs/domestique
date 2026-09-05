@@ -140,19 +140,20 @@ func TestReplaceActivityListingsMakesThemWhatTheAccountHolds(t *testing.T) {
 	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{
 		{ID: 2, Starts: activityNow().Add(time.Hour), TypeID: 15, LocationID: 1},
 		{ID: 1, Starts: activityNow(), TypeID: 40, LocationID: 0},
-	}), "ReplaceActivityListings()")
+	}, activityNow()), "ReplaceActivityListings()")
 
-	listings, err := store.ActivityListings(t.Context(), "rider-a")
+	listings, readAt, err := store.ActivityListings(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityListings()")
+	assert.Equal(t, activityNow(), readAt, "the reading's time was not kept with it")
 	require.Len(t, listings, 2)
 	assert.Equal(t, activity.Listing{ID: 1, Starts: activityNow(), TypeID: 40, LocationID: 0}, listings[0],
 		"the listings are not oldest first, or lost a listing field")
 
 	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{
 		{ID: 2, Starts: activityNow().Add(time.Hour), TypeID: 15, LocationID: 1},
-	}), "ReplaceActivityListings()")
+	}, activityNow()), "ReplaceActivityListings()")
 
-	listings, err = store.ActivityListings(t.Context(), "rider-a")
+	listings, _, err = store.ActivityListings(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityListings()")
 	require.Len(t, listings, 1)
 	assert.Equal(t, int64(2), listings[0].ID)
@@ -166,16 +167,17 @@ func TestStoreActivityLeavesTheListingInPlace(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
 	pending := []activity.Listing{{ID: 1, Starts: activityNow()}, {ID: 2, Starts: activityNow()}}
-	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", pending), "ReplaceActivityListings()")
-	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-b", pending), "ReplaceActivityListings()")
+	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a", pending, activityNow()), "ReplaceActivityListings()")
+	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-b", pending, activityNow()), "ReplaceActivityListings()")
 
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 
-	listings, err := store.ActivityListings(t.Context(), "rider-a")
+	listings, readAt, err := store.ActivityListings(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityListings()")
+	assert.Equal(t, activityNow(), readAt, "the reading's time was not kept with it")
 	assert.Len(t, listings, 2, "a stored activity was dropped from the account's listings")
 
-	others, err := store.ActivityListings(t.Context(), "rider-b")
+	others, _, err := store.ActivityListings(t.Context(), "rider-b")
 	require.NoError(t, err, "ActivityListings()")
 	assert.Len(t, others, 2, "another target's listings were changed")
 }
@@ -184,11 +186,11 @@ func TestReplaceActivityListingsRefusesWhatItCannotAddress(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
-	require.ErrorContains(t, store.ReplaceActivityListings(t.Context(), "", nil), "is required")
+	require.ErrorContains(t, store.ReplaceActivityListings(t.Context(), "", nil, activityNow()), "is required")
 	require.ErrorContains(t,
-		store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{{ID: 0}}), "is required")
+		store.ReplaceActivityListings(t.Context(), "rider-a", []activity.Listing{{ID: 0}}, activityNow()), "is required")
 	require.Error(t,
-		store.ReplaceActivityListings(t.Context(), "rider-b", []activity.Listing{{ID: 1}}),
+		store.ReplaceActivityListings(t.Context(), "rider-b", []activity.Listing{{ID: 1}}, activityNow()),
 		"an unknown target was accepted")
 }
 
@@ -196,7 +198,7 @@ func TestActivityListingsReportsAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.ActivityListings(t.Context(), "rider-a")
+	_, _, err := store.ActivityListings(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading activity listings")
 }
 
