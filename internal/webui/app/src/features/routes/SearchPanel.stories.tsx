@@ -15,6 +15,16 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+// Enough routes, spread across the measures, for the filter sliders' tracks
+// and histograms to show a distribution rather than one bar.
+const LIBRARY = Array.from({ length: 47 }, (_, i) => ({
+  ...route,
+  sourceRouteId: i + 1,
+  distanceMetres: 8_000 + ((i * 37) % 23) * 4_000,
+  ascentMetres: 50 + ((i * 53) % 19) * 90,
+  movingSeconds: 1_500 + ((i * 29) % 17) * 1_100,
+}));
+
 export const FilteringAndResults: Story = {
   render: () => {
     const [query, setQuery] = useState("alpine");
@@ -25,7 +35,7 @@ export const FilteringAndResults: Story = {
     return (
       <SearchPanel
         shown={query ? [route] : []}
-        library={[route]}
+        library={LIBRARY}
         query={query}
         onQueryChange={setQuery}
         filters={filters}

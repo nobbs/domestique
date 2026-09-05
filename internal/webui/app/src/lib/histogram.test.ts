@@ -13,5 +13,6 @@ describe("histogram", () => {
   it("leaves every bin empty over a domain with no width", () => {
     expect(histogram([1, 2], 5, 5, 3)).toEqual([0, 0, 0]);
     expect(histogram([1, 2], 5, 5, 0)).toEqual([]);
+    expect(histogram([1, 2], 0, 10, 0)).toEqual([]);
   });
 });

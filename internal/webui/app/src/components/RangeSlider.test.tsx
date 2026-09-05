@@ -34,7 +34,7 @@ describe("RangeSlider", () => {
         values={[]}
       />,
     );
-    expect(screen.getByText("80 km – 80 km")).toBeInTheDocument();
+    expect(screen.getByText("20 km – 80 km")).toBeInTheDocument();
   });
 
   it("draws one bar per bin, lit inside the set range and dim outside it", () => {

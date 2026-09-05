@@ -4,7 +4,10 @@
  * domain still shows up rather than vanishing from the picture.
  */
 export function histogram(values: number[], min: number, max: number, count: number): number[] {
-  const bins = new Array<number>(Math.max(0, count)).fill(0);
+  if (count <= 0) {
+    return [];
+  }
+  const bins = new Array<number>(count).fill(0);
   const width = (max - min) / count;
   if (!(width > 0)) {
     return bins;

@@ -36,11 +36,14 @@ export function RangeSlider({
   format,
   values,
 }: RangeSliderProps) {
-  // Clamped to the slider's own domain and ordered low-to-high: a stored
+  // Ordered low-to-high and clamped to the slider's own domain: a stored
   // range this component did not produce must never hand Base UI a value
-  // outside `[min, max]` or with the thumbs crossed.
-  const lo = clamp(range.min ?? min, min, max);
-  const hi = clamp(range.max ?? max, lo, max);
+  // outside `[min, max]` or with the thumbs crossed, and a crossed one shows
+  // as the span `matchesFilters` reads it as.
+  const rawLo = range.min ?? min;
+  const rawHi = range.max ?? max;
+  const lo = clamp(Math.min(rawLo, rawHi), min, max);
+  const hi = clamp(Math.max(rawLo, rawHi), lo, max);
   const isSet = range.min !== null || range.max !== null;
   const bins = histogram(values, min, max, BIN_COUNT);
   const peak = Math.max(1, ...bins);
@@ -58,7 +61,7 @@ export function RangeSlider({
         <div className="flex h-7 items-end gap-px" aria-hidden="true">
           {bins.map((count, index) => {
             const start = min + index * binWidth;
-            const inside = start + binWidth > lo && start < hi;
+            const inside = start + binWidth > lo && start <= hi;
             return (
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: bins are positional
