@@ -9,9 +9,16 @@ import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
+import { WindOverlayToggle } from "../../components/map/WindOverlayToggle";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import type { Insets } from "../../lib/overlayInsets";
-import { LIBRARY_HIT_LAYER, LibraryRoutes, type MapLine } from "./LibraryRoutes";
+import {
+  LIBRARY_HIT_LAYER,
+  LIBRARY_LINE_LAYER,
+  LibraryRoutes,
+  type MapLine,
+} from "./LibraryRoutes";
+import { WindOverlay } from "./WindOverlay";
 
 export type { MapLine } from "./LibraryRoutes";
 
@@ -55,6 +62,7 @@ export function LibraryMap({
 }: LibraryMapProps) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [windOn, setWindOn] = useState(false);
   const hasOverlay = children !== null && children !== undefined;
   // An opened route has the map to itself: the library is put away, so there is
   // nothing under the pointer to light, point at, or land a pick on.
@@ -92,6 +100,7 @@ export function LibraryMap({
                   onExpandedChange={setPickerOpen}
                 />
               ) : null}
+              <WindOverlayToggle on={windOn} onChange={setWindOn} />
             </MapControls>
           </>
         }
@@ -104,6 +113,9 @@ export function LibraryMap({
           hoveredKey={focusedKey}
           {...(onPick ? { hitLayerId: LIBRARY_HIT_LAYER } : {})}
         />
+        {/* After the library, whose line it is ordered beneath; that layer is
+            always mounted and only hidden while a route is open. */}
+        <WindOverlay on={windOn} beforeId={LIBRARY_LINE_LAYER} />
         {children}
       </MapWidget>
     </CartographyProvider>
