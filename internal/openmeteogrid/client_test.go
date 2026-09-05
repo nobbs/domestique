@@ -136,6 +136,9 @@ func TestARequestThatCannotReachTheUpstreamIsAnError(t *testing.T) {
 	response, err := client.Latest(t.Context())
 	require.Error(t, err)
 	require.Nil(t, response)
+	// The client never sees this detail — httpapi maps every such error to a
+	// generic 502 — but it belongs in server logs, not just "request failed".
+	assert.Contains(t, err.Error(), "connection refused")
 }
 
 func TestACancelledContextIsAnError(t *testing.T) {

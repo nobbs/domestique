@@ -123,7 +123,7 @@ func (c *Client) do(ctx context.Context, method, endpoint, rangeHeader string) (
 
 	response, err := c.client.Do(request)
 	if err != nil {
-		return nil, errors.New("openmeteogrid: request failed")
+		return nil, fmt.Errorf("openmeteogrid: request failed: %w", err)
 	}
 
 	return response, nil
