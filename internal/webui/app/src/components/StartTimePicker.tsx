@@ -3,9 +3,9 @@
  *
  * A `Calendar` in a `Popover` for the day, an `Input` for the time.
  *
- * There is no default. An invented start time would draw a confident forecast
- * for a ride nobody actually planned, so it opens empty and stays that way
- * until the reader picks something.
+ * The page opens on the next half hour rather than on nothing — see
+ * `useStartTime` — but the control still has to hold half a departure, for a
+ * reader who picks a day for a ride they have not timed yet.
  *
  * The window is the point. The service answers a departure whose ride
  * would finish past the sixteen-day horizon with a `400`, so the calendar
@@ -88,10 +88,10 @@ export function StartTimePicker({
   const [open, setOpen] = useState(false);
   /*
    * A day the reader has picked while no departure exists yet. Held rather
-   * than proposed: there is deliberately no default start time, and proposing
-   * the day at midnight would draw a confident forecast for a ride nobody
-   * planned. The departure is proposed once the time field fills the other
-   * half in. There is no clear: a start once set can only be changed.
+   * than proposed: proposing the day at midnight would draw a confident
+   * forecast for a ride nobody planned. The departure is proposed once the
+   * time field fills the other half in. There is no clear: a start once set
+   * can only be changed.
    */
   const [pendingDay, setPendingDay] = useState<Date | null>(null);
   const now = new Date();

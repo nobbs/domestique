@@ -142,8 +142,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    */
   const [basemapChoice, chooseBasemap] = useBasemapChoice();
   const [unitSystem] = useUnitSystem();
-  // No default: an invented start time would draw a confident forecast for a
-  // ride nobody actually planned. See lib/startTime.ts.
+  // Remembered across visits, and the next half hour where nothing is. See
+  // lib/startTime.ts.
   const [startAt, setStartAt] = useStartTime();
   const { changeOf, markSeen } = useSeenRoutes();
   // What the panels are standing on, so the camera frames a route in the part
