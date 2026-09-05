@@ -123,7 +123,7 @@ describe("FilterPanel", () => {
     expect(onFiltersChange).toHaveBeenLastCalledWith(EMPTY_FILTERS);
   });
 
-  it("reads the set range out beside the legend, and 'any' when nothing is set", () => {
+  it("reads the set sides out beside the legend, and 'any' when nothing is set", () => {
     renderPanel({
       expanded: true,
       filters: {
@@ -134,7 +134,7 @@ describe("FilterPanel", () => {
     });
 
     expect(screen.getByText("10 km – 40 km")).toBeInTheDocument();
-    expect(screen.getByText("1 h – 4 h")).toBeInTheDocument();
+    expect(screen.getByText("from 1 h")).toBeInTheDocument();
     expect(screen.getByText("any")).toBeInTheDocument();
   });
 

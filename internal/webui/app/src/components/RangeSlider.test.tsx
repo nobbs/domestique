@@ -57,4 +57,20 @@ describe("RangeSlider", () => {
     expect(bars[14]?.className).toContain("bg-[var(--accent)]");
     expect(bars[14]).toHaveStyle({ height: "100%" });
   });
+
+  it("names only the side that is set, rather than the domain's edge", () => {
+    render(
+      <RangeSlider
+        legend="Distance"
+        min={0}
+        max={100}
+        step={5}
+        range={{ min: null, max: 40 }}
+        onChange={vi.fn()}
+        format={FORMAT}
+        values={[]}
+      />,
+    );
+    expect(screen.getByText("up to 40 km")).toBeInTheDocument();
+  });
 });

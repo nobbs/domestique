@@ -1,8 +1,26 @@
 import { Slider } from "@base-ui/react/slider";
+import { useMemo } from "react";
 import type { NumericRange } from "../lib/filters";
 import { histogram } from "../lib/histogram";
 
 const BIN_COUNT = 24;
+
+/** The bounds as words, naming only the sides that are set, in their shown values. */
+function readout(
+  range: NumericRange,
+  lo: number,
+  hi: number,
+  format: (stored: number) => string,
+): string {
+  if (range.min !== null && range.max !== null) {
+    return `${format(lo)} – ${format(hi)}`;
+  }
+  if (range.min !== null) {
+    return `from ${format(lo)}`;
+  }
+
+  return range.max !== null ? `up to ${format(hi)}` : "any";
+}
 
 function clamp(value: number, low: number, high: number): number {
   return Math.min(Math.max(value, low), high);
@@ -45,7 +63,8 @@ export function RangeSlider({
   const lo = clamp(Math.min(rawLo, rawHi), min, max);
   const hi = clamp(Math.max(rawLo, rawHi), lo, max);
   const isSet = range.min !== null || range.max !== null;
-  const bins = histogram(values, min, max, BIN_COUNT);
+  // Memoised on the library and domain: every thumb move re-renders this.
+  const bins = useMemo(() => histogram(values, min, max, BIN_COUNT), [values, min, max]);
   const peak = Math.max(1, ...bins);
   const binWidth = (max - min) / BIN_COUNT;
 
@@ -54,7 +73,7 @@ export function RangeSlider({
       <div className="flex items-baseline justify-between text-sm">
         <span className="font-semibold">{legend}</span>
         <span className={isSet ? "tabular-nums" : "text-[var(--ink-2)]"}>
-          {isSet ? `${format(lo)} – ${format(hi)}` : "any"}
+          {readout(range, lo, hi, format)}
         </span>
       </div>
       <div className="px-2">
