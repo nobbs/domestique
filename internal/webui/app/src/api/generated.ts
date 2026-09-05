@@ -392,9 +392,31 @@ export interface SourceSettings {
   baseUrl: string;
 }
 
-export interface RideModelSettings {
-  /** The coefficient file the offline fitting tooling emits, named by an absolute path the service can read. Empty is predicted moving time switched off, which is also the default. */
-  coefficientsFile: string;
+/**
+ * Whether these are the built-in values every deployment starts with or the ones a calibration fitted.
+ */
+export type RideModelStatusSource =
+  (typeof RideModelStatusSource)[keyof typeof RideModelStatusSource];
+
+export const RideModelStatusSource = {
+  default: "default",
+  calibrated: "calibrated",
+} as const;
+
+/**
+ * The coefficient pair predicted moving time is priced with. Read-only: it is replaced by a calibration, not by an operator.
+ */
+export interface RideModelStatus {
+  /** Seconds added per kilometre ridden. */
+  secondsPerKm: number;
+  /** Seconds added per metre climbed. */
+  secondsPerAscentM: number;
+  /** Whether these are the built-in values every deployment starts with or the ones a calibration fitted. */
+  source: RideModelStatusSource;
+  /** The last day of riding the fit that produced them read. */
+  calibrationCutoff?: string;
+  /** How many unseen rides the fit's error was measured over. Zero is not measured, which is what the built-in pair always reports. */
+  evaluatedRides: number;
 }
 
 export interface AlertSetting {
@@ -422,7 +444,7 @@ export interface Settings {
   wahoo: WahooSettings;
   /** The libraries a run reads, in the order it reads them. An empty list is a service nobody has configured yet, not an error. */
   sources: SourceSettings[];
-  rideModel: RideModelSettings;
+  rideModel: RideModelStatus;
   /** Every alert this service can raise, and whether it is delivered. An alert nobody has ruled on is delivered: a fault nobody has heard of is the one worth hearing about. */
   alerts: AlertSetting[];
   /** Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace. */
@@ -3948,142 +3970,6 @@ export const useSetSurface = <
   TContext
 > => {
   return useMutation(getSetSurfaceMutationOptions(options), queryClient);
-};
-
-export type setRideModelResponse200 = {
-  data: SettingsStoredResponse;
-  status: 200;
-};
-
-export type setRideModelResponse400 = {
-  data: InvalidRequestResponse;
-  status: 400;
-};
-
-export type setRideModelResponse401 = {
-  data: UnauthorizedResponse;
-  status: 401;
-};
-
-export type setRideModelResponse403 = {
-  data: ForbiddenResponse;
-  status: 403;
-};
-
-export type setRideModelResponse503 = {
-  data: UnavailableResponse;
-  status: 503;
-};
-
-export type setRideModelResponseSuccess = setRideModelResponse200 & {
-  headers: Headers;
-};
-export type setRideModelResponseError = (
-  | setRideModelResponse400
-  | setRideModelResponse401
-  | setRideModelResponse403
-  | setRideModelResponse503
-) & {
-  headers: Headers;
-};
-
-export const getSetRideModelUrl = () => {
-  return `/v1/settings/ridemodel`;
-};
-
-/**
- * Replaces the coefficient file predicted moving time is computed from, and starts a prediction pass.
- */
-export const setRideModel = async (
-  rideModelSettings: RideModelSettings,
-  options?: Parameters<typeof domestiqueRequest>[1],
-): Promise<setRideModelResponseSuccess> => {
-  const getHeaders = (
-    h?: NonNullable<RequestInit["headers"]>,
-  ): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Array.isArray(h)) return Object.fromEntries(h);
-    return h;
-  };
-  return domestiqueRequest<setRideModelResponseSuccess>(getSetRideModelUrl(), {
-    ...options,
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
-    body: JSON.stringify(rideModelSettings),
-  });
-};
-
-export const getSetRideModelMutationKey = () => ["setRideModel"] as const;
-
-export const getSetRideModelMutationOptions = <
-  TError = ErrorType<
-    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
-  >,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof setRideModel>>,
-    TError,
-    SetRideModelMutationVariables,
-    TContext
-  >;
-  request?: SecondParameter<typeof domestiqueRequest>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof setRideModel>>,
-  TError,
-  SetRideModelMutationVariables,
-  TContext
-> => {
-  const mutationKey = getSetRideModelMutationKey();
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof setRideModel>>,
-    SetRideModelMutationVariables
-  > = (props) => {
-    const { data } = props ?? {};
-
-    return setRideModel(data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type SetRideModelMutationResult = NonNullable<Awaited<ReturnType<typeof setRideModel>>>;
-export type SetRideModelMutationBody = RideModelSettings;
-export type SetRideModelMutationError = ErrorType<
-  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
->;
-export type SetRideModelMutationVariables = { data: RideModelSettings };
-
-export const useSetRideModel = <
-  TError = ErrorType<
-    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
-  >,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof setRideModel>>,
-      TError,
-      SetRideModelMutationVariables,
-      TContext
-    >;
-    request?: SecondParameter<typeof domestiqueRequest>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof setRideModel>>,
-  TError,
-  SetRideModelMutationVariables,
-  TContext
-> => {
-  return useMutation(getSetRideModelMutationOptions(options), queryClient);
 };
 
 export type setTimezoneResponse200 = {

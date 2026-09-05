@@ -26,7 +26,6 @@ var mutableRoutes = []struct { //nolint:gochecknoglobals // test fixture, read-o
 	{method: http.MethodPut, target: settingsNotificationsPath, body: notificationsSubmission},
 	{method: http.MethodPut, target: basemapsPath, body: basemapsSubmission},
 	{method: http.MethodPut, target: settingsSurfacePath, body: surfaceSubmission},
-	{method: http.MethodPut, target: settingsRideModelPath, body: rideModelSubmission},
 	{method: http.MethodPut, target: settingsSyncPath, body: syncSubmission},
 	{method: http.MethodPut, target: settingsAlertsPath, body: alertsSubmission},
 	{method: http.MethodPut, target: settingsTimezonePath, body: `{"timezone": "Europe/Berlin"}`},

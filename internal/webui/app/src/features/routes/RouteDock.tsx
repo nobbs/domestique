@@ -20,10 +20,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/pop
 import type { Climb } from "../../lib/climbs";
 import { forecastResolution } from "../../lib/forecastResolution";
 import { type ForecastSample, forecastLeadHours } from "../../lib/forecastSamples";
-import { formatAscent, formatDistance, formatElevation } from "../../lib/format";
+import { formatAscent, formatClock, formatDistance, formatElevation } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import type { MeasureKey } from "../../lib/measures";
-import { useCoarsePointer } from "../../lib/mediaQuery";
 import { groundSegments, steepnessEntries } from "../../lib/mix";
 import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile } from "../../lib/profile";
@@ -35,11 +34,6 @@ import { ConditionsChoices, ConditionsKey } from "./ConditionsPicker";
 import { ElevationProfile, profileReadout } from "./ElevationProfile";
 import { ForecastStrip } from "./ForecastStrip";
 import { GroundRibbon } from "./GroundRibbon";
-
-/** `14:20`, in the reader's own zone, which is where they will be riding. */
-function clockAt(at: Date): string {
-  return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
 
 const GUTTER = { paddingLeft: PADDING.left, paddingRight: PADDING.right };
 
@@ -234,8 +228,6 @@ function ProfileStop({
   | "highlight"
   | "onHighlightChange"
 > & { climbsOpen: boolean; onClimbsOpenChange: (open: boolean) => void }) {
-  // A touch pointer arms the zoom by holding, so the hint names that gesture.
-  const coarse = useCoarsePointer();
   const shown = zoomWindow ?? { startMetres: 0, endMetres: distanceMetres };
   const line = (() => {
     if (activeMetres !== null && profile) {
@@ -248,8 +240,7 @@ function ProfileStop({
       return "";
     }
     const range = ` · ${formatElevation(profile.minElevationMetres)}–${formatElevation(profile.maxElevationMetres)}`;
-    const hint = coarse ? "press and hold to look closer" : "drag across to look closer";
-    return `${formatDistance(distanceMetres)} · ${formatAscent(ascentMetres)} up${range} · ${hint}`;
+    return `${formatDistance(distanceMetres)} · ${formatAscent(ascentMetres)} up${range}`;
   })();
 
   return (
@@ -348,7 +339,7 @@ function ForecastStop({
   return (
     <Panel
       gutter={false}
-      line={`Forecast${back === undefined ? "" : ` · back ${clockAt(back)}`}`}
+      line={`Forecast${back === undefined ? "" : ` · back ${formatClock(back)}`}`}
       info={
         samples.length === 0 ? undefined : (
           <p className="max-w-64 text-xs text-[var(--ink-2)]">
@@ -460,7 +451,7 @@ export function RouteDock({
           Forecast
         </button>
         {back === undefined ? null : (
-          <span className="px-1 text-[10px] text-[var(--ink-2)]">back {clockAt(back)}</span>
+          <span className="px-1 text-[10px] text-[var(--ink-2)]">back {formatClock(back)}</span>
         )}
       </div>
     );

@@ -14,8 +14,8 @@
  * easiest to point at and the one a reader is most likely to be asking about.
  *
  * Labels are laid out left to right and pushed apart where they would collide,
- * so the leader lines lean. A lean is the honest signal here: it says this
- * name has been moved from where its class is, and by how much.
+ * so a leader steps sideways — the same elbow `MixRow` draws — and the step
+ * says this name has been moved from where its class is, and by how much.
  */
 
 import type { SurfaceKind } from "../../api/types";
@@ -29,7 +29,7 @@ import { HighlightToggle } from "./HighlightToggle";
 import { MixRibbon } from "./MixRibbon";
 
 const LABEL_HEIGHT = 14;
-const LEADER_HEIGHT = 9;
+const LEADER_HEIGHT = 12;
 /** Room either side of a label, so two that survive the pass do not touch. */
 const GAP = 10;
 /** An over-estimate at eleven pixels, so the pass errs towards spreading out. */
@@ -179,7 +179,7 @@ export function GroundRibbon({
               return (
                 <path
                   key={anchor.kind}
-                  d={`M${from.toFixed(1)} 0 L${to.toFixed(1)} ${LEADER_HEIGHT}`}
+                  d={`M${from.toFixed(1)} 0 V${LEADER_HEIGHT / 2} H${to.toFixed(1)} V${LEADER_HEIGHT}`}
                   className="stroke-[var(--rule)]"
                   strokeWidth={1}
                   fill="none"

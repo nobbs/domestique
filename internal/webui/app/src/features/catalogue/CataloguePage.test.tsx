@@ -13,6 +13,7 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
 import type { Route as LibraryRoute, RouteGeometry, Status } from "../../api/types";
+import { focusThumb } from "../../test/filterPanel";
 import { CataloguePage } from "./CataloguePage";
 
 function libraryRoute(
@@ -309,15 +310,17 @@ describe("CataloguePage", () => {
     expect(screen.getAllByText("New")).toHaveLength(3);
   });
 
-  it("narrows by surface, which the same geometry classifies", async () => {
+  it("narrows by a slider bound and writes it to the address", async () => {
     const user = userEvent.setup();
     show();
 
     await user.click(screen.getByRole("button", { name: /Show the library filters/ }));
-    await user.click(screen.getByRole("checkbox", { name: /gravel/i }));
+    // Ascents of 900, 300 and 100 m give a track to 900 m by 20 m.
+    await focusThumb("Ascent min");
+    await user.keyboard("{ArrowRight}".repeat(20));
 
     expect(shownTitles()).toEqual([expect.stringContaining("Alpine loop")]);
-    expect(screen.getByTestId("address")).toHaveTextContent("surface=gravel");
+    expect(screen.getByTestId("address")).toHaveTextContent("ascentMin=400");
   });
 
   it("says so when the library is empty", () => {

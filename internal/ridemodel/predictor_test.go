@@ -2,7 +2,6 @@ package ridemodel
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/route"
-	"github.com/nobbs/domestique/internal/surface"
 )
 
 func stageWithElevation(t *testing.T, contentHash string) route.Route {
@@ -39,53 +37,6 @@ func stageWithoutElevation(t *testing.T, contentHash string) route.Route {
 	require.NoError(t, err, "route.NewRoute()")
 
 	return stage
-}
-
-type surfaceEntry struct {
-	generation  string
-	contentHash string
-	ranges      json.RawMessage
-}
-
-type fakeSurfaceSource struct {
-	entries map[route.Key]surfaceEntry
-	err     error
-	// surfaceReadErr fails StageSurface alone, for a fake that reports a real
-	// classification generation via StageSurfaceHash but cannot read the
-	// ranges themselves — a transient failure independent of whether anything
-	// is classified.
-	surfaceReadErr error
-}
-
-func (f *fakeSurfaceSource) StageSurfaceHash(
-	_ context.Context, provider route.Provider, routeID int64, stageOrder int,
-) (contentHash, generation string, found bool, err error) {
-	if f.err != nil {
-		return "", "", false, f.err
-	}
-	entry, ok := f.entries[route.NewKey(provider, routeID, stageOrder)]
-	if !ok {
-		return "", "", false, nil
-	}
-
-	return entry.contentHash, entry.generation, true, nil
-}
-
-func (f *fakeSurfaceSource) StageSurface(
-	_ context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash string,
-) (ranges json.RawMessage, matchedMetres float64, found bool, err error) {
-	if f.err != nil {
-		return nil, 0, false, f.err
-	}
-	if f.surfaceReadErr != nil {
-		return nil, 0, false, f.surfaceReadErr
-	}
-	entry, ok := f.entries[route.NewKey(provider, routeID, stageOrder)]
-	if !ok || entry.contentHash != contentHash {
-		return nil, 0, false, nil
-	}
-
-	return entry.ranges, 0, true, nil
 }
 
 type storedDuration struct {
@@ -156,7 +107,7 @@ func (f *fakeDurationCache) StoreStageDuration(
 func TestPredictorPredictsAStageNotYetCached(t *testing.T) {
 	stage := stageWithElevation(t, "hash-1")
 	cache := newFakeDurationCache()
-	predictor := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients())
+	predictor := NewPredictor(cache, testCoefficients())
 
 	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
@@ -177,7 +128,7 @@ func TestPredictorSkipsAStageAlreadyCurrent(t *testing.T) {
 	cache.stored[stage.Key()] = storedDuration{
 		contentHash: "hash-1", surfaceGeneration: "", coefficientFingerprint: coefficients.Fingerprint,
 	}
-	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
+	predictor := NewPredictor(cache, coefficients)
 
 	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
@@ -193,7 +144,7 @@ func TestPredictorRecomputesWhenGeometryChanges(t *testing.T) {
 	cache.stored[stage.Key()] = storedDuration{
 		contentHash: "hash-1", surfaceGeneration: "", coefficientFingerprint: coefficients.Fingerprint,
 	}
-	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
+	predictor := NewPredictor(cache, coefficients)
 
 	predicted, _, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
@@ -207,110 +158,34 @@ func TestPredictorRecomputesWhenCoefficientFingerprintChanges(t *testing.T) {
 	cache.stored[stage.Key()] = storedDuration{
 		contentHash: "hash-1", surfaceGeneration: "", coefficientFingerprint: "an-earlier-coefficient-file",
 	}
-	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
+	predictor := NewPredictor(cache, coefficients)
 
 	predicted, _, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
 	assert.Equal(t, 1, predicted, "a re-fitted coefficient file should be recomputed")
 }
 
-func TestPredictorRecomputesWhenSurfaceClassificationChanges(t *testing.T) {
+// A row cached while prediction still read the ground carries that generation.
+// It is no longer part of what makes a prediction current, so such a row is
+// recomputed once and stored with none.
+func TestPredictorRecomputesARowCachedAgainstASurfaceGeneration(t *testing.T) {
 	stage := stageWithElevation(t, "hash-1")
 	coefficients := testCoefficients()
 	cache := newFakeDurationCache()
 	cache.stored[stage.Key()] = storedDuration{
 		contentHash: "hash-1", surfaceGeneration: "generation-1", coefficientFingerprint: coefficients.Fingerprint,
 	}
-	source := &fakeSurfaceSource{entries: map[route.Key]surfaceEntry{
-		stage.Key(): {contentHash: "hash-1", generation: "generation-2"},
-	}}
-	predictor := NewPredictor(source, cache, coefficients)
 
-	predicted, _, err := predictor.Predict(t.Context(), []route.Route{stage})
+	predicted, _, err := NewPredictor(cache, coefficients).Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
-	assert.Equal(t, 1, predicted, "a new surface index generation should be recomputed")
-}
-
-func TestPredictorFallsBackToAsphaltWhenNoSurfaceIsCached(t *testing.T) {
-	stage := stageWithElevation(t, "hash-1")
-	coefficients := testCoefficients()
-	cache := newFakeDurationCache()
-	predictor := NewPredictor(&fakeSurfaceSource{}, cache, coefficients)
-
-	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
-	require.NoError(t, err, "Predict()")
-	assert.Equal(t, 1, predicted, "predicted")
-	assert.Zero(t, failed, "failed")
-
-	stored := cache.stored[stage.Key()]
-	require.NotNil(t, stored.movingSeconds, "stored moving seconds")
-
-	asphaltOnly, ok := Predict(stage.Geometry(), nil, coefficients)
-	require.True(t, ok, "Predict() reference")
-	assert.InDelta(t, asphaltOnly.MovingSeconds, *stored.movingSeconds, 1e-9, "an unclassified stage is timed as asphalt")
-}
-
-// Regression: StageSurfaceHash can report a real generation while StageSurface
-// fails to read the ranges — a transient error, distinct from nothing being
-// classified yet. The stored fingerprint must not claim that generation, or the
-// asphalt fallback this run took would never be retried.
-func TestPredictorDoesNotLockInAnAsphaltFallbackWhenSurfaceRangesFailToRead(t *testing.T) {
-	stage := stageWithElevation(t, "hash-1")
-	coefficients := testCoefficients()
-	source := &fakeSurfaceSource{
-		entries: map[route.Key]surfaceEntry{
-			stage.Key(): {contentHash: "hash-1", generation: "generation-1"},
-		},
-		surfaceReadErr: errors.New("surface ranges unavailable"),
-	}
-	cache := newFakeDurationCache()
-	predictor := NewPredictor(source, cache, coefficients)
-
-	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
-	require.NoError(t, err, "Predict()")
-	assert.Equal(t, 1, predicted, "predicted")
-	assert.Zero(t, failed, "failed")
-
-	_, storedGeneration, _, found, err := cache.StageDurationFingerprint(t.Context(), route.ProviderVeloPlanner, 1, 1)
-	require.NoError(t, err, "StageDurationFingerprint()")
-	require.True(t, found, "no fingerprint was cached")
-	assert.Empty(t, storedGeneration, "an asphalt fallback must not be cached against the real surface generation")
-
-	// Once the ranges become readable, the mismatch against the cached empty
-	// generation must trigger a recompute rather than being skipped as current.
-	source.surfaceReadErr = nil
-	source.entries[stage.Key()] = surfaceEntry{contentHash: "hash-1", generation: "generation-1"}
-	predicted, _, err = predictor.Predict(t.Context(), []route.Route{stage})
-	require.NoError(t, err, "second Predict()")
-	assert.Equal(t, 1, predicted, "a readable classification should trigger a recompute")
-}
-
-func TestPredictorReadsCachedSurfaceClassification(t *testing.T) {
-	stage := stageWithElevation(t, "hash-1")
-	coefficients := testCoefficients()
-	ranges, err := surface.EncodeRanges([]surface.Range{{StartIndex: 0, EndIndex: 1, Kind: surface.KindGravel}})
-	require.NoError(t, err, "surface.EncodeRanges()")
-	source := &fakeSurfaceSource{entries: map[route.Key]surfaceEntry{
-		stage.Key(): {contentHash: "hash-1", generation: "generation-1", ranges: ranges},
-	}}
-	cache := newFakeDurationCache()
-	predictor := NewPredictor(source, cache, coefficients)
-
-	_, _, err = predictor.Predict(t.Context(), []route.Route{stage})
-	require.NoError(t, err, "Predict()")
-
-	stored := cache.stored[stage.Key()]
-	require.NotNil(t, stored.movingSeconds, "stored moving seconds")
-
-	gravelOnly, ok := Predict(stage.Geometry(), kindsAll(len(stage.Geometry()), surface.KindGravel), coefficients)
-	require.True(t, ok, "Predict() reference")
-	assert.InDelta(t, gravelOnly.MovingSeconds, *stored.movingSeconds, 1e-9, "a classified stage should read gravel")
+	assert.Equal(t, 1, predicted, "a row cached against a surface generation should be recomputed")
+	assert.Empty(t, cache.stored[stage.Key()].surfaceGeneration, "the recomputed row carries no surface generation")
 }
 
 func TestPredictorRecordsNoPredictionForAStageWithNoElevation(t *testing.T) {
 	stage := stageWithoutElevation(t, "hash-1")
 	cache := newFakeDurationCache()
-	predictor := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients())
+	predictor := NewPredictor(cache, testCoefficients())
 
 	predicted, failed, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.NoError(t, err, "Predict()")
@@ -327,7 +202,7 @@ func TestPredictorReportsAnErrorWhenTheCacheIsUnavailable(t *testing.T) {
 	stage := stageWithElevation(t, "hash-1")
 	cache := newFakeDurationCache()
 	cache.hashErr = errors.New("state unavailable")
-	predictor := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients())
+	predictor := NewPredictor(cache, testCoefficients())
 
 	_, _, err := predictor.Predict(t.Context(), []route.Route{stage})
 	require.Error(t, err, "Predict()")
@@ -335,7 +210,7 @@ func TestPredictorReportsAnErrorWhenTheCacheIsUnavailable(t *testing.T) {
 
 func TestPredictorStopsOnACancelledContext(t *testing.T) {
 	stage := stageWithElevation(t, "hash-1")
-	predictor := NewPredictor(&fakeSurfaceSource{}, newFakeDurationCache(), testCoefficients())
+	predictor := NewPredictor(newFakeDurationCache(), testCoefficients())
 
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -350,7 +225,7 @@ func TestPredictNamesWhatStoppedAStage(t *testing.T) {
 	cache.storeErr = errors.New("state unavailable")
 	stage := stageWithElevation(t, "hash-1")
 
-	_, failed, err := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients()).
+	_, failed, err := NewPredictor(cache, testCoefficients()).
 		Predict(t.Context(), []route.Route{stage})
 
 	require.NoError(t, err, "Predict()")
@@ -365,7 +240,7 @@ func TestPredictCarriesOnWhenAFailureCannotBeRecorded(t *testing.T) {
 	cache.storeErr = errors.New("state unavailable")
 	cache.failureErr = errors.New("state unavailable")
 
-	_, failed, err := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients()).
+	_, failed, err := NewPredictor(cache, testCoefficients()).
 		Predict(t.Context(), []route.Route{stageWithElevation(t, "hash-1")})
 
 	require.NoError(t, err, "Predict()")
@@ -381,7 +256,7 @@ func TestPredictRecordsNothingForAStageAShutdownInterrupted(t *testing.T) {
 	cache.whileStored = cancel
 	cache.storeErr = context.Canceled
 
-	predicted, failed, err := NewPredictor(&fakeSurfaceSource{}, cache, testCoefficients()).
+	predicted, failed, err := NewPredictor(cache, testCoefficients()).
 		Predict(ctx, []route.Route{stageWithElevation(t, "hash-1")})
 
 	require.ErrorIs(t, err, context.Canceled, "Predict()")

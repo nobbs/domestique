@@ -156,8 +156,16 @@ export interface ConditionsKeyProps {
 /** The key for one measure's wash, on one line: the corridor, and for wind the route line too. */
 export function ConditionsKey({ measure, samples }: ConditionsKeyProps) {
   const chosen: Measure | undefined = MEASURES.find((entry) => entry.key === measure);
-  if (chosen === undefined || samples.length === 0) {
+  if (samples.length === 0) {
     return null;
+  }
+  if (chosen === undefined) {
+    // Holds the key's row while the wash is off, so the strip above keeps its height.
+    return (
+      <div className="text-[11px]" aria-hidden="true">
+        &nbsp;
+      </div>
+    );
   }
 
   return (

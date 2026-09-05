@@ -45,6 +45,54 @@ func TestClientListsEveryWorkoutPage(t *testing.T) {
 	}, workouts)
 }
 
+// The head is one request: it reads the first page and the account's own total
+// without walking the pages behind it.
+func TestClientReadsTheWorkoutListingHeadInOneRequest(t *testing.T) {
+	var requests int
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests++
+		assert.Equal(t, "1", request.URL.Query().Get("page"))
+		writeJSON(t, writer, map[string]any{
+			"workouts": []map[string]int{{"id": 1, "workout_type_id": 15, "workout_type_location_id": 1}},
+			"total":    7, "page": 1, "per_page": 100,
+		})
+	}))
+	defer server.Close()
+
+	workouts, total, err := newTestClient(t, server).WorkoutListingHead(t.Context(), "access-token")
+	require.NoError(t, err)
+	assert.Equal(t, []Workout{{ID: 1, WorkoutTypeID: 15, WorkoutTypeLocationID: 1}}, workouts)
+	assert.Equal(t, 7, total)
+	assert.Equal(t, 1, requests)
+}
+
+// An empty first page the account says holds workouts is a broken listing, and
+// costs one request to find out rather than a walk that fails at its end.
+func TestClientReportsAWorkoutListingHeadThatEndedEarly(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]any{"workouts": []any{}, "total": 3, "page": 1, "per_page": 100})
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).WorkoutListingHead(t.Context(), "access-token")
+	require.ErrorContains(t, err, "ended before its total")
+}
+
+func TestClientRefusesAWorkoutListingHeadWithoutAToken(t *testing.T) {
+	_, _, err := (&Client{}).WorkoutListingHead(t.Context(), "")
+	require.ErrorContains(t, err, "access token is required")
+}
+
+func TestClientReportsAnInvalidWorkoutListingHead(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, writer, map[string]any{"workouts": []any{}, "total": 1, "page": 2, "per_page": 100})
+	}))
+	defer server.Close()
+
+	_, _, err := newTestClient(t, server).WorkoutListingHead(t.Context(), "access-token")
+	require.ErrorContains(t, err, "pagination was invalid")
+}
+
 func TestClientReadsTheRawWorkoutSummary(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, http.MethodGet, request.Method)
@@ -167,9 +215,57 @@ func TestClientReportsAMissingWorkoutSummary(t *testing.T) {
 			defer server.Close()
 
 			_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
-			require.ErrorContains(t, err, "summary was missing")
+			require.ErrorContains(t, err, "unreadable: missing")
 		})
 	}
+}
+
+// A rejection that belongs to one workout is told apart from one that belongs
+// to the provider, so a poll knows which it may step past.
+func TestClientTellsAnUnreadableWorkoutFromAFailedProvider(t *testing.T) {
+	cases := map[string]struct {
+		body       any
+		status     int
+		unreadable bool
+	}{
+		"refused":      {status: http.StatusUnauthorized, unreadable: true},
+		"missing":      {status: http.StatusNotFound, unreadable: true},
+		"no summary":   {status: http.StatusOK, body: nil, unreadable: true},
+		"wrong shape":  {status: http.StatusOK, body: "x", unreadable: true},
+		"provider":     {status: http.StatusInternalServerError},
+		"rate limited": {status: http.StatusTooManyRequests},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				if tc.status != http.StatusOK {
+					writer.WriteHeader(tc.status)
+
+					return
+				}
+				writeJSON(t, writer, tc.body)
+			}))
+			defer server.Close()
+
+			_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
+			require.Error(t, err)
+			assert.Equal(t, tc.unreadable, errors.Is(err, ErrWorkoutUnreadable), "%v", err)
+			assert.NotContains(t, err.Error(), "access-token")
+		})
+	}
+}
+
+// Only a summary read may answer for one workout; a listing that is refused or
+// missing says something about the account, and is never a skip.
+func TestClientNeverMarksAWorkoutListingUnreadable(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	require.ErrorContains(t, err, "HTTP 404")
+	require.NotErrorIs(t, err, ErrWorkoutUnreadable)
 }
 
 func TestClientRejectsAWorkoutListingBeyondItsBounds(t *testing.T) {
@@ -250,14 +346,14 @@ func TestClientRejectsWorkoutReadsItCannotTrust(t *testing.T) {
 				writeJSON(t, writer, "x")
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
-			want: "summary was not the shape expected",
+			want: "unreadable: not the shape expected",
 		},
 		"summary whose file is not an object": {
 			handler: func(writer http.ResponseWriter, _ *http.Request) {
 				writeJSON(t, writer, map[string]any{"id": 42, "file": "https://cdn.wahooligan.com/42.fit"})
 			},
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 42); return err },
-			want: "summary was not the shape expected",
+			want: "unreadable: not the shape expected",
 		},
 	}
 	for name, tc := range cases {
@@ -278,10 +374,24 @@ func TestClientRejectsWorkoutFITDownloadsItCannotTrust(t *testing.T) {
 	cases := map[string]struct {
 		respond func(*http.Request) (*http.Response, error)
 		want    string
+		refused bool
 	}{
 		"transport failure": {
 			respond: func(*http.Request) (*http.Response, error) { return nil, errors.New("dial failed") },
 			want:    "request failed: dial failed",
+		},
+		"refused by the CDN": {
+			respond: func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusNotFound, Header: make(http.Header), Body: http.NoBody}, nil
+			},
+			want:    "was refused: HTTP 404",
+			refused: true,
+		},
+		"rate limited by the CDN": {
+			respond: func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusTooManyRequests, Header: make(http.Header), Body: http.NoBody}, nil
+			},
+			want: "returned HTTP 429",
 		},
 		"redirect": {
 			respond: func(*http.Request) (*http.Response, error) {
@@ -311,6 +421,11 @@ func TestClientRejectsWorkoutFITDownloadsItCannotTrust(t *testing.T) {
 
 			_, err := client.DownloadWorkoutFIT(t.Context(), "https://cdn.wahooligan.com/workouts/42.fit")
 			require.ErrorContains(t, err, tc.want)
+			if tc.refused {
+				assert.ErrorIs(t, err, ErrWorkoutFileRefused)
+			} else {
+				assert.NotErrorIs(t, err, ErrWorkoutFileRefused)
+			}
 		})
 	}
 }

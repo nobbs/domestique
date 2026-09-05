@@ -8,28 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/route"
-	"github.com/nobbs/domestique/internal/surface"
 )
 
-// testCoefficients is a plausible hybrid profile: a scalar Crr applied
-// uniformly across every surface.Kind, matching what Load produces from a
-// real file since #240 — see Coefficients.crr's doc comment for why the map
-// still exists.
 func testCoefficients() Coefficients {
 	return Coefficients{
-		MassKG:            90,
-		PowerWatts:        200,
-		CdAM2:             0.4,
 		SecondsPerKM:      140,
 		SecondsPerAscentM: 4,
-		CrrBySurface: map[surface.Kind]float64{
-			surface.KindAsphalt:   0.012,
-			surface.KindPaving:    0.012,
-			surface.KindCompacted: 0.012,
-			surface.KindGravel:    0.012,
-			surface.KindGround:    0.012,
-		},
-		Fingerprint: "test",
+		Fingerprint:       "test",
 	}
 }
 
@@ -59,281 +44,98 @@ func flatStage(totalDistanceMetres float64, n int, elevationMetres float64) []ro
 	return sampledStage(totalDistanceMetres, n, func(float64) float64 { return elevationMetres })
 }
 
-func kindsAll(n int, kind surface.Kind) []surface.Kind {
-	kinds := make([]surface.Kind, n)
-	for index := range kinds {
-		kinds[index] = kind
-	}
-
-	return kinds
-}
-
-// floatPtr is a plain pointer-to-literal helper rather than new(expr): tooling
-// that reviews this code may not recognise the newer form. Mirrors
-// internal/komoot's convert_test.go.
-//
-//nolint:modernize // deliberately not new(expr); see comment above.
-func floatPtr(value float64) *float64 { return &value }
-
-func TestPredictFlatAsphaltRoundTripsThroughItsOwnSolver(t *testing.T) {
+func TestPredictFlatStageIsDistanceAlone(t *testing.T) {
 	coefficients := testCoefficients()
-	points := flatStage(10_000, 50, 0)
 
-	result, ok := Predict(points, nil, coefficients)
+	result, ok := Predict(flatStage(10_000, 50, 120), coefficients)
+
 	require.True(t, ok, "Predict() ok")
-
-	sinTheta, cosTheta := gradientTrig(0)
-	speed := poweredSpeedMetresPerSecond(coefficients.crr(surface.KindAsphalt), sinTheta, cosTheta, coefficients)
-	physicsSeconds := 10_000 / speed
-	linearSeconds := coefficients.SecondsPerKM * 10.0 // flat: distance only, no ascent contribution
-	expected := hybridPhysicsWeight*physicsSeconds + (1-hybridPhysicsWeight)*linearSeconds
-	assert.InDelta(t, expected, result.MovingSeconds, 1e-6, "flat asphalt moving time is the 50/50 blend")
+	assert.InDelta(t, 10*coefficients.SecondsPerKM, result.MovingSeconds, 1e-6)
 }
 
-// The runtime total matches the same average of independently-summed
-// physics-only and linear-only segment times the benchmark validated, computed
-// once per segment so the running series stays aligned 1:1 with the geometry.
-func TestPredictBlendsPhysicsAndLinearHalvesPerSegment(t *testing.T) {
+func TestPredictClimbAddsTheAscentTerm(t *testing.T) {
 	coefficients := testCoefficients()
-	hill := func(d float64) float64 { return 40 * math.Sin(d/2000) }
-	points := sampledStage(8_000, 40, hill)
+	climb := sampledStage(10_000, 50, func(distance float64) float64 { return distance * 0.05 })
 
-	result, ok := Predict(points, nil, coefficients)
+	result, ok := Predict(climb, coefficients)
+
 	require.True(t, ok, "Predict() ok")
-
-	distances := make([]float64, len(points))
-	for index := 1; index < len(points); index++ {
-		distances[index] = distances[index-1] + route.HaversineMetres(points[index-1], points[index])
-	}
-	gradients := windowedGradientPercent(distances, points)
-	crr := coefficients.crr(surface.KindAsphalt)
-
-	var expected float64
-	for index := 1; index < len(points); index++ {
-		span := distances[index] - distances[index-1]
-		physicsSeconds := span / segmentSpeedMetresPerSecond(gradients[index], crr, coefficients)
-		rise := *points[index].Elevation - *points[index-1].Elevation
-		linearSeconds := coefficients.SecondsPerKM*(span/1000) + coefficients.SecondsPerAscentM*math.Max(0, rise)
-		expected += hybridPhysicsWeight*physicsSeconds + (1-hybridPhysicsWeight)*linearSeconds
-	}
-
-	assert.InDelta(t, expected, result.MovingSeconds, 1e-6, "hybrid total should match the independently-summed 50/50 blend")
+	assert.InDelta(t, 10*coefficients.SecondsPerKM+500*coefficients.SecondsPerAscentM, result.MovingSeconds, 1e-6)
 }
 
-// TestPredictLinearHalfCreditsOnlyPositiveAscent matches
-// route.Route.ElevationGainMetres()'s own definition, which
-// seconds_per_ascent_m was calibrated against: a descending segment
-// contributes nothing to the linear half.
-func TestPredictLinearHalfCreditsOnlyPositiveAscent(t *testing.T) {
+// The ascent term prices only what a rider climbs, matching
+// route.Route.ElevationGainMetres(): a descent must not buy time back.
+func TestPredictCreditsOnlyPositiveAscent(t *testing.T) {
 	coefficients := testCoefficients()
-	coefficients.SecondsPerKM = 0 // isolate the ascent term from the distance term
-	crr := coefficients.crr(surface.KindAsphalt)
+	// Up 200 m over the first half, back down over the second.
+	rolling := sampledStage(10_000, 51, func(distance float64) float64 {
+		if distance <= 5_000 {
+			return distance * 0.04
+		}
 
-	up := sampledStage(1_000, 2, func(d float64) float64 { return d * 0.05 })
-	down := sampledStage(1_000, 2, func(d float64) float64 { return -d * 0.05 })
+		return (10_000 - distance) * 0.04
+	})
 
-	upResult, ok := Predict(up, nil, coefficients)
-	require.True(t, ok, "Predict() ok climbing")
-	downResult, ok := Predict(down, nil, coefficients)
-	require.True(t, ok, "Predict() ok descending")
+	result, ok := Predict(rolling, coefficients)
 
-	physicsSecondsClimbing := 1000 / segmentSpeedMetresPerSecond(5, crr, coefficients)
-	physicsSecondsDescending := 1000 / segmentSpeedMetresPerSecond(-5, crr, coefficients)
-
-	assert.InDelta(t, hybridPhysicsWeight*physicsSecondsDescending, downResult.MovingSeconds, 1e-6,
-		"a descending segment adds nothing from the linear half's ascent term")
-	assert.Greater(t, upResult.MovingSeconds, hybridPhysicsWeight*physicsSecondsClimbing,
-		"a climbing segment adds something from the linear half's ascent term")
-}
-
-func TestPredictSteadyClimbIsMonotonicInPowerAndMass(t *testing.T) {
-	coefficients := testCoefficients()
-	const ascentMetres = 500.0
-	// A steady five percent climb over its whole length.
-	distance := ascentMetres / 0.05
-	points := sampledStage(distance, 200, func(d float64) float64 { return d * 0.05 })
-
-	result, ok := Predict(points, nil, coefficients)
 	require.True(t, ok, "Predict() ok")
-	assert.Positive(t, result.MovingSeconds, "a steady climb should get a positive prediction")
-
-	morePower := coefficients
-	morePower.PowerWatts = coefficients.PowerWatts * 1.5
-	fasterResult, ok := Predict(points, nil, morePower)
-	require.True(t, ok, "Predict() ok with more power")
-	assert.Less(t, fasterResult.MovingSeconds, result.MovingSeconds, "more power should climb faster")
-
-	moreMass := coefficients
-	moreMass.MassKG = coefficients.MassKG * 1.5
-	slowerResult, ok := Predict(points, nil, moreMass)
-	require.True(t, ok, "Predict() ok with more mass")
-	assert.Greater(t, slowerResult.MovingSeconds, result.MovingSeconds, "more mass should climb slower")
+	assert.InDelta(t, 10*coefficients.SecondsPerKM+200*coefficients.SecondsPerAscentM, result.MovingSeconds, 1e-6)
 }
 
-// TestPredictPhysicsHalfPointDensityDoesNotMateriallyChangeTime isolates the
-// physics half (zero route coefficients, so the blended total is just
-// hybridPhysicsWeight times the physics-only total) to verify the windowed
-// gradient's own density invariance, unchanged by #240.
-func TestPredictPhysicsHalfPointDensityDoesNotMateriallyChangeTime(t *testing.T) {
+// The cumulative series is what a stage page reads a time at an arbitrary point
+// from, so it must carry one entry per geometry point, start at zero, never
+// step backwards, and end at the total.
+func TestPredictCumulativeSeriesAlignsWithTheGeometry(t *testing.T) {
 	coefficients := testCoefficients()
-	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
-	hill := func(d float64) float64 { return 80 * math.Sin(d/1500) }
+	points := sampledStage(10_000, 40, func(distance float64) float64 { return math.Sin(distance/500) * 30 })
 
-	coarse, ok := Predict(sampledStage(20_000, 100, hill), nil, coefficients)
-	require.True(t, ok, "Predict() ok for the coarse profile")
-	dense, ok := Predict(sampledStage(20_000, 200, hill), nil, coefficients)
-	require.True(t, ok, "Predict() ok for the doubled-density profile")
+	result, ok := Predict(points, coefficients)
 
-	assert.InEpsilon(t, coarse.MovingSeconds, dense.MovingSeconds, 0.01,
-		"doubling point density should change the physics half's time only negligibly")
-}
-
-func TestPredictPhysicsHalfNeverExceedsTheDescentCap(t *testing.T) {
-	coefficients := testCoefficients()
-	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
-	// A steep, sustained descent: gravity alone would push well past the cap.
-	points := sampledStage(2_000, 50, func(d float64) float64 { return 200 - d*0.1 })
-
-	result, ok := Predict(points, nil, coefficients)
 	require.True(t, ok, "Predict() ok")
-
-	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
-	impliedSpeed := 2_000 / physicsSeconds
-	assert.LessOrEqual(t, impliedSpeed, fixedSpeedCapMetresPerSecond+1e-9,
-		"a descent must never be credited a speed above the configured cap")
-}
-
-// Regression for the freewheeling branch this model used to take below a -1%
-// gradient: a shallow descent came back slower than the same road flat — 11
-// km/h down a 1.5% grade — because dropping the rider's power could only ever
-// subtract speed. Gravity helping must never cost time.
-func TestPredictPhysicsHalfIsNeverSlowerDownhillThanOnTheFlat(t *testing.T) {
-	coefficients := testCoefficients()
-	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
-	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.012}
-
-	flat, ok := Predict(flatStage(1_000, 20, 100), nil, coefficients)
-	require.True(t, ok, "Predict() ok on the flat stage")
-
-	// Every gradient the old cutoff sent freewheeling, including the ones it
-	// let past its own crawl floor.
-	for _, gradient := range []float64{-1.2, -1.5, -2, -3, -5} {
-		points := sampledStage(1_000, 20, func(d float64) float64 { return 100 + gradient/100*d })
-		descent, ok := Predict(points, nil, coefficients)
-		require.True(t, ok, "Predict() ok at %.1f%%", gradient)
-		assert.Less(t, descent.MovingSeconds, flat.MovingSeconds,
-			"a %.1f%% descent must be quicker than the same road flat", gradient)
+	require.Len(t, result.CumulativeSeconds, len(points))
+	assert.Zero(t, result.CumulativeSeconds[0], "the series starts at the first point")
+	for index := 1; index < len(result.CumulativeSeconds); index++ {
+		assert.GreaterOrEqual(t, result.CumulativeSeconds[index], result.CumulativeSeconds[index-1],
+			"the running total must never step backwards at point %d", index)
 	}
+	assert.InDelta(t, result.MovingSeconds, result.CumulativeSeconds[len(points)-1], 1e-9)
 }
 
-// The same guarantee at the extremes Load admits, where the speed cap binds on
-// level ground. Capping only below zero leaves this profile solving past the cap
-// at +0.01% and pinned to it at -0.01%, so the bike comes out slower downhill
-// than up, with a cliff at exactly zero.
-func TestPredictPhysicsHalfIsNeverSlowerDownhillAtTheValidatedExtremes(t *testing.T) {
+// Point density is a property of the recording, not the route: two samplings of
+// the same line must not be timed differently.
+func TestPredictIsInsensitiveToPointDensity(t *testing.T) {
 	coefficients := testCoefficients()
-	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
-	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.012}
-	coefficients.PowerWatts = maxPowerWatts
-	coefficients.CdAM2 = minCdAM2
+	elevation := func(distance float64) float64 { return distance * 0.03 }
 
-	previous := math.Inf(1)
-	for _, gradient := range []float64{2, 0.5, 0.01, 0, -0.01, -0.5, -2, -6} {
-		points := sampledStage(1_000, 20, func(d float64) float64 { return 100 + gradient/100*d })
-		result, ok := Predict(points, nil, coefficients)
-		require.True(t, ok, "Predict() ok at %.2f%%", gradient)
-		assert.LessOrEqual(t, result.MovingSeconds, previous+1e-9,
-			"time must not rise as the road tilts down, at %.2f%%", gradient)
-		previous = result.MovingSeconds
-	}
-}
+	sparse, ok := Predict(sampledStage(10_000, 11, elevation), coefficients)
+	require.True(t, ok, "Predict() ok for the sparse sampling")
+	dense, ok := Predict(sampledStage(10_000, 501, elevation), coefficients)
+	require.True(t, ok, "Predict() ok for the dense sampling")
 
-// At the extremes Load's own validation admits — maximum power, minimum drag
-// area — the powered solver's fixed speed bracket must still contain the
-// equation's true root rather than bottoming out and reporting a crawl.
-func TestPredictPhysicsHalfDoesNotCrawlAtTheValidatedPowerAndDragExtremes(t *testing.T) {
-	coefficients := testCoefficients()
-	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 0, 0
-	coefficients.PowerWatts = maxPowerWatts
-	coefficients.CdAM2 = minCdAM2
-	points := flatStage(10_000, 50, 0)
-
-	result, ok := Predict(points, nil, coefficients)
-	require.True(t, ok, "Predict() ok")
-
-	physicsSeconds := result.MovingSeconds / hybridPhysicsWeight
-	impliedSpeed := 10_000 / physicsSeconds
-	assert.Greater(t, impliedSpeed, 10.0, "maximum power over minimum drag must not crawl")
-}
-
-func TestPredictTerminatesOnAVerticalWall(t *testing.T) {
-	coefficients := testCoefficients()
-	// One metre of run for five hundred metres of rise: as steep as geometry
-	// gets without a zero-length segment.
-	run, rise := 1.0, 500.0
-	points := []route.Point{
-		{Longitude: 0, Elevation: floatPtr(0)},
-		{Longitude: metresToLongitudeDegrees(run), Elevation: floatPtr(rise)}, //nolint:modernize // see floatPtr's doc comment
-	}
-
-	result, ok := Predict(points, nil, coefficients)
-	require.True(t, ok, "Predict() ok")
-	assert.Positive(t, result.MovingSeconds, "a wall still gets a finite, positive time")
-	assert.False(t, math.IsInf(result.MovingSeconds, 0) || math.IsNaN(result.MovingSeconds), "no infinity or NaN")
+	assert.InDelta(t, sparse.MovingSeconds, dense.MovingSeconds, 1e-6)
 }
 
 func TestPredictHandlesAZeroLengthSegment(t *testing.T) {
 	coefficients := testCoefficients()
-	point := route.Point{Longitude: 0, Elevation: floatPtr(10)}
+	elevation := 10.0
+	point := route.Point{Longitude: 0, Elevation: &elevation}
 
-	result, ok := Predict([]route.Point{point, point}, nil, coefficients)
+	result, ok := Predict([]route.Point{point, point}, coefficients)
 	require.True(t, ok, "Predict() ok")
 	assert.Zero(t, result.MovingSeconds, "a duplicate point contributes no time")
-}
 
-func TestPoweredSpeedBottomsOutRatherThanDivergingWhenNoBracketedSpeedSuffices(t *testing.T) {
-	// Coefficients far outside anything Load would accept, chosen so that even
-	// the fastest speed the solver brackets cannot absorb the climb: the
-	// pathology the fixed bracket exists to survive rather than assume away.
-	coefficients := Coefficients{
-		MassKG:       100_000,
-		PowerWatts:   20,
-		CdAM2:        0.001,
-		CrrBySurface: map[surface.Kind]float64{surface.KindAsphalt: 0.005},
-	}
-	sinTheta, cosTheta := gradientTrig(20)
-
-	speed := poweredSpeedMetresPerSecond(coefficients.crr(surface.KindAsphalt), sinTheta, cosTheta, coefficients)
-	assert.InDelta(t, minSolveSpeedMetresPerSecond, speed, 1e-12)
-}
-
-// Exercises the crr(kind) lookup with an explicitly differentiated map. Load now
-// maps every kind to the same scalar, but the mechanism is unchanged and stays
-// covered in case a future profile varies it again.
-func TestPredictSurfaceSelectsRollingResistance(t *testing.T) {
-	coefficients := testCoefficients()
-	coefficients.CrrBySurface = map[surface.Kind]float64{surface.KindAsphalt: 0.005, surface.KindGravel: 0.02}
-	points := flatStage(10_000, 50, 0)
-
-	asphalt, ok := Predict(points, kindsAll(len(points), surface.KindAsphalt), coefficients)
-	require.True(t, ok, "Predict() ok for asphalt")
-	gravel, ok := Predict(points, kindsAll(len(points), surface.KindGravel), coefficients)
-	require.True(t, ok, "Predict() ok for gravel")
-	unknown, ok := Predict(points, kindsAll(len(points), surface.KindUnknown), coefficients)
-	require.True(t, ok, "Predict() ok for unknown")
-	uncached, ok := Predict(points, nil, coefficients)
-	require.True(t, ok, "Predict() ok with no classification")
-
-	assert.Less(t, asphalt.MovingSeconds, gravel.MovingSeconds, "asphalt's lower Crr should be faster")
-	assert.InDelta(t, asphalt.MovingSeconds, unknown.MovingSeconds, 1e-9, "unknown should match asphalt")
-	assert.InDelta(t, asphalt.MovingSeconds, uncached.MovingSeconds, 1e-9, "no classification should match asphalt")
+	higher := 25.0
+	noisy := route.Point{Longitude: 0, Elevation: &higher}
+	result, ok = Predict([]route.Point{point, noisy}, coefficients)
+	require.True(t, ok, "Predict() ok")
+	assert.Zero(t, result.MovingSeconds, "elevation noise on a repeated point is not a climb")
 }
 
 func TestPredictReportsNoUsableElevation(t *testing.T) {
 	coefficients := testCoefficients()
 	points := []route.Point{{Longitude: 0}, {Longitude: metresToLongitudeDegrees(1_000)}}
 
-	result, ok := Predict(points, nil, coefficients)
+	result, ok := Predict(points, coefficients)
 	assert.False(t, ok, "Predict() ok without elevation")
 	assert.Zero(t, result, "Predict() result without elevation")
 }
@@ -341,6 +143,7 @@ func TestPredictReportsNoUsableElevation(t *testing.T) {
 func TestPredictReportsNoUsableElevationWithFewerThanTwoPoints(t *testing.T) {
 	coefficients := testCoefficients()
 
-	_, ok := Predict([]route.Point{{Longitude: 0, Elevation: floatPtr(0)}}, nil, coefficients)
+	elevation := 0.0
+	_, ok := Predict([]route.Point{{Longitude: 0, Elevation: &elevation}}, coefficients)
 	assert.False(t, ok, "Predict() ok with a single point")
 }

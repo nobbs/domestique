@@ -24,7 +24,6 @@ type Values struct {
 
 	Notifications Notifications
 	Wahoo         Wahoo
-	RideModel     RideModel
 	// Basemaps are the cartographies the reader may switch between, in the order
 	// offered. The first is the default; at least one is required.
 	Basemaps []Basemap
@@ -57,14 +56,6 @@ type Source struct {
 	// BaseURL is both the origin the adapter reaches and the one the page links a
 	// stage back to: the provider's web application, not an API host.
 	BaseURL string
-}
-
-// RideModel configures the predicted moving time internal/ridemodel computes
-// per stage.
-type RideModel struct {
-	// CoefficientsFile names the file the offline fitting tooling emits. Not a
-	// secret. Empty switches prediction off entirely, and is the default.
-	CoefficientsFile string
 }
 
 // Sync holds the reconciliation settings a run reads when it starts.

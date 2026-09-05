@@ -224,11 +224,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // every keystroke in the filter panel.
   const queried = useMemo(() => matchingRoutes(library, query), [library, query]);
   const shown = useMemo(
-    () =>
-      queried.filter((route) =>
-        matchesFilters(route, filters, drawn.surfaces.get(routeKey(route))),
-      ),
-    [queried, filters, drawn.surfaces],
+    () => queried.filter((route) => matchesFilters(route, filters)),
+    [queried, filters],
   );
 
   // The open route's geometry, which the library pass has already fetched under
@@ -540,7 +537,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
       ) : library.length > 0 ? (
         <SearchPanel
           shown={shown}
-          total={library.length}
+          library={library}
           query={query}
           onQueryChange={(next) => {
             setQuery(next);

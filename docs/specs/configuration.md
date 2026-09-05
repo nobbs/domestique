@@ -67,7 +67,7 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 
 What the file does not carry is as much a part of its contract as what it does.
 There is no source and no source credential, no Wahoo application and no target
-slot, no notification credential, no ride model, and no delay before the first
+slot, no notification credential, no ride model coefficient, and no delay before the first
 run — nor a basemap list, a surface region or rebuild cadence, a staleness
 bound, an empty-source deletion gate, or a notification switch or Pushover
 origin. Every one of those is a runtime setting, and the decoder refuses it here
@@ -284,6 +284,10 @@ not a setting here.
 The OAuth scopes are fixed by the binary: `routes_read`, `routes_write`,
 `user_read`, `workouts_read`, and `offline_data`. A scope change needs every
 configured target to authorise again; no operator setting can silently expand it.
+It also needs the Wahoo Cloud application to list the new scope before the image
+that requests it is deployed: Wahoo refuses an authorisation naming a scope the
+application is not registered for, returning the rider to the callback with
+`error=invalid_scope` and no code, before any consent screen is shown.
 
 ### Synchronisation
 
@@ -439,84 +443,50 @@ on disk, both of which are released when it finishes.
 
 ### Ride model
 
-`ridemodel.coefficients_file` is a path on the host, and the one setting here
-that names something outside the database. It names the hybrid profile the
-offline benchmark tooling emits:
+The coefficient pair a predicted moving time is priced with — `seconds_per_km`
+and `seconds_per_ascent_m` — lives as one row in the state database. There is
+no operator setting: an operator names no file and edits no value, and the
+settings page shows the pair read-only alongside where it came from.
 
-```toml
-calibration_cutoff = "2025-08-01"
-mass_kg = 90.0
-power_watts = 180.0
-cda_m2 = 0.45
-crr = 0.012
-seconds_per_km = 145.3578
-seconds_per_ascent_m = 3.2190
-evaluated_rides = 42
-bias_percent = -1.20
-mae_percent = 6.80
-p90_percent = 14.10
-training_window_months = 12
-```
+A built-in default pair applies until the first calibration replaces it, so
+prediction works from the first deploy rather than waiting on a fit. The weekly
+calibration replaces it from the rider's own recorded activities, and leaves
+whichever pair is in force alone whenever it refuses to fit. The row
+also records the calibration's cutoff date, the rides it was measured over and
+the resulting error, and the window the fit reached back over.
 
 `evaluated_rides`, `bias_percent`, `mae_percent` and `p90_percent` are the
-profile's measured unseen-route error. They are optional, and a file written
-without them still loads. When present they are served alongside a route's
-predicted moving time, so the browser can qualify the estimate rather than
-present it as a bare number. `dev/fitter -recalibrate` prints them as part of
-its copy-ready profile, computed from the same evaluation pass that prints the
-human-readable `validation:` line beside them.
+pair's measured unseen-route error. They are optional — the built-in pair
+carries none — and when present they are served alongside a route's predicted
+moving time, so the browser can qualify the estimate rather than present it as
+a bare number.
 
-The four fields describe the *procedure* that produced the profile rather than
-these exact coefficients. The fitter walks a monthly origin across the corpus;
-each fold calibrates on the training window behind its origin and is scored on
-the unseen routes of the month after it, so no fold is measured against a ride
-it was fitted on. Those per-fold errors are pooled into the four fields. The
+Those four describe the *procedure* that produced the pair rather than these
+exact coefficients. The fit walks a monthly origin across the corpus; each fold
+calibrates on the training window behind its origin and is scored on the unseen
+routes of the month after it, so no fold is measured against a ride it was
+fitted on. Those per-fold errors are pooled into the four fields. The
 coefficients themselves are fit over the newest window, including the rides the
 last folds scored.
 
 `training_window_months` is how far back that fit was allowed to reach;
 `calibration_cutoff` is where it stopped. The two together state which rides
-produced the file. `training_window_months` is optional and defaults to zero,
-which means a fit over all history. The window is a bound rather than a
-guillotine: the fitter reaches further back when a window holds too few rides to
-fit from, so a quiet season narrows the training set instead of emptying it.
-Twelve months is the default, the shortest span covering a full year of weather
-and daylight.
+produced the pair. Zero months means a fit over all history. The window is a
+bound rather than a guillotine: the fit reaches further back when a window
+holds too few rides to fit from, so a quiet season narrows the training set
+instead of emptying it. Twelve months is the usual choice, the shortest span
+covering a full year of weather and daylight.
 
-The predicted moving time is a weighted average of fixed physics and a
-two-parameter route correction, `seconds_per_km` and `seconds_per_ascent_m`,
-calibrated against the route-disjoint rolling-origin protocol above. The physics
-half carries a quarter of the blend and the route correction the remaining three
-quarters. The physics share is not zero: the linear half cannot tell 200 m of
-climbing up a single wall from 200 m spread over rolling ground, and only the
-physics half can.
+The equation itself is versioned in code rather than stored beside the pair,
+and a change to it invalidates a cached prediction even when the pair is
+unchanged. A pair that could not have come from a real fit — either term zero
+or negative — is refused rather than predicted with, which leaves the routes
+that would have carried a prediction without one. It does not substitute a
+guess, and it does not stop the service.
 
-Mass, power, drag area and rolling resistance stay per-file; they vary with the
-rider and the bike. The blend weight, drivetrain efficiency, standard air
-density, and the descent cap do not appear in the file at all. They are fixed
-constants a code upgrade can change, and such an upgrade invalidates a cached
-prediction even when the operator's file is unchanged.
-
-The service reads the file when the setting names one and computes a predicted
-moving time per route from it, in the manner surface classification is computed.
 [The implementation architecture
 specification](implementation-architecture.md#predicted-moving-time) states
 where that computation belongs.
-
-The default is **no file**, which switches prediction off entirely: no
-coefficient is loaded, no route carries a predicted time, and the routes
-endpoints omit the field rather than reporting zero. When set, the path must be
-absolute, and the file is read and validated for physical plausibility rather
-than merely parsed. A path that will not load leaves the routes that would have
-carried a prediction without one. It does not substitute a guess, and it does
-not stop the service; the file lives on the host, and the setting that names it
-is edited from a browser that cannot see whether it is there.
-
-Unlike the state key, the only other file this specification names,
-`coefficients_file` is **not a secret**. It carries physical constants and a
-rides-calibrated correction, and no route data, no credential, and no personal
-information. It is a plain path like `surface.regions`' extracts, and the
-settings endpoint serves it back the way it serves any other setting.
 
 ## Runtime state
 

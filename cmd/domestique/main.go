@@ -151,12 +151,10 @@ func run(ctx context.Context) error {
 	}()
 	annotator := surface.NewAnnotator(surfaceIndex, store)
 
-	// Ride model prediction is equally optional; no rider figure is ever guessed.
-	// A file that will not load is reported here and again by the run that needs
-	// it, rather than keeping the service from starting: the setting naming it is
-	// edited through a page this process must be up to serve.
+	// A pair that cannot be read leaves prediction off rather than keeping the
+	// service from starting; every other page is still worth serving.
 	rideModel := newRideModelProvider(store)
-	if reloadErr := rideModel.reload(ctx, runtimeSettings); reloadErr != nil {
+	if reloadErr := rideModel.reload(ctx); reloadErr != nil {
 		slog.Error("the ride model could not be loaded", "error", reloadErr)
 	}
 	reconciler, err := syncservice.New(&syncservice.Options{
@@ -168,7 +166,7 @@ func run(ctx context.Context) error {
 		AllowEmptySourceDeletion: func() bool {
 			return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
 		},
-	}, store, elevation.New(), fit.New(), destination, annotator, predictorFor(rideModel, runtimeSettings))
+	}, store, elevation.New(), fit.New(), destination, annotator, predictorFor(rideModel))
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}
@@ -193,6 +191,7 @@ func run(ctx context.Context) error {
 			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs),
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
+			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
 		),
 	)
 	if err != nil {
@@ -257,6 +256,7 @@ func run(ctx context.Context) error {
 				return metadata.Generation, metadata.BuiltAt, ok
 			},
 			RideModelValidationFunc: rideModel.validationView,
+			RideModelStatusFunc:     rideModel.statusView,
 		},
 		oauthService,
 		store,

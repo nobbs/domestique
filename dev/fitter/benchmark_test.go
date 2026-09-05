@@ -10,24 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/ridemodel"
-	"github.com/nobbs/domestique/internal/surface"
 )
 
 func testCoefficients() ridemodel.Coefficients {
 	return ridemodel.Coefficients{
 		CalibrationCutoff: "2025-08-01",
-		MassKG:            90,
-		PowerWatts:        180,
-		CdAM2:             0.45,
 		SecondsPerKM:      140,
 		SecondsPerAscentM: 4,
-		CrrBySurface: map[surface.Kind]float64{
-			surface.KindAsphalt:   0.012,
-			surface.KindPaving:    0.012,
-			surface.KindCompacted: 0.012,
-			surface.KindGravel:    0.012,
-			surface.KindGround:    0.012,
-		},
 	}
 }
 
@@ -105,32 +94,18 @@ func TestFitRouteCoefficientsRecoversSyntheticRideTimes(t *testing.T) {
 	assert.InDelta(t, 3.5, secondsPerAscentM, 1e-6)
 }
 
-// Physics-only and route-only, each isolated from Predict's own output, must
-// average back to exactly what the hybrid model predicts, the hybrid model being
-// Predict called directly. The weight is read off physicsOnlyScaleFactor rather
-// than written in literally; TestPhysicsOnlyScaleFactorInvertsTheBlendWeight
-// holds that factor to the real constant.
-func TestHybridModelEqualsTheWeightedPhysicsAndRouteHalves(t *testing.T) {
+// The production predictor accumulates the linear terms per segment; the
+// route-only diagnostic applies them to the ride's totals. The two must agree,
+// or one of them is wrong about the geometry.
+func TestLinearModelMatchesTheRouteOnlyArithmetic(t *testing.T) {
 	coefficients := testCoefficients()
 	samples := rideFeatureSamples(25, 400)
 
-	hybrid := hybridModel(&coefficients).predict(samples)
-	physicsOnly := physicsOnlyModel(&coefficients).predict(samples)
+	linear := linearModel(&coefficients).predict(samples)
 	routeOnly := routeOnlyModel(coefficients.SecondsPerKM, coefficients.SecondsPerAscentM).predict(samples)
 
-	physicsWeight := 1 / physicsOnlyScaleFactor
-	assert.InDelta(t, physicsWeight*physicsOnly+(1-physicsWeight)*routeOnly, hybrid, 1e-6)
-}
-
-func TestPhysicsOnlyModelIgnoresTheRouteCoefficients(t *testing.T) {
-	coefficients := testCoefficients()
-	samples := rideFeatureSamples(25, 400)
-
-	withRoute := physicsOnlyModel(&coefficients).predict(samples)
-	coefficients.SecondsPerKM, coefficients.SecondsPerAscentM = 999, 999
-	withDifferentRoute := physicsOnlyModel(&coefficients).predict(samples)
-
-	assert.InDelta(t, withRoute, withDifferentRoute, 1e-9, "physics-only must not depend on the route coefficients")
+	require.Positive(t, linear)
+	assert.InDelta(t, routeOnly, linear, 1e-6)
 }
 
 // recalibrateConfig is the flag set every rolling-origin test runs under.
@@ -189,8 +164,7 @@ func TestEvaluateSplitScoresRidesAfterTheLoadedCutoffWithNoFitting(t *testing.T)
 	require.NoError(t, err)
 	assert.InDelta(t, coefficients.SecondsPerKM, eval.secondsPerKM, 1e-9, "the frozen profile's own coefficients must be unchanged")
 	assert.Positive(t, eval.evaluateScored)
-	assert.Contains(t, eval.errorsByModel, "hybrid")
-	assert.Contains(t, eval.errorsByModel, "physics-only")
+	assert.Contains(t, eval.errorsByModel, "linear")
 	assert.Contains(t, eval.errorsByModel, "route-only")
 }
 
@@ -325,10 +299,10 @@ func TestPrintCopyReadyProfileIncludesTheValidationFields(t *testing.T) {
 	eval, err := runRecalibration(rides, samplesByRide, clusters, &coefficients, cfg)
 	require.NoError(t, err)
 
-	metrics := summarizeBenchmarkErrors(eval.errorsByModel["hybrid"])
+	metrics := summarizeBenchmarkErrors(eval.errorsByModel["linear"])
 
 	var report strings.Builder
-	printCopyReadyProfile(&report, &coefficients, &eval)
+	printCopyReadyProfile(&report, &eval)
 
 	printed := report.String()
 	assert.Contains(t, printed, fmt.Sprintf("evaluated_rides = %d\n", metrics.rides))

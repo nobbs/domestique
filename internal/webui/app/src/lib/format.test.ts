@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   formatAscent,
   formatCadence,
+  formatClock,
   formatCount,
   formatDescent,
   formatDistance,
   formatElevation,
   formatGradient,
+  formatKilometres,
   formatMovingTime,
   formatMovingTimeUncertainty,
   formatPrecipitation,
@@ -27,6 +29,32 @@ describe("formatDistance", () => {
     [180_400, "180 km"],
   ])("formats %p as %p", (metres, expected) => {
     expect(formatDistance(metres)).toBe(expected);
+  });
+});
+
+describe("formatKilometres", () => {
+  it.each([
+    [0, "0.0 km"],
+    [1500, "1.5 km"],
+    [42_500, "42.5 km"],
+    [180_400, "180 km"],
+    [-500, "0.0 km"],
+  ])("formats %p metres as %p", (metres, expected) => {
+    expect(formatKilometres(metres)).toBe(expected);
+  });
+});
+
+describe("formatClock", () => {
+  it("gives an invalid date the empty string rather than throwing", () => {
+    expect(formatClock(new Date(Number.NaN))).toBe("");
+  });
+
+  it("prints the platform's own short clock for a valid date", () => {
+    const at = new Date("2026-08-17T19:38:00Z");
+
+    expect(formatClock(at)).toBe(
+      at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+    );
   });
 });
 

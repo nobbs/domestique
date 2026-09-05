@@ -43,6 +43,11 @@ type WorkoutSummary struct {
 	AscentMetres   float64
 }
 
+// ErrWorkoutUnreadable reports a summary rejection that belongs to that one
+// workout — Wahoo refuses or cannot find it, or answers something that is not a
+// summary — rather than to the connection, the quota or the grant.
+var ErrWorkoutUnreadable = errors.New("wahoo: workout summary was unreadable")
+
 // decimal is one of Wahoo's accumulated totals, which it encodes as a JSON
 // string holding a decimal rather than as a number.
 type decimal float64
@@ -79,34 +84,61 @@ func (c *Client) ListWorkouts(ctx context.Context, accessToken string) ([]Workou
 
 	var workouts []Workout
 	for page := 1; ; page++ {
-		endpoint := c.endpoint(c.apiBaseURL, "/v1/workouts")
-		endpoint.RawQuery = url.Values{
-			"page":     {fmt.Sprint(page)},
-			"per_page": {fmt.Sprint(workoutPageSize)},
-		}.Encode()
-		request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
+		response, err := c.workoutPage(ctx, accessToken, page, len(workouts))
 		if err != nil {
 			return nil, err
-		}
-
-		var response workoutPage
-		if err := c.doJSON(request, &response); err != nil {
-			return nil, err
-		}
-		if response.Page != page || response.PerPage <= 0 || response.Total < len(workouts)+len(response.Workouts) {
-			return nil, errors.New("wahoo: workout listing pagination was invalid")
-		}
-		if response.Total > maximumWorkouts {
-			return nil, errors.New("wahoo: workout listing exceeded configured bounds")
 		}
 		workouts = append(workouts, response.Workouts...)
 		if len(workouts) >= response.Total {
 			return workouts, nil
 		}
-		if len(response.Workouts) == 0 {
-			return nil, errors.New("wahoo: workout listing ended before its total")
-		}
 	}
+}
+
+// WorkoutListingHead returns the account's first page of workouts and how many
+// it holds in all, at the cost of one request. It is what tells a caller
+// whether walking the whole list is worth the rest of the requests.
+func (c *Client) WorkoutListingHead(ctx context.Context, accessToken string) (workouts []Workout, total int, err error) {
+	if accessToken == "" {
+		return nil, 0, errors.New("wahoo: access token is required")
+	}
+	response, err := c.workoutPage(ctx, accessToken, 1, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return response.Workouts, response.Total, nil
+}
+
+// workoutPage reads one page of the workout list. preceding is how many
+// workouts the caller already holds, which the page's own total must account
+// for alongside the ones it carries.
+func (c *Client) workoutPage(ctx context.Context, accessToken string, page, preceding int) (workoutPage, error) {
+	endpoint := c.endpoint(c.apiBaseURL, "/v1/workouts")
+	endpoint.RawQuery = url.Values{
+		"page":     {fmt.Sprint(page)},
+		"per_page": {fmt.Sprint(workoutPageSize)},
+	}.Encode()
+	request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
+	if err != nil {
+		return workoutPage{}, err
+	}
+
+	var response workoutPage
+	if err := c.doJSON(request, &response); err != nil {
+		return workoutPage{}, err
+	}
+	if response.Page != page || response.PerPage <= 0 || response.Total < preceding+len(response.Workouts) {
+		return workoutPage{}, errors.New("wahoo: workout listing pagination was invalid")
+	}
+	if response.Total > maximumWorkouts {
+		return workoutPage{}, errors.New("wahoo: workout listing exceeded configured bounds")
+	}
+	if len(response.Workouts) == 0 && response.Total > preceding {
+		return workoutPage{}, errors.New("wahoo: workout listing ended before its total")
+	}
+
+	return response, nil
 }
 
 // WorkoutSummary returns the original Wahoo summary and its FIT file URL.
@@ -132,6 +164,12 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 
 	var body json.RawMessage
 	if err := c.doJSON(request, &body); err != nil {
+		var status *statusError
+		if errors.As(err, &status) &&
+			(status.status == http.StatusUnauthorized || status.status == http.StatusNotFound) {
+			return WorkoutSummary{}, fmt.Errorf("%w: HTTP %d", ErrWorkoutUnreadable, status.status)
+		}
+
 		return WorkoutSummary{}, err
 	}
 	var summary struct {
@@ -151,17 +189,17 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 	if err := json.Unmarshal(body, &summary); err != nil {
 		var numErr *strconv.NumError
 		if errors.As(err, &numErr) { //nolint:modernize // errors.As is unambiguous to every tool reviewing this code.
-			return WorkoutSummary{}, errors.New("wahoo: workout summary totals were not numbers")
+			return WorkoutSummary{}, fmt.Errorf("%w: totals were not numbers", ErrWorkoutUnreadable)
 		}
 
 		// Syntax cannot be what failed: doJSON decoded this body into a
 		// json.RawMessage, which validates the whole document first.
-		return WorkoutSummary{}, errors.New("wahoo: workout summary was not the shape expected")
+		return WorkoutSummary{}, fmt.Errorf("%w: not the shape expected", ErrWorkoutUnreadable)
 	}
 	// A workout Wahoo holds no summary for decodes to a zero value, whether it
 	// answers with a null body or an object carrying nothing of its own.
 	if summary.ID <= 0 {
-		return WorkoutSummary{}, errors.New("wahoo: workout summary was missing")
+		return WorkoutSummary{}, fmt.Errorf("%w: missing", ErrWorkoutUnreadable)
 	}
 	return WorkoutSummary{
 		Raw:            body,
@@ -172,6 +210,11 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 		AscentMetres:   float64(summary.AscentAccum),
 	}, nil
 }
+
+// ErrWorkoutFileRefused reports the CDN answering 401, 403, 404 or 410 for one
+// workout's file: that file is gone or forbidden, not an outage worth stopping
+// for. A rate limit or any other status is not this.
+var ErrWorkoutFileRefused = errors.New("wahoo: workout file was refused")
 
 // DownloadWorkoutFIT reads the FIT file Wahoo's workout summary names.
 func (c *Client) DownloadWorkoutFIT(ctx context.Context, fileURL string) (data []byte, err error) {
@@ -207,6 +250,10 @@ func (c *Client) DownloadWorkoutFIT(ctx context.Context, fileURL string) (data [
 	defer func() {
 		err = errors.Join(err, response.Body.Close())
 	}()
+	if response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden ||
+		response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusGone {
+		return nil, fmt.Errorf("%w: HTTP %d", ErrWorkoutFileRefused, response.StatusCode)
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("wahoo: workout file request returned HTTP %d", response.StatusCode)
 	}

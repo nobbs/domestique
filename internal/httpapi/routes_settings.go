@@ -9,6 +9,7 @@ import (
 	"time"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
@@ -157,23 +158,6 @@ func (h *Handler) SetSurface(writer http.ResponseWriter, request *http.Request) 
 		// The trigger result is ignored: a refused start means the work is
 		// already happening.
 		h.tasks.Run(TaskSurfaceIndex, "")
-	}
-}
-
-// SetRideModel replaces the coefficient file predicted moving time is computed
-// from. A stored edit starts the prediction pass that consumes it.
-func (h *Handler) SetRideModel(writer http.ResponseWriter, request *http.Request) {
-	body, ok := settingsBody[openapi.RideModelSettings](h, writer, request)
-	if !ok {
-		return
-	}
-	stored := h.storeSection(writer, request, func(values runtimeconfig.Values) runtimeconfig.Values {
-		values.RideModel = runtimeconfig.RideModel{CoefficientsFile: body.CoefficientsFile}
-
-		return values
-	}, nil)
-	if stored {
-		h.tasks.Run(TaskRideModelPredict, "")
 	}
 }
 
@@ -367,7 +351,7 @@ func (h *Handler) settingsView() openapi.Settings {
 			OauthBaseURL: values.Wahoo.OAuthBaseURL,
 			ClientID:     values.Wahoo.ClientID,
 		},
-		RideModel: openapi.RideModelSettings{CoefficientsFile: values.RideModel.CoefficientsFile},
+		RideModel: h.rideModelView(),
 		Basemaps:  make([]openapi.BrowserBasemap, len(values.Basemaps)),
 		// An empty list is sent as one rather than as null: no source, no target
 		// and no region are all states the service runs in, and the page has to
@@ -398,6 +382,32 @@ func (h *Handler) settingsView() openapi.Settings {
 	}
 	for _, name := range runtimeconfig.SecretNames() {
 		view.SecretsSet[string(name)] = h.settings.SecretIsSet(name)
+	}
+
+	return view
+}
+
+// rideModelView reports the coefficient pair in force. A handler built without
+// the port reports the built-in pair, unfitted, rather than refusing.
+func (h *Handler) rideModelView() openapi.RideModelStatus {
+	// Without the port the built-in pair is what such a service predicts with,
+	// so that is what it reports rather than a pair of zeroes.
+	defaults := ridemodel.Default()
+	status := RideModelStatus{SecondsPerKM: defaults.SecondsPerKM, SecondsPerAscentM: defaults.SecondsPerAscentM}
+	if h.rideModelStatus != nil {
+		status = h.rideModelStatus()
+	}
+	view := openapi.RideModelStatus{
+		SecondsPerKm:      status.SecondsPerKM,
+		SecondsPerAscentM: status.SecondsPerAscentM,
+		EvaluatedRides:    status.EvaluatedRides,
+		Source:            openapi.RideModelStatus_SourceDefault,
+	}
+	if status.Calibrated {
+		view.Source = openapi.RideModelStatus_SourceCalibrated
+	}
+	if status.CalibrationCutoff != "" {
+		view.CalibrationCutoff = &status.CalibrationCutoff
 	}
 
 	return view

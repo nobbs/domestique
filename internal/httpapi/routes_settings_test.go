@@ -27,7 +27,6 @@ const (
 	settingsVeloPlannerPath   = "/v1/settings/sources/veloplanner"
 	settingsNotificationsPath = "/v1/settings/notifications"
 	settingsSurfacePath       = "/v1/settings/surface"
-	settingsRideModelPath     = "/v1/settings/ridemodel"
 	settingsSyncPath          = "/v1/settings/sync"
 	settingsAlertsPath        = "/v1/settings/alerts"
 	settingsTimezonePath      = "/v1/settings/timezone"
@@ -54,11 +53,10 @@ const (
 		"styleUrl": "https://imagery.example.test/styles/hybrid",
 		"darkCartography": true
 	}]}`
-	surfaceSubmission   = `{"regions": ["europe/germany"], "rebuildIntervalSeconds": 604800}`
-	rideModelSubmission = `{"coefficientsFile": "/var/lib/domestique/coefficients.json"}`
-	syncSubmission      = `{"allowEmptySourceDeletion": true, "staleAfterSeconds": 90000, "initialDelaySeconds": 300}`
-	alertsSubmission    = `{"alerts": [{"task": "sync", "alert": "source", "enabled": false}]}`
-	komootSubmission    = `{
+	surfaceSubmission = `{"regions": ["europe/germany"], "rebuildIntervalSeconds": 604800}`
+	syncSubmission    = `{"allowEmptySourceDeletion": true, "staleAfterSeconds": 90000, "initialDelaySeconds": 300}`
+	alertsSubmission  = `{"alerts": [{"task": "sync", "alert": "source", "enabled": false}]}`
+	komootSubmission  = `{
 		"read": true,
 		"baseUrl": "https://komoot.example.test",
 		"email": "rider@example.test",
@@ -136,6 +134,44 @@ func TestGetSettingsServesWhatIsInForce(t *testing.T) {
 	assert.Empty(t, view.Surface.Regions, "regions")
 }
 
+// The ride model is reported, not edited: a handler with no port reports the
+// built-in source rather than refusing the whole settings document.
+func TestGetSettingsReportsTheRideModelWithoutAPort(t *testing.T) {
+	handler, _ := settingsHandler(t)
+
+	view := settingsOf(t, handler, authenticatedRequest(http.MethodGet, settingsPath))
+	assert.Equal(t, openapi.RideModelStatus_SourceDefault, view.RideModel.Source, "source")
+	assert.Nil(t, view.RideModel.CalibrationCutoff, "an unfitted pair names no cutoff")
+}
+
+func TestGetSettingsReportsACalibratedRideModel(t *testing.T) {
+	handler, err := New(
+		&Options{
+			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
+			Settings:         settingsWith(testBasemaps()),
+			Sessions:         newFakeSessions(),
+			BrowserOriginURL: testBrowserOriginURL,
+			RideModelStatusFunc: func() RideModelStatus {
+				return RideModelStatus{
+					CalibrationCutoff: "2025-08-01", SecondsPerKM: 145.3578,
+					SecondsPerAscentM: 3.2190, EvaluatedRides: 42, Calibrated: true,
+				}
+			},
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+	)
+	require.NoError(t, err, "New()")
+
+	view := settingsOf(t, handler, authenticatedRequest(http.MethodGet, settingsPath))
+	assert.Equal(t, openapi.RideModelStatus_SourceCalibrated, view.RideModel.Source, "source")
+	assert.InDelta(t, 145.3578, view.RideModel.SecondsPerKm, 0, "seconds per km")
+	assert.InDelta(t, 3.2190, view.RideModel.SecondsPerAscentM, 0, "seconds per ascent metre")
+	assert.Equal(t, 42, view.RideModel.EvaluatedRides, "evaluated rides")
+	require.NotNil(t, view.RideModel.CalibrationCutoff)
+	assert.Equal(t, "2025-08-01", *view.RideModel.CalibrationCutoff, "calibration cutoff")
+}
+
 // Each section is written whole by the endpoint that names it.
 func TestEachSectionIsStoredByItsOwnEndpoint(t *testing.T) {
 	tests := []struct {
@@ -184,15 +220,6 @@ func TestEachSectionIsStoredByItsOwnEndpoint(t *testing.T) {
 			stored: func(t *testing.T, values runtimeconfig.Values) {
 				t.Helper()
 				assert.Equal(t, []string{"europe/germany"}, values.Surface.Regions, "the regions")
-			},
-		},
-		{
-			name: "the ride model",
-			path: settingsRideModelPath,
-			body: rideModelSubmission,
-			stored: func(t *testing.T, values runtimeconfig.Values) {
-				t.Helper()
-				assert.Equal(t, "/var/lib/domestique/coefficients.json", values.RideModel.CoefficientsFile, "the file")
 			},
 		},
 		{
@@ -346,15 +373,6 @@ func TestSetSurfaceStartsTheIndexRebuild(t *testing.T) {
 
 	saveSection(t, handler, settingsSurfacePath, surfaceSubmission)
 	assert.Equal(t, []startedTask{{name: TaskSurfaceIndex}}, tasks.started, "started tasks")
-}
-
-// A stored ride-model edit starts the prediction pass the new coefficients
-// feed.
-func TestSetRideModelStartsThePredictionPass(t *testing.T) {
-	handler, tasks := settingsHandlerWithTasks(t)
-
-	saveSection(t, handler, settingsRideModelPath, rideModelSubmission)
-	assert.Equal(t, []startedTask{{name: TaskRideModelPredict}}, tasks.started, "started tasks")
 }
 
 // A refused edit changed nothing for either pass to consume, so it starts no
@@ -625,7 +643,6 @@ func adminOnlySettingsOperations() []struct{ name, method, path, body string } {
 		{"timezone", http.MethodPut, settingsTimezonePath, `{"timezone": "Europe/Lisbon"}`},
 		{"basemaps", http.MethodPut, basemapsPath, basemapsSubmission},
 		{"surface", http.MethodPut, settingsSurfacePath, surfaceSubmission},
-		{"ridemodel", http.MethodPut, settingsRideModelPath, rideModelSubmission},
 		{"sync", http.MethodPut, settingsSyncPath, syncSubmission},
 	}
 }

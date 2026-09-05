@@ -157,6 +157,11 @@ func rollback(transaction *sql.Tx) {
 	_ = transaction.Rollback()
 }
 
+//nolint:errcheck // A statement cleanup error is superseded by the write's own result.
+func closeStatement(statement *sql.Stmt) {
+	_ = statement.Close()
+}
+
 // withTx runs write inside one transaction, committing only when it succeeds.
 func (s *Store) withTx(ctx context.Context, what string, write func(*sqlcgen.Queries) error) error {
 	transaction, err := s.database.BeginTx(ctx, nil)

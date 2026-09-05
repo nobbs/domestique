@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -37,11 +36,6 @@ func (v Values) Validate() (Values, error) {
 		return Values{}, err
 	}
 
-	rideModel, err := ValidateRideModel(v.RideModel)
-	if err != nil {
-		return Values{}, err
-	}
-
 	basemaps, err := ValidateBasemaps(v.Basemaps)
 	if err != nil {
 		return Values{}, err
@@ -64,7 +58,6 @@ func (v Values) Validate() (Values, error) {
 
 	v.Timezone = timezone
 	v.Notifications = notifications
-	v.RideModel = rideModel
 	v.Basemaps = basemaps
 	v.Surface = surface
 	v.Wahoo = wahoo
@@ -134,22 +127,6 @@ func ValidateSources(raw []Source) ([]Source, error) {
 	}
 
 	return sources, nil
-}
-
-// ValidateRideModel accepts no coefficient file — the operator's switch for
-// leaving every stage without a predicted moving time — or an absolute path to
-// one. What the file contains is internal/ridemodel's business, and a file that
-// cannot be read or believed fails when it is loaded, not here.
-func ValidateRideModel(rideModel RideModel) (RideModel, error) {
-	rideModel.CoefficientsFile = strings.TrimSpace(rideModel.CoefficientsFile)
-	if rideModel.CoefficientsFile == "" {
-		return rideModel, nil
-	}
-	if !filepath.IsAbs(rideModel.CoefficientsFile) {
-		return RideModel{}, errors.New("ridemodel.coefficients_file must be an absolute path")
-	}
-
-	return rideModel, nil
 }
 
 // ValidateSync checks the reconciliation settings. The deletion gate is a

@@ -514,20 +514,6 @@ func TestValidateSources(t *testing.T) {
 	}
 }
 
-func TestValidateRideModel(t *testing.T) {
-	_, err := ValidateRideModel(RideModel{})
-	require.NoError(t, err, "no file is prediction switched off")
-
-	// The path arrives from a form field, so it is trimmed like every other one.
-	normalised, err := ValidateRideModel(RideModel{CoefficientsFile: " /etc/domestique/ridemodel.toml "})
-	require.NoError(t, err)
-	assert.Equal(t, "/etc/domestique/ridemodel.toml", normalised.CoefficientsFile)
-
-	_, err = ValidateRideModel(RideModel{CoefficientsFile: "ridemodel.toml"})
-	require.Error(t, err,
-		"a relative path would resolve against whatever directory the process happens to run in")
-}
-
 // A settings page has to be able to store a credential it was never told the
 // current value of, and has to leave every other one alone while it does.
 func TestSetSecretsReplacesOnlyWhatItWasGiven(t *testing.T) {

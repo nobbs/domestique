@@ -420,8 +420,8 @@ The read-only JSON surface is small:
   read that takes query parameters: a bounded page size, and the cursor the
   previous page ended with.
 - `GET /v1/routes` lists every stored route with its source route and titles,
-  aggregate geometry facts, and — when a ride-model coefficient file is
-  configured and has predicted this exact geometry — a predicted moving time.
+  aggregate geometry facts, and — when the ride model has predicted this exact
+  geometry with the coefficient pair in force — a predicted moving time.
   It is omitted, never zero, for a route nothing has predicted yet.
 - `GET /v1/activities` returns one target's recorded activities, newest first:
   each one's Wahoo workout id, start time, distance, moving and elapsed time,
@@ -437,9 +437,9 @@ The read-only JSON surface is small:
   address redirect to it with `308`.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/geometry`
   returns the stored geometry of one route for map rendering, together with the
-  surface classification of that geometry when one has been cached, and — when a
-  ride-model coefficient file is configured and has predicted this exact
-  geometry — the predicted cumulative moving time at each coordinate, indexed
+  surface classification of that geometry when one has been cached, and — when
+  the ride model has predicted this exact geometry with the coefficient pair in
+  force — the predicted cumulative moving time at each coordinate, indexed
   1:1 with the geometry. It is omitted, never empty, for a route nothing has
   predicted yet.
 - `GET /v1/webui/config` returns the settings the browser UI needs at runtime so
@@ -456,8 +456,10 @@ The read-only JSON surface is small:
 - `GET /v1/settings` (admin-only) returns every setting an operator may change while the
   service is running: the synchronisation settings, the notification settings,
   the basemap list, the surface settings, the Wahoo application, the source
-  libraries, and the ride model. It is one document and the whole of it every
-  time, whichever section is about to be edited. Which targets exist is not
+  libraries, and — read-only — the ride model's coefficient pair, whether it is
+  the built-in default or a calibrated one, and what that calibration read. It
+  is one document and the whole of it every time, whichever section is about to
+  be edited. Which targets exist is not
   among these settings: each is created by its own owning subject, on their own
   first connection, not written here.
 
@@ -528,13 +530,11 @@ browser origin described above, and answer 403 without it.
   section: `PUT /v1/settings/wahoo` for the registered application,
   `/v1/settings/sources/{provider}` for one library and the account it is read
   with, and `/v1/settings/notifications`, `/v1/settings/basemaps`,
-  `/v1/settings/surface`, `/v1/settings/ridemodel` and `/v1/settings/sync` for
-  the rest. The `{provider}` a source path names is one of the libraries the
+  `/v1/settings/surface` and `/v1/settings/sync` for the rest. The `{provider}` a source path names is one of the libraries the
   service reads; any other is refused. Writing the surface section also starts
-  a surface-index rebuild, and writing the ride-model section a prediction
-  pass, on the terms a manual trigger starts one: the change is what those
-  passes consume, and the next scheduled run is otherwise up to a rebuild
-  interval away.
+  a surface-index rebuild, on the terms a manual trigger starts one: the change
+  is what that pass consumes, and the next scheduled run is otherwise up to a
+  rebuild interval away.
 
   Each replaces the whole of the section it names. A body naming only some of
   that section's fields is refused. Sections the request does not name are not
@@ -603,7 +603,7 @@ The service has a provider-neutral configuration contract:
   the state database's path and key file. Who may sign in is not among them —
   that is the tenant's own Action, not this file.
 - Everything that decides what work the service does is not in that file. The
-  provider endpoints, source libraries, ride model, schedule and credentials
+  provider endpoints, source libraries, ride model coefficients, schedule and credentials
   are held in the state database, edited over the settings endpoints, and in
   force without a restart; the
   [configuration specification](configuration.md#runtime-settings) defines them.
@@ -651,6 +651,11 @@ A SQLite database on a Docker volume stores:
   The rebuild interval is measured between builds rather than from process
   start;
 - the corresponding remote Wahoo route identity where available;
+- activities a poll could not read, with how often and how recently each was
+  tried, kept apart from the activities themselves;
+- the activities the rider's account listed when it was last read in full, and
+  when that reading was taken, kept apart from the activities themselves so a
+  poll can tell what the account holds without reading its list again;
 - last successful source inventory and last sync outcome; and
 - expiring OAuth states.
 
@@ -816,8 +821,71 @@ request budget is shared with every target's reconciliation; a longer history
 fills in over successive polls rather than spending the day's quota at once. A
 poll that fails part way keeps what it already stored.
 
-No FIT record stream is fetched yet: the file each summary names is left where
-it is, and the per-sample table stays empty.
+Those summaries are chosen from the account's list as the service last read it
+in full, which it keeps rather than re-derives. A poll with a reading less than
+a week old reads the first page of that list, which costs one request and
+carries the account's own count of activities; it then reads the whole list only
+when that count differs from the reading it kept, or when the first page holds
+an activity that reading did not. A reading older than that, or a target with
+none, is read in full without asking the first page first. Otherwise it works from what it kept,
+so a long history is read once and filled in over the polls that follow rather
+than re-read by each of them.
+
+What is compared is the account against its own last reading, not against what
+the service has stored. A ride the rider deletes after it was stored leaves the
+service holding an activity the account no longer lists — which it never removes
+— and comparing against those rows instead would leave a disagreement no poll
+could settle, and so a full reading on every poll thereafter.
+
+The count is what carries that comparison: an activity may be added out of order
+or recorded with an earlier start than the ones already stored, and either still
+changes how many the account holds, wherever the provider then lists it. What
+the count cannot show is one activity added and another deleted between two
+polls, which leaves it unmoved. Reading the first page catches such a pair when
+the provider lists the addition there, and the week bounds how long one it does
+not stays unnoticed; neither can excuse a reading the count called for, so no
+ordering the provider might give its list is relied on for correctness.
+
+An activity a poll set aside as unreadable stays in the kept reading, so its
+retry is offered from there when its backoff has passed even though no poll in
+between read the account's list again.
+
+A summary Wahoo rejects for that one activity alone — unauthorised, not found,
+or not a summary at all — is skipped rather than allowed to stop the poll: the
+activity is recorded as unreadable and the poll carries on to the next. A
+skipped activity is not stored and never appears among a target's activities.
+It is offered again after a day, then at intervals that double up to four weeks
+and never stop, and a read that later succeeds stores it normally and forgets
+the skip. A rate limit, a transport failure, a rejected refresh or any failure
+the service does not recognise still stops the poll and skips nothing. A poll
+that skipped something reports so, distinctly from one that did not.
+
+Each stored activity's FIT file is then fetched from Wahoo's CDN — outside the
+API request budget and without credentials — and decoded into per-sample rows:
+position, altitude, distance, cadence, heart rate, power and temperature, with
+a sensor the ride did not carry left absent rather than recorded as zero. One
+poll fills in at most twenty-five activities, oldest first, because decoding
+and storing thousands of samples per ride is the cost that bounds this rather
+than the request budget. A file that does not decode, and one the CDN says is
+gone or forbidden, is recorded as unreadable and never downloaded again; a file
+whose checksum failed but which still reads is stored, with that fact kept
+beside it. Any other download failure — a rate limit or an outage among them —
+stops the records phase, marks nothing, and is retried by the next poll, so one
+outage never condemns a day's rides. Nothing is deleted: a file downloaded
+again replaces that activity's samples.
+
+These summaries are also what the ride model is calibrated from. Once a week the
+service refits the coefficient pair over every target's stored rides pooled
+together — each ride's moving time against its distance and ascent — by a robust
+regression, so one mis-recorded ride bends the result rather than setting it. A
+ride shorter than a kilometre or briefer than a minute is not riding and is left
+out, and so is one dated after the moment the fit runs.
+
+A fit needs ten usable rides, and is refused below that or when the rides cannot
+tell distance apart from climbing. A refused fit is not a failure of prediction:
+the pair in force stays in force, and the service keeps predicting with it.
+Fitting the same pair again stores nothing, so a cached prediction survives a
+calibration that found no change.
 
 ## Sync lifecycle and safety
 

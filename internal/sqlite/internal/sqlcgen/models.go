@@ -20,6 +20,17 @@ type Activity struct {
 	AscentMetres          float64
 	RawSummaryJson        []byte
 	UpdatedAtUnix         int64
+	RecordsState          string
+	FitChecksumFailed     int64
+}
+
+type ActivityListing struct {
+	TargetSlot            string
+	WorkoutID             int64
+	StartedAtUnix         int64
+	WorkoutTypeID         int64
+	WorkoutTypeLocationID int64
+	ReadAtUnix            int64
 }
 
 type ActivityRecord struct {
@@ -35,6 +46,14 @@ type ActivityRecord struct {
 	HeartRateBpm       sql.NullFloat64
 	PowerWatts         sql.NullFloat64
 	TemperatureCelsius sql.NullFloat64
+}
+
+type ActivitySkip struct {
+	TargetSlot      string
+	WorkoutID       int64
+	Attempts        int64
+	LastAttemptUnix int64
+	Observed        string
 }
 
 type AlertToggle struct {
@@ -66,6 +85,19 @@ type OauthTransaction struct {
 	ExpiresAtUnix int64
 	UsedAtUnix    sql.NullInt64
 	CallerLogin   string
+}
+
+type RidemodelCoefficient struct {
+	ID                    int64
+	SecondsPerKm          float64
+	SecondsPerAscentM     float64
+	CalibrationCutoffUnix sql.NullInt64
+	EvaluatedRides        int64
+	BiasPercent           float64
+	MaePercent            float64
+	P90Percent            float64
+	TrainingWindowMonths  int64
+	UpdatedAtUnix         int64
 }
 
 type RuntimeBasemap struct {

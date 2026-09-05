@@ -110,13 +110,18 @@ These chains are registered:
 sync:source       stored an inventory     ->  sync:target
 sync:source       stored an inventory     ->  surface:annotate
 surface:index     installed a new map     ->  surface:annotate
-surface:annotate  classified the ground   ->  ridemodel:predict
+sync:source       stored an inventory     ->  ridemodel:predict
+ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 ~~~
 
+A calibration that fitted a new pair makes every stored prediction stale, so it
+asks for a prediction pass the same way a rebuilt index asks for a
+classification.
+
 A rebuilt index makes every stored classification stale, and nothing else
-notices that. Prediction reads the ground classification stored, so it follows
-that pass rather than the read: a new inventory and a new map both reach it
-through the one edge.
+notices that. Prediction does not read the ground classification, so it follows
+the read directly: a new inventory is the only thing that leaves a stage
+without a current predicted time.
 
 ## Scheduling
 
@@ -262,6 +267,7 @@ is checked rather than inferred.
 | `ridemodel:predict` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 | `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
+| `ridemodel:calibrate` | none | `activities` exclusive | every week |
 
 The read takes a library the same way the targets take a slot: none is every
 one that exists, a name is that one alone. One task rather than one per
@@ -275,14 +281,17 @@ a library would.
 
 `sync:target` follows the read. `surface:annotate` follows both the read and the
 index rebuild, and runs after each: either alone leaves stages wanting it.
-`ridemodel:predict` follows classification alone, and an incomplete
-classification still advances to it: prediction reads unclassified ground as
-paved rather than waiting for a pass that may never finish.
+`ridemodel:predict` follows the read, alongside classification and for the same
+reason: a new inventory leaves stages wanting a prediction, and it follows a
+calibration for the same reason again. `ridemodel:calibrate` takes the
+activities rather than the inventory: it reads the rows a poll writes and
+touches no stage. Its first fit waits an hour after start, so a restart is
+spent serving rather than refitting a pair the weekly cadence would have left
+in force anyway.
 
-Two settings ask for a pass themselves: a written surface section starts the
-index rebuild, and a written ride-model section starts prediction. What a pass
-consumes changing is a reason to run it, and the operator who changed it is
-already watching.
+One setting asks for a pass itself: a written surface section starts the index
+rebuild. What a pass consumes changing is a reason to run it, and the operator
+who changed it is already watching.
 `sync:target`'s own schedule is a backstop behind its edge — what it catches is a
 slot that failed on its own, and an operator who has the read switched off.
 
@@ -301,12 +310,6 @@ classification pass that named the stages it could not finish while storing
 the rest. A read
 that stored nothing at all left every classification standing, and a rebuild
 that found nothing new left every stored classification standing too.
-
-`ridemodel:predict` widens this further: it advances even when classification
-stopped before it could say what it stored, because prediction rereads the
-stored inventory itself rather than taking classification's word for what is
-in it — trying costs nothing when there turns out to be nothing new, and finds
-whatever classification did manage when there is.
 
 Each edge fires on its own, so a task following two predecessors runs after
 each. That is what classification wants: a read leaves stages nobody has

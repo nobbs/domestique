@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -273,6 +274,21 @@ func (p *wahooProvider) ListActivities(ctx context.Context, accessToken string) 
 	return activityListings(workouts), nil
 }
 
+// ActivityListingHead reads the account's first page of activities and how many
+// it holds, which is what tells a poll whether the whole list is worth reading.
+func (p *wahooProvider) ActivityListingHead(ctx context.Context, accessToken string) (listings []activity.Listing, total int, err error) {
+	client, err := p.current()
+	if err != nil {
+		return nil, 0, err
+	}
+	workouts, total, err := client.WorkoutListingHead(ctx, accessToken)
+	if err != nil {
+		return nil, 0, fmt.Errorf("reading the Wahoo workout listing head: %w", err)
+	}
+
+	return activityListings(workouts), total, nil
+}
+
 // activityListings narrows Wahoo's workouts to what the activity package reads,
 // split out so the field mapping is directly testable without a live client.
 func activityListings(workouts []wahoo.Workout) []activity.Listing {
@@ -289,8 +305,48 @@ func activityListings(workouts []wahoo.Workout) []activity.Listing {
 	return listings
 }
 
+// DownloadActivityFIT reads the FIT file a stored summary names, from Wahoo's
+// CDN. Where the URL sits in that document is Wahoo's shape, so it is read here.
+func (p *wahooProvider) DownloadActivityFIT(ctx context.Context, summary activity.Summary) ([]byte, error) {
+	client, err := p.current()
+	if err != nil {
+		return nil, err
+	}
+	fileURL, err := summaryFileURL(summary.Raw)
+	if err != nil {
+		return nil, err
+	}
+	data, err := client.DownloadWorkoutFIT(ctx, fileURL)
+	if errors.Is(err, wahoo.ErrWorkoutFileRefused) {
+		return nil, fmt.Errorf("%w: %w", activity.ErrNoActivityFile, err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("downloading a Wahoo workout file: %w", err)
+	}
+
+	return data, nil
+}
+
+// summaryFileURL is the FIT file URL inside Wahoo's own summary document.
+func summaryFileURL(raw []byte) (string, error) {
+	var summary struct {
+		File struct {
+			URL string `json:"url"`
+		} `json:"file"`
+	}
+	if err := json.Unmarshal(raw, &summary); err != nil {
+		// The cause names a field or a token, never the file URL, so it may travel.
+		return "", fmt.Errorf("%w: stored Wahoo workout summary could not be read as one: %w", activity.ErrNoActivityFile, err)
+	}
+	if summary.File.URL == "" {
+		return "", fmt.Errorf("%w: stored Wahoo workout summary does not name a file", activity.ErrNoActivityFile)
+	}
+
+	return summary.File.URL, nil
+}
+
 // ActivitySummary reads one activity's totals and Wahoo's own summary document.
-// The FIT file the summary names is deliberately not downloaded here.
+// The FIT file the summary names is downloaded separately, by the records phase.
 func (p *wahooProvider) ActivitySummary(
 	ctx context.Context, accessToken string, id int64,
 ) (activity.Summary, error) {
@@ -323,6 +379,11 @@ func activitySummaryOf(summary wahoo.WorkoutSummary) activity.Summary {
 // client built from it.
 func (p *wahooProvider) IsUnauthorized(err error) bool {
 	return errors.Is(err, wahoo.ErrUnauthorized)
+}
+
+// IsUnreadable reports a summary rejection that belongs to one workout alone.
+func (p *wahooProvider) IsUnreadable(err error) bool {
+	return errors.Is(err, wahoo.ErrWorkoutUnreadable)
 }
 
 // RateLimit reports the budget the current client observed. An unconfigured
@@ -416,65 +477,72 @@ func newSource(source runtimeconfig.Source, email, password []byte) (syncservice
 	return nil, fmt.Errorf("unknown source provider %q", source.Provider)
 }
 
-// rideModelProvider predicts moving time from the coefficient file in force,
-// reloading it when an operator points the setting elsewhere. No file configured
-// means no stage carries a guessed rider figure, and a file that will not load is
-// a failed prediction rather than a substituted one.
+// rideModelProvider predicts moving time from the coefficient pair stored in
+// the state database, or from the built-in default until a calibration replaces
+// it. Nothing here re-reads the row: whatever stores a new pair calls reload.
 type rideModelProvider struct {
 	store      *sqlite.Store
 	predictor  *ridemodel.Predictor
 	validation *httpapi.RideModelValidation
-	path       string
-	mutex      sync.Mutex
-	loaded     bool
+	// fingerprintInForce is what a calibration compares its own fit against, so
+	// an unchanged pair is not stored and does not drop cached predictions.
+	fingerprintInForce string
+	status             httpapi.RideModelStatus
+	mutex              sync.Mutex
 }
 
+// newRideModelProvider reports the built-in pair until reload has read the row,
+// so a startup that fails to read it still shows what prediction would use.
 func newRideModelProvider(store *sqlite.Store) *rideModelProvider {
-	return &rideModelProvider{store: store}
+	defaults := ridemodel.Default()
+
+	return &rideModelProvider{
+		store:              store,
+		fingerprintInForce: defaults.Fingerprint,
+		status: httpapi.RideModelStatus{
+			SecondsPerKM: defaults.SecondsPerKM, SecondsPerAscentM: defaults.SecondsPerAscentM,
+		},
+	}
 }
 
-// reload resolves the configured file, replacing what is loaded when it moved.
-// Predictions cached against a different file are dropped as part of the swap.
-func (p *rideModelProvider) reload(ctx context.Context, settings *runtimeconfig.Current) error {
-	path := settings.Values().RideModel.CoefficientsFile
+// reload reads the stored pair and rebuilds the predictor around it. Predictions
+// cached against a different pair are dropped as part of the swap.
+func (p *rideModelProvider) reload(ctx context.Context) error {
+	coefficients, calibrated, err := p.store.RideModelCoefficients(ctx)
+	if err != nil {
+		return fmt.Errorf("reading ride model coefficients: %w", err)
+	}
+	if !calibrated {
+		coefficients = ridemodel.Default()
+	}
+	if validateErr := coefficients.Validate(); validateErr != nil {
+		return fmt.Errorf("ride model coefficients: %w", validateErr)
+	}
 
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 
-	if p.loaded && p.path == path {
-		return nil
-	}
-
-	var fingerprint string
-	var predictor *ridemodel.Predictor
-	var validation *httpapi.RideModelValidation
-	if path != "" {
-		coefficients, err := ridemodel.Load(path)
-		if err != nil {
-			return fmt.Errorf("loading ride model coefficients: %w", err)
-		}
-		fingerprint = coefficients.Fingerprint
-		predictor = ridemodel.NewPredictor(p.store, p.store, coefficients)
-		if coefficients.HasValidation() {
-			validation = &httpapi.RideModelValidation{
-				BiasPercent:    coefficients.BiasPercent,
-				MAEPercent:     coefficients.MAEPercent,
-				P90Percent:     coefficients.P90Percent,
-				EvaluatedRides: coefficients.EvaluatedRides,
-			}
-		}
-	}
-	if err := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, fingerprint); err != nil {
+	if err := p.store.PruneStageDurationsWithDifferentFingerprint(ctx, coefficients.Fingerprint); err != nil {
 		return fmt.Errorf("pruning stale ride model predictions: %w", err)
 	}
-	// Only clear stale failures when no file replaces the old one; a
-	// replacement's predictions are already pruned above.
-	if path == "" {
-		if err := p.store.ClearStageDurationFailures(ctx); err != nil {
-			return fmt.Errorf("clearing stale ride model failures: %w", err)
+	p.predictor = ridemodel.NewPredictor(p.store, coefficients)
+	p.validation = nil
+	if coefficients.HasValidation() {
+		p.validation = &httpapi.RideModelValidation{
+			BiasPercent:    coefficients.BiasPercent,
+			MAEPercent:     coefficients.MAEPercent,
+			P90Percent:     coefficients.P90Percent,
+			EvaluatedRides: coefficients.EvaluatedRides,
 		}
 	}
-	p.predictor, p.validation, p.path, p.loaded = predictor, validation, path, true
+	p.fingerprintInForce = coefficients.Fingerprint
+	p.status = httpapi.RideModelStatus{
+		CalibrationCutoff: coefficients.CalibrationCutoff,
+		SecondsPerKM:      coefficients.SecondsPerKM,
+		SecondsPerAscentM: coefficients.SecondsPerAscentM,
+		EvaluatedRides:    coefficients.EvaluatedRides,
+		Calibrated:        calibrated,
+	}
 
 	return nil
 }
@@ -486,8 +554,8 @@ func (p *rideModelProvider) current() *ridemodel.Predictor {
 	return p.predictor
 }
 
-// validationView is what the stage endpoint reports about the loaded model's
-// measured accuracy, or nothing when no model is loaded or it carries none.
+// validationView is what the stage endpoint reports about the model's measured
+// accuracy, or nothing when the pair in force carries none.
 func (p *rideModelProvider) validationView() *httpapi.RideModelValidation {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
@@ -495,13 +563,27 @@ func (p *rideModelProvider) validationView() *httpapi.RideModelValidation {
 	return p.validation
 }
 
-// predictorFor binds a provider to the settings it reloads from, so that
-// synchronization keeps seeing nothing but Predict.
-func predictorFor(provider *rideModelProvider, settings *runtimeconfig.Current) syncservice.Predictor {
+// fingerprint identifies the pair predictions are made with, which is how a
+// calibration tells a new fit from the one already in force.
+func (p *rideModelProvider) fingerprint() string {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	return p.fingerprintInForce
+}
+
+// statusView is the coefficient pair the settings page shows.
+func (p *rideModelProvider) statusView() httpapi.RideModelStatus {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	return p.status
+}
+
+// predictorFor hides the provider behind the one method synchronization needs.
+// It predicts with the pair the last reload put in force, never re-reading it.
+func predictorFor(provider *rideModelProvider) syncservice.Predictor {
 	return predictorFunc(func(ctx context.Context, stages []route.Route) (predicted, failed int, err error) {
-		if reloadErr := provider.reload(ctx, settings); reloadErr != nil {
-			return 0, 0, reloadErr
-		}
 		predictor := provider.current()
 		if predictor == nil {
 			return 0, 0, nil

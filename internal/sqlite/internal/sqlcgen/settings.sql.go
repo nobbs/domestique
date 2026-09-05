@@ -49,7 +49,7 @@ const getRuntimeSettings = `-- name: GetRuntimeSettings :one
 SELECT allow_empty_source_deletion, stale_after_seconds, sync_initial_delay_seconds,
   notifications_enabled, pushover_base_url, surface_rebuild_interval_seconds,
   wahoo_api_base_url, wahoo_oauth_base_url, wahoo_client_id,
-  ridemodel_coefficients_file, timezone
+  timezone
 FROM runtime_settings
 WHERE id = 1
 `
@@ -64,7 +64,6 @@ type GetRuntimeSettingsRow struct {
 	WahooApiBaseUrl               string
 	WahooOauthBaseUrl             string
 	WahooClientID                 string
-	RidemodelCoefficientsFile     string
 	Timezone                      string
 }
 
@@ -81,7 +80,6 @@ func (q *Queries) GetRuntimeSettings(ctx context.Context) (GetRuntimeSettingsRow
 		&i.WahooApiBaseUrl,
 		&i.WahooOauthBaseUrl,
 		&i.WahooClientID,
-		&i.RidemodelCoefficientsFile,
 		&i.Timezone,
 	)
 	return i, err
@@ -277,7 +275,7 @@ UPDATE runtime_settings
 SET allow_empty_source_deletion = ?, stale_after_seconds = ?, sync_initial_delay_seconds = ?,
   notifications_enabled = ?, pushover_base_url = ?, surface_rebuild_interval_seconds = ?,
   wahoo_api_base_url = ?, wahoo_oauth_base_url = ?, wahoo_client_id = ?,
-  ridemodel_coefficients_file = ?, timezone = ?, updated_at_unix = ?
+  timezone = ?, updated_at_unix = ?
 WHERE id = 1
 `
 
@@ -291,7 +289,6 @@ type UpdateRuntimeSettingsParams struct {
 	WahooApiBaseUrl               string
 	WahooOauthBaseUrl             string
 	WahooClientID                 string
-	RidemodelCoefficientsFile     string
 	Timezone                      string
 	UpdatedAtUnix                 int64
 }
@@ -307,7 +304,6 @@ func (q *Queries) UpdateRuntimeSettings(ctx context.Context, arg UpdateRuntimeSe
 		arg.WahooApiBaseUrl,
 		arg.WahooOauthBaseUrl,
 		arg.WahooClientID,
-		arg.RidemodelCoefficientsFile,
 		arg.Timezone,
 		arg.UpdatedAtUnix,
 	)

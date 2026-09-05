@@ -706,32 +706,6 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
-  /v1/settings/ridemodel:
-    put:
-      tags:
-        - browser-api
-      operationId: setRideModel
-      security:
-        - session: []
-          browserOrigin: []
-      description: Replaces the coefficient file predicted moving time is computed from, and starts a prediction pass.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RideModelSettings'
-      responses:
-        "200":
-          $ref: '#/components/responses/SettingsStored'
-        "400":
-          $ref: '#/components/responses/InvalidRequest'
-        "401":
-          $ref: '#/components/responses/Unauthorized'
-        "403":
-          $ref: '#/components/responses/Forbidden'
-        "503":
-          $ref: '#/components/responses/Unavailable'
   /v1/settings/timezone:
     put:
       tags:
@@ -1646,7 +1620,7 @@ components:
             The libraries a run reads, in the order it reads them. An empty list
             is a service nobody has configured yet, not an error.
         rideModel:
-          $ref: '#/components/schemas/RideModelSettings'
+          $ref: '#/components/schemas/RideModelStatus'
         alerts:
           type: array
           items:
@@ -2022,18 +1996,41 @@ components:
           description: >-
             The source's own web application, which is both the origin the
             service reads and the one a route is linked back to.
-    RideModelSettings:
+    RideModelStatus:
       type: object
       additionalProperties: false
+      description: >-
+        The coefficient pair predicted moving time is priced with. Read-only:
+        it is replaced by a calibration, not by an operator.
       required:
-        - coefficientsFile
+        - secondsPerKm
+        - secondsPerAscentM
+        - source
+        - evaluatedRides
       properties:
-        coefficientsFile:
+        secondsPerKm:
+          type: number
+          description: Seconds added per kilometre ridden.
+        secondsPerAscentM:
+          type: number
+          description: Seconds added per metre climbed.
+        source:
           type: string
+          enum:
+            - default
+            - calibrated
           description: >-
-            The coefficient file the offline fitting tooling emits, named by an
-            absolute path the service can read. Empty is predicted moving time
-            switched off, which is also the default.
+            Whether these are the built-in values every deployment starts with
+            or the ones a calibration fitted.
+        calibrationCutoff:
+          type: string
+          format: date
+          description: The last day of riding the fit that produced them read.
+        evaluatedRides:
+          type: integer
+          description: >-
+            How many unseen rides the fit's error was measured over. Zero is
+            not measured, which is what the built-in pair always reports.
     SurfaceSettings:
       type: object
       additionalProperties: false
