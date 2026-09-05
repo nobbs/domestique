@@ -182,15 +182,17 @@ export function writeGridStreaks(
       break;
     }
     const speed = Math.hypot(particle.u, particle.v);
-    if (speed === 0) {
-      continue;
-    }
+    // Direction is undefined at exactly zero, not the streak itself: dead calm
+    // is a real reading, and skipping it here would contradict the alpha floor
+    // below, which already draws it faint rather than invisible. North stands
+    // in for a heading that does not exist.
+    const [unitEast, unitNorth] = speed > 0 ? [particle.u / speed, particle.v / speed] : [0, 1];
     const tailMetres =
       Math.max(TAIL_MIN_PIXELS, speed * TAIL_PIXELS_PER_METRE_PER_SECOND) * metresPerPixel;
     const cosLat = Math.cos((particle.lat * Math.PI) / 180) || 1;
     const tail: Position = [
-      particle.lon - ((particle.u / speed) * tailMetres) / (METRES_PER_DEGREE_LATITUDE * cosLat),
-      particle.lat - ((particle.v / speed) * tailMetres) / METRES_PER_DEGREE_LATITUDE,
+      particle.lon - (unitEast * tailMetres) / (METRES_PER_DEGREE_LATITUDE * cosLat),
+      particle.lat - (unitNorth * tailMetres) / METRES_PER_DEGREE_LATITUDE,
     ];
     const alpha =
       lifeAlpha(particle) *
