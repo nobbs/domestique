@@ -2,8 +2,8 @@ github.com/DataDog/czlib v0.0.0-20240814115052-86a9592b3985 h1:0nepyu+UcpcOt3rrr
 github.com/DataDog/czlib v0.0.0-20240814115052-86a9592b3985/go.mod h1:ROY4muaTWpoeQAx/oUkvxe9zKCmgU5xDGXsfEbA+omc=
 github.com/PuerkitoBio/rehttp v1.4.0 h1:rIN7A2s+O9fmHUM1vUcInvlHj9Ysql4hE+Y0wcl/xk8=
 github.com/PuerkitoBio/rehttp v1.4.0/go.mod h1:LUwKPoDbDIA2RL5wYZCNsQ90cx4OJ4AWBmq6KzWZL1s=
-github.com/auth0/go-auth0/v3 v3.3.0 h1:p/OxyycZNUtFekO6uXGBqrVXtnJ92gO7ikXtVDuT0ZA=
-github.com/auth0/go-auth0/v3 v3.3.0/go.mod h1:wb20iE6T4wCGWtMXAZTWTTxx1/T1aHfVK+dOWleQvlg=
+github.com/auth0/go-auth0/v3 v3.4.0 h1:CjdnuuDUcVG19BIT7bloEYtyQHpIYr6rwQI2d1Wz7Fk=
+github.com/auth0/go-auth0/v3 v3.4.0/go.mod h1:MGifkH9wfgGbWsgFPrz2QbM2wLmScH1kGgIvAtd65Xw=
 github.com/aybabtme/iocontrol v0.0.0-20150809002002-ad15bcfc95a0 h1:0NmehRCgyk5rljDQLKUO+cRJCnduDyn11+zGZIc9Z48=
 github.com/aybabtme/iocontrol v0.0.0-20150809002002-ad15bcfc95a0/go.mod h1:6L7zgvqo0idzI7IO8de6ZC051AfXb5ipkIJ7bIA2tGA=
 github.com/bahlo/generic-list-go v0.2.0 h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=
