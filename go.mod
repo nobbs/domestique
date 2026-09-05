@@ -1,6 +1,6 @@
 module github.com/nobbs/domestique
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/auth0/go-auth0/v3 v3.4.0

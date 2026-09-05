@@ -33,7 +33,7 @@ COPY internal/webui/app/ ./
 RUN pnpm run build
 
 # The -dev variant carries the toolchain and coreutils.
-FROM --platform=$BUILDPLATFORM dhi.io/golang:1.27.0-dev@sha256:e2e77e505161b120742b747aae60dbf6179bf381e9a178644ef6530b65171f79 AS build
+FROM --platform=$BUILDPLATFORM dhi.io/golang:1.27.1-dev@sha256:ce4e3984089cc0429a487c42427c6c43331b5b4eac6a58d517afc2e7cb53dc08 AS build
 
 ARG TARGETARCH
 ARG TARGETOS
