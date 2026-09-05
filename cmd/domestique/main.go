@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -57,10 +58,12 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+	level := installLogging(os.Stderr)
 	settings, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading configuration: %w", err)
 	}
+	level.Set(settings.Log.Level)
 	store, err := sqlite.Open(ctx, settings.State.DatabasePath, settings.State.EncryptionKey())
 	if err != nil {
 		return fmt.Errorf("opening state: %w", err)
@@ -269,24 +272,9 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating readiness handler: %w", err)
 	}
 
-	server := &http.Server{
-		Addr:              settings.HTTP.ListenAddress,
-		Handler:           handler,
-		IdleTimeout:       httpIdleTimeout,
-		MaxHeaderBytes:    httpMaximumHeaderBytes,
-		ReadHeaderTimeout: httpReadHeaderTimeout,
-		ReadTimeout:       httpReadTimeout,
-		WriteTimeout:      httpWriteTimeout,
-	}
-	readinessServer := &http.Server{
-		Addr:              settings.HTTP.ReadinessAddress,
-		Handler:           readinessHandler,
-		IdleTimeout:       httpIdleTimeout,
-		MaxHeaderBytes:    httpMaximumHeaderBytes,
-		ReadHeaderTimeout: httpReadHeaderTimeout,
-		ReadTimeout:       httpReadTimeout,
-		WriteTimeout:      httpWriteTimeout,
-	}
+	server := newServer(settings.HTTP.ListenAddress, handler)
+	readinessServer := newServer(settings.HTTP.ReadinessAddress, readinessHandler)
+
 	return serve(runCtx, cancel, server, readinessServer, tasks, styleOrigins.Run)
 }
 
@@ -352,6 +340,30 @@ func startSurfaceIndex(
 type backgroundTasks interface {
 	Run(context.Context)
 	Wait()
+}
+
+// installLogging makes the process write JSON lines to output. It starts at
+// Info, before the configuration is read, so a failure to read it is JSON too.
+func installLogging(output io.Writer) *slog.LevelVar {
+	level := new(slog.LevelVar)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(output, &slog.HandlerOptions{Level: level})))
+
+	return level
+}
+
+// newServer is one listener with the shared timeouts. net/http's own complaints
+// join the JSON stream rather than the stdlib logger.
+func newServer(address string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              address,
+		Handler:           handler,
+		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
+		IdleTimeout:       httpIdleTimeout,
+		MaxHeaderBytes:    httpMaximumHeaderBytes,
+		ReadHeaderTimeout: httpReadHeaderTimeout,
+		ReadTimeout:       httpReadTimeout,
+		WriteTimeout:      httpWriteTimeout,
+	}
 }
 
 // serve runs both HTTP listeners and every scheduled job under one cancellation

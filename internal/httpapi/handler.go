@@ -284,6 +284,10 @@ func (h *Handler) routes() {
 
 // ServeHTTP applies the shared response headers and dispatches.
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	h.logged(http.HandlerFunc(h.serve)).ServeHTTP(writer, request)
+}
+
+func (h *Handler) serve(writer http.ResponseWriter, request *http.Request) {
 	header := writer.Header()
 	// Composed without the configured map: no identity has been established yet,
 	// and a request refused below is answered from here. The gate names the
