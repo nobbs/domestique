@@ -1,4 +1,4 @@
-h1:64uOyzkirhoPQ1Dh+Fj8T/yHpW9Xbei0EbcMsdWzhxs=
+h1:fq5M0Eh5nMYhKzVckCTQyF0+yzW6ItoJ28jDUxsw/mI=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -17,3 +17,5 @@ h1:64uOyzkirhoPQ1Dh+Fj8T/yHpW9Xbei0EbcMsdWzhxs=
 000034_ridemodel_coefficients.up.sql h1:21DG7i3aTG39sQQ8QC5+vF/cfB3eLenhD4jdqoepWuE=
 000035_activity_listings.down.sql h1:HvFckFa8pXixdEE6k02RGpJeLJAKINm8KMy3mB2CAwY=
 000035_activity_listings.up.sql h1:3sMVRY1uRjfPrfJbKqthF/yuSLjgjOHfzWRa2Au97qs=
+000036_cycling_activities_only.down.sql h1:giH0qlFZy4SoczzPprlGUoK8tTEI7Ju/PKOpb7+Oog8=
+000036_cycling_activities_only.up.sql h1:hoP206VrD1ILFwpRA/HqTmafw7SzekPes0jqRx433UI=

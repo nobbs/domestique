@@ -457,13 +457,19 @@ func TestActivityRidesReadsEveryTargetsRidesOldestFirst(t *testing.T) {
 		activity.Summary{DistanceMetres: 20000, MovingSeconds: 3600, AscentMetres: 100, Raw: []byte(`{}`)},
 		activityNow()), "StoreActivity() for another rider")
 
-	rides, err := store.ActivityRides(t.Context(), time.Time{})
+	rides, err := store.ActivityRides(t.Context(), time.Time{}, cyclingTypes())
 	require.NoError(t, err, "ActivityRides()")
 	require.Len(t, rides, 4)
 	assert.Equal(t, activityNow().Add(-time.Hour), rides[0].StartedAt, "oldest first")
 	assert.InDelta(t, 20000.0, rides[0].DistanceMetres, 1e-9, "the other rider's ride is pooled in")
 	assert.InDelta(t, 4500.0, rides[3].MovingSeconds, 1e-9)
 	assert.InDelta(t, 300.0, rides[3].AscentMetres, 1e-9)
+}
+
+// cyclingTypes is the outdoor human-powered set a calibration reads with, named
+// here so a corpus test says which rides it expects rather than a bare list.
+func cyclingTypes() []int {
+	return []int{0, 11, 13, 14, 15, 16}
 }
 
 // A calibration reads a trailing window, so the corpus it fits is bounded by
@@ -484,20 +490,64 @@ func TestActivityRidesReadsOnlyFromTheGivenBound(t *testing.T) {
 			activityNow()), "StoreActivity()")
 	}
 
-	rides, err := store.ActivityRides(t.Context(), activityNow().AddDate(0, -12, 0))
+	rides, err := store.ActivityRides(t.Context(), activityNow().AddDate(0, -12, 0), cyclingTypes())
 	require.NoError(t, err, "ActivityRides()")
 	require.Len(t, rides, 2, "the ride behind the bound is not read")
 	assert.Equal(t, activityNow().AddDate(0, -1, 0), rides[0].StartedAt, "oldest inside the bound first")
 
-	all, err := store.ActivityRides(t.Context(), time.Time{})
+	all, err := store.ActivityRides(t.Context(), time.Time{}, cyclingTypes())
 	require.NoError(t, err, "ActivityRides() over all history")
 	assert.Len(t, all, 3, "a zero bound reads every ride")
+}
+
+// An indoor trainer ride is stored and served like any other, but it prices no
+// outdoor pace, so the corpus a calibration reads leaves it out.
+func TestActivityRidesReadsOnlyTheGivenWorkoutTypes(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	for index, workoutType := range []int{15, 61, 13} {
+		require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+			activity.Listing{
+				ID: int64(index + 1), TypeID: workoutType, LocationID: 1,
+				Starts: activityNow().Add(time.Duration(index) * time.Hour),
+			},
+			activity.Summary{
+				DistanceMetres: 30000, MovingSeconds: 4500, ElapsedSeconds: 4800, AscentMetres: 300,
+				Raw: []byte(`{}`),
+			},
+			activityNow()), "StoreActivity()")
+	}
+
+	rides, err := store.ActivityRides(t.Context(), time.Time{}, cyclingTypes())
+	require.NoError(t, err, "ActivityRides()")
+	assert.Len(t, rides, 2, "the indoor trainer ride must not be in the corpus")
+
+	stored, err := store.ActivitiesBetween(t.Context(), "rider-a",
+		activityNow().Add(-time.Hour), activityNow().Add(4*time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	assert.Len(t, stored, 3, "every stored ride is still served to a rider's own log")
+}
+
+// A corpus of every type is not something a caller can ask for by omission:
+// naming no type reads no ride rather than all of them.
+func TestActivityRidesReadNothingForAnEmptyTypeSet(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: 1, TypeID: 15, LocationID: 1, Starts: activityNow()},
+		activity.Summary{DistanceMetres: 30000, MovingSeconds: 4500, AscentMetres: 300, Raw: []byte(`{}`)},
+		activityNow()), "StoreActivity()")
+
+	rides, err := store.ActivityRides(t.Context(), time.Time{}, nil)
+	require.NoError(t, err, "ActivityRides()")
+	assert.Empty(t, rides)
 }
 
 func TestActivityRidesReportsAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.ActivityRides(t.Context(), time.Time{})
+	_, err := store.ActivityRides(t.Context(), time.Time{}, cyclingTypes())
 	require.ErrorContains(t, err, "reading activities for calibration")
 }

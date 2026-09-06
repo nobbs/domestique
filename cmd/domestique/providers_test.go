@@ -73,6 +73,34 @@ func TestActivityListingsNarrowWahooWorkouts(t *testing.T) {
 	assert.Equal(t, []activity.Listing{{ID: 42, TypeID: 15, LocationID: 1, Starts: starts}}, listings)
 }
 
+// A reading counts what the account holds, cycling or not: it is compared with
+// the account's own total, which counts every sport. What this service records
+// is a separate question, asked after that comparison.
+func TestActivityListingsCountEverySport(t *testing.T) {
+	t.Parallel()
+
+	starts := time.Date(2026, 4, 1, 6, 30, 0, 0, time.UTC)
+	listings := activityListings([]wahoo.Workout{
+		{ID: 1, WorkoutTypeID: 1, Starts: starts},
+		{ID: 2, WorkoutTypeID: wahoo.WorkoutTypeBikingRoad, WorkoutTypeLocationID: 1, Starts: starts},
+	})
+
+	assert.Len(t, listings, 2, "a run is still one of the account's workouts")
+}
+
+// This service records cycling; an indoor ride is cycling, a run is not.
+func TestIsRecordableKeepsCyclingAlone(t *testing.T) {
+	t.Parallel()
+
+	provider := newWahooProvider(testSettings(t, testStore(t, t.TempDir())), nil, "https://domestique.example.test")
+
+	assert.True(t, provider.IsRecordable(activity.Listing{TypeID: wahoo.WorkoutTypeBikingRoad}))
+	assert.True(t, provider.IsRecordable(activity.Listing{TypeID: wahoo.WorkoutTypeBikingIndoorTrainer}),
+		"an indoor ride is still cycling")
+	assert.False(t, provider.IsRecordable(activity.Listing{TypeID: 1}))
+	assert.False(t, provider.IsRecordable(activity.Listing{TypeID: 3}))
+}
+
 // A stored summary is what a download is addressed by, and a service with no
 // Wahoo application configured downloads nothing at all.
 func TestDownloadActivityFITRefusesWhatItCannotAddress(t *testing.T) {

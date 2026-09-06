@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"strings"
 )
 
 const deleteActivityListings = `-- name: DeleteActivityListings :exec
@@ -258,8 +259,14 @@ const listActivityRides = `-- name: ListActivityRides :many
 SELECT target_slot, started_at_unix, distance_metres, moving_seconds, ascent_metres
 FROM activities
 WHERE started_at_unix >= ?1
+  AND workout_type_id IN (/*SLICE:workout_type_ids*/?)
 ORDER BY started_at_unix
 `
+
+type ListActivityRidesParams struct {
+	SinceUnix      int64
+	WorkoutTypeIds []int64
+}
 
 type ListActivityRidesRow struct {
 	TargetSlot     string
@@ -269,8 +276,19 @@ type ListActivityRidesRow struct {
 	AscentMetres   float64
 }
 
-func (q *Queries) ListActivityRides(ctx context.Context, sinceUnix int64) ([]ListActivityRidesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActivityRides, sinceUnix)
+func (q *Queries) ListActivityRides(ctx context.Context, arg ListActivityRidesParams) ([]ListActivityRidesRow, error) {
+	query := listActivityRides
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.SinceUnix)
+	if len(arg.WorkoutTypeIds) > 0 {
+		for _, v := range arg.WorkoutTypeIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:workout_type_ids*/?", strings.Repeat(",?", len(arg.WorkoutTypeIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:workout_type_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

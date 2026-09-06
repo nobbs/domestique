@@ -289,11 +289,24 @@ func nullFloat(value float64, valid bool) sql.NullFloat64 {
 	return sql.NullFloat64{Float64: value, Valid: valid}
 }
 
-// ActivityRides is every target's recorded activity ridden at or after since,
-// as a calibration reads it: one rider's corpus is one target's, and the fit
-// pools them all. A zero since reads all history.
-func (s *Store) ActivityRides(ctx context.Context, since time.Time) ([]ridemodel.Ride, error) {
-	rows, err := s.queries.ListActivityRides(ctx, since.Unix())
+// ActivityRides is every target's recorded activity of one of workoutTypeIDs,
+// ridden at or after since, as a calibration reads it: one rider's corpus is
+// one target's, and the fit pools them all. A zero since reads all history; an
+// empty set of types matches no activity, since a corpus of every type is not
+// something a caller can ask for by omission.
+func (s *Store) ActivityRides(
+	ctx context.Context, since time.Time, workoutTypeIDs []int,
+) ([]ridemodel.Ride, error) {
+	if len(workoutTypeIDs) == 0 {
+		return nil, nil
+	}
+	types := make([]int64, len(workoutTypeIDs))
+	for index, id := range workoutTypeIDs {
+		types[index] = int64(id)
+	}
+	rows, err := s.queries.ListActivityRides(ctx, sqlcgen.ListActivityRidesParams{
+		SinceUnix: since.Unix(), WorkoutTypeIds: types,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("reading activities for calibration: %w", err)
 	}

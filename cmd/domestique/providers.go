@@ -291,6 +291,9 @@ func (p *wahooProvider) ActivityListingHead(ctx context.Context, accessToken str
 
 // activityListings narrows Wahoo's workouts to what the activity package reads,
 // split out so the field mapping is directly testable without a live client.
+// Every workout is mapped, cycling or not: a reading of the account has to
+// count what the account holds, or it cannot be compared with the account's own
+// total again. IsRecordable is what decides which of them this service stores.
 func activityListings(workouts []wahoo.Workout) []activity.Listing {
 	listings := make([]activity.Listing, len(workouts))
 	for index, workout := range workouts {
@@ -303,6 +306,13 @@ func activityListings(workouts []wahoo.Workout) []activity.Listing {
 	}
 
 	return listings
+}
+
+// IsRecordable reports whether a listed activity is one this service records.
+// Wahoo lists whatever a rider's device captured; domestique keeps cycling, so
+// a run, a walk, a swim or a strength session is passed over rather than read.
+func (p *wahooProvider) IsRecordable(listing activity.Listing) bool {
+	return wahoo.IsBikingWorkout(listing.TypeID)
 }
 
 // DownloadActivityFIT reads the FIT file a stored summary names, from Wahoo's

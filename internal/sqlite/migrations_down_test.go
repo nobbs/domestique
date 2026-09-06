@@ -241,3 +241,62 @@ func TestMigration034DownDropsTheCoefficientTableOnly(t *testing.T) {
 
 	require.NoError(t, migration.Migrate(34), "must be able to re-migrate up after rolling back")
 }
+
+// 036 is the one data migration in this history: it deletes rows rather than
+// changing a table, so what it removes and what it spares are both worth
+// proving. Its down cannot restore them, which is exactly why the up must not
+// reach further than the workouts a poll would now refuse.
+func TestMigration036RemovesOnlyNonCyclingActivities(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "cycling-only.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(35))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	// 15 road, 61 indoor trainer and 64 e-bike are cycling; 1 and 3 are not.
+	for _, workoutType := range []int{15, 61, 64, 1, 3} {
+		_, err = database.ExecContext(t.Context(), `
+			INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+				distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix)
+			VALUES ('rider-a', ?, ?, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000)`, workoutType, workoutType)
+		require.NoError(t, err)
+		_, err = database.ExecContext(t.Context(), `
+			INSERT INTO activity_records (target_slot, workout_id, record_index, recorded_at_unix)
+			VALUES ('rider-a', ?, 0, 1700000000)`, workoutType)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, migration.Migrate(36))
+
+	var kept []int
+	rows, err := database.QueryContext(t.Context(), `SELECT workout_type_id FROM activities ORDER BY workout_type_id`)
+	require.NoError(t, err)
+	defer closeRows(rows)
+	for rows.Next() {
+		var workoutType int
+		require.NoError(t, rows.Scan(&workoutType))
+		kept = append(kept, workoutType)
+	}
+	require.NoError(t, rows.Err())
+	require.Equal(t, []int{15, 61, 64}, kept, "every biking type stays, including indoor and e-bike")
+
+	var records int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM activity_records`).Scan(&records))
+	require.Equal(t, 3, records, "a deleted activity takes its records with it, and no others")
+
+	var targets int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM targets`).Scan(&targets))
+	require.Equal(t, 1, targets, "the target row is untouched")
+
+	require.NoError(t, migration.Migrate(35), "the down migration must apply")
+	require.NoError(t, migration.Migrate(36), "must be able to re-migrate up after rolling back")
+}

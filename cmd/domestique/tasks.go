@@ -14,6 +14,7 @@ import (
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/task"
+	"github.com/nobbs/domestique/internal/wahoo"
 )
 
 // The background activities this service runs.
@@ -132,7 +133,7 @@ type activityPoller interface {
 // rideCorpus is the stored corpus a calibration fits and where the pair it
 // finds is kept; coefficientHolder is what predicts with the pair in force.
 type rideCorpus interface {
-	ActivityRides(ctx context.Context, since time.Time) ([]ridemodel.Ride, error)
+	ActivityRides(ctx context.Context, since time.Time, workoutTypeIDs []int) ([]ridemodel.Ride, error)
 	StoreRideModelCoefficients(ctx context.Context, coefficients ridemodel.Coefficients, now time.Time) error
 }
 
@@ -418,7 +419,10 @@ func rideModelCalibrateTask(
 }
 
 func calibrate(ctx context.Context, corpus rideCorpus, model coefficientHolder, now time.Time) task.Result {
-	rides, err := corpus.ActivityRides(ctx, now.AddDate(0, -ridemodel.TrainingWindowMonths, 0))
+	// Only outdoor human-powered rides price a rider's own pace: an indoor
+	// trainer's distance is virtual, and a motor is not the rider.
+	eligible := wahoo.OutdoorHumanPoweredWorkoutTypes()
+	rides, err := corpus.ActivityRides(ctx, now.AddDate(0, -ridemodel.TrainingWindowMonths, 0), eligible)
 	if err != nil {
 		return task.Result{Outcome: task.Failed, Detail: detailModelState}
 	}
@@ -426,7 +430,7 @@ func calibrate(ctx context.Context, corpus rideCorpus, model coefficientHolder, 
 	if errors.Is(err, ridemodel.ErrTooFewRides) {
 		// The window is a bound rather than a guillotine, and only a corpus too
 		// thin to fit from pays for reading past it.
-		if rides, err = corpus.ActivityRides(ctx, time.Time{}); err != nil {
+		if rides, err = corpus.ActivityRides(ctx, time.Time{}, eligible); err != nil {
 			return task.Result{Outcome: task.Failed, Detail: detailModelState}
 		}
 		fitted, err = ridemodel.Fit(rides, now)

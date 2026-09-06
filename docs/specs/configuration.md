@@ -469,6 +469,12 @@ fitted on. Those per-fold errors are pooled into the four fields. The
 coefficients themselves are fit over the newest window, including the rides the
 last folds scored.
 
+Not every stored ride prices a pace. The corpus is the rides ridden outdoors
+under the rider's own power; an indoor trainer reports a virtual distance over
+no real ground, and a motor-assisted ride is not the rider's own pace, so
+neither calibrates a model that predicts outdoor route times. Both are still
+stored and still served — they are cycling, just not calibration input.
+
 `training_window_months` is how far back that fit really reached;
 `calibration_cutoff` is where it stopped. The two together state which rides
 produced the pair. Zero months means a fit over all history, which only a pair

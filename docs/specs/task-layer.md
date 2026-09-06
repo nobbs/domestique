@@ -269,6 +269,13 @@ is checked rather than inferred.
 | `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
 
+`activity:poll` stores cycling alone. A rider's account may record any sport
+their device or app supports, and the poll keeps only what the provider counts
+as cycling — a run, a walk, a swim or a strength session is passed over rather
+than stored, so nothing downstream has to know it was ever listed. This is a
+read-side filter, not a deletion gate: the poll still never removes an activity
+the account no longer lists.
+
 The read takes a library the same way the targets take a slot: none is every
 one that exists, a name is that one alone. One task rather than one per
 library, because the library list is a runtime setting and tasks are
@@ -287,7 +294,8 @@ calibration for the same reason again. `ridemodel:calibrate` takes the
 activities rather than the inventory: it reads the rows a poll writes and
 touches no stage. It reads only the trailing training window of them, and
 reaches past it for the rides a fit needs only when the window holds too few
-([the window and its extension](configuration.md#ride-model)). Its first fit waits an hour after start, so a restart is
+([the window and its extension](configuration.md#ride-model)), and only the
+rides that price a pace ([which rides those are](configuration.md#ride-model)). Its first fit waits an hour after start, so a restart is
 spent serving rather than refitting a pair the weekly cadence would have left
 in force anyway.
 
