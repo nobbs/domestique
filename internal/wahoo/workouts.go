@@ -53,7 +53,9 @@ func (w *Workout) UnmarshalJSON(raw []byte) error {
 
 // listedSummary reads the summary a listing entry embedded, or nil when the
 // entry carried none or one missing any of the four totals: a partial document
-// is left for the sub-resource to answer rather than stored as zeroes.
+// is left for the sub-resource to answer rather than stored as zeroes. A total
+// that is present but null is Wahoo's own zero, which the sub-resource answers
+// the same way, so asking again would only buy the same document.
 func listedSummary(raw json.RawMessage) *WorkoutSummary {
 	var totals struct {
 		//nolint:tagliatelle // Wahoo's API uses snake_case.

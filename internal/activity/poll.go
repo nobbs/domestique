@@ -257,7 +257,14 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	}
 
 	var stored, skipped, requested int
-	for _, listing := range due(pending, deferred(skips, p.now())) {
+	// Oldest first, which is the order the kept listings already arrive in, so
+	// an account with a long history fills in chronologically over successive
+	// polls rather than restarting each time.
+	waiting := identities(deferred(skips, p.now()), nil)
+	for _, listing := range pending {
+		if _, ok := waiting[listing.ID]; ok {
+			continue
+		}
 		var summary Summary
 		var summaryErr error
 		if listing.Summary != nil {
@@ -509,22 +516,6 @@ func unstored(listings []Listing, known []int64) []Listing {
 	}
 
 	return pending
-}
-
-// due is the pending activities whose read is not deferred, oldest first so an
-// account with a long history fills in chronologically over successive polls
-// rather than restarting each time, which is the order the kept listings
-// already arrive in.
-func due(pending []Listing, waiting []int64) []Listing {
-	deferredIDs := identities(waiting, nil)
-	ready := make([]Listing, 0, len(pending))
-	for _, listing := range pending {
-		if _, ok := deferredIDs[listing.ID]; !ok {
-			ready = append(ready, listing)
-		}
-	}
-
-	return ready
 }
 
 func byStart(a, b Listing) int {
