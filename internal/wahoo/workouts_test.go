@@ -477,8 +477,12 @@ func TestClientReadsTheSummaryAListingCarries(t *testing.T) {
 				{"id": 43, "workout_type_id": 15, "workout_summary": nil},
 				{"id": 44, "workout_type_id": 15},
 				{"id": 45, "workout_type_id": 15, "workout_summary": map[string]any{"file": nil}},
+				{"id": 46, "workout_type_id": 15, "workout_summary": map[string]any{
+					"id": 46, "file": map[string]string{"url": "https://cdn.wahooligan.com/workouts/46.fit"},
+					"distance_accum": "1", "duration_active_accum": "2", "duration_total_accum": "3",
+				}},
 			},
-			"total": 4, "page": 1, "per_page": 100,
+			"total": 5, "page": 1, "per_page": 100,
 		})
 	}))
 	defer server.Close()
@@ -486,7 +490,7 @@ func TestClientReadsTheSummaryAListingCarries(t *testing.T) {
 
 	workouts, err := client.ListWorkouts(t.Context(), "access-token")
 	require.NoError(t, err)
-	require.Len(t, workouts, 4)
+	require.Len(t, workouts, 5)
 	require.NotNil(t, workouts[0].Summary, "the listing's summary was dropped")
 	requested, err := client.WorkoutSummary(t.Context(), "access-token", 42)
 	require.NoError(t, err)
@@ -495,4 +499,5 @@ func TestClientReadsTheSummaryAListingCarries(t *testing.T) {
 	assert.Nil(t, workouts[1].Summary, "a null summary was read as one")
 	assert.Nil(t, workouts[2].Summary, "an absent summary was read as one")
 	assert.Nil(t, workouts[3].Summary, "an incomplete summary was read as one")
+	assert.Nil(t, workouts[4].Summary, "a summary missing one total was read as one")
 }

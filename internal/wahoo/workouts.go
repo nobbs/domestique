@@ -46,12 +46,38 @@ func (w *Workout) UnmarshalJSON(raw []byte) error {
 		return fmt.Errorf("wahoo: workout listing entry: %w", err)
 	}
 	*w = Workout(entry.plain)
-	w.Summary = nil
-	if summary, err := parseWorkoutSummary(entry.WorkoutSummary); err == nil {
-		w.Summary = &summary
-	}
+	w.Summary = listedSummary(entry.WorkoutSummary)
 
 	return nil
+}
+
+// listedSummary reads the summary a listing entry embedded, or nil when the
+// entry carried none or one missing any of the four totals: a partial document
+// is left for the sub-resource to answer rather than stored as zeroes.
+func listedSummary(raw json.RawMessage) *WorkoutSummary {
+	var totals struct {
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		DistanceAccum json.RawMessage `json:"distance_accum"`
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		DurationActiveAccum json.RawMessage `json:"duration_active_accum"`
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		DurationTotalAccum json.RawMessage `json:"duration_total_accum"`
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		AscentAccum json.RawMessage `json:"ascent_accum"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &totals) != nil {
+		return nil
+	}
+	if totals.DistanceAccum == nil || totals.DurationActiveAccum == nil ||
+		totals.DurationTotalAccum == nil || totals.AscentAccum == nil {
+		return nil
+	}
+	summary, err := parseWorkoutSummary(raw)
+	if err != nil {
+		return nil
+	}
+
+	return &summary
 }
 
 // WorkoutSummary contains Wahoo's original summary, the URL of its FIT file,
