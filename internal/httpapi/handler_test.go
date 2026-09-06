@@ -185,6 +185,7 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/v1/sync/runs",
 		"/v1/routes",
 		"/v1/activities",
+		"/v1/activities/1/track",
 		"/v1/providers/veloplanner/sourceRoutes/1/routes/1",
 		"/v1/providers/veloplanner/sourceRoutes/1/routes/1/geometry",
 		"/v1/webui/config",

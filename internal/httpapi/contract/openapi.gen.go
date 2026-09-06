@@ -516,10 +516,15 @@ type GeoJSONLineString struct {
 	Coordinates [][]float64 `json:"coordinates"`
 }
 
+type ActivityTrackLineString struct {
+	Type        string      `json:"type"`
+	Coordinates [][]float64 `json:"coordinates"`
+}
+
 type ActivityTrack struct {
 	Type       string                  `json:"type"`
 	Bbox       []float64               `json:"bbox"`
-	Geometry   GeoJSONLineString       `json:"geometry"`
+	Geometry   ActivityTrackLineString `json:"geometry"`
 	Properties ActivityTrackProperties `json:"properties"`
 }
 

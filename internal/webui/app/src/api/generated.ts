@@ -233,12 +233,12 @@ export interface ActivityList {
   activities: Activity[];
 }
 
-export interface GeoJSONLineString {
+export interface ActivityTrackLineString {
   type: "LineString";
   /**
    * @minItems 2
    * @items.minItems 2
-   * @items.maxItems 3
+   * @items.maxItems 2
    */
   coordinates: number[][];
 }
@@ -254,7 +254,7 @@ export interface ActivityTrack {
    * @maxItems 4
    */
   bbox: number[];
-  geometry: GeoJSONLineString;
+  geometry: ActivityTrackLineString;
   properties: ActivityTrackProperties;
 }
 
@@ -286,6 +286,16 @@ export interface Route {
 
 export interface RouteList {
   routes: Route[];
+}
+
+export interface GeoJSONLineString {
+  type: "LineString";
+  /**
+   * @minItems 2
+   * @items.minItems 2
+   * @items.maxItems 3
+   */
+  coordinates: number[][];
 }
 
 export type SurfaceRangeKind = (typeof SurfaceRangeKind)[keyof typeof SurfaceRangeKind];

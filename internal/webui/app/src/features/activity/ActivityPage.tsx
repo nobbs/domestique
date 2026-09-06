@@ -18,10 +18,12 @@ import { useActivities } from "./useActivities";
 
 export function ActivityPage() {
   const { activityId } = useParams();
-  const id = Number(activityId);
+  // Only a run of digits names an activity; anything else (a decimal, "NaN",
+  // stray text) must never reach the track endpoint as a path segment.
+  const id = activityId && /^\d+$/.test(activityId) ? Number(activityId) : null;
   const { activities } = useActivities();
   const ride = activities.find((activity) => activity.id === id);
-  const track = useQuery({ ...activityTrackQuery(id), enabled: Number.isFinite(id) });
+  const track = useQuery({ ...activityTrackQuery(id ?? 0), enabled: id !== null });
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   // Only where the track carried altitudes: a position without one reads as
   // sea level, which would draw a flat profile rather than none.
@@ -50,7 +52,9 @@ export function ActivityPage() {
             </p>
           ) : null}
         </div>
-        {track.isPending ? (
+        {id === null ? (
+          <p className="text-[var(--ink-2)] text-sm">No recorded track was stored for this ride.</p>
+        ) : track.isPending ? (
           <Skeleton className="h-96 w-full" role="status" aria-label="Loading the recorded track" />
         ) : track.isError || !track.data || coordinates.length < 2 ? (
           <p className="text-[var(--ink-2)] text-sm">No recorded track was stored for this ride.</p>

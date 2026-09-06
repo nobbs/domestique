@@ -6,7 +6,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, WebUIConfig } from "../../api/types";
 import { windowStart } from "../../lib/volume";
@@ -56,6 +56,10 @@ function show(activities: Activity[] | null = ACTIVITIES) {
   );
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("the activity list", () => {
   it("lists the rides newest first, each linking to its own page", () => {
     show();
@@ -76,6 +80,12 @@ describe("the activity list", () => {
   });
 
   it("waits for the activities rather than claiming there are none", () => {
+    // Uncached, so React Query falls through to a real fetch; stub it so the
+    // request never settles and the page stays in its loading state.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     show(null);
 
     expect(screen.getByRole("status", { name: "Loading activities" })).toBeInTheDocument();

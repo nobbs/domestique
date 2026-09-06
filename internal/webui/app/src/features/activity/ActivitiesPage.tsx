@@ -3,6 +3,7 @@
  * this answers which rides those were. Each row leads to the ride's own page.
  */
 
+import { useMemo } from "react";
 import { Link } from "react-router";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -11,8 +12,9 @@ import { useActivities } from "./useActivities";
 
 export function ActivitiesPage() {
   const { activities, isPending, isError } = useActivities();
-  const rides = [...activities].sort((first, second) =>
-    second.startedAt.localeCompare(first.startedAt),
+  const rides = useMemo(
+    () => [...activities].sort((first, second) => second.startedAt.localeCompare(first.startedAt)),
+    [activities],
   );
 
   return (

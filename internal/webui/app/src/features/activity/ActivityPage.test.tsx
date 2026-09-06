@@ -10,7 +10,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, activityTrackQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, ActivityTrack, Position, WebUIConfig } from "../../api/types";
 import type { Profile } from "../../lib/profile";
@@ -79,7 +79,7 @@ function config(): WebUIConfig {
   };
 }
 
-function show(recorded: ActivityTrack | null = track()) {
+function show(recorded: ActivityTrack | null = track(), activityId: number | string = RIDE.id) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -90,7 +90,7 @@ function show(recorded: ActivityTrack | null = track()) {
   }
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/activities/${RIDE.id}`]}>
+      <MemoryRouter initialEntries={[`/activities/${activityId}`]}>
         <Routes>
           <Route path="activities/:activityId" element={<ActivityPage />} />
         </Routes>
@@ -103,6 +103,10 @@ beforeEach(() => {
   drawn.coordinates = [];
   drawn.bounds = null;
   drawn.profiles = [];
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("one ride's page", () => {
@@ -136,6 +140,12 @@ describe("one ride's page", () => {
   });
 
   it("shows a placeholder while the track is still loading", () => {
+    // Uncached, so React Query falls through to a real fetch; stub it so the
+    // request never settles and the page stays in its loading state.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
     show(null);
 
     expect(screen.getByRole("status", { name: "Loading the recorded track" })).toBeInTheDocument();
@@ -146,5 +156,14 @@ describe("one ride's page", () => {
 
     expect(screen.getByText("No recorded track was stored for this ride.")).toBeInTheDocument();
     expect(screen.queryByTestId("activity-map")).not.toBeInTheDocument();
+  });
+
+  it("requests no track for a non-integer activity id", () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 500 }));
+    vi.stubGlobal("fetch", fetchMock);
+    show(null, "7.5");
+
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("track"))).toBe(false);
+    expect(screen.getByText("No recorded track was stored for this ride.")).toBeInTheDocument();
   });
 });
