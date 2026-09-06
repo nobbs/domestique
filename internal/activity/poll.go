@@ -100,6 +100,17 @@ type Stored struct {
 	LocationID     int
 }
 
+// RecordsState is how far one activity's recorded samples have got: awaiting a
+// download, stored, or given up on because the file did not decode.
+type RecordsState string
+
+// The three states the store keeps, and the values it keeps them as.
+const (
+	RecordsPending    RecordsState = "pending"
+	RecordsStored     RecordsState = "stored"
+	RecordsUnreadable RecordsState = "unreadable"
+)
+
 // TrackPoint is one positioned sample of a recorded ride. Altitude is optional
 // because a FIT record may carry a position without one.
 type TrackPoint struct {

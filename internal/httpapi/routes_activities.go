@@ -65,7 +65,8 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 // GetActivityTrack serves one activity's recorded track as a GeoJSON Feature,
 // scoped exactly as the activity list is. An activity with fewer than two
-// positioned samples has no track and is not found.
+// positioned samples is served with a null geometry and the state that says
+// why; only one this target has no summary for is not found.
 func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Request) {
 	// The served surface refuses a non-numeric id before it reaches here.
 	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
@@ -86,26 +87,40 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 
 		return
 	}
+	recordsState, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
+	if stateErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	// Only a ride this service holds no summary for is missing: one whose
+	// samples are merely absent answers with the state that says so.
+	if !stored {
+		h.notFound(writer)
+
+		return
+	}
 	track, trackErr := h.state.ActivityTrack(request.Context(), targetID, id)
 	if trackErr != nil {
 		h.unavailable(writer)
 
 		return
 	}
-	if len(track) < 2 {
-		h.notFound(writer)
-
-		return
-	}
 
 	writer.Header().Set("Content-Type", "application/geo+json")
-	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track))
+	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track, recordsState))
 }
 
 // activityTrackFeature draws the Feature one track is served as: the line, the
-// box around it, and the altitudes beside it — null for a sample that recorded
-// none, the property absent only when no sample recorded one at all.
-func activityTrackFeature(track []activities.TrackPoint) activityTrackView {
+// box around it, and the altitudes beside it — null where a sample recorded
+// none, absent only when none did. A ride with no line carries only its state.
+func activityTrackFeature(track []activities.TrackPoint, state activities.RecordsState) activityTrackView {
+	if len(track) < 2 {
+		return activityTrackView{
+			Type:       "Feature",
+			Properties: activityTrackPropertyView{State: absentTrackState(state)},
+		}
+	}
 	coordinates := make([][2]float64, 0, len(track))
 	altitudes := make([]*float64, 0, len(track))
 	// One backing array for every altitude, rather than one allocation per sample.
@@ -126,15 +141,31 @@ func activityTrackFeature(track []activities.TrackPoint) activityTrackView {
 		south, north = min(south, point.Latitude), max(north, point.Latitude)
 	}
 	view := activityTrackView{
-		Type:     "Feature",
-		BBox:     []float64{west, south, east, north},
-		Geometry: trackLineStringView{Type: "LineString", Coordinates: coordinates},
+		Type:       "Feature",
+		BBox:       []float64{west, south, east, north},
+		Geometry:   &trackLineStringView{Type: "LineString", Coordinates: coordinates},
+		Properties: activityTrackPropertyView{State: trackStateStored},
 	}
 	if anyAltitude {
 		view.Properties.AltitudeMetres = altitudes
 	}
 
 	return view
+}
+
+// absentTrackState tells the three reasons a stored ride has no line apart: its
+// samples are still awaited, its file did not decode, or too few of them
+// carried a position to draw one.
+func absentTrackState(state activities.RecordsState) string {
+	switch state {
+	case activities.RecordsPending:
+		return trackStatePending
+	case activities.RecordsUnreadable:
+		return trackStateUnreadable
+	case activities.RecordsStored:
+	}
+
+	return trackStateEmpty
 }
 
 // activityWindow reads the requested window. An unset from is no lower bound

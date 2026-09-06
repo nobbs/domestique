@@ -470,11 +470,15 @@ The read-only JSON surface is small:
 - `GET /v1/activities/{activityId}/track` returns one activity's recorded track
   as a GeoJSON Feature: the positioned samples as a line, the box around them,
   and the altitude at each coordinate indexed 1:1 with them, `null` where that
-  sample recorded none. The altitudes are omitted entirely, never all null,
-  when no positioned sample recorded one, and nothing else the samples hold is
-  served. It is scoped exactly as the list
-  above is, and an activity with fewer than two positioned samples — one whose
-  samples are not stored yet among them — has no track and is `404`.
+  sample recorded none. The altitudes are omitted entirely, never all null, when
+  no positioned sample recorded one, and nothing else the samples hold is
+  served. It is scoped exactly as the list above is. An activity with fewer than
+  two positioned samples is served as an unlocated Feature — a null `geometry`
+  and no box — whose `properties.state` says why: `pending` for samples not
+  downloaded yet, `empty` for samples too few of which carried a position to
+  draw a line, and `unreadable` for a file that did not decode; a served line
+  carries `stored`. Only an activity of another target, or one this service
+  holds no summary for, is `404`.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.

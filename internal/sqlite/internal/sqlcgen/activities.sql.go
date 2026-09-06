@@ -64,6 +64,22 @@ func (q *Queries) DeleteActivitySkip(ctx context.Context, arg DeleteActivitySkip
 	return err
 }
 
+const getActivityRecordsState = `-- name: GetActivityRecordsState :one
+SELECT records_state FROM activities WHERE target_slot = ? AND workout_id = ?
+`
+
+type GetActivityRecordsStateParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) GetActivityRecordsState(ctx context.Context, arg GetActivityRecordsStateParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getActivityRecordsState, arg.TargetSlot, arg.WorkoutID)
+	var records_state string
+	err := row.Scan(&records_state)
+	return records_state, err
+}
+
 const insertActivityListing = `-- name: InsertActivityListing :exec
 INSERT INTO activity_listings (
   target_slot, workout_id, started_at_unix, workout_type_id, workout_type_location_id, read_at_unix

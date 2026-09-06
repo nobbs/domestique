@@ -191,6 +191,10 @@ type ActivityState interface {
 	// ActivityTrack lists the positioned samples of one target's activity, in
 	// the order they were recorded.
 	ActivityTrack(ctx context.Context, targetID string, id int64) ([]activities.TrackPoint, error)
+	// ActivityRecordsState reports how far one target's activity has got in
+	// storing its recorded samples, and whether that target has the activity at
+	// all.
+	ActivityRecordsState(ctx context.Context, targetID string, id int64) (activities.RecordsState, bool, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.

@@ -314,8 +314,11 @@ paths:
       description: >-
         One activity's recorded track, as a GeoJSON Feature. A caller reads
         only an activity of the target they own; an admin may name any target.
-        An activity of another target, and one with fewer than two positioned
-        samples, are both answered not found.
+        An activity with fewer than two positioned samples has a null geometry
+        and no box, and `properties.state` says why: its samples are not stored
+        yet, too few of them carried a position, or its file did not decode. An
+        activity of another target, and one this service has no summary for, are
+        both answered not found.
       parameters:
         - name: activityId
           in: path
@@ -331,7 +334,7 @@ paths:
             type: string
       responses:
         "200":
-          description: The activity's recorded track.
+          description: The activity's recorded track, or the state that explains its absence.
           content:
             application/geo+json:
               schema:
@@ -2271,7 +2274,6 @@ components:
       additionalProperties: false
       required:
         - type
-        - bbox
         - geometry
         - properties
       properties:
@@ -2286,13 +2288,24 @@ components:
             type: number
             format: double
         geometry:
-          $ref: '#/components/schemas/ActivityTrackLineString'
+          oneOf:
+            - $ref: '#/components/schemas/ActivityTrackLineString'
+            - type: 'null'
         properties:
           $ref: '#/components/schemas/ActivityTrackProperties'
     ActivityTrackProperties:
       type: object
       additionalProperties: false
+      required:
+        - state
       properties:
+        state:
+          type: string
+          enum:
+            - stored
+            - pending
+            - empty
+            - unreadable
         altitudeMetres:
           description: >-
             The altitude at each coordinate, indexed 1:1 with them; null where

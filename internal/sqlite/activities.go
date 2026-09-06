@@ -197,6 +197,25 @@ func (s *Store) ActivitiesBetween(
 	return stored, nil
 }
 
+// ActivityRecordsState is how far one target's activity has got in storing its
+// recorded samples. found is false when the target has no such activity, which
+// is what tells a missing ride from one whose samples are still awaited.
+func (s *Store) ActivityRecordsState(
+	ctx context.Context, targetID string, id int64,
+) (state activity.RecordsState, found bool, err error) {
+	stored, err := s.queries.GetActivityRecordsState(ctx, sqlcgen.GetActivityRecordsStateParams{
+		TargetSlot: targetID, WorkoutID: id,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("reading an activity records state: %w", err)
+	}
+
+	return activity.RecordsState(stored), true, nil
+}
+
 // ActivityTrack is the positioned samples of one target's activity, in the
 // order they were recorded. Records without a position are left out, so an
 // activity that never recorded one has an empty track.

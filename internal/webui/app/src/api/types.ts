@@ -2,6 +2,7 @@
 import {
   type Activity,
   type ActivityList,
+  type ActivityTrackPropertiesState,
   type AlertSetting,
   type BrowserBasemap,
   type Build,
@@ -99,11 +100,17 @@ export interface RouteSurface {
   matchedMetres: number;
 }
 
-/** One ride's recorded track, in the shape the map and profile already read. */
+/**
+ * One ride's recorded track, in the shape the map and profile already read.
+ * A ride with no line to draw arrives with none, and `state` says why.
+ */
 export interface ActivityTrack {
-  bbox: BoundingBox;
+  bbox?: BoundingBox | undefined;
   coordinates: Position[];
+  state: ActivityTrackState;
 }
+
+export type ActivityTrackState = ActivityTrackPropertiesState;
 
 /**
  * Folds the altitudes back into the positions they belong to, which is where
@@ -117,10 +124,15 @@ export function activityTrack(feature: GeneratedActivityTrack | ActivityTrack): 
     return feature;
   }
   const altitudes = feature.properties.altitudeMetres;
+  const geometry = feature.geometry;
+  if (geometry === null) {
+    return { coordinates: [], state: feature.properties.state };
+  }
 
   return {
     bbox: feature.bbox as BoundingBox,
-    coordinates: feature.geometry.coordinates.map(([longitude = 0, latitude = 0], index) => {
+    state: feature.properties.state,
+    coordinates: geometry.coordinates.map(([longitude = 0, latitude = 0], index) => {
       const altitude = altitudes?.[index];
 
       return altitude === undefined || altitude === null
