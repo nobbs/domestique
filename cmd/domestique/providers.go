@@ -68,15 +68,18 @@ func exchangedIdentityFrom(identity auth0.Identity) session.ExchangedIdentity {
 // credential's value.
 type webhookTokens struct{ settings *runtimeconfig.Current }
 
-// VerifyWahooWebhookToken compares in constant time, so a refusal costs the same
-// however much of the token was right. An unconfigured token verifies nothing.
+// VerifyWahooWebhookToken compares digests of a fixed length, so a refusal
+// costs the same however much of the token, or of its length, was right. An
+// unconfigured token verifies nothing.
 func (w webhookTokens) VerifyWahooWebhookToken(_ context.Context, presented string) (bool, error) {
 	configured := w.settings.Secret(runtimeconfig.SecretWahooWebhookToken)
 	if !configured.IsSet() {
 		return false, nil
 	}
+	expected := sha256.Sum256(configured.Bytes())
+	offered := sha256.Sum256([]byte(presented))
 
-	return subtle.ConstantTimeCompare(configured.Bytes(), []byte(presented)) == 1, nil
+	return subtle.ConstantTimeCompare(expected[:], offered[:]) == 1, nil
 }
 
 // targetIDsTimeout bounds the one local read targetIDs performs. A stuck read
