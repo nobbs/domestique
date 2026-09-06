@@ -57,6 +57,7 @@ vi.mock("react-map-gl/maplibre", () => ({
       triggerRepaint: () => {
         map.repaints += 1;
       },
+      getZoom: () => 14,
     },
   }),
 }));

@@ -124,8 +124,11 @@ export const STREAK_SECONDS = 0.8;
 /** Interleaved into the vertex buffer: mercator x, mercator y, alpha. */
 export const FLOATS_PER_VERTEX = 3;
 
-/** A streak is one line: the tail it has come from, then where it is now. */
-export const VERTICES_PER_STREAK = 2;
+/** A streak is a tapered wedge: a tail and two head corners, in two triangles. */
+export const VERTICES_PER_STREAK = 6;
+
+/** How wide a streak's head is drawn, the same for the corridor and the grid overlay. */
+export const STREAK_WIDTH_PIXELS = 2;
 
 /** How far off the road a static arrow stands, as a share of the core radius. */
 const ARROW_OFFSET_CORE_SHARE = 0.6;
@@ -370,6 +373,11 @@ export function mercatorXY(position: Position): [number, number] {
   ];
 }
 
+/** One screen pixel in the 0..1 world square, for a 512 px tile. */
+export function mercatorPerPixelAt(zoom: number): number {
+  return 1 / (512 * 2 ** zoom);
+}
+
 /** How far out the corridor still says anything, and so where a particle dies. */
 export function edgeMetresOf(geometry: FieldGeometry): number {
   return corridorRadii(geometry.metresPerCell).edgeMetres;
@@ -504,20 +512,68 @@ export function advanceField(
 }
 
 /**
- * The field written into the vertex buffer the layer draws: a tail vertex at
- * nothing and a head vertex at the streak's own strength, per particle.
+ * A tapered wedge for one streak, written straight into the buffer: a tail
+ * vertex at alpha 0 and two head corners at `alpha`, in two triangles sharing
+ * the tail. Shared by `writeStreaks` and `writeGridStreaks` so the corridor
+ * field and the weather overlay draw the identical shape.
+ */
+export function writeWedge(
+  into: Float32Array,
+  at: number,
+  tailX: number,
+  tailY: number,
+  headX: number,
+  headY: number,
+  alpha: number,
+  halfWidth: number,
+): void {
+  const length = Math.hypot(headX - tailX, headY - tailY) || 1;
+  const acrossX = (-(headY - tailY) / length) * halfWidth;
+  const acrossY = ((headX - tailX) / length) * halfWidth;
+  const headLeftX = headX + acrossX;
+  const headLeftY = headY + acrossY;
+  const headRightX = headX - acrossX;
+  const headRightY = headY - acrossY;
+  into[at] = tailX;
+  into[at + 1] = tailY;
+  into[at + 2] = 0;
+  into[at + 3] = headLeftX;
+  into[at + 4] = headLeftY;
+  into[at + 5] = alpha;
+  into[at + 6] = headRightX;
+  into[at + 7] = headRightY;
+  into[at + 8] = alpha;
+  into[at + 9] = tailX;
+  into[at + 10] = tailY;
+  into[at + 11] = 0;
+  into[at + 12] = headRightX;
+  into[at + 13] = headRightY;
+  into[at + 14] = alpha;
+  into[at + 15] = headLeftX;
+  into[at + 16] = headLeftY;
+  into[at + 17] = alpha;
+}
+
+/**
+ * The field written into the vertex buffer the layer draws: a tapered wedge
+ * per particle, the same shape `writeGridStreaks` draws for the weather
+ * overlay.
  *
  * Returns how many vertices were written, which is what the draw call is given
  * — a particle with no reading to drift on is left out rather than drawn still.
  * The tail is computed from the velocity rather than remembered from the last
- * frame, so a respawned particle never draws a line across the map.
+ * frame, so a respawned particle never draws a wedge across the map.
+ * `mercatorPerPixel` is the world square's own size of one screen pixel, which
+ * is what the wedge's width is measured in.
  */
 export function writeStreaks(
   particles: FieldParticle[],
   geometry: FieldGeometry,
   into: Float32Array,
+  mercatorPerPixel: number,
 ): number {
   const { coordinates, distances, metresPerCell } = geometry;
+  const halfWidth = (STREAK_WIDTH_PIXELS / 2) * mercatorPerPixel;
   let written = 0;
   for (const particle of particles) {
     if (written + VERTICES_PER_STREAK > into.length / FLOATS_PER_VERTEX) {
@@ -536,13 +592,7 @@ export function writeStreaks(
     const alpha = streakAlpha(particle, metresPerCell);
     const [tailX, tailY] = mercatorXY(tail);
     const [headX, headY] = mercatorXY(head);
-    const at = written * FLOATS_PER_VERTEX;
-    into[at] = tailX;
-    into[at + 1] = tailY;
-    into[at + 2] = 0;
-    into[at + 3] = headX;
-    into[at + 4] = headY;
-    into[at + 5] = alpha;
+    writeWedge(into, written * FLOATS_PER_VERTEX, tailX, tailY, headX, headY, alpha, halfWidth);
     written += VERTICES_PER_STREAK;
   }
 
