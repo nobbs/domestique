@@ -836,7 +836,7 @@ account's listing itself carries is stored from it, at no further request; the
 rest are requested one at a time, oldest first, as many as fit the Wahoo
 application's five-minute window of twenty-five requests beside the listing
 requests the poll itself made, because that window, and the hourly and daily
-ones beyond it, is shared with every target's reconciliation; a longer history
+ones beyond it, are shared with every target's reconciliation; a longer history
 fills in over successive polls rather than spending the window at once. A poll
 that fails part way keeps what it already stored.
 
