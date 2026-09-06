@@ -160,6 +160,8 @@ type Store interface {
 // can hold.
 type listingStore interface {
 	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
+	// ActivityStored reports one activity's presence without listing the rest.
+	ActivityStored(ctx context.Context, targetID string, id int64) (bool, error)
 	// ActivityListings are the activities the account holds, oldest first, as
 	// the last full reading of it left them, and when that reading was taken.
 	// The order is what a poll fills from; it does not sort them again.

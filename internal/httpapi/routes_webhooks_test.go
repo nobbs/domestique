@@ -321,6 +321,31 @@ func TestWahooWebhookIsNotFoundWithoutAVerifier(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, response.Code)
 }
 
+// A body is one notification and nothing after it.
+func TestWahooWebhookRefusesTrailingData(t *testing.T) {
+	handler, tasks, _, _ := newWebhookHandler(t)
+	body := webhookBody(t, testWebhookToken, eventWorkoutSummary, testWahooUserID)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, webhookRequest(t, body+" {}"))
+
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	assert.Empty(t, tasks.asked)
+}
+
+// A user id that names nobody is answered like a stranger, before any state is read.
+func TestWahooWebhookIgnoresANonPositiveUser(t *testing.T) {
+	handler, tasks, _, state := newWebhookHandler(t)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, webhookRequest(t,
+		webhookBody(t, testWebhookToken, eventWorkoutSummary, "0")))
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Empty(t, tasks.asked)
+	assert.Empty(t, state.wahooLookups, "state was read for a user that names nobody")
+}
+
 // Until an operator stores the token there is nothing to verify against, so
 // there is no receiver either: not found, never a 401 that invites a guess.
 func TestWahooWebhookIsNotFoundUntilATokenIsStored(t *testing.T) {

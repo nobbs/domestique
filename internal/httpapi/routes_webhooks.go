@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -51,7 +52,9 @@ func (h *Handler) ReceiveWahooWebhook(writer http.ResponseWriter, request *http.
 		return
 	}
 	var event wahooWebhookEvent
-	if err := json.NewDecoder(request.Body).Decode(&event); err != nil {
+	decoder := json.NewDecoder(request.Body)
+	// One document and nothing after it: a second one is not a notification.
+	if err := decoder.Decode(&event); err != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		h.error(writer, http.StatusBadRequest, "invalid_request", "the request body is not a webhook notification")
 
 		return
@@ -78,6 +81,12 @@ func (h *Handler) ReceiveWahooWebhook(writer http.ResponseWriter, request *http.
 	// not what this notification bought.
 	if event.WorkoutSummary.Workout.ID <= 0 {
 		slog.Info("wahoo webhook ignored", "reason", "no_workout")
+		writer.WriteHeader(http.StatusOK)
+
+		return
+	}
+	if event.User.ID <= 0 {
+		slog.Info("wahoo webhook ignored", "reason", "unknown_user")
 		writer.WriteHeader(http.StatusOK)
 
 		return

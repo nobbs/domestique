@@ -2469,6 +2469,7 @@ type fakeState struct {
 	targets              []fakeTarget
 	wahooUsers           map[string]string
 	wahooUserErr         error
+	wahooLookups         []string
 	history              []recordedRun
 	taskHistory          []recordedTaskRun
 	coordinates          json.RawMessage
@@ -2551,6 +2552,7 @@ func (s *fakeState) ActivityTrack(
 func (s *fakeState) TargetByWahooUser(
 	_ context.Context, wahooUserID string,
 ) (targetID string, found bool, err error) {
+	s.wahooLookups = append(s.wahooLookups, wahooUserID)
 	if s.wahooUserErr != nil {
 		return "", false, s.wahooUserErr
 	}

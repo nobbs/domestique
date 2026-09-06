@@ -11,6 +11,22 @@ import (
 	"strings"
 )
 
+const activityExists = `-- name: ActivityExists :one
+SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ?)
+`
+
+type ActivityExistsParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) ActivityExists(ctx context.Context, arg ActivityExistsParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, activityExists, arg.TargetSlot, arg.WorkoutID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const deleteActivityListings = `-- name: DeleteActivityListings :exec
 DELETE FROM activity_listings WHERE target_slot = ?
 `

@@ -68,11 +68,11 @@ type storeOutcome struct {
 func (p *Poller) recordActivity(
 	ctx context.Context, targetID, accessToken string, listing Listing,
 ) (storeOutcome, Failure) {
-	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
-	if knownErr != nil {
+	stored, storedErr := p.store.ActivityStored(ctx, targetID, listing.ID)
+	if storedErr != nil {
 		return storeOutcome{}, FailureState
 	}
-	if slices.Contains(known, listing.ID) {
+	if stored {
 		return storeOutcome{}, FailureNone
 	}
 

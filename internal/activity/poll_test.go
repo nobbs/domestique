@@ -1081,6 +1081,10 @@ func (s *fakeStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, erro
 	return s.known, s.knownErr
 }
 
+func (s *fakeStore) ActivityStored(_ context.Context, _ string, id int64) (bool, error) {
+	return slices.Contains(s.known, id), s.knownErr
+}
+
 func (s *fakeStore) ActivityListings(_ context.Context, _ string) ([]Listing, time.Time, error) {
 	return slices.Clone(s.listings), s.readAt, s.listingsErr
 }
