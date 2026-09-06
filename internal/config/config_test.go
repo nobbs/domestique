@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,18 @@ func TestLoadUsesFileSecretsAndDefaults(t *testing.T) {
 
 	assert.Equal(t, key, settings.State.EncryptionKey(), "State.EncryptionKey()")
 	assert.Equal(t, testBrowserOriginURL, settings.HTTP.BrowserOriginURL, "HTTP.BrowserOriginURL")
+	assert.Equal(t, slog.LevelInfo, settings.Log.Level, "Log.Level")
+}
+
+func TestLoadReadsTheLogLevelFromTheEnvironment(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[log]\nlevel = \"warn\"\n")
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"LOG__LEVEL", "debug")
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, slog.LevelDebug, settings.Log.Level, "Log.Level")
 }
 
 // The origin is the gate every state-changing request is checked against, and
@@ -106,6 +119,14 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		mutate func(t *testing.T, path string)
 		want   string
 	}{
+		{
+			name: "an unknown log level",
+			mutate: func(t *testing.T, path string) {
+				t.Helper()
+				appendToFile(t, path, "\n[log]\nlevel = \"loud\"\n")
+			},
+			want: "log.level",
+		},
 		{
 			name: "literal TOML secret",
 			mutate: func(t *testing.T, path string) {
