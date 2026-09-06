@@ -620,6 +620,10 @@ export type SettingsStoredResponse = Settings;
  */
 export type ProviderUnavailableResponse = Error;
 
+export type WeatherGridReferenceTimeParameter = string;
+
+export type WeatherGridValidTimeParameter = string;
+
 export type GetTaskRunsParams = {
   /**
    * Narrows the page to one registered task. A name this build does not register is refused rather than answered with an empty page.
@@ -667,8 +671,8 @@ export type GetWeatherParams = {
 };
 
 export type GetWeatherGridObjectParams = {
-  referenceTime: string;
-  validTime: string;
+  referenceTime: WeatherGridReferenceTimeParameter;
+  validTime: WeatherGridValidTimeParameter;
 };
 
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
@@ -4770,7 +4774,7 @@ export const getGetWeatherGridObjectUrl = (params: GetWeatherGridObjectParams) =
 };
 
 /**
- * Relays one .om file's bytes for the run named by referenceTime and the hour named by validTime, or answers a HEAD. The browser's own reader decides which byte ranges it needs and asks for them with its own Range header, which this operation forwards unchanged.
+ * Relays one .om file's bytes for the run named by referenceTime and the hour named by validTime. The browser's own reader decides which byte ranges it needs and asks for them with its own Range header, which this operation forwards unchanged.
  */
 export const getWeatherGridObject = async (
   params: GetWeatherGridObjectParams,
