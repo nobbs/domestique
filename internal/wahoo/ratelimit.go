@@ -66,7 +66,9 @@ func (c *Client) restoreQuota(ctx context.Context) {
 		return
 	}
 	c.quotaRestored = true
-	loadCtx, cancel := context.WithTimeout(ctx, quotaStoreTimeout)
+	// Once only, so the request that happens to come first must not take the
+	// restore down with it when it is cancelled; its values still travel.
+	loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), quotaStoreTimeout)
 	defer cancel()
 	quota, found, err := c.quotaStore.LoadQuota(loadCtx)
 	if err != nil {

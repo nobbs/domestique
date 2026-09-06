@@ -22,7 +22,10 @@ type fakeQuotaStore struct {
 	found   bool
 }
 
-func (s *fakeQuotaStore) LoadQuota(context.Context) (Quota, bool, error) {
+func (s *fakeQuotaStore) LoadQuota(ctx context.Context) (Quota, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return Quota{}, false, err
+	}
 	if s.loadErr != nil {
 		return Quota{}, false, s.loadErr
 	}
@@ -55,6 +58,27 @@ func TestClientWaitsOutAStoredQuotaAfterARestart(t *testing.T) {
 	_, err := client.AuthenticatedUser(t.Context(), "access-token")
 	require.NoError(t, err)
 	assert.Equal(t, time.Minute, *waited, "the stored quota was not waited out")
+}
+
+// The restore happens once, so the first request's own cancellation must not
+// be the reason the stored window is never read for the rest of the process.
+func TestClientRestoresTheQuotaEvenWhenTheFirstRequestIsCancelled(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 7, 0, 0, 0, time.UTC)
+	store := &fakeQuotaStore{found: true, quota: Quota{
+		ObservedAt: now.Add(-time.Minute),
+		ExpiresAt:  now.Add(4 * time.Minute),
+		NotBefore:  now.Add(time.Minute),
+	}}
+	client, waited := quotaTestClient(t, store, &now)
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err := client.AuthenticatedUser(cancelled, "access-token")
+	require.Error(t, err, "a cancelled request must not succeed")
+
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err)
+	assert.Equal(t, time.Minute, *waited, "the stored quota was lost to the first request's cancellation")
 }
 
 // The round trip a restart is: one client spends a window and records it, the
