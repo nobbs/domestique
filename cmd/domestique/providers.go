@@ -303,6 +303,10 @@ func activityListings(workouts []wahoo.Workout) []activity.Listing {
 			LocationID: workout.WorkoutTypeLocationID,
 			Starts:     workout.Starts,
 		}
+		if workout.Summary != nil {
+			summary := activitySummaryOf(*workout.Summary)
+			listings[index].Summary = &summary
+		}
 	}
 
 	return listings

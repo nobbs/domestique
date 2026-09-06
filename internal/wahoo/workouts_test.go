@@ -451,3 +451,61 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return f(request)
 }
+
+// A listing entry carries the same summary document the sub-resource answers
+// with, so a poll that reads it from the listing stores exactly what a request
+// for it would have; an entry without one, or with one that is not a summary,
+// carries nothing and leaves the poll to ask for it.
+func TestClientReadsTheSummaryAListingCarries(t *testing.T) {
+	document := map[string]any{
+		"id":                    42,
+		"file":                  map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"},
+		"distance_accum":        "1234.5",
+		"duration_active_accum": "3600.0",
+		"duration_total_accum":  3900,
+		"ascent_accum":          "120.25",
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v1/workouts/42/workout_summary" {
+			writeJSON(t, writer, document)
+
+			return
+		}
+		writeJSON(t, writer, map[string]any{
+			"workouts": []map[string]any{
+				{"id": 42, "workout_type_id": 15, "workout_summary": document},
+				{"id": 43, "workout_type_id": 15, "workout_summary": nil},
+				{"id": 44, "workout_type_id": 15},
+				{"id": 45, "workout_type_id": 15, "workout_summary": map[string]any{"file": nil}},
+				{"id": 46, "workout_type_id": 15, "workout_summary": map[string]any{
+					"id": 46, "file": map[string]string{"url": "https://cdn.wahooligan.com/workouts/46.fit"},
+					"distance_accum": "1", "duration_active_accum": "2", "duration_total_accum": "3",
+				}},
+				{"id": 47, "workout_type_id": 15, "workout_summary": map[string]any{
+					"id": 47, "file": map[string]string{"url": "https://cdn.wahooligan.com/workouts/47.fit"},
+					"distance_accum": "1", "duration_active_accum": "2", "duration_total_accum": "3", "ascent_accum": nil,
+				}},
+			},
+			"total": 6, "page": 1, "per_page": 100,
+		})
+	}))
+	defer server.Close()
+	client := newTestClient(t, server)
+
+	workouts, err := client.ListWorkouts(t.Context(), "access-token")
+	require.NoError(t, err)
+	require.Len(t, workouts, 6)
+	require.NotNil(t, workouts[0].Summary, "the listing's summary was dropped")
+	requested, err := client.WorkoutSummary(t.Context(), "access-token", 42)
+	require.NoError(t, err)
+	assert.Equal(t, requested, *workouts[0].Summary, "the listing's summary differs from the sub-resource's")
+	assert.JSONEq(t, string(requested.Raw), string(workouts[0].Summary.Raw))
+	assert.Nil(t, workouts[1].Summary, "a null summary was read as one")
+	assert.Nil(t, workouts[2].Summary, "an absent summary was read as one")
+	assert.Nil(t, workouts[3].Summary, "an incomplete summary was read as one")
+	assert.Nil(t, workouts[4].Summary, "a summary missing one total was read as one")
+	// A null total is Wahoo's zero, as the sub-resource reads it (see
+	// TestClientReadsWorkoutSummaryTotalsWahooSendsAsStrings).
+	require.NotNil(t, workouts[5].Summary, "a summary with a null total was refused")
+	assert.Zero(t, workouts[5].Summary.AscentMetres)
+}

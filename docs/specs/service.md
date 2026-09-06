@@ -831,11 +831,13 @@ routes are, and is served only to the subject that owns that target or to an
 admin.
 
 Polling only adds. An activity the account no longer lists is never removed,
-and a summary read again replaces the row it already had. One poll reads at
-most twenty-five summaries, oldest first, because the Wahoo application's daily
-request budget is shared with every target's reconciliation; a longer history
-fills in over successive polls rather than spending the day's quota at once. A
-poll that fails part way keeps what it already stored.
+and a summary read again replaces the row it already had. A summary the
+account's listing itself carries is stored from it, at no further request; one
+poll requests at most twenty-five of the rest one at a time, oldest first,
+because the Wahoo application's daily request budget is shared with every
+target's reconciliation; a longer history fills in over successive polls rather
+than spending the day's quota at once. A poll that fails part way keeps what it
+already stored.
 
 Those summaries are chosen from the account's list as the service last read it
 in full, which it keeps rather than re-derives. A poll with a reading less than
