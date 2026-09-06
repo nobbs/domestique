@@ -173,3 +173,43 @@ func TestActivitySummaryOfCopiesEveryTotal(t *testing.T) {
 		AscentMetres:   120.25,
 	}, summary)
 }
+
+// wahooQuotaStore is the one place the Wahoo client and the state store meet,
+// so what it must not lose is every field of a reading, in both directions.
+func TestWahooQuotaStoreRoundTripsAReading(t *testing.T) {
+	t.Parallel()
+
+	quotas := wahooQuotaStore{store: testStore(t, t.TempDir())}
+	observedAt := time.Date(2026, time.September, 6, 7, 0, 0, 0, time.UTC)
+	quota := wahoo.Quota{
+		ObservedAt: observedAt,
+		ExpiresAt:  observedAt.Add(5 * time.Minute),
+		ResetAt:    observedAt.Add(2 * time.Minute),
+		NotBefore:  observedAt.Add(2 * time.Minute),
+		Remaining:  17,
+	}
+
+	_, found, err := quotas.LoadQuota(t.Context())
+	require.NoError(t, err, "LoadQuota()")
+	require.False(t, found, "a quota was reported before one was stored")
+
+	require.NoError(t, quotas.SaveQuota(t.Context(), &quota), "SaveQuota()")
+	loaded, found, err := quotas.LoadQuota(t.Context())
+	require.NoError(t, err, "LoadQuota()")
+	require.True(t, found, "the stored quota is not readable")
+	assert.Equal(t, quota, loaded)
+}
+
+func TestWahooQuotaStoreReportsAnUnusableStore(t *testing.T) {
+	t.Parallel()
+
+	store := testStore(t, t.TempDir())
+	quotas := wahooQuotaStore{store: store}
+	require.NoError(t, store.Close(), "Close()")
+
+	_, _, err := quotas.LoadQuota(t.Context())
+	require.Error(t, err, "LoadQuota() on a closed store")
+	require.Error(t, quotas.SaveQuota(t.Context(), &wahoo.Quota{
+		ObservedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+	}), "SaveQuota() on a closed store")
+}

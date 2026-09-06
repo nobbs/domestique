@@ -106,22 +106,29 @@ describe("TargetConvergenceCard", () => {
   });
 
   // The quota is Wahoo's own live reading, not a guess this page fabricates
-  // before the service has ever spoken to Wahoo.
-  it("says nothing about the Wahoo quota until one has been observed", () => {
+  // before the service has ever spoken to Wahoo. Saying so is the point: an
+  // absent quota must not be readable as a healthy one.
+  it("says no quota has been observed rather than staying silent", () => {
     renderConvergence(status(true, [target()]));
 
     expect(screen.queryByText(/requests left/)).not.toBeInTheDocument();
+    expect(screen.getByText(/No request has reported Wahoo's quota yet\./)).toBeInTheDocument();
   });
 
-  it("reports the live Wahoo quota once observed", () => {
+  it("reports the live Wahoo quota once observed, and when it was read", () => {
     const value = status(true, [target()]);
-    value.sync.wahooRateLimit = { remaining: 187, resetsAt: "2026-08-23T12:00:00Z" };
+    value.sync.wahooRateLimit = {
+      remaining: 187,
+      resetsAt: "2026-08-23T12:00:00Z",
+      observedAt: "2026-08-23T11:55:00Z",
+    };
     renderConvergence(value);
 
     expect(
       screen.getByText(/Wahoo has 187 requests left, shared by every target here\./),
     ).toBeInTheDocument();
     expect(screen.getByText(/Resets /)).toBeInTheDocument();
+    expect(screen.getByText(/Observed /)).toBeInTheDocument();
   });
 
   it("says a target is waiting to be connected rather than merely behind", () => {

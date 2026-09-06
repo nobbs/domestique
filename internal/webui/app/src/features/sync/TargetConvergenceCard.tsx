@@ -136,8 +136,8 @@ export function TargetConvergenceCard() {
       {/*
        * Wahoo's own live reading, not a count this service keeps itself: the
        * quota is shared across every configured target, so nothing local
-       * could total it correctly on its own. Absent until a request has
-       * actually reached Wahoo and reported one.
+       * could total it correctly on its own. It survives a restart while the
+       * reading is still live, and says when it was read.
        */}
       {data.sync.wahooRateLimit ? (
         <p className="text-sm text-[var(--ink-2)]">
@@ -146,8 +146,11 @@ export function TargetConvergenceCard() {
           {data.sync.wahooRateLimit.resetsAt
             ? ` Resets ${formatTimestamp(data.sync.wahooRateLimit.resetsAt)}.`
             : null}
+          {` Observed ${formatTimestamp(data.sync.wahooRateLimit.observedAt)}.`}
         </p>
-      ) : null}
+      ) : (
+        <p className="text-sm text-[var(--ink-2)]">No request has reported Wahoo's quota yet.</p>
+      )}
       {reconcile.isError ? (
         <p className="text-sm text-[var(--alert)]" role="alert">
           {reconcile.error instanceof Error && reconcile.error.message

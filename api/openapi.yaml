@@ -1462,10 +1462,14 @@ components:
       additionalProperties: false
       required:
         - remaining
+        - observedAt
       properties:
         remaining:
           type: integer
         resetsAt:
+          type: string
+          format: date-time
+        observedAt:
           type: string
           format: date-time
     TrustedInventory:

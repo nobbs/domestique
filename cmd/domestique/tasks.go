@@ -605,7 +605,7 @@ type syncReporter interface {
 func syncSurface(
 	tasks taskStarter,
 	reporter syncReporter,
-	rateLimit func() (int, time.Time, bool),
+	rateLimit func() (int, time.Time, time.Time, bool),
 ) httpapi.SyncFuncs {
 	return httpapi.SyncFuncs{
 		// Two halves of one answer: the reporter knows which half is in flight,

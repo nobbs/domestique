@@ -523,6 +523,11 @@ them being a secret. The state database is intentionally not backed up. Changing
 the state key makes the existing encrypted state unreadable, and key rotation is
 not a feature.
 
+The request quota Wahoo last advertised is runtime state of the same kind. It is
+stored with the instant it expires, so a restart resumes with a window it already
+found spent; a reading past its expiry is discarded rather than honoured, and a
+lost database only means the next request finds the quota out again.
+
 Browser sessions are the same kind of runtime state: `web_sessions` lives in
 the same database and shares its fate. A lost database signs every subject
 out, the same way it returns every runtime setting to its seed — a sign-in

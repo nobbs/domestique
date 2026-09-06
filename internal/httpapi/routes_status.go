@@ -181,10 +181,11 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		Classified: classified, Total: total, Incomplete: h.syncRuns.SurfaceIncomplete(),
 		EnrichmentFailures: enrichmentFailures,
 	}
-	if remaining, resetAt, known := h.syncRuns.RateLimit(); known {
+	if remaining, resetAt, observedAt, known := h.syncRuns.RateLimit(); known {
 		view.Sync.WahooRateLimit = &openapi.WahooRateLimit{
-			Remaining: remaining,
-			ResetsAt:  optionalTime(resetAt),
+			Remaining:  remaining,
+			ResetsAt:   optionalTime(resetAt),
+			ObservedAt: observedAt,
 		}
 	}
 	if h.surfaceIndex != nil {

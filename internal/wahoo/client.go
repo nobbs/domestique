@@ -32,6 +32,11 @@ const (
 	// each stage as it succeeds, so the next run resumes from stored state.
 	maximumRateLimitWait = 90 * time.Second
 
+	// quotaStoreTimeout bounds a read or write of the stored quota. A store that
+	// is slow or broken degrades to the in-memory behaviour rather than holding
+	// a request open.
+	quotaStoreTimeout = 2 * time.Second
+
 	// maximumPatientRateLimitWait is the same bound for an operation somebody is
 	// waiting on directly. Clearing a target is the only one: it is finished only
 	// when the target is empty. It exceeds the smallest advertised window, so one
@@ -50,6 +55,7 @@ var (
 // Options configures a Wahoo API client with resolved OAuth credentials.
 type Options struct {
 	Transport    http.RoundTripper
+	QuotaStore   QuotaStore
 	APIBaseURL   string
 	OAuthBaseURL string
 	ClientID     string
@@ -62,6 +68,8 @@ type Options struct {
 type Client struct {
 	rateLimitResetAt   time.Time
 	notBefore          time.Time
+	quotaObservedAt    time.Time
+	quotaStore         QuotaStore
 	client             *http.Client
 	apiBaseURL         *url.URL
 	oauthBaseURL       *url.URL
@@ -70,10 +78,12 @@ type Client struct {
 	oauth              *oauth2.Config
 	oauthClient        *http.Client
 	held               map[string]heldToken
+	savedQuota         Quota
 	rateLimitRemaining int
 	mutex              sync.Mutex
 	tokenMutex         sync.Mutex
 	rateLimitKnown     bool
+	quotaRestored      bool
 }
 
 // heldToken is one account's access token, kept only for as long as Wahoo says

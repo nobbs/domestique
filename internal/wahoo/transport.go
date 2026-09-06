@@ -53,6 +53,7 @@ func New(options *Options) (*Client, error) {
 		},
 		apiBaseURL:   apiBaseURL,
 		oauthBaseURL: oauthBaseURL,
+		quotaStore:   options.QuotaStore,
 		now:          time.Now,
 		wait:         waitFor,
 	}
@@ -127,6 +128,7 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	c.restoreQuota(request.Context())
 	if waitFor := c.notBefore.Sub(c.now()); waitFor > 0 {
 		if waitFor > waitBudget(request.Context()) {
 			return ErrRateLimited
@@ -152,7 +154,7 @@ func (c *Client) doJSON(request *http.Request, output any) (err error) {
 		err = errors.Join(err, response.Body.Close())
 	}()
 
-	c.observeRateLimit(response)
+	c.observeRateLimit(request.Context(), response)
 	// A rejected data request says nothing about the refresh token, which the
 	// token endpoint alone judges (classifyTokenError); a 401 here is upstream.
 	if response.StatusCode == http.StatusTooManyRequests {
