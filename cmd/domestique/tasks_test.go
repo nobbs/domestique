@@ -851,6 +851,31 @@ func TestRideModelCalibrateStoresAFittedPairAndReloadsThePredictor(t *testing.T)
 	require.Len(t, corpus.stored, 1, "stored pairs")
 	assert.InDelta(t, 150.0, corpus.stored[0].SecondsPerKM, 1e-6, "seconds per km")
 	assert.Equal(t, 1, model.reloads, "reloads")
+	assert.Equal(t, []time.Time{calibrationClock().AddDate(0, -ridemodel.TrainingWindowMonths, 0)}, corpus.read,
+		"a corpus that fills its window is read once, bounded to it")
+}
+
+// A rider whose last year is thin is fit from further back rather than never,
+// so the window being too thin costs a second read instead of the calibration.
+func TestRideModelCalibrateReadsPastTheWindowWhenItIsThin(t *testing.T) {
+	t.Parallel()
+
+	rides := calibrationRides(14)
+	for index := range rides[:10] {
+		rides[index].StartedAt = rides[index].StartedAt.AddDate(-2, 0, 0)
+	}
+	corpus := &fakeRideCorpus{rides: rides}
+	model := &fakeCoefficients{inForce: "an-older-pair"}
+	definition := rideModelCalibrateTask(corpus, model, allEnabled, calibrationClock)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskRideModelCalibrate})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	require.Len(t, corpus.read, 2, "the window was not read before all history")
+	assert.True(t, corpus.read[1].IsZero(), "the second read is not bounded")
+	require.Len(t, corpus.stored, 1, "stored pairs")
+	assert.Equal(t, ridemodel.MinRides, corpus.stored[0].EvaluatedRides, "evaluated rides")
+	assert.Greater(t, corpus.stored[0].TrainingWindowMonths, ridemodel.TrainingWindowMonths,
+		"the stored window states the reach the fit really needed")
 }
 
 // The pair already in force is the pair predictions are cached against, so
@@ -889,6 +914,12 @@ func TestRideModelCalibrateReportsWhyItDeclined(t *testing.T) {
 		},
 		"unreadable corpus": {
 			corpus:  &fakeRideCorpus{readErr: errors.New("no")},
+			outcome: task.Failed, detail: detailModelState,
+		},
+		"corpus unreadable past the window": {
+			corpus: &fakeRideCorpus{
+				rides: calibrationRides(ridemodel.MinRides - 1), pastWindowErr: errors.New("no"),
+			},
 			outcome: task.Failed, detail: detailModelState,
 		},
 		"unwritable corpus": {
@@ -959,14 +990,32 @@ func flatRides(count int) []ridemodel.Ride {
 }
 
 type fakeRideCorpus struct {
-	readErr  error
-	storeErr error
-	rides    []ridemodel.Ride
-	stored   []ridemodel.Coefficients
+	readErr       error
+	pastWindowErr error
+	storeErr      error
+	rides         []ridemodel.Ride
+	read          []time.Time
+	stored        []ridemodel.Coefficients
 }
 
-func (c *fakeRideCorpus) ActivityRides(context.Context) ([]ridemodel.Ride, error) {
-	return c.rides, c.readErr
+// The bound is honoured rather than recorded only, so a calibration that reads
+// past its own window is the reason a thin corpus still fits.
+func (c *fakeRideCorpus) ActivityRides(_ context.Context, since time.Time) ([]ridemodel.Ride, error) {
+	c.read = append(c.read, since)
+	if c.readErr != nil {
+		return nil, c.readErr
+	}
+	if len(c.read) > 1 && c.pastWindowErr != nil {
+		return nil, c.pastWindowErr
+	}
+	rides := make([]ridemodel.Ride, 0, len(c.rides))
+	for _, ride := range c.rides {
+		if !ride.StartedAt.Before(since) {
+			rides = append(rides, ride)
+		}
+	}
+
+	return rides, nil
 }
 
 //nolint:gocritic // value param: matches the store's own signature.

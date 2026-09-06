@@ -469,13 +469,17 @@ fitted on. Those per-fold errors are pooled into the four fields. The
 coefficients themselves are fit over the newest window, including the rides the
 last folds scored.
 
-`training_window_months` is how far back that fit was allowed to reach;
+`training_window_months` is how far back that fit really reached;
 `calibration_cutoff` is where it stopped. The two together state which rides
-produced the pair. Zero months means a fit over all history. The window is a
-bound rather than a guillotine: the fit reaches further back when a window
-holds too few rides to fit from, so a quiet season narrows the training set
-instead of emptying it. Twelve months is the usual choice, the shortest span
-covering a full year of weather and daylight.
+produced the pair. Zero months means a fit over all history, which only a pair
+predating the window can carry. The weekly calibration reaches back twelve
+months — the shortest span covering a full year of weather and daylight, and
+short enough that a rider whose form has durably changed is priced as they ride
+now rather than against every season pooled together. The window is a bound
+rather than a guillotine: one holding too few rides to fit from extends back to
+the minimum number of rides instead, so a rider who has ridden for less than a
+year, or only occasionally, still gets a fit. A pair fitted from an extended
+window records the months it really reached, not the twelve it asked for.
 
 The equation itself is versioned in code rather than stored beside the pair,
 and a change to it invalidates a cached prediction even when the pair is
