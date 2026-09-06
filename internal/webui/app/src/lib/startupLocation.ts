@@ -11,7 +11,10 @@
 import { useEffect, useState } from "react";
 import type { BoundingBox } from "../api/types";
 
-/** How close the camera may come when framing the rider's own position. */
+/**
+ * The zoom a rider's own position is shown at: the closest the startup framing
+ * comes, and the least the locate button zooms in to.
+ */
 export const LOCATION_ZOOM = 12;
 
 /** `[longitude, latitude]` once the browser answers; null while waiting, denied, unavailable, or timed out. */
@@ -19,11 +22,12 @@ export function useStartupLocation(enabled: boolean): [number, number] | null {
   const [position, setPosition] = useState<[number, number] | null>(null);
 
   useEffect(() => {
-    if (!enabled || typeof navigator === "undefined" || !("geolocation" in navigator)) {
+    const geolocation = typeof navigator === "undefined" ? undefined : navigator.geolocation;
+    if (!enabled || typeof geolocation?.getCurrentPosition !== "function") {
       return;
     }
     let cancelled = false;
-    navigator.geolocation.getCurrentPosition(
+    geolocation.getCurrentPosition(
       ({ coords }) => {
         if (!cancelled) {
           setPosition([coords.longitude, coords.latitude]);

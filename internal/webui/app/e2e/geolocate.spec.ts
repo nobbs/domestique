@@ -72,8 +72,10 @@ function geolocationCalls(page: Page): Promise<string[]> {
 test.describe("granted", () => {
   test.use({ permissions: ["geolocation"], geolocation: READER_POSITION });
 
+  // Opened on a route rather than the library, which now frames the granted
+  // position itself as it opens: from there the button has nowhere to jump.
   test("jumps the camera to the granted position", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     const before = await cameraScreenshot(page);
 
     await locateButton(page).click();
@@ -84,7 +86,7 @@ test.describe("granted", () => {
   });
 
   test("answers the keyboard the same way it answers a click", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     const before = await cameraScreenshot(page);
 
     await locateButton(page).focus();
