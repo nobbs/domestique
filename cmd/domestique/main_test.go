@@ -203,6 +203,7 @@ func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing
 		"ListActivities":            func() error { _, _, err := provider.ListActivities(t.Context(), "token"); return err },
 		"ActivityListingHead":       func() error { _, _, err := provider.ActivityListingHead(t.Context(), "token"); return err },
 		"ActivitySummary":           func() error { _, err := provider.ActivitySummary(t.Context(), "token", 42); return err },
+		"Activity":                  func() error { _, err := provider.Activity(t.Context(), "token", 42); return err },
 	}
 	for name, call := range calls {
 		require.ErrorIs(t, call(), errNotConfigured, name)

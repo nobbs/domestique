@@ -335,6 +335,21 @@ func activityListings(workouts []wahoo.Workout) []activity.Listing {
 	return listings
 }
 
+// Activity reads one workout's own listing entry, which is how a notification's
+// workout id is verified against the account rather than trusted.
+func (p *wahooProvider) Activity(ctx context.Context, accessToken string, id int64) (activity.Listing, error) {
+	client, err := p.current()
+	if err != nil {
+		return activity.Listing{}, err
+	}
+	workout, err := client.Workout(ctx, accessToken, id)
+	if err != nil {
+		return activity.Listing{}, fmt.Errorf("reading a Wahoo workout: %w", err)
+	}
+
+	return activityListings([]wahoo.Workout{workout})[0], nil
+}
+
 // IsRecordable reports whether a listed activity is one this service records.
 // Wahoo lists whatever a rider's device captured; domestique keeps cycling, so
 // a run, a walk, a swim or a strength session is passed over rather than read.

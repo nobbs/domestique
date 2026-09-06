@@ -14,6 +14,8 @@ export const TASKS = {
   surfaceIndex: "surface:index",
   /** One moving-time prediction pass over the stored library. */
   ridemodelPredict: "ridemodel:predict",
+  /** Reading one notified workout of one rider. Started by the Wahoo receiver alone. */
+  activityRecord: "activity:record",
 } as const;
 
 /** SYNC_PHASE_TASKS is which task does each half of a synchronization. */

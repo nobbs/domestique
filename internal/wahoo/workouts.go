@@ -199,6 +199,45 @@ func (c *Client) workoutPage(ctx context.Context, accessToken string, page, prec
 	return response, nil
 }
 
+// Workout reads one workout's listing entry, carrying the summary Wahoo embeds
+// in it, at the cost of one request. It is what a notification is verified
+// against: the notification names a workout, and this is the account's own
+// answer for it.
+func (c *Client) Workout(ctx context.Context, accessToken string, workoutID int64) (Workout, error) {
+	if accessToken == "" || workoutID <= 0 {
+		return Workout{}, errors.New("wahoo: access token and workout id are required")
+	}
+
+	request, err := c.newRequest(
+		ctx,
+		http.MethodGet,
+		c.endpoint(c.apiBaseURL, fmt.Sprintf("/v1/workouts/%d", workoutID)),
+		http.NoBody,
+		accessToken,
+	)
+	if err != nil {
+		return Workout{}, err
+	}
+
+	var workout Workout
+	if err := c.doJSON(request, &workout); err != nil {
+		if status, ok := errors.AsType[*statusError](err); ok {
+			// As for a summary: on one token Wahoo refuses some workouts and
+			// serves the next, so this is the workout's own refusal (#487).
+			if status.status == http.StatusNotFound || status.status == http.StatusUnauthorized {
+				return Workout{}, fmt.Errorf("%w: HTTP %d", ErrWorkoutUnreadable, status.status)
+			}
+		}
+
+		return Workout{}, err
+	}
+	if workout.ID != workoutID {
+		return Workout{}, fmt.Errorf("%w: not the workout asked for", ErrWorkoutUnreadable)
+	}
+
+	return workout, nil
+}
+
 // WorkoutSummary returns the original Wahoo summary and its FIT file URL.
 //
 // The summary is the response body itself. Only a workout listing wraps one in

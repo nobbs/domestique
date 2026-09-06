@@ -19,6 +19,7 @@ import (
 const (
 	testWebhookToken = "the-configured-webhook-token"
 	testWahooUserID  = "44556677"
+	testWorkoutID    = 56519
 )
 
 // fakeWebhookTokens verifies against one configured token, or fails, which is
@@ -85,6 +86,8 @@ func webhookBody(t *testing.T, token, eventType, userID string) string {
 		"user":          map[string]string{"id": userID},
 		"workout_summary": map[string]any{
 			"id": 1, "distance_accum": "12345.0", "ascent_accum": "210.0",
+			// The workout's own id, which is not the summary's id beside it.
+			"workout": map[string]any{"id": testWorkoutID},
 		},
 	})
 	require.NoError(t, err, "building the notification")
@@ -107,9 +110,9 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 }
 
 // The delivery this receiver exists for: the configured token, a rider this
-// deployment knows, and that rider's poll started ahead of its schedule. No
-// session cookie is carried, because Wahoo has none.
-func TestWahooWebhookStartsTheRidersPoll(t *testing.T) {
+// deployment knows, and that rider's notified workout handed off to be read
+// from Wahoo. No session cookie is carried, because Wahoo has none.
+func TestWahooWebhookRecordsTheNotifiedWorkout(t *testing.T) {
 	handler, tasks, _, _ := newWebhookHandler(t)
 
 	response := httptest.NewRecorder()
@@ -117,7 +120,9 @@ func TestWahooWebhookStartsTheRidersPoll(t *testing.T) {
 		webhookBody(t, testWebhookToken, eventWorkoutSummary, testWahooUserID)))
 
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	assert.Equal(t, []startedTask{{name: TaskActivityPoll, argument: testSubject}}, tasks.started)
+	assert.Equal(t, []startedTask{{
+		name: TaskActivityRecord, argument: ActivityRecordArgument(testSubject, testWorkoutID),
+	}}, tasks.started)
 }
 
 // Wahoo's documented sample, with the summary and its nested workout, decodes
@@ -145,7 +150,9 @@ func TestWahooWebhookAcceptsWahoosDocumentedShape(t *testing.T) {
 	handler.ServeHTTP(response, webhookRequest(t, body))
 
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	assert.Equal(t, []startedTask{{name: TaskActivityPoll, argument: testSubject}}, tasks.started)
+	assert.Equal(t, []startedTask{{
+		name: TaskActivityRecord, argument: ActivityRecordArgument(testSubject, testWorkoutID),
+	}}, tasks.started)
 }
 
 // A refused start is what a poll already reading that rider's rides looks like,
@@ -206,6 +213,21 @@ func TestWahooWebhookIgnoresAnUnknownUser(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.Empty(t, response.Body.String())
 	assert.Empty(t, tasks.asked, "an unknown user started work")
+}
+
+// A notification naming no workout buys nothing to verify, and a poll of the
+// whole account is not what it paid for, so it is accepted and ignored.
+func TestWahooWebhookIgnoresANotificationWithNoWorkout(t *testing.T) {
+	handler, tasks, _, _ := newWebhookHandler(t)
+	body := `{"event_type":"workout_summary","webhook_token":"` + testWebhookToken +
+		`","user":{"id":` + testWahooUserID + `},"workout_summary":{"id":1}}`
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, webhookRequest(t, body))
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Empty(t, response.Body.String())
+	assert.Empty(t, tasks.asked, "a notification naming no workout started work")
 }
 
 // Wahoo may add event kinds. One this service does not act on is accepted and

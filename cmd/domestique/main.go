@@ -194,6 +194,7 @@ func run(ctx context.Context) error {
 			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs),
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
+			activityRecordTask(activityPoller),
 			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
 		),
 	)

@@ -359,15 +359,21 @@ body, and the presented value is never logged. An event kind this service does
 not act on is answered `200` and ignored, because Wahoo is free to add them.
 
 A `workout_summary` is routed on the payload's `user.id` to the target whose
-Wahoo user it is, and starts that target's `activity:poll` ahead of its
-schedule. A user this deployment does not know is answered `200` with an empty
-body, exactly like one it does, so a per-application webhook cannot be used to
-probe which riders are connected; neither the user nor the presented token
-reaches a log. The answer does not wait for the poll, and is `200` whether or
-not the poll was accepted — a refused start means one is already reading that
-rider's rides. **Nothing from the payload is stored.** The `workout` it carries
-is never decoded: the poll reads the ride from Wahoo itself, and the schedule
-remains the fallback for every notification that never arrives.
+Wahoo user it is, and hands off that rider and the workout id nested in the
+payload's summary to `activity:record`. That task reads the workout and, unless
+the workout's own entry carried one, its summary from Wahoo — at most two
+requests, against the whole account a poll would re-list — applies the same
+recordability rule the poll does, stores it, then downloads its FIT file and
+fills its samples. A notification naming no workout is answered `200` and
+ignored, as is a user this deployment does not know: the unknown user is
+answered exactly like one it does, so a per-application webhook cannot be used
+to probe which riders are connected, and neither the user nor the presented
+token reaches a log. The answer does not wait for the task, and is `200`
+whether or not it was accepted — a refused start means something is already
+reading that rider's rides. **Nothing from the payload is stored.** The
+notification is a hint: a workout the account does not hold, one that is not
+cycling, and one already recorded each change nothing, and the schedule remains
+the fallback for every notification that never arrives.
 
 The Wahoo pair is limited to a session belonging to an allowed subject. The
 state binds the calling identity and target and prevents cross-account or CSRF
@@ -522,6 +528,10 @@ browser origin described above, and answer 403 without it.
   or `409 Conflict` when that exact work is already happening or something it
   needs is held by another run. A name this build does not register is refused
   as `404`.
+
+  `activity:record` is answered `404` for every caller: its argument names a
+  workout the Wahoo receiver learned of, which no browser can name, and the
+  poll is what a rider or an admin asks for instead.
 
   An argument is the task's own to interpret, not this surface's — except for
   `sync:target`, `sync:clear` and `activity:poll`, where it names a target and

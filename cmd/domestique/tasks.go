@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
@@ -27,6 +29,7 @@ const (
 	taskRideModelPredict   = httpapi.TaskRideModelPredict
 	taskRideModelCalibrate = httpapi.TaskRideModelCalibrate
 	taskActivityPoll       = httpapi.TaskActivityPoll
+	taskActivityRecord     = httpapi.TaskActivityRecord
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -111,6 +114,9 @@ const (
 	// detailActivitySkipped marks a poll that set an unreadable activity aside,
 	// so an account quietly missing rides is visible in its run record.
 	detailActivitySkipped task.Detail = "skipped"
+	// detailActivityArgument marks a record attempt whose argument named no
+	// target and workout, which only a caller other than the receiver produces.
+	detailActivityArgument task.Detail = "argument"
 )
 
 // synchronizer is the sync work the task layer starts; indexBuilder is the
@@ -128,6 +134,7 @@ type synchronizer interface {
 // activityPoller is the activity work the task layer starts.
 type activityPoller interface {
 	Poll(ctx context.Context, targetID string) activity.Result
+	Record(ctx context.Context, targetID string, workoutID int64) activity.Result
 }
 
 // rideCorpus is the stored corpus a calibration fits and where the pair it
@@ -329,6 +336,43 @@ func activityPollTask(
 			return pollEveryTarget(ctx, poller, targetIDs())
 		}),
 	}
+}
+
+// activityRecordTask reads one notified workout of one target. It has no
+// schedule: the poll is the schedule, and this is what a Wahoo notification
+// buys ahead of it, under the same exclusivity so the two never overlap.
+func activityRecordTask(poller activityPoller) task.Definition {
+	return task.Definition{
+		Name: taskActivityRecord,
+		Resources: func(string) []task.Resource {
+			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
+		},
+		Backoff: task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
+		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+			targetID, workoutID, ok := parseActivityRecordArgument(invocation.Argument)
+			if !ok {
+				return task.Result{Outcome: task.Failed, Detail: detailActivityArgument}
+			}
+
+			return activityResult(poller.Record(ctx, targetID, workoutID))
+		}),
+	}
+}
+
+// parseActivityRecordArgument reads back what httpapi.ActivityRecordArgument
+// wrote. The workout id is after the last separator, so a slot holding one of
+// its own still names itself.
+func parseActivityRecordArgument(argument string) (targetID string, workoutID int64, ok bool) {
+	separator := strings.LastIndex(argument, "/")
+	if separator <= 0 {
+		return "", 0, false
+	}
+	workoutID, err := strconv.ParseInt(argument[separator+1:], 10, 64)
+	if err != nil || workoutID <= 0 {
+		return "", 0, false
+	}
+
+	return argument[:separator], workoutID, true
 }
 
 // pollEveryTarget polls every slot, reporting the most serious thing that

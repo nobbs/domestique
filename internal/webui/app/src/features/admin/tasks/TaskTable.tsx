@@ -91,6 +91,11 @@ export function TaskTable() {
   }
 
   function runControl(task: Task) {
+    // The Wahoo receiver names a workout when it starts this; the service
+    // refuses every other caller, so there is no button to offer.
+    if (task.name === TASKS.activityRecord) {
+      return <span className="text-[var(--ink-2)]">—</span>;
+    }
     if (task.name !== TASKS.syncClear) {
       // One mutation serves every row, so its pending state belongs to whichever
       // row was pressed; the others are idle and stay pressable.
