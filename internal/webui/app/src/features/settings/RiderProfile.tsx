@@ -74,6 +74,12 @@ const PARAMETERS: Parameter[] = [
   },
 ];
 
+/**
+ * The boxes this form has edited, keyed by the parameter each one is: a
+ * misspelled key is a compile error rather than an edit that never sends.
+ */
+type RiderDraft = Partial<Record<keyof RiderParameters, string>>;
+
 /** A stored parameter as its box shows it; an unset one shows an empty box. */
 function shown(value: number | undefined): string {
   return value === undefined ? "" : String(value);
@@ -84,7 +90,7 @@ function shown(value: number | undefined): string {
  * sent as zero: this write replaces the profile whole, so a box the rider
  * cleared is a parameter cleared.
  */
-function submission(profile: RiderParameters, draft: Partial<Record<string, string>>) {
+function submission(profile: RiderParameters, draft: RiderDraft) {
   const edited: RiderParameters = {};
   for (const { field } of PARAMETERS) {
     const value = draft[field] ?? shown(profile[field]);
@@ -114,7 +120,7 @@ export function RiderProfile() {
   const id = useId();
   const queryClient = useQueryClient();
   const { data, isPending, isError } = useQuery(riderProfileQuery());
-  const [draft, setDraft] = useState<Partial<Record<string, string>>>({});
+  const [draft, setDraft] = useState<RiderDraft>({});
   const save = useSetRiderProfile({
     mutation: {
       onSuccess: async () => {
