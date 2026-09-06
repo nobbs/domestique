@@ -133,7 +133,7 @@ func TestGetActivitiesIsEmptyForARiderWithNoTarget(t *testing.T) {
 	assert.Empty(t, list.Activities)
 }
 
-func TestGetActivitiesRefusesAWindowItWillNotRead(t *testing.T) {
+func TestGetActivitiesRefusesAnInvertedOrMalformedWindow(t *testing.T) {
 	handler := activityHandler(t, activityState("rider-a"), nonAdminSessions("rider-a"))
 
 	for name, query := range map[string]string{
