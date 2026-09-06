@@ -261,17 +261,25 @@ func (p *wahooProvider) DeleteRoute(ctx context.Context, routeID int64, accessTo
 
 // ListActivities reads the rider's recorded activities in this service's own
 // vocabulary, so the activity package never learns Wahoo's word for them.
-func (p *wahooProvider) ListActivities(ctx context.Context, accessToken string) ([]activity.Listing, error) {
+func (p *wahooProvider) ListActivities(
+	ctx context.Context, accessToken string,
+) (listings []activity.Listing, requests int, err error) {
 	client, err := p.current()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	workouts, err := client.ListWorkouts(ctx, accessToken)
 	if err != nil {
-		return nil, fmt.Errorf("listing Wahoo workouts: %w", err)
+		return nil, 0, fmt.Errorf("listing Wahoo workouts: %w", err)
 	}
 
-	return activityListings(workouts), nil
+	return activityListings(workouts), listingRequests(len(workouts)), nil
+}
+
+// listingRequests is how many page requests a whole listing of count workouts
+// cost: one per page, and one for an account that lists nothing.
+func listingRequests(count int) int {
+	return max(1, (count+wahoo.WorkoutPageSize-1)/wahoo.WorkoutPageSize)
 }
 
 // ActivityListingHead reads the account's first page of activities and how many

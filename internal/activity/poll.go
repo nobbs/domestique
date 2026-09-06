@@ -13,11 +13,12 @@ import (
 // Wahoo account may be read; anything else needs interactive OAuth first.
 const authorizedState = "authorized"
 
-// MaxNewPerPoll bounds how many summaries one poll requests one at a time; a
-// summary the listing itself carried costs no request and is not counted. The
-// Wahoo sandbox tier allows 250 requests a day across every target and every
-// task sharing it.
-const MaxNewPerPoll = 25
+// RequestsPerPoll bounds the counted requests one poll makes: the listing
+// requests and then one for each summary the listing did not carry. The Wahoo
+// sandbox tier allows 25 requests per five minutes, 100 per hour and 250 per
+// day, shared across every target and task; this is the five-minute window,
+// the tightest, so one poll always fits it (#489).
+const RequestsPerPoll = 25
 
 // MaxRecordsPerPoll bounds how many activities one poll fills records for.
 // CDN downloads sit outside the API quota; decoding and inserting a ride's
@@ -62,7 +63,7 @@ const (
 // retryDue reports whether a skipped activity's wait has passed. The wait
 // doubles with each attempt from a day to a four-week ceiling and never becomes
 // permanent: a workout unreadable today may be readable next month, and each
-// retry spends one request from a window that fits roughly MaxNewPerPoll.
+// retry spends one request from a window that fits RequestsPerPoll.
 func retryDue(skip Skip, now time.Time) bool {
 	doublings := min(max(skip.Attempts, 1), 6) - 1
 	wait := min(skipRetryBase<<doublings, skipRetryCap)
@@ -100,7 +101,9 @@ type Source interface {
 	// ActivityListingHead returns the account's first page of activities and how
 	// many it holds in all, at the cost of one request.
 	ActivityListingHead(ctx context.Context, accessToken string) (listings []Listing, total int, err error)
-	ListActivities(ctx context.Context, accessToken string) ([]Listing, error)
+	// ListActivities reads the account's whole list and reports how many
+	// requests that cost, so a poll can keep the rest within its window.
+	ListActivities(ctx context.Context, accessToken string) (listings []Listing, requests int, err error)
 	ActivitySummary(ctx context.Context, accessToken string, id int64) (Summary, error)
 	DownloadActivityFIT(ctx context.Context, summary Summary) ([]byte, error)
 	IsUnauthorized(err error) bool
@@ -226,7 +229,8 @@ func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error
 
 // Poll stores a summary for every activity of one target this service has not
 // stored yet, oldest first: from the listing where it carried one, and by one
-// request each for at most MaxNewPerPoll of the rest. A read that fails
+// request each for as many of the rest as RequestsPerPoll leaves after the
+// listing requests. A read that fails
 // part way keeps what it already stored: the next poll continues from there. An
 // activity only its own summary rejects is skipped and retried later, so one
 // unreadable ride never stops the ones after it. The account's whole list is
@@ -247,7 +251,7 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 		return Result{Outcome: Failed, Failure: failure}
 	}
 
-	pending, failure := p.pending(ctx, targetID, accessToken)
+	pending, requested, failure := p.pending(ctx, targetID, accessToken)
 	if failure != FailureNone {
 		return Result{Outcome: Failed, Failure: failure}
 	}
@@ -256,7 +260,7 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
-	var stored, skipped, requested int
+	var stored, skipped int
 	// Oldest first, which is the order the kept listings already arrive in, so
 	// an account with a long history fills in chronologically over successive
 	// polls rather than restarting each time.
@@ -269,7 +273,7 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 		} else {
 			// A deferred skip only holds back the request it would cost; a
 			// summary the listing now carries is stored, and the skip forgotten.
-			if _, ok := waiting[listing.ID]; ok || requested == MaxNewPerPoll {
+			if _, ok := waiting[listing.ID]; ok || requested >= RequestsPerPoll {
 				continue
 			}
 			requested++
@@ -404,22 +408,26 @@ func (p *Poller) classify(ctx context.Context, targetID string, err error) Failu
 
 // pending is the activities the account holds that are not stored, taken from
 // the listings the store kept and re-read from the account only when the
-// account no longer agrees with them. What is compared is the account against
-// its own last reading, not against what this service has stored: a ride
-// deleted after it was stored leaves the store holding more than the account
-// lists, which would otherwise read as a disagreement no poll could settle.
-func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]Listing, Failure) {
+// account no longer agrees with them, and how many requests finding them cost.
+// What is compared is the account against its own last reading, not against
+// what this service has stored: a ride deleted after it was stored leaves the
+// store holding more than the account lists, which would otherwise read as a
+// disagreement no poll could settle.
+func (p *Poller) pending(
+	ctx context.Context, targetID, accessToken string,
+) (pending []Listing, requests int, failure Failure) {
 	listings, readAt, listingsErr := p.store.ActivityListings(ctx, targetID)
 	if listingsErr != nil {
-		return nil, FailureState
+		return nil, 0, FailureState
 	}
 	// A reading that has to be taken again asks the account nothing first: the
 	// first page is what decides, and that decision is already made.
 	reread := stale(readAt, p.now())
 	if !reread {
+		requests++
 		head, total, headErr := p.source.ActivityListingHead(ctx, accessToken)
 		if headErr != nil {
-			return nil, p.classify(ctx, targetID, headErr)
+			return nil, requests, p.classify(ctx, targetID, headErr)
 		}
 		reread = total != len(listings) || !accountedFor(head, listings)
 		if !reread {
@@ -427,23 +435,24 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 		}
 	}
 	if reread {
-		fresh, listErr := p.source.ListActivities(ctx, accessToken)
+		fresh, listRequests, listErr := p.source.ListActivities(ctx, accessToken)
+		requests += listRequests
 		if listErr != nil {
-			return nil, p.classify(ctx, targetID, listErr)
+			return nil, requests, p.classify(ctx, targetID, listErr)
 		}
 		slices.SortFunc(fresh, byStart)
 		if replaceErr := p.store.ReplaceActivityListings(ctx, targetID, fresh, p.now()); replaceErr != nil {
-			return nil, FailureState
+			return nil, requests, FailureState
 		}
 		listings = fresh
 	}
 
 	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
 	if knownErr != nil {
-		return nil, FailureState
+		return nil, requests, FailureState
 	}
 
-	return unstored(p.recordable(listings), known), FailureNone
+	return unstored(p.recordable(listings), known), requests, FailureNone
 }
 
 // carrying is the kept listings with the summaries the account's first page

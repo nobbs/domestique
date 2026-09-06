@@ -14,7 +14,9 @@ import (
 )
 
 const (
-	workoutPageSize        = 100
+	// WorkoutPageSize is how many workouts one listing request returns, so a
+	// caller can count the requests a whole listing cost.
+	WorkoutPageSize        = 100
 	maximumWorkouts        = 10_000
 	maximumWorkoutFITBytes = 16 << 20
 )
@@ -175,7 +177,7 @@ func (c *Client) workoutPage(ctx context.Context, accessToken string, page, prec
 	endpoint := c.endpoint(c.apiBaseURL, "/v1/workouts")
 	endpoint.RawQuery = url.Values{
 		"page":     {fmt.Sprint(page)},
-		"per_page": {fmt.Sprint(workoutPageSize)},
+		"per_page": {fmt.Sprint(WorkoutPageSize)},
 	}.Encode()
 	request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
 	if err != nil {
