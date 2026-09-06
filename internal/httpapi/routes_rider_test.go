@@ -117,6 +117,26 @@ func TestGetRiderProfileSuggestsFromTheCallersOwnRidesOnly(t *testing.T) {
 	assert.Equal(t, activityClock().Add(-rider.SuggestionWindow), state.riderSuggestionSince)
 }
 
+// A suggestion is the best across every target the caller owns, not the last
+// one looked at, so a rider with two accounts is offered their better effort.
+func TestGetRiderProfileSuggestsTheBestAcrossTheCallersTargets(t *testing.T) {
+	state := riderState()
+	state.targets = append(state.targets, fakeTarget{id: "rider-a-2", authorization: "authorized", owner: "rider-a"})
+	state.riderSuggestions["rider-a-2"] = rider.Suggestions{
+		MaxHeartRateBPM:               rider.Set(179),
+		FunctionalThresholdPowerWatts: rider.Set(244),
+	}
+	handler := riderHandler(t, state, "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	assert.Equal(t, []string{"rider-a", "rider-a-2"}, state.riderSuggestionFor, "both of the caller's own")
+	require.NotNil(t, view.Suggestions.MaxHeartRateBpm)
+	assert.InDelta(t, 183.0, *view.Suggestions.MaxHeartRateBpm, 1e-9, "the better of the two")
+	require.NotNil(t, view.Suggestions.FunctionalThresholdPowerWatts)
+	assert.InDelta(t, 244.0, *view.Suggestions.FunctionalThresholdPowerWatts, 1e-9,
+		"and the only one of the other")
+}
+
 // A rider with no target yet still reads their profile: the parameters are
 // theirs whether or not an account is connected.
 func TestGetRiderProfileAnswersARiderWithNoTarget(t *testing.T) {

@@ -2527,14 +2527,23 @@ func (s *fakeState) RiderSuggestions(
 	if s.riderSuggestionErr != nil {
 		return rider.Suggestions{}, s.riderSuggestionErr
 	}
+	// Merged rather than overwritten, the way the store merges: a rider's best
+	// effort is the best across every target asked for, so a fake that kept only
+	// the last would hide a scoping bug the moment there were two.
 	suggestions := rider.Suggestions{}
 	for _, targetID := range targetIDs {
-		if held, ok := s.riderSuggestions[targetID]; ok {
-			suggestions = held
-		}
+		held := s.riderSuggestions[targetID]
+		keepHigher(&suggestions.MaxHeartRateBPM, held.MaxHeartRateBPM)
+		keepHigher(&suggestions.FunctionalThresholdPowerWatts, held.FunctionalThresholdPowerWatts)
 	}
 
 	return suggestions, nil
+}
+
+func keepHigher(into *rider.Value, candidate rider.Value) {
+	if candidate.Set && (!into.Set || candidate.Number > into.Number) {
+		*into = candidate
+	}
 }
 
 // ActivitiesBetween reports the recorded activities the test gave this target,
