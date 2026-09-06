@@ -63,6 +63,13 @@ func (h *Handler) GetWeatherGridObject(writer http.ResponseWriter, request *http
 // underneath it does not actually reach — a malformed response a client can
 // hang or error on rather than a clean failure.
 func (h *Handler) relayWeatherGrid(writer http.ResponseWriter, request *http.Request, response *http.Response) {
+	// An unsatisfiable Range is the caller's own request, mirrored back as
+	// theirs — not a sign the provider is unreachable.
+	if response.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "the requested byte range is not satisfiable")
+
+		return
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider could not be reached")
 

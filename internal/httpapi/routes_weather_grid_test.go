@@ -183,6 +183,29 @@ func TestWeatherGridObjectAllowsAHeadWithALargeContentLength(t *testing.T) {
 	assert.Equal(t, "9999999999", response.Header().Get("Content-Length"))
 }
 
+func TestWeatherGridObjectMapsAnUnsatisfiableRangeToABadRequest(t *testing.T) {
+	weatherGrid := &fakeWeatherGrid{
+		ObjectFunc: func(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
+			recorder := httptest.NewRecorder()
+			recorder.Header().Set("Content-Range", "bytes */100")
+			recorder.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+
+			return recorder.Result(), nil
+		},
+	}
+	handler := newHandlerWithWeatherGrid(t, weatherGrid)
+
+	request := authenticatedRequest(http.MethodGet,
+		"/v1/weather-grid/object?referenceTime=2026-09-05T12:00:00Z&validTime=2026-09-05T15:00:00Z")
+	request.Header.Set("Range", "bytes=999999999-")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	// The caller's own request is what's wrong here, not the provider —
+	// a 502 would tell a reader to retry a range that will never satisfy.
+	require.Equal(t, http.StatusBadRequest, response.Code)
+}
+
 func TestWeatherGridObjectMapsANonSuccessUpstreamStatusToACleanError(t *testing.T) {
 	weatherGrid := &fakeWeatherGrid{
 		ObjectFunc: func(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
