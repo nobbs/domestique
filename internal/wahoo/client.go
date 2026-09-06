@@ -69,9 +69,19 @@ type Client struct {
 	wait               func(context.Context, time.Duration) error
 	oauth              *oauth2.Config
 	oauthClient        *http.Client
+	held               map[string]heldToken
 	rateLimitRemaining int
 	mutex              sync.Mutex
+	tokenMutex         sync.Mutex
 	rateLimitKnown     bool
+}
+
+// heldToken is one account's access token, kept only for as long as Wahoo says
+// it lasts. Keyed by the refresh token it was obtained with, which is this
+// package's only stable handle on an account.
+type heldToken struct {
+	expiry      time.Time
+	accessToken string
 }
 
 // IsUnauthorized reports whether err is a permanent Wahoo authorization
