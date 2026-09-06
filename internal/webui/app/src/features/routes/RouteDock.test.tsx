@@ -3,7 +3,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -69,14 +69,15 @@ function renderDock(overrides: Partial<RouteDockProps> = {}) {
 }
 
 describe("RouteDock", () => {
-  it("switches stops by clicking the rail", async () => {
-    const user = userEvent.setup();
+  it("switches stops by clicking the rail", () => {
     renderDock();
 
     expect(screen.getByRole("img", { name: /^Elevation profile of / })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: /^Forecast along the way/ })).toBeNull();
 
-    await user.click(screen.getByRole("tab", { name: /Forecast/ }));
+    // Tabs.Tab activates from its own onClick handler, not a pointer
+    // sequence, so a plain click event reaches the same code user-event does.
+    fireEvent.click(screen.getByRole("tab", { name: /Forecast/ }));
 
     expect(screen.queryByRole("img", { name: /^Elevation profile of / })).toBeNull();
     expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
@@ -96,14 +97,13 @@ describe("RouteDock", () => {
     expect(forecastTab).toHaveAttribute("aria-selected", "true");
   });
 
-  it("gives both stops the same fixed-height wrapper", async () => {
-    const user = userEvent.setup();
+  it("gives both stops the same fixed-height wrapper", () => {
     const { container } = renderDock();
 
     const wrapper = container.querySelector(".h-52");
     expect(wrapper).not.toBeNull();
 
-    await user.click(screen.getByRole("tab", { name: /Forecast/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Forecast/ }));
 
     expect(container.querySelector(".h-52")).toBe(wrapper);
   });
@@ -127,17 +127,16 @@ describe("RouteDock", () => {
   it("shows the forecast resolution sentence behind its info control", async () => {
     const user = userEvent.setup();
     renderDock();
-    await user.click(screen.getByRole("tab", { name: /Forecast/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Forecast/ }));
 
     await user.click(screen.getByRole("button", { name: "More about this" }));
 
     expect(await screen.findByText(/resolution/)).toBeInTheDocument();
   });
 
-  it("has nothing behind an info control when there is no forecast to describe", async () => {
-    const user = userEvent.setup();
+  it("has nothing behind an info control when there is no forecast to describe", () => {
     renderDock({ samples: [] });
-    await user.click(screen.getByRole("tab", { name: /Forecast/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Forecast/ }));
 
     expect(screen.queryByRole("button", { name: "More about this" })).not.toBeInTheDocument();
   });
