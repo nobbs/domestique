@@ -61,6 +61,22 @@ describe("RiderProfile", () => {
     });
   });
 
+  // The save button is the only way to write: this form has six boxes that
+  // block implicit submission, so Enter in one of them submits nothing, and the
+  // button is disabled while a write is in flight.
+  it("does not write on Enter in a field", async () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify({ profile: {}, suggestions: {} }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    show({ profile: { maxHeartRateBpm: 188 }, suggestions: {} });
+
+    await userEvent.type(screen.getByLabelText("Maximum heart rate (bpm)"), "{Enter}{Enter}");
+
+    expect(fetchMock.mock.calls.filter((each) => each[0] === "/v1/settings/rider")).toHaveLength(0);
+  });
+
   it("says so when the service did not answer the read", async () => {
     vi.stubGlobal(
       "fetch",

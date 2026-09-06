@@ -44,7 +44,8 @@ const PARAMETERS: Parameter[] = [
     field: "restingHeartRateBpm",
     label: "Resting heart rate",
     unit: "bpm",
-    description: "Your rate at rest, which with the maximum gives the reserve zones are cut from.",
+    description:
+      "Your rate at rest, which with the maximum gives the reserve that zones are cut from.",
   },
   {
     field: "thresholdHeartRateBpm",
