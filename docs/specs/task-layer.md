@@ -112,6 +112,8 @@ sync:source       stored an inventory     ->  surface:annotate
 surface:index     installed a new map     ->  surface:annotate
 sync:source       stored an inventory     ->  ridemodel:predict
 ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
+activity:poll     stored recorded rides   ->  activity:derive
+activity:record   stored one ride's file  ->  activity:derive
 ~~~
 
 A calibration that fitted a new pair makes every stored prediction stale, so it
@@ -268,6 +270,7 @@ is checked rather than inferred.
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 | `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
 | `activity:record` | target slot and workout id | `activities` exclusive | none |
+| `activity:derive` | target slot, or none for every one | `activities` exclusive | none |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
 
 `activity:poll` stores cycling alone. A rider's account may record any sport
@@ -283,6 +286,18 @@ run may fill. A ride recorded this morning is therefore filled on the first poll
 that sees it rather than behind whatever history is still backfilling, and a run
 holds the exclusive `activities` resource for that budget plus the one fill that
 was under way when it ran out.
+
+`activity:derive` works out what each stored ride says about how hard it was,
+from the samples already stored and the rider's own profile
+([the profile](service.md)). It reads no position and no altitude, so a ride
+recorded on a trainer derives exactly as one ridden outdoors. It derives only
+the rides that are owed one: those never derived, and those whose stored row
+records profile values that differ from the rider's current ones. A ride still
+awaiting its file has nothing to derive from and waits for the fill. A ride the
+derivation yields nothing for has its row removed rather than written as a row
+of nothing, so a profile edit that takes a parameter away takes its numbers
+with it. A slot nobody owns, and a rider who has entered no profile at all,
+leave the rides untouched rather than failing.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery
@@ -310,7 +325,14 @@ a library would.
 index rebuild, and runs after each: either alone leaves stages wanting it.
 `ridemodel:predict` follows the read, alongside classification and for the same
 reason: a new inventory leaves stages wanting a prediction, and it follows a
-calibration for the same reason again. `ridemodel:calibrate` takes the
+calibration for the same reason again. `activity:derive` follows both readers of recorded samples and holds the same
+resource they do, because it reads exactly the rows they write: a ride whose
+file has just landed is derived on the same cycle rather than the next one. It
+has no schedule. There is nothing to derive until either new samples arrive or
+the rider changes the profile the numbers are worked out against, and both of
+those already start it — the second directly, from the settings write, over
+that rider's own targets. It fans out over targets, as `sync:target` does, so
+one rider's fault holds back nobody else's rides. `ridemodel:calibrate` takes the
 activities rather than the inventory: it reads the rows a poll writes and
 touches no stage. It reads only the trailing training window of them, and
 reaches past it for the rides a fit needs only when the window holds too few

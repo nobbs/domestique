@@ -11,6 +11,7 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
+	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 // OAuth performs the protected Wahoo onboarding flow.
@@ -211,6 +212,9 @@ type ActivityState interface {
 	// storing its recorded samples, and whether that target has the activity at
 	// all.
 	ActivityRecordsState(ctx context.Context, targetID string, id int64) (activities.RecordsState, bool, error)
+	// ActivityMetrics is every derived row one target holds, keyed by ride. A
+	// ride with none is absent from the map rather than present and empty.
+	ActivityMetrics(ctx context.Context, targetID string) (map[int64]trainingload.Metrics, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.

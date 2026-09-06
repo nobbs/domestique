@@ -15,6 +15,7 @@ import { formatAscent, formatDistance, formatMovingTime, formatTimestamp } from 
 import { buildActivityProfile } from "../../lib/profile";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
+import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
 
 export function ActivityPage() {
@@ -48,6 +49,11 @@ export function ActivityPage() {
             </p>
           ) : null}
         </div>
+        {/*
+         * Above the map: how hard the ride was is what a rider looks for first,
+         * and it is there whether or not the ride recorded a position at all.
+         */}
+        <TrainingLoad metrics={ride?.metrics} />
         {id === null ? (
           <p className="text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
         ) : track.isPending ? (

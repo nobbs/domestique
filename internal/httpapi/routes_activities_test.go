@@ -14,6 +14,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 // activityClock is the moment every window in this file is measured from.
@@ -62,6 +63,42 @@ func getActivities(t *testing.T, handler *Handler, target string) (int, openapi.
 	}
 
 	return response.Code, list
+}
+
+// A ride's derived numbers ride along with the ride, so the ride page and the
+// volume page both work from the one read. Each part is omitted where the ride
+// or the profile did not allow it, rather than sent as a zero.
+func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]trainingload.Metrics{
+		"rider-a": {1: {
+			Zones: trainingload.Zones{60, 120, 180, 240, 300}, HasZones: true,
+			TRIMP: 42.5, HasTRIMP: true,
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+
+	// Newest first, and the derived ride is the one an hour old.
+	derived, plain := list.Activities[0], list.Activities[1]
+	require.NotNil(t, derived.Metrics, "the ride that was derived")
+	assert.Equal(t, []float64{60, 120, 180, 240, 300}, derived.Metrics.ZoneSeconds)
+	require.NotNil(t, derived.Metrics.Trimp)
+	assert.InDelta(t, 42.5, *derived.Metrics.Trimp, 1e-9)
+	assert.Nil(t, derived.Metrics.PowerTss, "no ride carried a meter")
+	assert.Nil(t, plain.Metrics, "and a ride with no row carries none at all")
+}
+
+func TestGetActivitiesReportsAnUnreadableMetricsStore(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activityMetricsErr = errors.New("unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getActivities(t, handler, "/v1/activities")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
 
 // With no from, the whole history is served: the account's first recorded

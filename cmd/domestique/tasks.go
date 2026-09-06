@@ -30,6 +30,7 @@ const (
 	taskRideModelCalibrate = httpapi.TaskRideModelCalibrate
 	taskActivityPoll       = httpapi.TaskActivityPoll
 	taskActivityRecord     = httpapi.TaskActivityRecord
+	taskActivityDerive     = httpapi.TaskActivityDerive
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -135,6 +136,12 @@ type synchronizer interface {
 type activityPoller interface {
 	Poll(ctx context.Context, targetID string) activity.Result
 	Record(ctx context.Context, targetID string, workoutID int64) activity.Result
+}
+
+// activityDeriver works out what one target's rides say about how hard they
+// were, from samples already stored.
+type activityDeriver interface {
+	Derive(ctx context.Context, targetID string) activity.Result
 }
 
 // rideCorpus is the stored corpus a calibration fits and where the pair it
@@ -338,6 +345,33 @@ func activityPollTask(
 	}
 }
 
+// activityDeriveTask works out what each of a target's rides says about how
+// hard it was. It follows both readers of recorded samples, so a ride whose
+// FIT has just landed is derived on the same cycle rather than the next one,
+// and it holds the same resource as they do: it reads the rows they write.
+//
+// It has no schedule of its own. There is nothing to derive until either new
+// samples arrive or the rider's profile changes, and both of those already
+// start it.
+func activityDeriveTask(deriver activityDeriver, targetIDs func() []string) task.Definition {
+	return task.Definition{
+		Name:    taskActivityDerive,
+		Follows: []string{taskActivityPoll, taskActivityRecord},
+		Resources: func(string) []task.Resource {
+			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
+		},
+		FanOut:  targetIDs,
+		Backoff: task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
+		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+			if invocation.Argument != "" {
+				return activityResult(deriver.Derive(ctx, invocation.Argument))
+			}
+
+			return deriveEveryTarget(ctx, deriver, targetIDs())
+		}),
+	}
+}
+
 // activityRecordTask reads one notified workout of one target. It has no
 // schedule: the poll is the schedule, and this is what a Wahoo notification
 // buys ahead of it, under the same exclusivity so the two never overlap.
@@ -385,6 +419,20 @@ func pollEveryTarget(ctx context.Context, poller activityPoller, targetIDs []str
 		// so one slot's skip is not hidden behind another's clean success.
 		if severity(result.Outcome) > severity(aggregate.Outcome) ||
 			(severity(result.Outcome) == severity(aggregate.Outcome) && result.Detail != "") {
+			aggregate = result
+		}
+	}
+
+	return aggregate
+}
+
+// deriveEveryTarget derives every slot, reporting the most serious thing that
+// happened, exactly as pollEveryTarget does over a poll.
+func deriveEveryTarget(ctx context.Context, deriver activityDeriver, targetIDs []string) task.Result {
+	aggregate := task.Result{Outcome: task.NotReady}
+	for _, targetID := range targetIDs {
+		result := activityResult(deriver.Derive(ctx, targetID))
+		if severity(result.Outcome) > severity(aggregate.Outcome) {
 			aggregate = result
 		}
 	}
