@@ -139,8 +139,9 @@ application dependency.
 - `log.level` is optional and defaults to `info`; the accepted values are
   `debug`, `info`, `warn` and `error`. The service writes one JSON object per
   line to stderr. Successful requests are not logged; a failed, slow or refused
-  answer is reported with its method, status, duration and the first two path
-  segments only, never a route ID, query string or subject. Like every other
+  answer is reported with its method, status, duration and the path cut to
+  its first segment, or its first two under `/v1`, `/auth`, `/oauth`,
+  `/settings` and `/admin`; never a route ID, query string or subject. Like every other
   field it may be set as `DOMESTIQUE_LOG__LEVEL`, which is the intended way to
   raise it for one restart.
 - `http.browser_origin_url` is required, and must be an absolute HTTPS origin
