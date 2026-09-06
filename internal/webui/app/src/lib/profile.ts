@@ -686,6 +686,46 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
 }
 
 /**
+ * A recorded ride's profile. Samples without an altitude are dropped, but each
+ * kept one keeps its distance along the whole track, so the chart spans the
+ * first to the last altitude on the track's own axis, never extrapolating over
+ * a warm-up or a tail the sensor missed. Null with fewer than two altitudes.
+ */
+export function buildActivityProfile(coordinates: Position[], sampleCount = 320): Profile | null {
+  if (sampleCount < 2) {
+    return null;
+  }
+  const distances = cumulativeMetres(coordinates);
+  const kept: Position[] = [];
+  const keptDistances: number[] = [];
+  coordinates.forEach((point, index) => {
+    if (elevationOf(point) !== undefined) {
+      kept.push(point);
+      keptDistances.push(distances[index] ?? 0);
+    }
+  });
+  if (kept.length < 2) {
+    return null;
+  }
+  const total = distances[distances.length - 1] ?? 0;
+  const first = keptDistances[0] ?? 0;
+  const last = keptDistances[keptDistances.length - 1] ?? 0;
+  if (last <= first) {
+    return null;
+  }
+
+  return profileBetween(
+    kept,
+    keptDistances,
+    bandedRanges(kept, keptDistances),
+    total,
+    first,
+    last,
+    sampleCount,
+  );
+}
+
+/**
  * The same profile, restricted to one stretch of the route and sampled across
  * it at the full count.
  *

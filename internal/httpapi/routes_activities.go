@@ -110,16 +110,22 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 }
 
 // activityTrackFeature draws the Feature one track is served as: the line, the
-// box around it, and the altitudes beside it while every sample has one.
+// box around it, and the altitudes beside it — null for a sample that recorded
+// none, the property absent only when no sample recorded one at all.
 func activityTrackFeature(track []activities.TrackPoint) activityTrackView {
 	coordinates := make([][2]float64, 0, len(track))
-	altitudes := make([]float64, 0, len(track))
+	altitudes := make([]*float64, 0, len(track))
+	anyAltitude := false
 	west, south := track[0].Longitude, track[0].Latitude
 	east, north := west, south
 	for _, point := range track {
 		coordinates = append(coordinates, [2]float64{point.Longitude, point.Latitude})
 		if point.HasAltitude {
-			altitudes = append(altitudes, point.AltitudeMetres)
+			altitude := point.AltitudeMetres
+			altitudes = append(altitudes, &altitude)
+			anyAltitude = true
+		} else {
+			altitudes = append(altitudes, nil)
 		}
 		west, east = min(west, point.Longitude), max(east, point.Longitude)
 		south, north = min(south, point.Latitude), max(north, point.Latitude)
@@ -129,7 +135,7 @@ func activityTrackFeature(track []activities.TrackPoint) activityTrackView {
 		BBox:     []float64{west, south, east, north},
 		Geometry: trackLineStringView{Type: "LineString", Coordinates: coordinates},
 	}
-	if len(altitudes) == len(track) {
+	if anyAltitude {
 		view.Properties.AltitudeMetres = altitudes
 	}
 

@@ -70,6 +70,19 @@ function track(withAltitude = true): ActivityTrack {
   return { bbox: [8.4, 49, 8.6, 49.2], coordinates: positions };
 }
 
+/** A track whose barometer had not settled for the first two samples. */
+function trackWithLeadingGap(): ActivityTrack {
+  return {
+    bbox: [8.4, 49, 8.6, 49.2],
+    coordinates: [
+      [8.3, 48.9],
+      [8.4, 49],
+      [8.5, 49.1, 180],
+      [8.6, 49.2, 140],
+    ],
+  };
+}
+
 function config(): WebUIConfig {
   return {
     basemaps: [],
@@ -137,6 +150,15 @@ describe("one ride's page", () => {
 
     expect(screen.getByTestId("activity-map")).toBeInTheDocument();
     expect(screen.queryByTestId("elevation-profile")).not.toBeInTheDocument();
+  });
+
+  // The barometer warm-up leaves a leading run with no altitude on most rides;
+  // that must not cost the whole ride its profile.
+  it("draws a profile even when the recording starts before altitude was available", () => {
+    show(trackWithLeadingGap());
+
+    expect(screen.getByTestId("elevation-profile")).toBeInTheDocument();
+    expect(drawn.profiles.at(-1)?.samples.length).toBeGreaterThan(0);
   });
 
   it("shows a placeholder while the track is still loading", () => {

@@ -434,9 +434,10 @@ The read-only JSON surface is small:
   yet reads an empty list.
 - `GET /v1/activities/{activityId}/track` returns one activity's recorded track
   as a GeoJSON Feature: the positioned samples as a line, the box around them,
-  and the altitude at each coordinate indexed 1:1 with them. The altitudes are
-  omitted, never partly filled, unless every positioned sample recorded one, and
-  nothing else the samples hold is served. It is scoped exactly as the list
+  and the altitude at each coordinate indexed 1:1 with them, `null` where that
+  sample recorded none. The altitudes are omitted entirely, never all null,
+  when no positioned sample recorded one, and nothing else the samples hold is
+  served. It is scoped exactly as the list
   above is, and an activity with fewer than two positioned samples — one whose
   samples are not stored yet among them — has no track and is `404`.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`

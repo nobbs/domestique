@@ -245,7 +245,8 @@ export interface ActivityTrackLineString {
 }
 
 export interface ActivityTrackProperties {
-  altitudeMetres?: number[];
+  /** The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude. */
+  altitudeMetres?: (number | null)[];
 }
 
 export interface ActivityTrack {

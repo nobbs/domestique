@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
 import {
+  buildActivityProfile,
   buildProfile,
   buildWindowedProfile,
   coordinateRange,
@@ -175,6 +176,66 @@ describe("buildProfile", () => {
     for (const sampleCount of [-1, 0, 1]) {
       expect(buildProfile(route([100, 200, 300]), sampleCount)).toBeNull();
     }
+  });
+});
+
+describe("buildActivityProfile", () => {
+  it("skips an interior gap rather than plotting it at zero", () => {
+    const profile = buildActivityProfile(route([100, undefined, undefined, 300]), 5);
+
+    expect(profile).not.toBeNull();
+    for (const sample of profile?.samples ?? []) {
+      expect(sample.elevationMetres).not.toBe(0);
+    }
+    expect(profile?.minElevationMetres).toBeGreaterThanOrEqual(100);
+    expect(profile?.maxElevationMetres).toBeCloseTo(300, 0);
+  });
+
+  it("measures a gap sample's distance across the whole track, not a shortcut over it", () => {
+    // B sits off to the side, so the direct A-to-C line the naive approach
+    // would measure is shorter than the A-via-B-to-C distance the track
+    // actually covers.
+    const withGap: Position[] = [
+      [8, 49, 100],
+      [8.05, 49],
+      [8, 49.01, 200],
+    ];
+    const fullDistances = cumulativeMetres(withGap);
+    const profile = buildActivityProfile(withGap, 3);
+
+    expect(profile?.totalDistanceMetres).toBeCloseTo(fullDistances[2] ?? 0, 6);
+  });
+
+  it("starts the chart at the first altitude rather than extrapolating over the warm-up", () => {
+    const coordinates = route([undefined, undefined, 100, 200, 300]);
+    const distances = cumulativeMetres(coordinates);
+    const profile = buildActivityProfile(coordinates);
+
+    expect(profile).not.toBeNull();
+    expect(profile?.startMetres).toBeCloseTo(distances[2] ?? 0, 6);
+    expect(profile?.endMetres).toBeCloseTo(distances[4] ?? 0, 6);
+    expect(profile?.totalDistanceMetres).toBeCloseTo(distances[4] ?? 0, 6);
+    expect(profile?.minElevationMetres).toBeGreaterThanOrEqual(100);
+    for (const sample of profile?.samples ?? []) {
+      expect(sample.distanceMetres).toBeGreaterThanOrEqual((distances[2] ?? 0) - 1e-6);
+    }
+  });
+
+  it("ends the chart at the last altitude while the axis keeps the whole track", () => {
+    const coordinates = route([100, 200, 300, undefined, undefined]);
+    const distances = cumulativeMetres(coordinates);
+    const profile = buildActivityProfile(coordinates);
+
+    expect(profile?.endMetres).toBeCloseTo(distances[2] ?? 0, 6);
+    expect(profile?.totalDistanceMetres).toBeCloseTo(distances[4] ?? 0, 6);
+  });
+
+  it("returns null when no sample recorded an altitude", () => {
+    expect(buildActivityProfile(route([undefined, undefined, undefined]))).toBeNull();
+  });
+
+  it("returns null when fewer than two samples recorded one", () => {
+    expect(buildActivityProfile(route([100, undefined, undefined]))).toBeNull();
   });
 });
 

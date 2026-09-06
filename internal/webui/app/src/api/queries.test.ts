@@ -79,6 +79,32 @@ describe("a route's query key", () => {
     expect(track?.bbox).toEqual([8.4, 49, 8.5, 49.1]);
   });
 
+  // A sample without an altitude travels as a JSON null, not an absent entry.
+  it("folds a null altitude into a two-wide position, same as an absent one", () => {
+    const { select } = activityTrackQuery(7);
+    const track = select?.({
+      status: 200,
+      headers: new Headers(),
+      data: {
+        type: "Feature",
+        bbox: [8.4, 49, 8.5, 49.1],
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [8.4, 49],
+            [8.5, 49.1],
+          ],
+        },
+        properties: { altitudeMetres: [null, 180] },
+      },
+    });
+
+    expect(track?.coordinates).toEqual([
+      [8.4, 49],
+      [8.5, 49.1, 180],
+    ]);
+  });
+
   it("separates the same source route and stage order under a different provider", () => {
     expect(routeQuery("komoot", 12, 1).queryKey).not.toEqual(
       routeQuery("veloplanner", 12, 1).queryKey,

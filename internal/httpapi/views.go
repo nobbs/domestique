@@ -100,9 +100,9 @@ type trackLineStringView struct {
 }
 
 type activityTrackPropertyView struct {
-	// AltitudeMetres is the altitude at each coordinate, indexed 1:1 with them.
-	// Absent — never partly filled — unless every positioned sample recorded one.
-	AltitudeMetres []float64 `json:"altitudeMetres,omitempty"`
+	// AltitudeMetres is the altitude at each coordinate, indexed 1:1 with them;
+	// nil where that sample recorded none. Absent unless at least one did.
+	AltitudeMetres []*float64 `json:"altitudeMetres,omitempty"`
 }
 
 type lineStringView struct {

@@ -207,7 +207,7 @@ func TestGetActivityTrackServesTheCallersOwnRide(t *testing.T) {
 	assert.Equal(t, "LineString", view.Geometry.Type)
 	assert.Equal(t, [][2]float64{{8.4, 49.0}, {8.5, 49.2}}, view.Geometry.Coordinates, "longitude first")
 	assert.InDeltaSlice(t, []float64{8.4, 49.0, 8.5, 49.2}, view.BBox, 1e-9, "bbox")
-	assert.InDeltaSlice(t, []float64{110, 180}, view.Properties.AltitudeMetres, 1e-9, "altitudes")
+	assert.Equal(t, []*float64{new(110.0), new(180.0)}, view.Properties.AltitudeMetres, "altitudes")
 }
 
 // The track is scoped to the caller's own target exactly as the list is, so
@@ -252,11 +252,44 @@ func TestGetActivityTrackIsNotFoundWithoutALine(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, response.Code)
 }
 
-// Altitude is served only where every sample has one: a partly filled series
-// would draw a profile that dives to sea level wherever the sensor was quiet.
-func TestGetActivityTrackOmitsAPartialAltitudeSeries(t *testing.T) {
+// Altitude is served for every positioned sample, null where that one recorded
+// none: a barometer commonly needs a leading run of the ride to warm up.
+func TestGetActivityTrackServesNullsForALeadingAltitudeGap(t *testing.T) {
+	state := trackState("rider-a")
+	state.tracks["rider-a/1"] = append([]activities.TrackPoint{
+		{Time: activityClock().Add(-time.Minute), Latitude: 48.9, Longitude: 8.3},
+	}, state.tracks["rider-a/1"]...)
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, []*float64{nil, new(110.0), new(180.0)}, view.Properties.AltitudeMetres)
+}
+
+// The same holds for a gap in the middle of the ride: a sibling series can
+// drop out for a run of samples with a complete series either side of it.
+func TestGetActivityTrackServesANullForAnInteriorAltitudeGap(t *testing.T) {
 	state := trackState("rider-a")
 	state.tracks["rider-a/1"][1].HasAltitude = false
+	state.tracks["rider-a/1"][1].AltitudeMetres = 0
+	state.tracks["rider-a/1"] = append(state.tracks["rider-a/1"], activities.TrackPoint{
+		Time: activityClock().Add(2 * time.Minute), Latitude: 49.4, Longitude: 8.6,
+		AltitudeMetres: 220, HasAltitude: true,
+	})
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, []*float64{new(110.0), nil, new(220.0)}, view.Properties.AltitudeMetres)
+}
+
+// Only when nothing in the ride recorded an altitude does the property
+// disappear rather than travel as an array of nothing but nulls.
+func TestGetActivityTrackOmitsAltitudeWhenNoSampleRecordedOne(t *testing.T) {
+	state := trackState("rider-a")
+	for i := range state.tracks["rider-a/1"] {
+		state.tracks["rider-a/1"][i].HasAltitude = false
+	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
 
 	code, view := getTrack(t, handler, "/v1/activities/1/track")
