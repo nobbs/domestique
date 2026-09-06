@@ -202,6 +202,27 @@ func TestClientDoesNotWriteAnUnchangedQuotaAgain(t *testing.T) {
 	assert.Equal(t, 1, store.saves, "an unchanged quota was written again")
 }
 
+// The same headers seen much later describe a later window: the stored expiry
+// has to keep up, or a restart after a long quiet poll finds an expired row.
+func TestClientAdvancesTheStoredExpiryAsUnchangedHeadersKeepArriving(t *testing.T) {
+	now := time.Date(2026, time.September, 6, 7, 0, 0, 0, time.UTC)
+	store := &fakeQuotaStore{}
+	client, _ := quotaTestClient(t, store, &now, header("120", "0"))
+
+	_, err := client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err)
+	now = now.Add(30 * time.Second)
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err)
+	require.Equal(t, 1, store.saves, "seconds later is not a new observation worth writing")
+
+	now = now.Add(2 * time.Minute)
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.NoError(t, err)
+	assert.Equal(t, 2, store.saves, "the stored expiry fell behind the observations")
+	assert.Equal(t, now.Add(defaultRateLimitReset), store.quota.ExpiresAt, "the stored expiry is not the latest observation's")
+}
+
 // A store that cannot be read or written is a degradation to the in-memory
 // behaviour, never a failed request.
 func TestClientKeepsWorkingWhenTheQuotaStoreFails(t *testing.T) {

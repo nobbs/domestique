@@ -128,12 +128,18 @@ func (c *Client) quotaExpiry() time.Time {
 	return expiresAt
 }
 
-// sameQuota compares what a stored row is for: the count and the two instants a
-// restore acts on. The observation time alone is not a reason to write again.
+// quotaExpiryStep is how far the stored expiry may fall behind a fresh
+// observation before it is worth a write of its own.
+const quotaExpiryStep = time.Minute
+
+// sameQuota compares what a stored row is for: the count, the two instants a
+// restore acts on, and an expiry that has not fallen a step behind. A fresh
+// observation seconds after the last is not a reason to write again.
 func sameQuota(quota, stored *Quota) bool {
 	return quota.Remaining == stored.Remaining &&
 		quota.ResetAt.Truncate(time.Second).Equal(stored.ResetAt.Truncate(time.Second)) &&
-		quota.NotBefore.Truncate(time.Second).Equal(stored.NotBefore.Truncate(time.Second))
+		quota.NotBefore.Truncate(time.Second).Equal(stored.NotBefore.Truncate(time.Second)) &&
+		quota.ExpiresAt.Sub(stored.ExpiresAt) < quotaExpiryStep
 }
 
 // RateLimit reports the lowest request quota Wahoo advertised across the windows
