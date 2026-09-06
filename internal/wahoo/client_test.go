@@ -3,6 +3,7 @@ package wahoo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -425,17 +426,24 @@ func TestClientClassifiesRejectedRefreshToken(t *testing.T) {
 	assert.NotContains(t, err.Error(), "refresh-token")
 }
 
-// The token endpoint spends the same quota as everything else, so it has to
-// wait out an advertised reset rather than going straight to Wahoo.
-func TestClientThrottlesTheTokenEndpoint(t *testing.T) {
+// Wahoo exempts the token endpoint from its rate limits, so a refresh goes
+// straight to Wahoo while the data quota is spent, and whatever quota headers
+// its reply carries say nothing about the data quota this client observes.
+func TestClientNeverThrottlesTheTokenEndpoint(t *testing.T) {
+	var tokenRequests int
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path == "/v1/user" {
 			writer.Header().Set("X-RateLimit-Remaining", "10, 5, 0")
-			writer.Header().Set("X-RateLimit-Reset", "5")
+			writer.Header().Set("X-RateLimit-Reset", "300")
 			writeJSON(t, writer, map[string]int64{"id": 42})
 
 			return
 		}
+		tokenRequests++
+		// Headers that would plainly move the observed quota were they read:
+		// a different remaining, and a reset the observer never ignores.
+		writer.Header().Set("X-RateLimit-Remaining", "7, 7, 7")
+		writer.Header().Set("X-RateLimit-Reset", "900")
 		writeJSON(t, writer, map[string]string{
 			"access_token":  "access-token",
 			"refresh_token": "refresh-token",
@@ -446,21 +454,26 @@ func TestClientThrottlesTheTokenEndpoint(t *testing.T) {
 	client := newTestClient(t, server)
 	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
 	client.now = func() time.Time { return now }
-	var waited time.Duration
-	client.wait = func(_ context.Context, duration time.Duration) error {
-		waited = duration
-		now = now.Add(duration)
-
-		return nil
+	client.wait = func(_ context.Context, _ time.Duration) error {
+		return errors.New("the token request waited for the data quota")
 	}
 
-	// Spends the quota, which arms the throttle for whatever asks next.
+	// Spends the quota, which arms the throttle for whatever data request asks next.
 	_, err := client.AuthenticatedUser(t.Context(), "access-token")
 	require.NoError(t, err, "priming the rate limit")
+	require.True(t, client.notBefore.After(now), "the data quota was not spent")
 
 	_, _, err = client.RefreshAccessToken(t.Context(), "refresh-token")
-	require.NoError(t, err, "refreshing")
-	assert.Equal(t, 5*time.Second, waited, "the token request did not wait out the advertised reset")
+	require.NoError(t, err, "refreshing while the data quota is spent")
+	assert.Equal(t, 1, tokenRequests, "the refresh did not reach the token endpoint")
+
+	remaining, resetAt, ok := client.RateLimit()
+	require.True(t, ok)
+	assert.Zero(t, remaining, "the token response changed the observed quota")
+	assert.Equal(t, now.Add(300*time.Second), resetAt, "the token response changed the observed reset")
+	assert.Equal(t, now.Add(300*time.Second), client.notBefore, "the token response moved the throttle")
+	_, err = client.AuthenticatedUser(t.Context(), "access-token")
+	require.ErrorIs(t, err, ErrRateLimited, "a data request went ahead on a quota the token response had not refilled")
 }
 
 // Wahoo answers a rate-limited token request with 429, which reaches sync as

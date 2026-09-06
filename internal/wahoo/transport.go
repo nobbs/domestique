@@ -71,44 +71,29 @@ func New(options *Options) (*Client, error) {
 			AuthStyle: oauth2.AuthStyleInParams,
 		},
 	}
-	// x/oauth2 drives its own requests, so it gets a client whose transport puts
-	// them through the same throttle as every other call.
+	// x/oauth2 drives its own requests, so it gets a client of its own; the
+	// token endpoint is outside the quota, so that client is not throttled.
 	client.oauthClient = &http.Client{
 		Timeout:   timeout,
-		Transport: &oauthTransport{client: client, base: transport},
+		Transport: &oauthTransport{base: transport},
 	}
 
 	return client, nil
 }
 
-// oauthTransport gates the token endpoint on the same mutex and quota as
-// doJSON. Nothing nests: doJSON sends through the plain transport, only
-// x/oauth2 sends through this one.
+// oauthTransport carries x/oauth2's requests to the token endpoint. Wahoo
+// exempts authentication, token refresh and file downloads from its rate
+// limits and sends no quota headers on them, so unlike doJSON this neither
+// waits for a spent quota nor reads one back (#490).
 type oauthTransport struct {
-	client *Client
-	base   http.RoundTripper
+	base http.RoundTripper
 }
 
 func (t *oauthTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	client := t.client
-
-	client.mutex.Lock()
-	defer client.mutex.Unlock()
-
-	if waitFor := client.notBefore.Sub(client.now()); waitFor > 0 {
-		if waitFor > waitBudget(request.Context()) {
-			return nil, ErrRateLimited
-		}
-		if waitErr := client.wait(request.Context(), waitFor); waitErr != nil {
-			return nil, fmt.Errorf("wahoo: waiting for rate limit: %w", waitErr)
-		}
-	}
-
 	response, err := t.base.RoundTrip(request)
 	if err != nil {
 		return nil, fmt.Errorf("wahoo: token request failed: %w", err)
 	}
-	client.observeRateLimit(response)
 
 	return response, nil
 }
