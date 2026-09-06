@@ -400,7 +400,12 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // route once the geometry arrives, rather than flying off to a position.
   const [locationEnabled] = useState(() => openKey === null);
   const location = useStartupLocation(locationEnabled);
-  const locationBox = useMemo(() => (location ? boxAround(location) : null), [location]);
+  // Only while nothing is focused: a picked route whose box has not arrived
+  // yet must not be pulled away from in the meantime.
+  const locationBox = useMemo(
+    () => (focusKey === null && location ? boxAround(location) : null),
+    [focusKey, location],
+  );
   const bounds = windowBounds ?? focusBox ?? locationBox ?? libraryBounds;
 
   const basemap = config.data ? basemapFor(config.data, resolvedDark, basemapChoice) : null;
@@ -421,11 +426,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             bounds={bounds}
             insets={insets}
             maxZoom={
-              windowBounds
-                ? WINDOW_MAX_ZOOM
-                : focusBox === null && locationBox !== null
-                  ? LOCATION_ZOOM
-                  : ROUTE_MAX_ZOOM
+              windowBounds ? WINDOW_MAX_ZOOM : locationBox !== null ? LOCATION_ZOOM : ROUTE_MAX_ZOOM
             }
             onPick={pick}
             inertKey={openKey}
