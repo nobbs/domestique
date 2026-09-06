@@ -17,6 +17,7 @@ import (
 )
 
 func TestStoreCreatesCurrentSchemaBaseline(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	var legacy, current int
 	var dirty bool
@@ -28,6 +29,7 @@ func TestStoreCreatesCurrentSchemaBaseline(t *testing.T) {
 }
 
 func TestStoreMarksValidatedLegacyState(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	legacySchema, err := os.ReadFile(filepath.Join("testdata", "legacy-v27.sql"))
 	require.NoError(t, err)
@@ -58,6 +60,7 @@ func compatibleFutureMigration(version int) string {
 }
 
 func TestStoreAppliesPendingTrackedMigrations(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	store, err := Open(t.Context(), databasePath, testKey(1))
 	require.NoError(t, err)
@@ -78,6 +81,7 @@ func TestStoreAppliesPendingTrackedMigrations(t *testing.T) {
 }
 
 func TestStoreRejectsMigrationWithoutLegacyWatermark(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	store, err := Open(t.Context(), databasePath, testKey(1))
 	require.NoError(t, err)
@@ -91,6 +95,7 @@ func TestStoreRejectsMigrationWithoutLegacyWatermark(t *testing.T) {
 }
 
 func TestStoreReportsPendingMigrationFailure(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	store, err := Open(t.Context(), databasePath, testKey(1))
 	require.NoError(t, err)
@@ -118,6 +123,7 @@ func futureMigrationFiles(t *testing.T, version int, future string) fstest.MapFS
 }
 
 func TestStoreRefusesInvalidMigrationState(t *testing.T) {
+	t.Parallel()
 	for name, mutate := range map[string]func(context.Context, *sql.DB) error{
 		"dirty": func(ctx context.Context, database *sql.DB) error {
 			if _, err := database.ExecContext(ctx, `UPDATE domestique_migrations SET dirty = 1`); err != nil {
@@ -175,11 +181,13 @@ func TestStoreRefusesInvalidMigrationState(t *testing.T) {
 }
 
 func TestCheckConstraintsCapturesNestedParentheses(t *testing.T) {
+	t.Parallel()
 	checks := checkConstraints(`CREATE TABLE test (surface TEXT CHECK (surface IN ('asphalt', 'gravel')))`)
 	assert.Equal(t, []string{"surface in ('asphalt', 'gravel')"}, checks)
 }
 
 func TestNewMigrationsStayReadableByThePreviousRelease(t *testing.T) {
+	t.Parallel()
 	for version := baselineSchemaVersion + 1; version <= currentSchemaVersion; version++ {
 		t.Run(fmt.Sprintf("migration %d", version), func(t *testing.T) {
 			assertMigrationCompatible(t, migrationFiles, "migrations", version-1, version)
@@ -188,6 +196,7 @@ func TestNewMigrationsStayReadableByThePreviousRelease(t *testing.T) {
 }
 
 func TestAdjacentMigrationCompatibilityCheck(t *testing.T) {
+	t.Parallel()
 	futureVersion := currentSchemaVersion + 1
 	assertMigrationCompatible(
 		t,
@@ -354,6 +363,7 @@ func readMigrationIndexHeaders(t *testing.T, database *sql.DB, table string) map
 }
 
 func TestStorePreservesPreviousReleaseRollbackWindow(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	store, err := Open(t.Context(), databasePath, testKey(1))
 	require.NoError(t, err)
@@ -377,6 +387,7 @@ func TestStorePreservesPreviousReleaseRollbackWindow(t *testing.T) {
 }
 
 func TestStoreChecksForeignKeysDuringRollbackWindow(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	store, err := Open(t.Context(), databasePath, testKey(1))
 	require.NoError(t, err)
@@ -395,6 +406,7 @@ func TestStoreChecksForeignKeysDuringRollbackWindow(t *testing.T) {
 }
 
 func TestDatabaseDSNConfiguresEveryConnection(t *testing.T) {
+	t.Parallel()
 	database, err := sql.Open(driverName, databaseDSN(filepath.Join(t.TempDir(), "state.db")))
 	require.NoError(t, err)
 	database.SetMaxOpenConns(2)
@@ -415,6 +427,7 @@ func TestDatabaseDSNConfiguresEveryConnection(t *testing.T) {
 }
 
 func TestActivityTablesBelongToATargetAndCascade(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	ctx := t.Context()
 	_, err := store.database.ExecContext(ctx, `INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1)`)

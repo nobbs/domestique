@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pb33f/libopenapi-validator/cache"
+
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
@@ -61,6 +63,10 @@ type Options struct {
 	// Sessions is who is signed in, and the sign-in flow that creates a
 	// session. Required: without it the service has no gate at all.
 	Sessions Sessions
+
+	// schemaCache holds the contract's compiled schemas. Building one costs
+	// seconds under the race detector, so the tests share a single cache.
+	schemaCache cache.SchemaCache
 
 	// SurfaceIndexFunc reports the map build classifications are read from, false
 	// when off or still building. It asks the live index, not the state file.
@@ -226,7 +232,7 @@ func New(
 
 		sessions: options.Sessions,
 	}
-	if err := handler.useContractValidation(); err != nil {
+	if err := handler.useContractValidation(options.schemaCache); err != nil {
 		return nil, err
 	}
 	handler.routes()

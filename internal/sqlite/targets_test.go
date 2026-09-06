@@ -10,6 +10,7 @@ import (
 // A subject's first "Connect" creates their target, owned by their own value,
 // waiting for its one-time OAuth onboarding.
 func TestEnsureTargetOwnerCreatesANotAuthorizedRecordForANewSubject(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
@@ -23,6 +24,7 @@ func TestEnsureTargetOwnerCreatesANotAuthorizedRecordForANewSubject(t *testing.T
 // A rider's tenth "Connect" click is as safe as their first: an existing
 // target is left exactly as it was, authorization and all.
 func TestEnsureTargetOwnerLeavesAnExistingTargetAlone(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
@@ -40,6 +42,7 @@ func TestEnsureTargetOwnerLeavesAnExistingTargetAlone(t *testing.T) {
 // orphaned forever with no way for anyone to claim it: the slot matching is
 // never a guess, since a self-service slot IS the owning subject's own value.
 func TestEnsureTargetOwnerClaimsASlotThatPredatesOwnership(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	_, err := store.database.ExecContext(t.Context(),
 		"INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES (?, ?, ?)",
@@ -58,6 +61,7 @@ func TestEnsureTargetOwnerClaimsASlotThatPredatesOwnership(t *testing.T) {
 // A blank subject names no one to own the target, so it is refused rather
 // than silently creating an unowned row.
 func TestEnsureTargetOwnerRejectsABlankSubject(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	require.Error(t, store.EnsureTargetOwner(t.Context(), "   "), "EnsureTargetOwner() with a blank subject")
@@ -65,6 +69,7 @@ func TestEnsureTargetOwnerRejectsABlankSubject(t *testing.T) {
 
 // A query failure is reported rather than swallowed.
 func TestEnsureTargetOwnerReportsAQueryFailure(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 

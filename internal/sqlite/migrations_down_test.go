@@ -13,6 +13,7 @@ import (
 // most worth actually running — a mistake in the rebuild loses every session
 // row, silently, on whatever operator ever needs it.
 func TestMigration029DownRebuildsWebSessions(t *testing.T) {
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "web-sessions-rollback.db")
 	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
 	require.NoError(t, err)
@@ -56,6 +57,7 @@ func TestMigration029DownRebuildsWebSessions(t *testing.T) {
 // still reference. Exercised with exactly such a referencing row present, so
 // a regression here would be the FK violation a rebuild would hit for real.
 func TestMigration030DownDropsOwnerSubjectWithReferencingRowsPresent(t *testing.T) {
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "target-ownership-rollback.db")
 	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
 	require.NoError(t, err)
@@ -98,6 +100,7 @@ func TestMigration030DownDropsOwnerSubjectWithReferencingRowsPresent(t *testing.
 // 031's down drops two tables that reference targets; the referenced target
 // row and everything else must be untouched, and the schema must come back.
 func TestMigration031DownDropsActivityTablesOnly(t *testing.T) {
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "activities-rollback.db")
 	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
 	require.NoError(t, err)
@@ -131,6 +134,7 @@ func TestMigration031DownDropsActivityTablesOnly(t *testing.T) {
 
 // 032's down drops the skip table alone; the activities beside it stay.
 func TestMigration032DownDropsActivitySkipsOnly(t *testing.T) {
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "activity-skips-rollback.db")
 	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
 	require.NoError(t, err)
@@ -169,6 +173,7 @@ func TestMigration032DownDropsActivitySkipsOnly(t *testing.T) {
 // is why it drops columns rather than rebuilding; exercised with such a record
 // present so a regression is the foreign key failure a rebuild would hit.
 func TestMigration033DownDropsRecordStateColumnsOnly(t *testing.T) {
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "records-state-rollback.db")
 	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
 	require.NoError(t, err)
@@ -209,6 +214,7 @@ func TestMigration033DownDropsRecordStateColumnsOnly(t *testing.T) {
 
 // 034's down drops the singleton coefficient row's table and nothing else.
 func TestMigration034DownDropsTheCoefficientTableOnly(t *testing.T) {
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "ridemodel-rollback.db")
 	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
 	require.NoError(t, err)
@@ -247,6 +253,7 @@ func TestMigration034DownDropsTheCoefficientTableOnly(t *testing.T) {
 // proving. Its down cannot restore them, which is exactly why the up must not
 // reach further than the workouts a poll would now refuse.
 func TestMigration036RemovesOnlyNonCyclingActivities(t *testing.T) {
+	t.Parallel()
 	dbPath := filepath.Join(t.TempDir(), "cycling-only.db")
 	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
 	require.NoError(t, err)

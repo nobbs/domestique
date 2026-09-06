@@ -79,6 +79,7 @@ func TestSignInPageCarriesTheFormPolicy(t *testing.T) {
 func TestAuthPolicyDegradesWithoutAuth0Domain(t *testing.T) {
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),

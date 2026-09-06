@@ -11,6 +11,7 @@ import (
 // A classification measured against a shape the stage no longer has describes a
 // line the map cannot draw, so it does not count as classified.
 func TestStoreCountsOnlyClassificationsOfTheCurrentGeometry(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	geometry := []route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.5, Latitude: 49.2}}
 	first := storeTestStageWithGeometry(t, 7, 1, "revision", "hash-a", "Alpine loop", "Descent", geometry)
@@ -37,6 +38,7 @@ func TestStoreCountsOnlyClassificationsOfTheCurrentGeometry(t *testing.T) {
 }
 
 func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 7, 2, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -65,6 +67,7 @@ func TestStoreCachesStageSurfaceAgainstTheGeometryItDescribes(t *testing.T) {
 }
 
 func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "current-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -90,6 +93,7 @@ func TestStoreHidesASurfaceMeasuredAgainstOtherGeometry(t *testing.T) {
 // so they are old rather than wrong. One row per stage, so withholding it would
 // blank the library after every rebuild. The next pass corrects it.
 func TestStoreKeepsASurfaceMeasuredAgainstAnEarlierIndex(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -114,6 +118,7 @@ func TestStoreKeepsASurfaceMeasuredAgainstAnEarlierIndex(t *testing.T) {
 }
 
 func TestStoreReplacesAStageSurfaceRatherThanAccumulatingOne(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "second-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -132,6 +137,7 @@ func TestStoreReplacesAStageSurfaceRatherThanAccumulatingOne(t *testing.T) {
 }
 
 func TestStorePrunesSurfaceForStagesLeavingTheInventory(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	first := storeTestStage(t, 1, 1, "revision", "hash-one")
 	second := storeTestStage(t, 2, 1, "revision", "hash-two")
@@ -155,6 +161,7 @@ func TestStorePrunesSurfaceForStagesLeavingTheInventory(t *testing.T) {
 }
 
 func TestStorePrunesSurfaceMeasuredAgainstReplacedGeometry(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "hash-one")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")

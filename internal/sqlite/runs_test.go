@@ -11,6 +11,7 @@ import (
 )
 
 func TestStoreRecordsRunsAndFailureNotificationState(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(time.Minute)
@@ -54,6 +55,7 @@ func TestStoreRecordsRunsAndFailureNotificationState(t *testing.T) {
 // Each phase's own last run is what an operator reads; the newest run of the
 // other phase answers a different question.
 func TestStoreReportsTheLastRunOfEachPhase(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	record := func(phase, outcome string, minute int, sourceStages, created int) {
@@ -87,6 +89,7 @@ func TestStoreReportsTheLastRunOfEachPhase(t *testing.T) {
 // the record of it must be the same run, and the page must come back newest
 // first with a cursor that continues where it stopped.
 func TestStoreReadsTheRecordedHistoryOnePageAtATime(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	references := make([]string, 0, 5)
@@ -117,6 +120,7 @@ func TestStoreReadsTheRecordedHistoryOnePageAtATime(t *testing.T) {
 // enough to be one: a position past the newest run would silently serve the
 // first page again, which reads as a history that starts over.
 func TestStoreRefusesACursorItDidNotIssue(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	_, err := store.RecordSyncRun(
@@ -145,6 +149,7 @@ func TestStoreRefusesACursorItDidNotIssue(t *testing.T) {
 // served an empty history. A visitor that fails partway stops the page: a
 // swallowed failure would serve half a page as a whole one.
 func TestStoreStopsReadingTheHistoryOnVisitorFailure(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	_, err := store.RecordSyncRun(
@@ -175,6 +180,7 @@ func TestStoreStopsReadingTheHistoryOnVisitorFailure(t *testing.T) {
 // record that could not describe one is refused rather than stored as a row that
 // reports nothing.
 func TestStoreRefusesAnIncompleteSyncRun(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(time.Second)
@@ -193,6 +199,7 @@ func TestStoreRefusesAnIncompleteSyncRun(t *testing.T) {
 }
 
 func TestSyncRunReadersRejectIncompleteRuns(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	_, err := store.database.ExecContext(t.Context(), `
 		INSERT INTO sync_runs (
@@ -224,6 +231,7 @@ func TestSyncRunReadersRejectIncompleteRuns(t *testing.T) {
 // status response reads that as what the half last came to, and a half switched
 // off while the other keeps running would otherwise lose its answer.
 func TestStoreBoundsTheRecordedHistoryAndKeepsEachPhasesLastRun(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	record := func(phase string, minute int) {
@@ -252,6 +260,7 @@ func TestStoreBoundsTheRecordedHistoryAndKeepsEachPhasesLastRun(t *testing.T) {
 // before the history was split by phase keep an empty phase and are not served.
 // The page still fills to its limit: the exclusion happens where the page is read.
 func TestStoreLeavesPrePhaseRunsOutOfTheHistory(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	startedAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 	legacy, err := store.RecordSyncRun(
@@ -300,6 +309,7 @@ func readSyncRunPage(t *testing.T, store *Store, after string, limit int) (refer
 // replaces what the first recorded rather than accumulating a history nobody
 // reads.
 func TestStoreKeepsOnlyTheLastRunOfEachTarget(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(9))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -334,6 +344,7 @@ func TestStoreKeepsOnlyTheLastRunOfEachTarget(t *testing.T) {
 // A slot that has never been reconciled is absent rather than reported as a run
 // that succeeded with nothing to do.
 func TestStoreReportsNoRunForAnUnreconciledTarget(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(10))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -347,6 +358,7 @@ func TestStoreReportsNoRunForAnUnreconciledTarget(t *testing.T) {
 }
 
 func TestStoreRefusesAnIncompleteTargetRun(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(11))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	finishedAt := time.Date(2026, time.August, 18, 6, 0, 0, 0, time.UTC)
@@ -357,6 +369,7 @@ func TestStoreRefusesAnIncompleteTargetRun(t *testing.T) {
 }
 
 func TestStoreLastSuccessfulPhaseCompletionIgnoresFailuresAndOtherPhases(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	_, found, err := store.LastSuccessfulPhaseCompletion(t.Context(), "source")
@@ -380,6 +393,7 @@ func TestStoreLastSuccessfulPhaseCompletionIgnoresFailuresAndOtherPhases(t *test
 }
 
 func TestStoreLastSuccessfulPhaseCompletionRequiresAPhase(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	_, _, err := store.LastSuccessfulPhaseCompletion(t.Context(), "")
@@ -387,6 +401,7 @@ func TestStoreLastSuccessfulPhaseCompletionRequiresAPhase(t *testing.T) {
 }
 
 func TestStoreLastSuccessfulPhaseCompletionReportsAnUnreadableDatabase(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 

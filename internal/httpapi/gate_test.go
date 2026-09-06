@@ -94,6 +94,7 @@ func newSessionHandler(t *testing.T, sessions Sessions) *Handler {
 
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -301,6 +302,7 @@ func TestWahooOAuthBindsTheContextIdentity(t *testing.T) {
 	oauthService := &loginRecordingOAuth{}
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),

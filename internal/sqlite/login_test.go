@@ -14,6 +14,7 @@ func loginDigest(value byte) []byte {
 }
 
 func TestStoreConsumesLoginOnce(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(1)
@@ -29,6 +30,7 @@ func TestStoreConsumesLoginOnce(t *testing.T) {
 }
 
 func TestStoreRejectsExpiredLoginConsumption(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(2)
@@ -42,6 +44,7 @@ func TestStoreRejectsExpiredLoginConsumption(t *testing.T) {
 }
 
 func TestStoreBeginLoginPrunesExpiredRows(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	stale := loginDigest(3)
@@ -55,6 +58,7 @@ func TestStoreBeginLoginPrunesExpiredRows(t *testing.T) {
 }
 
 func TestStoreBeginLoginCapsTransactionCount(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 
@@ -79,6 +83,7 @@ func TestStoreBeginLoginCapsTransactionCount(t *testing.T) {
 }
 
 func TestStoreBeginLoginKeepsNewestWhenExpiriesTie(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	// Expiry is stored with second precision, so a burst within one second ties
@@ -100,6 +105,7 @@ func TestStoreBeginLoginKeepsNewestWhenExpiriesTie(t *testing.T) {
 }
 
 func TestStoreRoundTripsSession(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(5)
@@ -118,6 +124,7 @@ func TestStoreRoundTripsSession(t *testing.T) {
 }
 
 func TestStoreReportsExpiredSession(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(7)
@@ -128,6 +135,7 @@ func TestStoreReportsExpiredSession(t *testing.T) {
 }
 
 func TestStoreDeletesSession(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(11)
@@ -144,6 +152,7 @@ func TestStoreDeletesSession(t *testing.T) {
 // method touches the database: a wrong-length digest, a blank nonce or
 // verifier, and an expiry that is not strictly after now.
 func TestStoreRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	future := now.Add(time.Minute)
@@ -176,6 +185,7 @@ func TestStoreRejectsInvalidInput(t *testing.T) {
 }
 
 func TestStoreCreateSessionPrunesExpiredRows(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	stale := loginDigest(12)
@@ -189,6 +199,7 @@ func TestStoreCreateSessionPrunesExpiredRows(t *testing.T) {
 }
 
 func TestStoreReportsLoginStorageFailures(t *testing.T) {
+	t.Parallel()
 	now := time.Unix(1_700_000_000, 0)
 	future := now.Add(time.Minute)
 
@@ -226,6 +237,7 @@ func TestStoreReportsLoginStorageFailures(t *testing.T) {
 }
 
 func TestStoreRejectsDuplicateDigests(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	future := now.Add(time.Minute)

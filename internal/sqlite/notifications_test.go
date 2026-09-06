@@ -11,6 +11,7 @@ import (
 // A zero sentAt clears the record instead of recording one: recording and
 // clearing are complements of the same row.
 func TestStoreRecordFailureNotificationClearsOnAZeroTime(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	sentAt := time.Date(2026, time.August, 17, 8, 0, 0, 0, time.UTC)
 
@@ -26,12 +27,14 @@ func TestStoreRecordFailureNotificationClearsOnAZeroTime(t *testing.T) {
 }
 
 func TestStoreRecordFailureNotificationRequiresACategory(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	require.Error(t, store.RecordFailureNotification(t.Context(), "", time.Time{}), "RecordFailureNotification() accepted an empty category")
 }
 
 func TestStoreRecordFailureNotificationReportsAnUnreadableDatabaseWhenClearing(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 

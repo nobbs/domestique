@@ -11,6 +11,7 @@ import (
 // A reprocess removes the three answers the service would otherwise reuse, and
 // keeps the one that says which Wahoo route it already owns.
 func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
@@ -57,6 +58,7 @@ func TestStoreReprocessesOneStageWithoutLosingItsRouteIdentity(t *testing.T) {
 // The geometry cache skips a stage whose content has not changed. A reprocess is
 // the operator saying the derivation itself should be redone.
 func TestStoreRewritesGeometryOfAReprocessedStage(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
 		{Longitude: 8.4, Latitude: 49.0},
@@ -91,6 +93,7 @@ func TestStoreRewritesGeometryOfAReprocessedStage(t *testing.T) {
 // A stage that is not in the inventory cannot be redone, and a mark nothing will
 // consume is worse than an answer.
 func TestStoreRefusesToReprocessAnUnknownStage(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	found, err := store.RequestStageReprocess(t.Context(), route.ProviderVeloPlanner, 99, 1)
@@ -99,6 +102,7 @@ func TestStoreRefusesToReprocessAnUnknownStage(t *testing.T) {
 }
 
 func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	elevation := 128.5
 	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
@@ -119,6 +123,7 @@ func TestStoreCachesStageGeometryForTheMapView(t *testing.T) {
 }
 
 func TestStoreCachesElevationStatistics(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	// A climb of 40 m followed by a descent of 15 m, so ascent and descent are
 	// distinct — not just mirrors of each other — over roughly 500 m of northing.
@@ -154,6 +159,7 @@ func TestStoreCachesElevationStatistics(t *testing.T) {
 // A stage cached before the statistics existed must still be readable; the
 // columns default to zero until a content change refills them.
 func TestStoreReadsGeometryCachedBeforeElevationStatistics(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -170,6 +176,7 @@ func TestStoreReadsGeometryCachedBeforeElevationStatistics(t *testing.T) {
 }
 
 func TestStoreDoesNotRewriteUnchangedStageGeometry(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -192,6 +199,7 @@ func TestStoreDoesNotRewriteUnchangedStageGeometry(t *testing.T) {
 }
 
 func TestStorePrunesGeometryForStagesLeavingTheInventory(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	first := storeTestStage(t, 1, 1, "revision", "hash-one")
 	second := storeTestStage(t, 2, 1, "revision", "hash-two")
@@ -208,6 +216,7 @@ func TestStorePrunesGeometryForStagesLeavingTheInventory(t *testing.T) {
 }
 
 func TestStoreListsStageSummaries(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStageWithGeometry(t, 3, 1, "revision", "hash", "Sunday", "", []route.Point{
 		{Longitude: 8.4, Latitude: 49.0},
@@ -228,6 +237,7 @@ func TestStoreListsStageSummaries(t *testing.T) {
 }
 
 func TestStoreForEachStageSummaryReportsAPredictedMovingTime(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")

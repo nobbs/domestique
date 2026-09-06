@@ -12,6 +12,7 @@ import (
 // Nothing is seeded: a service nobody has calibrated predicts with the built-in
 // pair, which the composition root substitutes rather than the store.
 func TestRideModelCoefficientsAreAbsentUntilACalibrationStoresThem(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	_, found, err := store.RideModelCoefficients(t.Context())
@@ -20,6 +21,7 @@ func TestRideModelCoefficientsAreAbsentUntilACalibrationStoresThem(t *testing.T)
 }
 
 func TestStoreRideModelCoefficientsRoundTripsAndReplaces(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1700000000, 0)
 	fitted := ridemodel.Coefficients{
@@ -54,6 +56,7 @@ func TestStoreRideModelCoefficientsRoundTripsAndReplaces(t *testing.T) {
 // The built-in pair carries no cutoff, so the column has to accept its absence
 // and read back as absence rather than as the Unix epoch.
 func TestStoreRideModelCoefficientsKeepsAnAbsentCutoffAbsent(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.StoreRideModelCoefficients(t.Context(), ridemodel.Default(), time.Unix(1700000000, 0)))
 
@@ -65,6 +68,7 @@ func TestStoreRideModelCoefficientsKeepsAnAbsentCutoffAbsent(t *testing.T) {
 }
 
 func TestStoreRideModelCoefficientsRejectsAMalformedCutoff(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	coefficients := ridemodel.Default()
 	coefficients.CalibrationCutoff = "the first of August"
@@ -73,6 +77,7 @@ func TestStoreRideModelCoefficientsRejectsAMalformedCutoff(t *testing.T) {
 }
 
 func TestStoreRideModelCoefficientsRefusesAnImplausiblePair(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	bad := ridemodel.Default()
 	bad.SecondsPerKM = 0

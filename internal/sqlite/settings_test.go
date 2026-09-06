@@ -15,6 +15,7 @@ import (
 // the same keys, so an upgraded deployment that changes nothing runs on exactly
 // what it ran on before.
 func TestStoreSeedsTheDocumentedRuntimeSettings(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	values, err := store.RuntimeSettings(t.Context())
@@ -36,6 +37,7 @@ func TestStoreSeedsTheDocumentedRuntimeSettings(t *testing.T) {
 // none of it can be guessed: a service holding these seeds starts, serves its
 // settings page, and runs nothing.
 func TestStoreSeedsNoUpstreamAtAll(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	values, err := store.RuntimeSettings(t.Context())
@@ -52,6 +54,7 @@ func TestStoreSeedsNoUpstreamAtAll(t *testing.T) {
 }
 
 func TestStoreKeepsTheRuntimeSettingsItWasGiven(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	next := runtimeconfig.Values{
@@ -92,6 +95,7 @@ func TestStoreKeepsTheRuntimeSettingsItWasGiven(t *testing.T) {
 // A shorter list is the whole list. Rewriting it must remove the entries that
 // are gone rather than leave them behind at their old positions.
 func TestStoreReplacesTheRuntimeListsWhole(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	values, err := store.RuntimeSettings(t.Context())
 	require.NoError(t, err, "RuntimeSettings()")
@@ -120,6 +124,7 @@ func TestStoreReplacesTheRuntimeListsWhole(t *testing.T) {
 }
 
 func TestStoreEncryptsTheCredentialsItStores(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.SetRuntimeSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
 		runtimeconfig.SecretKomootPassword: runtimeconfig.NewSecret([]byte("opensesame")),
@@ -138,6 +143,7 @@ func TestStoreEncryptsTheCredentialsItStores(t *testing.T) {
 // A write carries only the credentials that were typed into the form, so it has
 // to leave every other one exactly as it was.
 func TestStoreReplacesOnlyTheCredentialsItWasGiven(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.SetRuntimeSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
 		runtimeconfig.SecretKomootEmail:    runtimeconfig.NewSecret([]byte("rider@example.test")),
@@ -155,6 +161,7 @@ func TestStoreReplacesOnlyTheCredentialsItWasGiven(t *testing.T) {
 }
 
 func TestStoreRemovesACredentialWrittenWithNoValue(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.SetRuntimeSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
 		runtimeconfig.SecretKomootPassword: runtimeconfig.NewSecret([]byte("opensesame")),
@@ -172,6 +179,7 @@ func TestStoreRemovesACredentialWrittenWithNoValue(t *testing.T) {
 // The name is the associated data, so a ciphertext moved from one row to
 // another fails to open rather than authenticating as the wrong credential.
 func TestStoreBindsACredentialToItsName(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.SetRuntimeSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
 		runtimeconfig.SecretKomootPassword: runtimeconfig.NewSecret([]byte("opensesame")),
@@ -190,6 +198,7 @@ func TestStoreBindsACredentialToItsName(t *testing.T) {
 // A database written under another key holds credentials nothing can open, and
 // starting on it anyway would reach every upstream as nobody.
 func TestStoreRejectsCredentialsWrittenUnderAnotherKey(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	store, openErr := Open(t.Context(), databasePath, testKey(1))
 	require.NoError(t, openErr, "Open()")
@@ -209,6 +218,7 @@ func TestStoreRejectsCredentialsWrittenUnderAnotherKey(t *testing.T) {
 }
 
 func TestStoreRollsBackSettingsWhenCredentialWriteFails(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	before, err := store.RuntimeSettings(t.Context())
 	require.NoError(t, err)

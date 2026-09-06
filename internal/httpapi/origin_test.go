@@ -230,10 +230,11 @@ func TestBrowserOriginNormalisation(t *testing.T) {
 func TestNewRequiresABrowserOrigin(t *testing.T) {
 	_, err := New(
 		&Options{
-			Alerts:   &fakeAlerts{},
-			Tasks:    &fakeTasks{},
-			Settings: settingsWith(testBasemaps()),
-			Sessions: newFakeSessions(),
+			schemaCache: testSchemaCache,
+			Alerts:      &fakeAlerts{},
+			Tasks:       &fakeTasks{},
+			Settings:    settingsWith(testBasemaps()),
+			Sessions:    newFakeSessions(),
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
