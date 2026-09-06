@@ -703,6 +703,7 @@ type fakeSource struct {
 	fit          []byte
 	listings     []Listing
 	head         []Listing
+	unrecordable []int
 	summarized   []int64
 	downloaded   []string
 	listed       int
@@ -787,6 +788,12 @@ func (s *fakeSource) DownloadActivityFIT(_ context.Context, summary Summary) ([]
 	}
 
 	return s.fit, nil
+}
+
+// IsRecordable keeps cycling, mirroring the Wahoo provider: type 1 and 3 in
+// these fixtures stand for the runs and swims an account also holds.
+func (s *fakeSource) IsRecordable(listing Listing) bool {
+	return !slices.Contains(s.unrecordable, listing.TypeID)
 }
 
 func (s *fakeSource) IsUnauthorized(err error) bool {
@@ -992,4 +999,52 @@ func (s *fakeStore) MarkActivityUnreadable(_ context.Context, _ string, id int64
 
 func (s *fakeStore) settled(id int64) {
 	s.pending = slices.DeleteFunc(s.pending, func(activity PendingActivity) bool { return activity.ID == id })
+}
+
+// This service records cycling: a run the same account holds is listed and
+// counted, but never read for a summary or stored as an activity.
+func TestPollStoresOnlyWhatItRecords(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.unrecordable = []int{1, 3}
+	source.listings = []Listing{
+		{ID: 1, Starts: at(1), TypeID: 1},
+		{ID: 2, Starts: at(2), TypeID: 15, LocationID: 1},
+		{ID: 3, Starts: at(3), TypeID: 3},
+	}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	require.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, 1, result.Stored)
+	require.Len(t, store.stored, 1)
+	assert.Equal(t, int64(2), store.stored[0].listing.ID, "only the ride was stored")
+	assert.Equal(t, []int64{2}, source.summarized, "a run must not spend a summary request")
+}
+
+// The reading kept for a target is the account's own, runs included: narrowing
+// it to what this service records would leave the stored count disagreeing with
+// the account's total, and every later poll re-reading the whole list to settle
+// a disagreement that is not one.
+func TestPollKeepsTheAccountsWholeListingSoTheHeadCheckHolds(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.unrecordable = []int{1}
+	source.listings = []Listing{
+		{ID: 1, Starts: at(1), TypeID: 1},
+		{ID: 2, Starts: at(2), TypeID: 15, LocationID: 1},
+	}
+
+	poller := newTestPoller(t, source, store)
+	require.Equal(t, Polled, poller.Poll(t.Context(), "rider-a").Outcome)
+	require.Len(t, store.listings, 2, "the run is part of what the account holds")
+
+	listedAfterFirst := source.listed
+	result := poller.Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Unchanged, result.Outcome)
+	assert.Equal(t, listedAfterFirst, source.listed,
+		"a second poll re-read the whole account after its head check disagreed")
+	assert.Equal(t, 1, source.headed,
+		"the second poll settles on the head alone; the first had no reading to check")
 }

@@ -98,6 +98,10 @@ type Source interface {
 	ActivitySummary(ctx context.Context, accessToken string, id int64) (Summary, error)
 	DownloadActivityFIT(ctx context.Context, summary Summary) ([]byte, error)
 	IsUnauthorized(err error) bool
+	// IsRecordable reports whether a listed activity is one this service
+	// records at all. A listing it refuses is still counted as the account's,
+	// so a reading stays comparable with the account's own total.
+	IsRecordable(listing Listing) bool
 	// IsUnreadable reports a summary rejection that belongs to that one
 	// activity rather than to the connection, the quota or the grant.
 	IsUnreadable(err error) bool
@@ -413,7 +417,21 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 		return nil, FailureState
 	}
 
-	return unstored(listings, known), FailureNone
+	return unstored(p.recordable(listings), known), FailureNone
+}
+
+// recordable is the listings this service records, dropped only here: the
+// reading kept above is the account's own, and narrowing it there would leave
+// the stored count disagreeing with the account's total on every poll.
+func (p *Poller) recordable(listings []Listing) []Listing {
+	kept := make([]Listing, 0, len(listings))
+	for _, listing := range listings {
+		if p.source.IsRecordable(listing) {
+			kept = append(kept, listing)
+		}
+	}
+
+	return kept
 }
 
 // MaxReadingAge is how long a reading of the account is worked from before it is
