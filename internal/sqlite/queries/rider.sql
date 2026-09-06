@@ -19,10 +19,13 @@ ON CONFLICT(subject) DO UPDATE SET
   updated_at_unix = excluded.updated_at_unix;
 
 -- name: ListActivitySensorSamples :many
-SELECT r.workout_id, r.recorded_at_unix, r.heart_rate_bpm, r.power_watts
+SELECT r.target_slot, r.workout_id, r.recorded_at_unix, r.heart_rate_bpm, r.power_watts
 FROM activity_records AS r
 JOIN activities AS a ON a.target_slot = r.target_slot AND a.workout_id = r.workout_id
-WHERE r.target_slot = sqlc.arg(target_slot)
-  AND a.started_at_unix >= sqlc.arg(since_unix)
+-- The scalar bound before the slice, as ListActivityRides does: sqlc numbers a
+-- parameter that follows an expanded slice by its source position, which is no
+-- longer the position it binds at.
+WHERE a.started_at_unix >= sqlc.arg(since_unix)
+  AND r.target_slot IN (sqlc.slice(target_slots))
   AND (r.heart_rate_bpm IS NOT NULL OR r.power_watts IS NOT NULL)
-ORDER BY r.workout_id, r.record_index;
+ORDER BY r.target_slot, r.workout_id, r.record_index;

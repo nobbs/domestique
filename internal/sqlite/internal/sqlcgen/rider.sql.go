@@ -8,6 +8,7 @@ package sqlcgen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const getRiderProfile = `-- name: GetRiderProfile :one
@@ -41,29 +42,44 @@ func (q *Queries) GetRiderProfile(ctx context.Context, subject string) (GetRider
 }
 
 const listActivitySensorSamples = `-- name: ListActivitySensorSamples :many
-SELECT r.workout_id, r.recorded_at_unix, r.heart_rate_bpm, r.power_watts
+SELECT r.target_slot, r.workout_id, r.recorded_at_unix, r.heart_rate_bpm, r.power_watts
 FROM activity_records AS r
 JOIN activities AS a ON a.target_slot = r.target_slot AND a.workout_id = r.workout_id
-WHERE r.target_slot = ?1
-  AND a.started_at_unix >= ?2
+WHERE a.started_at_unix >= ?1
+  AND r.target_slot IN (/*SLICE:target_slots*/?)
   AND (r.heart_rate_bpm IS NOT NULL OR r.power_watts IS NOT NULL)
-ORDER BY r.workout_id, r.record_index
+ORDER BY r.target_slot, r.workout_id, r.record_index
 `
 
 type ListActivitySensorSamplesParams struct {
-	TargetSlot string
-	SinceUnix  int64
+	SinceUnix   int64
+	TargetSlots []string
 }
 
 type ListActivitySensorSamplesRow struct {
+	TargetSlot     string
 	WorkoutID      int64
 	RecordedAtUnix int64
 	HeartRateBpm   sql.NullFloat64
 	PowerWatts     sql.NullFloat64
 }
 
+// The scalar bound before the slice, as ListActivityRides does: sqlc numbers a
+// parameter that follows an expanded slice by its source position, which is no
+// longer the position it binds at.
 func (q *Queries) ListActivitySensorSamples(ctx context.Context, arg ListActivitySensorSamplesParams) ([]ListActivitySensorSamplesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActivitySensorSamples, arg.TargetSlot, arg.SinceUnix)
+	query := listActivitySensorSamples
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.SinceUnix)
+	if len(arg.TargetSlots) > 0 {
+		for _, v := range arg.TargetSlots {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", strings.Repeat(",?", len(arg.TargetSlots))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +88,7 @@ func (q *Queries) ListActivitySensorSamples(ctx context.Context, arg ListActivit
 	for rows.Next() {
 		var i ListActivitySensorSamplesRow
 		if err := rows.Scan(
+			&i.TargetSlot,
 			&i.WorkoutID,
 			&i.RecordedAtUnix,
 			&i.HeartRateBpm,

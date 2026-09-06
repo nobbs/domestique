@@ -149,6 +149,36 @@ func TestRiderSuggestionsReadOnlyRidesSinceTheCutoff(t *testing.T) {
 	assert.False(t, suggestions.MaxHeartRateBPM.Set, "the only ride started before the cutoff")
 }
 
+// Two targets read in one query: a ride's series must not run into the next
+// target's, and the best is the best across both.
+func TestRiderSuggestionsTakeTheBestAcrossEveryTargetAsked(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-b", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 240)),
+		"StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 1, steady(1500, 170, 200)),
+		"StoreActivityRecords()")
+
+	suggestions, err := store.RiderSuggestions(
+		t.Context(), []string{"rider-a", "rider-b"}, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.InDelta(t, 170.0, suggestions.MaxHeartRateBPM.Number, 0.5, "the second target's minute")
+	assert.InDelta(t, 228.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the first target's twenty")
+}
+
+func TestRiderSuggestionsAreEmptyForACallerWithNoTarget(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+
+	suggestions, err := store.RiderSuggestions(t.Context(), nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.Equal(t, rider.Suggestions{}, suggestions, "no target, nothing to read")
+}
+
 // A ride belongs to the target that recorded it, and a suggestion is read over
 // the targets it was asked for and no others.
 func TestRiderSuggestionsReadOnlyTheTargetsAsked(t *testing.T) {

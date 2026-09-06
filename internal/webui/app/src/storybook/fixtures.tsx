@@ -320,9 +320,10 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
 });
 
 /**
- * A rider who has entered two of their numbers and whose rides suggest both of
- * the two that carry a suggestion, so the offered figure and the entered one
- * are visible side by side.
+ * A rider who has entered their heart rate and both masses but neither power
+ * number, and whose rides suggest both of the two that carry a suggestion — so
+ * an offered figure beside an entered one and beside an empty box are all
+ * visible at once.
  */
 export const riderProfile: RiderProfile = {
   profile: { maxHeartRateBpm: 188, riderMassKg: 74.5, bikeMassKg: 8.4 },

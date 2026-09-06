@@ -55,46 +55,55 @@ func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rid
 }
 
 // RiderSuggestions reads the best efforts the given targets' recent rides hold,
-// as the numbers those efforts imply. Rides that carry no such sensor yield no
-// suggestion, which is what lets the page offer one field a figure and not the
-// next.
-//
-// A query per target: the caller's own targets are at most one, because a
-// target's identity is its owning subject's own value.
+// as the numbers those efforts imply. The best is the best across all of them,
+// so a rider with a second connected account is offered their better effort.
+// Rides that carry no such sensor yield no suggestion, which is what lets the
+// page offer one field a figure and not the next.
 func (s *Store) RiderSuggestions(ctx context.Context, targetIDs []string, since time.Time) (rider.Suggestions, error) {
-	suggestions := rider.Suggestions{}
-	for _, targetID := range targetIDs {
-		rows, err := s.queries.ListActivitySensorSamples(ctx, sqlcgen.ListActivitySensorSamplesParams{
-			TargetSlot: targetID,
-			SinceUnix:  since.Unix(),
-		})
-		if err != nil {
-			return rider.Suggestions{}, fmt.Errorf("reading the recorded samples: %w", err)
-		}
-		accumulateSuggestions(rows, &suggestions)
+	// sqlc expands the slice into the IN list, and an empty one would expand to
+	// `IN ()`, which is not SQL. A caller with no target has nothing to read anyway.
+	if len(targetIDs) == 0 {
+		return rider.Suggestions{}, nil
+	}
+	rows, err := s.queries.ListActivitySensorSamples(ctx, sqlcgen.ListActivitySensorSamplesParams{
+		SinceUnix:   since.Unix(),
+		TargetSlots: targetIDs,
+	})
+	if err != nil {
+		return rider.Suggestions{}, fmt.Errorf("reading the recorded samples: %w", err)
 	}
 
-	return suggestions, nil
+	return accumulateSuggestions(rows), nil
 }
 
-// accumulateSuggestions folds one target's samples in, a ride at a time: a best
-// effort is held within one ride, so each ride's series is closed before the
-// next one opens.
-func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow, into *rider.Suggestions) {
+// accumulateSuggestions folds the samples in a ride at a time: a best effort is
+// held within one ride, so each ride's series is closed before the next opens.
+// The rows arrive grouped by target and ride, which is what makes one pass
+// enough.
+func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Suggestions {
+	suggestions := rider.Suggestions{}
 	var heartRate, power sensorSeries
-	var workoutID int64
+	var ride struct {
+		targetSlot string
+		workoutID  int64
+	}
+	closeRide := func() {
+		heartRate.best(rider.MaxHeartRateWindow, &suggestions.MaxHeartRateBPM, nil)
+		power.best(rider.ThresholdPowerWindow, &suggestions.FunctionalThresholdPowerWatts, rider.ThresholdPower)
+		heartRate, power = sensorSeries{}, sensorSeries{}
+	}
 	for index, row := range rows {
-		if index == 0 || row.WorkoutID != workoutID {
-			heartRate.best(rider.MaxHeartRateWindow, &into.MaxHeartRateBPM, nil)
-			power.best(rider.ThresholdPowerWindow, &into.FunctionalThresholdPowerWatts, rider.ThresholdPower)
-			heartRate, power, workoutID = sensorSeries{}, sensorSeries{}, row.WorkoutID
+		if index == 0 || row.WorkoutID != ride.workoutID || row.TargetSlot != ride.targetSlot {
+			closeRide()
+			ride.targetSlot, ride.workoutID = row.TargetSlot, row.WorkoutID
 		}
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
 		heartRate.add(at, row.HeartRateBpm)
 		power.add(at, row.PowerWatts)
 	}
-	heartRate.best(rider.MaxHeartRateWindow, &into.MaxHeartRateBPM, nil)
-	power.best(rider.ThresholdPowerWindow, &into.FunctionalThresholdPowerWatts, rider.ThresholdPower)
+	closeRide()
+
+	return suggestions
 }
 
 // sensorSeries is one ride's samples from one sensor. A record without that
