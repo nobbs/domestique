@@ -48,6 +48,12 @@ type WorkoutSummary struct {
 // summary — rather than to the connection, the quota or the grant.
 var ErrWorkoutUnreadable = errors.New("wahoo: workout summary was unreadable")
 
+// ErrRequestRejected reports a data request Wahoo refused outright: the
+// connection, the grant or the quota rather than the resource asked for. It is
+// deliberately not ErrUnauthorized — only the token endpoint judges a refresh
+// token — so a caller stops without concluding the target must authorize again.
+var ErrRequestRejected = errors.New("wahoo: request was rejected")
+
 // decimal is one of Wahoo's accumulated totals, which it encodes as a JSON
 // string holding a decimal rather than as a number.
 type decimal float64
@@ -164,10 +170,16 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 
 	var body json.RawMessage
 	if err := c.doJSON(request, &body); err != nil {
-		var status *statusError
-		if errors.As(err, &status) &&
-			(status.status == http.StatusUnauthorized || status.status == http.StatusNotFound) {
-			return WorkoutSummary{}, fmt.Errorf("%w: HTTP %d", ErrWorkoutUnreadable, status.status)
+		if status, ok := errors.AsType[*statusError](err); ok {
+			switch status.status {
+			case http.StatusNotFound:
+				return WorkoutSummary{}, fmt.Errorf("%w: HTTP %d", ErrWorkoutUnreadable, status.status)
+			case http.StatusUnauthorized:
+				// Never this workout: the same rejection would meet the next one,
+				// and treating it as the workout's own sets aside a whole poll of
+				// healthy rides one at a time.
+				return WorkoutSummary{}, fmt.Errorf("%w: HTTP %d", ErrRequestRejected, status.status)
+			}
 		}
 
 		return WorkoutSummary{}, err

@@ -213,6 +213,8 @@ func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing
 	assert.True(t, provider.IsUnauthorized(wahoo.ErrUnauthorized), "IsUnauthorized()")
 	assert.True(t, provider.IsUnreadable(wahoo.ErrWorkoutUnreadable), "IsUnreadable()")
 	assert.False(t, provider.IsUnreadable(wahoo.ErrUnauthorized), "IsUnreadable() took a rejected grant for a dead workout")
+	assert.True(t, provider.IsRejected(wahoo.ErrRequestRejected), "IsRejected()")
+	assert.False(t, provider.IsRejected(wahoo.ErrWorkoutUnreadable), "IsRejected() took one dead workout for a refused request")
 }
 
 func TestWeatherCoordinatesPairsParallelSlices(t *testing.T) {
