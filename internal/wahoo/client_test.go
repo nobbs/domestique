@@ -440,8 +440,10 @@ func TestClientNeverThrottlesTheTokenEndpoint(t *testing.T) {
 			return
 		}
 		tokenRequests++
-		writer.Header().Set("X-RateLimit-Remaining", "250, 100, 25")
-		writer.Header().Set("X-RateLimit-Reset", "0")
+		// Headers that would plainly move the observed quota were they read:
+		// a different remaining, and a reset the observer never ignores.
+		writer.Header().Set("X-RateLimit-Remaining", "7, 7, 7")
+		writer.Header().Set("X-RateLimit-Reset", "900")
 		writeJSON(t, writer, map[string]string{
 			"access_token":  "access-token",
 			"refresh_token": "refresh-token",
