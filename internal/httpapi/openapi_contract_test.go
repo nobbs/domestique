@@ -237,9 +237,10 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 		MovingSeconds: 60, ElapsedSeconds: 90, AscentMetres: 10, TypeID: 15, LocationID: 1,
 	}}}
 	// One ride with a track, so the recorded-track Feature is validated against
-	// a real line rather than skipped as a not-found.
+	// a real line rather than skipped as a not-found. The first sample carries
+	// no altitude so the contract's `null` entry is exercised, not just the norm.
 	state.tracks = map[string][]activities.TrackPoint{testSubject + "/1": {
-		{Time: time.Now().Add(-time.Hour), Latitude: 49, Longitude: 8, AltitudeMetres: 110, HasAltitude: true},
+		{Time: time.Now().Add(-time.Hour), Latitude: 49, Longitude: 8},
 		{Time: time.Now().Add(-time.Hour), Latitude: 49.1, Longitude: 8.1, AltitudeMetres: 180, HasAltitude: true},
 	}}
 	handler := newHandler(t, &fakeOAuth{}, state)

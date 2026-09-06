@@ -107,8 +107,10 @@ export interface ActivityTrack {
 
 /**
  * Folds the altitudes back into the positions they belong to, which is where
- * `buildProfile` reads elevation from. A track already in that shape passes
- * through, exactly as `routeGeometry` above lets a caller hand over either.
+ * `buildActivityProfile` reads elevation from. A track already in that shape
+ * passes through, exactly as `routeGeometry` above lets a caller hand over
+ * either. A sample with no altitude — absent or `null` — travels as a two-wide
+ * position, the same shape a track missing altitude everywhere already used.
  */
 export function activityTrack(feature: GeneratedActivityTrack | ActivityTrack): ActivityTrack {
   if ("coordinates" in feature) {
@@ -121,7 +123,7 @@ export function activityTrack(feature: GeneratedActivityTrack | ActivityTrack): 
     coordinates: feature.geometry.coordinates.map(([longitude = 0, latitude = 0], index) => {
       const altitude = altitudes?.[index];
 
-      return altitude === undefined
+      return altitude === undefined || altitude === null
         ? ([longitude, latitude] as Position)
         : ([longitude, latitude, altitude] as Position);
     }),

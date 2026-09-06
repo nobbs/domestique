@@ -2280,9 +2280,15 @@ components:
       additionalProperties: false
       properties:
         altitudeMetres:
+          description: >-
+            The altitude at each coordinate, indexed 1:1 with them; null where
+            that sample recorded none. Omitted, never all null, when no
+            positioned sample recorded an altitude.
           type: array
           items:
-            type: number
+            type:
+              - number
+              - "null"
             format: double
     GeoJSONProperties:
       type: object

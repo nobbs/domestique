@@ -11,7 +11,7 @@ import { activityTrackQuery } from "../../api/queries";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatAscent, formatDistance, formatMovingTime, formatTimestamp } from "../../lib/format";
-import { buildProfile } from "../../lib/profile";
+import { buildActivityProfile } from "../../lib/profile";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
 import { useActivities } from "./useActivities";
@@ -25,12 +25,7 @@ export function ActivityPage() {
   const ride = activities.find((activity) => activity.id === id);
   const track = useQuery({ ...activityTrackQuery(id ?? 0), enabled: id !== null });
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
-  // Only where the track carried altitudes: a position without one reads as
-  // sea level, which would draw a flat profile rather than none.
-  const profile = useMemo(
-    () => (coordinates[0]?.length === 3 ? buildProfile(coordinates) : null),
-    [coordinates],
-  );
+  const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const title = ride ? formatTimestamp(ride.startedAt) : "Activity";
 
