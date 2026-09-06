@@ -29,7 +29,6 @@ import type { Climb } from "../lib/climbs";
 import type { ForecastSample } from "../lib/forecastSamples";
 import { buildProfile, gradientShares } from "../lib/profile";
 import type { SurfaceSummary } from "../lib/surface";
-import { windowStart } from "../lib/volume";
 
 export const coordinates = Array.from({ length: 40 }, (_, index): [number, number, number] => [
   8 + index * 0.001,
@@ -328,7 +327,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     next.setQueryData(webUIConfigQuery().queryKey, config);
     next.setQueryData(settingsQuery().queryKey, settings);
     next.setQueryData(routesQuery().queryKey, [route]);
-    next.setQueryData(activitiesQuery(windowStart(config.timezone)).queryKey, activities);
+    next.setQueryData(activitiesQuery().queryKey, activities);
     next.setQueryData(
       routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder).queryKey,
       routeGeometryFixture,

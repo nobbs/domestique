@@ -461,8 +461,9 @@ The read-only JSON surface is small:
   each one's Wahoo workout id, start time, distance, moving and elapsed time,
   ascent, and Wahoo's workout type and location ids — never the verbatim
   summary document. The optional `from` and `to` bound the start time as a
-  half-open window, defaulting to the last 365 days and refused beyond two
-  years; at most 5000 activities are served in one response. A caller reads
+  half-open window with no default lower bound and no maximum span — `to`
+  defaults to now, and `from` after `to` is refused; at most 5000 activities
+  are served in one response. A caller reads
   the target they own, or the one `target` names when they are an admin;
   naming another's is `404` rather than `403`, and a caller who has no target
   yet reads an empty list.

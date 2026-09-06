@@ -9,7 +9,6 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, WebUIConfig } from "../../api/types";
-import { windowStart } from "../../lib/volume";
 import { ActivitiesPage } from "./ActivitiesPage";
 
 const ZONE = "Europe/Berlin";
@@ -45,7 +44,7 @@ function show(activities: Activity[] | null = ACTIVITIES) {
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
   if (activities) {
-    client.setQueryData(activitiesQuery(windowStart(ZONE)).queryKey, activities);
+    client.setQueryData(activitiesQuery().queryKey, activities);
   }
   render(
     <QueryClientProvider client={client}>

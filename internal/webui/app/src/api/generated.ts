@@ -677,7 +677,7 @@ export type GetSyncRunsParams = {
 
 export type GetActivitiesParams = {
   /**
-   * Inclusive start of the window. Defaults to 365 days before `to`.
+   * Inclusive start of the window. Left out, the window has no lower bound and reaches every stored activity.
    */
   from?: string;
   /**
@@ -2151,7 +2151,7 @@ export const getGetActivitiesUrl = (params?: GetActivitiesParams) => {
 };
 
 /**
- * The recorded activities of one target, newest first. A caller reads only the target they own; an admin may name any. The window is half-open on the start time and defaults to the last 365 days, may span no more than two years, and no more than 5000 activities are served in one response.
+ * The recorded activities of one target, newest first. A caller reads only the target they own; an admin may name any. The window is half-open on the start time with no maximum span, and no more than 5000 activities are served in one response.
  */
 export const getActivities = async (
   params?: GetActivitiesParams,
