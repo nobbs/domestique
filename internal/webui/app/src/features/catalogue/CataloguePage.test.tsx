@@ -7,7 +7,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -315,9 +315,10 @@ describe("CataloguePage", () => {
     show();
 
     await user.click(screen.getByRole("button", { name: /Show the library filters/ }));
-    // Ascents of 900, 300 and 100 m give a track to 900 m by 20 m.
+    // Ascents of 900, 300 and 100 m give a track to 900 m by 20 m; the
+    // thumb is a native range input, so one change event reaches it.
     await focusThumb("Ascent min");
-    await user.keyboard("{ArrowRight}".repeat(20));
+    fireEvent.change(document.activeElement as HTMLInputElement, { target: { value: "400" } });
 
     expect(shownTitles()).toEqual([expect.stringContaining("Alpine loop")]);
     expect(screen.getByTestId("address")).toHaveTextContent("ascentMin=400");
