@@ -148,7 +148,8 @@ type Handler struct {
 	surfaceIndex func() (string, time.Time, bool)
 	now          func() time.Time
 	mux          *http.ServeMux
-	// entry is serve behind the request log, wrapped once rather than per call.
+	// entry is serve wrapped in the request log, composed once at construction
+	// rather than on every request.
 	entry               http.Handler
 	rideModelValidation func() *RideModelValidation
 	rideModelStatus     func() RideModelStatus
