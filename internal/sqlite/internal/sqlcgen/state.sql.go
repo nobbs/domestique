@@ -308,6 +308,32 @@ func (q *Queries) GetTarget(ctx context.Context, slot string) (GetTargetRow, err
 	return i, err
 }
 
+const getWahooQuota = `-- name: GetWahooQuota :one
+SELECT remaining, reset_at_unix, not_before_unix, observed_at_unix, expires_at_unix
+FROM wahoo_quota WHERE id = 1
+`
+
+type GetWahooQuotaRow struct {
+	Remaining      int64
+	ResetAtUnix    int64
+	NotBeforeUnix  int64
+	ObservedAtUnix int64
+	ExpiresAtUnix  int64
+}
+
+func (q *Queries) GetWahooQuota(ctx context.Context) (GetWahooQuotaRow, error) {
+	row := q.db.QueryRowContext(ctx, getWahooQuota)
+	var i GetWahooQuotaRow
+	err := row.Scan(
+		&i.Remaining,
+		&i.ResetAtUnix,
+		&i.NotBeforeUnix,
+		&i.ObservedAtUnix,
+		&i.ExpiresAtUnix,
+	)
+	return i, err
+}
+
 const insertSourceStage = `-- name: InsertSourceStage :exec
 INSERT INTO source_stages (provider, route_id, stage_order, source_revision, content_hash)
 VALUES (?, ?, ?, ?, ?)
@@ -705,5 +731,35 @@ type UpsertTaskScheduleParams struct {
 
 func (q *Queries) UpsertTaskSchedule(ctx context.Context, arg UpsertTaskScheduleParams) error {
 	_, err := q.db.ExecContext(ctx, upsertTaskSchedule, arg.Task, arg.Enabled, arg.UpdatedAtUnix)
+	return err
+}
+
+const upsertWahooQuota = `-- name: UpsertWahooQuota :exec
+INSERT INTO wahoo_quota (id, remaining, reset_at_unix, not_before_unix, observed_at_unix, expires_at_unix)
+VALUES (1, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  remaining = excluded.remaining,
+  reset_at_unix = excluded.reset_at_unix,
+  not_before_unix = excluded.not_before_unix,
+  observed_at_unix = excluded.observed_at_unix,
+  expires_at_unix = excluded.expires_at_unix
+`
+
+type UpsertWahooQuotaParams struct {
+	Remaining      int64
+	ResetAtUnix    int64
+	NotBeforeUnix  int64
+	ObservedAtUnix int64
+	ExpiresAtUnix  int64
+}
+
+func (q *Queries) UpsertWahooQuota(ctx context.Context, arg UpsertWahooQuotaParams) error {
+	_, err := q.db.ExecContext(ctx, upsertWahooQuota,
+		arg.Remaining,
+		arg.ResetAtUnix,
+		arg.NotBeforeUnix,
+		arg.ObservedAtUnix,
+		arg.ExpiresAtUnix,
+	)
 	return err
 }

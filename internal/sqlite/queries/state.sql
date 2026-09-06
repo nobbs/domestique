@@ -165,3 +165,17 @@ SELECT built_at_unix, generation FROM surface_index WHERE id = 1;
 
 -- name: UpdateSurfaceIndexBuild :exec
 UPDATE surface_index SET built_at_unix = ?, generation = ? WHERE id = 1;
+
+-- name: GetWahooQuota :one
+SELECT remaining, reset_at_unix, not_before_unix, observed_at_unix, expires_at_unix
+FROM wahoo_quota WHERE id = 1;
+
+-- name: UpsertWahooQuota :exec
+INSERT INTO wahoo_quota (id, remaining, reset_at_unix, not_before_unix, observed_at_unix, expires_at_unix)
+VALUES (1, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  remaining = excluded.remaining,
+  reset_at_unix = excluded.reset_at_unix,
+  not_before_unix = excluded.not_before_unix,
+  observed_at_unix = excluded.observed_at_unix,
+  expires_at_unix = excluded.expires_at_unix;

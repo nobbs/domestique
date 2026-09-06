@@ -259,7 +259,9 @@ begins. It observes rate limits and waits or ends the run safely; it never
 issues parallel retries.
 
 An advertised quota that reaches zero holds the next request back until it
-refills, whether or not the destination said when that will be. A reported reset
+refills, whether or not the destination said when that will be, and a restart
+does not spend it again: the observation is stored with the expiry it was written
+with, and restored only while that instant is still ahead. A reported reset
 of zero means the responding request was not itself limited, not that the quota
 is already back. When the wait would exceed what one run holds itself open for,
 the run ends and reports the limit rather than sleeping through it. Each route is
@@ -564,7 +566,8 @@ Returns 200 while the service can read state. The minimum shape is:
     },
     "wahoo_rate_limit":{
       "remaining":187,
-      "resets_at":"2026-08-16T12:05:00Z"
+      "resets_at":"2026-08-16T12:05:00Z",
+      "observed_at":"2026-08-16T12:00:04Z"
     }
   }
 }
@@ -575,7 +578,10 @@ its last response rather than totalled by this service. It is absent until a
 request has reached Wahoo and carried a quota header back, and it is shared
 across every configured target rather than reported per target. `resets_at` is
 absent whenever Wahoo's last response carried no usable reset, or the last one it
-did carry has already passed.
+did carry has already passed. `observed_at` is when that reading was taken, which
+a restart does not reset: the observation is stored with an expiry and restored
+while it is still live, so an absent quota means none has been observed rather
+than that this process has not yet made a request.
 
 Authorisation is one of `not_authorized`, `pending`, `authorized`, or
 `needs_reauthorization`. `pending` is derived at read time as the OAuth

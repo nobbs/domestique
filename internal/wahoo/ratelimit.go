@@ -3,6 +3,7 @@ package wahoo
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -10,12 +11,31 @@ import (
 	"time"
 )
 
-func (c *Client) observeRateLimit(response *http.Response) {
+// Quota is one reading of Wahoo's advertised request quota. ExpiresAt is when
+// the reading stops describing anything, so a restore needs no knowledge of the
+// windows behind it; ResetAt and NotBefore are zero when none was observed.
+type Quota struct {
+	ObservedAt time.Time
+	ExpiresAt  time.Time
+	ResetAt    time.Time
+	NotBefore  time.Time
+	Remaining  int
+}
+
+// QuotaStore keeps the last observed quota across restarts. It is optional: a
+// client without one holds its quota in memory alone.
+type QuotaStore interface {
+	LoadQuota(ctx context.Context) (Quota, bool, error)
+	SaveQuota(ctx context.Context, quota *Quota) error
+}
+
+func (c *Client) observeRateLimit(ctx context.Context, response *http.Response) {
 	remaining, reset, ok := rateLimit(response.Header)
 	if !ok {
 		return
 	}
 	c.rateLimitKnown = true
+	c.quotaObservedAt = c.now()
 	c.rateLimitRemaining = remaining
 	// Reset stays whatever it last usefully was when this response carries an
 	// unknown one, rather than jumping to zero: this field is read for display,
@@ -24,6 +44,8 @@ func (c *Client) observeRateLimit(response *http.Response) {
 		c.rateLimitResetAt = c.now().Add(reset)
 	}
 	if remaining > 0 {
+		c.saveQuota(ctx)
+
 		return
 	}
 	// A spent quota with no usable reset still has to be waited out. Wahoo
@@ -33,22 +55,109 @@ func (c *Client) observeRateLimit(response *http.Response) {
 		reset = defaultRateLimitReset
 	}
 	c.notBefore = c.now().Add(reset)
+	c.saveQuota(ctx)
+}
+
+// restoreQuota loads the last observed quota, once, on first use: a constructor
+// contacts nothing. A row that has expired is discarded rather than honoured,
+// which is the whole of what makes a stored reading safe to trust.
+func (c *Client) restoreQuota(ctx context.Context) {
+	if c.quotaRestored || c.quotaStore == nil {
+		return
+	}
+	c.quotaRestored = true
+	// Once only, so the request that happens to come first must not take the
+	// restore down with it when it is cancelled; its values still travel.
+	loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), quotaStoreTimeout)
+	defer cancel()
+	quota, found, err := c.quotaStore.LoadQuota(loadCtx)
+	if err != nil {
+		slog.Warn("wahoo quota state could not be read", "error", err)
+
+		return
+	}
+	if !found || !quota.ExpiresAt.After(c.now()) {
+		return
+	}
+	c.rateLimitKnown = true
+	c.rateLimitRemaining = quota.Remaining
+	c.rateLimitResetAt = quota.ResetAt
+	c.notBefore = quota.NotBefore
+	c.quotaObservedAt = quota.ObservedAt
+	c.savedQuota = quota
+}
+
+// saveQuota stores an observation that materially changed what the client
+// holds, so an ordinary poll does not write per response.
+func (c *Client) saveQuota(ctx context.Context) {
+	if c.quotaStore == nil {
+		return
+	}
+	quota := Quota{
+		ObservedAt: c.quotaObservedAt,
+		ExpiresAt:  c.quotaExpiry(),
+		ResetAt:    c.rateLimitResetAt,
+		NotBefore:  c.notBefore,
+		Remaining:  c.rateLimitRemaining,
+	}
+	if sameQuota(&quota, &c.savedQuota) {
+		return
+	}
+	// The response has arrived; its request being cancelled now must not lose
+	// what it said.
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), quotaStoreTimeout)
+	defer cancel()
+	if err := c.quotaStore.SaveQuota(saveCtx, &quota); err != nil {
+		slog.Warn("wahoo quota state could not be stored", "error", err)
+
+		return
+	}
+	c.savedQuota = quota
+}
+
+// quotaExpiry is the tightest window this observation could describe: Wahoo's
+// shortest published window, extended to whatever later instant it named.
+func (c *Client) quotaExpiry() time.Time {
+	expiresAt := c.quotaObservedAt.Add(defaultRateLimitReset)
+	for _, named := range []time.Time{c.rateLimitResetAt, c.notBefore} {
+		if named.After(expiresAt) {
+			expiresAt = named
+		}
+	}
+
+	return expiresAt
+}
+
+// quotaExpiryStep is how far the stored expiry may fall behind a fresh
+// observation before it is worth a write of its own.
+const quotaExpiryStep = time.Minute
+
+// sameQuota compares what a stored row is for: the count, the two instants a
+// restore acts on, and an expiry that has not fallen a step behind. A fresh
+// observation seconds after the last is not a reason to write again.
+func sameQuota(quota, stored *Quota) bool {
+	return quota.Remaining == stored.Remaining &&
+		quota.ResetAt.Truncate(time.Second).Equal(stored.ResetAt.Truncate(time.Second)) &&
+		quota.NotBefore.Truncate(time.Second).Equal(stored.NotBefore.Truncate(time.Second)) &&
+		quota.ExpiresAt.Sub(stored.ExpiresAt) < quotaExpiryStep
 }
 
 // RateLimit reports the lowest request quota Wahoo advertised across the windows
-// on its most recent response, and when it is next expected to refill. ok is false
-// until a request has carried a quota header. resetAt is zero whenever it would
-// already be in the past, so a stale reset never reaches a caller.
-func (c *Client) RateLimit() (remaining int, resetAt time.Time, ok bool) {
+// on its most recent response, when it is next expected to refill, and when it was
+// read. ok is false until a request has carried a quota header, restored readings
+// included. resetAt is zero whenever it would already be in the past, so a stale
+// reset never reaches a caller.
+func (c *Client) RateLimit() (remaining int, resetAt, observedAt time.Time, ok bool) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	c.restoreQuota(context.Background())
 	resetAt = c.rateLimitResetAt
 	if !resetAt.IsZero() && !resetAt.After(c.now()) {
 		resetAt = time.Time{}
 	}
 
-	return c.rateLimitRemaining, resetAt, c.rateLimitKnown
+	return c.rateLimitRemaining, resetAt, c.quotaObservedAt, c.rateLimitKnown
 }
 
 func rateLimit(header http.Header) (int, time.Duration, bool) {

@@ -38,9 +38,10 @@ type Sync interface {
 	// SurfaceIncomplete reports how many stages the most recently completed
 	// classification pass could not classify.
 	SurfaceIncomplete() int
-	// RateLimit reports Wahoo's most recently advertised request quota and when
-	// it next refills. ok is false until a request has carried a quota header.
-	RateLimit() (remaining int, resetAt time.Time, ok bool)
+	// RateLimit reports Wahoo's most recently advertised request quota, when it
+	// next refills, and when it was read. ok is false until a request has carried
+	// a quota header.
+	RateLimit() (remaining int, resetAt, observedAt time.Time, ok bool)
 }
 
 // Tasks is the background activities as this surface needs them: what this
@@ -121,7 +122,7 @@ type SyncActivityState struct {
 type SyncFuncs struct {
 	ActivityFunc          func() SyncActivityState
 	SurfaceIncompleteFunc func() int
-	RateLimitFunc         func() (remaining int, resetAt time.Time, ok bool)
+	RateLimitFunc         func() (remaining int, resetAt, observedAt time.Time, ok bool)
 }
 
 // Activity reports the adapted process state.
@@ -145,9 +146,9 @@ func (f SyncFuncs) SurfaceIncomplete() int {
 
 // RateLimit reports the adapted quota. Unknown when unset, the honest answer
 // from a wiring with no Wahoo client behind it.
-func (f SyncFuncs) RateLimit() (remaining int, resetAt time.Time, ok bool) {
+func (f SyncFuncs) RateLimit() (remaining int, resetAt, observedAt time.Time, ok bool) {
 	if f.RateLimitFunc == nil {
-		return 0, time.Time{}, false
+		return 0, time.Time{}, time.Time{}, false
 	}
 
 	return f.RateLimitFunc()

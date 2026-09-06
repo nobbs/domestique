@@ -146,16 +146,17 @@ func TestClientReportsRateLimitObservedFromResponse(t *testing.T) {
 	now := time.Date(2026, time.August, 17, 7, 0, 0, 0, time.UTC)
 	client.now = func() time.Time { return now }
 
-	_, _, before := client.RateLimit()
+	_, _, _, before := client.RateLimit()
 	assert.False(t, before, "a client that has not made a request should report no known quota")
 
 	_, err := client.AuthenticatedUser(t.Context(), "access-token")
 	require.NoError(t, err)
 
-	remaining, resetAt, ok := client.RateLimit()
+	remaining, resetAt, observedAt, ok := client.RateLimit()
 	assert.True(t, ok, "quota should be known after a response carried one")
 	assert.Equal(t, 20, remaining, "the lowest advertised window")
 	assert.Equal(t, now.Add(120*time.Second), resetAt)
+	assert.Equal(t, now, observedAt, "the instant the quota was read")
 }
 
 // A response that is not itself limited reports no usable reset — Wahoo answers
@@ -183,14 +184,14 @@ func TestClientDoesNotReportAResetThatHasAlreadyPassed(t *testing.T) {
 
 	_, err := client.AuthenticatedUser(t.Context(), "access-token")
 	require.NoError(t, err, "first request")
-	_, resetAt, _ := client.RateLimit()
+	_, resetAt, _, _ := client.RateLimit()
 	assert.Equal(t, now.Add(time.Second), resetAt, "the advertised reset")
 
 	now = now.Add(2 * time.Second)
 	_, err = client.AuthenticatedUser(t.Context(), "access-token")
 	require.NoError(t, err, "second request, past the first reset, carrying no reset of its own")
 
-	remaining, resetAt, ok := client.RateLimit()
+	remaining, resetAt, _, ok := client.RateLimit()
 	assert.True(t, ok)
 	assert.Equal(t, 49, remaining)
 	assert.True(t, resetAt.IsZero(), "a reset already in the past must not be reported as due")
@@ -467,7 +468,7 @@ func TestClientNeverThrottlesTheTokenEndpoint(t *testing.T) {
 	require.NoError(t, err, "refreshing while the data quota is spent")
 	assert.Equal(t, 1, tokenRequests, "the refresh did not reach the token endpoint")
 
-	remaining, resetAt, ok := client.RateLimit()
+	remaining, resetAt, _, ok := client.RateLimit()
 	require.True(t, ok)
 	assert.Zero(t, remaining, "the token response changed the observed quota")
 	assert.Equal(t, now.Add(300*time.Second), resetAt, "the token response changed the observed reset")

@@ -208,7 +208,7 @@ func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing
 		require.ErrorIs(t, call(), errNotConfigured, name)
 	}
 
-	_, _, ok := provider.RateLimit()
+	_, _, _, ok := provider.RateLimit()
 	assert.False(t, ok, "a request budget was reported for an application that does not exist")
 	assert.True(t, provider.IsUnauthorized(wahoo.ErrUnauthorized), "IsUnauthorized()")
 	assert.True(t, provider.IsUnreadable(wahoo.ErrWorkoutUnreadable), "IsUnreadable()")

@@ -115,6 +115,7 @@ export interface SurfaceCoverage {
 export interface WahooRateLimit {
   remaining: number;
   resetsAt?: string;
+  observedAt: string;
 }
 
 export interface TrustedInventory {

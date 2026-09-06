@@ -304,6 +304,15 @@ type TrustedInventoryStage struct {
 	WahooRouteID int64
 }
 
+type WahooQuotum struct {
+	ID             int64
+	Remaining      int64
+	ResetAtUnix    int64
+	NotBeforeUnix  int64
+	ObservedAtUnix int64
+	ExpiresAtUnix  int64
+}
+
 type WebSession struct {
 	TokenDigest   []byte
 	Subject       string

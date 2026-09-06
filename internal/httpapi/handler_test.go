@@ -1592,7 +1592,11 @@ func TestHandlerOmitsWahooRateLimitUntilOneIsObserved(t *testing.T) {
 
 func TestHandlerReportsTheObservedWahooRateLimit(t *testing.T) {
 	resetAt := time.Date(2026, time.August, 23, 12, 0, 0, 0, time.UTC)
-	trigger := &fakeSync{rateLimitKnown: true, rateLimitRemaining: 187, rateLimitResetAt: resetAt}
+	observedAt := resetAt.Add(-5 * time.Minute)
+	trigger := &fakeSync{
+		rateLimitKnown: true, rateLimitRemaining: 187,
+		rateLimitResetAt: resetAt, rateLimitObservedAt: observedAt,
+	}
 	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
 
 	response := httptest.NewRecorder()
@@ -1603,6 +1607,9 @@ func TestHandlerReportsTheObservedWahooRateLimit(t *testing.T) {
 	require.NotNil(t, view.Sync.WahooRateLimit, "an observed quota should be reported")
 	assert.Equal(t, 187, view.Sync.WahooRateLimit.Remaining, "remaining")
 	assert.Equal(t, wireInstant(resetAt), wireInstant(value(view.Sync.WahooRateLimit.ResetsAt)), "resets_at")
+	// A restored quota reports when it was read, so a reading kept across a
+	// restart cannot be mistaken for one taken just now.
+	assert.Equal(t, wireInstant(observedAt), wireInstant(view.Sync.WahooRateLimit.ObservedAt), "observed_at")
 }
 
 // Wahoo advertises a remaining count without always saying when it refills. The
@@ -1855,6 +1862,17 @@ func TestSyncFuncsReportNothingUnderWayWithoutAnActivityFunc(t *testing.T) {
 // and zero is the honest answer for one that tracks none.
 func TestSyncFuncsReportNoIncompleteCountWithoutAFunc(t *testing.T) {
 	assert.Zero(t, SyncFuncs{}.SurfaceIncomplete(), "SurfaceIncomplete()")
+}
+
+// A wiring with no Wahoo client behind it has observed no quota, which is a
+// different answer from an observed quota of zero.
+func TestSyncFuncsReportNoQuotaWithoutARateLimitFunc(t *testing.T) {
+	remaining, resetAt, observedAt, ok := SyncFuncs{}.RateLimit()
+
+	assert.False(t, ok, "a quota was reported with nothing behind it")
+	assert.Zero(t, remaining)
+	assert.True(t, resetAt.IsZero(), "resetAt")
+	assert.True(t, observedAt.IsZero(), "observedAt")
 }
 
 // An operator who has started the browser flow and not finished it is in a
@@ -2226,18 +2244,19 @@ func (o *fakeOAuth) Complete(context.Context, string, string, string) error {
 }
 
 type fakeSync struct {
-	rateLimitResetAt   time.Time
-	activity           SyncActivityState
-	phases             []SyncPhase
-	targetTriggers     []string
-	clearTriggers      []string
-	calls              int
-	annotateCalls      int
-	surfaceIncomplete  int
-	rateLimitRemaining int
-	accepted           bool
-	annotateAccepted   bool
-	rateLimitKnown     bool
+	rateLimitResetAt    time.Time
+	rateLimitObservedAt time.Time
+	activity            SyncActivityState
+	phases              []SyncPhase
+	targetTriggers      []string
+	clearTriggers       []string
+	calls               int
+	annotateCalls       int
+	surfaceIncomplete   int
+	rateLimitRemaining  int
+	accepted            bool
+	annotateAccepted    bool
+	rateLimitKnown      bool
 }
 
 func (t *fakeSync) Trigger(phase SyncPhase) bool {
@@ -2271,8 +2290,8 @@ func (t *fakeSync) TriggerAnnotate() bool {
 
 func (t *fakeSync) SurfaceIncomplete() int { return t.surfaceIncomplete }
 
-func (t *fakeSync) RateLimit() (int, time.Time, bool) {
-	return t.rateLimitRemaining, t.rateLimitResetAt, t.rateLimitKnown
+func (t *fakeSync) RateLimit() (remaining int, resetAt, observedAt time.Time, ok bool) {
+	return t.rateLimitRemaining, t.rateLimitResetAt, t.rateLimitObservedAt, t.rateLimitKnown
 }
 
 type fakeAssets struct{}

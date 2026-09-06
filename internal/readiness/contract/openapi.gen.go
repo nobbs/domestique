@@ -156,8 +156,9 @@ type SurfaceCoverage struct {
 }
 
 type WahooRateLimit struct {
-	Remaining int        `json:"remaining"`
-	ResetsAt  *time.Time `json:"resetsAt,omitempty"`
+	Remaining  int        `json:"remaining"`
+	ResetsAt   *time.Time `json:"resetsAt,omitempty"`
+	ObservedAt time.Time  `json:"observedAt"`
 }
 
 type TrustedInventory struct {

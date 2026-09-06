@@ -137,6 +137,7 @@ func (p *wahooProvider) current() (*wahoo.Client, error) {
 		ClientID:     values.ClientID,
 		RedirectURL:  p.redirectURL,
 		ClientSecret: secret.Bytes(),
+		QuotaStore:   wahooQuotaStore{store: p.store},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating Wahoo client: %w", err)
@@ -408,15 +409,50 @@ func (p *wahooProvider) IsRejected(err error) bool {
 	return errors.Is(err, wahoo.ErrRequestRejected)
 }
 
-// RateLimit reports the budget the current client observed. An unconfigured
-// service has spent nothing and knows nothing.
-func (p *wahooProvider) RateLimit() (remaining int, resetAt time.Time, ok bool) {
+// RateLimit reports the budget the current client observed, and when it read it.
+// An unconfigured service has spent nothing and knows nothing.
+func (p *wahooProvider) RateLimit() (remaining int, resetAt, observedAt time.Time, ok bool) {
 	client, err := p.current()
 	if err != nil {
-		return 0, time.Time{}, false
+		return 0, time.Time{}, time.Time{}, false
 	}
 
 	return client.RateLimit()
+}
+
+// wahooQuotaStore carries the observed quota to and from the state store. The
+// two adapters do not know about each other, so the translation lives here.
+type wahooQuotaStore struct {
+	store *sqlite.Store
+}
+
+func (q wahooQuotaStore) LoadQuota(ctx context.Context) (wahoo.Quota, bool, error) {
+	stored, found, err := q.store.WahooQuota(ctx)
+	if err != nil {
+		return wahoo.Quota{}, false, fmt.Errorf("reading the stored Wahoo quota: %w", err)
+	}
+
+	return wahoo.Quota{
+		ObservedAt: stored.ObservedAt,
+		ExpiresAt:  stored.ExpiresAt,
+		ResetAt:    stored.ResetAt,
+		NotBefore:  stored.NotBefore,
+		Remaining:  stored.Remaining,
+	}, found, nil
+}
+
+func (q wahooQuotaStore) SaveQuota(ctx context.Context, quota *wahoo.Quota) error {
+	if err := q.store.StoreWahooQuota(ctx, &sqlite.WahooQuota{
+		ObservedAt: quota.ObservedAt,
+		ExpiresAt:  quota.ExpiresAt,
+		ResetAt:    quota.ResetAt,
+		NotBefore:  quota.NotBefore,
+		Remaining:  quota.Remaining,
+	}); err != nil {
+		return fmt.Errorf("storing the observed Wahoo quota: %w", err)
+	}
+
+	return nil
 }
 
 // sources builds the library clients a run reads, in configured order. Built per
