@@ -305,6 +305,46 @@ paths:
           $ref: '#/components/responses/NotFound'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/activities/{activityId}/track:
+    get:
+      tags:
+        - browser-api
+      operationId: getActivityTrack
+      description: >-
+        One activity's recorded track, as a GeoJSON Feature. A caller reads
+        only an activity of the target they own; an admin may name any target.
+        An activity of another target, and one with fewer than two positioned
+        samples, are both answered not found.
+      parameters:
+        - name: activityId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: target
+          in: query
+          description: >-
+            The target to read. Omitted means the caller's own.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The activity's recorded track.
+          content:
+            application/geo+json:
+              schema:
+                $ref: '#/components/schemas/ActivityTrack'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/routes:
     get:
       tags:
@@ -2188,6 +2228,58 @@ components:
             items:
               type: number
               format: double
+    ActivityTrackLineString:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - coordinates
+      properties:
+        type:
+          type: string
+          const: LineString
+        coordinates:
+          type: array
+          minItems: 2
+          items:
+            type: array
+            minItems: 2
+            maxItems: 2
+            items:
+              type: number
+              format: double
+    ActivityTrack:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - bbox
+        - geometry
+        - properties
+      properties:
+        type:
+          type: string
+          const: Feature
+        bbox:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: number
+            format: double
+        geometry:
+          $ref: '#/components/schemas/ActivityTrackLineString'
+        properties:
+          $ref: '#/components/schemas/ActivityTrackProperties'
+    ActivityTrackProperties:
+      type: object
+      additionalProperties: false
+      properties:
+        altitudeMetres:
+          type: array
+          items:
+            type: number
+            format: double
     GeoJSONProperties:
       type: object
       additionalProperties: false

@@ -551,3 +551,33 @@ func TestActivityRidesReportsAnUnreadableStore(t *testing.T) {
 	_, err := store.ActivityRides(t.Context(), time.Time{}, cyclingTypes())
 	require.ErrorContains(t, err, "reading activities for calibration")
 }
+
+// The track reads back the samples that carried a position, in record order,
+// and belongs to the target whose account recorded it.
+func TestActivityTrackReadsBackPositionedSamples(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), Latitude: 49.0, Longitude: 8.4, AltitudeMetres: 110, HasPosition: true, HasAltitude: true},
+			{Time: activityNow().Add(time.Second)},
+			{Time: activityNow().Add(2 * time.Second), Latitude: 49.1, Longitude: 8.5, HasPosition: true},
+		},
+	}), "StoreActivityRecords()")
+
+	track, err := store.ActivityTrack(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityTrack()")
+	require.Len(t, track, 2, "the sample without a position belongs to no track")
+	assert.Equal(t, activityNow(), track[0].Time)
+	assert.InDelta(t, 49.0, track[0].Latitude, 1e-9)
+	assert.InDelta(t, 8.4, track[0].Longitude, 1e-9)
+	assert.InDelta(t, 110.0, track[0].AltitudeMetres, 1e-9)
+	assert.True(t, track[0].HasAltitude)
+	assert.False(t, track[1].HasAltitude, "a sample without an altitude must not read as ground level")
+
+	other, err := store.ActivityTrack(t.Context(), "rider-b", 1)
+	require.NoError(t, err, "ActivityTrack() for another target")
+	assert.Empty(t, other, "another target's activity id must read as no track")
+}

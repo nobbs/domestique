@@ -2,9 +2,11 @@
 import type { InfiniteData } from "@tanstack/react-query";
 import type { ForecastSample } from "../lib/forecastSamples";
 import {
+  type ActivityTrack as ActivityTrackFeature,
   type WebUIConfig as GeneratedWebUIConfig,
   type GetTaskRunsParams,
   getGetActivitiesQueryOptions,
+  getGetActivityTrackQueryOptions,
   getGetRouteGeometryQueryOptions,
   getGetRouteQueryOptions,
   getGetRoutesQueryOptions,
@@ -21,6 +23,8 @@ import {
 import {
   type Activity,
   type ActivityList,
+  type ActivityTrack,
+  activityTrack,
   type GeoJSONFeature,
   type Route,
   type RouteGeometry,
@@ -75,9 +79,24 @@ export const activitiesQuery = (from: string) =>
 
           return Array.isArray(list) ? list : list.activities;
         },
+        // Read by the Volume, list and ride pages alike: one fetch serves a
+        // whole visit rather than one per page shown.
+        staleTime: 5 * 60 * 1000,
       },
     },
   );
+
+/**
+ * One ride's recorded track. Geometry-shaped and served on its own endpoint, so
+ * it is asked for only where a ride is actually being looked at.
+ */
+export const activityTrackQuery = (id: number) =>
+  getGetActivityTrackQueryOptions<ActivityTrack>(id, undefined, {
+    query: {
+      select: (response) => activityTrack(payload<ActivityTrackFeature>(response)),
+      staleTime: 5 * 60 * 1000,
+    },
+  });
 
 export const routeQuery = (provider: string, sourceRouteId: number, stageOrder: number) =>
   getGetRouteQueryOptions(provider, sourceRouteId, stageOrder, {

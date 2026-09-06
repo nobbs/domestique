@@ -38,6 +38,7 @@ const DESTINATIONS = [
   { to: "/", label: "Atlas", end: true },
   { to: "/catalogue", label: "Catalogue", end: false },
   { to: "/volume", label: "Volume", end: false },
+  { to: "/activities", label: "Activities", end: false },
   { to: "/sync", label: "Sync", end: false },
   { to: "/settings", label: "Settings", end: false },
 ] as const;

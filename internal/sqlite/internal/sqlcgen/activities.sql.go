@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 )
 
@@ -336,6 +337,54 @@ func (q *Queries) ListActivitySkips(ctx context.Context, targetSlot string) ([]L
 	for rows.Next() {
 		var i ListActivitySkipsRow
 		if err := rows.Scan(&i.WorkoutID, &i.Attempts, &i.LastAttemptUnix); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActivityTrack = `-- name: ListActivityTrack :many
+SELECT recorded_at_unix, latitude, longitude, altitude_metres
+FROM activity_records
+WHERE target_slot = ?1 AND workout_id = ?2
+  AND latitude IS NOT NULL AND longitude IS NOT NULL
+ORDER BY record_index
+`
+
+type ListActivityTrackParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+type ListActivityTrackRow struct {
+	RecordedAtUnix int64
+	Latitude       sql.NullFloat64
+	Longitude      sql.NullFloat64
+	AltitudeMetres sql.NullFloat64
+}
+
+func (q *Queries) ListActivityTrack(ctx context.Context, arg ListActivityTrackParams) ([]ListActivityTrackRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityTrack, arg.TargetSlot, arg.WorkoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityTrackRow{}
+	for rows.Next() {
+		var i ListActivityTrackRow
+		if err := rows.Scan(
+			&i.RecordedAtUnix,
+			&i.Latitude,
+			&i.Longitude,
+			&i.AltitudeMetres,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

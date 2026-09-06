@@ -163,6 +163,16 @@ func (h *Handler) GetVolumePage(writer http.ResponseWriter, request *http.Reques
 	h.index(writer, request)
 }
 
+// GetActivitiesPage serves the application document for the activity list.
+func (h *Handler) GetActivitiesPage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
+// GetActivityPage serves the application document for one activity's view.
+func (h *Handler) GetActivityPage(writer http.ResponseWriter, request *http.Request) {
+	h.index(writer, request)
+}
+
 // GetFavicon serves the tab icon. It and the two methods below are separate
 // operations because the contract names each file the manifest may point at.
 func (h *Handler) GetFavicon(writer http.ResponseWriter, request *http.Request) {

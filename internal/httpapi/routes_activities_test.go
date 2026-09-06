@@ -166,3 +166,114 @@ func TestGetActivitiesReportsAnUnreadableStore(t *testing.T) {
 	code, _ := getActivities(t, handler, "/v1/activities")
 	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
+
+// trackState is one rider's own target carrying a recorded track, plus another
+// rider's target with a track of its own under the same activity id.
+func trackState(subject string) *fakeState {
+	state := activityState(subject, time.Hour)
+	state.tracks = map[string][]activities.TrackPoint{
+		subject + "/1": {
+			{Time: activityClock(), Latitude: 49.0, Longitude: 8.4, AltitudeMetres: 110, HasAltitude: true},
+			{Time: activityClock().Add(time.Minute), Latitude: 49.2, Longitude: 8.5, AltitudeMetres: 180, HasAltitude: true},
+		},
+		"rider-b/1": {
+			{Time: activityClock(), Latitude: 1, Longitude: 1, HasAltitude: true},
+			{Time: activityClock(), Latitude: 2, Longitude: 2, HasAltitude: true},
+		},
+	}
+
+	return state
+}
+
+func getTrack(t *testing.T, handler *Handler, target string) (int, activityTrackView) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, target))
+	var view activityTrackView
+	if response.Code == http.StatusOK {
+		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view), "decoding the track")
+		assert.Contains(t, response.Header().Get("Content-Type"), "application/geo+json")
+	}
+
+	return response.Code, view
+}
+
+func TestGetActivityTrackServesTheCallersOwnRide(t *testing.T) {
+	handler := activityHandler(t, trackState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "Feature", view.Type)
+	assert.Equal(t, "LineString", view.Geometry.Type)
+	assert.Equal(t, [][2]float64{{8.4, 49.0}, {8.5, 49.2}}, view.Geometry.Coordinates, "longitude first")
+	assert.InDeltaSlice(t, []float64{8.4, 49.0, 8.5, 49.2}, view.BBox, 1e-9, "bbox")
+	assert.InDeltaSlice(t, []float64{110, 180}, view.Properties.AltitudeMetres, 1e-9, "altitudes")
+}
+
+// The track is scoped to the caller's own target exactly as the list is, so
+// another rider's activity id reads as a ride that is not there.
+func TestGetActivityTrackRefusesAnotherRidersActivity(t *testing.T) {
+	handler := activityHandler(t, trackState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, _ := getTrack(t, handler, "/v1/activities/1/track?target=rider-b")
+	assert.Equal(t, http.StatusNotFound, code)
+}
+
+func TestGetActivityTrackServesAnyTargetToAnAdmin(t *testing.T) {
+	handler := activityHandler(t, trackState(testSubject), newFakeSessions())
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track?target=rider-b")
+	require.Equal(t, http.StatusOK, code)
+	assert.Len(t, view.Geometry.Coordinates, 2)
+}
+
+// A ride whose samples carry no position, and one whose samples are not stored
+// yet, are both a ride with no track to draw.
+func TestGetActivityTrackIsNotFoundWithoutALine(t *testing.T) {
+	state := trackState("rider-a")
+	state.tracks["rider-a/1"] = state.tracks["rider-a/1"][:1]
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getTrack(t, handler, "/v1/activities/1/track")
+	assert.Equal(t, http.StatusNotFound, code)
+
+	code, _ = getTrack(t, handler, "/v1/activities/7/track")
+	assert.Equal(t, http.StatusNotFound, code, "an activity with no stored samples")
+
+	code, _ = getTrack(t, handler, "/v1/activities/one/track")
+	assert.Equal(t, http.StatusBadRequest, code, "the served surface refuses an id that is not a number")
+
+	// Called directly, past the document validator that refuses it first: the
+	// handler must not read an unaddressable id as activity zero.
+	request := authenticatedRequest(http.MethodGet, "/v1/activities/one/track")
+	request.SetPathValue("activityId", "one")
+	response := httptest.NewRecorder()
+	handler.GetActivityTrack(response, request)
+	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+// Altitude is served only where every sample has one: a partly filled series
+// would draw a profile that dives to sea level wherever the sensor was quiet.
+func TestGetActivityTrackOmitsAPartialAltitudeSeries(t *testing.T) {
+	state := trackState("rider-a")
+	state.tracks["rider-a/1"][1].HasAltitude = false
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, view.Properties.AltitudeMetres)
+}
+
+func TestGetActivityTrackReportsAnUnreadableStore(t *testing.T) {
+	state := trackState("rider-a")
+	state.trackErr = errors.New("unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getTrack(t, handler, "/v1/activities/1/track")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+
+	state.trackErr = nil
+	state.targetErr = errors.New("unreadable")
+	code, _ = getTrack(t, handler, "/v1/activities/1/track")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}

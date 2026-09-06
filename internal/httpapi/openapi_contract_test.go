@@ -236,6 +236,12 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 		ID: 1, StartedAt: time.Now().Add(-time.Hour), DistanceMetres: 1000,
 		MovingSeconds: 60, ElapsedSeconds: 90, AscentMetres: 10, TypeID: 15, LocationID: 1,
 	}}}
+	// One ride with a track, so the recorded-track Feature is validated against
+	// a real line rather than skipped as a not-found.
+	state.tracks = map[string][]activities.TrackPoint{testSubject + "/1": {
+		{Time: time.Now().Add(-time.Hour), Latitude: 49, Longitude: 8, AltitudeMetres: 110, HasAltitude: true},
+		{Time: time.Now().Add(-time.Hour), Latitude: 49.1, Longitude: 8.1, AltitudeMetres: 180, HasAltitude: true},
+	}}
 	handler := newHandler(t, &fakeOAuth{}, state)
 
 	for _, target := range []string{
@@ -243,6 +249,7 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 		"/v1/status",
 		"/v1/routes",
 		"/v1/activities",
+		"/v1/activities/1/track",
 		"/v1/sync/runs",
 		"/v1/tasks/runs",
 		"/v1/webui/config",

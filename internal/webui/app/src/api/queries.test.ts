@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activitiesQuery, routeGeometryQuery, routeQuery, statusQuery } from "./queries";
+import {
+  activitiesQuery,
+  activityTrackQuery,
+  routeGeometryQuery,
+  routeQuery,
+  statusQuery,
+} from "./queries";
 import type { Activity } from "./types";
 
 afterEach(() => {
@@ -38,6 +44,39 @@ describe("a route's query key", () => {
     expect(routeGeometryQuery("veloplanner", 12, 1).queryKey).toEqual([
       "/v1/providers/veloplanner/sourceRoutes/12/routes/1/geometry",
     ]);
+  });
+
+  // A track is a ride's own, so its key is the ride's id and nothing else.
+  it("keys a recorded track by the activity it belongs to", () => {
+    expect(activityTrackQuery(7).queryKey).toEqual(["/v1/activities/7/track"]);
+  });
+
+  // The altitudes travel beside the line on the wire, and the profile reads
+  // them off the positions, so the query is where the two are put back together.
+  it("folds a track's altitudes into its positions", () => {
+    const { select } = activityTrackQuery(7);
+    const track = select?.({
+      status: 200,
+      headers: new Headers(),
+      data: {
+        type: "Feature",
+        bbox: [8.4, 49, 8.5, 49.1],
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [8.4, 49],
+            [8.5, 49.1],
+          ],
+        },
+        properties: { altitudeMetres: [110, 180] },
+      },
+    });
+
+    expect(track?.coordinates).toEqual([
+      [8.4, 49, 110],
+      [8.5, 49.1, 180],
+    ]);
+    expect(track?.bbox).toEqual([8.4, 49, 8.5, 49.1]);
   });
 
   it("separates the same source route and stage order under a different provider", () => {

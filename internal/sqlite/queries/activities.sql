@@ -81,3 +81,10 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   workout_type_id = excluded.workout_type_id,
   workout_type_location_id = excluded.workout_type_location_id,
   read_at_unix = excluded.read_at_unix;
+
+-- name: ListActivityTrack :many
+SELECT recorded_at_unix, latitude, longitude, altitude_metres
+FROM activity_records
+WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
+  AND latitude IS NOT NULL AND longitude IS NOT NULL
+ORDER BY record_index;

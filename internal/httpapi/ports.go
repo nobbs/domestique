@@ -173,11 +173,14 @@ type State interface {
 }
 
 // ActivityState is what a poll recorded about each target's rides. The
-// provider's own summary document stays in the store: only the totals leave.
+// provider's own summary document stays in the store.
 type ActivityState interface {
 	// ActivitiesBetween lists one target's activities that started within the
 	// half-open window [from, to), newest first, at most limit of them.
 	ActivitiesBetween(ctx context.Context, targetID string, from, to time.Time, limit int) ([]activities.Stored, error)
+	// ActivityTrack lists the positioned samples of one target's activity, in
+	// the order they were recorded.
+	ActivityTrack(ctx context.Context, targetID string, id int64) ([]activities.TrackPoint, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.
