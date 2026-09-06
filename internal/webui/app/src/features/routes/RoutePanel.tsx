@@ -39,6 +39,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import type { Route } from "../../api/types";
+import { Slider } from "../../components/Slider";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import {
   DropdownMenu,
@@ -59,6 +60,13 @@ import type { Highlight } from "../../lib/highlight";
 import { useEffectiveAdmin } from "../../lib/identity";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
+import {
+  arrivalWindow,
+  CORPUS_RIDES,
+  formatAllowance,
+  MAX_ALLOWANCE_SECONDS_PER_HOUR,
+  useStoppingAllowance,
+} from "../../lib/stoppingAllowance";
 import type { SurfaceSummary } from "../../lib/surface";
 import { MixRow } from "./MixRow";
 import { ReprocessButton } from "./ReprocessButton";
@@ -159,6 +167,8 @@ export function RoutePanel({
   sourceBaseUrls,
 }: RoutePanelProps) {
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
+  const [allowance, chooseAllowance] = useStoppingAllowance();
+  const doorToDoor = arrivalWindow(movingSeconds, allowance);
   const effectiveAdmin = useEffectiveAdmin();
 
   return (
@@ -414,6 +424,32 @@ export function RoutePanel({
                 </span>
               </Figure>
             </dl>
+            {/* The allowance is a rider preference kept in this browser; nothing is stored or sent. */}
+            {doorToDoor === null ? null : (
+              <div className="grid gap-1 border-[var(--rule)] border-t pt-2">
+                <div className="flex items-baseline justify-between gap-1.5">
+                  <span className="text-[11px] text-[var(--ink-2)]">Door to door</span>
+                  <span className="text-sm leading-tight tabular-nums">
+                    {formatMovingTime(doorToDoor.earliestSeconds)} to{" "}
+                    {formatMovingTime(doorToDoor.latestSeconds)}
+                  </span>
+                </div>
+                <Slider
+                  aria-label={`Stopping allowance, ${formatAllowance(allowance)} per moving hour`}
+                  min={0}
+                  max={MAX_ALLOWANCE_SECONDS_PER_HOUR}
+                  step={15}
+                  value={allowance}
+                  onValueChange={(value) =>
+                    chooseAllowance(Array.isArray(value) ? (value[0] ?? 0) : value)
+                  }
+                />
+                <p className="text-[11px] text-[var(--ink-2)]">
+                  {formatAllowance(allowance)} stopped per moving hour · default and spread from{" "}
+                  {CORPUS_RIDES} current-bike rides
+                </p>
+              </div>
+            )}
             {/*
              * Mirrored: gradient's tags above its bar, surface's below its
              * own, so the two meet with nothing between them. What a reader is

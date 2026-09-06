@@ -916,6 +916,18 @@ the pair in force stays in force, and the service keeps predicting with it.
 Fitting the same pair again stores nothing, so a cached prediction survives a
 calibration that found no change.
 
+What the service predicts and stores is the moving time; stopping is the rider's
+own habit, so the browser turns that figure into a door-to-door window from one
+allowance in seconds of stopping per moving hour, kept in that browser alone. No
+endpoint accepts an allowance and nothing per-route is stored for it. The seed
+values are the operator's measured stopping on the current-bike corpus of 242
+rides — a median of 266 s per moving hour, with quartiles at 114 and 493 s/h —
+and the window runs from the moving time plus the lower quartile's stopping to
+the moving time plus the upper's, each quartile first scaled by the chosen
+allowance's ratio to that median, so the window keeps its measured shape
+wherever the rider puts it. The six-year corpus stops more (278 s/h) and is not used. A
+route nothing has predicted shows no window rather than an error.
+
 ## Sync lifecycle and safety
 
 The detailed state transitions and safety gates are defined in the
