@@ -59,6 +59,7 @@ UPDATE activities SET records_state = 'unreadable' WHERE target_slot = ? AND wor
 -- name: ListActivityRides :many
 SELECT started_at_unix, distance_metres, moving_seconds, ascent_metres
 FROM activities
+WHERE started_at_unix >= sqlc.arg(since_unix)
 ORDER BY started_at_unix;
 
 -- name: ListActivityListings :many

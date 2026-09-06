@@ -128,7 +128,7 @@ type activityPoller interface {
 // rideCorpus is the stored corpus a calibration fits and where the pair it
 // finds is kept; coefficientHolder is what predicts with the pair in force.
 type rideCorpus interface {
-	ActivityRides(ctx context.Context) ([]ridemodel.Ride, error)
+	ActivityRides(ctx context.Context, since time.Time) ([]ridemodel.Ride, error)
 	StoreRideModelCoefficients(ctx context.Context, coefficients ridemodel.Coefficients, now time.Time) error
 }
 
@@ -390,8 +390,9 @@ func activityDetail(failure activity.Failure) task.Detail {
 }
 
 // rideModelCalibrateTask refits the coefficient pair from every target's
-// recorded activities. It holds the activities so a poll cannot write into the
-// corpus mid-fit, and leaves the pair in force alone when the fit is refused.
+// recorded activities of the last ridemodel.TrainingWindowMonths months. It
+// holds the activities so a poll cannot write into the corpus mid-fit, and
+// leaves the pair in force alone when the fit is refused.
 func rideModelCalibrateTask(
 	corpus rideCorpus, model coefficientHolder, enabled func(string) func() bool, now func() time.Time,
 ) task.Definition {
@@ -411,11 +412,19 @@ func rideModelCalibrateTask(
 }
 
 func calibrate(ctx context.Context, corpus rideCorpus, model coefficientHolder, now time.Time) task.Result {
-	rides, err := corpus.ActivityRides(ctx)
+	rides, err := corpus.ActivityRides(ctx, now.AddDate(0, -ridemodel.TrainingWindowMonths, 0))
 	if err != nil {
 		return task.Result{Outcome: task.Failed, Detail: detailModelState}
 	}
 	fitted, err := ridemodel.Fit(rides, now)
+	if errors.Is(err, ridemodel.ErrTooFewRides) {
+		// The window is a bound rather than a guillotine, and only a corpus too
+		// thin to fit from pays for reading past it.
+		if rides, err = corpus.ActivityRides(ctx, time.Time{}); err != nil {
+			return task.Result{Outcome: task.Failed, Detail: detailModelState}
+		}
+		fitted, err = ridemodel.Fit(rides, now)
+	}
 	switch {
 	case errors.Is(err, ridemodel.ErrTooFewRides):
 		// Both branches are the corpus's own shape rather than a fault: nothing

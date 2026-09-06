@@ -285,7 +285,9 @@ index rebuild, and runs after each: either alone leaves stages wanting it.
 reason: a new inventory leaves stages wanting a prediction, and it follows a
 calibration for the same reason again. `ridemodel:calibrate` takes the
 activities rather than the inventory: it reads the rows a poll writes and
-touches no stage. Its first fit waits an hour after start, so a restart is
+touches no stage. It reads only the trailing training window of them, and
+reaches past it for the rides a fit needs only when the window holds too few
+([the window and its extension](configuration.md#ride-model)). Its first fit waits an hour after start, so a restart is
 spent serving rather than refitting a pair the weekly cadence would have left
 in force anyway.
 

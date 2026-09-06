@@ -457,7 +457,7 @@ func TestActivityRidesReadsEveryTargetsRidesOldestFirst(t *testing.T) {
 		activity.Summary{DistanceMetres: 20000, MovingSeconds: 3600, AscentMetres: 100, Raw: []byte(`{}`)},
 		activityNow()), "StoreActivity() for another rider")
 
-	rides, err := store.ActivityRides(t.Context())
+	rides, err := store.ActivityRides(t.Context(), time.Time{})
 	require.NoError(t, err, "ActivityRides()")
 	require.Len(t, rides, 4)
 	assert.Equal(t, activityNow().Add(-time.Hour), rides[0].StartedAt, "oldest first")
@@ -466,10 +466,38 @@ func TestActivityRidesReadsEveryTargetsRidesOldestFirst(t *testing.T) {
 	assert.InDelta(t, 300.0, rides[3].AscentMetres, 1e-9)
 }
 
+// A calibration reads a trailing window, so the corpus it fits is bounded by
+// the store rather than by the whole accumulated history.
+func TestActivityRidesReadsOnlyFromTheGivenBound(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	for index, starts := range []time.Time{
+		activityNow().AddDate(-2, 0, 0), activityNow().AddDate(0, -1, 0), activityNow(),
+	} {
+		require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+			activity.Listing{ID: int64(index + 1), TypeID: 15, LocationID: 1, Starts: starts},
+			activity.Summary{
+				DistanceMetres: 30000, MovingSeconds: 4500, ElapsedSeconds: 4800, AscentMetres: 300,
+				Raw: []byte(`{}`),
+			},
+			activityNow()), "StoreActivity()")
+	}
+
+	rides, err := store.ActivityRides(t.Context(), activityNow().AddDate(0, -12, 0))
+	require.NoError(t, err, "ActivityRides()")
+	require.Len(t, rides, 2, "the ride behind the bound is not read")
+	assert.Equal(t, activityNow().AddDate(0, -1, 0), rides[0].StartedAt, "oldest inside the bound first")
+
+	all, err := store.ActivityRides(t.Context(), time.Time{})
+	require.NoError(t, err, "ActivityRides() over all history")
+	assert.Len(t, all, 3, "a zero bound reads every ride")
+}
+
 func TestActivityRidesReportsAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.ActivityRides(t.Context())
+	_, err := store.ActivityRides(t.Context(), time.Time{})
 	require.ErrorContains(t, err, "reading activities for calibration")
 }

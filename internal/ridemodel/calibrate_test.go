@@ -31,6 +31,18 @@ func syntheticRides(count int, secondsPerKM, secondsPerAscentM float64) []ridemo
 	return rides
 }
 
+// ridesEndingAt is syntheticRides moved to end on end, so one corpus can hold
+// two eras of the same rider.
+func ridesEndingAt(count int, secondsPerKM, secondsPerAscentM float64, end time.Time) []ridemodel.Ride {
+	rides := syntheticRides(count, secondsPerKM, secondsPerAscentM)
+	shift := end.Sub(fitNow())
+	for index := range rides {
+		rides[index].StartedAt = rides[index].StartedAt.Add(shift)
+	}
+
+	return rides
+}
+
 func TestFitRecoversThePairAnExactCorpusWasBuiltFrom(t *testing.T) {
 	t.Parallel()
 
@@ -40,7 +52,7 @@ func TestFitRecoversThePairAnExactCorpusWasBuiltFrom(t *testing.T) {
 	assert.InDelta(t, 4.0, fitted.SecondsPerAscentM, 1e-6, "seconds per ascent metre")
 	assert.Equal(t, 14, fitted.EvaluatedRides, "evaluated rides")
 	assert.Equal(t, "2026-09-04", fitted.CalibrationCutoff, "calibration cutoff")
-	assert.Equal(t, 0, fitted.TrainingWindowMonths, "training window")
+	assert.Equal(t, ridemodel.TrainingWindowMonths, fitted.TrainingWindowMonths, "training window")
 	assert.NotEmpty(t, fitted.Fingerprint, "fingerprint")
 	assert.InDelta(t, 0.0, fitted.MAEPercent, 1e-6, "in-sample error of an exact corpus")
 	require.NoError(t, fitted.Validate(), "Validate()")
@@ -138,4 +150,57 @@ func TestFitReportsTheErrorOfThePairItFound(t *testing.T) {
 	assert.InDelta(t, 165.0, fitted.SecondsPerKM, 1e-6, "seconds per km")
 	assert.InDelta(t, 0.0, fitted.BiasPercent, 1e-6, "bias percent")
 	assert.InDelta(t, 0.0, fitted.P90Percent, 1e-6, "p90 percent")
+}
+
+// A rider whose form has durably moved must be priced as they ride now, not
+// against every season pooled together: the rides behind the window are not
+// weighted down, they are out.
+func TestFitReadsOnlyTheWindowWhenTheRiderHasChanged(t *testing.T) {
+	t.Parallel()
+
+	corpus := append(
+		ridesEndingAt(14, 260, 9, fitNow().AddDate(-2, 0, 0)),
+		ridesEndingAt(14, 150, 4, fitNow())...,
+	)
+
+	fitted, err := ridemodel.Fit(corpus, fitNow())
+	require.NoError(t, err, "Fit()")
+	assert.InDelta(t, 150.0, fitted.SecondsPerKM, 1e-6, "seconds per km")
+	assert.InDelta(t, 4.0, fitted.SecondsPerAscentM, 1e-6, "seconds per ascent metre")
+	assert.Equal(t, 14, fitted.EvaluatedRides, "only the window's rides are fitted")
+	assert.Equal(t, ridemodel.TrainingWindowMonths, fitted.TrainingWindowMonths, "training window")
+}
+
+// The window is a bound rather than a guillotine: a rider who has ridden for
+// less than a year, or only occasionally, still gets a fit.
+func TestFitReachesPastTheWindowRatherThanRefuse(t *testing.T) {
+	t.Parallel()
+
+	corpus := append(
+		ridesEndingAt(14, 150, 4, fitNow().AddDate(-2, 0, 0)),
+		ridesEndingAt(4, 150, 4, fitNow())...,
+	)
+
+	fitted, err := ridemodel.Fit(corpus, fitNow())
+	require.NoError(t, err, "Fit()")
+	assert.InDelta(t, 150.0, fitted.SecondsPerKM, 1e-6, "seconds per km")
+	assert.InDelta(t, 4.0, fitted.SecondsPerAscentM, 1e-6, "seconds per ascent metre")
+	assert.Equal(t, ridemodel.MinRides, fitted.EvaluatedRides,
+		"an extended window reaches back for exactly the minimum")
+	assert.Greater(t, fitted.TrainingWindowMonths, ridemodel.TrainingWindowMonths,
+		"the stored window states the reach the fit really needed")
+	require.NoError(t, fitted.Validate(), "Validate()")
+}
+
+// Extending the window is not the same as abandoning the ride floor.
+func TestFitRefusesWhenEvenAllHistoryIsTooThin(t *testing.T) {
+	t.Parallel()
+
+	corpus := append(
+		ridesEndingAt(4, 150, 4, fitNow().AddDate(-3, 0, 0)),
+		ridesEndingAt(4, 150, 4, fitNow())...,
+	)
+
+	_, err := ridemodel.Fit(corpus, fitNow())
+	require.ErrorIs(t, err, ridemodel.ErrTooFewRides)
 }

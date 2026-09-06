@@ -21,6 +21,12 @@ type Ride struct {
 // cannot separate the two terms from one rider's habits.
 const MinRides = 10
 
+// TrainingWindowMonths is how far back a fit reaches before it has to extend.
+// Twelve is the shortest window spanning a full year of weather and daylight,
+// and bounding it lets a profile follow a rider whose form moves rather than
+// diluting a lasting change into every season they have ever ridden.
+const TrainingWindowMonths = 12
+
 // ErrTooFewRides and ErrDegenerate are the two ways a calibration declines,
 // each leaving the pair in force untouched.
 var (
@@ -45,14 +51,15 @@ const (
 	maxAcceptableConditionRatio = 100.0
 )
 
-// Fit calibrates the coefficient pair from recorded rides by Huber-weighted
-// iteratively reweighted least squares, so a single mis-recorded ride bends the
-// result rather than setting it. The clock bounds the corpus against a clock
-// skew that would otherwise admit a ride recorded in the future.
+// Fit calibrates the coefficient pair from the trailing training window of the
+// recorded rides by Huber-weighted iteratively reweighted least squares, so a
+// single mis-recorded ride bends the result rather than setting it. The clock
+// bounds the corpus against a clock skew that would otherwise admit a ride
+// recorded in the future, and is the window's own end.
 // The only errors it returns are ErrTooFewRides and ErrDegenerate: a fit whose
 // own terms don't hold up is reported as the latter, never as anything else.
 func Fit(rides []Ride, now time.Time) (Coefficients, error) {
-	usable := usableRides(rides, now)
+	usable, windowMonths := trainingWindow(usableRides(rides, now), now)
 	if len(usable) < MinRides {
 		return Coefficients{}, ErrTooFewRides
 	}
@@ -73,13 +80,14 @@ func Fit(rides []Ride, now time.Time) (Coefficients, error) {
 	bias, mae, p90 := inSampleErrors(usable, secondsPerKM, secondsPerAscentM)
 
 	coefficients := Coefficients{
-		CalibrationCutoff: latest.UTC().Format(time.DateOnly),
-		SecondsPerKM:      secondsPerKM,
-		SecondsPerAscentM: secondsPerAscentM,
-		EvaluatedRides:    len(usable),
-		BiasPercent:       bias,
-		MAEPercent:        mae,
-		P90Percent:        p90,
+		CalibrationCutoff:    latest.UTC().Format(time.DateOnly),
+		SecondsPerKM:         secondsPerKM,
+		SecondsPerAscentM:    secondsPerAscentM,
+		EvaluatedRides:       len(usable),
+		BiasPercent:          bias,
+		MAEPercent:           mae,
+		P90Percent:           p90,
+		TrainingWindowMonths: windowMonths,
 	}.WithFingerprint()
 	if err := coefficients.Validate(); err != nil {
 		// A fit whose own terms don't hold up is exactly the same kind of
@@ -107,6 +115,46 @@ func usableRides(rides []Ride, now time.Time) []Ride {
 	}
 
 	return usable
+}
+
+// trainingWindow keeps the rides ridden inside the trailing window ending at
+// now, and reports how many months back the kept rides really reach. The window
+// is a bound rather than a guillotine: one holding too few rides to fit from
+// extends to the MinRides most recent rides instead, so a rider who has ridden
+// for less than a year, or only occasionally, is fit from further back rather
+// than never.
+func trainingWindow(rides []Ride, now time.Time) (window []Ride, months int) {
+	cutoff := now.AddDate(0, -TrainingWindowMonths, 0)
+	inside := make([]Ride, 0, len(rides))
+	for _, ride := range rides {
+		if !ride.StartedAt.Before(cutoff) {
+			inside = append(inside, ride)
+		}
+	}
+	if len(inside) >= MinRides {
+		return inside, TrainingWindowMonths
+	}
+
+	extended := slices.Clone(rides)
+	slices.SortFunc(extended, func(a, b Ride) int { return b.StartedAt.Compare(a.StartedAt) })
+	extended = extended[:min(MinRides, len(extended))]
+	if len(extended) < MinRides {
+		// Nothing to report a reach for: Fit refuses this corpus outright.
+		return extended, TrainingWindowMonths
+	}
+
+	return extended, monthsBack(extended[len(extended)-1].StartedAt, now)
+}
+
+// monthsBack is how far the window had to reach to hold its oldest ride: the
+// smallest whole number of months whose cutoff still admits it.
+func monthsBack(oldest, now time.Time) int {
+	months := TrainingWindowMonths
+	for now.AddDate(0, -months, 0).After(oldest) {
+		months++
+	}
+
+	return months
 }
 
 // inSampleErrors measures the fitted pair against the rides it was fitted over,
