@@ -154,7 +154,7 @@ func (h *Handler) activityWindow(writer http.ResponseWriter, rawFrom, rawTo stri
 		from = parsed.UTC().Truncate(time.Second)
 	}
 	if from.After(to) {
-		h.error(writer, http.StatusBadRequest, "invalid_request", "the window must end after it starts")
+		h.error(writer, http.StatusBadRequest, "invalid_request", "the window must not end before it starts")
 
 		return time.Time{}, time.Time{}, false
 	}
