@@ -40,7 +40,7 @@ export function useStartupLocation(enabled: boolean): [number, number] | null {
     };
   }, [enabled]);
 
-  return position;
+  return enabled ? position : null;
 }
 
 /** A small box around one point, for framing a position with no route to fit. */

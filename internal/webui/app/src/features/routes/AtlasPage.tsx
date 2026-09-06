@@ -400,7 +400,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // route once the geometry arrives, rather than flying off to a position.
   const [locationEnabled] = useState(() => openKey === null);
   const location = useStartupLocation(locationEnabled);
-  const locationBox = location ? boxAround(location) : null;
+  const locationBox = useMemo(() => (location ? boxAround(location) : null), [location]);
   const bounds = windowBounds ?? focusBox ?? locationBox ?? libraryBounds;
 
   const basemap = config.data ? basemapFor(config.data, resolvedDark, basemapChoice) : null;
