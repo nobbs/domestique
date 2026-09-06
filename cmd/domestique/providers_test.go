@@ -73,17 +73,6 @@ func TestActivityListingsNarrowWahooWorkouts(t *testing.T) {
 	assert.Equal(t, []activity.Listing{{ID: 42, TypeID: 15, LocationID: 1, Starts: starts}}, listings)
 }
 
-// A whole listing costs one request per page, and an empty account still
-// costs the request that found it empty.
-func TestListingRequestsCountOnePerPage(t *testing.T) {
-	t.Parallel()
-
-	assert.Equal(t, 1, listingRequests(0))
-	assert.Equal(t, 1, listingRequests(wahoo.WorkoutPageSize))
-	assert.Equal(t, 2, listingRequests(wahoo.WorkoutPageSize+1))
-	assert.Equal(t, 5, listingRequests(496))
-}
-
 // A summary the listing carried travels with its listing, so a poll can store
 // it without asking for it again.
 func TestActivityListingsCarryTheListedSummary(t *testing.T) {

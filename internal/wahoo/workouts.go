@@ -14,9 +14,7 @@ import (
 )
 
 const (
-	// WorkoutPageSize is how many workouts one listing request returns, so a
-	// caller can count the requests a whole listing cost.
-	WorkoutPageSize        = 100
+	workoutPageSize        = 100
 	maximumWorkouts        = 10_000
 	maximumWorkoutFITBytes = 16 << 20
 )
@@ -133,24 +131,24 @@ func (d *decimal) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-// ListWorkouts returns every workout in Wahoo's paginated list.
+// ListWorkouts returns every workout in Wahoo's paginated list and how many
+// page requests reading it cost, so a caller can budget what it asks for next.
 //
 // Account selection remains deliberately outside this adapter until the service
 // has a user model; this client only reads the account it is given a token for.
-func (c *Client) ListWorkouts(ctx context.Context, accessToken string) ([]Workout, error) {
+func (c *Client) ListWorkouts(ctx context.Context, accessToken string) (workouts []Workout, requests int, err error) {
 	if accessToken == "" {
-		return nil, errors.New("wahoo: access token is required")
+		return nil, 0, errors.New("wahoo: access token is required")
 	}
 
-	var workouts []Workout
 	for page := 1; ; page++ {
 		response, err := c.workoutPage(ctx, accessToken, page, len(workouts))
 		if err != nil {
-			return nil, err
+			return nil, page, err
 		}
 		workouts = append(workouts, response.Workouts...)
 		if len(workouts) >= response.Total {
-			return workouts, nil
+			return workouts, page, nil
 		}
 	}
 }
@@ -177,7 +175,7 @@ func (c *Client) workoutPage(ctx context.Context, accessToken string, page, prec
 	endpoint := c.endpoint(c.apiBaseURL, "/v1/workouts")
 	endpoint.RawQuery = url.Values{
 		"page":     {fmt.Sprint(page)},
-		"per_page": {fmt.Sprint(WorkoutPageSize)},
+		"per_page": {fmt.Sprint(workoutPageSize)},
 	}.Encode()
 	request, err := c.newRequest(ctx, http.MethodGet, endpoint, http.NoBody, accessToken)
 	if err != nil {

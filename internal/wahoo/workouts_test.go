@@ -37,12 +37,13 @@ func TestClientListsEveryWorkoutPage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	workouts, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	workouts, requests, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
 	require.NoError(t, err)
 	assert.Equal(t, []Workout{
 		{ID: 1, WorkoutTypeID: 15, WorkoutTypeLocationID: 1},
 		{ID: 2, WorkoutTypeID: 61, WorkoutTypeLocationID: 0},
 	}, workouts)
+	assert.Equal(t, 2, requests, "one request per page was not reported")
 }
 
 // The head is one request: it reads the first page and the account's own total
@@ -168,7 +169,7 @@ func TestClientReadsWhenAWorkoutStarted(t *testing.T) {
 	}))
 	defer server.Close()
 
-	workouts, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	workouts, _, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
 	require.NoError(t, err)
 	require.Len(t, workouts, 1)
 	assert.Equal(t, time.Date(2026, 4, 1, 6, 30, 0, 0, time.UTC), workouts[0].Starts.UTC())
@@ -194,7 +195,7 @@ func TestClientRejectsInvalidWorkoutPagination(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	_, _, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
 	require.ErrorContains(t, err, "ended before its total")
 }
 
@@ -269,7 +270,7 @@ func TestClientNeverMarksAWorkoutListingUnreadable(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	_, _, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
 	require.ErrorContains(t, err, "HTTP 404")
 	require.NotErrorIs(t, err, ErrWorkoutUnreadable)
 }
@@ -280,7 +281,7 @@ func TestClientRejectsAWorkoutListingBeyondItsBounds(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
+	_, _, err := newTestClient(t, server).ListWorkouts(t.Context(), "access-token")
 	require.ErrorContains(t, err, "exceeded configured bounds")
 }
 
@@ -323,19 +324,19 @@ func TestClientRejectsWorkoutReadsItCannotTrust(t *testing.T) {
 		want    string
 	}{
 		"listing without a token": {
-			read: func(c *Client) error { _, err := c.ListWorkouts(t.Context(), ""); return err },
+			read: func(c *Client) error { _, _, err := c.ListWorkouts(t.Context(), ""); return err },
 			want: "access token is required",
 		},
 		"listing that fails upstream": {
 			handler: func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusInternalServerError) },
-			read:    func(c *Client) error { _, err := c.ListWorkouts(t.Context(), "access-token"); return err },
+			read:    func(c *Client) error { _, _, err := c.ListWorkouts(t.Context(), "access-token"); return err },
 			want:    "HTTP 500",
 		},
 		"listing that answers the wrong page": {
 			handler: func(writer http.ResponseWriter, _ *http.Request) {
 				writeJSON(t, writer, map[string]any{"workouts": []any{}, "total": 0, "page": 2, "per_page": 100})
 			},
-			read: func(c *Client) error { _, err := c.ListWorkouts(t.Context(), "access-token"); return err },
+			read: func(c *Client) error { _, _, err := c.ListWorkouts(t.Context(), "access-token"); return err },
 			want: "pagination was invalid",
 		},
 		"summary without a token or id": {
@@ -492,7 +493,7 @@ func TestClientReadsTheSummaryAListingCarries(t *testing.T) {
 	defer server.Close()
 	client := newTestClient(t, server)
 
-	workouts, err := client.ListWorkouts(t.Context(), "access-token")
+	workouts, _, err := client.ListWorkouts(t.Context(), "access-token")
 	require.NoError(t, err)
 	require.Len(t, workouts, 6)
 	require.NotNil(t, workouts[0].Summary, "the listing's summary was dropped")

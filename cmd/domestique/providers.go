@@ -268,18 +268,12 @@ func (p *wahooProvider) ListActivities(
 	if err != nil {
 		return nil, 0, err
 	}
-	workouts, err := client.ListWorkouts(ctx, accessToken)
+	workouts, requests, err := client.ListWorkouts(ctx, accessToken)
 	if err != nil {
-		return nil, 0, fmt.Errorf("listing Wahoo workouts: %w", err)
+		return nil, requests, fmt.Errorf("listing Wahoo workouts: %w", err)
 	}
 
-	return activityListings(workouts), listingRequests(len(workouts)), nil
-}
-
-// listingRequests is how many page requests a whole listing of count workouts
-// cost: one per page, and one for an account that lists nothing.
-func listingRequests(count int) int {
-	return max(1, (count+wahoo.WorkoutPageSize-1)/wahoo.WorkoutPageSize)
+	return activityListings(workouts), requests, nil
 }
 
 // ActivityListingHead reads the account's first page of activities and how many
