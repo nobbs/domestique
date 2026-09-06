@@ -101,6 +101,7 @@ jobs:
             go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-lint-${{ runner.os }}-
       # --force here and in every other job: a task with `sources` skips itself
       # when its inputs have not moved, which a merge gate must not do.
@@ -157,6 +158,7 @@ jobs:
             go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-test-${{ runner.os }}-
       - name: Run tests
         run: mise run --force ci-test
@@ -221,6 +223,7 @@ jobs:
             go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-security-${{ runner.os }}-
       - name: Audit modules and dependencies
         run: mise run --force ci-security
@@ -294,6 +297,7 @@ jobs:
             go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-ui-${{ runner.os }}-
       # pnpm hard-links out of a content-addressed store, so the store is what
       # makes `ui-install` a link rather than a download. Its location is asked
@@ -400,7 +404,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     needs: changes
     # Deliberately unfiltered. The branch ruleset requires `codecov/patch/go`
     # and `codecov/patch/ui`, and Codecov posts a status only for a commit it
@@ -445,6 +449,7 @@ jobs:
           restore-keys: |
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-coverage-${{ runner.os }}-
       # The pnpm store, as the UI job above explains it.
       - name: Locate the pnpm store
@@ -460,6 +465,11 @@ jobs:
             pnpm-${{ runner.os }}-
       - name: Measure coverage
         run: mise run --force coverage
+      # Push runs are the only ones whose caches a pull request can read, and the
+      # race build lives nowhere else: cold, it is 200s of a pull request's Test job.
+      - name: Warm the race build cache
+        if: github.event_name == 'push'
+        run: mise exec -- env CGO_ENABLED=1 go test -race -run '^$' ./...
       # Each upload names its one file: `disable_search` and the disabled
       # plugins stop the uploader walking a tree that can hold a local database,
       # a configuration file and secrets. A failed upload is reported and does
@@ -530,6 +540,7 @@ jobs:
             go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-build-${{ runner.os }}-
       # The pnpm store, as the UI job above explains it.
       - name: Locate the pnpm store
