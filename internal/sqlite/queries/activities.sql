@@ -85,6 +85,9 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   workout_type_location_id = excluded.workout_type_location_id,
   read_at_unix = excluded.read_at_unix;
 
+-- name: GetActivityRecordsState :one
+SELECT records_state FROM activities WHERE target_slot = ? AND workout_id = ?;
+
 -- name: ListActivityTrack :many
 SELECT recorded_at_unix, latitude, longitude, altitude_metres
 FROM activity_records

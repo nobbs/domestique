@@ -225,7 +225,9 @@ func TestGetActivityTrackServesTheCallersOwnRide(t *testing.T) {
 	code, view := getTrack(t, handler, "/v1/activities/1/track")
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "Feature", view.Type)
+	require.NotNil(t, view.Geometry, "the line")
 	assert.Equal(t, "LineString", view.Geometry.Type)
+	assert.Equal(t, trackStateStored, view.Properties.State)
 	assert.Equal(t, [][2]float64{{8.4, 49.0}, {8.5, 49.2}}, view.Geometry.Coordinates, "longitude first")
 	assert.InDeltaSlice(t, []float64{8.4, 49.0, 8.5, 49.2}, view.BBox, 1e-9, "bbox")
 	assert.Equal(t, []*float64{new(110.0), new(180.0)}, view.Properties.AltitudeMetres, "altitudes")
@@ -245,21 +247,57 @@ func TestGetActivityTrackServesAnyTargetToAnAdmin(t *testing.T) {
 
 	code, view := getTrack(t, handler, "/v1/activities/1/track?target=rider-b")
 	require.Equal(t, http.StatusOK, code)
+	require.NotNil(t, view.Geometry, "the line")
 	assert.Len(t, view.Geometry.Coordinates, 2)
 }
 
-// A ride whose samples carry no position, and one whose samples are not stored
-// yet, are both a ride with no track to draw.
-func TestGetActivityTrackIsNotFoundWithoutALine(t *testing.T) {
+// A ride with no line to draw is served, not hidden: the state is the whole
+// point, since "not downloaded yet" and "too few positions" are answers a
+// rider acts on differently.
+func TestGetActivityTrackNamesWhyItHasNoLine(t *testing.T) {
+	for name, expected := range map[string]struct {
+		state activities.RecordsState
+		want  string
+	}{
+		"samples not stored yet": {state: activities.RecordsPending, want: trackStatePending},
+		"file did not decode":    {state: activities.RecordsUnreadable, want: trackStateUnreadable},
+		"too few positions":      {state: activities.RecordsStored, want: trackStateEmpty},
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := trackState("rider-a")
+			delete(state.tracks, "rider-a/1")
+			state.recordsStates = map[string]activities.RecordsState{"rider-a/1": expected.state}
+			handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+			code, view := getTrack(t, handler, "/v1/activities/1/track")
+			require.Equal(t, http.StatusOK, code)
+			assert.Equal(t, "Feature", view.Type)
+			assert.Nil(t, view.Geometry, "an unlocated Feature carries no line")
+			assert.Empty(t, view.BBox, "there is no box around nothing")
+			assert.Equal(t, expected.want, view.Properties.State)
+		})
+	}
+}
+
+// A single positioned sample draws no line either, and the ride that recorded
+// it is stored, not pending.
+func TestGetActivityTrackReportsASingleSampleAsEmpty(t *testing.T) {
 	state := trackState("rider-a")
 	state.tracks["rider-a/1"] = state.tracks["rider-a/1"][:1]
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
 
-	code, _ := getTrack(t, handler, "/v1/activities/1/track")
-	assert.Equal(t, http.StatusNotFound, code)
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Nil(t, view.Geometry, "one sample is not a line")
+	assert.Equal(t, trackStateEmpty, view.Properties.State)
+}
 
-	code, _ = getTrack(t, handler, "/v1/activities/7/track")
-	assert.Equal(t, http.StatusNotFound, code, "an activity with no stored samples")
+// Only a ride this target has no summary for is missing.
+func TestGetActivityTrackIsNotFoundForAnUnknownRide(t *testing.T) {
+	handler := activityHandler(t, trackState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, _ := getTrack(t, handler, "/v1/activities/7/track")
+	assert.Equal(t, http.StatusNotFound, code, "an activity this target does not have")
 
 	code, _ = getTrack(t, handler, "/v1/activities/one/track")
 	assert.Equal(t, http.StatusBadRequest, code, "the served surface refuses an id that is not a number")
@@ -271,6 +309,17 @@ func TestGetActivityTrackIsNotFoundWithoutALine(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.GetActivityTrack(response, request)
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+// The state read is a store read like any other, so a store that cannot answer
+// it is unavailable rather than a ride that does not exist.
+func TestGetActivityTrackReportsAnUnreadableRecordsState(t *testing.T) {
+	state := trackState("rider-a")
+	state.recordsStateErr = errors.New("unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getTrack(t, handler, "/v1/activities/1/track")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
 
 // Altitude is served for every positioned sample, null where that one recorded

@@ -246,7 +246,18 @@ export interface ActivityTrackLineString {
   coordinates: number[][];
 }
 
+export type ActivityTrackPropertiesState =
+  (typeof ActivityTrackPropertiesState)[keyof typeof ActivityTrackPropertiesState];
+
+export const ActivityTrackPropertiesState = {
+  stored: "stored",
+  pending: "pending",
+  empty: "empty",
+  unreadable: "unreadable",
+} as const;
+
 export interface ActivityTrackProperties {
+  state: ActivityTrackPropertiesState;
   /** The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude. */
   altitudeMetres?: (number | null)[];
 }
@@ -257,8 +268,8 @@ export interface ActivityTrack {
    * @minItems 4
    * @maxItems 4
    */
-  bbox: number[];
-  geometry: ActivityTrackLineString;
+  bbox?: number[];
+  geometry: ActivityTrackLineString | null;
   properties: ActivityTrackProperties;
 }
 
@@ -2362,7 +2373,7 @@ export const getGetActivityTrackUrl = (activityId: number, params?: GetActivityT
 };
 
 /**
- * One activity's recorded track, as a GeoJSON Feature. A caller reads only an activity of the target they own; an admin may name any target. An activity of another target, and one with fewer than two positioned samples, are both answered not found.
+ * One activity's recorded track, as a GeoJSON Feature. A caller reads only an activity of the target they own; an admin may name any target. An activity with fewer than two positioned samples has a null geometry and no box, and `properties.state` says why: its samples are not stored yet, too few of them carried a position, or its file did not decode. An activity of another target, and one this service has no summary for, are both answered not found.
  */
 export const getActivityTrack = async (
   activityId: number,

@@ -66,7 +66,7 @@ function track(withAltitude = true): ActivityTrack {
         [8.6, 49.2],
       ];
 
-  return { bbox: [8.4, 49, 8.6, 49.2], coordinates: positions };
+  return { bbox: [8.4, 49, 8.6, 49.2], coordinates: positions, state: "stored" };
 }
 
 /** A track whose barometer had not settled for the first two samples. */
@@ -79,6 +79,7 @@ function trackWithLeadingGap(): ActivityTrack {
       [8.5, 49.1, 180],
       [8.6, 49.2, 140],
     ],
+    state: "stored",
   };
 }
 
@@ -172,10 +173,16 @@ describe("one ride's page", () => {
     expect(screen.getByRole("status", { name: "Loading the recorded track" })).toBeInTheDocument();
   });
 
-  it("says plainly when no track was stored", () => {
-    show({ bbox: [8, 49, 8, 49], coordinates: [] });
+  // The three ways a ride has no line read differently to a rider: one is worth
+  // waiting for, the others are not.
+  it.each([
+    ["pending" as const, "The ride's samples have not been read from Wahoo yet."],
+    ["empty" as const, "This ride recorded too few positions to draw a line."],
+    ["unreadable" as const, "The ride's recorded file could not be read."],
+  ])("says why a %s ride has no line", (state, message) => {
+    show({ coordinates: [], state });
 
-    expect(screen.getByText("No recorded track was stored for this ride.")).toBeInTheDocument();
+    expect(screen.getByText(message)).toBeInTheDocument();
     expect(screen.queryByTestId("activity-map")).not.toBeInTheDocument();
   });
 

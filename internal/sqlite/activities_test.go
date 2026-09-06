@@ -627,3 +627,38 @@ func TestActivityTrackReadsBackPositionedSamples(t *testing.T) {
 	require.NoError(t, err, "ActivityTrack() for another target")
 	assert.Empty(t, other, "another target's activity id must read as no track")
 }
+
+// The state read is what tells a ride still awaiting its samples from one that
+// stored none, and either from a ride this target does not have at all.
+func TestActivityRecordsStateTellsPendingFromStored(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	state, found, err := store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRecordsState()")
+	require.True(t, found)
+	assert.Equal(t, activity.RecordsPending, state, "a stored summary owes its samples")
+
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}), "StoreActivityRecords()")
+	state, found, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRecordsState()")
+	require.True(t, found)
+	assert.Equal(t, activity.RecordsStored, state)
+
+	require.NoError(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "MarkActivityUnreadable()")
+	state, _, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRecordsState()")
+	assert.Equal(t, activity.RecordsUnreadable, state)
+
+	_, found, err = store.ActivityRecordsState(t.Context(), "rider-b", 1)
+	require.NoError(t, err, "ActivityRecordsState() for another target")
+	assert.False(t, found, "another target's activity id is a ride this one does not have")
+
+	require.NoError(t, store.Close(), "Close()")
+	_, _, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	require.ErrorContains(t, err, "reading an activity records state")
+}

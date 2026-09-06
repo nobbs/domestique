@@ -68,7 +68,7 @@ describe("a route's query key", () => {
             [8.5, 49.1],
           ],
         },
-        properties: { altitudeMetres: [110, 180] },
+        properties: { state: "stored", altitudeMetres: [110, 180] },
       },
     });
 
@@ -77,6 +77,21 @@ describe("a route's query key", () => {
       [8.5, 49.1, 180],
     ]);
     expect(track?.bbox).toEqual([8.4, 49, 8.5, 49.1]);
+    expect(track?.state).toBe("stored");
+  });
+
+  // A ride with no line still answers, and the state is the whole answer.
+  it("keeps the state of a track that has no line", () => {
+    const { select } = activityTrackQuery(7);
+    const track = select?.({
+      status: 200,
+      headers: new Headers(),
+      data: { type: "Feature", geometry: null, properties: { state: "pending" } },
+    });
+
+    expect(track?.coordinates).toEqual([]);
+    expect(track?.bbox).toBeUndefined();
+    expect(track?.state).toBe("pending");
   });
 
   // A sample without an altitude travels as a JSON null, not an absent entry.
@@ -95,7 +110,7 @@ describe("a route's query key", () => {
             [8.5, 49.1],
           ],
         },
-        properties: { altitudeMetres: [null, 180] },
+        properties: { state: "stored", altitudeMetres: [null, 180] },
       },
     });
 

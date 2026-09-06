@@ -527,13 +527,23 @@ type ActivityTrackLineString struct {
 }
 
 type ActivityTrack struct {
-	Type       string                  `json:"type"`
-	Bbox       []float64               `json:"bbox"`
-	Geometry   ActivityTrackLineString `json:"geometry"`
-	Properties ActivityTrackProperties `json:"properties"`
+	Type       string                   `json:"type"`
+	Bbox       []float64                `json:"bbox,omitempty"`
+	Geometry   *ActivityTrackLineString `json:"geometry"`
+	Properties ActivityTrackProperties  `json:"properties"`
 }
 
+type ActivityTrackProperties_State string
+
+const (
+	ActivityTrackProperties_StateStored     ActivityTrackProperties_State = "stored"
+	ActivityTrackProperties_StatePending    ActivityTrackProperties_State = "pending"
+	ActivityTrackProperties_StateEmpty      ActivityTrackProperties_State = "empty"
+	ActivityTrackProperties_StateUnreadable ActivityTrackProperties_State = "unreadable"
+)
+
 type ActivityTrackProperties struct {
+	State ActivityTrackProperties_State `json:"state"`
 	// AltitudeMetres The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude.
 	AltitudeMetres []float64 `json:"altitudeMetres,omitempty"`
 }

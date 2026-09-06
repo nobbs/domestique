@@ -88,11 +88,23 @@ type geometryView struct {
 // activityTrackView is a GeoJSON Feature carrying one activity's recorded
 // track. A ride has none of a route's library metadata, so it has its own.
 type activityTrackView struct {
-	Type       string                    `json:"type"`
-	BBox       []float64                 `json:"bbox"`
-	Geometry   trackLineStringView       `json:"geometry"`
+	Type string `json:"type"`
+	// A ride with no line to draw is the unlocated Feature GeoJSON allows rather
+	// than a degenerate line: the box is left out and the geometry is null.
+	BBox       []float64                 `json:"bbox,omitempty"`
+	Geometry   *trackLineStringView      `json:"geometry"`
 	Properties activityTrackPropertyView `json:"properties"`
 }
+
+// The states a track is served in: the line is here, its samples are not
+// downloaded yet, too few of them carried a position, or the file did not
+// decode.
+const (
+	trackStateStored     = "stored"
+	trackStatePending    = "pending"
+	trackStateEmpty      = "empty"
+	trackStateUnreadable = "unreadable"
+)
 
 type trackLineStringView struct {
 	Type        string       `json:"type"`
@@ -100,6 +112,8 @@ type trackLineStringView struct {
 }
 
 type activityTrackPropertyView struct {
+	// State is why a ride carries no line, and is "stored" where it carries one.
+	State string `json:"state"`
 	// AltitudeMetres is the altitude at each coordinate, indexed 1:1 with them;
 	// nil where that sample recorded none. Absent unless at least one did.
 	AltitudeMetres []*float64 `json:"altitudeMetres,omitempty"`

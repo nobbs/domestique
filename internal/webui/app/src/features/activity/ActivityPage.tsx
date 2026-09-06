@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { activityTrackQuery } from "../../api/queries";
+import type { ActivityTrackState } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatAscent, formatDistance, formatMovingTime, formatTimestamp } from "../../lib/format";
@@ -48,11 +49,11 @@ export function ActivityPage() {
           ) : null}
         </div>
         {id === null ? (
-          <p className="text-[var(--ink-2)] text-sm">No recorded track was stored for this ride.</p>
+          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
         ) : track.isPending ? (
           <Skeleton className="h-96 w-full" role="status" aria-label="Loading the recorded track" />
-        ) : track.isError || !track.data || coordinates.length < 2 ? (
-          <p className="text-[var(--ink-2)] text-sm">No recorded track was stored for this ride.</p>
+        ) : track.isError || !track.data?.bbox || coordinates.length < 2 ? (
+          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(track.data?.state)}</p>
         ) : (
           <>
             <div className="h-96 overflow-hidden rounded-xl ring-1 ring-black/5">
@@ -79,4 +80,23 @@ export function ActivityPage() {
       </div>
     </PageShell>
   );
+}
+
+/**
+ * Why there is no line to draw, in the rider's own terms: a ride still waiting
+ * on its samples is not the same as one that recorded too few to draw. A ride the
+ * page holds no state for — not found, or never asked about — keeps the
+ * general sentence.
+ */
+function absenceMessage(state: ActivityTrackState | undefined): string {
+  switch (state) {
+    case "pending":
+      return "The ride's samples have not been read from Wahoo yet.";
+    case "empty":
+      return "This ride recorded too few positions to draw a line.";
+    case "unreadable":
+      return "The ride's recorded file could not be read.";
+    default:
+      return "No recorded track was stored for this ride.";
+  }
 }
