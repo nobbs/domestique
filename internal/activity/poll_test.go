@@ -130,6 +130,72 @@ func TestPollStoresOnlyWhatIsNotStoredYet(t *testing.T) {
 	assert.Equal(t, pollNow(), store.stored[0].now)
 }
 
+// A summary the listing already carried is stored from it: a poll over an
+// account whose listing carries every summary makes no request for one, and
+// the cap on requests does not bound what costs none.
+func TestPollStoresTheSummariesTheListingCarriesWithoutARequest(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	for id := 1; id <= MaxNewPerPoll+5; id++ {
+		source.listings = append(source.listings, Listing{ID: int64(id), Starts: at(id), Summary: &Summary{DistanceMetres: 100, Raw: []byte(`{"id":1}`)}})
+	}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, MaxNewPerPoll+5, result.Stored)
+	assert.Zero(t, source.summaryCalls, "a summary the listing carried was requested again")
+	require.Len(t, store.stored, MaxNewPerPoll+5)
+	assert.Equal(t, Summary{DistanceMetres: 100, Raw: []byte(`{"id":1}`)}, store.stored[0].summary)
+}
+
+// A listing entry without a summary is still read by its own request, beside
+// the ones the listing carried, and those requests alone are what the cap
+// bounds.
+func TestPollRequestsOnlyTheSummariesTheListingLacks(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	for id := 1; id <= 2*MaxNewPerPoll; id++ {
+		listing := Listing{ID: int64(id), Starts: at(id)}
+		if id%2 == 0 {
+			listing.Summary = &Summary{DistanceMetres: 100, Raw: []byte(`{}`)}
+		}
+		source.listings = append(source.listings, listing)
+	}
+	source.listings = append(source.listings, Listing{ID: 99, Starts: at(99)})
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, 2*MaxNewPerPoll, result.Stored)
+	assert.Equal(t, MaxNewPerPoll, source.summaryCalls, "the request cap did not hold")
+	assert.Equal(t, int64(1), source.summarized[0], "the oldest lacking summary was not requested first")
+	assert.NotContains(t, source.summarized, int64(99), "a request past the cap was made")
+}
+
+// The store keeps listings without their summaries, so a poll working from the
+// kept reading takes the summaries the account's first page carried and asks
+// for the rest.
+func TestPollTakesSummariesFromTheHeadWhenWorkingFromTheKeptReading(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+	poller := newTestPoller(t, source, store)
+	require.Equal(t, 2, poller.Poll(t.Context(), "rider-a").Stored)
+	store.known, store.stored = nil, nil
+	source.head = []Listing{{ID: 1, Starts: at(1), Summary: &Summary{DistanceMetres: 3, Raw: []byte(`{}`)}}, {ID: 2, Starts: at(2)}}
+	source.summarized = nil
+
+	result := poller.Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, 2, result.Stored)
+	assert.Equal(t, 1, source.listed, "the whole list was read again")
+	assert.Equal(t, []int64{2}, source.summarized, "the head's summary was requested, or the other was not")
+	require.Len(t, store.stored, 2)
+	assert.Equal(t, int64(1), store.stored[0].listing.ID)
+	assert.InDelta(t, 3.0, store.stored[0].summary.DistanceMetres, 0)
+}
+
 // One poll spends at most MaxNewPerPoll of a shared daily request budget, and
 // spends it on the oldest rides so a long history fills in chronologically.
 func TestPollReadsTheOldestActivitiesUpToItsCap(t *testing.T) {
@@ -915,7 +981,11 @@ func (s *fakeStore) ReplaceActivityListings(
 	if s.replaceListingsErr != nil {
 		return s.replaceListingsErr
 	}
+	// The store keeps a listing without the summary it carried, as SQLite does.
 	s.listings, s.readAt = slices.Clone(listings), now
+	for index := range s.listings {
+		s.listings[index].Summary = nil
+	}
 
 	return nil
 }

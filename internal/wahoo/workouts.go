@@ -21,6 +21,9 @@ const (
 
 // Workout is the list-level metadata Wahoo returns for one recorded activity.
 type Workout struct {
+	// Summary is the summary the listing itself carried for this workout, or
+	// nil: Wahoo lists a workout whose summary it refuses without one (#488).
+	Summary *WorkoutSummary `json:"-"`
 	// Starts is when the rider began recording, in Wahoo's own RFC 3339 form.
 	Starts time.Time `json:"starts"`
 	ID     int64     `json:"id"`
@@ -28,6 +31,27 @@ type Workout struct {
 	WorkoutTypeID int `json:"workout_type_id"`
 	//nolint:tagliatelle // Wahoo's API uses snake_case.
 	WorkoutTypeLocationID int `json:"workout_type_location_id"`
+}
+
+// UnmarshalJSON reads one listing entry, keeping its embedded "workout_summary"
+// as the same summary the sub-resource would answer with for that workout.
+func (w *Workout) UnmarshalJSON(raw []byte) error {
+	type plain Workout
+	var entry struct {
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		WorkoutSummary json.RawMessage `json:"workout_summary"`
+		plain
+	}
+	if err := json.Unmarshal(raw, &entry); err != nil {
+		return fmt.Errorf("wahoo: workout listing entry: %w", err)
+	}
+	*w = Workout(entry.plain)
+	w.Summary = nil
+	if summary, err := parseWorkoutSummary(entry.WorkoutSummary); err == nil {
+		w.Summary = &summary
+	}
+
+	return nil
 }
 
 // WorkoutSummary contains Wahoo's original summary, the URL of its FIT file,
@@ -179,6 +203,17 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 		}
 
 		return WorkoutSummary{}, err
+	}
+
+	return parseWorkoutSummary(body)
+}
+
+// parseWorkoutSummary reads one of Wahoo's summary documents, whether it came
+// as the sub-resource's body or embedded in a listing entry. An absent or null
+// document is ErrWorkoutUnreadable, as is one that is not a summary.
+func parseWorkoutSummary(body json.RawMessage) (WorkoutSummary, error) {
+	if len(body) == 0 {
+		return WorkoutSummary{}, fmt.Errorf("%w: missing", ErrWorkoutUnreadable)
 	}
 	var summary struct {
 		File struct {

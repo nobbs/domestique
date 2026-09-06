@@ -73,6 +73,21 @@ func TestActivityListingsNarrowWahooWorkouts(t *testing.T) {
 	assert.Equal(t, []activity.Listing{{ID: 42, TypeID: 15, LocationID: 1, Starts: starts}}, listings)
 }
 
+// A summary the listing carried travels with its listing, so a poll can store
+// it without asking for it again.
+func TestActivityListingsCarryTheListedSummary(t *testing.T) {
+	t.Parallel()
+
+	listings := activityListings([]wahoo.Workout{
+		{ID: 1, Summary: &wahoo.WorkoutSummary{Raw: []byte(`{"id":1}`), DistanceMetres: 10, ActiveSeconds: 20, TotalSeconds: 30, AscentMetres: 40}},
+		{ID: 2},
+	})
+
+	require.Len(t, listings, 2)
+	assert.Equal(t, &activity.Summary{Raw: []byte(`{"id":1}`), DistanceMetres: 10, MovingSeconds: 20, ElapsedSeconds: 30, AscentMetres: 40}, listings[0].Summary)
+	assert.Nil(t, listings[1].Summary)
+}
+
 // A reading counts what the account holds, cycling or not: it is compared with
 // the account's own total, which counts every sport. What this service records
 // is a separate question, asked after that comparison.

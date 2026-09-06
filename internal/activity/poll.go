@@ -13,8 +13,10 @@ import (
 // Wahoo account may be read; anything else needs interactive OAuth first.
 const authorizedState = "authorized"
 
-// MaxNewPerPoll bounds how many summaries one poll reads. The Wahoo sandbox tier
-// allows 250 requests a day across every target and every task sharing it.
+// MaxNewPerPoll bounds how many summaries one poll requests one at a time; a
+// summary the listing itself carried costs no request and is not counted. The
+// Wahoo sandbox tier allows 250 requests a day across every target and every
+// task sharing it.
 const MaxNewPerPoll = 25
 
 // MaxRecordsPerPoll bounds how many activities one poll fills records for.
@@ -24,7 +26,11 @@ const MaxRecordsPerPoll = 25
 
 // Listing is one recorded activity as the rider's account lists it.
 type Listing struct {
-	Starts     time.Time
+	Starts time.Time
+	// Summary is the summary the account's listing itself carried, or nil. Only
+	// a fresh reading of the account carries one; the store keeps listings
+	// without it.
+	Summary    *Summary
 	ID         int64
 	TypeID     int
 	LocationID int
@@ -219,7 +225,8 @@ func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error
 }
 
 // Poll stores a summary for every activity of one target this service has not
-// stored yet, oldest first and at most MaxNewPerPoll of them. A read that fails
+// stored yet, oldest first: from the listing where it carried one, and by one
+// request each for at most MaxNewPerPoll of the rest. A read that fails
 // part way keeps what it already stored: the next poll continues from there. An
 // activity only its own summary rejects is skipped and retried later, so one
 // unreadable ride never stops the ones after it. The account's whole list is
@@ -249,9 +256,19 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
-	var stored, skipped int
+	var stored, skipped, requested int
 	for _, listing := range due(pending, deferred(skips, p.now())) {
-		summary, summaryErr := p.source.ActivitySummary(ctx, accessToken, listing.ID)
+		var summary Summary
+		var summaryErr error
+		if listing.Summary != nil {
+			summary = *listing.Summary
+		} else {
+			if requested == MaxNewPerPoll {
+				continue
+			}
+			requested++
+			summary, summaryErr = p.source.ActivitySummary(ctx, accessToken, listing.ID)
+		}
 		if summaryErr != nil && p.source.IsUnreadable(summaryErr) {
 			if skipErr := p.store.RecordActivitySkip(ctx, targetID, listing.ID, summaryErr.Error(), p.now()); skipErr != nil {
 				return Result{Outcome: Failed, Failure: FailureState, Stored: stored, Skipped: skipped}
@@ -399,6 +416,7 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 			return nil, p.classify(ctx, targetID, headErr)
 		}
 		reread = total != len(listings) || !accountedFor(head, listings)
+		listings = carrying(listings, head)
 	}
 	if reread {
 		fresh, listErr := p.source.ListActivities(ctx, accessToken)
@@ -418,6 +436,24 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 	}
 
 	return unstored(p.recordable(listings), known), FailureNone
+}
+
+// carrying is the kept listings with the summaries the account's first page
+// carried for them, which the store never kept.
+func carrying(listings, head []Listing) []Listing {
+	summaries := make(map[int64]*Summary, len(head))
+	for _, listing := range head {
+		if listing.Summary != nil {
+			summaries[listing.ID] = listing.Summary
+		}
+	}
+	for index := range listings {
+		if listings[index].Summary == nil {
+			listings[index].Summary = summaries[listings[index].ID]
+		}
+	}
+
+	return listings
 }
 
 // recordable is the listings this service records, dropped only here: the
@@ -473,20 +509,16 @@ func unstored(listings []Listing, known []int64) []Listing {
 	return pending
 }
 
-// due is the oldest pending activities whose read is not deferred, at most
-// MaxNewPerPoll of them. Oldest first so an account with a long history fills
-// in chronologically over successive polls rather than restarting each time,
-// which is the order the kept listings already arrive in.
+// due is the pending activities whose read is not deferred, oldest first so an
+// account with a long history fills in chronologically over successive polls
+// rather than restarting each time, which is the order the kept listings
+// already arrive in.
 func due(pending []Listing, waiting []int64) []Listing {
 	deferredIDs := identities(waiting, nil)
-	ready := make([]Listing, 0, min(len(pending), MaxNewPerPoll))
+	ready := make([]Listing, 0, len(pending))
 	for _, listing := range pending {
-		if _, ok := deferredIDs[listing.ID]; ok {
-			continue
-		}
-		ready = append(ready, listing)
-		if len(ready) == MaxNewPerPoll {
-			break
+		if _, ok := deferredIDs[listing.ID]; !ok {
+			ready = append(ready, listing)
 		}
 	}
 
