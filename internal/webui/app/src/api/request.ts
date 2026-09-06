@@ -97,18 +97,21 @@ export async function domestiqueBinaryRequest<T>(url: string, options: RequestIn
 
 /** Keeps a generated operation's response envelope at the transport boundary. */
 export function unwrap<T>(value: { data: T; status: number; headers: Headers } | T): T {
-  // The full envelope shape, not just a "data" key, so a legitimate payload
-  // that happens to carry its own `data` field is never unwrapped by mistake.
+  // The full envelope shape and its runtime types, not just matching key
+  // names, so a legitimate payload that happens to carry its own `data`,
+  // `status` and `headers` fields is never unwrapped by mistake.
   const envelope = value as { data: T; status: unknown; headers: unknown };
   if (
     value &&
     typeof value === "object" &&
     "data" in value &&
     "status" in value &&
-    "headers" in value
+    "headers" in value &&
+    typeof envelope.status === "number" &&
+    envelope.headers instanceof Headers
   ) {
     return envelope.data;
   }
 
-  return value;
+  return value as T;
 }

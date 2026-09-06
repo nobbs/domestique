@@ -118,4 +118,9 @@ describe("unwrap", () => {
     const payload = { data: [1, 2, 3] };
     expect(unwrap<typeof payload>(payload)).toBe(payload);
   });
+
+  it("does not unwrap a payload whose status/headers fields are the wrong runtime type", () => {
+    const payload = { data: [1, 2, 3], status: "200", headers: {} };
+    expect(unwrap<typeof payload>(payload)).toBe(payload);
+  });
 });
