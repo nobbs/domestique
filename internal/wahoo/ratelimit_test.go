@@ -3,6 +3,7 @@ package wahoo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -24,7 +25,7 @@ type fakeQuotaStore struct {
 
 func (s *fakeQuotaStore) LoadQuota(ctx context.Context) (Quota, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return Quota{}, false, err
+		return Quota{}, false, fmt.Errorf("quota store: %w", err)
 	}
 	if s.loadErr != nil {
 		return Quota{}, false, s.loadErr
