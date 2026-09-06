@@ -383,9 +383,9 @@ func TestActivityRecordsCascadeAndStayWithTheirTarget(t *testing.T) {
 	assert.Zero(t, rows, "records outlived the activity they belong to")
 }
 
-// The oldest rides come first and only limit of them, so a long history fills
-// in chronologically over successive polls.
-func TestActivitiesAwaitingRecordsIsOldestFirstAndLimited(t *testing.T) {
+// The newest rides come first and only limit of them, so a ride recorded today
+// is filled before a history still backfilling behind it.
+func TestActivitiesAwaitingRecordsIsNewestFirstAndLimited(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
@@ -400,7 +400,7 @@ func TestActivitiesAwaitingRecordsIsOldestFirstAndLimited(t *testing.T) {
 	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 2)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	require.Len(t, pending, 2)
-	assert.Equal(t, []int64{2, 3}, []int64{pending[0].ID, pending[1].ID}, "oldest first")
+	assert.Equal(t, []int64{1, 3}, []int64{pending[0].ID, pending[1].ID}, "newest first")
 }
 
 // An undecodable file is recorded as such so no later poll downloads it again.

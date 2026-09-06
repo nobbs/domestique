@@ -21,10 +21,14 @@ const authorizedState = "authorized"
 // alone exceed it is the source's own throttle to pace, not this cap's (#489).
 const RequestsPerPoll = 25
 
-// MaxRecordsPerPoll bounds how many activities one poll fills records for.
-// CDN downloads sit outside the API quota; decoding and inserting a ride's
-// samples is what this bounds.
-const MaxRecordsPerPoll = 25
+// RecordsBudgetPerPoll is the wall-clock one poll may spend filling records, and
+// so how long it holds the exclusive activities resource; downloads sit outside
+// the API quota, and a row count models rides of 3,000 to 12,000 samples poorly.
+const RecordsBudgetPerPoll = 2 * time.Minute
+
+// MaxRecordsPerPoll is the hard ceiling on activities one poll fills, under the
+// budget: a clock that never advances still cannot leave one run looping.
+const MaxRecordsPerPoll = 200
 
 // Listing is one recorded activity as the rider's account lists it.
 type Listing struct {
@@ -164,6 +168,8 @@ type listingStore interface {
 // recordStore is the records phase's half of the store, kept apart so neither
 // half grows past what one reader can hold.
 type recordStore interface {
+	// ActivitiesAwaitingRecords are the stored activities whose samples are still
+	// absent, newest first so a fresh ride never waits behind a backfill.
 	ActivitiesAwaitingRecords(ctx context.Context, targetID string, limit int) ([]PendingActivity, error)
 	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit FIT) error
 	MarkActivityUnreadable(ctx context.Context, targetID string, id int64) error
@@ -337,15 +343,19 @@ func deferred(skips []Skip, now time.Time) []int64 {
 }
 
 // fillRecords downloads and decodes the FIT file of each stored activity whose
-// samples are still absent, oldest first and at most MaxRecordsPerPoll of them.
-// It reports how many it stored and how many it marked unreadable.
+// samples are still absent, newest first, until RecordsBudgetPerPoll is spent or
+// MaxRecordsPerPoll are done. It reports how many it stored and marked unreadable.
 func (p *Poller) fillRecords(ctx context.Context, targetID string) (stored, unreadable int, failure Failure) {
 	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, MaxRecordsPerPoll)
 	if err != nil {
 		return 0, 0, FailureState
 	}
+	deadline := p.now().Add(RecordsBudgetPerPoll)
 
 	for _, pendingActivity := range pending {
+		if !p.now().Before(deadline) {
+			break
+		}
 		raw, downloadErr := p.source.DownloadActivityFIT(ctx, pendingActivity.Summary)
 		if downloadErr != nil && !errors.Is(downloadErr, ErrNoActivityFile) {
 			// A download that failed for anything but this file's own sake stops

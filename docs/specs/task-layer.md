@@ -276,6 +276,12 @@ than stored, so nothing downstream has to know it was ever listed. This is a
 read-side filter, not a deletion gate: the poll still never removes an activity
 the account no longer lists.
 
+It fills a stored ride's samples newest first, bounded by a wall-clock budget
+per run with a hard ceiling on how many rides one run may fill. A ride recorded
+this morning is therefore filled on the first poll that sees it rather than
+behind whatever history is still backfilling, and no run holds the exclusive
+`activities` resource for longer than that budget.
+
 The read takes a library the same way the targets take a slot: none is every
 one that exists, a name is that one alone. One task rather than one per
 library, because the library list is a runtime setting and tasks are

@@ -209,7 +209,7 @@ func (s *Store) ActivityTrack(ctx context.Context, targetID string, id int64) ([
 }
 
 // ActivitiesAwaitingRecords are one target's stored activities whose FIT
-// samples are still absent, oldest first, at most limit of them.
+// samples are still absent, newest first, at most limit of them.
 func (s *Store) ActivitiesAwaitingRecords(
 	ctx context.Context, targetID string, limit int,
 ) ([]activity.PendingActivity, error) {
