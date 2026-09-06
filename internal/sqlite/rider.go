@@ -58,6 +58,9 @@ func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rid
 // as the numbers those efforts imply. Rides that carry no such sensor yield no
 // suggestion, which is what lets the page offer one field a figure and not the
 // next.
+//
+// A query per target: the caller's own targets are at most one, because a
+// target's identity is its owning subject's own value.
 func (s *Store) RiderSuggestions(ctx context.Context, targetIDs []string, since time.Time) (rider.Suggestions, error) {
 	suggestions := rider.Suggestions{}
 	for _, targetID := range targetIDs {

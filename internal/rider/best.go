@@ -7,9 +7,16 @@ import "time"
 // pause lasted, which would read as an effort held for that whole time.
 const maxSampleGap = 10 * time.Second
 
-// BestAverage reports the highest mean the series holds over any window of at
-// least the given length, and whether it held such a window at all. Samples
-// are one ride's, in recorded order; a window never spans two rides.
+// BestAverage reports the highest mean the series holds over a window of the
+// given length, and whether it held one at all. Samples are one ride's, in
+// recorded order; a window never spans two rides.
+//
+// One window is weighed per end sample: the shortest that still covers the
+// length asked for, since the length asked for is what the figure means — a
+// best twenty-minute power is over twenty minutes, not over the best stretch
+// of any length above it. Where the sampling straddles the boundary the window
+// is a little longer than asked for, never shorter, so the answer understates
+// rather than flatters.
 //
 // Each sample counts for as long as it stands, so a series recorded at an
 // irregular rate is averaged over time rather than over sample count.
@@ -47,8 +54,8 @@ func bestUnbroken(times []time.Time, values []float64, window time.Duration) (fl
 	best, found := 0.0, false
 	start := 0
 	for end := 1; end < len(times); end++ {
-		// The narrowest window that still covers the length asked for: widening
-		// it further can only dilute the mean.
+		// The latest start that still covers the length asked for, which is the
+		// window closest to that length ending here.
 		for start+1 < end && times[end].Sub(times[start+1]) >= window {
 			start++
 		}
