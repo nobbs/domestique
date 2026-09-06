@@ -159,7 +159,9 @@ describe("one ride's page", () => {
   });
 
   it("requests no track for a non-integer activity id", () => {
-    const fetchMock = vi.fn(async () => new Response(null, { status: 500 }));
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL) => new Response(null, { status: 500 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     show(null, "7.5");
 
