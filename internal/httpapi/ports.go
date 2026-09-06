@@ -7,6 +7,7 @@ import (
 	"time"
 
 	activities "github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
@@ -180,6 +181,21 @@ type State interface {
 	RunState
 	TaskRunState
 	ActivityState
+	RiderProfileState
+}
+
+// RiderProfileState is one rider's own parameters, and the best efforts their
+// stored rides hold. Keyed by subject rather than by target: a rider has these
+// numbers whether or not they have connected an account.
+type RiderProfileState interface {
+	// RiderProfile reads one subject's parameters. A subject who has entered
+	// none has an empty profile, not a missing one.
+	RiderProfile(ctx context.Context, subject string) (rider.Profile, error)
+	// SetRiderProfile replaces one subject's parameters whole.
+	SetRiderProfile(ctx context.Context, subject string, profile rider.Profile) error
+	// RiderSuggestions reports what the given targets' rides since a cutoff
+	// suggest, leaving absent whatever no ride carried a sensor for.
+	RiderSuggestions(ctx context.Context, targetIDs []string, since time.Time) (rider.Suggestions, error)
 }
 
 // ActivityState is what a poll recorded about each target's rides. The

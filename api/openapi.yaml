@@ -807,6 +807,61 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/rider:
+    get:
+      tags:
+        - browser-api
+      operationId: getRiderProfile
+      description: >-
+        The signed-in rider's own parameters, and what their recent rides
+        suggest two of them could be. Answered for the caller's own subject
+        only: no session reads another rider's profile here, an administrator's
+        included.
+      responses:
+        "200":
+          description: The rider's own profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderProfile'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+    put:
+      tags:
+        - browser-api
+      operationId: setRiderProfile
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Replaces the caller's own parameters whole. A parameter left out is
+        cleared rather than kept: this is the rider's whole profile, not a patch
+        of it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderParameters'
+      responses:
+        "200":
+          description: The rider's own profile, as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderProfile'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/webui/config:
     get:
       tags:
@@ -1988,6 +2043,65 @@ components:
             $ref: '#/components/schemas/TaskRun'
         next:
           type: string
+    RiderProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - profile
+        - suggestions
+      properties:
+        profile:
+          $ref: '#/components/schemas/RiderParameters'
+        suggestions:
+          $ref: '#/components/schemas/RiderSuggestions'
+    RiderParameters:
+      type: object
+      additionalProperties: false
+      description: >-
+        One rider's own body and equipment. Every parameter is optional: one the
+        rider has not entered is absent rather than zero, because nothing
+        downstream can use a zero heart rate or a massless bicycle.
+      properties:
+        maxHeartRateBpm:
+          type: number
+          minimum: 1
+          maximum: 250
+        restingHeartRateBpm:
+          type: number
+          minimum: 1
+          maximum: 250
+        thresholdHeartRateBpm:
+          type: number
+          minimum: 1
+          maximum: 250
+          description: The lactate threshold rate heart-rate zones are cut at.
+        functionalThresholdPowerWatts:
+          type: number
+          minimum: 1
+          maximum: 2000
+        riderMassKg:
+          type: number
+          minimum: 1
+          maximum: 500
+        bikeMassKg:
+          type: number
+          minimum: 1
+          maximum: 500
+          description: The bicycle and everything carried on it.
+    RiderSuggestions:
+      type: object
+      additionalProperties: false
+      description: >-
+        What the rider's rides of the last ninety days say two of these numbers
+        could be, offered beside the fields and stored nowhere. A parameter no
+        ride carried a sensor for is absent rather than zero.
+      properties:
+        maxHeartRateBpm:
+          type: number
+          description: The highest heart rate held over a rolling minute.
+        functionalThresholdPowerWatts:
+          type: number
+          description: The best twenty-minute average power, taken at 95%.
     TimezoneUpdate:
       type: object
       additionalProperties: false
