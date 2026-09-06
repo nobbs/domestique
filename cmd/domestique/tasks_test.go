@@ -797,6 +797,7 @@ func TestActivityResultCarriesEveryOutcomeAcross(t *testing.T) {
 		"authorization": {want: task.Failed, detail: detailActivityAuthorization, failure: activity.FailureAuthorization},
 		"state":         {want: task.Failed, detail: detailActivityState, failure: activity.FailureState},
 		"upstream":      {want: task.Failed, detail: detailActivityUpstream, failure: activity.FailureUpstream},
+		"rejected":      {want: task.Failed, detail: detailActivityRejected, failure: activity.FailureRejected},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

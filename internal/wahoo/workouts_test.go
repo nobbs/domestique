@@ -227,8 +227,11 @@ func TestClientTellsAnUnreadableWorkoutFromAFailedProvider(t *testing.T) {
 		body       any
 		status     int
 		unreadable bool
+		rejected   bool
 	}{
-		"refused":      {status: http.StatusUnauthorized, unreadable: true},
+		// A refusal meets every request alike, so it belongs to the connection
+		// rather than to the workout the poll happened to ask about.
+		"refused":      {status: http.StatusUnauthorized, rejected: true},
 		"missing":      {status: http.StatusNotFound, unreadable: true},
 		"no summary":   {status: http.StatusOK, body: nil, unreadable: true},
 		"wrong shape":  {status: http.StatusOK, body: "x", unreadable: true},
@@ -250,6 +253,9 @@ func TestClientTellsAnUnreadableWorkoutFromAFailedProvider(t *testing.T) {
 			_, err := newTestClient(t, server).WorkoutSummary(t.Context(), "access-token", 42)
 			require.Error(t, err)
 			assert.Equal(t, tc.unreadable, errors.Is(err, ErrWorkoutUnreadable), "%v", err)
+			assert.Equal(t, tc.rejected, errors.Is(err, ErrRequestRejected), "%v", err)
+			// #455 stands: only the token endpoint concludes a grant is spent.
+			require.NotErrorIs(t, err, ErrUnauthorized, "a data request judged the refresh token")
 			assert.NotContains(t, err.Error(), "access-token")
 		})
 	}

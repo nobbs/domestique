@@ -20,6 +20,7 @@ import (
 var (
 	errUpstream   = errors.New("upstream failed")
 	errUnreadable = errors.New("this activity is unreadable")
+	errRejected   = errors.New("the request itself was refused")
 )
 
 var errUnauthorized = errors.New("unauthorized")
@@ -194,6 +195,7 @@ func TestPollStopsWithoutSkippingOnAFailureThatIsNotTheActivitysOwn(t *testing.T
 		"upstream":     {err: errUpstream, failure: FailureUpstream},
 		"unrecognised": {err: errors.New("something new"), failure: FailureUpstream},
 		"unauthorized": {err: errUnauthorized, failure: FailureAuthorization},
+		"rejected":     {err: fmt.Errorf("HTTP 401: %w", errRejected), failure: FailureRejected},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -209,6 +211,27 @@ func TestPollStopsWithoutSkippingOnAFailureThatIsNotTheActivitysOwn(t *testing.T
 			assert.Empty(t, source.summarized, "the poll went on past a run-level failure")
 		})
 	}
+}
+
+// The refusal that costs the most is the one that applies to every request: read
+// as the activity's own it sets aside a whole poll of healthy rides one at a
+// time, each deferred for a day. It has to cost one request and condemn nothing.
+func TestPollStopsAtTheFirstRefusalOfTheRequestItself(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = make([]Listing, 0, MaxNewPerPoll)
+	source.summaryErrs = make(map[int64]error, MaxNewPerPoll)
+	for id := 1; id <= MaxNewPerPoll; id++ {
+		source.listings = append(source.listings, Listing{ID: int64(id), Starts: at(id)})
+		source.summaryErrs[int64(id)] = fmt.Errorf("HTTP 401: %w", errRejected)
+	}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Result{Outcome: Failed, Failure: FailureRejected}, result)
+	assert.Equal(t, 1, source.summaryCalls, "one refusal of the connection cost more than one request")
+	assert.Empty(t, store.skipped, "a refusal of the request itself was recorded against an activity")
+	assert.False(t, store.markedForReauthorization, "a refused request marked the slot for reauthorization")
 }
 
 // A skipped activity is offered again only once its wait has passed, so a
@@ -671,21 +694,22 @@ func newTestPoller(t *testing.T, source Source, store Store) *Poller {
 }
 
 type fakeSource struct {
-	summaryErrs map[int64]error
-	fitFor      map[string][]byte
-	refreshErr  error
-	listErr     error
-	headErr     error
-	downloadErr error
-	fit         []byte
-	listings    []Listing
-	head        []Listing
-	summarized  []int64
-	downloaded  []string
-	listed      int
-	headed      int
-	total       int
-	hasTotal    bool
+	summaryErrs  map[int64]error
+	fitFor       map[string][]byte
+	refreshErr   error
+	listErr      error
+	headErr      error
+	downloadErr  error
+	fit          []byte
+	listings     []Listing
+	head         []Listing
+	summarized   []int64
+	downloaded   []string
+	listed       int
+	headed       int
+	total        int
+	summaryCalls int
+	hasTotal     bool
 }
 
 func newFakeSource(t *testing.T) *fakeSource {
@@ -744,6 +768,7 @@ func (s *fakeSource) ListActivities(_ context.Context, _ string) ([]Listing, err
 }
 
 func (s *fakeSource) ActivitySummary(_ context.Context, _ string, id int64) (Summary, error) {
+	s.summaryCalls++
 	if err := s.summaryErrs[id]; err != nil {
 		return Summary{}, err
 	}
@@ -770,6 +795,10 @@ func (s *fakeSource) IsUnauthorized(err error) bool {
 
 func (s *fakeSource) IsUnreadable(err error) bool {
 	return errors.Is(err, errUnreadable)
+}
+
+func (s *fakeSource) IsRejected(err error) bool {
+	return errors.Is(err, errRejected)
 }
 
 type recordedSkip struct {

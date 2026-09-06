@@ -103,6 +103,10 @@ const (
 	detailActivityAuthorization task.Detail = "authorization"
 	detailActivityUpstream      task.Detail = "upstream"
 	detailActivityState         task.Detail = "state"
+	// detailActivityRejected marks a poll the source refused outright rather than
+	// for the activity it asked about, so a run history shows a connection that
+	// stopped the poll apart from one ride that would not read.
+	detailActivityRejected task.Detail = "rejected"
 	// detailActivitySkipped marks a poll that set an unreadable activity aside,
 	// so an account quietly missing rides is visible in its run record.
 	detailActivitySkipped task.Detail = "skipped"
@@ -383,6 +387,8 @@ func activityDetail(failure activity.Failure) task.Detail {
 		return detailActivityAuthorization
 	case activity.FailureState:
 		return detailActivityState
+	case activity.FailureRejected:
+		return detailActivityRejected
 	case activity.FailureUpstream, activity.FailureNone:
 	}
 

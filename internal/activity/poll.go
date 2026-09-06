@@ -101,6 +101,9 @@ type Source interface {
 	// IsUnreadable reports a summary rejection that belongs to that one
 	// activity rather than to the connection, the quota or the grant.
 	IsUnreadable(err error) bool
+	// IsRejected reports a refusal that belongs to the connection rather than to
+	// the activity asked for, and so would meet every request after it.
+	IsRejected(err error) bool
 }
 
 // Store is the durable state one poll reads and adds to. It never deletes.
@@ -168,6 +171,11 @@ const (
 	FailureAuthorization Failure = "authorization"
 	// FailureUpstream means an activity read did not complete.
 	FailureUpstream Failure = "upstream"
+	// FailureRejected means the source refused the request itself rather than the
+	// activity asked for. Told apart from FailureUpstream because it applies to
+	// every request the poll would make next, and from FailureAuthorization
+	// because the target's grant is not what refused it.
+	FailureRejected Failure = "rejected"
 	// FailureState means stored state could not be read or updated safely.
 	FailureState Failure = "state"
 )
@@ -342,6 +350,14 @@ func (p *Poller) accessToken(ctx context.Context, targetID string) (string, Fail
 }
 
 func (p *Poller) classify(ctx context.Context, targetID string, err error) Failure {
+	// Checked before the grant: a refusal of the request itself stops the poll
+	// without concluding anything about the refresh token, which only the token
+	// endpoint judges.
+	if p.source.IsRejected(err) {
+		slog.Warn("activity source refused the request", "target", targetID, "error", err)
+
+		return FailureRejected
+	}
 	if !p.source.IsUnauthorized(err) {
 		// The source's errors are protocol-level — a status, a rate-limit
 		// sentinel, a transport failure — never a ride's name or a credential.

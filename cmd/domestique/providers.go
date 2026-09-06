@@ -386,6 +386,12 @@ func (p *wahooProvider) IsUnreadable(err error) bool {
 	return errors.Is(err, wahoo.ErrWorkoutUnreadable)
 }
 
+// IsRejected reports a refusal that belongs to the connection rather than to the
+// resource asked for, and so applies to every request a poll would go on to make.
+func (p *wahooProvider) IsRejected(err error) bool {
+	return errors.Is(err, wahoo.ErrRequestRejected)
+}
+
 // RateLimit reports the budget the current client observed. An unconfigured
 // service has spent nothing and knows nothing.
 func (p *wahooProvider) RateLimit() (remaining int, resetAt time.Time, ok bool) {
