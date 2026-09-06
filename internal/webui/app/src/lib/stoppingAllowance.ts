@@ -70,6 +70,10 @@ export function useStoppingAllowance(): [number, (secondsPerHour: number) => voi
 }
 
 function clamp(secondsPerHour: number): number {
+  if (!Number.isFinite(secondsPerHour)) {
+    return DEFAULT_ALLOWANCE_SECONDS_PER_HOUR;
+  }
+
   return Math.min(Math.max(secondsPerHour, 0), MAX_ALLOWANCE_SECONDS_PER_HOUR);
 }
 

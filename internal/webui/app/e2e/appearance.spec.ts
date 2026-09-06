@@ -18,6 +18,7 @@ import {
   openSearch,
   openWorkspace,
   pinRendering,
+  profileScrubber,
   settleMap,
   test,
 } from "./fixtures";
@@ -228,7 +229,7 @@ test.describe("on a narrow viewport", () => {
     expect(box.width).toBeLessThanOrEqual(375);
     expect(box.height).toBeGreaterThan(120);
     await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
-    await expect(page.getByRole("slider")).toBeVisible();
+    await expect(profileScrubber(page)).toBeVisible();
   });
 });
 

@@ -380,5 +380,6 @@ export async function settleMap(page: Page, attempts = 20): Promise<Buffer> {
 
 /** The elevation chart's scrubber, which is also its keyboard control. */
 export function profileScrubber(page: Page): Locator {
-  return page.getByRole("slider");
+  // Named: the stage panel's stopping-allowance slider is a slider too.
+  return page.getByRole("slider", { name: /^Position along / });
 }

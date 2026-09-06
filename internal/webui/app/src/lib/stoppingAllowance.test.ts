@@ -74,6 +74,15 @@ describe("useStoppingAllowance", () => {
     expect(renderHook(() => useStoppingAllowance()).result.current[0]).toBe(420);
   });
 
+  it("falls back to the default when a choice is not a number", () => {
+    stubStorage();
+
+    const { result } = renderHook(() => useStoppingAllowance());
+    act(() => result.current[1](Number.NaN));
+
+    expect(result.current[0]).toBe(266);
+  });
+
   it("clamps a choice to the slider's domain", () => {
     stubStorage();
 
