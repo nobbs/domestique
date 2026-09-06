@@ -35,14 +35,20 @@ DELETE FROM web_sessions WHERE token_digest = ?;
 
 -- name: ListLatestSessionNicknames :many
 -- One row per subject that ever signed in with a nickname: the one from its
--- newest such session, ties broken by rowid so exactly one row answers.
--- Keyed by subject throughout: this never looks a rider up by nickname.
+-- newest such session, ties broken by rowid, found once per subject rather
+-- than once per row. Keyed by subject throughout: never a lookup by nickname.
 SELECT subject, nickname
-FROM web_sessions AS latest
-WHERE rowid = (
-  SELECT rowid FROM web_sessions AS candidate
-  WHERE candidate.subject = latest.subject
-    AND candidate.nickname IS NOT NULL AND candidate.nickname != ''
-  ORDER BY candidate.created_at_unix DESC, candidate.rowid DESC
-  LIMIT 1
+FROM web_sessions
+WHERE rowid IN (
+  SELECT (
+    SELECT candidate.rowid FROM web_sessions AS candidate
+    WHERE candidate.subject = named.subject
+      AND candidate.nickname IS NOT NULL AND candidate.nickname != ''
+    ORDER BY candidate.created_at_unix DESC, candidate.rowid DESC
+    LIMIT 1
+  )
+  FROM (
+    SELECT DISTINCT subject FROM web_sessions
+    WHERE nickname IS NOT NULL AND nickname != ''
+  ) AS named
 );
