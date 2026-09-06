@@ -9,6 +9,7 @@ import (
 
 	"github.com/pb33f/libopenapi"
 	validator "github.com/pb33f/libopenapi-validator"
+	"github.com/pb33f/libopenapi-validator/cache"
 	"github.com/pb33f/libopenapi-validator/config"
 	validationerrors "github.com/pb33f/libopenapi-validator/errors"
 	v3 "github.com/pb33f/libopenapi/datamodel/high/v3"
@@ -70,13 +71,17 @@ func removeReadinessOperation(operation **v3.Operation) {
 // requests to the document: path and header bounds, request bodies, and the
 // provenance requirement that used to be a hand-written table of paths. The
 // handlers validate query parameters.
-func (h *Handler) useContractValidation() error {
+func (h *Handler) useContractValidation(schemaCache cache.SchemaCache) error {
 	spec, err := servedSpec()
 	if err != nil {
 		return err
 	}
+	if schemaCache == nil {
+		schemaCache = cache.NewDefaultCache()
+	}
 	contractValidator := validator.NewValidatorFromV3Model(
 		spec,
+		config.WithSchemaCache(schemaCache),
 		config.WithAuthenticationFunc(h.authenticateScheme),
 		// Weather points are repeated query parameters whose values contain commas,
 		// which libopenapi-validator treats as array delimiters even when exploded.

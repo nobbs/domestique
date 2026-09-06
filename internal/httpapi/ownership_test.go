@@ -35,6 +35,7 @@ func handlerFor(t *testing.T, sessions Sessions, oauthService OAuth, state State
 	}
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            tasks,
 			Settings:         settingsWith(testBasemaps()),

@@ -722,6 +722,7 @@ func TestWebUIConfigReflectsTheAdminClaim(t *testing.T) {
 func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(twoProviderBasemaps()),
@@ -758,6 +759,7 @@ func TestHandlerServesEveryConfiguredBasemapInOrder(t *testing.T) {
 func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -778,6 +780,7 @@ func TestHandlerOmitsAnUnconfiguredDarkTileStyle(t *testing.T) {
 func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -798,8 +801,9 @@ func TestHandlerOmitsAnUnconfiguredSourceBaseURL(t *testing.T) {
 func TestHandlerServesEveryConfiguredSourceKeyedByProvider(t *testing.T) {
 	handler, err := New(
 		&Options{
-			Alerts: &fakeAlerts{},
-			Tasks:  &fakeTasks{},
+			schemaCache: testSchemaCache,
+			Alerts:      &fakeAlerts{},
+			Tasks:       &fakeTasks{},
 			Settings: withSources(settingsWith(testBasemaps()),
 				runtimeconfig.Source{Provider: route.ProviderVeloPlanner, BaseURL: testSourceBaseURL},
 				runtimeconfig.Source{Provider: route.ProviderKomoot, BaseURL: testKomootBaseURL},
@@ -891,6 +895,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -912,6 +917,7 @@ func newHandlerWithBuild(t *testing.T, revision, imageDigest string) *Handler {
 func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(twoProviderBasemaps()),
@@ -959,9 +965,10 @@ func (f *fakeStyleOrigins) Refresh(context.Context) { f.refreshes++ }
 func TestHandlerNamesTheHostsAStyleReachesBeyondItsOwn(t *testing.T) {
 	handler, err := New(
 		&Options{
-			Alerts:   &fakeAlerts{},
-			Tasks:    &fakeTasks{},
-			Settings: settingsWith([]runtimeconfig.Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}),
+			schemaCache: testSchemaCache,
+			Alerts:      &fakeAlerts{},
+			Tasks:       &fakeTasks{},
+			Settings:    settingsWith([]runtimeconfig.Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}),
 			StyleOrigins: &fakeStyleOrigins{origins: []string{
 				"https://fonts.example.test",
 				// Already the configured entry's own origin, so it must not be
@@ -995,6 +1002,7 @@ func TestHandlerNamesTheHostsAStyleReachesBeyondItsOwn(t *testing.T) {
 func TestHandlerWithholdsAStylesFurtherHostsBeforeAnIdentityExists(t *testing.T) {
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith([]runtimeconfig.Basemap{{Name: "Streets", StyleURL: testTileStyleURL}}),
@@ -1017,8 +1025,9 @@ func TestHandlerWithholdsAStylesFurtherHostsBeforeAnIdentityExists(t *testing.T)
 func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 	handler, err := New(
 		&Options{
-			Alerts: &fakeAlerts{},
-			Tasks:  &fakeTasks{},
+			schemaCache: testSchemaCache,
+			Alerts:      &fakeAlerts{},
+			Tasks:       &fakeTasks{},
 			Settings: settingsWith([]runtimeconfig.Basemap{
 				{Name: "Streets", StyleURL: testTileStyleURL},
 				{Name: "Outdoors", StyleURL: "https://tiles.example.test/styles/outdoors"},
@@ -1043,8 +1052,9 @@ func TestHandlerNamesOneOriginOnceForTwoBasemapsSharingIt(t *testing.T) {
 func TestHandlerAcceptsADarkStyleOnItsOriginRegardlessOfHostCase(t *testing.T) {
 	handler, err := New(
 		&Options{
-			Alerts: &fakeAlerts{},
-			Tasks:  &fakeTasks{},
+			schemaCache: testSchemaCache,
+			Alerts:      &fakeAlerts{},
+			Tasks:       &fakeTasks{},
 			Settings: settingsWith([]runtimeconfig.Basemap{{
 				Name:         "Streets",
 				StyleURL:     testTileStyleURL,
@@ -2020,6 +2030,7 @@ func newHandlerWithSessions(t *testing.T, sessions Sessions) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -2039,6 +2050,7 @@ func newHandlerWithSurfaceIndex(t *testing.T, index func() (string, time.Time, b
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -2060,6 +2072,7 @@ func newHandlerWithWeather(t *testing.T, weather Weather) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -2081,6 +2094,7 @@ func newHandlerWithWeatherGrid(t *testing.T, weatherGrid WeatherGrid) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -2106,6 +2120,7 @@ func newHandlerWithStaleAfter(t *testing.T, state State, staleAfter time.Duratio
 	settings.values.Sync.StaleAfter = staleAfter
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settings,
@@ -2128,6 +2143,7 @@ func newHandlerWithTargets(t *testing.T, state State, _ ...string) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -2147,6 +2163,7 @@ func newHandlerWithLiveSync(t *testing.T, state State, activity SyncActivityStat
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -2167,6 +2184,7 @@ func newHandlerWithRideModelValidation(t *testing.T, state State, validation *Ri
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:             testSchemaCache,
 			Alerts:                  &fakeAlerts{},
 			Tasks:                   &fakeTasks{},
 			Settings:                settingsWith(testBasemaps()),
@@ -2185,7 +2203,8 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 	t.Helper()
 	handler, err := New(
 		&Options{
-			Alerts: &fakeAlerts{catalogue: []AlertSetting{{Task: "sync", Alert: "source", Enabled: true}}},
+			schemaCache: testSchemaCache,
+			Alerts:      &fakeAlerts{catalogue: []AlertSetting{{Task: "sync", Alert: "source", Enabled: true}}},
 			Tasks: &fakeTasks{registered: []RegisteredTask{
 				{Name: "sync:source", Scheduled: true, Enabled: true},
 				{Name: "sync:target", Scheduled: true, Enabled: true},

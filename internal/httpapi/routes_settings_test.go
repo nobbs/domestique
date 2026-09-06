@@ -70,6 +70,7 @@ func settingsHandler(t *testing.T) (*Handler, *staticSettings) {
 	settings := settingsWith(testBasemaps())
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settings,
@@ -91,6 +92,7 @@ func settingsHandlerWithTasks(t *testing.T) (*Handler, *fakeTasks) {
 	tasks := &fakeTasks{}
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            tasks,
 			Settings:         settingsWith(testBasemaps()),
@@ -147,6 +149,7 @@ func TestGetSettingsReportsTheRideModelWithoutAPort(t *testing.T) {
 func TestGetSettingsReportsACalibratedRideModel(t *testing.T) {
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -479,6 +482,7 @@ func TestSetBasemapsReadsTheSavedStyles(t *testing.T) {
 	styleOrigins := &fakeStyleOrigins{}
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            &fakeTasks{},
 			Settings:         settingsWith(testBasemaps()),
@@ -526,6 +530,7 @@ func alertsHandler(t *testing.T, catalogue ...AlertSetting) (*Handler, *fakeAler
 	alerts := &fakeAlerts{catalogue: catalogue}
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Settings:         settingsWith(testBasemaps()),
 			Alerts:           alerts,
 			Tasks:            &fakeTasks{},

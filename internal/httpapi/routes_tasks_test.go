@@ -30,6 +30,7 @@ func handlerOverTasks(t *testing.T, state State, tasks Tasks) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
+			schemaCache:      testSchemaCache,
 			Settings:         settingsWith(testBasemaps()),
 			Alerts:           &fakeAlerts{},
 			Tasks:            tasks,
