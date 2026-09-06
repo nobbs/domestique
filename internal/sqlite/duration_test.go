@@ -9,6 +9,7 @@ import (
 )
 
 func TestStoreCachesStageDurationAgainstTheFingerprintItWasComputedFrom(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 7, 2, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -45,6 +46,7 @@ func TestStoreCachesStageDurationAgainstTheFingerprintItWasComputedFrom(t *testi
 // so the next pass does not ask about it again every run — the same reasoning
 // stage_surface's own "nothing to report" row follows.
 func TestStoreStoresTheAbsenceOfAPrediction(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -70,6 +72,7 @@ func TestStoreStoresTheAbsenceOfAPrediction(t *testing.T) {
 // current geometry, on the same terms StageSurface hides a stale
 // classification.
 func TestStoreHidesADurationMeasuredAgainstOtherGeometry(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "current-hash")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -86,6 +89,7 @@ func TestStoreHidesADurationMeasuredAgainstOtherGeometry(t *testing.T) {
 }
 
 func TestStorePrunesDurationForStagesLeavingTheInventory(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	first := storeTestStage(t, 1, 1, "revision", "hash-one")
 	second := storeTestStage(t, 2, 1, "revision", "hash-two")
@@ -110,6 +114,7 @@ func TestStorePrunesDurationForStagesLeavingTheInventory(t *testing.T) {
 }
 
 func TestStorePrunesDurationMeasuredAgainstReplacedGeometry(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStage(t, 1, 1, "revision", "hash-one")
 	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
@@ -127,6 +132,7 @@ func TestStorePrunesDurationMeasuredAgainstReplacedGeometry(t *testing.T) {
 }
 
 func TestStorePruneStageDurationsWithDifferentFingerprintKeepsOnlyTheCurrentOne(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	movingSeconds := 100.0
 	require.NoError(t, store.StoreStageDuration(
@@ -151,6 +157,7 @@ func TestStorePruneStageDurationsWithDifferentFingerprintKeepsOnlyTheCurrentOne(
 // matches no stored row, so every prediction is pruned — the read path must
 // serve nothing, not whatever an earlier configuration left behind.
 func TestStorePruneStageDurationsWithDifferentFingerprintClearsEverythingWhenUnconfigured(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	movingSeconds := 100.0
 	require.NoError(t, store.StoreStageDuration(

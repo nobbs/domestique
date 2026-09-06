@@ -10,6 +10,7 @@ import (
 )
 
 func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	stage := storeTestStage(t, 1, 1, "revision", "content-hash")
@@ -41,6 +42,7 @@ func TestStorePersistsTrustedInventoryAndTargetStages(t *testing.T) {
 // The stored inventory is what the target phase reconciles from, so it has to
 // come back as the same stages that went in, elevation included.
 func TestStoreReadsTheTrustedInventoryBackAsStages(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	elevation := 128.5
 	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
@@ -68,6 +70,7 @@ func TestStoreReadsTheTrustedInventoryBackAsStages(t *testing.T) {
 // phase that reads several sources replaces each one's stored stages on its
 // own, so a source that failed to read this run keeps what it last had.
 func TestStoreTrustedInventoryIsScopedToItsProvider(t *testing.T) {
+	t.Parallel()
 	const secondProvider route.Provider = "second-provider"
 	store := openTestStore(t, testKey(1))
 	first := storeTestStage(t, 1, 1, "revision", "content-hash")
@@ -106,6 +109,7 @@ func TestStoreTrustedInventoryIsScopedToItsProvider(t *testing.T) {
 // A stage claiming a provider other than the one it is being stored under
 // would let one source's write corrupt another's scoped share.
 func TestStoreRefusesATrustedInventoryStageUnderTheWrongProvider(t *testing.T) {
+	t.Parallel()
 	const secondProvider route.Provider = "second-provider"
 	store := openTestStore(t, testKey(1))
 	mismatched := storeTestStage(t, 1, 1, "revision", "content-hash")
@@ -117,6 +121,7 @@ func TestStoreRefusesATrustedInventoryStageUnderTheWrongProvider(t *testing.T) {
 // A partial library reads as a library whose missing stages should be deleted,
 // so a stage without geometry for its current hash fails the whole read.
 func TestStoreRefusesATrustedInventoryMissingGeometry(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	stage := storeTestStageWithGeometry(t, 7, 2, "revision", "content-hash", "Alpine loop", "Descent", []route.Point{
 		{Longitude: 8.4, Latitude: 49.0},

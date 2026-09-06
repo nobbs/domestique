@@ -16,6 +16,7 @@ func activityNow() time.Time {
 }
 
 func TestKnownActivityIDsIsEmptyForATargetWithNoActivities(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -27,6 +28,7 @@ func TestKnownActivityIDsIsEmptyForATargetWithNoActivities(t *testing.T) {
 // One target's activities are its own: a poll never sees another rider's rides
 // as already stored.
 func TestStoreActivityKeepsEachTargetsActivitiesApart(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -42,6 +44,7 @@ func TestStoreActivityKeepsEachTargetsActivitiesApart(t *testing.T) {
 // A poll that reads the same workout twice overwrites its row rather than
 // failing on the primary key or leaving stale totals behind.
 func TestStoreActivityOverwritesAPriorSummary(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -62,6 +65,7 @@ func TestStoreActivityOverwritesAPriorSummary(t *testing.T) {
 }
 
 func TestStoreActivityRefusesAnActivityItCannotAddress(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	require.ErrorContains(t, storeTestActivity(t, store, "", 1, 1), "are required")
@@ -70,6 +74,7 @@ func TestStoreActivityRefusesAnActivityItCannotAddress(t *testing.T) {
 
 // A store that is gone is reported rather than read as a target with no rides.
 func TestKnownActivityIDsReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
@@ -79,6 +84,7 @@ func TestKnownActivityIDsReportsAnUnreadableStore(t *testing.T) {
 
 // An activity belongs to a target that exists; the foreign key says so.
 func TestStoreActivityRefusesAnUnknownTarget(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	require.Error(t, storeTestActivity(t, store, "rider-a", 1, 1))
@@ -87,6 +93,7 @@ func TestStoreActivityRefusesAnUnknownTarget(t *testing.T) {
 // A skip counts its attempts and keeps only the latest observation; a second
 // poll sees one row, not two.
 func TestRecordActivitySkipCountsAttempts(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -106,6 +113,7 @@ func TestRecordActivitySkipCountsAttempts(t *testing.T) {
 
 // A skipped activity is not a stored one: it must not reach the read model.
 func TestASkippedActivityIsNotAStoredOne(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 404", activityNow()), "RecordActivitySkip()")
@@ -120,6 +128,7 @@ func TestASkippedActivityIsNotAStoredOne(t *testing.T) {
 
 // A read that succeeds after a skip leaves no trace that would hold it back.
 func TestStoreActivityForgetsASkip(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 404", activityNow()), "RecordActivitySkip()")
@@ -134,6 +143,7 @@ func TestStoreActivityForgetsASkip(t *testing.T) {
 // A replacement is the whole reading: a listing the account no longer holds is
 // gone from it, and one it still holds keeps its listing fields.
 func TestReplaceActivityListingsMakesThemWhatTheAccountHolds(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -163,6 +173,7 @@ func TestReplaceActivityListingsMakesThemWhatTheAccountHolds(t *testing.T) {
 // storing an activity leaves its listing in place; only a fresh reading of the
 // account takes one away.
 func TestStoreActivityLeavesTheListingInPlace(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -183,6 +194,7 @@ func TestStoreActivityLeavesTheListingInPlace(t *testing.T) {
 }
 
 func TestReplaceActivityListingsRefusesWhatItCannotAddress(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -195,6 +207,7 @@ func TestReplaceActivityListingsRefusesWhatItCannotAddress(t *testing.T) {
 }
 
 func TestActivityListingsReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
@@ -203,6 +216,7 @@ func TestActivityListingsReportsAnUnreadableStore(t *testing.T) {
 }
 
 func TestRecordActivitySkipRefusesWhatItCannotAddress(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -212,6 +226,7 @@ func TestRecordActivitySkipRefusesWhatItCannotAddress(t *testing.T) {
 }
 
 func TestActivitySkipsReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
@@ -235,6 +250,7 @@ func storeTestActivity(t *testing.T, store *Store, targetID string, id int64, di
 // The window is half-open: an activity starting exactly at from is served, one
 // starting exactly at to is not.
 func TestActivitiesBetweenServesAHalfOpenWindowNewestFirst(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -265,6 +281,7 @@ func TestActivitiesBetweenServesAHalfOpenWindowNewestFirst(t *testing.T) {
 }
 
 func TestActivitiesBetweenHonoursTheLimit(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
@@ -278,6 +295,7 @@ func TestActivitiesBetweenHonoursTheLimit(t *testing.T) {
 // A stored activity owes its records until they are written; the sensors a ride
 // did not carry are stored as NULL rather than as a zero reading.
 func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
@@ -321,6 +339,7 @@ func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
 
 // A re-download replaces that activity's samples rather than adding to them.
 func TestStoreActivityRecordsReplacesWhatWasThere(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
@@ -340,6 +359,7 @@ func TestStoreActivityRecordsReplacesWhatWasThere(t *testing.T) {
 
 // Records are the activity's: removing it removes them, and no other target's.
 func TestActivityRecordsCascadeAndStayWithTheirTarget(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -366,6 +386,7 @@ func TestActivityRecordsCascadeAndStayWithTheirTarget(t *testing.T) {
 // The oldest rides come first and only limit of them, so a long history fills
 // in chronologically over successive polls.
 func TestActivitiesAwaitingRecordsIsOldestFirstAndLimited(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	for index, starts := range []time.Time{
@@ -384,6 +405,7 @@ func TestActivitiesAwaitingRecordsIsOldestFirstAndLimited(t *testing.T) {
 
 // An undecodable file is recorded as such so no later poll downloads it again.
 func TestMarkActivityUnreadableTakesItOutOfThePendingSet(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
@@ -401,6 +423,7 @@ func TestMarkActivityUnreadableTakesItOutOfThePendingSet(t *testing.T) {
 }
 
 func TestActivityRecordWritesReportAnUnreadableStore(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
@@ -411,6 +434,7 @@ func TestActivityRecordWritesReportAnUnreadableStore(t *testing.T) {
 }
 
 func TestActivitiesBetweenReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
@@ -419,6 +443,7 @@ func TestActivitiesBetweenReportsAnUnreadableStore(t *testing.T) {
 }
 
 func TestActivityRecordWritesRefuseInvalidInputs(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
 	_, err := store.ActivitiesAwaitingRecords(t.Context(), "", 10)
@@ -437,6 +462,7 @@ func TestActivityRecordWritesRefuseInvalidInputs(t *testing.T) {
 
 // A calibration pools every target's rides, in the order they were ridden.
 func TestActivityRidesReadsEveryTargetsRidesOldestFirst(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -475,6 +501,7 @@ func cyclingTypes() []int {
 // A calibration reads a trailing window, so the corpus it fits is bounded by
 // the store rather than by the whole accumulated history.
 func TestActivityRidesReadsOnlyFromTheGivenBound(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -503,6 +530,7 @@ func TestActivityRidesReadsOnlyFromTheGivenBound(t *testing.T) {
 // An indoor trainer ride is stored and served like any other, but it prices no
 // outdoor pace, so the corpus a calibration reads leaves it out.
 func TestActivityRidesReadsOnlyTheGivenWorkoutTypes(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
@@ -532,6 +560,7 @@ func TestActivityRidesReadsOnlyTheGivenWorkoutTypes(t *testing.T) {
 // A corpus of every type is not something a caller can ask for by omission:
 // naming no type reads no ride rather than all of them.
 func TestActivityRidesReadNothingForAnEmptyTypeSet(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
@@ -545,6 +574,7 @@ func TestActivityRidesReadNothingForAnEmptyTypeSet(t *testing.T) {
 }
 
 func TestActivityRidesReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 

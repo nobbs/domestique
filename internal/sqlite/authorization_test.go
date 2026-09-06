@@ -12,6 +12,7 @@ import (
 )
 
 func TestStoreAuthorizesAndEncryptsRefreshToken(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -32,6 +33,7 @@ func TestStoreAuthorizesAndEncryptsRefreshToken(t *testing.T) {
 }
 
 func TestStoreRejectsDuplicateWahooUser(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -40,6 +42,7 @@ func TestStoreRejectsDuplicateWahooUser(t *testing.T) {
 }
 
 func TestStoreBindsTokenToTarget(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -55,6 +58,7 @@ func TestStoreBindsTokenToTarget(t *testing.T) {
 }
 
 func TestStoreRejectsDifferentEncryptionKey(t *testing.T) {
+	t.Parallel()
 	databasePath := filepath.Join(t.TempDir(), "state.db")
 	store, openErr := Open(t.Context(), databasePath, testKey(1))
 	require.NoError(t, openErr, "Open()")
@@ -72,6 +76,7 @@ func TestStoreRejectsDifferentEncryptionKey(t *testing.T) {
 }
 
 func TestStoreMarksTargetForReauthorization(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.AuthorizeTarget(t.Context(), "rider-a", "wahoo-user", "refresh-token"), "AuthorizeTarget()")
@@ -85,6 +90,7 @@ func TestStoreMarksTargetForReauthorization(t *testing.T) {
 }
 
 func TestStoreReplacesRefreshToken(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.AuthorizeTarget(t.Context(), "rider-a", "wahoo-user", "old-refresh-token"), "AuthorizeTarget()")
@@ -96,6 +102,7 @@ func TestStoreReplacesRefreshToken(t *testing.T) {
 }
 
 func TestStoreConsumesCallerBoundOAuthAuthorization(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	digest := bytes.Repeat([]byte{1}, 32)
@@ -117,6 +124,7 @@ func TestStoreConsumesCallerBoundOAuthAuthorization(t *testing.T) {
 }
 
 func TestStoreRejectsExpiredOAuthAuthorization(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	digest := bytes.Repeat([]byte{2}, 32)
@@ -140,6 +148,7 @@ func TestStoreRejectsExpiredOAuthAuthorization(t *testing.T) {
 }
 
 func TestStoreReportsOnlyLiveAuthorizationsAsPending(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
@@ -187,6 +196,7 @@ func TestStoreReportsOnlyLiveAuthorizationsAsPending(t *testing.T) {
 // past: the status view reads a slot as pending on the strength of a visit, and
 // a swallowed failure would report a half-read table as a whole one.
 func TestStoreStopsReadingPendingAuthorizationsOnVisitorFailure(t *testing.T) {
+	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.BeginAuthorization(
