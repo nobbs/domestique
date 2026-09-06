@@ -2,8 +2,8 @@
  * The locate button: jumping the camera to where the reader is.
  *
  * jsdom has no Geolocation API and no camera to fly, so what proves the button
- * works — and what proves it stays quiet until pressed, and honest about a
- * denial — needs a real browser. The camera's own state cannot be read back any
+ * works — and what proves the library asks once as it opens, a deep link never
+ * does, and a denial is honest — needs a real browser. The camera's own state cannot be read back any
  * more than the basemap chooser's can, so a screenshot is the evidence, the same
  * way it is in `basemap.spec.ts` — cropped away from the corners, because the
  * canvas fills the whole map behind the controls and a denial's own icon change
@@ -11,11 +11,14 @@
  */
 
 import type { Page } from "@playwright/test";
-import { expect, openLibrary, settleMap, test } from "./fixtures";
+import { expect, openLibrary, openRoute, settleMap, test } from "./fixtures";
 
 // The demo library sits near 48.40N 8.10E; Paris is nowhere close, so a jump
 // to it reads unmistakably in a screenshot diff.
 const READER_POSITION = { latitude: 48.8566, longitude: 2.3522 };
+
+/** A route the demo library holds, for a link that lands on it. */
+const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
 
 function locateButton(page: Page) {
   return page.getByRole("button", { name: "Find my location" });
@@ -69,8 +72,10 @@ function geolocationCalls(page: Page): Promise<string[]> {
 test.describe("granted", () => {
   test.use({ permissions: ["geolocation"], geolocation: READER_POSITION });
 
+  // Opened on a route rather than the library, which now frames the granted
+  // position itself as it opens: from there the button has nowhere to jump.
   test("jumps the camera to the granted position", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     const before = await cameraScreenshot(page);
 
     await locateButton(page).click();
@@ -81,7 +86,7 @@ test.describe("granted", () => {
   });
 
   test("answers the keyboard the same way it answers a click", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     const before = await cameraScreenshot(page);
 
     await locateButton(page).focus();
@@ -108,10 +113,22 @@ test.describe("granted", () => {
   });
 });
 
-test("asks for no position until the button is pressed", async ({ offlinePage: page }) => {
+test("asks for the reader's position as the library opens, and reads it only", async ({
+  offlinePage: page,
+}) => {
   await trackGeolocationCalls(page);
 
   await openLibrary(page);
+
+  const calls = await geolocationCalls(page);
+  expect(calls.length).toBeGreaterThan(0);
+  expect(calls.every((call) => call === "getCurrentPosition")).toBe(true);
+});
+
+test("asks for no position when a route is deep-linked", async ({ offlinePage: page }) => {
+  await trackGeolocationCalls(page);
+
+  await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
   expect(await geolocationCalls(page)).toEqual([]);
 });
