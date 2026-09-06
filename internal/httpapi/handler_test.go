@@ -235,7 +235,7 @@ func TestTheMapWorkerIsServedOnlyToAnIdentityAndNamesTheTileOrigins(t *testing.T
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, worker))
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-	assert.Contains(t, response.Header().Get("Content-Security-Policy"), "connect-src 'self' https://tiles.example.test",
+	assert.Contains(t, response.Header().Get("Content-Security-Policy"), "connect-src 'self' blob: https://tiles.example.test",
 		"the worker's own policy must admit the tile origins it fetches from")
 	// Content-hashed, so it is cached indefinitely — but privately, and keyed on
 	// the cookie: the same path answers 401 to a caller without an identity, and
@@ -925,7 +925,7 @@ func TestHandlerNamesEveryBasemapOriginInThePolicy(t *testing.T) {
 	// in a CSP source list, and would not match there anyway.
 	for _, want := range []string{
 		"img-src 'self' data: blob: https://imagery.example.test https://tiles.example.test",
-		"connect-src 'self' https://imagery.example.test https://tiles.example.test",
+		"connect-src 'self' blob: https://imagery.example.test https://tiles.example.test",
 	} {
 		assert.Contains(t, policy, want, "the CSP omits a directive the page needs")
 	}
@@ -977,7 +977,7 @@ func TestHandlerNamesTheHostsAStyleReachesBeyondItsOwn(t *testing.T) {
 
 	for _, want := range []string{
 		"img-src 'self' data: blob: https://fonts.example.test https://tiles.example.test https://vector.example.test",
-		"connect-src 'self' https://fonts.example.test https://tiles.example.test https://vector.example.test",
+		"connect-src 'self' blob: https://fonts.example.test https://tiles.example.test https://vector.example.test",
 	} {
 		assert.Contains(t, policy, want, "the CSP omits a host the style reaches")
 	}
@@ -1067,10 +1067,13 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 	policy := api.Header().Get("Content-Security-Policy")
 	// worker-src must allow 'self': MapLibre loads its worker from a bundled
 	// same-origin module, and a blob-only policy blocks the map from rendering.
+	// connect-src must allow blob:: a scalar weather overlay reaches MapLibre
+	// as an object URL that MapLibre fetches, and without it only wind renders.
 	for _, want := range []string{
 		"default-src 'self'",
 		"frame-ancestors 'none'",
 		"worker-src 'self' blob:",
+		"connect-src 'self' blob:",
 		"https://tiles.example.test",
 	} {
 		assert.Contains(t, policy, want, "the CSP omits a directive the page needs")
