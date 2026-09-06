@@ -64,16 +64,16 @@ func getActivities(t *testing.T, handler *Handler, target string) (int, openapi.
 	return response.Code, list
 }
 
-// The default window is the last year of the caller's own target, newest
-// first, and never another rider's.
-func TestGetActivitiesServesTheCallersOwnTargetOverTheDefaultWindow(t *testing.T) {
-	state := activityState("rider-a", time.Hour, 48*time.Hour, 400*24*time.Hour)
+// With no from, the whole history is served: the account's first recorded
+// activity onward, newest first, and never another rider's.
+func TestGetActivitiesServesTheCallersWholeHistoryByDefault(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 48*time.Hour, 3*365*24*time.Hour)
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
 
 	code, list := getActivities(t, handler, "/v1/activities")
 	require.Equal(t, http.StatusOK, code)
-	require.Len(t, list.Activities, 2, "the activity older than a year is outside the default window")
-	assert.Equal(t, []int64{1, 2}, []int64{list.Activities[0].ID, list.Activities[1].ID}, "newest first")
+	require.Len(t, list.Activities, 3, "no from means no lower bound")
+	assert.Equal(t, []int64{1, 2, 3}, []int64{list.Activities[0].ID, list.Activities[1].ID, list.Activities[2].ID}, "newest first")
 	assert.InDelta(t, 1000.0, list.Activities[0].DistanceMetres, 1e-9)
 	assert.Equal(t, 15, list.Activities[0].TypeID)
 	assert.Equal(t, 1, list.Activities[0].LocationID)
@@ -138,7 +138,6 @@ func TestGetActivitiesRefusesAWindowItWillNotRead(t *testing.T) {
 
 	for name, query := range map[string]string{
 		"inverted": "?from=2026-08-24T00:00:00Z&to=2026-08-23T00:00:00Z",
-		"too long": "?from=2020-01-01T00:00:00Z&to=2026-08-24T00:00:00Z",
 		"bad from": "?from=yesterday",
 		"bad to":   "?to=tomorrow",
 	} {
@@ -147,6 +146,28 @@ func TestGetActivitiesRefusesAWindowItWillNotRead(t *testing.T) {
 			assert.Equal(t, http.StatusBadRequest, code)
 		})
 	}
+}
+
+// A from more than two years back is no longer refused: there is no maximum
+// span, only from <= to.
+func TestGetActivitiesAcceptsAFromMoreThanTwoYearsBack(t *testing.T) {
+	handler := activityHandler(t, activityState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, _ := getActivities(t, handler, "/v1/activities?from=2020-01-01T00:00:00Z&to=2026-08-24T00:00:00Z")
+	assert.Equal(t, http.StatusOK, code)
+}
+
+// The 5000-activity cap is unaffected by the unbounded window.
+func TestGetActivitiesCapsAtFiveThousand(t *testing.T) {
+	ages := make([]time.Duration, 5001)
+	for i := range ages {
+		ages[i] = time.Duration(i+1) * time.Hour
+	}
+	handler := activityHandler(t, activityState("rider-a", ages...), nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	assert.Len(t, list.Activities, maximumActivities)
 }
 
 func TestGetActivitiesReportsAnUnreadableTargetList(t *testing.T) {

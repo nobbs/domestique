@@ -13,7 +13,6 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, Status, WebUIConfig } from "../../api/types";
-import { windowStart } from "../../lib/volume";
 import { VolumePage } from "./VolumePage";
 
 const NOW = new Date(2026, 8, 5, 12); // Saturday 5 September 2026
@@ -57,7 +56,7 @@ function show(activities: Activity[] | null = ACTIVITIES) {
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
   if (activities) {
-    client.setQueryData(activitiesQuery(windowStart(CONFIG_ZONE)).queryKey, activities);
+    client.setQueryData(activitiesQuery().queryKey, activities);
   }
   render(
     <QueryClientProvider client={client}>
@@ -82,6 +81,16 @@ describe("the volume page", () => {
     expect(screen.getByText("2 h")).toBeInTheDocument();
     expect(screen.getByText("600 m")).toBeInTheDocument();
     expect(screen.queryByText(/browser's time zone/)).not.toBeInTheDocument();
+  });
+
+  it("includes a ride several years old in the totals", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    show([activity(new Date(2021, 7, 26, 8)), ...ACTIVITIES]);
+
+    expect(screen.getByText("90.0 km")).toBeInTheDocument();
+    expect(screen.getByText("3 h")).toBeInTheDocument();
+    expect(screen.getByText("900 m")).toBeInTheDocument();
   });
 
   it("counts by month once the reader asks for months", async () => {
@@ -151,10 +160,7 @@ describe("the volume page", () => {
       },
     };
     client.setQueryData(statusQuery().queryKey, status);
-    client.setQueryData(
-      activitiesQuery(windowStart(Intl.DateTimeFormat().resolvedOptions().timeZone)).queryKey,
-      [],
-    );
+    client.setQueryData(activitiesQuery().queryKey, []);
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter>

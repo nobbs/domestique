@@ -136,7 +136,7 @@ describe("statusQuery", () => {
  */
 describe("the activities query", () => {
   it("reads the list out of the envelope, and leaves an unwrapped one alone", () => {
-    const { select } = activitiesQuery("2026-01-01T00:00:00.000Z");
+    const { select } = activitiesQuery();
     if (!select) {
       throw new Error("the activities query no longer selects");
     }

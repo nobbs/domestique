@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Activity } from "../api/types";
-import { bucketActivities, volumeTotals, windowStart } from "./volume";
+import { bucketActivities, volumeTotals } from "./volume";
 
 // The runner's own zone, so the pre-existing assertions below (none of which
 // probe a zone edge) keep reading as local wall-clock times.
@@ -116,14 +116,19 @@ describe("bucketActivities", () => {
       "2026-08-01T07:00:00.000Z",
     );
   });
-});
 
-describe("windowStart", () => {
-  it("is midnight in the given zone, not the runner's own", () => {
-    const now = new Date("2026-09-05T10:00:00Z");
+  it("spans multiple years back to the earliest activity", () => {
+    const buckets = bucketActivities(
+      [activity(new Date(2023, 8, 5, 8)), activity(new Date(2026, 8, 1, 8))],
+      "month",
+      ZONE,
+      NOW,
+    );
 
-    expect(windowStart("Pacific/Auckland", now)).toBe("2025-09-04T12:00:00.000Z");
-    expect(windowStart("America/Los_Angeles", now)).toBe("2025-09-05T07:00:00.000Z");
+    expect(buckets).toHaveLength(37);
+    expect(buckets[0]?.count).toBe(1);
+    expect(buckets.at(-1)?.count).toBe(1);
+    expect(buckets.slice(1, -1).every((bucket) => bucket.count === 0)).toBe(true);
   });
 });
 

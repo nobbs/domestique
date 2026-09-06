@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, activityTrackQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, ActivityTrack, Position, WebUIConfig } from "../../api/types";
 import type { Profile } from "../../lib/profile";
-import { windowStart } from "../../lib/volume";
 import { ActivityPage } from "./ActivityPage";
 
 const ZONE = "Europe/Berlin";
@@ -84,7 +83,7 @@ function show(recorded: ActivityTrack | null = track(), activityId: number | str
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
-  client.setQueryData(activitiesQuery(windowStart(ZONE)).queryKey, [RIDE]);
+  client.setQueryData(activitiesQuery().queryKey, [RIDE]);
   if (recorded) {
     client.setQueryData(activityTrackQuery(RIDE.id).queryKey, recorded);
   }

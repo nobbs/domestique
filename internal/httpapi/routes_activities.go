@@ -11,16 +11,9 @@ import (
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
-const (
-	// defaultActivityWindow is how far back a request that names no window
-	// reads, and maximumActivityWindow the longest one it may name.
-	defaultActivityWindow = 365 * 24 * time.Hour
-	maximumActivityWindow = 2 * 365 * 24 * time.Hour
-
-	// maximumActivities bounds one response. A rider who has ridden more than
-	// this in the window sees the most recent of them.
-	maximumActivities = 5000
-)
+// maximumActivities bounds one response. A rider who has ridden more than
+// this in the window sees the most recent of them.
+const maximumActivities = 5000
 
 // GetActivities serves one target's recorded activities, newest first. A
 // non-admin reads only the target they own; naming another's is not found
@@ -136,8 +129,8 @@ func activityTrackFeature(track []activities.TrackPoint) activityTrackView {
 	return view
 }
 
-// activityWindow reads the requested window, defaulting to the last year and
-// refusing one that is inverted or longer than this service will read.
+// activityWindow reads the requested window. An unset from reaches back to
+// the account's first recorded activity; an unset to defaults to now.
 func (h *Handler) activityWindow(writer http.ResponseWriter, rawFrom, rawTo string) (from, to time.Time, ok bool) {
 	// Stored start times are whole UTC seconds, so the window is read as such:
 	// a fractional second or an offset must not move a ride across its edge.
@@ -151,7 +144,6 @@ func (h *Handler) activityWindow(writer http.ResponseWriter, rawFrom, rawTo stri
 		}
 		to = parsed.UTC().Truncate(time.Second)
 	}
-	from = to.Add(-defaultActivityWindow)
 	if rawFrom != "" {
 		parsed, err := time.Parse(time.RFC3339Nano, rawFrom)
 		if err != nil {
@@ -161,9 +153,8 @@ func (h *Handler) activityWindow(writer http.ResponseWriter, rawFrom, rawTo stri
 		}
 		from = parsed.UTC().Truncate(time.Second)
 	}
-	if from.After(to) || to.Sub(from) > maximumActivityWindow {
-		h.error(writer, http.StatusBadRequest, "invalid_request",
-			"the window must end after it starts and span no more than two years")
+	if from.After(to) {
+		h.error(writer, http.StatusBadRequest, "invalid_request", "the window must end after it starts")
 
 		return time.Time{}, time.Time{}, false
 	}

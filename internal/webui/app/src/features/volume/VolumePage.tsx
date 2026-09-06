@@ -1,5 +1,5 @@
 /**
- * Volume: what the rider has actually ridden, a year back.
+ * Volume: what the rider has actually ridden, their whole recorded history.
  *
  * Every other page is about routes the service holds for them; this is the one
  * about rides they have already done, read from the activity summaries their
@@ -20,7 +20,6 @@ import {
   type Granularity,
   type VolumeTotals,
   volumeTotals,
-  windowStart,
 } from "../../lib/volume";
 
 const GRANULARITIES: ReadonlyArray<{ value: Granularity; label: string; heading: string }> = [
@@ -37,8 +36,7 @@ export function VolumePage() {
   const config = useQuery(webUIConfigQuery());
   const serviceZone = config.data?.timezone || null;
   const zone = serviceZone ?? browserZone();
-  const from = useMemo(() => windowStart(zone), [zone]);
-  const { data, isPending, isError } = useQuery(activitiesQuery(from));
+  const { data, isPending, isError } = useQuery(activitiesQuery());
   const activities = useMemo(() => data ?? [], [data]);
   const buckets = useMemo(
     () => bucketActivities(activities, granularity, zone),

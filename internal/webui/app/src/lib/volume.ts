@@ -232,13 +232,3 @@ export function bucketActivities(
 
   return buckets;
 }
-
-/** How far back the page asks for; a whole day, so the query key holds still. */
-export const WINDOW_DAYS = 365;
-
-/** The inclusive start of the asked-for window, midnight in `zone`. */
-export function windowStart(zone: string, now = new Date()): string {
-  const { year, month, day } = zonedParts(now, zone);
-
-  return zonedMidnight(year, month, day - WINDOW_DAYS, zone).toISOString();
-}

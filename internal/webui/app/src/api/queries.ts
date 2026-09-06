@@ -63,28 +63,22 @@ export const routesQuery = () =>
   });
 
 /**
- * The rider's own recorded activities from `from` until now.
+ * The rider's own recorded activities, their whole history.
  *
- * The window's end is left to the service so that today's ride is in it; the
- * start is a whole day, which is what keeps the key — and the cache — steady
- * across a session.
+ * Read by the Volume, list and ride pages alike: one fetch serves a whole
+ * visit rather than one per page shown.
  */
-export const activitiesQuery = (from: string) =>
-  getGetActivitiesQueryOptions(
-    { from },
-    {
-      query: {
-        select: (response) => {
-          const list = payload<ActivityList | Activity[]>(response);
+export const activitiesQuery = () =>
+  getGetActivitiesQueryOptions(undefined, {
+    query: {
+      select: (response) => {
+        const list = payload<ActivityList | Activity[]>(response);
 
-          return Array.isArray(list) ? list : list.activities;
-        },
-        // Read by the Volume, list and ride pages alike: one fetch serves a
-        // whole visit rather than one per page shown.
-        staleTime: 5 * 60 * 1000,
+        return Array.isArray(list) ? list : list.activities;
       },
+      staleTime: 5 * 60 * 1000,
     },
-  );
+  });
 
 /**
  * One ride's recorded track. Geometry-shaped and served on its own endpoint, so
