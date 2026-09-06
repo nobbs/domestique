@@ -86,14 +86,16 @@ const HAIRPIN: Position[] = [
 ];
 
 /**
- * A ride that comes back to where it started, five kilometres out — the shape
- * most rides are, and the one whose corridor has to come out with a hole in it
- * rather than a filled-in middle.
+ * A ride that comes back to where it started, 1.5 kilometres out — the shape
+ * most rides are, and the one whose corridor has to come out with a hole in
+ * it rather than a filled-in middle. Small and low-vertex on purpose: the
+ * closed ring is what costs the clip, and the centre only has to clear the
+ * 700 m corridor this test's forecast produces.
  */
-const LOOP: Position[] = Array.from({ length: 49 }, (_, index): Position => {
-  const angle = (2 * Math.PI * index) / 48;
+const LOOP: Position[] = Array.from({ length: 15 }, (_, index): Position => {
+  const angle = (2 * Math.PI * index) / 14;
 
-  return [8 + 0.0685 * Math.cos(angle), 49 + 0.0449 * Math.sin(angle)];
+  return [8 + 0.02054 * Math.cos(angle), 49 + 0.013474 * Math.sin(angle)];
 });
 
 const DISTANCES = cumulativeMetres(ROAD);
@@ -311,16 +313,14 @@ describe("the ground the wash covers", () => {
   });
 
   // A closed ring gives polygon-clipping self-intersections a hairpin never
-  // does, which makes this the slowest test in the file by a wide margin —
-  // comfortably under a second locally, but tight enough against CI's
-  // slower, shared hardware to need its own longer timeout.
+  // does, which makes this the slowest test in the file by a wide margin.
   it("leaves the middle of a loop alone, rather than filling it in", () => {
     show({ measure: "temperature", coordinates: LOOP, points: WARMING });
     const features = washFeatures();
 
     expect(features.filter((feature) => covers(feature, 8, 49))).toEqual([]);
     expect(overlapping(features)).toEqual([]);
-  }, 15_000);
+  });
 
   /*
    * The corridor's width comes from the forecast's own grid cell, so a forecast
