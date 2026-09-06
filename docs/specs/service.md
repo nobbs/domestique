@@ -833,12 +833,13 @@ admin.
 Polling only adds. An activity the account no longer lists is never removed,
 and a summary read again replaces the row it already had. A summary the
 account's listing itself carries is stored from it, at no further request; the
-rest are requested one at a time, oldest first, as many as fit the Wahoo
-application's five-minute window of twenty-five requests beside the listing
-requests the poll itself made, because that window, and the hourly and daily
-ones beyond it, are shared with every target's reconciliation; a longer history
-fills in over successive polls rather than spending the window at once. A poll
-that fails part way keeps what it already stored.
+rest are requested one at a time, oldest first, and no further one is requested
+once those requests and the listing requests before them reach the Wahoo
+application's five-minute window of twenty-five, because that window, and the
+hourly and daily ones beyond it, are shared with every target's reconciliation;
+a longer history fills in over successive polls rather than spending the window
+at once. A listing whose pages alone exceed the window is paced by the client's
+own throttle. A poll that fails part way keeps what it already stored.
 
 Those summaries are chosen from the account's list as the service last read it
 in full, which it keeps rather than re-derives. A poll with a reading less than

@@ -13,11 +13,12 @@ import (
 // Wahoo account may be read; anything else needs interactive OAuth first.
 const authorizedState = "authorized"
 
-// RequestsPerPoll bounds the counted requests one poll makes: the listing
-// requests and then one for each summary the listing did not carry. The Wahoo
-// sandbox tier allows 25 requests per five minutes, 100 per hour and 250 per
-// day, shared across every target and task; this is the five-minute window,
-// the tightest, so one poll always fits it (#489).
+// RequestsPerPoll is the counted requests one poll may make: once the listing
+// requests and one request per summary the listing did not carry reach it, the
+// poll asks for no more summaries. The Wahoo sandbox tier allows 25 requests
+// per five minutes, 100 per hour and 250 per day, shared across every target
+// and task; this is the five-minute window, the tightest. A listing whose pages
+// alone exceed it is the source's own throttle to pace, not this cap's (#489).
 const RequestsPerPoll = 25
 
 // MaxRecordsPerPoll bounds how many activities one poll fills records for.
