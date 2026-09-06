@@ -301,6 +301,7 @@ func (s *Store) ActivityRides(ctx context.Context, since time.Time) ([]ridemodel
 	for _, row := range rows {
 		rides = append(rides, ridemodel.Ride{
 			StartedAt:      time.Unix(row.StartedAtUnix, 0).UTC(),
+			TargetID:       row.TargetSlot,
 			DistanceMetres: row.DistanceMetres,
 			MovingSeconds:  row.MovingSeconds,
 			AscentMetres:   row.AscentMetres,
