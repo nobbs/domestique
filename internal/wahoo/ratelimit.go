@@ -103,7 +103,9 @@ func (c *Client) saveQuota(ctx context.Context) {
 	if sameQuota(&quota, &c.savedQuota) {
 		return
 	}
-	saveCtx, cancel := context.WithTimeout(ctx, quotaStoreTimeout)
+	// The response has arrived; its request being cancelled now must not lose
+	// what it said.
+	saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), quotaStoreTimeout)
 	defer cancel()
 	if err := c.quotaStore.SaveQuota(saveCtx, &quota); err != nil {
 		slog.Warn("wahoo quota state could not be stored", "error", err)

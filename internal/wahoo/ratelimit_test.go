@@ -34,7 +34,10 @@ func (s *fakeQuotaStore) LoadQuota(ctx context.Context) (Quota, bool, error) {
 	return s.quota, s.found, nil
 }
 
-func (s *fakeQuotaStore) SaveQuota(_ context.Context, quota *Quota) error {
+func (s *fakeQuotaStore) SaveQuota(ctx context.Context, quota *Quota) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("quota store: %w", err)
+	}
 	s.saves++
 	if s.saveErr != nil {
 		return s.saveErr
