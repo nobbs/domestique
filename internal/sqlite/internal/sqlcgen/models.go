@@ -321,4 +321,5 @@ type WebSession struct {
 	RenewedAtUnix int64
 	ExpiresAtUnix int64
 	Admin         int64
+	Nickname      sql.NullString
 }

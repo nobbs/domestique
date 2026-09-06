@@ -45,19 +45,21 @@ func TestExchangedIdentityFromCopiesEveryField(t *testing.T) {
 	t.Parallel()
 
 	got := exchangedIdentityFrom(auth0.Identity{
-		Subject: "github|123456",
-		Email:   "rider@example.test",
-		Name:    "Rider Example",
-		Access:  true,
-		Admin:   true,
+		Subject:  "github|123456",
+		Email:    "rider@example.test",
+		Name:     "Rider Example",
+		Nickname: "rider",
+		Access:   true,
+		Admin:    true,
 	})
 
 	assert.Equal(t, session.ExchangedIdentity{
-		Subject: "github|123456",
-		Email:   "rider@example.test",
-		Name:    "Rider Example",
-		Access:  true,
-		Admin:   true,
+		Subject:  "github|123456",
+		Email:    "rider@example.test",
+		Name:     "Rider Example",
+		Nickname: "rider",
+		Access:   true,
+		Admin:    true,
 	}, got)
 }
 

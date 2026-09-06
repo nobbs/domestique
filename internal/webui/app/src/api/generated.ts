@@ -66,6 +66,8 @@ export interface TargetStatus {
   owner?: string;
   /** True when this target belongs to the calling subject. Present only for an admin caller, whose list also carries other riders' targets; a non-admin's list holds only their own. */
   own?: boolean;
+  /** The owning subject's display nickname, when its sign-in's ID token carried one. Present only alongside owner, and only as a label: never a key, and never present without owner too. */
+  ownerNickname?: string;
   authorisation: string;
   convergence: TargetStatusConvergence;
   routes: TargetRoutes;

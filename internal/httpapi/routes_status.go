@@ -108,6 +108,17 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
+	// Only fetched for an admin: a non-admin never sees an owner at all, so
+	// there is nothing here for its nickname to sit beside.
+	var nicknames map[string]string
+	if admin {
+		nicknames, err = h.state.LatestSessionNicknames(request.Context())
+		if err != nil {
+			h.unavailable(writer)
+
+			return
+		}
+	}
 
 	targets := make([]openapi.TargetStatus, 0, len(targetIDs))
 	// The aggregate of the per-target counts, which is the only progress a run in
@@ -140,6 +151,7 @@ func (h *Handler) GetStatus(writer http.ResponseWriter, request *http.Request) {
 		if admin {
 			status.Owner = optionalString(owners[targetID])
 			status.Own = optionalBool(owners[targetID] == identityOf(request.Context()).Subject)
+			status.OwnerNickname = optionalString(nicknames[owners[targetID]])
 		}
 		targets = append(targets, status)
 		allRoutes.Current += routes.Current

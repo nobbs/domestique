@@ -33,6 +33,9 @@ const (
 	// demoDisplay is what a real sign-in would settle on: the email claim.
 	demoDisplay = "rider@example.test"
 
+	// demoNickname exercises the nickname claim end to end in the demo.
+	demoNickname = "Rider"
+
 	// signingKeyBits matches the key size a real tenant signs with.
 	signingKeyBits = 2048
 
@@ -215,6 +218,7 @@ func (i *issuer) mint(nonce string) (string, error) {
 			"nonce":                             nonce,
 			"email":                             demoDisplay,
 			"name":                              "Demo Rider",
+			"nickname":                          demoNickname,
 			"https://domestique.invalid/access": true,
 			"https://domestique.invalid/admin":  true,
 			"iat":                               now.Unix(),
@@ -288,7 +292,7 @@ func (p signInProvider) Exchange(
 	}
 
 	return session.ExchangedIdentity{
-		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
+		Subject: identity.Subject, Email: identity.Email, Name: identity.Name, Nickname: identity.Nickname,
 		Access: identity.Access, Admin: identity.Admin,
 	}, nil
 }

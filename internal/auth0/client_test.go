@@ -397,6 +397,31 @@ func TestExchangeReadsTheAccessAndAdminClaims(t *testing.T) {
 	}
 }
 
+// A token from a connection that never sets nickname must not error; it is
+// read as empty, the same as the two namespaced claims above.
+func TestExchangeReadsTheNicknameClaim(t *testing.T) {
+	for name, overrides := range map[string]struct {
+		claims       map[string]any
+		wantNickname string
+	}{
+		"nickname set":    {claims: map[string]any{"nonce": "nonce-1", "nickname": "Rider"}, wantNickname: "Rider"},
+		"nickname absent": {claims: map[string]any{"nonce": "nonce-1"}, wantNickname: ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			issuer := newFakeIssuer(t)
+			now := time.Now()
+			issuer.setIDToken(signRS256(t, issuer.key, testKeyID,
+				tokenClaims(issuer.domain, testClientID, "user-1", now, overrides.claims)))
+
+			client := newClient(t, issuer, issuer.server.Client(), time.Now)
+
+			identity, err := client.Exchange(context.Background(), testCode, testVerifier, "nonce-1")
+			require.NoError(t, err)
+			assert.Equal(t, overrides.wantNickname, identity.Nickname, "Nickname")
+		})
+	}
+}
+
 func TestExchangeRefusesNonceMismatch(t *testing.T) {
 	issuer := newFakeIssuer(t)
 	now := time.Now()

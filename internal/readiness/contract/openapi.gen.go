@@ -65,7 +65,9 @@ type TargetStatus struct {
 	// Owner The subject that owns this target. Present only for an admin caller: a non-admin's own target is already known to be theirs, and never sees another's here at all.
 	Owner *string `json:"owner,omitempty"`
 	// Own True when this target belongs to the calling subject. Present only for an admin caller, whose list also carries other riders' targets; a non-admin's list holds only their own.
-	Own           *bool                    `json:"own,omitempty"`
+	Own *bool `json:"own,omitempty"`
+	// OwnerNickname The owning subject's display nickname, when its sign-in's ID token carried one. Present only alongside owner, and only as a label: never a key, and never present without owner too.
+	OwnerNickname *string                  `json:"ownerNickname,omitempty"`
 	Authorisation string                   `json:"authorisation"`
 	Convergence   TargetStatus_Convergence `json:"convergence"`
 	Routes        TargetRoutes             `json:"routes"`

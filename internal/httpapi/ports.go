@@ -213,6 +213,10 @@ type TargetState interface {
 	TargetByWahooUser(ctx context.Context, wahooUserID string) (targetID string, found bool, err error)
 	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	ForEachTargetRun(ctx context.Context, visit func(targetID string, finishedAt time.Time, outcome, detail string) error) error
+	// LatestSessionNicknames returns each subject's most recently signed-in
+	// nickname, keyed by subject — a display label for an owner already known,
+	// never a way to find one.
+	LatestSessionNicknames(ctx context.Context) (map[string]string, error)
 }
 
 // StageState is the stored library: what each stage is, its revision, and what

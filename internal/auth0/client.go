@@ -39,6 +39,9 @@ type Identity struct {
 	Subject string
 	Email   string
 	Name    string
+	// Nickname is the standard `nickname` claim, empty on a token whose
+	// connection never set one. It is a display label only, never a key.
+	Nickname string
 	// Access is the Action's assertion that this subject may hold a session
 	// at all — the replacement for a config-file allowlist.
 	Access bool
@@ -229,14 +232,15 @@ func (c *Client) authentication() (*authentication.Authentication, error) {
 	return sdk, nil
 }
 
-// readIdentity reads sub, email, name, and the two namespaced claims a
-// post-login Action mints from an already-validated ID token's payload. No
-// re-verification: LoginWithAuthCodeWithPKCE has already checked the
-// signature, issuer, audience, expiry, and nonce. The claim names use
+// readIdentity reads sub, email, name, nickname, and the two namespaced
+// claims a post-login Action mints from an already-validated ID token's
+// payload. No re-verification: LoginWithAuthCodeWithPKCE has already checked
+// the signature, issuer, audience, expiry, and nonce. The claim names use
 // https://domestique.invalid/ — Auth0 requires custom claims to be namespaced
 // URIs, and .invalid is the TLD RFC 2606 reserves so it can never resolve or
 // imply a domain this project doesn't own. Either claim is simply absent
-// (read as false) on a token from a tenant with no Action configured yet.
+// (read as false) on a token from a tenant with no Action configured yet, and
+// nickname is simply absent (read as empty) on a connection that never set one.
 func readIdentity(idToken string) (Identity, error) {
 	parts := strings.Split(idToken, ".")
 	if len(parts) != 3 {
@@ -249,18 +253,19 @@ func readIdentity(idToken string) (Identity, error) {
 	}
 
 	var claims struct {
-		Subject string `json:"sub"`
-		Email   string `json:"email"`
-		Name    string `json:"name"`
-		Access  bool   `json:"https://domestique.invalid/access"` //nolint:tagliatelle // an Auth0 namespaced claim, not a field name this project chose
-		Admin   bool   `json:"https://domestique.invalid/admin"`  //nolint:tagliatelle // an Auth0 namespaced claim, not a field name this project chose
+		Subject  string `json:"sub"`
+		Email    string `json:"email"`
+		Name     string `json:"name"`
+		Nickname string `json:"nickname"`
+		Access   bool   `json:"https://domestique.invalid/access"` //nolint:tagliatelle // an Auth0 namespaced claim, not a field name this project chose
+		Admin    bool   `json:"https://domestique.invalid/admin"`  //nolint:tagliatelle // an Auth0 namespaced claim, not a field name this project chose
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return Identity{}, errors.New("auth0: id token payload is not valid json")
 	}
 
 	return Identity{
-		Subject: claims.Subject, Email: claims.Email, Name: claims.Name,
+		Subject: claims.Subject, Email: claims.Email, Name: claims.Name, Nickname: claims.Nickname,
 		Access: claims.Access, Admin: claims.Admin,
 	}, nil
 }

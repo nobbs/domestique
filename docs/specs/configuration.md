@@ -541,6 +541,12 @@ out, the same way it returns every runtime setting to its seed — a sign-in
 problem rather than a recovery one, and nothing this specification treats as
 data loss.
 
+A session row also carries the ID token's `nickname` claim, when the sign-in
+supplied one, beside the subject — personal data of the same kind as the
+subject itself, held only as a display label on the settings page and never
+as a key: ownership and admin comparisons never read it, and no lookup goes
+the other way from a nickname to a subject.
+
 ## Diagnostics and exclusions
 
 Startup and `GET /v1/status` may report non-sensitive configuration facts:

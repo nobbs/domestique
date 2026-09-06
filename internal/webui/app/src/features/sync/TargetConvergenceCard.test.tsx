@@ -510,4 +510,19 @@ describe("TargetConvergenceCard", () => {
 
     expect(screen.queryByText(/^Owned by/)).not.toBeInTheDocument();
   });
+
+  it("shows the owner's nickname beside their subject when the service names one", () => {
+    renderConvergence(
+      status(true, [target({ owner: "rider-a", ownerNickname: "Rider" })]),
+      config(true),
+    );
+
+    expect(screen.getByText("Owned by rider-a (Rider)")).toBeInTheDocument();
+  });
+
+  it("falls back to the subject alone when the service names no nickname", () => {
+    renderConvergence(status(true, [target({ owner: "rider-a" })]), config(true));
+
+    expect(screen.getByText("Owned by rider-a")).toBeInTheDocument();
+  });
 });

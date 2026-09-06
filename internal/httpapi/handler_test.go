@@ -2453,6 +2453,8 @@ type fakeState struct {
 	ensureTargetOwnerErr error
 	targetErr            error
 	ensuredOwners        []string
+	nicknames            map[string]string
+	nicknamesErr         error
 	sourceStageErr       error
 	lastRun              *phaseRun
 	lastSuccessAt        map[string]time.Time
@@ -2575,6 +2577,16 @@ func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string, 
 	}
 
 	return nil
+}
+
+// LatestSessionNicknames reports the test's configured subject-to-nickname
+// map, empty when none was given.
+func (s *fakeState) LatestSessionNicknames(_ context.Context) (map[string]string, error) {
+	if s.nicknamesErr != nil {
+		return nil, s.nicknamesErr
+	}
+
+	return s.nicknames, nil
 }
 
 // EnsureTargetOwner records a self-service target the way the real store

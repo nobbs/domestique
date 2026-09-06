@@ -148,6 +148,45 @@ func TestCompleteDisplayFallsBackToNameThenSubject(t *testing.T) {
 	assert.Equal(t, "rider", completion2.Identity.Display)
 }
 
+// The nickname claim round-trips through CreateSession and back out of
+// Session, and a token without one leaves it empty rather than falling back
+// to display or subject the way Display does.
+func TestCompleteAndVerifyRoundTripTheNickname(t *testing.T) {
+	store := newFakeStore()
+	provider := &fakeProvider{subject: "rider", nickname: "Rider", access: true}
+	clock := newFakeClock()
+	service, err := New(store, provider, clock.now)
+	require.NoError(t, err)
+
+	login, err := service.Begin(t.Context())
+	require.NoError(t, err)
+	completion, err := service.Complete(t.Context(), login.State, login.State, "code")
+	require.NoError(t, err)
+	assert.Equal(t, "Rider", completion.Identity.Nickname)
+
+	identity, err := service.Verify(t.Context(), completion.Token)
+	require.NoError(t, err)
+	assert.Equal(t, "Rider", identity.Nickname)
+}
+
+func TestCompleteWithoutNicknameStoresEmpty(t *testing.T) {
+	store := newFakeStore()
+	provider := &fakeProvider{subject: "rider", access: true}
+	clock := newFakeClock()
+	service, err := New(store, provider, clock.now)
+	require.NoError(t, err)
+
+	login, err := service.Begin(t.Context())
+	require.NoError(t, err)
+	completion, err := service.Complete(t.Context(), login.State, login.State, "code")
+	require.NoError(t, err)
+	assert.Empty(t, completion.Identity.Nickname)
+
+	identity, err := service.Verify(t.Context(), completion.Token)
+	require.NoError(t, err)
+	assert.Empty(t, identity.Nickname)
+}
+
 func TestCompleteReuseOfStateFails(t *testing.T) {
 	store := newFakeStore()
 	clock := newFakeClock()
@@ -363,9 +402,9 @@ type fakeLogin struct {
 }
 
 type fakeSession struct {
-	expiresAt        time.Time
-	subject, display string
-	admin            bool
+	expiresAt                  time.Time
+	subject, display, nickname string
+	admin                      bool
 }
 
 type fakeStore struct {
@@ -404,24 +443,30 @@ func (f *fakeStore) ConsumeLogin(_ context.Context, stateDigest []byte, now time
 	return login.nonce, login.verifier, nil
 }
 
-func (f *fakeStore) CreateSession(_ context.Context, tokenDigest []byte, subject, display string, admin bool, _, expiresAt time.Time) error {
+func (f *fakeStore) CreateSession(
+	_ context.Context, tokenDigest []byte, subject, display, nickname string, admin bool, _, expiresAt time.Time,
+) error {
 	if f.createSessionErr != nil {
 		return f.createSessionErr
 	}
-	f.sessions[string(tokenDigest)] = &fakeSession{subject: subject, display: display, admin: admin, expiresAt: expiresAt}
+	f.sessions[string(tokenDigest)] = &fakeSession{
+		subject: subject, display: display, nickname: nickname, admin: admin, expiresAt: expiresAt,
+	}
 	return nil
 }
 
-func (f *fakeStore) Session(_ context.Context, tokenDigest []byte, now time.Time) (subject, display string, admin bool, expiresAt time.Time, err error) {
+func (f *fakeStore) Session(
+	_ context.Context, tokenDigest []byte, now time.Time,
+) (subject, display, nickname string, admin bool, err error) {
 	f.sessionCalls++
 	session, ok := f.sessions[string(tokenDigest)]
 	if !ok {
-		return "", "", false, time.Time{}, errors.New("session not found")
+		return "", "", "", false, errors.New("session not found")
 	}
 	if !session.expiresAt.After(now) {
-		return "", "", false, time.Time{}, errors.New("session expired")
+		return "", "", "", false, errors.New("session expired")
 	}
-	return session.subject, session.display, session.admin, session.expiresAt, nil
+	return session.subject, session.display, session.nickname, session.admin, nil
 }
 
 func (f *fakeStore) DeleteSession(_ context.Context, tokenDigest []byte) error {
@@ -434,9 +479,9 @@ func (f *fakeStore) DeleteSession(_ context.Context, tokenDigest []byte) error {
 }
 
 type fakeProvider struct {
-	subject, email, name string
-	exchangeErr          error
-	authURLErr           error
+	subject, email, name, nickname string
+	exchangeErr                    error
+	authURLErr                     error
 
 	gotState, gotNonce, gotVerifier   string
 	exchangedNonce, exchangedVerifier string
@@ -460,7 +505,7 @@ func (p *fakeProvider) Exchange(
 	}
 	p.exchangedNonce, p.exchangedVerifier = nonce, codeVerifier
 	return ExchangedIdentity{
-		Subject: p.subject, Email: p.email, Name: p.name,
+		Subject: p.subject, Email: p.email, Name: p.name, Nickname: p.nickname,
 		Access: p.access, Admin: p.admin,
 	}, nil
 }

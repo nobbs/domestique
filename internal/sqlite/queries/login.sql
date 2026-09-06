@@ -22,12 +22,33 @@ DELETE FROM web_sessions WHERE expires_at_unix <= ?;
 
 -- name: InsertWebSession :exec
 -- renewed_at_unix is unused, superseded by the fixed 24-hour lifetime; NOT
--- NULL with no default, so dropping it needs a rebuild.
-INSERT INTO web_sessions (token_digest, subject, display, admin, created_at_unix, renewed_at_unix, expires_at_unix)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+-- NULL with no default, so dropping it needs a rebuild. nickname is nullable:
+-- a token without the claim stores nothing rather than a guess.
+INSERT INTO web_sessions (token_digest, subject, display, nickname, admin, created_at_unix, renewed_at_unix, expires_at_unix)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: GetWebSession :one
-SELECT subject, display, admin, expires_at_unix FROM web_sessions WHERE token_digest = ?;
+SELECT subject, display, COALESCE(nickname, '') AS nickname, admin, expires_at_unix FROM web_sessions WHERE token_digest = ?;
 
 -- name: DeleteWebSession :exec
 DELETE FROM web_sessions WHERE token_digest = ?;
+
+-- name: ListLatestSessionNicknames :many
+-- One row per subject that ever signed in with a nickname: the one from its
+-- newest such session, ties broken by rowid, found once per subject rather
+-- than once per row. Keyed by subject throughout: never a lookup by nickname.
+SELECT subject, nickname
+FROM web_sessions
+WHERE rowid IN (
+  SELECT (
+    SELECT candidate.rowid FROM web_sessions AS candidate
+    WHERE candidate.subject = named.subject
+      AND candidate.nickname IS NOT NULL AND candidate.nickname != ''
+    ORDER BY candidate.created_at_unix DESC, candidate.rowid DESC
+    LIMIT 1
+  )
+  FROM (
+    SELECT DISTINCT subject FROM web_sessions
+    WHERE nickname IS NOT NULL AND nickname != ''
+  ) AS named
+);

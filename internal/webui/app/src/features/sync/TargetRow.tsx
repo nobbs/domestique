@@ -104,7 +104,10 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
         {/* Present only for an admin: a non-admin's own target is already
             known to be theirs, and never sees another's here at all. */}
         {target.owner ? (
-          <span className="text-xs text-[var(--ink-2)]">Owned by {target.owner}</span>
+          <span className="text-xs text-[var(--ink-2)]">
+            Owned by {target.owner}
+            {target.ownerNickname ? ` (${target.ownerNickname})` : ""}
+          </span>
         ) : null}
         <span className="text-[var(--ink-2)]">{stagesSummary(target)}</span>
         {failure ? <span className="text-[var(--ink-2)]">{failure}</span> : null}

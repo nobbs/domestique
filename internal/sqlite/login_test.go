@@ -110,17 +110,31 @@ func TestStoreRoundTripsSession(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(5)
 	expiresAt := now.Add(time.Hour)
-	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", true, now, expiresAt), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", "riderly", true, now, expiresAt), "CreateSession()")
 
-	subject, display, admin, gotExpiresAt, err := store.Session(t.Context(), digest, now)
+	subject, display, nickname, admin, err := store.Session(t.Context(), digest, now)
 	require.NoError(t, err, "Session()")
 	assert.Equal(t, "rider@example.ts.net", subject, "Session() subject")
 	assert.Equal(t, "Rider", display, "Session() display")
+	assert.Equal(t, "riderly", nickname, "Session() nickname")
 	assert.True(t, admin, "Session() admin")
-	assert.Equal(t, expiresAt.Unix(), gotExpiresAt.Unix(), "Session() expiresAt")
 
 	_, _, _, _, err = store.Session(t.Context(), loginDigest(6), now)
 	require.ErrorIs(t, err, ErrSessionNotFound, "Session() unknown digest")
+}
+
+// A session created without a nickname claim reports it empty rather than
+// falling back to display or subject.
+func TestStoreRoundTripsSessionWithoutNickname(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	now := time.Unix(1_700_000_000, 0)
+	digest := loginDigest(8)
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", "", false, now, now.Add(time.Hour)), "CreateSession()")
+
+	_, _, nickname, _, err := store.Session(t.Context(), digest, now)
+	require.NoError(t, err, "Session()")
+	assert.Empty(t, nickname, "Session() nickname")
 }
 
 func TestStoreReportsExpiredSession(t *testing.T) {
@@ -128,7 +142,7 @@ func TestStoreReportsExpiredSession(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(7)
-	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", false, now, now.Add(time.Minute)), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", "", false, now, now.Add(time.Minute)), "CreateSession()")
 
 	_, _, _, _, err := store.Session(t.Context(), digest, now.Add(time.Minute))
 	require.ErrorIs(t, err, ErrSessionExpired, "Session() at expiry")
@@ -139,13 +153,42 @@ func TestStoreDeletesSession(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	digest := loginDigest(11)
-	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", false, now, now.Add(time.Hour)), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), digest, "rider@example.ts.net", "Rider", "", false, now, now.Add(time.Hour)), "CreateSession()")
 
 	require.NoError(t, store.DeleteSession(t.Context(), digest), "DeleteSession()")
 	_, _, _, _, err := store.Session(t.Context(), digest, now)
 	require.ErrorIs(t, err, ErrSessionNotFound, "Session() after deletion")
 
 	require.NoError(t, store.DeleteSession(t.Context(), digest), "DeleteSession() a second time")
+}
+
+// LatestSessionNicknames is keyed by subject, one entry per subject that has
+// ever signed in with a nickname; a subject that never has is simply absent,
+// and a later session's nickname is what a stale earlier one does not shadow.
+// A nickname of only whitespace is no nickname, and one with padding loses it.
+func TestStoreTrimsTheNickname(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	now := time.Unix(1_700_000_000, 0)
+	require.NoError(t, store.CreateSession(t.Context(), loginDigest(50), "github|1", "One", "  padded  ", false, now, now.Add(time.Hour)), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), loginDigest(51), "github|2", "Two", "   ", false, now, now.Add(time.Hour)), "CreateSession()")
+
+	nicknames, err := store.LatestSessionNicknames(t.Context())
+	require.NoError(t, err, "LatestSessionNicknames()")
+	assert.Equal(t, map[string]string{"github|1": "padded"}, nicknames)
+}
+
+func TestStoreLatestSessionNicknames(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	now := time.Unix(1_700_000_000, 0)
+	require.NoError(t, store.CreateSession(t.Context(), loginDigest(40), "rider-a", "Rider A", "Ry", false, now, now.Add(time.Hour)), "CreateSession() rider-a")
+	require.NoError(t, store.CreateSession(t.Context(), loginDigest(41), "rider-b", "Rider B", "", false, now, now.Add(time.Hour)), "CreateSession() rider-b without nickname")
+	require.NoError(t, store.CreateSession(t.Context(), loginDigest(42), "rider-a", "Rider A", "Ryan", false, now.Add(time.Minute), now.Add(time.Hour)), "CreateSession() rider-a again")
+
+	nicknames, err := store.LatestSessionNicknames(t.Context())
+	require.NoError(t, err, "LatestSessionNicknames()")
+	assert.Equal(t, map[string]string{"rider-a": "Ryan"}, nicknames)
 }
 
 // TestStoreRejectsInvalidInput exercises every guard that must fail before a
@@ -164,15 +207,17 @@ func TestStoreRejectsInvalidInput(t *testing.T) {
 		"BeginLogin blank verifier":    func() error { return store.BeginLogin(t.Context(), loginDigest(20), "nonce", "", now, future) },
 		"BeginLogin non-future expiry": func() error { return store.BeginLogin(t.Context(), loginDigest(20), "nonce", "verifier", now, now) },
 		"ConsumeLogin short digest":    func() error { _, _, err := store.ConsumeLogin(t.Context(), short, now); return err },
-		"CreateSession short digest":   func() error { return store.CreateSession(t.Context(), short, "subject", "display", false, now, future) },
+		"CreateSession short digest": func() error {
+			return store.CreateSession(t.Context(), short, "subject", "display", "", false, now, future)
+		},
 		"CreateSession blank subject": func() error {
-			return store.CreateSession(t.Context(), loginDigest(21), "", "display", false, now, future)
+			return store.CreateSession(t.Context(), loginDigest(21), "", "display", "", false, now, future)
 		},
 		"CreateSession blank display": func() error {
-			return store.CreateSession(t.Context(), loginDigest(21), "subject", " ", false, now, future)
+			return store.CreateSession(t.Context(), loginDigest(21), "subject", " ", "", false, now, future)
 		},
 		"CreateSession non-future expiry": func() error {
-			return store.CreateSession(t.Context(), loginDigest(21), "subject", "display", false, now, now)
+			return store.CreateSession(t.Context(), loginDigest(21), "subject", "display", "", false, now, now)
 		},
 		"Session short digest":       func() error { _, _, _, _, err := store.Session(t.Context(), short, now); return err },
 		"DeleteSession short digest": func() error { return store.DeleteSession(t.Context(), short) },
@@ -189,10 +234,10 @@ func TestStoreCreateSessionPrunesExpiredRows(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	now := time.Unix(1_700_000_000, 0)
 	stale := loginDigest(12)
-	require.NoError(t, store.CreateSession(t.Context(), stale, "rider@example.ts.net", "Rider", false, now, now.Add(time.Second)), "CreateSession() stale")
+	require.NoError(t, store.CreateSession(t.Context(), stale, "rider@example.ts.net", "Rider", "", false, now, now.Add(time.Second)), "CreateSession() stale")
 
 	fresh := loginDigest(13)
-	require.NoError(t, store.CreateSession(t.Context(), fresh, "rider@example.ts.net", "Rider", false, now.Add(time.Minute), now.Add(2*time.Minute)), "CreateSession() fresh")
+	require.NoError(t, store.CreateSession(t.Context(), fresh, "rider@example.ts.net", "Rider", "", false, now.Add(time.Minute), now.Add(2*time.Minute)), "CreateSession() fresh")
 
 	_, _, _, _, err := store.Session(t.Context(), stale, now.Add(time.Minute))
 	require.ErrorIs(t, err, ErrSessionNotFound, "Session() a row CreateSession should have pruned")
@@ -215,7 +260,7 @@ func TestStoreReportsLoginStorageFailures(t *testing.T) {
 			return err
 		}},
 		"CreateSession": {table: "web_sessions", call: func(store *Store) error {
-			return store.CreateSession(t.Context(), loginDigest(31), "subject", "display", false, now, future)
+			return store.CreateSession(t.Context(), loginDigest(31), "subject", "display", "", false, now, future)
 		}},
 		"Session": {table: "web_sessions", call: func(store *Store) error {
 			_, _, _, _, err := store.Session(t.Context(), loginDigest(31), now)
@@ -223,6 +268,10 @@ func TestStoreReportsLoginStorageFailures(t *testing.T) {
 		}},
 		"DeleteSession": {table: "web_sessions", call: func(store *Store) error {
 			return store.DeleteSession(t.Context(), loginDigest(31))
+		}},
+		"LatestSessionNicknames": {table: "web_sessions", call: func(store *Store) error {
+			_, err := store.LatestSessionNicknames(t.Context())
+			return err
 		}},
 	}
 	for name, test := range tests {
@@ -247,6 +296,6 @@ func TestStoreRejectsDuplicateDigests(t *testing.T) {
 	require.Error(t, store.BeginLogin(t.Context(), state, "nonce", "verifier", now, future), "BeginLogin() reusing a state digest")
 
 	token := loginDigest(33)
-	require.NoError(t, store.CreateSession(t.Context(), token, "subject", "display", false, now, future), "CreateSession()")
-	assert.Error(t, store.CreateSession(t.Context(), token, "subject", "display", false, now, future), "CreateSession() reusing a token digest")
+	require.NoError(t, store.CreateSession(t.Context(), token, "subject", "display", "", false, now, future), "CreateSession()")
+	assert.Error(t, store.CreateSession(t.Context(), token, "subject", "display", "", false, now, future), "CreateSession() reusing a token digest")
 }
