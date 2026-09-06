@@ -423,7 +423,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             maxZoom={
               windowBounds
                 ? WINDOW_MAX_ZOOM
-                : locationBox !== null && bounds === locationBox
+                : focusBox === null && locationBox !== null
                   ? LOCATION_ZOOM
                   : ROUTE_MAX_ZOOM
             }
