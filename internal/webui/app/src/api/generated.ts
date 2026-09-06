@@ -492,6 +492,8 @@ export interface WahooApplicationUpdate {
   clientId: string;
   /** The application's secret, sent only when it was typed into the form. Left out it keeps the stored value, which is how a page that was never told the secret can save the rest of the application; sent empty it removes the credential. */
   clientSecret?: string;
+  /** The token Wahoo carries in every webhook body, sent only when it was typed into the form. It follows the same rule as the client secret: left out it keeps the stored value, sent empty it removes the credential, and it is never read back. */
+  webhookToken?: string;
 }
 
 /**

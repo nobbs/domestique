@@ -119,6 +119,9 @@ type Source interface {
 	// ListActivities reads the account's whole list and reports how many
 	// requests that cost, so a poll can keep the rest within its window.
 	ListActivities(ctx context.Context, accessToken string) (listings []Listing, requests int, err error)
+	// Activity reads one activity's listing entry, carrying the summary that
+	// entry itself held, at the cost of one request.
+	Activity(ctx context.Context, accessToken string, id int64) (Listing, error)
 	ActivitySummary(ctx context.Context, accessToken string, id int64) (Summary, error)
 	DownloadActivityFIT(ctx context.Context, summary Summary) ([]byte, error)
 	IsUnauthorized(err error) bool
@@ -157,6 +160,8 @@ type Store interface {
 // can hold.
 type listingStore interface {
 	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
+	// ActivityStored reports one activity's presence without listing the rest.
+	ActivityStored(ctx context.Context, targetID string, id int64) (bool, error)
 	// ActivityListings are the activities the account holds, oldest first, as
 	// the last full reading of it left them, and when that reading was taken.
 	// The order is what a poll fills from; it does not sort them again.
@@ -356,31 +361,41 @@ func (p *Poller) fillRecords(ctx context.Context, targetID string) (stored, unre
 		if !p.now().Before(deadline) {
 			break
 		}
-		raw, downloadErr := p.source.DownloadActivityFIT(ctx, pendingActivity.Summary)
-		if downloadErr != nil && !errors.Is(downloadErr, ErrNoActivityFile) {
-			// A download that failed for anything but this file's own sake stops
-			// the phase; the next poll retries it, and nothing is marked here.
-			return stored, unreadable, p.classify(ctx, targetID, downloadErr)
+		filled, marked, failure := p.fill(ctx, targetID, pendingActivity)
+		stored, unreadable = stored+filled, unreadable+marked
+		if failure != FailureNone {
+			return stored, unreadable, failure
 		}
-		decoded, decodeErr := FIT{}, downloadErr
-		if decodeErr == nil {
-			decoded, decodeErr = DecodeFIT(raw)
-		}
-		if decodeErr != nil {
-			if markErr := p.store.MarkActivityUnreadable(ctx, targetID, pendingActivity.ID); markErr != nil {
-				return stored, unreadable, FailureState
-			}
-			unreadable++
-
-			continue
-		}
-		if storeErr := p.store.StoreActivityRecords(ctx, targetID, pendingActivity.ID, decoded); storeErr != nil {
-			return stored, unreadable, FailureState
-		}
-		stored++
 	}
 
 	return stored, unreadable, FailureNone
+}
+
+// fill downloads and decodes one stored activity's FIT file and stores its
+// samples, or marks the activity unreadable when the file is its own fault.
+func (p *Poller) fill(ctx context.Context, targetID string, pending PendingActivity) (stored, unreadable int, failure Failure) {
+	raw, downloadErr := p.source.DownloadActivityFIT(ctx, pending.Summary)
+	if downloadErr != nil && !errors.Is(downloadErr, ErrNoActivityFile) {
+		// A download that failed for anything but this file's own sake stops the
+		// phase; the next poll retries it, and nothing is marked here.
+		return 0, 0, p.classify(ctx, targetID, downloadErr)
+	}
+	decoded, decodeErr := FIT{}, downloadErr
+	if decodeErr == nil {
+		decoded, decodeErr = DecodeFIT(raw)
+	}
+	if decodeErr != nil {
+		if markErr := p.store.MarkActivityUnreadable(ctx, targetID, pending.ID); markErr != nil {
+			return 0, 0, FailureState
+		}
+
+		return 0, 1, FailureNone
+	}
+	if storeErr := p.store.StoreActivityRecords(ctx, targetID, pending.ID, decoded); storeErr != nil {
+		return 0, 0, FailureState
+	}
+
+	return 1, 0, FailureNone
 }
 
 // accessToken refreshes the target's credentials, replacing the stored refresh

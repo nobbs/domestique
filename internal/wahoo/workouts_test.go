@@ -94,6 +94,55 @@ func TestClientReportsAnInvalidWorkoutListingHead(t *testing.T) {
 	require.ErrorContains(t, err, "pagination was invalid")
 }
 
+// One workout read on its own, which is how a notification's workout id is
+// checked against the account: the entry, and the summary it embeds.
+func TestClientReadsOneWorkout(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, http.MethodGet, request.Method)
+		assert.Equal(t, "Bearer access-token", request.Header.Get("Authorization"))
+		assert.Equal(t, "/v1/workouts/42", request.URL.Path)
+		writeJSON(t, writer, map[string]any{
+			"id": 42, "starts": "2026-08-17T07:00:00Z",
+			"workout_type_id": 40, "workout_type_location_id": 1,
+			"workout_summary": map[string]any{
+				"id":             42,
+				"file":           map[string]string{"url": "https://cdn.wahooligan.com/workouts/42.fit"},
+				"distance_accum": "1234.5", "duration_active_accum": "3600.0",
+				"duration_total_accum": "3900.0", "ascent_accum": "120.25",
+			},
+		})
+	}))
+	defer server.Close()
+
+	workout, err := newTestClient(t, server).Workout(t.Context(), "access-token", 42)
+	require.NoError(t, err)
+	assert.Equal(t, int64(42), workout.ID)
+	assert.Equal(t, 40, workout.WorkoutTypeID)
+	require.NotNil(t, workout.Summary, "the entry's own summary was dropped")
+	assert.InDelta(t, 1234.5, workout.Summary.DistanceMetres, 1e-9)
+}
+
+// A workout Wahoo refuses or does not hold, and one it answers about something
+// else, are that workout's own fault rather than the connection's.
+func TestClientReportsAnUnreadableWorkout(t *testing.T) {
+	cases := map[string]func(t *testing.T, writer http.ResponseWriter){
+		"not found":    func(_ *testing.T, writer http.ResponseWriter) { writer.WriteHeader(http.StatusNotFound) },
+		"refused":      func(_ *testing.T, writer http.ResponseWriter) { writer.WriteHeader(http.StatusUnauthorized) },
+		"another ride": func(t *testing.T, writer http.ResponseWriter) { writeJSON(t, writer, map[string]any{"id": 43}) },
+	}
+	for name, answer := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				answer(t, writer)
+			}))
+			defer server.Close()
+
+			_, err := newTestClient(t, server).Workout(t.Context(), "access-token", 42)
+			require.ErrorIs(t, err, ErrWorkoutUnreadable)
+		})
+	}
+}
+
 func TestClientReadsTheRawWorkoutSummary(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, http.MethodGet, request.Method)
@@ -338,6 +387,15 @@ func TestClientRejectsWorkoutReadsItCannotTrust(t *testing.T) {
 			},
 			read: func(c *Client) error { _, _, err := c.ListWorkouts(t.Context(), "access-token"); return err },
 			want: "pagination was invalid",
+		},
+		"workout without a token or id": {
+			read: func(c *Client) error { _, err := c.Workout(t.Context(), "access-token", 0); return err },
+			want: "access token and workout id are required",
+		},
+		"workout that fails upstream": {
+			handler: func(writer http.ResponseWriter, _ *http.Request) { writer.WriteHeader(http.StatusInternalServerError) },
+			read:    func(c *Client) error { _, err := c.Workout(t.Context(), "access-token", 42); return err },
+			want:    "HTTP 500",
 		},
 		"summary without a token or id": {
 			read: func(c *Client) error { _, err := c.WorkoutSummary(t.Context(), "access-token", 0); return err },

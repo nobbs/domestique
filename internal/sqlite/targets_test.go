@@ -75,3 +75,46 @@ func TestEnsureTargetOwnerReportsAQueryFailure(t *testing.T) {
 
 	require.Error(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner() over a closed store")
 }
+
+// A webhook names a Wahoo user, and the receiver has to turn that into the slot
+// that authorized it.
+func TestTargetByWahooUserFindsTheSlotThatAuthorizedIt(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.AuthorizeTarget(t.Context(), "rider-a", "wahoo-user", "refresh-token"),
+		"AuthorizeTarget()")
+
+	slot, found, err := store.TargetByWahooUser(t.Context(), "wahoo-user")
+	require.NoError(t, err, "TargetByWahooUser()")
+	assert.True(t, found, "the authorized user was not found")
+	assert.Equal(t, "rider-a", slot)
+}
+
+// A user nobody has connected, and a blank one, are both "no such rider" rather
+// than a failure: the receiver ignores such a notification.
+func TestTargetByWahooUserReportsAnUnknownUserWithoutFailing(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	for name, wahooUserID := range map[string]string{"unknown": "wahoo-user", "blank": "  "} {
+		t.Run(name, func(t *testing.T) {
+			slot, found, err := store.TargetByWahooUser(t.Context(), wahooUserID)
+			require.NoError(t, err, "TargetByWahooUser()")
+			assert.False(t, found)
+			assert.Empty(t, slot)
+		})
+	}
+}
+
+// A read that fails is reported rather than answered as an unknown rider, which
+// would drop a delivery Wahoo will not send again after its retries.
+func TestTargetByWahooUserReportsAQueryFailure(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, _, err := store.TargetByWahooUser(t.Context(), "wahoo-user")
+	require.Error(t, err, "TargetByWahooUser() over a closed store")
+}

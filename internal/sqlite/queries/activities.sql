@@ -1,6 +1,9 @@
 -- name: ListActivityIDs :many
 SELECT workout_id FROM activities WHERE target_slot = ? ORDER BY workout_id;
 
+-- name: ActivityExists :one
+SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ?);
+
 -- name: UpsertActivity :exec
 INSERT INTO activities (
   target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,

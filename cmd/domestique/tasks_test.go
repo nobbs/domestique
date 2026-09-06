@@ -811,15 +811,82 @@ func TestActivityResultCarriesEveryOutcomeAcross(t *testing.T) {
 	}
 }
 
+type recordedWorkout struct {
+	targetID  string
+	workoutID int64
+}
+
 type fakePoller struct {
-	results map[string]activity.Result
-	polled  []string
+	results  map[string]activity.Result
+	polled   []string
+	recorded []recordedWorkout
 }
 
 func (p *fakePoller) Poll(_ context.Context, targetID string) activity.Result {
 	p.polled = append(p.polled, targetID)
 
 	return p.results[targetID]
+}
+
+func (p *fakePoller) Record(_ context.Context, targetID string, workoutID int64) activity.Result {
+	p.recorded = append(p.recorded, recordedWorkout{targetID: targetID, workoutID: workoutID})
+
+	return p.results[targetID]
+}
+
+// The webhook's hand-off arrives as one argument and is read back as the slot
+// and the workout the receiver wrote.
+func TestActivityRecordTaskReadsBackTheHandOff(t *testing.T) {
+	t.Parallel()
+
+	poller := &fakePoller{results: map[string]activity.Result{"rider-a": {Outcome: activity.Polled, Stored: 1}}}
+	definition := activityRecordTask(poller)
+
+	assert.Equal(t, taskActivityRecord, definition.Name, "name")
+	assert.Equal(t,
+		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
+		definition.Resources(""),
+		"resources",
+	)
+	assert.Nil(t, definition.Schedule, "a notification is what starts this, not a clock")
+
+	result := definition.Run.Run(t.Context(), task.Invocation{
+		Task: taskActivityRecord, Argument: httpapi.ActivityRecordArgument("rider-a", 56519),
+	})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	assert.Equal(t, []recordedWorkout{{targetID: "rider-a", workoutID: 56519}}, poller.recorded, "recorded")
+}
+
+// An argument no receiver wrote names no workout to read, and is a failure with
+// its own word rather than a read of something else.
+func TestActivityRecordTaskRefusesAMalformedArgument(t *testing.T) {
+	t.Parallel()
+
+	for _, argument := range []string{"", "rider-a", "rider-a/", "/56519", "rider-a/0", "rider-a/soon"} {
+		t.Run(argument, func(t *testing.T) {
+			t.Parallel()
+
+			poller := &fakePoller{}
+			result := activityRecordTask(poller).Run.Run(t.Context(), task.Invocation{
+				Task: taskActivityRecord, Argument: argument,
+			})
+
+			assert.Equal(t, task.Result{Outcome: task.Failed, Detail: detailActivityArgument}, result)
+			assert.Empty(t, poller.recorded, "a malformed argument reached the poller")
+		})
+	}
+}
+
+// A slot holding a separator still names itself: the workout id is what follows
+// the last one.
+func TestActivityRecordArgumentSurvivesASlotWithASeparator(t *testing.T) {
+	t.Parallel()
+
+	targetID, workoutID, ok := parseActivityRecordArgument(httpapi.ActivityRecordArgument("auth0|a/b", 7))
+
+	require.True(t, ok)
+	assert.Equal(t, "auth0|a/b", targetID)
+	assert.Equal(t, int64(7), workoutID)
 }
 
 // Calibration reads the same rows an activity poll writes, so it takes the

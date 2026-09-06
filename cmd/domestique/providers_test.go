@@ -9,6 +9,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/auth0"
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/wahoo"
 )
@@ -212,4 +213,42 @@ func TestWahooQuotaStoreReportsAnUnusableStore(t *testing.T) {
 	require.Error(t, quotas.SaveQuota(t.Context(), &wahoo.Quota{
 		ObservedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
 	}), "SaveQuota() on a closed store")
+}
+
+// The webhook verifier is the whole of what the HTTP surface may learn about
+// the token: it never sees the value, and an unconfigured token admits nobody
+// rather than admitting everybody with an empty one.
+func TestWebhookTokensVerifyOnlyTheConfiguredToken(t *testing.T) {
+	t.Parallel()
+
+	settings := testSettings(t, testStore(t, t.TempDir()))
+	verifier := webhookTokens{settings: settings}
+
+	for name, presented := range map[string]string{"a guess": "a-token", "nothing": ""} {
+		t.Run("unconfigured, "+name, func(t *testing.T) {
+			verified, err := verifier.VerifyWahooWebhookToken(t.Context(), presented)
+			require.NoError(t, err, "VerifyWahooWebhookToken()")
+			assert.False(t, verified, "an unconfigured token admitted a caller")
+		})
+	}
+
+	require.NoError(t, settings.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretWahooWebhookToken: runtimeconfig.NewSecret([]byte("the-configured-token")),
+	}), "SetSecrets()")
+
+	for name, expected := range map[string]struct {
+		presented string
+		verified  bool
+	}{
+		"the configured token": {presented: "the-configured-token", verified: true},
+		"a prefix of it":       {presented: "the-configured", verified: false},
+		"a longer value":       {presented: "the-configured-token-and-more", verified: false},
+		"nothing at all":       {presented: "", verified: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			verified, err := verifier.VerifyWahooWebhookToken(t.Context(), expected.presented)
+			require.NoError(t, err, "VerifyWahooWebhookToken()")
+			assert.Equal(t, expected.verified, verified)
+		})
+	}
 }

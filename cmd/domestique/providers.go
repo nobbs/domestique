@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,25 @@ func exchangedIdentityFrom(identity auth0.Identity) session.ExchangedIdentity {
 		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
 		Access: identity.Access, Admin: identity.Admin,
 	}
+}
+
+// webhookTokens answers whether an inbound notification carries the configured
+// token. Kept here rather than in the HTTP surface, which is never handed a
+// credential's value.
+type webhookTokens struct{ settings *runtimeconfig.Current }
+
+// VerifyWahooWebhookToken compares digests of a fixed length, so a refusal
+// costs the same however much of the token, or of its length, was right. An
+// unconfigured token verifies nothing.
+func (w webhookTokens) VerifyWahooWebhookToken(_ context.Context, presented string) (bool, error) {
+	configured := w.settings.Secret(runtimeconfig.SecretWahooWebhookToken)
+	if !configured.IsSet() {
+		return false, nil
+	}
+	expected := sha256.Sum256(configured.Bytes())
+	offered := sha256.Sum256([]byte(presented))
+
+	return subtle.ConstantTimeCompare(expected[:], offered[:]) == 1, nil
 }
 
 // targetIDsTimeout bounds the one local read targetIDs performs. A stuck read
@@ -313,6 +333,21 @@ func activityListings(workouts []wahoo.Workout) []activity.Listing {
 	}
 
 	return listings
+}
+
+// Activity reads one workout's own listing entry, which is how a notification's
+// workout id is verified against the account rather than trusted.
+func (p *wahooProvider) Activity(ctx context.Context, accessToken string, id int64) (activity.Listing, error) {
+	client, err := p.current()
+	if err != nil {
+		return activity.Listing{}, err
+	}
+	workout, err := client.Workout(ctx, accessToken, id)
+	if err != nil {
+		return activity.Listing{}, fmt.Errorf("reading a Wahoo workout: %w", err)
+	}
+
+	return activityListings([]wahoo.Workout{workout})[0], nil
 }
 
 // IsRecordable reports whether a listed activity is one this service records.

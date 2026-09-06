@@ -1,6 +1,9 @@
 -- name: FindTargetByWahooUser :one
 SELECT slot FROM targets WHERE wahoo_user_id = ? AND slot != ?;
 
+-- name: GetTargetByWahooUser :one
+SELECT slot FROM targets WHERE wahoo_user_id = ?;
+
 -- name: UpdateTargetAuthorization :execresult
 UPDATE targets
 SET wahoo_user_id = ?, refresh_token = ?, authorization_state = ?, updated_at_unix = ?

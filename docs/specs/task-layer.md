@@ -267,6 +267,7 @@ is checked rather than inferred.
 | `ridemodel:predict` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 | `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
+| `activity:record` | target slot and workout id | `activities` exclusive | none |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
 
 `activity:poll` stores cycling alone. A rider's account may record any sport
@@ -282,6 +283,18 @@ run may fill. A ride recorded this morning is therefore filled on the first poll
 that sees it rather than behind whatever history is still backfilling, and a run
 holds the exclusive `activities` resource for that budget plus the one fill that
 was under way when it ran out.
+
+A Wahoo webhook starts `activity:record` for the target and workout it names,
+ahead of the schedule and under the same `activities` exclusivity — a delivery
+that arrives while a poll is running is refused and changes nothing, and the
+schedule remains the fallback ([the receiver](service.md)). It reads that one
+workout and, where its entry carried no summary, that summary: two requests at
+most, where a poll re-lists the account. The notification decides nothing —
+recordability, whether the ride is already stored, and every total come from
+what Wahoo answers — so an activity it names that this service does not record
+or already holds leaves the store as it was. An argument that is not a slot and
+a workout id fails as `argument`, which only a caller other than the receiver
+produces: the HTTP surface answers `404` for this task rather than starting it.
 
 The read takes a library the same way the targets take a slot: none is every
 one that exists, a name is that one alone. One task rather than one per

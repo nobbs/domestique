@@ -126,6 +126,15 @@ describe("TaskTable", () => {
     expect(screen.getByRole("button", { name: "Run now: sync:source" })).toBeEnabled();
   });
 
+  it("offers no run button for the task only the Wahoo receiver starts", () => {
+    renderTable({
+      tasks: [{ name: "activity:record", scheduled: false, enabled: true, running: 0 }],
+    });
+
+    expect(screen.getByText("activity:record")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Run now: activity:record" })).toBeNull();
+  });
+
   it("posts a run for the pressed task", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {

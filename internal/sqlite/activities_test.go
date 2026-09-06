@@ -383,6 +383,22 @@ func TestActivityRecordsCascadeAndStayWithTheirTarget(t *testing.T) {
 	assert.Zero(t, rows, "records outlived the activity they belong to")
 }
 
+// One stored ride is found by its id alone; another id is not, and neither
+// answer reads the rest of the target's rides.
+func TestActivityStoredAnswersForOneRide(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 7, 42_000), "StoreActivity()")
+
+	stored, err := store.ActivityStored(t.Context(), "rider-a", 7)
+	require.NoError(t, err, "ActivityStored()")
+	assert.True(t, stored)
+	other, err := store.ActivityStored(t.Context(), "rider-a", 8)
+	require.NoError(t, err, "ActivityStored()")
+	assert.False(t, other)
+}
+
 // The newest rides come first and only limit of them, so a ride recorded today
 // is filled before a history still backfilling behind it.
 func TestActivitiesAwaitingRecordsIsNewestFirstAndLimited(t *testing.T) {

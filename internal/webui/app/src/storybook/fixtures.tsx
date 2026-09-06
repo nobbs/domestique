@@ -237,6 +237,7 @@ export const settings: Settings = {
   // A configured deployment: every credential stored, and nothing outstanding.
   secretsSet: {
     "wahoo.client_secret": true,
+    "wahoo.webhook_token": true,
     "veloplanner.email": true,
     "veloplanner.password": true,
     "komoot.email": false,

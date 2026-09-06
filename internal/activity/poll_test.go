@@ -863,23 +863,26 @@ type fakeSource struct {
 	fitFor      map[string][]byte
 	// onDownload stands in for the time one download and decode takes, so a test
 	// can spend the poll's records budget without a wall-clock sleep.
-	onDownload   func()
-	refreshErr   error
-	listErr      error
-	headErr      error
-	downloadErr  error
-	fit          []byte
-	listings     []Listing
-	head         []Listing
-	unrecordable []int
-	summarized   []int64
-	downloaded   []string
-	listed       int
-	headed       int
-	total        int
-	summaryCalls int
-	listRequests int
-	hasTotal     bool
+	onDownload    func()
+	refreshErr    error
+	activityErr   error
+	listErr       error
+	headErr       error
+	downloadErr   error
+	fit           []byte
+	listings      []Listing
+	head          []Listing
+	unrecordable  []int
+	summarized    []int64
+	downloaded    []string
+	read          []int64
+	listed        int
+	headed        int
+	activityCalls int
+	total         int
+	summaryCalls  int
+	listRequests  int
+	hasTotal      bool
 }
 
 func newFakeSource(t *testing.T) *fakeSource {
@@ -937,6 +940,22 @@ func (s *fakeSource) ListActivities(_ context.Context, _ string) (listings []Lis
 	}
 
 	return s.listings, max(1, s.listRequests), nil
+}
+
+// Activity answers with the account's own entry for one workout, which is what
+// Wahoo's per-workout resource returns, and refuses one the account never held.
+func (s *fakeSource) Activity(_ context.Context, _ string, id int64) (Listing, error) {
+	s.activityCalls++
+	if s.activityErr != nil {
+		return Listing{}, s.activityErr
+	}
+	index := slices.IndexFunc(s.listings, func(listing Listing) bool { return listing.ID == id })
+	if index < 0 {
+		return Listing{}, fmt.Errorf("no such workout: %w", errUnreadable)
+	}
+	s.read = append(s.read, id)
+
+	return s.listings[index], nil
 }
 
 func (s *fakeSource) ActivitySummary(_ context.Context, _ string, id int64) (Summary, error) {
@@ -1060,6 +1079,10 @@ func (s *fakeStore) MarkNeedsReauthorization(_ context.Context, _ string) error 
 
 func (s *fakeStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, error) {
 	return s.known, s.knownErr
+}
+
+func (s *fakeStore) ActivityStored(_ context.Context, _ string, id int64) (bool, error) {
+	return slices.Contains(s.known, id), s.knownErr
 }
 
 func (s *fakeStore) ActivityListings(_ context.Context, _ string) ([]Listing, time.Time, error) {

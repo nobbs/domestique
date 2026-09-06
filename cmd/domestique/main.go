@@ -194,6 +194,7 @@ func run(ctx context.Context) error {
 			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs),
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
+			activityRecordTask(activityPoller),
 			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
 		),
 	)
@@ -244,6 +245,7 @@ func run(ctx context.Context) error {
 			StyleOrigins:     styleOrigins,
 			Alerts:           alertMatrix{decisions: alerts, declarations: tasks.Declarations()},
 			Tasks:            taskSurface{ctx: runCtx, manager: tasks, switches: switches},
+			WebhookTokens:    webhookTokens{settings: runtimeSettings},
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			Sessions:         sessions,

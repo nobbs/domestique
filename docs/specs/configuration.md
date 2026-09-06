@@ -233,9 +233,10 @@ connecting, not to an operator, and none exists until someone does.
 
 ### Credentials
 
-The Wahoo client secret, each source's email and password, and the Pushover
-application token and user key are stored in the state database, encrypted under
-the state key exactly as a Wahoo refresh token is. The secret's own name is the
+The Wahoo client secret, the Wahoo webhook token, each source's email and
+password, and the Pushover application token and user key are stored in the
+state database, encrypted under the state key exactly as a Wahoo refresh token
+is. The secret's own name is the
 associated data, so a ciphertext moved from one row to another fails to open
 rather than authenticating as the wrong credential. A database written under a
 different key is a startup failure naming no value.
@@ -252,10 +253,16 @@ by the page.
 
 A submitted name that no part of the service reads is refused, naming it.
 
-The seven names are `wahoo.client_secret`, `veloplanner.email`,
-`veloplanner.password`, `komoot.email`, `komoot.password`,
+The eight names are `wahoo.client_secret`, `wahoo.webhook_token`,
+`veloplanner.email`, `veloplanner.password`, `komoot.email`, `komoot.password`,
 `notifications.pushover.application_token`, and
 `notifications.pushover.user_key`.
+
+`wahoo.webhook_token` is the shared token Wahoo carries in every webhook body.
+It is a credential of the registered application rather than of one rider, so it
+is entered beside the client secret and not per target, and no run needs it: a
+deployment that has not registered a webhook leaves it unset and is served by
+the poll's own schedule alone.
 
 ### Sources
 

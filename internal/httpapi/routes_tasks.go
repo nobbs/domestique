@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"slices"
+	"strconv"
 	"time"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
@@ -24,6 +25,17 @@ const (
 // recorded activities. Like TaskSyncTarget it names one rider's own target, and
 // RunTask checks its argument the same way.
 const TaskActivityPoll = "activity:poll"
+
+// TaskActivityRecord is the registered name of the task that reads one notified
+// workout of one rider. Only the Wahoo receiver starts it, so RunTask refuses
+// it: its argument names a workout a browser has no way to know about.
+const TaskActivityRecord = "activity:record"
+
+// ActivityRecordArgument is how TaskActivityRecord's target slot and workout id
+// travel as one task argument, and the only place that form is written.
+func ActivityRecordArgument(targetID string, workoutID int64) string {
+	return targetID + "/" + strconv.FormatInt(workoutID, 10)
+}
 
 // TaskSurfaceIndex is the registered name of the task that rebuilds the
 // surface index, also used by the surface settings route below.
@@ -119,6 +131,13 @@ func (h *Handler) registers(name string) bool {
 func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 	name := request.PathValue("name")
 	if !h.registers(name) {
+		h.notFound(writer)
+
+		return
+	}
+	// Started by the webhook receiver alone: its argument names a workout, which
+	// is not a browser's to name, so it is not found rather than forbidden.
+	if name == TaskActivityRecord {
 		h.notFound(writer)
 
 		return
