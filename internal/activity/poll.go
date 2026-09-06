@@ -416,7 +416,9 @@ func (p *Poller) pending(ctx context.Context, targetID, accessToken string) ([]L
 			return nil, p.classify(ctx, targetID, headErr)
 		}
 		reread = total != len(listings) || !accountedFor(head, listings)
-		listings = carrying(listings, head)
+		if !reread {
+			listings = carrying(listings, head)
+		}
 	}
 	if reread {
 		fresh, listErr := p.source.ListActivities(ctx, accessToken)
