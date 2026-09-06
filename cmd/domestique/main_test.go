@@ -200,7 +200,7 @@ func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing
 		"CreateRoute":               func() error { _, err := provider.CreateRoute(t.Context(), "token", nil, nil); return err },
 		"UpdateRoute":               func() error { _, err := provider.UpdateRoute(t.Context(), 1, "token", nil, nil); return err },
 		"DeleteRoute":               func() error { return provider.DeleteRoute(t.Context(), 1, "token") },
-		"ListActivities":            func() error { _, err := provider.ListActivities(t.Context(), "token"); return err },
+		"ListActivities":            func() error { _, _, err := provider.ListActivities(t.Context(), "token"); return err },
 		"ActivityListingHead":       func() error { _, _, err := provider.ActivityListingHead(t.Context(), "token"); return err },
 		"ActivitySummary":           func() error { _, err := provider.ActivitySummary(t.Context(), "token", 42); return err },
 	}

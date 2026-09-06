@@ -136,16 +136,16 @@ func TestPollStoresOnlyWhatIsNotStoredYet(t *testing.T) {
 func TestPollStoresTheSummariesTheListingCarriesWithoutARequest(t *testing.T) {
 	store := newFakeStore()
 	source := newFakeSource(t)
-	for id := 1; id <= MaxNewPerPoll+5; id++ {
+	for id := 1; id <= summaryReads+5; id++ {
 		source.listings = append(source.listings, Listing{ID: int64(id), Starts: at(id), Summary: &Summary{DistanceMetres: 100, Raw: []byte(`{"id":1}`)}})
 	}
 
 	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
 
 	assert.Equal(t, Polled, result.Outcome)
-	assert.Equal(t, MaxNewPerPoll+5, result.Stored)
+	assert.Equal(t, summaryReads+5, result.Stored)
 	assert.Zero(t, source.summaryCalls, "a summary the listing carried was requested again")
-	require.Len(t, store.stored, MaxNewPerPoll+5)
+	require.Len(t, store.stored, summaryReads+5)
 	assert.Equal(t, Summary{DistanceMetres: 100, Raw: []byte(`{"id":1}`)}, store.stored[0].summary)
 }
 
@@ -155,7 +155,7 @@ func TestPollStoresTheSummariesTheListingCarriesWithoutARequest(t *testing.T) {
 func TestPollRequestsOnlyTheSummariesTheListingLacks(t *testing.T) {
 	store := newFakeStore()
 	source := newFakeSource(t)
-	for id := 1; id <= 2*MaxNewPerPoll; id++ {
+	for id := 1; id <= 2*summaryReads; id++ {
 		listing := Listing{ID: int64(id), Starts: at(id)}
 		if id%2 == 0 {
 			listing.Summary = &Summary{DistanceMetres: 100, Raw: []byte(`{}`)}
@@ -167,8 +167,8 @@ func TestPollRequestsOnlyTheSummariesTheListingLacks(t *testing.T) {
 	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
 
 	assert.Equal(t, Polled, result.Outcome)
-	assert.Equal(t, 2*MaxNewPerPoll, result.Stored)
-	assert.Equal(t, MaxNewPerPoll, source.summaryCalls, "the request cap did not hold")
+	assert.Equal(t, 2*summaryReads, result.Stored)
+	assert.Equal(t, summaryReads, source.summaryCalls, "the request cap did not hold")
 	assert.Equal(t, int64(1), source.summarized[0], "the oldest lacking summary was not requested first")
 	assert.NotContains(t, source.summarized, int64(99), "a request past the cap was made")
 }
@@ -217,23 +217,56 @@ func TestPollTakesSummariesFromTheHeadWhenWorkingFromTheKeptReading(t *testing.T
 	assert.InDelta(t, 3.0, store.stored[0].summary.DistanceMetres, 0)
 }
 
-// One poll spends at most MaxNewPerPoll of a shared daily request budget, and
-// spends it on the oldest rides so a long history fills in chronologically.
+// summaryReads is how many summaries a poll whose listing cost one request may
+// still ask for one at a time within its window.
+const summaryReads = RequestsPerPoll - 1
+
+// A poll's counted requests — the listing's pages and then one per summary the
+// listing lacked — fit the five-minute window whatever the listing cost, so a
+// poll never exhausts the window before it finishes.
+func TestPollFitsItsRequestsToTheFiveMinuteWindow(t *testing.T) {
+	cases := map[string]struct {
+		listRequests int
+	}{
+		"one page":   {listRequests: 1},
+		"five pages": {listRequests: 5},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := newFakeStore()
+			source := newFakeSource(t)
+			source.listRequests = tc.listRequests
+			for id := 1; id <= RequestsPerPoll+5; id++ {
+				source.listings = append(source.listings, Listing{ID: int64(id), Starts: at(id)})
+			}
+
+			result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+			require.Equal(t, Polled, result.Outcome)
+			assert.Equal(t, RequestsPerPoll, source.listed*tc.listRequests+source.headed+source.summaryCalls,
+				"the poll's requests did not fill exactly the window")
+			assert.Equal(t, RequestsPerPoll-tc.listRequests, result.Stored)
+		})
+	}
+}
+
+// One poll spends what its window leaves for summaries on the oldest rides,
+// so a long history fills in chronologically.
 func TestPollReadsTheOldestActivitiesUpToItsCap(t *testing.T) {
 	store := newFakeStore()
 	source := newFakeSource(t)
-	for index := range MaxNewPerPoll + 5 {
+	for index := range summaryReads + 5 {
 		// Listed newest first, as an account lists them.
-		source.listings = append(source.listings, Listing{ID: int64(index + 1), Starts: at(MaxNewPerPoll + 5 - index)})
+		source.listings = append(source.listings, Listing{ID: int64(index + 1), Starts: at(summaryReads + 5 - index)})
 	}
 
 	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
 
 	require.Equal(t, Polled, result.Outcome)
-	assert.Equal(t, MaxNewPerPoll, result.Stored)
-	require.Len(t, source.summarized, MaxNewPerPoll)
-	assert.Equal(t, int64(MaxNewPerPoll+5), source.summarized[0], "the oldest activity was not read first")
-	assert.Equal(t, int64(6), source.summarized[MaxNewPerPoll-1], "the read did not stop at the oldest MaxNewPerPoll")
+	assert.Equal(t, summaryReads, result.Stored)
+	require.Len(t, source.summarized, summaryReads)
+	assert.Equal(t, int64(summaryReads+5), source.summarized[0], "the oldest activity was not read first")
+	assert.Equal(t, int64(6), source.summarized[summaryReads-1], "the read did not stop at the oldest reads the window allows")
 }
 
 // A summary that fails stops the poll, but every activity read before it stays
@@ -323,9 +356,9 @@ func TestPollStopsWithoutSkippingOnAFailureThatIsNotTheActivitysOwn(t *testing.T
 func TestPollStopsAtTheFirstRefusalOfTheRequestItself(t *testing.T) {
 	store := newFakeStore()
 	source := newFakeSource(t)
-	source.listings = make([]Listing, 0, MaxNewPerPoll)
-	source.summaryErrs = make(map[int64]error, MaxNewPerPoll)
-	for id := 1; id <= MaxNewPerPoll; id++ {
+	source.listings = make([]Listing, 0, summaryReads)
+	source.summaryErrs = make(map[int64]error, summaryReads)
+	for id := 1; id <= summaryReads; id++ {
 		source.listings = append(source.listings, Listing{ID: int64(id), Starts: at(id)})
 		source.summaryErrs[int64(id)] = fmt.Errorf("HTTP 401: %w", errRejected)
 	}
@@ -564,21 +597,21 @@ func TestPollReportsBothWhatItStoredAndWhatItRecorded(t *testing.T) {
 func TestPollDoesNotReadTheWholeListAgainWhileDrainingTheBacklog(t *testing.T) {
 	store := newFakeStore()
 	source := newFakeSource(t)
-	for id := 1; id <= MaxNewPerPoll+5; id++ {
+	for id := 1; id <= summaryReads+5; id++ {
 		source.listings = append(source.listings, Listing{ID: int64(id), Starts: at(id)})
 	}
 	poller := newTestPoller(t, source, store)
 
 	first := poller.Poll(t.Context(), "rider-a")
 	require.Equal(t, Polled, first.Outcome)
-	require.Equal(t, MaxNewPerPoll, first.Stored)
+	require.Equal(t, summaryReads, first.Stored)
 	require.Equal(t, 1, source.listed, "the first poll did not read the account")
 
 	second := poller.Poll(t.Context(), "rider-a")
 
 	assert.Equal(t, Polled, second.Outcome)
 	assert.Equal(t, 5, second.Stored, "the backlog did not carry the rest of the account")
-	assert.Equal(t, int64(MaxNewPerPoll+1), source.summarized[MaxNewPerPoll],
+	assert.Equal(t, int64(summaryReads+1), source.summarized[summaryReads],
 		"the backlog was not drained oldest first")
 	assert.Equal(t, 1, source.listed, "the second poll read the whole list again")
 	assert.Equal(t, 1, source.headed,
@@ -814,6 +847,7 @@ type fakeSource struct {
 	headed       int
 	total        int
 	summaryCalls int
+	listRequests int
 	hasTotal     bool
 }
 
@@ -863,13 +897,15 @@ func (s *fakeSource) ActivityListingHead(_ context.Context, _ string) (listings 
 	return page, len(s.listings), nil
 }
 
-func (s *fakeSource) ListActivities(_ context.Context, _ string) ([]Listing, error) {
+// ListActivities answers with the whole account as one page, unless a test
+// says the reading cost more.
+func (s *fakeSource) ListActivities(_ context.Context, _ string) (listings []Listing, requests int, err error) {
 	s.listed++
 	if s.listErr != nil {
-		return nil, s.listErr
+		return nil, 1, s.listErr
 	}
 
-	return s.listings, nil
+	return s.listings, max(1, s.listRequests), nil
 }
 
 func (s *fakeSource) ActivitySummary(_ context.Context, _ string, id int64) (Summary, error) {

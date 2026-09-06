@@ -261,17 +261,19 @@ func (p *wahooProvider) DeleteRoute(ctx context.Context, routeID int64, accessTo
 
 // ListActivities reads the rider's recorded activities in this service's own
 // vocabulary, so the activity package never learns Wahoo's word for them.
-func (p *wahooProvider) ListActivities(ctx context.Context, accessToken string) ([]activity.Listing, error) {
+func (p *wahooProvider) ListActivities(
+	ctx context.Context, accessToken string,
+) (listings []activity.Listing, requests int, err error) {
 	client, err := p.current()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	workouts, err := client.ListWorkouts(ctx, accessToken)
+	workouts, requests, err := client.ListWorkouts(ctx, accessToken)
 	if err != nil {
-		return nil, fmt.Errorf("listing Wahoo workouts: %w", err)
+		return nil, requests, fmt.Errorf("listing Wahoo workouts: %w", err)
 	}
 
-	return activityListings(workouts), nil
+	return activityListings(workouts), requests, nil
 }
 
 // ActivityListingHead reads the account's first page of activities and how many

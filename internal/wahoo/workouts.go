@@ -131,24 +131,24 @@ func (d *decimal) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-// ListWorkouts returns every workout in Wahoo's paginated list.
+// ListWorkouts returns every workout in Wahoo's paginated list and how many
+// page requests reading it cost, so a caller can budget what it asks for next.
 //
 // Account selection remains deliberately outside this adapter until the service
 // has a user model; this client only reads the account it is given a token for.
-func (c *Client) ListWorkouts(ctx context.Context, accessToken string) ([]Workout, error) {
+func (c *Client) ListWorkouts(ctx context.Context, accessToken string) (workouts []Workout, requests int, err error) {
 	if accessToken == "" {
-		return nil, errors.New("wahoo: access token is required")
+		return nil, 0, errors.New("wahoo: access token is required")
 	}
 
-	var workouts []Workout
 	for page := 1; ; page++ {
 		response, err := c.workoutPage(ctx, accessToken, page, len(workouts))
 		if err != nil {
-			return nil, err
+			return nil, page, err
 		}
 		workouts = append(workouts, response.Workouts...)
 		if len(workouts) >= response.Total {
-			return workouts, nil
+			return workouts, page, nil
 		}
 	}
 }
