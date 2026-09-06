@@ -516,6 +516,17 @@ type GeoJSONLineString struct {
 	Coordinates [][]float64 `json:"coordinates"`
 }
 
+type ActivityTrack struct {
+	Type       string                  `json:"type"`
+	Bbox       []float64               `json:"bbox"`
+	Geometry   GeoJSONLineString       `json:"geometry"`
+	Properties ActivityTrackProperties `json:"properties"`
+}
+
+type ActivityTrackProperties struct {
+	AltitudeMetres []float64 `json:"altitudeMetres,omitempty"`
+}
+
 type GeoJSONProperties_Surface struct {
 	Ranges        []SurfaceRange `json:"ranges"`
 	MatchedMetres float64        `json:"matchedMetres"`

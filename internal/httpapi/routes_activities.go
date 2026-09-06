@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
+	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
@@ -66,6 +68,72 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 		}
 	}
 	h.writeJSON(writer, http.StatusOK, view)
+}
+
+// GetActivityTrack serves one activity's recorded track as a GeoJSON Feature,
+// scoped exactly as the activity list is. An activity with fewer than two
+// positioned samples has no track and is not found.
+func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Request) {
+	// The served surface refuses a non-numeric id before it reaches here.
+	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
+	if idErr != nil {
+		h.notFound(writer)
+
+		return
+	}
+	requested := request.URL.Query().Get("target")
+	targetID, found, err := h.readableTarget(request.Context(), requested)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !found {
+		h.notFound(writer)
+
+		return
+	}
+	track, trackErr := h.state.ActivityTrack(request.Context(), targetID, id)
+	if trackErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if len(track) < 2 {
+		h.notFound(writer)
+
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/geo+json")
+	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track))
+}
+
+// activityTrackFeature draws the Feature one track is served as: the line, the
+// box around it, and the altitudes beside it while every sample has one.
+func activityTrackFeature(track []activities.TrackPoint) activityTrackView {
+	coordinates := make([][2]float64, 0, len(track))
+	altitudes := make([]float64, 0, len(track))
+	west, south := track[0].Longitude, track[0].Latitude
+	east, north := west, south
+	for _, point := range track {
+		coordinates = append(coordinates, [2]float64{point.Longitude, point.Latitude})
+		if point.HasAltitude {
+			altitudes = append(altitudes, point.AltitudeMetres)
+		}
+		west, east = min(west, point.Longitude), max(east, point.Longitude)
+		south, north = min(south, point.Latitude), max(north, point.Latitude)
+	}
+	view := activityTrackView{
+		Type:     "Feature",
+		BBox:     []float64{west, south, east, north},
+		Geometry: trackLineStringView{Type: "LineString", Coordinates: coordinates},
+	}
+	if len(altitudes) == len(track) {
+		view.Properties.AltitudeMetres = altitudes
+	}
+
+	return view
 }
 
 // activityWindow reads the requested window, defaulting to the last year and

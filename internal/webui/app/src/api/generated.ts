@@ -233,6 +233,31 @@ export interface ActivityList {
   activities: Activity[];
 }
 
+export interface GeoJSONLineString {
+  type: "LineString";
+  /**
+   * @minItems 2
+   * @items.minItems 2
+   * @items.maxItems 3
+   */
+  coordinates: number[][];
+}
+
+export interface ActivityTrackProperties {
+  altitudeMetres?: number[];
+}
+
+export interface ActivityTrack {
+  type: "Feature";
+  /**
+   * @minItems 4
+   * @maxItems 4
+   */
+  bbox: number[];
+  geometry: GeoJSONLineString;
+  properties: ActivityTrackProperties;
+}
+
 export interface RouteValidation {
   biasPercent: number;
   maePercent: number;
@@ -261,16 +286,6 @@ export interface Route {
 
 export interface RouteList {
   routes: Route[];
-}
-
-export interface GeoJSONLineString {
-  type: "LineString";
-  /**
-   * @minItems 2
-   * @items.minItems 2
-   * @items.maxItems 3
-   */
-  coordinates: number[][];
 }
 
 export type SurfaceRangeKind = (typeof SurfaceRangeKind)[keyof typeof SurfaceRangeKind];
@@ -657,6 +672,13 @@ export type GetActivitiesParams = {
   to?: string;
   /**
    * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so the surface never confirms which targets exist.
+   */
+  target?: string;
+};
+
+export type GetActivityTrackParams = {
+  /**
+   * The target to read. Omitted means the caller's own.
    */
   target?: string;
 };
@@ -2256,6 +2278,230 @@ export function useGetActivities<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetActivitiesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getActivityTrackResponse200 = {
+  data: ActivityTrack;
+  status: 200;
+};
+
+export type getActivityTrackResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getActivityTrackResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getActivityTrackResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getActivityTrackResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getActivityTrackResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getActivityTrackResponseSuccess = getActivityTrackResponse200 & {
+  headers: Headers;
+};
+export type getActivityTrackResponseError = (
+  | getActivityTrackResponse400
+  | getActivityTrackResponse401
+  | getActivityTrackResponse403
+  | getActivityTrackResponse404
+  | getActivityTrackResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetActivityTrackUrl = (activityId: number, params?: GetActivityTrackParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/activities/${encodeURIComponent(String(activityId))}/track?${stringifiedParams}`
+    : `/v1/activities/${encodeURIComponent(String(activityId))}/track`;
+};
+
+/**
+ * One activity's recorded track, as a GeoJSON Feature. A caller reads only an activity of the target they own; an admin may name any target. An activity of another target, and one with fewer than two positioned samples, are both answered not found.
+ */
+export const getActivityTrack = async (
+  activityId: number,
+  params?: GetActivityTrackParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getActivityTrackResponseSuccess> => {
+  return domestiqueRequest<getActivityTrackResponseSuccess>(
+    getGetActivityTrackUrl(activityId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetActivityTrackQueryKey = (
+  activityId: number,
+  params?: GetActivityTrackParams,
+) => {
+  return [`/v1/activities/${activityId}/track`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetActivityTrackQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActivityTrack>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivityTrackParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetActivityTrackQueryKey(activityId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivityTrack>>> = ({ signal }) =>
+    getActivityTrack(activityId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: activityId !== null && activityId !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetActivityTrackQueryResult = NonNullable<Awaited<ReturnType<typeof getActivityTrack>>>;
+export type GetActivityTrackQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetActivityTrack<
+  TData = Awaited<ReturnType<typeof getActivityTrack>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params: undefined | GetActivityTrackParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivityTrack>>,
+          TError,
+          Awaited<ReturnType<typeof getActivityTrack>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivityTrack<
+  TData = Awaited<ReturnType<typeof getActivityTrack>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivityTrackParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivityTrack>>,
+          TError,
+          Awaited<ReturnType<typeof getActivityTrack>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivityTrack<
+  TData = Awaited<ReturnType<typeof getActivityTrack>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivityTrackParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetActivityTrack<
+  TData = Awaited<ReturnType<typeof getActivityTrack>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivityTrackParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetActivityTrackQueryOptions(activityId, params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

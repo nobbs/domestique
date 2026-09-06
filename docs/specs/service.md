@@ -432,6 +432,13 @@ The read-only JSON surface is small:
   the target they own, or the one `target` names when they are an admin;
   naming another's is `404` rather than `403`, and a caller who has no target
   yet reads an empty list.
+- `GET /v1/activities/{activityId}/track` returns one activity's recorded track
+  as a GeoJSON Feature: the positioned samples as a line, the box around them,
+  and the altitude at each coordinate indexed 1:1 with them. The altitudes are
+  omitted, never partly filled, unless every positioned sample recorded one, and
+  nothing else the samples hold is served. It is scoped exactly as the list
+  above is, and an activity with fewer than two positioned samples — one whose
+  samples are not stored yet among them — has no track and is `404`.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.
@@ -582,10 +589,11 @@ The response schemas are defined in
 [the sync lifecycle specification](sync-lifecycle.md). They must never expose
 secrets, tokens, or raw upstream response bodies.
 
-Route geometry is served **only** on the dedicated geometry endpoint, only to
+Route geometry is served **only** on the dedicated geometry endpoint, and a
+recorded activity's track **only** on its own track endpoint, both only to
 a session belonging to an allowed subject, and only from local stored state.
-It must never appear in logs, notifications, error messages, the status
-endpoint, or the inventory listing.
+Neither must ever appear in logs, notifications, error messages, the status
+endpoint, or any listing.
 
 The concrete OAuth, sync, persistence, and JSON contracts are defined in the
 [sync lifecycle specification](sync-lifecycle.md).

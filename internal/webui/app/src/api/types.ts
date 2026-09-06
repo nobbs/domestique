@@ -5,6 +5,7 @@ import {
   type AlertSetting,
   type BrowserBasemap,
   type Build,
+  type ActivityTrack as GeneratedActivityTrack,
   type WebUIConfig as GeneratedWebUIConfig,
   type GeoJSONFeature,
   type Route,
@@ -96,6 +97,35 @@ export interface RouteGeometry {
 export interface RouteSurface {
   ranges: SurfaceRange[];
   matchedMetres: number;
+}
+
+/** One ride's recorded track, in the shape the map and profile already read. */
+export interface ActivityTrack {
+  bbox: BoundingBox;
+  coordinates: Position[];
+}
+
+/**
+ * Folds the altitudes back into the positions they belong to, which is where
+ * `buildProfile` reads elevation from. A track already in that shape passes
+ * through, exactly as `routeGeometry` above lets a caller hand over either.
+ */
+export function activityTrack(feature: GeneratedActivityTrack | ActivityTrack): ActivityTrack {
+  if ("coordinates" in feature) {
+    return feature;
+  }
+  const altitudes = feature.properties.altitudeMetres;
+
+  return {
+    bbox: feature.bbox as BoundingBox,
+    coordinates: feature.geometry.coordinates.map(([longitude = 0, latitude = 0], index) => {
+      const altitude = altitudes?.[index];
+
+      return altitude === undefined
+        ? ([longitude, latitude] as Position)
+        : ([longitude, latitude, altitude] as Position);
+    }),
+  };
 }
 
 export function routeGeometry(feature: GeoJSONFeature | RouteGeometry): RouteGeometry {

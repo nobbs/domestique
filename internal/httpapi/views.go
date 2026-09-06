@@ -85,6 +85,26 @@ type geometryView struct {
 	Properties geometryPropertyView `json:"properties"`
 }
 
+// activityTrackView is a GeoJSON Feature carrying one activity's recorded
+// track. A ride has none of a route's library metadata, so it has its own.
+type activityTrackView struct {
+	Type       string                    `json:"type"`
+	BBox       []float64                 `json:"bbox"`
+	Geometry   trackLineStringView       `json:"geometry"`
+	Properties activityTrackPropertyView `json:"properties"`
+}
+
+type trackLineStringView struct {
+	Type        string       `json:"type"`
+	Coordinates [][2]float64 `json:"coordinates"`
+}
+
+type activityTrackPropertyView struct {
+	// AltitudeMetres is the altitude at each coordinate, indexed 1:1 with them.
+	// Absent — never partly filled — unless every positioned sample recorded one.
+	AltitudeMetres []float64 `json:"altitudeMetres,omitempty"`
+}
+
 type lineStringView struct {
 	Type        string          `json:"type"`
 	Coordinates json.RawMessage `json:"coordinates"`

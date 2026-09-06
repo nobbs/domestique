@@ -186,6 +186,28 @@ func (s *Store) ActivitiesBetween(
 	return stored, nil
 }
 
+// ActivityTrack is the positioned samples of one target's activity, in the
+// order they were recorded. Records without a position are left out, so an
+// activity that never recorded one has an empty track.
+func (s *Store) ActivityTrack(ctx context.Context, targetID string, id int64) ([]activity.TrackPoint, error) {
+	rows, err := s.queries.ListActivityTrack(ctx, sqlcgen.ListActivityTrackParams{TargetSlot: targetID, WorkoutID: id})
+	if err != nil {
+		return nil, fmt.Errorf("reading an activity track: %w", err)
+	}
+	track := make([]activity.TrackPoint, 0, len(rows))
+	for _, row := range rows {
+		track = append(track, activity.TrackPoint{
+			Time:           time.Unix(row.RecordedAtUnix, 0).UTC(),
+			Latitude:       row.Latitude.Float64,
+			Longitude:      row.Longitude.Float64,
+			AltitudeMetres: row.AltitudeMetres.Float64,
+			HasAltitude:    row.AltitudeMetres.Valid,
+		})
+	}
+
+	return track, nil
+}
+
 // ActivitiesAwaitingRecords are one target's stored activities whose FIT
 // samples are still absent, oldest first, at most limit of them.
 func (s *Store) ActivitiesAwaitingRecords(

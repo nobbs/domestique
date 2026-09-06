@@ -96,6 +96,16 @@ type Stored struct {
 	LocationID     int
 }
 
+// TrackPoint is one positioned sample of a recorded ride. Altitude is optional
+// because a FIT record may carry a position without one.
+type TrackPoint struct {
+	Time           time.Time
+	Latitude       float64
+	Longitude      float64
+	AltitudeMetres float64
+	HasAltitude    bool
+}
+
 // Source is the rider's activity provider, in this package's own vocabulary.
 type Source interface {
 	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)

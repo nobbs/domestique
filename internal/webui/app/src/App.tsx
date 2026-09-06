@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
 import { webUIConfigQuery } from "./api/queries";
+import { ActivitiesPage } from "./features/activity/ActivitiesPage";
+import { ActivityPage } from "./features/activity/ActivityPage";
 import { AdminPage } from "./features/admin/AdminPage";
 import { TasksPage } from "./features/admin/tasks/TasksPage";
 import { SignInPage } from "./features/auth/SignInPage";
@@ -100,6 +102,8 @@ export function App() {
       <Route path="auth/login" element={<SignInPage />} />
       <Route path="sync" element={<SyncPage />} />
       <Route path="volume" element={<VolumePage />} />
+      <Route path="activities" element={<ActivitiesPage />} />
+      <Route path="activities/:activityId" element={<ActivityPage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route
         path="admin"

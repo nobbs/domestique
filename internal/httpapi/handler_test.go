@@ -200,6 +200,8 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/admin/tasks",
 		"/sync",
 		"/volume",
+		"/activities",
+		"/activities/1",
 		"/unknown",
 	}
 
@@ -309,6 +311,8 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/catalogue",
 		"/sync",
 		"/volume",
+		"/activities",
+		"/activities/1",
 		"/settings",
 		"/settings/tasks",
 		"/admin",
@@ -1108,6 +1112,7 @@ func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
 	for _, path := range []string{
 		"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/settings/tasks", "/sync", "/volume",
+		"/activities", "/activities/1",
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -2414,6 +2419,8 @@ type fakeState struct {
 	targetRuns           []fakeTargetRun
 	activities           map[string][]activities.Stored
 	activitiesErr        error
+	tracks               map[string][]activities.TrackPoint
+	trackErr             error
 	targets              []fakeTarget
 	history              []recordedRun
 	taskHistory          []recordedTaskRun
@@ -2480,6 +2487,18 @@ type fakeTargetRun struct {
 // authorised slot the older tests were written against. The value is the one
 // the store actually holds, so a test cannot pass on a state production can
 // never produce.
+// ActivityTrack reports the track the test gave this target's activity, keyed
+// the way the store scopes it: by target and activity together.
+func (s *fakeState) ActivityTrack(
+	_ context.Context, targetID string, id int64,
+) ([]activities.TrackPoint, error) {
+	if s.trackErr != nil {
+		return nil, s.trackErr
+	}
+
+	return s.tracks[targetID+"/"+strconv.FormatInt(id, 10)], nil
+}
+
 func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string, string) error) error {
 	if s.targetErr != nil {
 		return s.targetErr
