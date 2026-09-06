@@ -173,6 +173,27 @@ func TestPollRequestsOnlyTheSummariesTheListingLacks(t *testing.T) {
 	assert.NotContains(t, source.summarized, int64(99), "a request past the cap was made")
 }
 
+// A deferred skip holds back only the request it would cost: an activity the
+// listing now carries a summary for is stored at once, and its skip forgotten.
+func TestPollStoresADeferredActivityWhoseSummaryTheListingCarries(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}}
+	poller := newTestPoller(t, source, store)
+	require.Equal(t, 2, poller.Poll(t.Context(), "rider-a").Stored)
+	store.known, store.stored = nil, nil
+	store.skips = []Skip{{ID: 1, Attempts: 1, LastAttempt: pollNow()}, {ID: 2, Attempts: 1, LastAttempt: pollNow()}}
+	source.head = []Listing{{ID: 1, Starts: at(1), Summary: &Summary{DistanceMetres: 1, Raw: []byte(`{}`)}}, {ID: 2, Starts: at(2)}}
+	source.summaryCalls = 0
+
+	result := poller.Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Result{Outcome: Polled, Stored: 1, RecordsStored: 1}, result)
+	assert.Zero(t, source.summaryCalls, "a deferred activity was requested")
+	require.Len(t, store.stored, 1)
+	assert.Equal(t, int64(1), store.stored[0].listing.ID)
+}
+
 // The store keeps listings without their summaries, so a poll working from the
 // kept reading takes the summaries the account's first page carried and asks
 // for the rest.

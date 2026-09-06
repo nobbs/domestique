@@ -262,15 +262,14 @@ func (p *Poller) Poll(ctx context.Context, targetID string) Result {
 	// polls rather than restarting each time.
 	waiting := identities(deferred(skips, p.now()), nil)
 	for _, listing := range pending {
-		if _, ok := waiting[listing.ID]; ok {
-			continue
-		}
 		var summary Summary
 		var summaryErr error
 		if listing.Summary != nil {
 			summary = *listing.Summary
 		} else {
-			if requested == MaxNewPerPoll {
+			// A deferred skip only holds back the request it would cost; a
+			// summary the listing now carries is stored, and the skip forgotten.
+			if _, ok := waiting[listing.ID]; ok || requested == MaxNewPerPoll {
 				continue
 			}
 			requested++
