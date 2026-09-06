@@ -449,7 +449,6 @@ jobs:
           restore-keys: |
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
-            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
             go-coverage-${{ runner.os }}-
       # The pnpm store, as the UI job above explains it.
       - name: Locate the pnpm store
