@@ -73,6 +73,35 @@ func TestActivityListingsNarrowWahooWorkouts(t *testing.T) {
 	assert.Equal(t, []activity.Listing{{ID: 42, TypeID: 15, LocationID: 1, Starts: starts}}, listings)
 }
 
+// This service records cycling: a run or a swim the same account holds is
+// passed over here, so nothing downstream ever learns it was listed.
+func TestActivityListingsKeepOnlyCycling(t *testing.T) {
+	t.Parallel()
+
+	starts := time.Date(2026, 4, 1, 6, 30, 0, 0, time.UTC)
+	listings := activityListings([]wahoo.Workout{
+		{ID: 1, WorkoutTypeID: 1, Starts: starts},
+		{ID: 2, WorkoutTypeID: wahoo.WorkoutTypeBikingRoad, WorkoutTypeLocationID: 1, Starts: starts},
+		{ID: 3, WorkoutTypeID: 3, Starts: starts},
+		{ID: 4, WorkoutTypeID: wahoo.WorkoutTypeBikingIndoorTrainer, Starts: starts},
+	})
+
+	assert.Equal(t, []activity.Listing{
+		{ID: 2, TypeID: wahoo.WorkoutTypeBikingRoad, LocationID: 1, Starts: starts},
+		{ID: 4, TypeID: wahoo.WorkoutTypeBikingIndoorTrainer, Starts: starts},
+	}, listings, "an indoor ride is still cycling; a run and a swim are not")
+}
+
+// An account holding nothing this service records reads as an empty account,
+// not as a listing failure.
+func TestActivityListingsAreEmptyWhenNothingIsCycling(t *testing.T) {
+	t.Parallel()
+
+	listings := activityListings([]wahoo.Workout{{ID: 1, WorkoutTypeID: 1}, {ID: 2, WorkoutTypeID: 2}})
+
+	assert.Empty(t, listings)
+}
+
 // A stored summary is what a download is addressed by, and a service with no
 // Wahoo application configured downloads nothing at all.
 func TestDownloadActivityFITRefusesWhatItCannotAddress(t *testing.T) {

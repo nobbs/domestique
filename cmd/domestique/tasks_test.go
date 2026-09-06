@@ -18,6 +18,7 @@ import (
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/task"
+	"github.com/nobbs/domestique/internal/wahoo"
 )
 
 func TestInventoryTasksAllHoldTheInventoryExclusively(t *testing.T) {
@@ -854,6 +855,8 @@ func TestRideModelCalibrateStoresAFittedPairAndReloadsThePredictor(t *testing.T)
 	assert.Equal(t, 1, model.reloads, "reloads")
 	assert.Equal(t, []time.Time{calibrationClock().AddDate(0, -ridemodel.TrainingWindowMonths, 0)}, corpus.read,
 		"a corpus that fills its window is read once, bounded to it")
+	assert.Equal(t, [][]int{wahoo.OutdoorHumanPoweredWorkoutTypes()}, corpus.readTypes,
+		"an indoor or motor-assisted ride prices no outdoor pace, so the fit never reads one")
 }
 
 // A rider whose last year is thin is fit from further back rather than never,
@@ -996,13 +999,17 @@ type fakeRideCorpus struct {
 	storeErr      error
 	rides         []ridemodel.Ride
 	read          []time.Time
+	readTypes     [][]int
 	stored        []ridemodel.Coefficients
 }
 
 // The bound is honoured rather than recorded only, so a calibration that reads
 // past its own window is the reason a thin corpus still fits.
-func (c *fakeRideCorpus) ActivityRides(_ context.Context, since time.Time) ([]ridemodel.Ride, error) {
+func (c *fakeRideCorpus) ActivityRides(
+	_ context.Context, since time.Time, workoutTypeIDs []int,
+) ([]ridemodel.Ride, error) {
 	c.read = append(c.read, since)
+	c.readTypes = append(c.readTypes, workoutTypeIDs)
 	if c.readErr != nil {
 		return nil, c.readErr
 	}

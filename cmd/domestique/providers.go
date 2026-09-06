@@ -291,15 +291,20 @@ func (p *wahooProvider) ActivityListingHead(ctx context.Context, accessToken str
 
 // activityListings narrows Wahoo's workouts to what the activity package reads,
 // split out so the field mapping is directly testable without a live client.
+// A workout outside Wahoo's biking family — a run, a swim, a strength session —
+// is dropped here rather than stored: this service records cycling.
 func activityListings(workouts []wahoo.Workout) []activity.Listing {
-	listings := make([]activity.Listing, len(workouts))
-	for index, workout := range workouts {
-		listings[index] = activity.Listing{
+	listings := make([]activity.Listing, 0, len(workouts))
+	for _, workout := range workouts {
+		if !wahoo.IsBikingWorkout(workout.WorkoutTypeID) {
+			continue
+		}
+		listings = append(listings, activity.Listing{
 			ID:         workout.ID,
 			TypeID:     workout.WorkoutTypeID,
 			LocationID: workout.WorkoutTypeLocationID,
 			Starts:     workout.Starts,
-		}
+		})
 	}
 
 	return listings

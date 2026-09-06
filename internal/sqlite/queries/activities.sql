@@ -60,6 +60,7 @@ UPDATE activities SET records_state = 'unreadable' WHERE target_slot = ? AND wor
 SELECT started_at_unix, distance_metres, moving_seconds, ascent_metres
 FROM activities
 WHERE started_at_unix >= sqlc.arg(since_unix)
+  AND workout_type_id IN (sqlc.slice(workout_type_ids))
 ORDER BY started_at_unix;
 
 -- name: ListActivityListings :many
