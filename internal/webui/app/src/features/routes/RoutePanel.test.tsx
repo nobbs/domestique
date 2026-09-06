@@ -125,6 +125,25 @@ describe("RoutePanel", () => {
     expect(screen.queryByText("±", { exact: false })).toBeNull();
   });
 
+  it("shows the door-to-door window and the allowance behind it", () => {
+    renderPanel({ route: route({ movingSeconds: 6420 }) });
+
+    expect(screen.getByText("1 h 50 min to 2 h")).toBeInTheDocument();
+    expect(
+      screen.getByText("4.4 min stopped per moving hour · default and spread from", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: /^Stopping allowance, / })).toBeInTheDocument();
+  });
+
+  it("shows no arrival at all for a route nothing has predicted", () => {
+    renderPanel({ route: route() });
+
+    expect(screen.queryByText("Door to door")).toBeNull();
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+
   /*
    * The acceptance criterion this exists to prove: selecting a stretch of the
    * profile swaps the whole-route figure for the stretch's own, and clearing
