@@ -41,7 +41,7 @@ func handlerFor(t *testing.T, sessions Sessions, oauthService OAuth, state State
 			Sessions:         sessions,
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		oauthService, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		oauthService, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 

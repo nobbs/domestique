@@ -131,6 +131,12 @@ tell the two apart.
 **climb** — one named sustained ascent within a route, of the kind `ClimbsList`
 enumerates. A route's total ascent is not a climb.
 
+**weather grid** — Open-Meteo's spatial forecast files, relayed by
+`/v1/weather-grid/*` and read straight into the map's own wind, temperature,
+rain and cloud overlays over the whole viewport. Distinct from a route's own
+forecast, which is a series of point readings along one route's geometry, not
+a grid over an area.
+
 ## Synchronisation
 
 **sync** — the process, spelled this way everywhere: the nav label, the route,

@@ -1,0 +1,136 @@
+/**
+ * What the map shows over the whole area, and at what hour.
+ *
+ * One popover rather than a button per measure: the toggles are not mutually
+ * exclusive — any combination can be on together — and a row of pressed
+ * buttons in the corner cannot also hold the time scale a reader needs once
+ * more than one is on. Follows `BasemapPicker`'s shape: a mark in the map's
+ * own control cluster, folded away until asked for.
+ *
+ * The clock lives here and nowhere else. Every overlay reads the same
+ * `hoursAhead`, so switching two of them on and scrubbing the hour never
+ * leaves one measure a step out of sync with another.
+ */
+
+import { IconCloud } from "@tabler/icons-react";
+import { Button } from "@/components/Button";
+import { Slider } from "@/components/Slider";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useHourTick } from "../../lib/clock";
+import type { Measure, MeasureKey } from "../../lib/measures";
+
+/** The forecast horizon ICON-D2 publishes past its reference run. */
+export const MAX_HOURS_AHEAD = 48;
+
+/**
+ * What the hour scale reads: the weekday always, since a scale running past 24h
+ * turns "Now" into a claim about today specifically, and a reader scrubbed past
+ * midnight has no other way to tell which day they are looking at.
+ */
+function hourLabel(hoursAhead: number): string {
+  // Floored to match `useViewportGrid`'s own hour key, so the label never
+  // names an hour half an hour ahead of the data actually fetched for it.
+  const at = new Date((Math.floor(Date.now() / 3_600_000) + hoursAhead) * 3_600_000);
+  const when = at.toLocaleTimeString(undefined, {
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return hoursAhead === 0 ? `Now · ${when}` : `+${hoursAhead}h · ${when}`;
+}
+
+export interface WeatherOverlayPickerProps {
+  measures: readonly Pick<Measure, "key" | "label" | "icon">[];
+  selected: ReadonlySet<MeasureKey>;
+  onToggle: (key: MeasureKey, on: boolean) => void;
+  hoursAhead: number;
+  onHoursAheadChange: (hours: number) => void;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+}
+
+export function WeatherOverlayPicker({
+  measures,
+  selected,
+  onToggle,
+  hoursAhead,
+  onHoursAheadChange,
+  expanded,
+  onExpandedChange,
+}: WeatherOverlayPickerProps) {
+  const anyOn = selected.size > 0;
+  // Nothing else re-renders this component on the hour: `hourLabel` below
+  // reads straight off the clock, so a picker left open across an hour
+  // boundary would otherwise show a label a step behind the data the
+  // overlays it names have already moved on to.
+  useHourTick(anyOn);
+
+  return (
+    <Popover open={expanded} onOpenChange={onExpandedChange}>
+      <PopoverTrigger
+        render={<Button variant="panel" active={anyOn} icon={<IconCloud stroke={1.6} />} />}
+        aria-label={expanded ? "Hide the weather overlay choices" : "Show weather over the map"}
+      />
+      <PopoverContent
+        align="end"
+        aria-label="Weather overlay choices"
+        className="w-56 gap-3 bg-[var(--panel)] p-3 shadow-[var(--shadow)]"
+        side="bottom"
+      >
+        <div className="grid gap-1">
+          {measures.map((measure) => {
+            const Icon = measure.icon;
+            const itemID = `map-overlay-${measure.key}`;
+
+            return (
+              <Label
+                className="flex cursor-pointer items-center gap-2 rounded-md p-1.5 font-normal hover:bg-[var(--base)] has-[:focus-visible]:bg-[var(--base)]"
+                htmlFor={itemID}
+                key={measure.key}
+              >
+                <Checkbox
+                  id={itemID}
+                  checked={selected.has(measure.key)}
+                  onCheckedChange={(checked) => onToggle(measure.key, checked === true)}
+                />
+                <Icon stroke={1.6} className="size-4 text-[var(--ink-2)]" aria-hidden="true" />
+                {measure.label}
+              </Label>
+            );
+          })}
+        </div>
+        {/*
+         * Always shown, on or off: a reader who has scrubbed the hour and then
+         * unchecks every measure should find the scale exactly where they left
+         * it once they check one again, not reset to "Now". Disabled rather
+         * than hidden while nothing is on, since it has nothing to move yet.
+         */}
+        <div className="grid gap-1.5 border-[var(--rule)] border-t pt-3">
+          <Label
+            htmlFor="map-overlay-hour"
+            className="flex justify-between font-normal text-xs data-disabled:opacity-50"
+            data-disabled={anyOn ? undefined : ""}
+          >
+            <span>When</span>
+            <span className="text-[var(--ink-2)]">{hourLabel(hoursAhead)}</span>
+          </Label>
+          <Slider
+            id="map-overlay-hour"
+            aria-label={`When, ${hourLabel(hoursAhead)}`}
+            disabled={!anyOn}
+            min={0}
+            max={MAX_HOURS_AHEAD}
+            step={1}
+            value={hoursAhead}
+            onValueChange={(value) =>
+              onHoursAheadChange(Array.isArray(value) ? (value[0] ?? 0) : value)
+            }
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

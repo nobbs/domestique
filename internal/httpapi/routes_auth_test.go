@@ -85,11 +85,20 @@ func TestAuthPolicyDegradesWithoutAuth0Domain(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
 	assert.Contains(t, handler.contentSecurityPolicy("/auth/login", false), "form-action 'self';")
+}
+
+// The weather-grid overlay never renders before an identity exists, so its
+// WASM grant has no reason to reach a sign-in page or a public asset.
+func TestWasmUnsafeEvalIsOnlyGrantedOnceIdentified(t *testing.T) {
+	handler := newSessionHandler(t, newFakeSessions())
+
+	assert.NotContains(t, handler.contentSecurityPolicy("/auth/login", false), "wasm-unsafe-eval")
+	assert.Contains(t, handler.contentSecurityPolicy("/", true), "wasm-unsafe-eval")
 }
 
 // The sign-in flow is the way in, so nothing about it may need a session.

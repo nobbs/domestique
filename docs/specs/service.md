@@ -257,6 +257,16 @@ that worker is served from behind the session gate rather than as a public
 build artefact. A second style may be configured for a dark system colour scheme, and
 must be on **its own basemap's** origin.
 
+The map's own weather overlays — wind, temperature, rain, cloud — are the one
+exception to "only what the operator configured names an origin," and are not
+an exception to "the browser never reaches a third party directly." Their data
+is Open-Meteo's spatial forecast files, relayed byte-for-byte through this
+service's own `/v1/weather-grid/*` routes rather than fetched by the browser
+from Open-Meteo's bucket. The browser's own reader still decodes those bytes
+with a WebAssembly module, so the policy grants `'wasm-unsafe-eval'` — fixed,
+not following an operator's configuration, because it names no origin at all,
+only what the page's own bundle may run.
+
 The reader's pick is remembered in the browser's own storage, under one key
 holding the chosen basemap's name and nothing else. It is never sent anywhere:
 the service is not told which basemap a browser loads, and the choice is kept

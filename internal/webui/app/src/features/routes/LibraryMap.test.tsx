@@ -159,6 +159,7 @@ vi.mock("react-map-gl/maplibre", () => ({
     return null;
   },
   Marker: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  useMap: () => ({ current: drawn.map }),
   Source: ({ children, ...rest }: { children?: ReactNode } & SourceRecord) => {
     drawn.sources.push(rest);
 

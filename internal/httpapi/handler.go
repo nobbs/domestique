@@ -135,11 +135,12 @@ type RideModelStatus struct {
 
 // Handler enforces browser-session identity and exposes the v1 HTTP surface.
 type Handler struct {
-	oauth    OAuth
-	syncRuns Sync
-	state    State
-	assets   Assets
-	weather  Weather
+	oauth       OAuth
+	syncRuns    Sync
+	state       State
+	assets      Assets
+	weather     Weather
+	weatherGrid WeatherGrid
 	// validate holds every request to the document before it reaches a
 	// handler: parameter bounds, request bodies, and provenance.
 	validate            func(http.Handler) http.Handler
@@ -168,9 +169,13 @@ func New(
 	syncRuns Sync,
 	assets Assets,
 	weather Weather,
+	weatherGrid WeatherGrid,
 ) (*Handler, error) {
-	if options == nil || oauthService == nil || state == nil || syncRuns == nil || assets == nil || weather == nil {
-		return nil, errors.New("http options, oauth service, state, sync process, assets, and weather are required")
+	if options == nil || oauthService == nil || state == nil || syncRuns == nil || assets == nil ||
+		weather == nil || weatherGrid == nil {
+		return nil, errors.New(
+			"http options, oauth service, state, sync process, assets, weather, and weather grid are required",
+		)
 	}
 	if options.Sessions == nil {
 		return nil, errors.New("a session service is required")
@@ -202,6 +207,7 @@ func New(
 		syncRuns:            syncRuns,
 		assets:              assets,
 		weather:             weather,
+		weatherGrid:         weatherGrid,
 		settings:            options.Settings,
 		styleOrigins:        options.StyleOrigins,
 		alerts:              options.Alerts,
@@ -264,6 +270,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/sync", h.adminOnly(h.SetSync))
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
+	h.mux.HandleFunc("GET /v1/weather-grid/latest", h.GetWeatherGridLatest)
+	h.mux.HandleFunc("GET /v1/weather-grid/object", h.GetWeatherGridObject)
 	h.mux.HandleFunc("GET /auth/login", h.GetLoginPage)
 	h.mux.HandleFunc("POST /auth/start", h.StartLogin)
 	h.mux.HandleFunc("GET /auth/callback", h.CompleteLogin)
@@ -500,10 +508,18 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 }
 
 // contentSecurityPolicy confines the page to this service's origin plus each
-// configured basemap's. Three allowances are MapLibre's, confirmed by render:
-//   - worker-src 'self' and blob: it loads a bundled worker and spawns blob ones;
-//   - style-src 'unsafe-inline': it styles its own controls inline;
-//   - img-src and connect-src tile origins: sprites, glyphs, and tiles.
+// configured basemap's. Four allowances are not the operator's own choice:
+//   - worker-src 'self' and blob: MapLibre loads a bundled worker and spawns blob ones;
+//   - style-src 'unsafe-inline': MapLibre styles its own controls inline;
+//   - img-src and connect-src tile origins: sprites, glyphs, and tiles;
+//   - script-src 'wasm-unsafe-eval': the weather-grid overlay's reader decodes
+//     Open-Meteo's spatial files with a WebAssembly module. This names no
+//     third party — every byte it decodes was already relayed through this
+//     service's own /v1/weather-grid/* routes, never fetched by the browser
+//     from Open-Meteo directly — so unlike a tile origin it is fixed here
+//     rather than following what an operator configured. Like a tile origin,
+//     though, it is only granted once identified: the overlay never renders
+//     before then, so the pre-gate policy has no reason to carry it.
 //
 // A worker does not read this header from the document that started it: it is
 // governed by the policy on its own response. The map's worker is therefore
@@ -524,6 +540,7 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 // there or a browser refuses to follow it.
 func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 	formAction := "form-action 'none'"
+	scriptSrc := "script-src 'self'"
 	var tileOrigins []string
 	signIn := strings.HasPrefix(path, "/auth/")
 	if signIn {
@@ -548,6 +565,10 @@ func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 			slices.Sort(tileOrigins)
 			tileOrigins = slices.Compact(tileOrigins)
 		}
+		// The weather-grid overlay only ever renders behind the identity gate,
+		// so the WASM grant has no reason to reach a sign-in page or a public
+		// asset request.
+		scriptSrc += " 'wasm-unsafe-eval'"
 	}
 
 	return strings.Join([]string{
@@ -556,7 +577,7 @@ func (h *Handler) contentSecurityPolicy(path string, identified bool) string {
 		"object-src 'none'",
 		"frame-ancestors 'none'",
 		formAction,
-		"script-src 'self'",
+		scriptSrc,
 		"style-src 'self' 'unsafe-inline'",
 		"font-src 'self'",
 		"worker-src 'self' blob:",

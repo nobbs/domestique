@@ -76,7 +76,7 @@ func settingsHandler(t *testing.T) (*Handler, *staticSettings) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -97,7 +97,7 @@ func settingsHandlerWithTasks(t *testing.T) (*Handler, *fakeTasks) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -159,7 +159,7 @@ func TestGetSettingsReportsACalibratedRideModel(t *testing.T) {
 				}
 			},
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -486,7 +486,7 @@ func TestSetBasemapsReadsTheSavedStyles(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -532,7 +532,7 @@ func alertsHandler(t *testing.T, catalogue ...AlertSetting) (*Handler, *fakeAler
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 

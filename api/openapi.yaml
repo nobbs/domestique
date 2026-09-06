@@ -813,6 +813,80 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "502":
           $ref: '#/components/responses/ProviderUnavailable'
+  /v1/weather-grid/latest:
+    get:
+      tags:
+        - browser-api
+      operationId: getWeatherGridLatest
+      description: >-
+        Relays the model's own capture manifest — its reference time and the
+        valid times it currently publishes — from Open-Meteo's spatial data
+        files, so the browser's reader never reaches a third party directly.
+      responses:
+        "200":
+          description: The manifest, exactly as the provider publishes it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherGridManifest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+  /v1/weather-grid/object:
+    get:
+      tags:
+        - browser-api
+      operationId: getWeatherGridObject
+      description: >-
+        Relays one .om file's bytes for the run named by referenceTime and
+        the hour named by validTime. The browser's own reader decides which
+        byte ranges it needs and asks for them with its own Range header,
+        which this operation forwards unchanged.
+      parameters:
+        - $ref: '#/components/parameters/WeatherGridReferenceTime'
+        - $ref: '#/components/parameters/WeatherGridValidTime'
+      responses:
+        "200":
+          description: The whole object.
+          content:
+            application/octet-stream: {}
+        "206":
+          description: The requested byte range.
+          content:
+            application/octet-stream: {}
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+    head:
+      # No tag, so Orval never generates a client for it — the browser's own
+      # reader (@openmeteo/file-reader) issues this directly, the same way it
+      # issues its own Range reads, never through a generated binding.
+      operationId: headWeatherGridObject
+      description: >-
+        The same relay as GET, without a body — the reader's own probe for
+        Accept-Ranges and Content-Length before it starts asking for ranges.
+      parameters:
+        - $ref: '#/components/parameters/WeatherGridReferenceTime'
+        - $ref: '#/components/parameters/WeatherGridValidTime'
+      responses:
+        "200":
+          description: The object exists; headers only, no body.
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
   /oauth/wahoo/start:
     get:
       tags:
@@ -888,6 +962,20 @@ components:
       name: Origin
       description: Exact browser origin configured for this service. Required by every operation that starts a run or writes state, and modelled as a security scheme rather than a parameter because a request without it is refused rather than misread.
   parameters:
+    WeatherGridReferenceTime:
+      name: referenceTime
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+    WeatherGridValidTime:
+      name: validTime
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
     TaskName:
       name: name
       in: path
@@ -2235,3 +2323,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WeatherPoint'
+    WeatherGridManifest:
+      description: >-
+        The provider's own capture manifest, relayed rather than reshaped:
+        additional fields it publishes are passed through rather than
+        rejected.
+      type: object
+      additionalProperties: true
+      required:
+        - reference_time
+        - valid_times
+      properties:
+        reference_time:
+          type: string
+        valid_times:
+          type: array
+          items:
+            type: string

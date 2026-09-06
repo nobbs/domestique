@@ -15,15 +15,8 @@
  */
 
 import { Tooltip } from "@base-ui/react/tooltip";
-import {
-  IconCircleOff,
-  IconCloud,
-  IconCloudRain,
-  type IconProps,
-  IconTemperature,
-  IconWind,
-} from "@tabler/icons-react";
-import type { ComponentType, ReactNode } from "react";
+import { IconCircleOff } from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import type { Measure, MeasureKey } from "../../lib/measures";
 import {
@@ -36,13 +29,6 @@ import {
 
 const CHOICE =
   "flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:border-[var(--accent)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)]";
-
-const MEASURE_ICON: Record<MeasureKey, ComponentType<IconProps>> = {
-  wind: IconWind,
-  temperature: IconTemperature,
-  rain: IconCloudRain,
-  cloud: IconCloud,
-};
 
 export interface ConditionsChoicesProps {
   /** The measure the reader asked for, and null — the default — for none. */
@@ -89,7 +75,7 @@ export function ConditionsChoices({
           Off
         </button>
         {MEASURES.map((entry) => {
-          const Icon = MEASURE_ICON[entry.key];
+          const Icon = entry.icon;
           return (
             <button
               key={entry.key}

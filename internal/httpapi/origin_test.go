@@ -235,7 +235,7 @@ func TestNewRequiresABrowserOrigin(t *testing.T) {
 			Settings: settingsWith(testBasemaps()),
 			Sessions: newFakeSessions(),
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.Error(t, err, "New() built a handler with no origin to compare against")
 }

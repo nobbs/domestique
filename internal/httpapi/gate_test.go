@@ -101,7 +101,7 @@ func newSessionHandler(t *testing.T, sessions Sessions) *Handler {
 			BrowserOriginURL: testBrowserOriginURL,
 			Auth0Domain:      testAuth0Domain,
 		},
-		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 
@@ -236,7 +236,7 @@ func TestNewRequiresASessionService(t *testing.T) {
 		Tasks:            &fakeTasks{},
 		Settings:         settingsWith(testBasemaps()),
 		BrowserOriginURL: testBrowserOriginURL,
-	}, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{})
+	}, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{})
 	require.Error(t, err, "New() built a handler with no way to authenticate anyone")
 }
 
@@ -248,8 +248,21 @@ func TestNewRequiresAWeatherProvider(t *testing.T) {
 		Settings:         settingsWith(testBasemaps()),
 		Sessions:         newFakeSessions(),
 		BrowserOriginURL: testBrowserOriginURL,
-	}, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, nil)
+	}, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, nil, &fakeWeatherGrid{})
 	require.Error(t, err, "New() accepted a nil weather provider")
+}
+
+// A handler with nowhere to relay a weather grid could not serve
+// GET /v1/weather-grid/*.
+func TestNewRequiresAWeatherGridRelay(t *testing.T) {
+	_, err := New(&Options{
+		Alerts:           &fakeAlerts{},
+		Tasks:            &fakeTasks{},
+		Settings:         settingsWith(testBasemaps()),
+		Sessions:         newFakeSessions(),
+		BrowserOriginURL: testBrowserOriginURL,
+	}, &fakeOAuth{}, &fakeState{}, &fakeSync{}, &fakeAssets{}, &fakeWeather{}, nil)
+	require.Error(t, err, "New() accepted a nil weather grid relay")
 }
 
 // Health stays reachable without any identity, because Docker probes it over
@@ -294,7 +307,7 @@ func TestWahooOAuthBindsTheContextIdentity(t *testing.T) {
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 		},
-		oauthService, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{},
+		oauthService, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
 	require.NoError(t, err, "New()")
 

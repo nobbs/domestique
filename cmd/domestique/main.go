@@ -24,6 +24,7 @@ import (
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/openmeteo"
+	"github.com/nobbs/domestique/internal/openmeteogrid"
 	"github.com/nobbs/domestique/internal/osmindex"
 	"github.com/nobbs/domestique/internal/pushover"
 	"github.com/nobbs/domestique/internal/readiness"
@@ -107,6 +108,13 @@ func run(ctx context.Context) error {
 	})
 	if err != nil {
 		return fmt.Errorf("creating Open-Meteo client: %w", err)
+	}
+	// Relays the spatial data files the map's own weather overlays read, so
+	// the browser never reaches Open-Meteo's bucket directly. No API key
+	// either: the bucket is public.
+	weatherGrid, err := openmeteogrid.New(&openmeteogrid.Options{})
+	if err != nil {
+		return fmt.Errorf("creating Open-Meteo grid relay: %w", err)
 	}
 	// Adapted rather than passed directly: httpapi.Weather is kept to
 	// primitive types so that package never imports this adapter.
@@ -255,6 +263,7 @@ func run(ctx context.Context) error {
 		syncSurface(tasks, reporter, destination.RateLimit),
 		assets,
 		weather,
+		weatherGrid,
 	)
 	if err != nil {
 		return fmt.Errorf("creating HTTP handler: %w", err)
