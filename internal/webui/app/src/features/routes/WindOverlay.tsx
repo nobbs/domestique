@@ -18,7 +18,7 @@ import { fetchWindGrid } from "../../api/openMeteoGrid";
 import { useCartography } from "../../components/map/CartographyContext";
 import { PANEL } from "../../lib/cartography";
 import { usePrefersReducedMotion } from "../../lib/mediaQuery";
-import { FLOATS_PER_VERTEX } from "../../lib/windField";
+import { FLOATS_PER_VERTEX, mercatorPerPixelAt } from "../../lib/windField";
 import type { WindGrid } from "../../lib/windGrid";
 import {
   advanceGridField,
@@ -47,11 +47,6 @@ export interface WindOverlayProps {
 /** Web Mercator ground resolution at a latitude and zoom, for a 512 px tile. */
 function metresPerPixelAt(latitude: number, zoom: number): number {
   return (78271.517 * Math.cos((latitude * Math.PI) / 180)) / 2 ** zoom;
-}
-
-/** One screen pixel in the 0..1 world square, for a 512 px tile. */
-function mercatorPerPixelAt(zoom: number): number {
-  return 1 / (512 * 2 ** zoom);
 }
 
 export function WindOverlay({ on, hoursAhead = 0, beforeId }: WindOverlayProps) {

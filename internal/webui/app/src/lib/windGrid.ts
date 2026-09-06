@@ -12,7 +12,14 @@
 
 import type { Position } from "../api/types";
 import { haversineMetres } from "./profile";
-import { FLOATS_PER_VERTEX, lifeAlpha, mercatorXY, PARTICLE_LIFE_SECONDS } from "./windField";
+import {
+  FLOATS_PER_VERTEX,
+  lifeAlpha,
+  mercatorXY,
+  PARTICLE_LIFE_SECONDS,
+  STREAK_WIDTH_PIXELS,
+  writeWedge,
+} from "./windField";
 
 const METRES_PER_DEGREE_LATITUDE = haversineMetres([0, 0], [0, 1]);
 
@@ -28,12 +35,11 @@ const TAIL_PIXELS_PER_METRE_PER_SECOND = 2.5;
 const TAIL_MIN_PIXELS = 3;
 
 /**
- * A streak is a quad, two triangles, tapering from nothing at the tail to its
+ * A streak is a wedge, two triangles, tapering from nothing at the tail to its
  * full width at the head: a hairline is lost on a dense display, and this
  * overlay is the thing being looked at rather than a texture beside it.
  */
 export const GRID_VERTICES_PER_STREAK = 6;
-const STREAK_WIDTH_PIXELS = 2;
 
 /** Calm air is drawn fainter, never invisible. */
 const CALM_ALPHA_FLOOR = 0.35;
@@ -163,11 +169,11 @@ export function advanceGridField(
 }
 
 /**
- * Writes each particle as a tapered quad, six vertices, for `windStreakLayer`
+ * Writes each particle as a tapered wedge, six vertices, for `windStreakLayer`
  * drawing triangles; returns how many vertices were written.
  *
  * `mercatorPerPixel` is the world square's own size of one screen pixel, which
- * is what the quad's width has to be measured in.
+ * is what the wedge's width has to be measured in.
  */
 export function writeGridStreaks(
   particles: GridParticle[],
@@ -199,37 +205,7 @@ export function writeGridStreaks(
       Math.min(1, CALM_ALPHA_FLOOR + (1 - CALM_ALPHA_FLOOR) * (speed / CALM_METRES_PER_SECOND));
     const [tailX, tailY] = mercatorXY(tail);
     const [headX, headY] = mercatorXY([particle.lon, particle.lat]);
-    // The head's two corners sit either side of it, across the streak.
-    const length = Math.hypot(headX - tailX, headY - tailY) || 1;
-    const acrossX = (-(headY - tailY) / length) * halfWidth;
-    const acrossY = ((headX - tailX) / length) * halfWidth;
-    const headLeftX = headX + acrossX;
-    const headLeftY = headY + acrossY;
-    const headRightX = headX - acrossX;
-    const headRightY = headY - acrossY;
-    // Two triangles sharing the tail — a wedge, which is the taper for free —
-    // written straight into the buffer: at up to 2,500 particles a frame, an
-    // array of tuples here would be that many heap allocations sixty times a
-    // second, for a shape fixed enough to lay out by hand.
-    const at = written * FLOATS_PER_VERTEX;
-    into[at] = tailX;
-    into[at + 1] = tailY;
-    into[at + 2] = 0;
-    into[at + 3] = headLeftX;
-    into[at + 4] = headLeftY;
-    into[at + 5] = alpha;
-    into[at + 6] = headRightX;
-    into[at + 7] = headRightY;
-    into[at + 8] = alpha;
-    into[at + 9] = tailX;
-    into[at + 10] = tailY;
-    into[at + 11] = 0;
-    into[at + 12] = headRightX;
-    into[at + 13] = headRightY;
-    into[at + 14] = alpha;
-    into[at + 15] = headLeftX;
-    into[at + 16] = headLeftY;
-    into[at + 17] = alpha;
+    writeWedge(into, written * FLOATS_PER_VERTEX, tailX, tailY, headX, headY, alpha, halfWidth);
     written += GRID_VERTICES_PER_STREAK;
   }
 

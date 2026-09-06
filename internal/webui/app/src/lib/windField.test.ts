@@ -33,6 +33,7 @@ import {
   positionAt,
   respawn,
   routeBearingAt,
+  STREAK_WIDTH_PIXELS,
   seedField,
   segmentAt,
   staticFlow,
@@ -40,7 +41,11 @@ import {
   streakTail,
   VERTICES_PER_STREAK,
   writeStreaks,
+  writeWedge,
 } from "./windField";
+
+/** A screen pixel small enough not to visibly widen a test's own hand-picked geometry. */
+const MERCATOR_PER_PIXEL = 1e-6;
 
 /** A due-east road of about 29 km at 49° N, a point every kilometre or so. */
 const EAST: Position[] = Array.from({ length: 41 }, (_, index): Position => [8 + index * 0.01, 49]);
@@ -115,11 +120,14 @@ function stairRoad(directionDegrees: number, speedKmh = 20): FieldGeometry {
 /**
  * The bearing a written streak is drawn at. Read straight off the Mercator
  * vertices — the projection is conformal, so the angle a streak makes with
- * north survives it — with y counted southward.
+ * north survives it — with y counted southward. The head is the midpoint of
+ * the wedge's two corners (floats 3..4 and 6..7), not either corner alone.
  */
 function streakBearing(buffer: Float32Array): number {
-  const east = (buffer[3] ?? 0) - (buffer[0] ?? 0);
-  const north = (buffer[1] ?? 0) - (buffer[4] ?? 0);
+  const headX = ((buffer[3] ?? 0) + (buffer[6] ?? 0)) / 2;
+  const headY = ((buffer[4] ?? 0) + (buffer[7] ?? 0)) / 2;
+  const east = headX - (buffer[0] ?? 0);
+  const north = (buffer[1] ?? 0) - headY;
 
   return ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360;
 }
@@ -409,7 +417,7 @@ describe("a road stored as a staircase", () => {
 
     for (let frame = 0; frame < 90; frame++) {
       advanceField([drifting], geometry, 1 / 60);
-      writeStreaks([drifting], geometry, buffer);
+      writeStreaks([drifting], geometry, buffer, MERCATOR_PER_PIXEL);
 
       // A wind from the south-west blows north-east, and the streak says so at
       // every one of those frames rather than at the ones that fall mid-step.
@@ -435,17 +443,25 @@ describe("a road stored as a staircase", () => {
 });
 
 describe("the field written into a vertex buffer", () => {
-  it("writes a tail and a head per streak, the tail at nothing", () => {
+  it("writes a tapered wedge per streak, both tail vertices at nothing", () => {
     const geometry = eastRoad(0);
     const drifting = particle({ ageSeconds: 1, lifeSeconds: 2 });
     advanceField([drifting], geometry, 0.5);
     const buffer = new Float32Array(VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
 
-    const written = writeStreaks([drifting], geometry, buffer);
+    const written = writeStreaks([drifting], geometry, buffer, MERCATOR_PER_PIXEL);
 
     expect(written).toBe(VERTICES_PER_STREAK);
+    // The tail is repeated for both triangles, at floats 2 and 11.
     expect(buffer[2]).toBe(0);
-    expect(buffer[5]).toBeCloseTo(streakAlpha(drifting, METRES_PER_CELL), 6);
+    expect(buffer[11]).toBe(0);
+    // The head's two corners, each repeated for both triangles, all carry the
+    // streak's own alpha.
+    const alpha = streakAlpha(drifting, METRES_PER_CELL);
+    expect(buffer[5]).toBeCloseTo(alpha, 6);
+    expect(buffer[8]).toBeCloseTo(alpha, 6);
+    expect(buffer[14]).toBeCloseTo(alpha, 6);
+    expect(buffer[17]).toBeCloseTo(alpha, 6);
   });
 
   it("trails the streak behind the way the air is going", () => {
@@ -454,12 +470,14 @@ describe("the field written into a vertex buffer", () => {
     advanceField([drifting], geometry, 0.5);
     const buffer = new Float32Array(VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
 
-    writeStreaks([drifting], geometry, buffer);
+    writeStreaks([drifting], geometry, buffer, MERCATOR_PER_PIXEL);
+    const headX = ((buffer[3] ?? 0) + (buffer[6] ?? 0)) / 2;
+    const headY = ((buffer[4] ?? 0) + (buffer[7] ?? 0)) / 2;
 
     // Mercator y grows southward, so a streak blown south has its tail behind
     // it to the north — a smaller y than the head's.
-    expect(buffer[1] ?? 0).toBeLessThan(buffer[4] ?? 0);
-    expect(buffer[0] ?? 0).toBeCloseTo(buffer[3] ?? 0, 6);
+    expect(buffer[1] ?? 0).toBeLessThan(headY);
+    expect(buffer[0] ?? 0).toBeCloseTo(headX, 6);
   });
 
   it("trails it back along the ground velocity rather than back down the route", () => {
@@ -473,12 +491,40 @@ describe("the field written into a vertex buffer", () => {
     expect(tail[0]).toBeLessThan(head[0]);
   });
 
+  it("widens the head into the same wedge shape the weather overlay draws", () => {
+    // The helper both writers call; a pixel scale coarse enough that float32
+    // rounding of the mercator coordinates does not swamp the width measured.
+    const mercatorPerPixel = 1e-3;
+    const alpha = 0.6;
+    const buffer = new Float32Array(VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
+    const halfWidth = (STREAK_WIDTH_PIXELS / 2) * mercatorPerPixel;
+
+    writeWedge(buffer, 0, 0.5, 0.5, 0.5, 0.4, alpha, halfWidth);
+    const left: [number, number] = [buffer[3] ?? 0, buffer[4] ?? 0];
+    const right: [number, number] = [buffer[6] ?? 0, buffer[7] ?? 0];
+
+    // The two head corners are the streak's own width apart...
+    expect(Math.hypot(left[0] - right[0], left[1] - right[1])).toBeCloseTo(
+      STREAK_WIDTH_PIXELS * mercatorPerPixel,
+      6,
+    );
+    // ...symmetric about the head...
+    expect((left[0] + right[0]) / 2).toBeCloseTo(0.5, 6);
+    expect((left[1] + right[1]) / 2).toBeCloseTo(0.4, 6);
+    // ...and perpendicular to the tail-to-head direction, which here is
+    // straight north (0, -1): the corners sit purely east-west of the head.
+    expect(left[1]).toBeCloseTo(right[1], 6);
+    expect(Math.abs(left[0] - right[0])).toBeGreaterThan(0);
+  });
+
   it("stops at the end of the buffer rather than writing past it", () => {
     const geometry = eastRoad(0);
     const particles = seedField(geometry, 10, sequence(5));
     const buffer = new Float32Array(2 * VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
 
-    expect(writeStreaks(particles, geometry, buffer)).toBe(2 * VERTICES_PER_STREAK);
+    expect(writeStreaks(particles, geometry, buffer, MERCATOR_PER_PIXEL)).toBe(
+      2 * VERTICES_PER_STREAK,
+    );
   });
 
   // Nothing to drift on is nothing to draw: a still streak reads as a wind
@@ -489,7 +535,7 @@ describe("the field written into a vertex buffer", () => {
     advanceField(particles, geometry, 0.5);
     const buffer = new Float32Array(4 * VERTICES_PER_STREAK * FLOATS_PER_VERTEX);
 
-    expect(writeStreaks(particles, geometry, buffer)).toBe(0);
+    expect(writeStreaks(particles, geometry, buffer, MERCATOR_PER_PIXEL)).toBe(0);
   });
 });
 

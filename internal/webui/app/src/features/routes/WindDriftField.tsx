@@ -44,6 +44,7 @@ import {
   advanceField,
   FLOATS_PER_VERTEX,
   fieldSize,
+  mercatorPerPixelAt,
   seedField,
   staticFlow,
   VERTICES_PER_STREAK,
@@ -150,6 +151,7 @@ export function WindDriftField({ coordinates, samples, measure, beforeId }: Wind
     vertexCount: 0,
     colour,
     strength: FIELD_STRENGTH,
+    primitive: "triangles",
   });
   useEffect(() => {
     frame.current.colour = colour;
@@ -175,7 +177,12 @@ export function WindDriftField({ coordinates, samples, measure, beforeId }: Wind
       const seconds = previous === null ? 0 : Math.min((now - previous) / 1000, MAX_FRAME_SECONDS);
       previous = now;
       advanceField(particles, geometry, seconds);
-      frame.current.vertexCount = writeStreaks(particles, geometry, vertices);
+      frame.current.vertexCount = writeStreaks(
+        particles,
+        geometry,
+        vertices,
+        mercatorPerPixelAt(map.getZoom()),
+      );
       // The layer draws when the map draws, so the map has to be asked. This is
       // the only thing a frame of this animation does to MapLibre.
       map.triggerRepaint();
