@@ -516,7 +516,7 @@ func (h *Handler) clearCookie(writer http.ResponseWriter, name string) {
 }
 
 // contentSecurityPolicy confines the page to this service's origin plus each
-// configured basemap's. Four allowances are not the operator's own choice:
+// configured basemap's. Five allowances are not the operator's own choice:
 //   - worker-src 'self' and blob: MapLibre loads a bundled worker and spawns blob ones;
 //   - connect-src blob: a scalar weather overlay is painted to a canvas and
 //     handed to MapLibre as an object URL, which MapLibre then fetches itself;

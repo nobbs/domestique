@@ -1067,7 +1067,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 	policy := api.Header().Get("Content-Security-Policy")
 	// worker-src must allow 'self': MapLibre loads its worker from a bundled
 	// same-origin module, and a blob-only policy blocks the map from rendering.
-	// connect-src must allow blob:: a scalar weather overlay reaches MapLibre
+	// connect-src must allow blob: — a scalar weather overlay reaches MapLibre
 	// as an object URL that MapLibre fetches, and without it only wind renders.
 	for _, want := range []string{
 		"default-src 'self'",
