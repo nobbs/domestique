@@ -165,6 +165,19 @@ func TestStoreDeletesSession(t *testing.T) {
 // LatestSessionNicknames is keyed by subject, one entry per subject that has
 // ever signed in with a nickname; a subject that never has is simply absent,
 // and a later session's nickname is what a stale earlier one does not shadow.
+// A nickname of only whitespace is no nickname, and one with padding loses it.
+func TestStoreTrimsTheNickname(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	now := time.Unix(1_700_000_000, 0)
+	require.NoError(t, store.CreateSession(t.Context(), loginDigest(50), "github|1", "One", "  padded  ", false, now, now.Add(time.Hour)), "CreateSession()")
+	require.NoError(t, store.CreateSession(t.Context(), loginDigest(51), "github|2", "Two", "   ", false, now, now.Add(time.Hour)), "CreateSession()")
+
+	nicknames, err := store.LatestSessionNicknames(t.Context())
+	require.NoError(t, err, "LatestSessionNicknames()")
+	assert.Equal(t, map[string]string{"github|1": "padded"}, nicknames)
+}
+
 func TestStoreLatestSessionNicknames(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))

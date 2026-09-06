@@ -34,12 +34,15 @@ SELECT subject, display, COALESCE(nickname, '') AS nickname, admin, expires_at_u
 DELETE FROM web_sessions WHERE token_digest = ?;
 
 -- name: ListLatestSessionNicknames :many
--- One row per subject that ever signed in with a nickname, from its most
--- recent such session; a subject with none is simply absent. Keyed by
--- subject throughout: this never looks a rider up by their nickname. The
--- bare nickname column reads from the same row MAX(created_at_unix) picks,
--- a documented SQLite behaviour for a bare column beside an aggregate.
-SELECT subject, nickname, MAX(created_at_unix) AS latest_at_unix
-FROM web_sessions
-WHERE nickname IS NOT NULL AND nickname != ''
-GROUP BY subject;
+-- One row per subject that ever signed in with a nickname: the one from its
+-- newest such session, ties broken by rowid so exactly one row answers.
+-- Keyed by subject throughout: this never looks a rider up by nickname.
+SELECT subject, nickname
+FROM web_sessions AS latest
+WHERE rowid = (
+  SELECT rowid FROM web_sessions AS candidate
+  WHERE candidate.subject = latest.subject
+    AND candidate.nickname IS NOT NULL AND candidate.nickname != ''
+  ORDER BY candidate.created_at_unix DESC, candidate.rowid DESC
+  LIMIT 1
+);

@@ -156,23 +156,25 @@ func (q *Queries) InsertWebSession(ctx context.Context, arg InsertWebSessionPara
 }
 
 const listLatestSessionNicknames = `-- name: ListLatestSessionNicknames :many
-SELECT subject, nickname, MAX(created_at_unix) AS latest_at_unix
-FROM web_sessions
-WHERE nickname IS NOT NULL AND nickname != ''
-GROUP BY subject
+SELECT subject, nickname
+FROM web_sessions AS latest
+WHERE rowid = (
+  SELECT rowid FROM web_sessions AS candidate
+  WHERE candidate.subject = latest.subject
+    AND candidate.nickname IS NOT NULL AND candidate.nickname != ''
+  ORDER BY candidate.created_at_unix DESC, candidate.rowid DESC
+  LIMIT 1
+)
 `
 
 type ListLatestSessionNicknamesRow struct {
-	Subject      string
-	Nickname     sql.NullString
-	LatestAtUnix interface{}
+	Subject  string
+	Nickname sql.NullString
 }
 
-// One row per subject that ever signed in with a nickname, from its most
-// recent such session; a subject with none is simply absent. Keyed by
-// subject throughout: this never looks a rider up by their nickname. The
-// bare nickname column reads from the same row MAX(created_at_unix) picks,
-// a documented SQLite behaviour for a bare column beside an aggregate.
+// One row per subject that ever signed in with a nickname: the one from its
+// newest such session, ties broken by rowid so exactly one row answers.
+// Keyed by subject throughout: this never looks a rider up by nickname.
 func (q *Queries) ListLatestSessionNicknames(ctx context.Context) ([]ListLatestSessionNicknamesRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLatestSessionNicknames)
 	if err != nil {
@@ -182,7 +184,7 @@ func (q *Queries) ListLatestSessionNicknames(ctx context.Context) ([]ListLatestS
 	items := []ListLatestSessionNicknamesRow{}
 	for rows.Next() {
 		var i ListLatestSessionNicknamesRow
-		if err := rows.Scan(&i.Subject, &i.Nickname, &i.LatestAtUnix); err != nil {
+		if err := rows.Scan(&i.Subject, &i.Nickname); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
