@@ -66,6 +66,7 @@ export const OffersToReplaceACredentialItWasNeverTold: Story = {
     await expect(stored).toHaveValue("");
     await expect(stored).toHaveAttribute("placeholder", "Stored — type to replace");
 
+    await expect(canvas.getByLabelText("Webhook token")).toHaveValue("");
     await expect(canvas.getByLabelText("Pushover application token")).toHaveValue("");
   },
 };

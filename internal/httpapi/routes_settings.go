@@ -51,6 +51,7 @@ func (h *Handler) SetWahooApplication(writer http.ResponseWriter, request *http.
 		return values
 	}, submitted(map[runtimeconfig.SecretName]*string{
 		runtimeconfig.SecretWahooClientSecret: body.ClientSecret,
+		runtimeconfig.SecretWahooWebhookToken: body.WebhookToken,
 	}))
 }
 

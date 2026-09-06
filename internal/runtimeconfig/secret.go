@@ -13,6 +13,9 @@ type SecretName string
 const (
 	// SecretWahooClientSecret is the OAuth application's client secret.
 	SecretWahooClientSecret SecretName = "wahoo.client_secret"
+	// SecretWahooWebhookToken is the token Wahoo carries in every webhook body,
+	// shared by every rider because the webhook is registered per application.
+	SecretWahooWebhookToken SecretName = "wahoo.webhook_token"
 	// SecretVeloPlannerEmail is the VeloPlanner account's email address.
 	SecretVeloPlannerEmail SecretName = "veloplanner.email" //nolint:gosec // G101: the name a credential is stored under, not one
 	// SecretVeloPlannerPassword is the VeloPlanner account's password.
@@ -33,6 +36,7 @@ const (
 func SecretNames() []SecretName {
 	return []SecretName{
 		SecretWahooClientSecret,
+		SecretWahooWebhookToken,
 		SecretVeloPlannerEmail,
 		SecretVeloPlannerPassword,
 		SecretKomootEmail,

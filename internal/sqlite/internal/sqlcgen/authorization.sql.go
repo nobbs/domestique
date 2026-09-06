@@ -93,6 +93,17 @@ func (q *Queries) GetRefreshToken(ctx context.Context, slot string) ([]byte, err
 	return refresh_token, err
 }
 
+const getTargetByWahooUser = `-- name: GetTargetByWahooUser :one
+SELECT slot FROM targets WHERE wahoo_user_id = ?
+`
+
+func (q *Queries) GetTargetByWahooUser(ctx context.Context, wahooUserID sql.NullString) (string, error) {
+	row := q.db.QueryRowContext(ctx, getTargetByWahooUser, wahooUserID)
+	var slot string
+	err := row.Scan(&slot)
+	return slot, err
+}
+
 const insertOAuthTransaction = `-- name: InsertOAuthTransaction :exec
 INSERT INTO oauth_transactions (
   id, target_slot, state_digest, code_verifier, expires_at_unix, caller_login

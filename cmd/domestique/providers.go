@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +61,22 @@ func exchangedIdentityFrom(identity auth0.Identity) session.ExchangedIdentity {
 		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
 		Access: identity.Access, Admin: identity.Admin,
 	}
+}
+
+// webhookTokens answers whether an inbound notification carries the configured
+// token. Kept here rather than in the HTTP surface, which is never handed a
+// credential's value.
+type webhookTokens struct{ settings *runtimeconfig.Current }
+
+// VerifyWahooWebhookToken compares in constant time, so a refusal costs the same
+// however much of the token was right. An unconfigured token verifies nothing.
+func (w webhookTokens) VerifyWahooWebhookToken(_ context.Context, presented string) (bool, error) {
+	configured := w.settings.Secret(runtimeconfig.SecretWahooWebhookToken)
+	if !configured.IsSet() {
+		return false, nil
+	}
+
+	return subtle.ConstantTimeCompare(configured.Bytes(), []byte(presented)) == 1, nil
 }
 
 // targetIDsTimeout bounds the one local read targetIDs performs. A stuck read

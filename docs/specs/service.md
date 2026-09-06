@@ -326,7 +326,8 @@ does not need a public connection to the host. The Auth0 callback is derived
 from the same origin the same way, as `/auth/callback`, and must be registered
 with Auth0 exactly.
 
-The state-changing HTTP surface is sign-in, sign-out, and the Wahoo OAuth flow:
+The state-changing HTTP surface is sign-in, sign-out, the Wahoo OAuth flow, and
+the Wahoo webhook receiver:
 
 - `POST /auth/start` begins a sign-in against the configured Auth0 tenant.
 - `GET /auth/callback` validates the returned authorisation code and issues a
@@ -342,6 +343,31 @@ The state-changing HTTP surface is sign-in, sign-out, and the Wahoo OAuth flow:
   other targets exist.
 - `GET /oauth/wahoo/callback` validates a one-time, expiring OAuth state and
   stores the resulting refresh token.
+
+- `POST /webhooks/wahoo` receives Wahoo's workout notifications. It is the one
+  inbound request answered outside the identity gate besides sign-in and the
+  build artefacts the sign-in page loads: Wahoo holds no session, and the
+  webhook is registered per application, so one URL and one shared token serve
+  every connected rider.
+
+The receiver is not under `/v1/`, is not described by the API contract, and
+takes `POST` alone; any other method is the unmatched-path answer. Its body is
+JSON, bounded like every other, and a body that does not parse is refused with
+the shared error shape. The body's `webhook_token` is compared against the
+stored token in constant time; a missing or wrong one is answered `401` with no
+body, and the presented value is never logged. An event kind this service does
+not act on is answered `200` and ignored, because Wahoo is free to add them.
+
+A `workout_summary` is routed on the payload's `user.id` to the target whose
+Wahoo user it is, and starts that target's `activity:poll` ahead of its
+schedule. A user this deployment does not know is answered `200` with an empty
+body, exactly like one it does, so a per-application webhook cannot be used to
+probe which riders are connected; neither the user nor the presented token
+reaches a log. The answer does not wait for the poll, and is `200` whether or
+not the poll was accepted — a refused start means one is already reading that
+rider's rides. **Nothing from the payload is stored.** The `workout` it carries
+is never decoded: the poll reads the ride from Wahoo itself, and the schedule
+remains the fallback for every notification that never arrives.
 
 The Wahoo pair is limited to a session belonging to an allowed subject. The
 state binds the calling identity and target and prevents cross-account or CSRF

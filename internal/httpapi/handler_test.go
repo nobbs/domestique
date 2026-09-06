@@ -175,6 +175,9 @@ func TestHandlerGatesStateAndKeepsHealthLocal(t *testing.T) {
 }
 
 // Every route added for the browser UI must sit behind the same identity gate.
+// POST /webhooks/wahoo is deliberately absent: it is the one exemption besides
+// sign-in and the public build artefacts, and it authenticates with the Wahoo
+// application's own shared token instead — see routes_webhooks_test.go.
 func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 	handler := newTestHandler(t)
 	// A session the service no longer admits — revoked, expired, or for a
@@ -2464,6 +2467,8 @@ type fakeState struct {
 	tracks               map[string][]activities.TrackPoint
 	trackErr             error
 	targets              []fakeTarget
+	wahooUsers           map[string]string
+	wahooUserErr         error
 	history              []recordedRun
 	taskHistory          []recordedTaskRun
 	coordinates          json.RawMessage
@@ -2539,6 +2544,19 @@ func (s *fakeState) ActivityTrack(
 	}
 
 	return s.tracks[targetID+"/"+strconv.FormatInt(id, 10)], nil
+}
+
+// TargetByWahooUser answers from the Wahoo identities a test configured. An
+// identity no test named belongs to nobody, which is what the receiver ignores.
+func (s *fakeState) TargetByWahooUser(
+	_ context.Context, wahooUserID string,
+) (targetID string, found bool, err error) {
+	if s.wahooUserErr != nil {
+		return "", false, s.wahooUserErr
+	}
+	target, found := s.wahooUsers[wahooUserID]
+
+	return target, found, nil
 }
 
 func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string, string) error) error {

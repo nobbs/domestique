@@ -9,7 +9,7 @@ rider's own self-service Wahoo account as device-ready FIT courses, plus a
 read-only browser UI (library map, per-route pages, settings). Single-tenant,
 CGO-free, `linux/amd64` Docker workload on a Tailnet host; no CLI.
 State-changing HTTP is limited to sign-in and sign-out, Wahoo OAuth onboarding,
-manual run triggers, and `PUT /v1/settings/*`.
+the Wahoo webhook receiver, manual run triggers, and `PUT /v1/settings/*`.
 
 ## Commands
 
@@ -158,8 +158,9 @@ statements live in the linked specs.
   settings-page credentials are write-only
   ([configuration.md](docs/specs/configuration.md)).
 - **All non-OAuth HTTP is read-only and identity-gated** to a session issued
-  for an allowed subject, apart from the sign-in document and the build
-  artefacts it loads. The container still publishes to loopback only,
+  for an allowed subject, apart from the sign-in document, the build artefacts
+  it loads, and `POST /webhooks/wahoo`, which the Wahoo application's shared
+  token authenticates instead. The container still publishes to loopback only,
   behind a TLS-terminating reverse proxy; the service never reads an identity
   header ([auth0.md](docs/auth0.md)).
 

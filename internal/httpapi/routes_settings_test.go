@@ -40,7 +40,8 @@ const (
 		"apiBaseUrl": "https://api.wahoo.example.test",
 		"oauthBaseUrl": "https://oauth.wahoo.example.test",
 		"clientId": "client-id",
-		"clientSecret": "client-secret"
+		"clientSecret": "client-secret",
+		"webhookToken": "webhook-token"
 	}`
 	notificationsSubmission = `{
 		"enabled": false,
@@ -319,6 +320,32 @@ func TestASectionStoresItsCredentialsWithoutEverServingThem(t *testing.T) {
 	view := settingsOf(t, handler, authenticatedRequest(http.MethodGet, settingsPath))
 	assert.True(t, view.SecretsSet[string(runtimeconfig.SecretKomootPassword)], "the credential that was sent")
 	assert.False(t, view.SecretsSet[string(runtimeconfig.SecretWahooClientSecret)], "one that never was")
+}
+
+// The webhook token is a credential like the client secret beside it: written
+// through the Wahoo section, reported only as set, and never served back.
+func TestTheWahooWebhookTokenIsWriteOnly(t *testing.T) {
+	handler, settings := settingsHandler(t)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, settingsWahooPath, wahooSubmission))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.NotContains(t, response.Body.String(), "webhook-token", "the response carried the token")
+
+	assert.Equal(t, []byte("webhook-token"),
+		settings.secrets[runtimeconfig.SecretWahooWebhookToken].Bytes(), "the stored token")
+
+	view := settingsOf(t, handler, authenticatedRequest(http.MethodGet, settingsPath))
+	assert.True(t, view.SecretsSet[string(runtimeconfig.SecretWahooWebhookToken)], "the token that was sent")
+
+	// Left out of a later save it keeps the stored value, the way every other
+	// credential does.
+	saveSection(t, handler, settingsWahooPath, `{
+		"apiBaseUrl": "https://api.wahoo.example.test",
+		"oauthBaseUrl": "https://oauth.wahoo.example.test",
+		"clientId": "client-id"
+	}`)
+	assert.True(t, settings.SecretIsSet(runtimeconfig.SecretWahooWebhookToken), "a credential left out")
 }
 
 // The page is never told what a credential is, so it has nothing to send back:

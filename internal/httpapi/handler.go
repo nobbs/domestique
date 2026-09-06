@@ -39,6 +39,10 @@ const maximumRequestBytes = 1 << 10
 // list carries two URLs per entry.
 const maximumSettingsBytes = 16 << 10
 
+// maximumWebhookBytes bounds an inbound provider notification. A workout summary
+// is small, and the three fields this service reads of one are smaller.
+const maximumWebhookBytes = 64 << 10
+
 const (
 	cacheAPI       = "no-store"
 	cacheDocument  = "no-cache"
@@ -97,6 +101,11 @@ type Options struct {
 	// Tasks are the background activities this handler lists and starts.
 	// Required.
 	Tasks Tasks
+
+	// WebhookTokens verifies the token an inbound provider notification carries.
+	// Optional: without it POST /webhooks/wahoo answers not found, which is what
+	// a deployment that has not registered a webhook wants.
+	WebhookTokens WebhookTokens
 
 	// BuildRevision and BuildImageDigest name the source commit and the image
 	// running it. Both optional, and published only when well-formed.
@@ -163,6 +172,7 @@ type Handler struct {
 	styleOrigins        StyleOrigins
 	alerts              Alerts
 	tasks               Tasks
+	webhookTokens       WebhookTokens
 	buildRevision       string
 	buildImageDigest    string
 	browserOrigin       string
@@ -221,6 +231,7 @@ func New(
 		styleOrigins:        options.StyleOrigins,
 		alerts:              options.Alerts,
 		tasks:               options.Tasks,
+		webhookTokens:       options.WebhookTokens,
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,
@@ -293,6 +304,9 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /oauth/wahoo/start", h.StartOAuth)
 	h.mux.HandleFunc("GET /oauth/wahoo/start/{target}", h.StartOAuth)
 	h.mux.HandleFunc("GET /oauth/wahoo/callback", h.CompleteOAuth)
+	// Not under /v1/: that prefix is the session-gated, OpenAPI-described API,
+	// and this is a provider posting with a shared token of its own.
+	h.mux.HandleFunc("POST /webhooks/wahoo", h.ReceiveWahooWebhook)
 	h.mux.HandleFunc("GET /assets/{asset}", h.GetAsset)
 	h.mux.HandleFunc("GET /worker/{asset}", h.GetWorkerAsset)
 	h.mux.HandleFunc("GET /favicon.svg", h.GetFavicon)
@@ -351,6 +365,13 @@ func (h *Handler) serve(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
+	// Wahoo holds no session: the shared token in the body is the receiver's
+	// whole authentication, see ReceiveWahooWebhook.
+	if strings.HasPrefix(request.URL.Path, "/webhooks/") {
+		h.bounded(h.mux).ServeHTTP(writer, request)
+
+		return
+	}
 	// The sign-in page is the application bundle, so the artefacts it names are
 	// fetched before any identity exists. They carry build output and no state.
 	// Reads only: nothing else about these paths is served without a session.
@@ -401,6 +422,9 @@ func (h *Handler) bounded(next http.Handler) http.Handler {
 func requestLimit(path string) int64 {
 	if path == basemapsPath {
 		return maximumSettingsBytes
+	}
+	if strings.HasPrefix(path, "/webhooks/") {
+		return maximumWebhookBytes
 	}
 
 	return maximumRequestBytes

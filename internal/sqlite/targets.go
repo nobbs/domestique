@@ -70,6 +70,26 @@ func (s *Store) ForEachTarget(ctx context.Context, visit func(id, authorizationS
 	return nil
 }
 
+// TargetByWahooUser returns the slot one Wahoo user authorized, and whether
+// there is one. A user nobody has connected is not a failure: an inbound
+// notification about a stranger is a thing to ignore, not to fail on.
+func (s *Store) TargetByWahooUser(
+	ctx context.Context, wahooUserID string,
+) (targetID string, found bool, err error) {
+	if strings.TrimSpace(wahooUserID) == "" {
+		return "", false, nil
+	}
+	slot, err := s.queries.GetTargetByWahooUser(ctx, sql.NullString{String: wahooUserID, Valid: true})
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("reading target by Wahoo user: %w", err)
+	}
+
+	return slot, true, nil
+}
+
 // Target returns one target slot without exposing its refresh token.
 func (s *Store) Target(ctx context.Context, targetID string) (Target, error) {
 	row, err := s.queries.GetTarget(ctx, targetID)

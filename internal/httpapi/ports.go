@@ -77,6 +77,15 @@ type RegisteredTask struct {
 	Enabled bool
 }
 
+// WebhookTokens verifies the shared token an inbound notification carries. The
+// comparison lives behind this port because this package is never told a
+// credential's value, only that one is stored.
+type WebhookTokens interface {
+	// VerifyWahooWebhookToken compares presented against the configured token in
+	// constant time. It reports false, not an error, when none is configured.
+	VerifyWahooWebhookToken(ctx context.Context, presented string) (bool, error)
+}
+
 // Alerts is the alert matrix as this surface needs it: what this service can
 // raise, what an operator has decided about each, and a way to decide.
 type Alerts interface {
@@ -198,6 +207,10 @@ type TargetState interface {
 	// ForEachPendingAuthorization visits the slots with an authorization in
 	// flight. Stored state holds what a slot durably is, which this is not.
 	ForEachPendingAuthorization(ctx context.Context, visit func(targetID string) error) error
+	// TargetByWahooUser is the slot one Wahoo user authorized, and whether there
+	// is one. A user this deployment does not know is not a failure: only the
+	// webhook receiver asks, and it answers such a delivery as if it had acted.
+	TargetByWahooUser(ctx context.Context, wahooUserID string) (targetID string, found bool, err error)
 	ForEachTargetStage(ctx context.Context, targetID string, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error) error
 	ForEachTargetRun(ctx context.Context, visit func(targetID string, finishedAt time.Time, outcome, detail string) error) error
 }

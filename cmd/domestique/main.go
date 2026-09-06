@@ -244,6 +244,7 @@ func run(ctx context.Context) error {
 			StyleOrigins:     styleOrigins,
 			Alerts:           alertMatrix{decisions: alerts, declarations: tasks.Declarations()},
 			Tasks:            taskSurface{ctx: runCtx, manager: tasks, switches: switches},
+			WebhookTokens:    webhookTokens{settings: runtimeSettings},
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			Sessions:         sessions,

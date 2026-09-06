@@ -34,9 +34,13 @@ from an ID token it validated against the configured Auth0 tenant. A proxy
 therefore cannot hand over the API by forwarding a header, but a proxy pointed
 at an unintended port, or a second unproxied listener, can still expose one.
 
-Wahoo never connects to this host. The browser follows Wahoo's authorisation
-redirect back to the callback URL after the user signs in, so the OAuth flow
-needs no inbound path of its own.
+Wahoo connects to this host for one thing: it posts a workout notification to
+`https://<hostname>/webhooks/wahoo`, authenticated by the shared token the
+registered application carries and nothing else. Traefik forwards it like any
+other path on the served listener, so nothing about the inbound story changes —
+no extra port, rule, or certificate. The OAuth flow still needs no inbound path
+of its own: the browser follows Wahoo's authorisation redirect back to the
+callback URL after the user signs in.
 
 ## Prepare the host
 

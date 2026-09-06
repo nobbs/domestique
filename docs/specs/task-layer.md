@@ -283,6 +283,11 @@ that sees it rather than behind whatever history is still backfilling, and a run
 holds the exclusive `activities` resource for that budget plus the one fill that
 was under way when it ran out.
 
+A Wahoo webhook starts `activity:poll` for the target it names, ahead of the
+schedule and subject to the same `activities` exclusivity — a delivery that
+arrives while a poll is running changes nothing, and the schedule remains the
+fallback ([the receiver](service.md)).
+
 The read takes a library the same way the targets take a slot: none is every
 one that exists, a name is that one alone. One task rather than one per
 library, because the library list is a runtime setting and tasks are

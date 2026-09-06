@@ -362,10 +362,12 @@ function WahooApplication({ settings }: { settings: Settings }) {
   const invalidate = useSettingsInvalidation();
   const [draft, setDraft] = useState<Settings["wahoo"] | null>(null);
   const [secret, setSecret] = useState("");
+  const [webhookToken, setWebhookToken] = useState("");
   const save = useSetWahooApplication(
     saving(() => {
       setDraft(null);
       setSecret("");
+      setWebhookToken("");
     }, invalidate),
   );
 
@@ -385,6 +387,7 @@ function WahooApplication({ settings }: { settings: Settings }) {
             oauthBaseUrl: values.oauthBaseUrl,
             clientId: values.clientId,
             ...replacement("clientSecret", secret),
+            ...replacement("webhookToken", webhookToken),
           },
         })
       }
@@ -421,6 +424,13 @@ function WahooApplication({ settings }: { settings: Settings }) {
         isSet={settings.secretsSet["wahoo.client_secret"] ?? false}
         value={secret}
         onChange={setSecret}
+      />
+      <SecretField
+        id={`${id}-webhook`}
+        label="Webhook token"
+        isSet={settings.secretsSet["wahoo.webhook_token"] ?? false}
+        value={webhookToken}
+        onChange={setWebhookToken}
       />
     </Section>
   );
