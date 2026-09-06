@@ -60,15 +60,40 @@ describe("domestiqueBinaryRequest", () => {
     expect(await result.data.text()).toBe("not json");
   });
 
-  it("throws without reading the body on failure", async () => {
+  it("reads the same structured error envelope every other operation gets on failure", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("gateway error text", { status: 502 })),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ error: { code: "provider_unavailable", message: "gone" } }),
+            { status: 502 },
+          ),
+      ),
     );
+
+    const error = await domestiqueBinaryRequest("/v1/weather-grid/object", {
+      method: "GET",
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe("provider_unavailable");
+    expect((error as ApiError).message).toBe("gone");
+  });
+
+  it("sends an expired session to sign in again on failure, same as domestiqueRequest", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 401 })),
+    );
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign });
 
     await expect(
       domestiqueBinaryRequest("/v1/weather-grid/object", { method: "GET" }),
     ).rejects.toBeInstanceOf(ApiError);
+
+    expect(assign).toHaveBeenCalledWith("/auth/login");
   });
 });
 
