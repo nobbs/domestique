@@ -78,6 +78,8 @@ jobs:
       # entry exactly, save nothing the new compiler produced, and recompile cold
       # until a source file happened to move. Both paths are `.mise.toml`'s own
       # GOCACHE and GOLANGCI_LINT_CACHE, which dev/gatecheck asserts still match.
+      # Coverage is the one job that also runs on push, so its entry is the only
+      # build cache a pull request's first run can reach: hence the fallback.
       - name: Restore the Go module cache
         # v6.1.0
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -98,6 +100,7 @@ jobs:
           restore-keys: |
             go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-lint-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-lint-${{ runner.os }}-
       # --force here and in every other job: a task with `sources` skips itself
       # when its inputs have not moved, which a merge gate must not do.
@@ -153,6 +156,7 @@ jobs:
           restore-keys: |
             go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-
       - name: Run tests
         run: mise run --force ci-test
@@ -216,6 +220,7 @@ jobs:
           restore-keys: |
             go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-security-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-security-${{ runner.os }}-
       - name: Audit modules and dependencies
         run: mise run --force ci-security
@@ -288,6 +293,7 @@ jobs:
           restore-keys: |
             go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-ui-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-ui-${{ runner.os }}-
       # pnpm hard-links out of a content-addressed store, so the store is what
       # makes `ui-install` a link rather than a download. Its location is asked
@@ -523,6 +529,7 @@ jobs:
           restore-keys: |
             go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-build-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
             go-build-${{ runner.os }}-
       # The pnpm store, as the UI job above explains it.
       - name: Locate the pnpm store
