@@ -9,9 +9,12 @@ import (
 )
 
 // Ride is one recorded activity as a calibration reads it: the three totals the
-// two-term model is fitted against, and when it was ridden.
+// two-term model is fitted against, when it was ridden, and whose account it
+// was read from. The target is not fitted against; it is only how one shared
+// outing stored once per rider is recognised as one ride.
 type Ride struct {
 	StartedAt      time.Time
+	TargetID       string
 	DistanceMetres float64
 	MovingSeconds  float64
 	AscentMetres   float64
@@ -59,7 +62,10 @@ const (
 // The only errors it returns are ErrTooFewRides and ErrDegenerate: a fit whose
 // own terms don't hold up is reported as the latter, never as anything else.
 func Fit(rides []Ride, now time.Time) (Coefficients, error) {
-	usable, windowMonths := trainingWindow(usableRides(rides, now), now)
+	// Deduplicated before the window rather than after it, so the window's own
+	// extension counts shared outings once too: a pair of riders would otherwise
+	// make a thin window look twice as full as it is.
+	usable, windowMonths := trainingWindow(pairedRides(usableRides(rides, now)), now)
 	if len(usable) < MinRides {
 		return Coefficients{}, ErrTooFewRides
 	}
@@ -115,6 +121,52 @@ func usableRides(rides []Ride, now time.Time) []Ride {
 	}
 
 	return usable
+}
+
+// pairedRideWindow is how far apart two targets' start times may be and still
+// be one shared outing. Two riders setting off together start within a minute or
+// two of each other; the width is for the slower of the two reaching their head
+// unit, not for how long a ride lasts.
+const pairedRideWindow = 5 * time.Minute
+
+// pairedRides collapses one real ride, recorded once in each rider's account,
+// into the single ride it was. Only counting is at stake — duplicating every row
+// scales the normal equations evenly and leaves the fitted ratio alone — but
+// MinRides, the window's extension and EvaluatedRides all count rows, and each
+// of them means independent rides.
+//
+// Matching is pairwise and on start time alone. A ride that has taken a partner
+// takes no second one, so three riders on one outing are still counted twice;
+// that is accepted deliberately until a third target exists. Distance is not
+// compared: it would need a second threshold to justify, for a false pair that
+// two accounts starting within minutes of each other already makes unlikely.
+func pairedRides(rides []Ride) []Ride {
+	ordered := slices.Clone(rides)
+	slices.SortStableFunc(ordered, func(a, b Ride) int { return a.StartedAt.Compare(b.StartedAt) })
+
+	kept := make([]Ride, 0, len(ordered))
+	taken := make([]bool, 0, len(ordered))
+	for _, ride := range ordered {
+		partnered := false
+		for index := len(kept) - 1; index >= 0; index-- {
+			if ride.StartedAt.Sub(kept[index].StartedAt) > pairedRideWindow {
+				// Ordered by start, so nothing earlier is within the window either.
+				break
+			}
+			if taken[index] || kept[index].TargetID == ride.TargetID {
+				continue
+			}
+			taken[index], partnered = true, true
+
+			break
+		}
+		if !partnered {
+			kept = append(kept, ride)
+			taken = append(taken, false)
+		}
+	}
+
+	return kept
 }
 
 // trainingWindow keeps the rides ridden inside the trailing window ending at

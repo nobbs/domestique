@@ -204,3 +204,93 @@ func TestFitRefusesWhenEvenAllHistoryIsTooThin(t *testing.T) {
 	_, err := ridemodel.Fit(corpus, fitNow())
 	require.ErrorIs(t, err, ridemodel.ErrTooFewRides)
 }
+
+// withTarget attributes a corpus to one rider's account.
+func withTarget(rides []ridemodel.Ride, targetID string) []ridemodel.Ride {
+	attributed := make([]ridemodel.Ride, 0, len(rides))
+	for _, ride := range rides {
+		ride.TargetID = targetID
+		attributed = append(attributed, ride)
+	}
+
+	return attributed
+}
+
+// sharedOutings is one rider's rides recorded a second time in a riding
+// partner's account, minutes apart as the two head units were started.
+func sharedOutings(rides []ridemodel.Ride) []ridemodel.Ride {
+	both := make([]ridemodel.Ride, 0, len(rides)*2)
+	for _, ride := range rides {
+		first, second := ride, ride
+		first.TargetID, second.TargetID = "rider-a", "rider-b"
+		second.StartedAt = second.StartedAt.Add(2 * time.Minute)
+		both = append(both, first, second)
+	}
+
+	return both
+}
+
+// Duplicating every row scales the normal equations evenly, so the pair the fit
+// recovers was never the problem. What the duplication distorts is the count,
+// and EvaluatedRides is what an operator reads as "calibrated from N rides".
+func TestFitCountsOneSharedOutingOnce(t *testing.T) {
+	t.Parallel()
+
+	solo, err := ridemodel.Fit(withTarget(syntheticRides(14, 150, 4), "rider-a"), fitNow())
+	require.NoError(t, err, "Fit() over one rider's own corpus")
+
+	paired, err := ridemodel.Fit(sharedOutings(syntheticRides(14, 150, 4)), fitNow())
+	require.NoError(t, err, "Fit() over the same rides recorded by both riders")
+
+	assert.Equal(t, 14, paired.EvaluatedRides, "a shared outing was counted once per rider")
+	assert.InDelta(t, solo.SecondsPerKM, paired.SecondsPerKM, 1e-9, "seconds per km")
+	assert.InDelta(t, solo.SecondsPerAscentM, paired.SecondsPerAscentM, 1e-9, "seconds per ascent metre")
+}
+
+// MinRides means ten independent rides. Ten stored rows that are five shared
+// outings are five, and the floor has to refuse them.
+func TestFitRefusesSharedOutingsThatAreTooFewRealRides(t *testing.T) {
+	t.Parallel()
+
+	_, err := ridemodel.Fit(sharedOutings(syntheticRides(ridemodel.MinRides-1, 150, 4)), fitNow())
+	require.ErrorIs(t, err, ridemodel.ErrTooFewRides)
+}
+
+// The window's extension counts rides too, so a pair of riders must not make a
+// thin window look twice as full as it is.
+func TestFitExtendsTheWindowPastSharedOutings(t *testing.T) {
+	t.Parallel()
+
+	recent := sharedOutings(ridesEndingAt(5, 150, 4, fitNow().AddDate(0, 0, -1)))
+	older := sharedOutings(ridesEndingAt(6, 150, 4, fitNow().AddDate(0, -14, 0)))
+
+	fitted, err := ridemodel.Fit(append(recent, older...), fitNow())
+	require.NoError(t, err, "Fit()")
+	assert.Equal(t, ridemodel.MinRides, fitted.EvaluatedRides, "the extension counted shared outings twice")
+	assert.Greater(t, fitted.TrainingWindowMonths, ridemodel.TrainingWindowMonths,
+		"a window holding five real outings was fit from as though it held ten")
+}
+
+// Two starts minutes apart in one rider's own account are two rides: the match
+// is across accounts, not within one. A third rider sharing the same outing is
+// still counted twice, which is accepted until a third target exists.
+func TestFitPairsAcrossAccountsRatherThanWithinOne(t *testing.T) {
+	t.Parallel()
+
+	own := withTarget(syntheticRides(14, 150, 4), "rider-a")
+	restarted := own[13]
+	restarted.StartedAt = restarted.StartedAt.Add(2 * time.Minute)
+
+	fitted, err := ridemodel.Fit(append(own, restarted), fitNow())
+	require.NoError(t, err, "Fit()")
+	assert.Equal(t, 15, fitted.EvaluatedRides, "one rider's two starts were collapsed into one")
+
+	base := syntheticRides(14, 150, 4)
+	third := withTarget(base, "rider-c")
+	for index := range third {
+		third[index].StartedAt = third[index].StartedAt.Add(time.Minute)
+	}
+	threeWay, err := ridemodel.Fit(append(sharedOutings(base), third...), fitNow())
+	require.NoError(t, err, "Fit() over three accounts")
+	assert.Equal(t, 28, threeWay.EvaluatedRides, "pairwise matching stopped counting at the third rider")
+}

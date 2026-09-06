@@ -255,13 +255,14 @@ func (q *Queries) ListActivityListings(ctx context.Context, targetSlot string) (
 }
 
 const listActivityRides = `-- name: ListActivityRides :many
-SELECT started_at_unix, distance_metres, moving_seconds, ascent_metres
+SELECT target_slot, started_at_unix, distance_metres, moving_seconds, ascent_metres
 FROM activities
 WHERE started_at_unix >= ?1
 ORDER BY started_at_unix
 `
 
 type ListActivityRidesRow struct {
+	TargetSlot     string
 	StartedAtUnix  int64
 	DistanceMetres float64
 	MovingSeconds  float64
@@ -278,6 +279,7 @@ func (q *Queries) ListActivityRides(ctx context.Context, sinceUnix int64) ([]Lis
 	for rows.Next() {
 		var i ListActivityRidesRow
 		if err := rows.Scan(
+			&i.TargetSlot,
 			&i.StartedAtUnix,
 			&i.DistanceMetres,
 			&i.MovingSeconds,
