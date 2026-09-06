@@ -229,9 +229,9 @@ func TestClientTellsAnUnreadableWorkoutFromAFailedProvider(t *testing.T) {
 		unreadable bool
 		rejected   bool
 	}{
-		// A refusal meets every request alike, so it belongs to the connection
-		// rather than to the workout the poll happened to ask about.
-		"refused":      {status: http.StatusUnauthorized, rejected: true},
+		// Wahoo refuses one workout's summary and serves the next on the same
+		// token, so a refusal is the workout's own (#487).
+		"refused":      {status: http.StatusUnauthorized, unreadable: true},
 		"missing":      {status: http.StatusNotFound, unreadable: true},
 		"no summary":   {status: http.StatusOK, body: nil, unreadable: true},
 		"wrong shape":  {status: http.StatusOK, body: "x", unreadable: true},
