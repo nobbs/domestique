@@ -351,7 +351,9 @@ the Wahoo webhook receiver:
   every connected rider.
 
 The receiver is not under `/v1/`, is not described by the API contract, and
-takes `POST` alone; any other method is the unmatched-path answer. Its body is
+takes `POST` alone; any other method is the unmatched-path answer, and so is
+every request until a webhook token is stored, since a receiver with nothing
+to verify against would only invite guesses. Its body is
 JSON, bounded like every other, and a body that does not parse is refused with
 the shared error shape. The body's `webhook_token` is compared against the
 stored token in constant time; a missing or wrong one is answered `401` with no

@@ -103,8 +103,8 @@ type Options struct {
 	Tasks Tasks
 
 	// WebhookTokens verifies the token an inbound provider notification carries.
-	// Optional: without it POST /webhooks/wahoo answers not found, which is what
-	// a deployment that has not registered a webhook wants.
+	// Optional: without it, or until a webhook token is stored, POST
+	// /webhooks/wahoo answers not found.
 	WebhookTokens WebhookTokens
 
 	// BuildRevision and BuildImageDigest name the source commit and the image
@@ -306,7 +306,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /oauth/wahoo/callback", h.CompleteOAuth)
 	// Not under /v1/: that prefix is the session-gated, OpenAPI-described API,
 	// and this is a provider posting with a shared token of its own.
-	h.mux.HandleFunc("POST /webhooks/wahoo", h.ReceiveWahooWebhook)
+	h.mux.HandleFunc("POST "+webhookWahooPath, h.ReceiveWahooWebhook)
 	h.mux.HandleFunc("GET /assets/{asset}", h.GetAsset)
 	h.mux.HandleFunc("GET /worker/{asset}", h.GetWorkerAsset)
 	h.mux.HandleFunc("GET /favicon.svg", h.GetFavicon)
@@ -367,7 +367,7 @@ func (h *Handler) serve(writer http.ResponseWriter, request *http.Request) {
 	}
 	// Wahoo holds no session: the shared token in the body is the receiver's
 	// whole authentication, see ReceiveWahooWebhook.
-	if strings.HasPrefix(request.URL.Path, "/webhooks/") {
+	if request.URL.Path == webhookWahooPath {
 		h.bounded(h.mux).ServeHTTP(writer, request)
 
 		return
@@ -423,7 +423,7 @@ func requestLimit(path string) int64 {
 	if path == basemapsPath {
 		return maximumSettingsBytes
 	}
-	if strings.HasPrefix(path, "/webhooks/") {
+	if path == webhookWahooPath {
 		return maximumWebhookBytes
 	}
 

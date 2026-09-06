@@ -5,11 +5,16 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/nobbs/domestique/internal/runtimeconfig"
 )
 
 // eventWorkoutSummary is the one Wahoo event this receiver acts on. Wahoo is
 // free to add others, which are accepted and ignored rather than refused.
 const eventWorkoutSummary = "workout_summary"
+
+// webhookWahooPath is the one path outside the identity gate besides sign-in.
+const webhookWahooPath = "/webhooks/wahoo"
 
 // wahooWebhookEvent is the part of a notification this service reads: who it is
 // about and which workout it names. Nothing the workout summary says about that
@@ -37,8 +42,10 @@ type wahooWebhookEvent struct {
 // 200 for three days, so an unknown user, a notification naming no workout and
 // an unhandled event kind are all absorbed as 200 with an empty body.
 func (h *Handler) ReceiveWahooWebhook(writer http.ResponseWriter, request *http.Request) {
-	// No verifier means no receiver, not one that invites guesses at the token.
-	if h.webhookTokens == nil {
+	// No verifier, or no token stored yet, means no receiver rather than one that
+	// invites guesses at the token; the settings are read per request, so
+	// storing the token switches it on without a restart.
+	if h.webhookTokens == nil || !h.settings.SecretIsSet(runtimeconfig.SecretWahooWebhookToken) {
 		h.notFound(writer)
 
 		return

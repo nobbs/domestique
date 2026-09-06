@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nobbs/domestique/internal/runtimeconfig"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,12 +49,16 @@ func newWebhookHandler(t *testing.T) (*Handler, *fakeTasks, *fakeWebhookTokens, 
 	tasks := &fakeTasks{}
 	verifier := &fakeWebhookTokens{configured: testWebhookToken}
 	state := &fakeState{wahooUsers: map[string]string{testWahooUserID: testSubject}}
+	settings := settingsWith(testBasemaps())
+	settings.secrets = map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretWahooWebhookToken: runtimeconfig.NewSecret([]byte(testWebhookToken)),
+	}
 	handler, err := New(
 		&Options{
 			schemaCache:      testSchemaCache,
 			Alerts:           &fakeAlerts{},
 			Tasks:            tasks,
-			Settings:         settingsWith(testBasemaps()),
+			Settings:         settings,
 			Sessions:         newFakeSessions(),
 			BrowserOriginURL: testBrowserOriginURL,
 			WebhookTokens:    verifier,
@@ -313,6 +319,23 @@ func TestWahooWebhookIsNotFoundWithoutAVerifier(t *testing.T) {
 		webhookBody(t, testWebhookToken, eventWorkoutSummary, testWahooUserID)))
 
 	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
+// Until an operator stores the token there is nothing to verify against, so
+// there is no receiver either: not found, never a 401 that invites a guess.
+func TestWahooWebhookIsNotFoundUntilATokenIsStored(t *testing.T) {
+	handler, tasks, verifier, _ := newWebhookHandler(t)
+	settings, ok := handler.settings.(*staticSettings)
+	require.True(t, ok, "settings double")
+	settings.secrets = nil
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, webhookRequest(t,
+		webhookBody(t, testWebhookToken, eventWorkoutSummary, testWahooUserID)))
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
+	assert.Empty(t, tasks.started)
+	assert.Empty(t, verifier.presented, "the verifier was asked with nothing stored")
 }
 
 // The receiver reads a bounded body like every other route, so a delivery that
