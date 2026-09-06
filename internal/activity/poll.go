@@ -21,9 +21,9 @@ const authorizedState = "authorized"
 // alone exceed it is the source's own throttle to pace, not this cap's (#489).
 const RequestsPerPoll = 25
 
-// RecordsBudgetPerPoll is the wall-clock one poll may spend filling records, and
-// so how long it holds the exclusive activities resource; downloads sit outside
-// the API quota, and a row count models rides of 3,000 to 12,000 samples poorly.
+// RecordsBudgetPerPoll is the wall-clock after which one poll starts no further
+// fill; the fill under way finishes, so the exclusive activities resource is held
+// that one ride past it. A row count models rides of 3,000 to 12,000 samples poorly.
 const RecordsBudgetPerPoll = 2 * time.Minute
 
 // MaxRecordsPerPoll is the hard ceiling on activities one poll fills, under the
