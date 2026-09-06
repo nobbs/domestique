@@ -506,7 +506,8 @@ func TestPollFillsRecordsForActivitiesAwaitingThem(t *testing.T) {
 	assert.Empty(t, store.pending)
 }
 
-// Records are as bounded as summaries are: a long history fills in over runs.
+// The ceiling holds whatever the clock does: a clock that never advances spends
+// none of the budget, and one run still stops.
 func TestPollFillsRecordsUpToItsCap(t *testing.T) {
 	store := newFakeStore()
 	for id := range int64(MaxRecordsPerPoll + 3) {
@@ -521,6 +522,33 @@ func TestPollFillsRecordsUpToItsCap(t *testing.T) {
 	assert.Equal(t, MaxRecordsPerPoll, store.recordLimit)
 	assert.Len(t, store.pending, 3)
 }
+
+// A run stops filling once its wall-clock budget is spent, well short of the
+// ceiling; what it did not reach stays pending for the next poll.
+func TestPollStopsFillingRecordsWhenTheBudgetIsSpent(t *testing.T) {
+	store := newFakeStore()
+	for id := range int64(6) {
+		store.pending = append(store.pending, pendingActivity(id+1))
+	}
+	clock := &testClock{}
+	source := newFakeSource(t)
+	source.onDownload = func() { clock.elapsed += RecordsBudgetPerPoll / 3 }
+	poller, err := NewPoller(source, store, clock.now)
+	require.NoError(t, err, "NewPoller()")
+
+	result := poller.Poll(t.Context(), "rider-a")
+
+	require.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, 3, result.RecordsStored)
+	assert.Len(t, source.downloaded, 3, "no download starts once the budget is spent")
+	assert.Len(t, store.pending, 3, "the rest waits for the next poll")
+}
+
+// testClock is a clock the test advances itself, so a budget's cutoff is
+// deterministic without a wall-clock sleep.
+type testClock struct{ elapsed time.Duration }
+
+func (c *testClock) now() time.Time { return pollNow().Add(c.elapsed) }
 
 // A file that does not decode is that ride's own fault: it is recorded as
 // unreadable so no later poll spends a download on it, and the run carries on.
@@ -831,8 +859,11 @@ func newTestPoller(t *testing.T, source Source, store Store) *Poller {
 }
 
 type fakeSource struct {
-	summaryErrs  map[int64]error
-	fitFor       map[string][]byte
+	summaryErrs map[int64]error
+	fitFor      map[string][]byte
+	// onDownload stands in for the time one download and decode takes, so a test
+	// can spend the poll's records budget without a wall-clock sleep.
+	onDownload   func()
 	refreshErr   error
 	listErr      error
 	headErr      error
@@ -923,6 +954,9 @@ func (s *fakeSource) DownloadActivityFIT(_ context.Context, summary Summary) ([]
 		return nil, s.downloadErr
 	}
 	s.downloaded = append(s.downloaded, string(summary.Raw))
+	if s.onDownload != nil {
+		s.onDownload()
+	}
 	if override, ok := s.fitFor[string(summary.Raw)]; ok {
 		return override, nil
 	}

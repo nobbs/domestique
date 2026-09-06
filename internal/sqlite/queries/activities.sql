@@ -43,7 +43,7 @@ DELETE FROM activity_skips WHERE target_slot = ? AND workout_id = ?;
 SELECT workout_id, raw_summary_json
 FROM activities
 WHERE target_slot = sqlc.arg(target_slot) AND records_state = 'pending'
-ORDER BY started_at_unix, workout_id
+ORDER BY started_at_unix DESC, workout_id DESC
 LIMIT sqlc.arg(row_limit);
 
 -- name: DeleteActivityRecords :exec

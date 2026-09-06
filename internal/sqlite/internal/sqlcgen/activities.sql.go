@@ -84,7 +84,7 @@ const listActivitiesAwaitingRecords = `-- name: ListActivitiesAwaitingRecords :m
 SELECT workout_id, raw_summary_json
 FROM activities
 WHERE target_slot = ?1 AND records_state = 'pending'
-ORDER BY started_at_unix, workout_id
+ORDER BY started_at_unix DESC, workout_id DESC
 LIMIT ?2
 `
 
