@@ -174,8 +174,11 @@ The same claim also decides who administers the service. The shared settings,
 the background activities and their schedules, and the per-route reprocess
 request belong to an admin subject: the endpoints marked admin-only below
 answer `403` in the shared error shape to any other session, and the two
-admin browser routes answer not found. The only things a non-admin may start
-are `sync:target` and `activity:poll`, each over their own subject. Those rights
+admin browser routes answer not found. The rider profile is the one settings
+section outside that split, because it is one rider's own rather than the
+service's: every session reads and writes it over its own subject, and the
+administrator claim widens nothing about it. The only things a non-admin may
+start are `sync:target` and `activity:poll`, each over their own subject. Those rights
 come from the namespaced claim the Action asserts and from nothing else — no
 header, no local list, and no second gate.
 
@@ -516,6 +519,21 @@ The read-only JSON surface is small:
   static configuration — [the configuration
   specification](configuration.md#runtime-settings) states which settings live
   here and which stay in the file.
+- `GET /v1/settings/rider` returns the signed-in rider's own parameters —
+  maximum, resting and threshold heart rate, functional threshold power, and
+  rider and bike mass — every one of them optional, so a parameter the rider has
+  not entered is absent rather than zero. It is answered for the **caller's own
+  subject only**: no session reads another rider's profile on this path, an
+  administrator's included, and a subject that has entered nothing reads an
+  empty profile rather than a `404`.
+
+  Beside the stored parameters it carries what the caller's own rides of the
+  last ninety days suggest two of them could be: the highest heart rate held
+  over a rolling minute, and the best twenty-minute average power taken at 95%.
+  Both are read over the caller's own targets and are display only — nothing
+  uses one until the rider has saved it as their own value. A parameter no ride
+  carried a sensor for is absent rather than zero, and a rider with no target
+  yet is answered with no suggestions.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
   values, so the page can show a ride's weather without reaching Open-Meteo
   itself. Each `point` is `latitude,longitude,time`: decimal-degree latitude
@@ -593,6 +611,16 @@ browser origin described above, and answer 403 without it.
   at all. The edit is applied to the settings as they are at the moment of the
   write.
 
+- `PUT /v1/settings/rider` replaces the caller's own parameters whole, and is
+  the one settings write that is **not** admin-only: it is written over the
+  session's own subject, so a rider edits their own profile and nobody else's.
+  It replaces the section whole like every other, so a parameter left out of the
+  body is cleared rather than kept, and a value outside the range the contract
+  names is refused as `400`. It answers with the profile as it now stands. It is
+  what later triggers the recompute of anything derived from these numbers;
+  nothing about the profile reaches a log or a notification beyond the fact that
+  it was written.
+
   A value the service would have refused at startup is refused here as `400`,
   in a message naming the setting, and what it stores is in force for the next
   request and the next run without a restart. Each changes what the service does
@@ -662,7 +690,9 @@ The service has a provider-neutral configuration contract:
   A deployment that has configured none of them starts, serves the settings
   page, and runs nothing. Targets are held in the same database but are not
   among these settings: each is created by its own owning subject connecting,
-  not written by an operator.
+  not written by an operator. Nor is a rider's own profile, which is that
+  subject's rather than the service's and is read per request over the subject
+  that asked.
 - Two sensitive static values are loaded by Koanf from a Docker-style file or
   the documented direct environment variables: the 32-byte state-encryption
   key and the Auth0 client secret. Every other credential — the source

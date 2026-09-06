@@ -555,6 +555,59 @@ export interface TimezoneUpdate {
   timezone: string;
 }
 
+/**
+ * One rider's own body and equipment. Every parameter is optional: one the rider has not entered is absent rather than zero, because nothing downstream can use a zero heart rate or a massless bicycle.
+ */
+export interface RiderParameters {
+  /**
+   * @minimum 1
+   * @maximum 250
+   */
+  maxHeartRateBpm?: number;
+  /**
+   * @minimum 1
+   * @maximum 250
+   */
+  restingHeartRateBpm?: number;
+  /**
+   * The lactate threshold rate heart-rate zones are cut at.
+   * @minimum 1
+   * @maximum 250
+   */
+  thresholdHeartRateBpm?: number;
+  /**
+   * @minimum 1
+   * @maximum 2000
+   */
+  functionalThresholdPowerWatts?: number;
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  riderMassKg?: number;
+  /**
+   * The bicycle and everything carried on it.
+   * @minimum 1
+   * @maximum 500
+   */
+  bikeMassKg?: number;
+}
+
+/**
+ * What the rider's rides of the last ninety days say two of these numbers could be, offered beside the fields and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
+ */
+export interface RiderSuggestions {
+  /** The highest heart rate held over a rolling minute. */
+  maxHeartRateBpm?: number;
+  /** The best twenty-minute average power, taken at 95%. */
+  functionalThresholdPowerWatts?: number;
+}
+
+export interface RiderProfile {
+  profile: RiderParameters;
+  suggestions: RiderSuggestions;
+}
+
 export interface SourceBaseUrls {
   veloplanner?: string;
   komoot?: string;
@@ -4519,6 +4572,287 @@ export const useSetSync = <
   TContext
 > => {
   return useMutation(getSetSyncMutationOptions(options), queryClient);
+};
+
+export type getRiderProfileResponse200 = {
+  data: RiderProfile;
+  status: 200;
+};
+
+export type getRiderProfileResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getRiderProfileResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getRiderProfileResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getRiderProfileResponseSuccess = getRiderProfileResponse200 & {
+  headers: Headers;
+};
+export type getRiderProfileResponseError = (
+  | getRiderProfileResponse401
+  | getRiderProfileResponse403
+  | getRiderProfileResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetRiderProfileUrl = () => {
+  return `/v1/settings/rider`;
+};
+
+/**
+ * The signed-in rider's own parameters, and what their recent rides suggest two of them could be. Answered for the caller's own subject only: no session reads another rider's profile here, an administrator's included.
+ */
+export const getRiderProfile = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getRiderProfileResponseSuccess> => {
+  return domestiqueRequest<getRiderProfileResponseSuccess>(getGetRiderProfileUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetRiderProfileQueryKey = () => {
+  return [`/v1/settings/rider`] as const;
+};
+
+export const getGetRiderProfileQueryOptions = <
+  TData = Awaited<ReturnType<typeof getRiderProfile>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRiderProfile>>, TError, TData>>;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetRiderProfileQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getRiderProfile>>> = ({ signal }) =>
+    getRiderProfile({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getRiderProfile>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetRiderProfileQueryResult = NonNullable<Awaited<ReturnType<typeof getRiderProfile>>>;
+export type GetRiderProfileQueryError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+
+export function useGetRiderProfile<
+  TData = Awaited<ReturnType<typeof getRiderProfile>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRiderProfile>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRiderProfile>>,
+          TError,
+          Awaited<ReturnType<typeof getRiderProfile>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetRiderProfile<
+  TData = Awaited<ReturnType<typeof getRiderProfile>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRiderProfile>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRiderProfile>>,
+          TError,
+          Awaited<ReturnType<typeof getRiderProfile>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetRiderProfile<
+  TData = Awaited<ReturnType<typeof getRiderProfile>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRiderProfile>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetRiderProfile<
+  TData = Awaited<ReturnType<typeof getRiderProfile>>,
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRiderProfile>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetRiderProfileQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type setRiderProfileResponse200 = {
+  data: RiderProfile;
+  status: 200;
+};
+
+export type setRiderProfileResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setRiderProfileResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setRiderProfileResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setRiderProfileResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setRiderProfileResponseSuccess = setRiderProfileResponse200 & {
+  headers: Headers;
+};
+export type setRiderProfileResponseError = (
+  | setRiderProfileResponse400
+  | setRiderProfileResponse401
+  | setRiderProfileResponse403
+  | setRiderProfileResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetRiderProfileUrl = () => {
+  return `/v1/settings/rider`;
+};
+
+/**
+ * Replaces the caller's own parameters whole. A parameter left out is cleared rather than kept: this is the rider's whole profile, not a patch of it.
+ */
+export const setRiderProfile = async (
+  riderParameters: RiderParameters,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setRiderProfileResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setRiderProfileResponseSuccess>(getSetRiderProfileUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(riderParameters),
+  });
+};
+
+export const getSetRiderProfileMutationKey = () => ["setRiderProfile"] as const;
+
+export const getSetRiderProfileMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setRiderProfile>>,
+    TError,
+    SetRiderProfileMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setRiderProfile>>,
+  TError,
+  SetRiderProfileMutationVariables,
+  TContext
+> => {
+  const mutationKey = getSetRiderProfileMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setRiderProfile>>,
+    SetRiderProfileMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setRiderProfile(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetRiderProfileMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setRiderProfile>>
+>;
+export type SetRiderProfileMutationBody = RiderParameters;
+export type SetRiderProfileMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetRiderProfileMutationVariables = { data: RiderParameters };
+
+export const useSetRiderProfile = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setRiderProfile>>,
+      TError,
+      SetRiderProfileMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setRiderProfile>>,
+  TError,
+  SetRiderProfileMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetRiderProfileMutationOptions(options), queryClient);
 };
 
 export type getWebUIConfigResponse200 = {

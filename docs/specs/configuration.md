@@ -231,6 +231,16 @@ missing. That is the state every new deployment begins in. A target is not
 among these settings at all: it belongs to the subject who created it by
 connecting, not to an operator, and none exists until someone does.
 
+A rider's own profile — maximum, resting and threshold heart rate, functional
+threshold power, and rider and bike mass — is not among them either, and for the
+same reason. It is one rider's, keyed by the subject a session is issued for,
+held in the state database beside the settings but outside the snapshot: it is
+read per request over the caller's own subject rather than once at startup, and
+it decides nothing about what work the service does. Every parameter is optional
+and stored nullable, so one the rider has not entered is absent rather than a
+zero a calculation would believe. [The service
+contract](service.md) states who may read and write it.
+
 ### Credentials
 
 The Wahoo client secret, the Wahoo webhook token, each source's email and

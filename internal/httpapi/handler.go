@@ -290,6 +290,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.adminOnly(h.SetBasemaps))
 	h.mux.HandleFunc("PUT /v1/settings/surface", h.adminOnly(h.SetSurface))
 	h.mux.HandleFunc("PUT /v1/settings/sync", h.adminOnly(h.SetSync))
+	// Not admin-gated: this section is the rider's own, read and written over
+	// their own subject and no other's.
+	h.mux.HandleFunc("GET /v1/settings/rider", h.GetRiderProfile)
+	h.mux.HandleFunc("PUT /v1/settings/rider", h.SetRiderProfile)
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
 	h.mux.HandleFunc("GET /v1/weather-grid/latest", h.GetWeatherGridLatest)

@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { MemoryRouter } from "react-router";
 import {
   activitiesQuery,
+  riderProfileQuery,
   routeGeometryQuery,
   routesQuery,
   settingsQuery,
@@ -16,6 +17,7 @@ import {
 import type {
   Activity,
   BoundingBox,
+  RiderProfile,
   Route,
   RouteGeometry,
   Settings,
@@ -317,6 +319,17 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
   };
 });
 
+/**
+ * A rider who has entered their heart rate and both masses but neither power
+ * number, and whose rides suggest both of the two that carry a suggestion — so
+ * an offered figure beside an entered one and beside an empty box are all
+ * visible at once.
+ */
+export const riderProfile: RiderProfile = {
+  profile: { maxHeartRateBpm: 188, riderMassKg: 74.5, bikeMassKg: 8.4 },
+  suggestions: { maxHeartRateBpm: 183, functionalThresholdPowerWatts: 261 },
+};
+
 export function StoryProviders({ children }: { children: ReactNode }) {
   const [client] = useState(() => {
     const next = new QueryClient({
@@ -326,6 +339,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
     next.setQueryData(tasksQuery().queryKey, tasks);
     next.setQueryData(webUIConfigQuery().queryKey, config);
     next.setQueryData(settingsQuery().queryKey, settings);
+    next.setQueryData(riderProfileQuery().queryKey, riderProfile);
     next.setQueryData(routesQuery().queryKey, [route]);
     next.setQueryData(activitiesQuery().queryKey, activities);
     next.setQueryData(
