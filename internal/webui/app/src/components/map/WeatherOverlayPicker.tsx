@@ -14,10 +14,10 @@
 
 import { IconCloud } from "@tabler/icons-react";
 import { Button } from "@/components/Button";
+import { Slider } from "@/components/Slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Slider } from "@/components/ui/slider";
 import { useHourTick } from "../../lib/clock";
 import type { Measure, MeasureKey } from "../../lib/measures";
 
