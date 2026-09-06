@@ -14,11 +14,10 @@ import { IconCurrentLocation, IconMinus, IconPlus } from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
 import { Marker, useMap } from "react-map-gl/maplibre";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { LOCATION_ZOOM } from "../../lib/startupLocation";
 import { Button } from "../Button";
 import { CompassButton } from "./CompassButton";
 import { LocationPin } from "./LocationPin";
-
-const LOCATION_ZOOM = 12;
 
 export function MapControls({ children }: { children?: ReactNode }) {
   const { current: map } = useMap();

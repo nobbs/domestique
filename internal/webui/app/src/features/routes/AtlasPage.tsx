@@ -38,6 +38,7 @@ import { useOverlayInsets } from "../../lib/overlayInsets";
 import { coordinateRange, rangeBounds } from "../../lib/profile";
 import { useSeenRoutes } from "../../lib/seenRoutes";
 import { useStartTime } from "../../lib/startTime";
+import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
 import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
 import { useEscapeKey } from "../../lib/useEscapeKey";
@@ -395,7 +396,12 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   }, [openCoordinates, shownWindow]);
   const focusBox = focusKey ? (drawn.boxes.get(focusKey) ?? null) : null;
   const libraryBounds = useMemo(() => unionOf([...drawn.boxes.values()]), [drawn.boxes]);
-  const bounds = windowBounds ?? focusBox ?? libraryBounds;
+  // Decided once, at mount, from the URL alone: a deep link keeps framing its
+  // route once the geometry arrives, rather than flying off to a position.
+  const [locationEnabled] = useState(() => openKey === null);
+  const location = useStartupLocation(locationEnabled);
+  const locationBox = location ? boxAround(location) : null;
+  const bounds = windowBounds ?? focusBox ?? locationBox ?? libraryBounds;
 
   const basemap = config.data ? basemapFor(config.data, resolvedDark, basemapChoice) : null;
   const readAt = status.data?.sync.phases.source?.lastCompletedAt;
@@ -414,7 +420,13 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             pickedKey={focusKey}
             bounds={bounds}
             insets={insets}
-            maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
+            maxZoom={
+              windowBounds
+                ? WINDOW_MAX_ZOOM
+                : bounds === locationBox
+                  ? LOCATION_ZOOM
+                  : ROUTE_MAX_ZOOM
+            }
             onPick={pick}
             inertKey={openKey}
           >

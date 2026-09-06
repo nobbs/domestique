@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,6 +29,7 @@ interface Drawing {
   keys: string[];
   pickedKey: string | null;
   bounds: BoundingBox | null;
+  maxZoom: number | undefined;
   /** Whether the selected route's own layers were handed to the map. */
   overlaid: boolean;
   /** The line the map was told a pick would do nothing to. */
@@ -45,6 +46,7 @@ vi.mock("./LibraryMap", () => ({
     lines: Array<{ key: string }>;
     pickedKey: string | null;
     bounds: BoundingBox | null;
+    maxZoom?: number;
     children?: unknown;
     onPick?: (key: string) => void;
     inertKey?: string | null;
@@ -55,6 +57,7 @@ vi.mock("./LibraryMap", () => ({
       keys: props.lines.map((line) => line.key),
       pickedKey: props.pickedKey,
       bounds: props.bounds,
+      maxZoom: props.maxZoom,
       overlaid: Boolean(props.children),
       inertKey: props.inertKey ?? null,
       styleUrl: props.styleUrl,
@@ -225,6 +228,27 @@ function stubStorage(): void {
       entries.set(key, value);
     },
   });
+}
+
+/** A `navigator.geolocation` for jsdom, which has none. */
+function stubGeolocation(outcome: "granted" | "denied"): {
+  getCurrentPosition: ReturnType<typeof vi.fn>;
+} {
+  const getCurrentPosition = vi.fn(
+    (
+      found: (position: { coords: { latitude: number; longitude: number } }) => void,
+      failed?: (error: unknown) => void,
+    ) => {
+      if (outcome === "granted") {
+        found({ coords: { latitude: 49, longitude: 8 } });
+      } else {
+        failed?.(new Error("denied"));
+      }
+    },
+  );
+  vi.stubGlobal("navigator", { geolocation: { getCurrentPosition } });
+
+  return { getCurrentPosition };
 }
 
 beforeEach(() => {
@@ -644,5 +668,30 @@ describe("AtlasPage", () => {
     );
 
     expect(screen.queryByText("New")).toBeNull();
+  });
+});
+
+describe("AtlasPage startup location", () => {
+  it("frames the rider's own position, at no closer than the location zoom, when nothing else was asked for", async () => {
+    stubGeolocation("granted");
+    renderPage();
+
+    await waitFor(() => expect(lastDrawing().bounds).toEqual([7.99, 48.99, 8.01, 49.01]));
+    expect(lastDrawing().maxZoom).toBe(12);
+  });
+
+  it("falls back to the library's own bounds when geolocation fails", async () => {
+    stubGeolocation("denied");
+    renderPage();
+
+    await waitFor(() => expect(lastDrawing().bounds).toEqual([8, 49, 8.9, 49.1]));
+  });
+
+  it("never asks for the rider's position when a deep link already names a route", async () => {
+    const { getCurrentPosition } = stubGeolocation("granted");
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F2%2F1" });
+
+    expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
+    expect(getCurrentPosition).not.toHaveBeenCalled();
   });
 });
