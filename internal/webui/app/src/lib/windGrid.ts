@@ -35,7 +35,7 @@ const TAIL_PIXELS_PER_METRE_PER_SECOND = 2.5;
 const TAIL_MIN_PIXELS = 3;
 
 /**
- * A streak is a quad, two triangles, tapering from nothing at the tail to its
+ * A streak is a wedge, two triangles, tapering from nothing at the tail to its
  * full width at the head: a hairline is lost on a dense display, and this
  * overlay is the thing being looked at rather than a texture beside it.
  */
@@ -169,11 +169,11 @@ export function advanceGridField(
 }
 
 /**
- * Writes each particle as a tapered quad, six vertices, for `windStreakLayer`
+ * Writes each particle as a tapered wedge, six vertices, for `windStreakLayer`
  * drawing triangles; returns how many vertices were written.
  *
  * `mercatorPerPixel` is the world square's own size of one screen pixel, which
- * is what the quad's width has to be measured in.
+ * is what the wedge's width has to be measured in.
  */
 export function writeGridStreaks(
   particles: GridParticle[],
