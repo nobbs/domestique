@@ -674,7 +674,7 @@ export type GetSyncRunsParams = {
 
 export type GetActivitiesParams = {
   /**
-   * Inclusive start of the window. Defaults to the account's first recorded activity.
+   * Inclusive start of the window. Left out, the window has no lower bound and reaches every stored activity.
    */
   from?: string;
   /**

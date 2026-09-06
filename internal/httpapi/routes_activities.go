@@ -129,8 +129,8 @@ func activityTrackFeature(track []activities.TrackPoint) activityTrackView {
 	return view
 }
 
-// activityWindow reads the requested window. An unset from reaches back to
-// the account's first recorded activity; an unset to defaults to now.
+// activityWindow reads the requested window. An unset from is no lower bound
+// at all; an unset to defaults to now.
 func (h *Handler) activityWindow(writer http.ResponseWriter, rawFrom, rawTo string) (from, to time.Time, ok bool) {
 	// Stored start times are whole UTC seconds, so the window is read as such:
 	// a fractional second or an offset must not move a ride across its edge.

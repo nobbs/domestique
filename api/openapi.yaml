@@ -270,8 +270,8 @@ paths:
         - name: from
           in: query
           description: >-
-            Inclusive start of the window. Defaults to the account's first
-            recorded activity.
+            Inclusive start of the window. Left out, the window has no lower
+            bound and reaches every stored activity.
           schema:
             type: string
             format: date-time
