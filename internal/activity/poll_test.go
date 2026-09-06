@@ -185,6 +185,23 @@ func TestPollSkipsAnActivityOnlyItsOwnSummaryRejects(t *testing.T) {
 	assert.False(t, store.markedForReauthorization, "a skipped activity marked the slot for reauthorization")
 }
 
+// A refusal of the first workout's summary is that workout's alone: the poll
+// sets it aside and stores every readable workout after it in the same run.
+func TestPollStoresEveryReadableActivityPastARefusedFirstOne(t *testing.T) {
+	store := newFakeStore()
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(1)}, {ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}, {ID: 4, Starts: at(4)}}
+	source.summaryErrs = map[int64]error{1: fmt.Errorf("HTTP 401: %w", errUnreadable), 3: fmt.Errorf("HTTP 401: %w", errUnreadable)}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Result{Outcome: Polled, Stored: 2, Skipped: 2, RecordsStored: 2}, result)
+	assert.Equal(t, []int64{2, 4}, source.summarized)
+	require.Len(t, store.skipped, 2)
+	assert.Equal(t, int64(1), store.skipped[0].id)
+	assert.Equal(t, int64(3), store.skipped[1].id)
+}
+
 // A failure that belongs to the connection, the quota or the grant — or one the
 // poll does not recognise — still stops the run and condemns no activity.
 func TestPollStopsWithoutSkippingOnAFailureThatIsNotTheActivitysOwn(t *testing.T) {

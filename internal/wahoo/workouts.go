@@ -171,14 +171,10 @@ func (c *Client) WorkoutSummary(ctx context.Context, accessToken string, workout
 	var body json.RawMessage
 	if err := c.doJSON(request, &body); err != nil {
 		if status, ok := errors.AsType[*statusError](err); ok {
-			switch status.status {
-			case http.StatusNotFound:
+			// A 401 here is the workout's own, not the connection's: on one token
+			// Wahoo refuses some workouts' summaries and serves the next (#487).
+			if status.status == http.StatusNotFound || status.status == http.StatusUnauthorized {
 				return WorkoutSummary{}, fmt.Errorf("%w: HTTP %d", ErrWorkoutUnreadable, status.status)
-			case http.StatusUnauthorized:
-				// Never this workout: the same rejection would meet the next one,
-				// and treating it as the workout's own sets aside a whole poll of
-				// healthy rides one at a time.
-				return WorkoutSummary{}, fmt.Errorf("%w: HTTP %d", ErrRequestRejected, status.status)
 			}
 		}
 
