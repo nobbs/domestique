@@ -93,6 +93,54 @@ func TestGetStatusNamesEveryTargetsOwnerForAdmin(t *testing.T) {
 	assert.Equal(t, map[string]string{"rider-a": "rider-a", "rider-b": "rider-b"}, owners)
 }
 
+// An admin's status view carries an owner's nickname beside their subject
+// when a session ever recorded one, and omits it when none did — the
+// ownership comparison itself stays keyed on subject regardless.
+func TestGetStatusNamesTheOwnersNicknameWhenKnown(t *testing.T) {
+	state := &fakeState{
+		targets: []fakeTarget{
+			{id: "rider-a", authorization: "authorized", owner: "rider-a"},
+			{id: "rider-b", authorization: "authorized", owner: "rider-b"},
+		},
+		nicknames: map[string]string{"rider-a": "Rider A"},
+	}
+	handler := handlerFor(t, newFakeSessions(), &fakeOAuth{}, state, nil)
+
+	view := statusOf(t, handler)
+
+	require.Len(t, view.Targets, 2)
+	nicknames := map[string]*string{}
+	for _, target := range view.Targets {
+		nicknames[target.ID] = target.OwnerNickname
+	}
+	require.NotNil(t, nicknames["rider-a"])
+	assert.Equal(t, "Rider A", *nicknames["rider-a"])
+	assert.Nil(t, nicknames["rider-b"], "an owner the store never saw a nickname for carries none")
+}
+
+// A non-admin's status view never carries an owner's nickname either, the
+// same way it never carries the owner subject itself.
+func TestGetStatusOmitsOwnerNicknameForNonAdmin(t *testing.T) {
+	state := &fakeState{
+		targets:   []fakeTarget{{id: "rider-a", authorization: "authorized", owner: "rider-a"}},
+		nicknames: map[string]string{"rider-a": "Rider A"},
+	}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, state, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
+	require.Equal(t, http.StatusOK, response.Code)
+
+	var view struct {
+		Targets []struct {
+			OwnerNickname *string `json:"ownerNickname"`
+		} `json:"targets"`
+	}
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &view))
+	require.Len(t, view.Targets, 1)
+	assert.Nil(t, view.Targets[0].OwnerNickname, "ownerNickname is admin-only")
+}
+
 // An admin's status view marks exactly their own target as `own`, and carries
 // no `own` field on anyone else's; a non-admin's view carries no `own` field
 // at all, since a status view scoped to one target has nothing to compare.
@@ -286,6 +334,33 @@ func TestGetStatusReportsUnavailableWhenTargetIDsFails(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
 	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
+}
+
+// An admin's status request that cannot read nicknames is unavailable, the
+// same as any other read this view depends on; a non-admin never asks for
+// nicknames at all, so the same failure must not reach it.
+func TestGetStatusReportsUnavailableWhenNicknamesFailForAdmin(t *testing.T) {
+	state := &fakeState{
+		targets:      []fakeTarget{{id: "rider-a", authorization: "authorized", owner: "rider-a"}},
+		nicknamesErr: errors.New("state unavailable"),
+	}
+	handler := handlerFor(t, newFakeSessions(), &fakeOAuth{}, state, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
+	assert.Equal(t, http.StatusServiceUnavailable, response.Code)
+}
+
+func TestGetStatusIgnoresNicknamesFailureForNonAdmin(t *testing.T) {
+	state := &fakeState{
+		targets:      []fakeTarget{{id: "rider-a", authorization: "authorized", owner: "rider-a"}},
+		nicknamesErr: errors.New("state unavailable"),
+	}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, state, nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, signedInRequest(http.MethodGet, "/v1/status"))
+	assert.Equal(t, http.StatusOK, response.Code)
 }
 
 // targetRouteCounts and targetRuns each read ownership scoping on their own,

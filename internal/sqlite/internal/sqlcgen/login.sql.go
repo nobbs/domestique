@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const capLoginTransactions = `-- name: CapLoginTransactions :exec
@@ -75,12 +76,13 @@ func (q *Queries) GetLoginTransaction(ctx context.Context, stateDigest []byte) (
 }
 
 const getWebSession = `-- name: GetWebSession :one
-SELECT subject, display, admin, expires_at_unix FROM web_sessions WHERE token_digest = ?
+SELECT subject, display, COALESCE(nickname, '') AS nickname, admin, expires_at_unix FROM web_sessions WHERE token_digest = ?
 `
 
 type GetWebSessionRow struct {
 	Subject       string
 	Display       string
+	Nickname      string
 	Admin         int64
 	ExpiresAtUnix int64
 }
@@ -91,6 +93,7 @@ func (q *Queries) GetWebSession(ctx context.Context, tokenDigest []byte) (GetWeb
 	err := row.Scan(
 		&i.Subject,
 		&i.Display,
+		&i.Nickname,
 		&i.Admin,
 		&i.ExpiresAtUnix,
 	)
@@ -120,14 +123,15 @@ func (q *Queries) InsertLoginTransaction(ctx context.Context, arg InsertLoginTra
 }
 
 const insertWebSession = `-- name: InsertWebSession :exec
-INSERT INTO web_sessions (token_digest, subject, display, admin, created_at_unix, renewed_at_unix, expires_at_unix)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO web_sessions (token_digest, subject, display, nickname, admin, created_at_unix, renewed_at_unix, expires_at_unix)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertWebSessionParams struct {
 	TokenDigest   []byte
 	Subject       string
 	Display       string
+	Nickname      sql.NullString
 	Admin         int64
 	CreatedAtUnix int64
 	RenewedAtUnix int64
@@ -135,16 +139,59 @@ type InsertWebSessionParams struct {
 }
 
 // renewed_at_unix is unused, superseded by the fixed 24-hour lifetime; NOT
-// NULL with no default, so dropping it needs a rebuild.
+// NULL with no default, so dropping it needs a rebuild. nickname is nullable:
+// a token without the claim stores nothing rather than a guess.
 func (q *Queries) InsertWebSession(ctx context.Context, arg InsertWebSessionParams) error {
 	_, err := q.db.ExecContext(ctx, insertWebSession,
 		arg.TokenDigest,
 		arg.Subject,
 		arg.Display,
+		arg.Nickname,
 		arg.Admin,
 		arg.CreatedAtUnix,
 		arg.RenewedAtUnix,
 		arg.ExpiresAtUnix,
 	)
 	return err
+}
+
+const listLatestSessionNicknames = `-- name: ListLatestSessionNicknames :many
+SELECT subject, nickname, MAX(created_at_unix) AS latest_at_unix
+FROM web_sessions
+WHERE nickname IS NOT NULL AND nickname != ''
+GROUP BY subject
+`
+
+type ListLatestSessionNicknamesRow struct {
+	Subject      string
+	Nickname     sql.NullString
+	LatestAtUnix interface{}
+}
+
+// One row per subject that ever signed in with a nickname, from its most
+// recent such session; a subject with none is simply absent. Keyed by
+// subject throughout: this never looks a rider up by their nickname. The
+// bare nickname column reads from the same row MAX(created_at_unix) picks,
+// a documented SQLite behaviour for a bare column beside an aggregate.
+func (q *Queries) ListLatestSessionNicknames(ctx context.Context) ([]ListLatestSessionNicknamesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestSessionNicknames)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLatestSessionNicknamesRow{}
+	for rows.Next() {
+		var i ListLatestSessionNicknamesRow
+		if err := rows.Scan(&i.Subject, &i.Nickname, &i.LatestAtUnix); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

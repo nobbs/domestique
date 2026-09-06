@@ -47,6 +47,10 @@ public client-side code of its own.
   `github|<github-user-id>`, a stable numeric ID rather than the account's
   current login name, so a GitHub username change never invalidates the
   Action's own list.
+- The standard `nickname` claim, when the connection sets one, is read at
+  sign-in and stored beside the subject purely as a display label next to it
+  on the settings page. It is never a key: ownership and admin comparisons
+  stay on subject alone, and nothing looks a rider up by nickname.
 
 ## The reverse proxy
 

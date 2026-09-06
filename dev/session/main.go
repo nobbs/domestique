@@ -60,7 +60,7 @@ func run(database, subject, out string, admin bool) error {
 		return err
 	}
 	now := time.Now().UTC()
-	if err := store.CreateSession(ctx, digest, subject, subject, admin, now, now.Add(lifetime)); err != nil {
+	if err := store.CreateSession(ctx, digest, subject, subject, "", admin, now, now.Add(lifetime)); err != nil {
 		return fmt.Errorf("storing session: %w", err)
 	}
 

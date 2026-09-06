@@ -359,7 +359,7 @@ func mintSession(ctx context.Context, store *sqlite.Store, path string) error {
 	}
 	digest := sha256.Sum256(raw)
 	now := time.Now().UTC()
-	if err := store.CreateSession(ctx, digest[:], demoSubject, demoDisplay, true, now, now.Add(sessionLifetime)); err != nil {
+	if err := store.CreateSession(ctx, digest[:], demoSubject, demoDisplay, demoNickname, true, now, now.Add(sessionLifetime)); err != nil {
 		return fmt.Errorf("storing the demo session: %w", err)
 	}
 	if path == "" {

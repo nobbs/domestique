@@ -57,7 +57,7 @@ func (p signInProvider) Exchange(
 // without a live or fake token exchange.
 func exchangedIdentityFrom(identity auth0.Identity) session.ExchangedIdentity {
 	return session.ExchangedIdentity{
-		Subject: identity.Subject, Email: identity.Email, Name: identity.Name,
+		Subject: identity.Subject, Email: identity.Email, Name: identity.Name, Nickname: identity.Nickname,
 		Access: identity.Access, Admin: identity.Admin,
 	}
 }

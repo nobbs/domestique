@@ -30,10 +30,12 @@ type NotAllowedError struct{ Subject string }
 
 func (e *NotAllowedError) Error() string { return "subject is not allowed to sign in" }
 
-// Identity is the signed-in caller as later requests see it.
+// Identity is the signed-in caller as later requests see it. Nickname is a
+// display label only, empty when the sign-in's ID token carried none; never a
+// key for ownership or admin comparisons.
 type Identity struct {
-	Subject, Display string
-	Admin            bool
+	Subject, Display, Nickname string
+	Admin                      bool
 }
 
 // Login is a pending browser sign-in: where to send the browser, and the
@@ -52,8 +54,10 @@ type Completion struct {
 type Store interface {
 	BeginLogin(ctx context.Context, stateDigest []byte, nonce, codeVerifier string, now, expiresAt time.Time) error
 	ConsumeLogin(ctx context.Context, stateDigest []byte, now time.Time) (nonce, codeVerifier string, err error)
-	CreateSession(ctx context.Context, tokenDigest []byte, subject, display string, admin bool, now, expiresAt time.Time) error
-	Session(ctx context.Context, tokenDigest []byte, now time.Time) (subject, display string, admin bool, expiresAt time.Time, err error)
+	CreateSession(ctx context.Context, tokenDigest []byte, subject, display, nickname string, admin bool, now, expiresAt time.Time) error
+	// Session's own expiry is checked internally, reported only as
+	// ErrSessionExpired; no caller has ever needed the value back out.
+	Session(ctx context.Context, tokenDigest []byte, now time.Time) (subject, display, nickname string, admin bool, err error)
 	DeleteSession(ctx context.Context, tokenDigest []byte) error
 }
 
@@ -64,8 +68,8 @@ type Store interface {
 // whether the subject may hold a session at all, and whether it holds
 // cross-subject rights once it does.
 type ExchangedIdentity struct {
-	Subject, Email, Name string
-	Access, Admin        bool
+	Subject, Email, Name, Nickname string
+	Access, Admin                  bool
 }
 
 // Provider is the issuer as this package needs it.
@@ -156,13 +160,17 @@ func (s *Service) Complete(ctx context.Context, state, cookieState, code string)
 		return Completion{}, fmt.Errorf("minting session token: %w", err)
 	}
 	expiresAt := now.Add(sessionLifetime)
-	if err := s.store.CreateSession(ctx, tokenDigestBytes, exchanged.Subject, display, exchanged.Admin, now, expiresAt); err != nil {
+	if err := s.store.CreateSession(
+		ctx, tokenDigestBytes, exchanged.Subject, display, exchanged.Nickname, exchanged.Admin, now, expiresAt,
+	); err != nil {
 		return Completion{}, fmt.Errorf("storing session: %w", err)
 	}
 
 	return Completion{
-		Token:     token,
-		Identity:  Identity{Subject: exchanged.Subject, Display: display, Admin: exchanged.Admin},
+		Token: token,
+		Identity: Identity{
+			Subject: exchanged.Subject, Display: display, Nickname: exchanged.Nickname, Admin: exchanged.Admin,
+		},
 		ExpiresAt: expiresAt,
 	}, nil
 }
@@ -176,12 +184,12 @@ func (s *Service) Verify(ctx context.Context, token string) (Identity, error) {
 		return Identity{}, errors.New("session token is invalid")
 	}
 
-	subject, display, admin, _, err := s.store.Session(ctx, digest, s.now())
+	subject, display, nickname, admin, err := s.store.Session(ctx, digest, s.now())
 	if err != nil {
 		return Identity{}, fmt.Errorf("reading session: %w", err)
 	}
 
-	return Identity{Subject: subject, Display: display, Admin: admin}, nil
+	return Identity{Subject: subject, Display: display, Nickname: nickname, Admin: admin}, nil
 }
 
 // Revoke ends a browser session.

@@ -73,8 +73,11 @@ func (s *Store) ConsumeLogin(ctx context.Context, stateDigest []byte, now time.T
 }
 
 // CreateSession saves a hashed, expiring web session. The raw token is never
-// persisted. Expired sessions are cleared first.
-func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, display string, admin bool, now, expiresAt time.Time) error {
+// persisted. Expired sessions are cleared first. nickname is stored as given,
+// empty when the ID token carried no claim.
+func (s *Store) CreateSession(
+	ctx context.Context, tokenDigest []byte, subject, display, nickname string, admin bool, now, expiresAt time.Time,
+) error {
 	if len(tokenDigest) != 32 || strings.TrimSpace(subject) == "" || strings.TrimSpace(display) == "" || !expiresAt.After(now) {
 		return errors.New("token digest, subject, display, and future expiry are required")
 	}
@@ -84,7 +87,8 @@ func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, 
 			return fmt.Errorf("clearing expired web sessions: %w", err)
 		}
 		if err := queries.InsertWebSession(ctx, sqlcgen.InsertWebSessionParams{
-			TokenDigest: tokenDigest, Subject: subject, Display: display, Admin: boolInteger(admin),
+			TokenDigest: tokenDigest, Subject: subject, Display: display,
+			Nickname: sql.NullString{String: nickname, Valid: nickname != ""}, Admin: boolInteger(admin),
 			CreatedAtUnix: now.Unix(), RenewedAtUnix: now.Unix(), ExpiresAtUnix: expiresAt.Unix(),
 		}); err != nil {
 			return fmt.Errorf("storing web session: %w", err)
@@ -93,26 +97,46 @@ func (s *Store) CreateSession(ctx context.Context, tokenDigest []byte, subject, 
 	})
 }
 
-// Session returns a web session's identity and lifetime by its hashed token.
-// It leaves an expired row in place: a write path prunes it instead, so a
-// read alone never mutates state.
-func (s *Store) Session(ctx context.Context, tokenDigest []byte, now time.Time) (subject, display string, admin bool, expiresAt time.Time, err error) {
+// Session returns a web session's identity by its hashed token, checking
+// expiry internally rather than handing the raw value back: no caller has
+// ever needed it, only whether it has passed. It leaves an expired row in
+// place: a write path prunes it instead, so a read alone never mutates state.
+func (s *Store) Session(
+	ctx context.Context, tokenDigest []byte, now time.Time,
+) (subject, display, nickname string, admin bool, err error) {
 	if len(tokenDigest) != 32 {
-		return "", "", false, time.Time{}, errors.New("token digest is required")
+		return "", "", "", false, errors.New("token digest is required")
 	}
 
 	row, err := s.queries.GetWebSession(ctx, tokenDigest)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", "", false, time.Time{}, ErrSessionNotFound
+		return "", "", "", false, ErrSessionNotFound
 	}
 	if err != nil {
-		return "", "", false, time.Time{}, fmt.Errorf("reading web session: %w", err)
+		return "", "", "", false, fmt.Errorf("reading web session: %w", err)
 	}
 	if row.ExpiresAtUnix <= now.Unix() {
-		return "", "", false, time.Time{}, ErrSessionExpired
+		return "", "", "", false, ErrSessionExpired
 	}
 
-	return row.Subject, row.Display, row.Admin != 0, time.Unix(row.ExpiresAtUnix, 0).UTC(), nil
+	return row.Subject, row.Display, row.Nickname, row.Admin != 0, nil
+}
+
+// LatestSessionNicknames returns each subject's most recently signed-in
+// nickname, for a subject that has ever supplied one. Keyed by subject, never
+// the other way round: nothing looks a rider up by nickname.
+func (s *Store) LatestSessionNicknames(ctx context.Context) (map[string]string, error) {
+	rows, err := s.queries.ListLatestSessionNicknames(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing session nicknames: %w", err)
+	}
+
+	nicknames := make(map[string]string, len(rows))
+	for _, row := range rows {
+		nicknames[row.Subject] = row.Nickname.String
+	}
+
+	return nicknames, nil
 }
 
 // DeleteSession removes a web session by its hashed token. Deleting a token
