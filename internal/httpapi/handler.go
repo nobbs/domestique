@@ -143,11 +143,14 @@ type Handler struct {
 	weatherGrid WeatherGrid
 	// validate holds every request to the document before it reaches a
 	// handler: parameter bounds, request bodies, and provenance.
-	validate            func(http.Handler) http.Handler
-	sessions            Sessions
-	surfaceIndex        func() (string, time.Time, bool)
-	now                 func() time.Time
-	mux                 *http.ServeMux
+	validate     func(http.Handler) http.Handler
+	sessions     Sessions
+	surfaceIndex func() (string, time.Time, bool)
+	now          func() time.Time
+	mux          *http.ServeMux
+	// entry is serve wrapped in the request log, composed once at construction
+	// rather than on every request.
+	entry               http.Handler
 	rideModelValidation func() *RideModelValidation
 	rideModelStatus     func() RideModelStatus
 	settings            SettingsState
@@ -227,6 +230,7 @@ func New(
 		return nil, err
 	}
 	handler.routes()
+	handler.entry = handler.logged(http.HandlerFunc(handler.serve))
 
 	return handler, nil
 }
@@ -307,7 +311,7 @@ func (h *Handler) routes() {
 
 // ServeHTTP applies the shared response headers and dispatches.
 func (h *Handler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	h.logged(http.HandlerFunc(h.serve)).ServeHTTP(writer, request)
+	h.entry.ServeHTTP(writer, request)
 }
 
 func (h *Handler) serve(writer http.ResponseWriter, request *http.Request) {
