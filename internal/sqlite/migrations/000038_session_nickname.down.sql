@@ -7,13 +7,13 @@ CREATE TABLE web_sessions_pre_nickname (
     token_digest    BLOB    PRIMARY KEY,
     subject         TEXT    NOT NULL,
     display         TEXT    NOT NULL,
-    admin           INTEGER NOT NULL DEFAULT 0,
     created_at_unix INTEGER NOT NULL,
     renewed_at_unix INTEGER NOT NULL,
-    expires_at_unix INTEGER NOT NULL
+    expires_at_unix INTEGER NOT NULL,
+    admin           INTEGER NOT NULL DEFAULT 0
 );
-INSERT INTO web_sessions_pre_nickname (token_digest, subject, display, admin, created_at_unix, renewed_at_unix, expires_at_unix)
-SELECT token_digest, subject, display, admin, created_at_unix, renewed_at_unix, expires_at_unix FROM web_sessions;
+INSERT INTO web_sessions_pre_nickname (token_digest, subject, display, created_at_unix, renewed_at_unix, expires_at_unix, admin)
+SELECT token_digest, subject, display, created_at_unix, renewed_at_unix, expires_at_unix, admin FROM web_sessions;
 DROP TABLE web_sessions;
 ALTER TABLE web_sessions_pre_nickname RENAME TO web_sessions;
 CREATE INDEX web_sessions_expiry_index ON web_sessions(expires_at_unix);

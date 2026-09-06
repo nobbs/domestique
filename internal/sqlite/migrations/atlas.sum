@@ -1,4 +1,4 @@
-h1:H8qN85p8xQt6fcbgOytrXog9jVBH7YOK2Ciwr7w8VAw=
+h1:IP75Dd84oOErMyaM5Re2ykdqMpxi3prPRN6b0+jDptQ=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -21,5 +21,5 @@ h1:H8qN85p8xQt6fcbgOytrXog9jVBH7YOK2Ciwr7w8VAw=
 000036_cycling_activities_only.up.sql h1:hoP206VrD1ILFwpRA/HqTmafw7SzekPes0jqRx433UI=
 000037_wahoo_quota.down.sql h1:RJHa1CcstVhnvqfZBUlluf1yVFKff3uqruY2uY/gpkc=
 000037_wahoo_quota.up.sql h1:aBsFZHvGnlEyd5WZOfDf1LespaOJ1eXrrHjDT3yi8X0=
-000038_session_nickname.down.sql h1:McnkSG/99wOjyQCHHQtrABOzVdGkv2liA3nHqZ8jIGU=
-000038_session_nickname.up.sql h1:S0LY3pZsXYaqr9++ZBCwYXpWEYTeC0k1ggMsduZ0EDs=
+000038_session_nickname.down.sql h1:+Gue6sIbTlXrNcQSRljCM7JyLuHPRy96ap58smJXgIA=
+000038_session_nickname.up.sql h1:WzMJh5CgpLKVkyktVTtC1ENfvwJBC0TBMhGXYPD4hCg=
