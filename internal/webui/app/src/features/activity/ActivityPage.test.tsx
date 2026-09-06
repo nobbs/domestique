@@ -135,9 +135,16 @@ describe("one ride's page", () => {
     expect(screen.queryByTestId("elevation-profile")).not.toBeInTheDocument();
   });
 
-  it("says plainly when no track was stored", () => {
+  it("shows a placeholder while the track is still loading", () => {
     show(null);
 
     expect(screen.getByRole("status", { name: "Loading the recorded track" })).toBeInTheDocument();
+  });
+
+  it("says plainly when no track was stored", () => {
+    show({ bbox: [8, 49, 8, 49], coordinates: [] });
+
+    expect(screen.getByText("No recorded track was stored for this ride.")).toBeInTheDocument();
+    expect(screen.queryByTestId("activity-map")).not.toBeInTheDocument();
   });
 });

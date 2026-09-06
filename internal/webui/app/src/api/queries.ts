@@ -79,6 +79,9 @@ export const activitiesQuery = (from: string) =>
 
           return Array.isArray(list) ? list : list.activities;
         },
+        // Read by the Volume, list and ride pages alike: one fetch serves a
+        // whole visit rather than one per page shown.
+        staleTime: 5 * 60 * 1000,
       },
     },
   );

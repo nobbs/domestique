@@ -1,6 +1,7 @@
 /**
  * One recorded ride: where it went, and how much of it was uphill. The summary
- * comes from the list the page before it read, so only the track is fetched.
+ * is read from the same activities query the list uses, so arriving from the
+ * list costs only the track request; a direct link fetches both.
  */
 
 import { useQuery } from "@tanstack/react-query";

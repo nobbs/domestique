@@ -1,7 +1,7 @@
 /**
  * The rider's own recorded activities, over the same window the Volume page
- * reads. One query serves the list and the detail page, so opening a ride costs
- * no request beyond its track.
+ * reads. The list and the ride page share this one query, so the list's answer
+ * is still fresh when a ride is opened from it.
  */
 
 import { useQuery } from "@tanstack/react-query";
