@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -114,6 +115,34 @@ func TestWahooWebhookStartsTheRidersPoll(t *testing.T) {
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, webhookRequest(t,
 		webhookBody(t, testWebhookToken, eventWorkoutSummary, testWahooUserID)))
+
+	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, []startedTask{{name: TaskActivityPoll, argument: testSubject}}, tasks.started)
+}
+
+// Wahoo's documented sample, with the summary and its nested workout, decodes
+// to the three fields read: the rest is carried without being looked at.
+func TestWahooWebhookAcceptsWahoosDocumentedShape(t *testing.T) {
+	handler, tasks, _, _ := newWebhookHandler(t)
+	body := fmt.Sprintf(`{
+  "event_type": "workout_summary",
+  "webhook_token": %q,
+  "user": {"id": %s},
+  "workout_summary": {
+    "id": 8297, "ascent_accum": "450.00", "cadence_avg": "52.00",
+    "distance_accum": "24909.71", "duration_active_accum": "179.00",
+    "duration_paused_accum": "85.00", "duration_total_accum": "275.20",
+    "created_at": "2018-10-23T20:43:50.000Z", "updated_at": "2018-10-23T20:43:50.000Z",
+    "file": {"url": "https://server.example/4_Mile_Segment_.fit"},
+    "workout": {
+      "id": 56519, "starts": "2015-08-12T09:00:00.000Z", "minutes": 12,
+      "name": "Friday Fun", "plan_id": null, "workout_token": "123", "workout_type_id": 40
+    }
+  }
+}`, testWebhookToken, testWahooUserID)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, webhookRequest(t, body))
 
 	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	assert.Equal(t, []startedTask{{name: TaskActivityPoll, argument: testSubject}}, tasks.started)
