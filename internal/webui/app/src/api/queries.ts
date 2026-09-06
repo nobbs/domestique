@@ -7,6 +7,7 @@ import {
   type GetTaskRunsParams,
   getGetActivitiesQueryOptions,
   getGetActivityTrackQueryOptions,
+  getGetRiderProfileQueryOptions,
   getGetRouteGeometryQueryOptions,
   getGetRouteQueryOptions,
   getGetRoutesQueryOptions,
@@ -26,6 +27,7 @@ import {
   type ActivityTrack,
   activityTrack,
   type GeoJSONFeature,
+  type RiderProfile,
   type Route,
   type RouteGeometry,
   routeGeometry,
@@ -142,6 +144,18 @@ export const settingsQuery = () =>
   getGetSettingsQueryOptions({
     query: {
       select: (response) => payload<Settings>(response),
+    },
+  });
+
+/**
+ * The signed-in rider's own parameters, and what their rides suggest. Answered
+ * for the caller's own subject: it is never another rider's, so it is read on
+ * whatever page shows it rather than cached for the session.
+ */
+export const riderProfileQuery = () =>
+  getGetRiderProfileQueryOptions({
+    query: {
+      select: (response) => payload<RiderProfile>(response),
     },
   });
 

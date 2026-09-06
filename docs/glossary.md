@@ -189,6 +189,15 @@ by their own first "Connect." Every reader with an authorised Wahoo account is
 a rider; not every reader has connected one yet, and an admin sees every
 rider's target where a rider sees only their own.
 
+**rider profile** — one rider's own body and equipment: maximum, resting and
+threshold heart rate, functional threshold power, and rider and bike mass. Kept
+per subject, not per target, and never another rider's. Not a *setting*: the
+settings are the service's and shared, this is one person's own.
+
+**suggestion** — a figure a rider's own recent rides imply for one profile
+parameter, offered beside its field and stored nowhere. It is not a value until
+the rider has saved it as one.
+
 ## Spelling
 
 British spelling in prose and in identifiers this project owns:

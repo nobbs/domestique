@@ -19,6 +19,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
@@ -2481,10 +2482,59 @@ type fakeState struct {
 	surfaceRanges        json.RawMessage
 	summaries            []route.Summary
 	phaseRuns            []phaseRun
+	riderProfileErr      error
+	riderProfileWriteErr error
+	riderSuggestionErr   error
+	riderProfiles        map[string]rider.Profile
+	riderSuggestions     map[string]rider.Suggestions
+	riderSuggestionSince time.Time
+	riderSuggestionFor   []string
 	enrichmentFailed     int
 	surfaceMetres        float64
 	surfaceClassified    int
 	surfaceTotal         int
+}
+
+// RiderProfile reports what the test stored for this subject, and an empty
+// profile for a subject that stored none.
+func (s *fakeState) RiderProfile(_ context.Context, subject string) (rider.Profile, error) {
+	if s.riderProfileErr != nil {
+		return rider.Profile{}, s.riderProfileErr
+	}
+
+	return s.riderProfiles[subject], nil
+}
+
+//nolint:gocritic // value param: this method conforms to the RiderProfileState contract.
+func (s *fakeState) SetRiderProfile(_ context.Context, subject string, profile rider.Profile) error {
+	if s.riderProfileWriteErr != nil {
+		return s.riderProfileWriteErr
+	}
+	if s.riderProfiles == nil {
+		s.riderProfiles = map[string]rider.Profile{}
+	}
+	s.riderProfiles[subject] = profile
+
+	return nil
+}
+
+// RiderSuggestions records which targets and which cutoff it was asked over, so
+// a test can assert the scope the handler read rather than only the answer.
+func (s *fakeState) RiderSuggestions(
+	_ context.Context, targetIDs []string, since time.Time,
+) (rider.Suggestions, error) {
+	s.riderSuggestionFor, s.riderSuggestionSince = targetIDs, since
+	if s.riderSuggestionErr != nil {
+		return rider.Suggestions{}, s.riderSuggestionErr
+	}
+	suggestions := rider.Suggestions{}
+	for _, targetID := range targetIDs {
+		if held, ok := s.riderSuggestions[targetID]; ok {
+			suggestions = held
+		}
+	}
+
+	return suggestions, nil
 }
 
 // ActivitiesBetween reports the recorded activities the test gave this target,

@@ -400,6 +400,31 @@ type TaskRunPage struct {
 	Next *string   `json:"next,omitempty"`
 }
 
+type RiderProfile struct {
+	Profile     RiderParameters  `json:"profile"`
+	Suggestions RiderSuggestions `json:"suggestions"`
+}
+
+// RiderParameters One rider's own body and equipment. Every parameter is optional: one the rider has not entered is absent rather than zero, because nothing downstream can use a zero heart rate or a massless bicycle.
+type RiderParameters struct {
+	MaxHeartRateBpm     *float64 `json:"maxHeartRateBpm,omitempty"`
+	RestingHeartRateBpm *float64 `json:"restingHeartRateBpm,omitempty"`
+	// ThresholdHeartRateBpm The lactate threshold rate heart-rate zones are cut at.
+	ThresholdHeartRateBpm         *float64 `json:"thresholdHeartRateBpm,omitempty"`
+	FunctionalThresholdPowerWatts *float64 `json:"functionalThresholdPowerWatts,omitempty"`
+	RiderMassKg                   *float64 `json:"riderMassKg,omitempty"`
+	// BikeMassKg The bicycle and everything carried on it.
+	BikeMassKg *float64 `json:"bikeMassKg,omitempty"`
+}
+
+// RiderSuggestions What the rider's rides of the last ninety days say two of these numbers could be, offered beside the fields and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
+type RiderSuggestions struct {
+	// MaxHeartRateBpm The highest heart rate held over a rolling minute.
+	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
+	// FunctionalThresholdPowerWatts The best twenty-minute average power, taken at 95%.
+	FunctionalThresholdPowerWatts *float64 `json:"functionalThresholdPowerWatts,omitempty"`
+}
+
 type TimezoneUpdate struct {
 	// Timezone An IANA zone name this service can load, such as Europe/Berlin.
 	Timezone string `json:"timezone"`

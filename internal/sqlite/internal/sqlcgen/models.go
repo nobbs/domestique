@@ -100,6 +100,17 @@ type RidemodelCoefficient struct {
 	UpdatedAtUnix         int64
 }
 
+type RiderProfile struct {
+	Subject                       string
+	MaxHeartRateBpm               sql.NullFloat64
+	RestingHeartRateBpm           sql.NullFloat64
+	ThresholdHeartRateBpm         sql.NullFloat64
+	FunctionalThresholdPowerWatts sql.NullFloat64
+	RiderMassKg                   sql.NullFloat64
+	BikeMassKg                    sql.NullFloat64
+	UpdatedAtUnix                 int64
+}
+
 type RuntimeBasemap struct {
 	Position        int64
 	Name            string
