@@ -118,7 +118,12 @@ type TrackPoint struct {
 	Latitude       float64
 	Longitude      float64
 	AltitudeMetres float64
-	HasAltitude    bool
+	// EstimatedPowerWatts is the power this service worked out from the track
+	// itself, for a bicycle carrying no meter. Never a measurement, and served
+	// under its own name so nothing can mistake it for one.
+	EstimatedPowerWatts float64
+	HasAltitude         bool
+	HasEstimatedPower   bool
 }
 
 // Source is the rider's activity provider, in this package's own vocabulary.

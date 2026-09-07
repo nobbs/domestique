@@ -474,8 +474,15 @@ The read-only JSON surface is small:
   as a GeoJSON Feature: the positioned samples as a line, the box around them,
   and the altitude at each coordinate indexed 1:1 with them, `null` where that
   sample recorded none. The altitudes are omitted entirely, never all null, when
-  no positioned sample recorded one, and nothing else the samples hold is
-  served. It is scoped exactly as the list above is. An activity with fewer than
+  no positioned sample recorded one.
+
+  Beside them, and only where one was worked out, the **estimated** power at
+  each coordinate, indexed the same way and named `estimatedPowerWatts` rather
+  than any name a measurement could carry. It is omitted entirely for a ride
+  that measured its own power, one with no usable track, and one whose rider has
+  entered no mass. Nothing else the samples hold is served, and the estimate is
+  never served as though it were a reading. It is scoped exactly as the list
+  above is. An activity with fewer than
   two positioned samples is served as an unlocated Feature — a null `geometry`
   and no box — whose `properties.state` says why: `pending` for samples not
   downloaded yet, `empty` for samples too few of which carried a position to
@@ -530,6 +537,16 @@ The read-only JSON surface is small:
   for carries none of it, and the zones are cut from the threshold rate where
   the profile has one and from the maximum otherwise. What computes them, and
   when, is [`activity:derive`](task-layer.md).
+
+  A ride carrying no meter, for a rider who has entered both a rider and a bike
+  mass, also carries an average **estimated** power. It is worked out from the
+  recorded track by a physics model — gravity against a smoothed grade, rolling
+  resistance and drag at fixed road-bike constants, and the change in speed
+  between samples, never below zero and never accounting for wind. It is an
+  estimate and is named as one everywhere: it is never normalised, never scored,
+  and never an input to a training load. A ride that measured its own power has
+  none, because an estimate beside a reading only invites the two to be
+  confused.
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
   maximum, resting and threshold heart rate, functional threshold power, and
   rider and bike mass — every one of them optional, so a parameter the rider has

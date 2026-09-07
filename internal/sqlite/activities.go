@@ -227,11 +227,13 @@ func (s *Store) ActivityTrack(ctx context.Context, targetID string, id int64) ([
 	track := make([]activity.TrackPoint, 0, len(rows))
 	for _, row := range rows {
 		track = append(track, activity.TrackPoint{
-			Time:           time.Unix(row.RecordedAtUnix, 0).UTC(),
-			Latitude:       row.Latitude.Float64,
-			Longitude:      row.Longitude.Float64,
-			AltitudeMetres: row.AltitudeMetres.Float64,
-			HasAltitude:    row.AltitudeMetres.Valid,
+			Time:                time.Unix(row.RecordedAtUnix, 0).UTC(),
+			Latitude:            row.Latitude.Float64,
+			Longitude:           row.Longitude.Float64,
+			AltitudeMetres:      row.AltitudeMetres.Float64,
+			EstimatedPowerWatts: row.EstimatedPowerWatts.Float64,
+			HasAltitude:         row.AltitudeMetres.Valid,
+			HasEstimatedPower:   row.EstimatedPowerWatts.Valid,
 		})
 	}
 

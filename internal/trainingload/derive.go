@@ -10,6 +10,11 @@ type Inputs struct {
 	RestingHeartRateBPM           float64
 	ThresholdHeartRateBPM         float64
 	FunctionalThresholdPowerWatts float64
+	// TotalMassKG is the rider and their bicycle together. Nothing in this
+	// package reads it: it is here because a derivation is stale when any
+	// profile value it was worked out against has changed, and the estimated
+	// power a derivation also produces is worked out from this one.
+	TotalMassKG float64
 }
 
 // InputsOf reads the four parameters a derivation uses out of a profile. A
@@ -21,7 +26,18 @@ func InputsOf(profile *rider.Profile) Inputs {
 		RestingHeartRateBPM:           profile.RestingHeartRateBPM.Number,
 		ThresholdHeartRateBPM:         profile.ThresholdHeartRateBPM.Number,
 		FunctionalThresholdPowerWatts: profile.FunctionalThresholdPowerWatts.Number,
+		// Both halves or neither: a total missing one of them is not a total,
+		// and half a mass would estimate half a rider's power.
+		TotalMassKG: totalMass(profile),
 	}
+}
+
+func totalMass(profile *rider.Profile) float64 {
+	if !profile.RiderMassKG.Set || !profile.BikeMassKG.Set {
+		return 0
+	}
+
+	return profile.RiderMassKG.Number + profile.BikeMassKG.Number
 }
 
 // Metrics is everything one ride's samples and one profile yield. Each part is
@@ -32,19 +48,24 @@ type Metrics struct {
 	// TRIMP and HeartRateTSS are the two load scales, kept side by side rather
 	// than reconciled: they answer different questions and neither converts to
 	// the other.
-	TRIMP           float64
-	HeartRateTSS    float64
-	Power           Power
-	HasZones        bool
-	HasTRIMP        bool
-	HasHeartRateTSS bool
-	HasPower        bool
+	TRIMP        float64
+	HeartRateTSS float64
+	Power        Power
+	// EstimatedPowerWatts is the ride's average estimated power, for a bicycle
+	// with no meter. It is never an input to anything above: an estimate must
+	// not become a measurement by being averaged into one.
+	EstimatedPowerWatts float64
+	HasZones            bool
+	HasTRIMP            bool
+	HasHeartRateTSS     bool
+	HasPower            bool
+	HasEstimatedPower   bool
 }
 
 // Derived reports whether anything at all came out, which is what decides
 // between storing a row and storing none.
 func (m *Metrics) Derived() bool {
-	return m.HasZones || m.HasTRIMP || m.HasHeartRateTSS || m.HasPower
+	return m.HasZones || m.HasTRIMP || m.HasHeartRateTSS || m.HasPower || m.HasEstimatedPower
 }
 
 // Derive works out everything one ride yields. heartRate and power are that

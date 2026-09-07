@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/powerestimate"
 	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
@@ -30,6 +32,7 @@ func (s *Store) ActivitiesAwaitingDerivation(
 		RestingHeartRate:   inputs.RestingHeartRateBPM,
 		ThresholdHeartRate: inputs.ThresholdHeartRateBPM,
 		ThresholdPower:     inputs.FunctionalThresholdPowerWatts,
+		TotalMass:          inputs.TotalMassKG,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing activities awaiting derivation: %w", err)
@@ -38,30 +41,84 @@ func (s *Store) ActivitiesAwaitingDerivation(
 	return ids, nil
 }
 
-// ActivitySensorSamples reads one ride's heart-rate and power series. A record
-// that carried no reading for a sensor is left out of that sensor's series
-// rather than read as a zero, which would be rest the rider never took.
-func (s *Store) ActivitySensorSamples(
+// ActivityRideSamples reads one ride's recorded series, split by what each of
+// them is for. A record that carried no reading for a sensor is left out of
+// that sensor's series rather than read as a zero, which would be rest the
+// rider never took.
+func (s *Store) ActivityRideSamples(
 	ctx context.Context, targetID string, id int64,
-) (heartRate, power []trainingload.Sample, err error) {
+) (activity.RideSamples, error) {
 	rows, err := s.queries.ListActivitySensorRecords(ctx, sqlcgen.ListActivitySensorRecordsParams{
 		TargetSlot: targetID,
 		WorkoutID:  id,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading the recorded samples: %w", err)
+		return activity.RideSamples{}, fmt.Errorf("reading the recorded samples: %w", err)
 	}
-	for _, row := range rows {
+	samples := activity.RideSamples{}
+	for index := range rows {
+		row := &rows[index]
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
 		if row.HeartRateBpm.Valid {
-			heartRate = append(heartRate, trainingload.Sample{At: at, Value: row.HeartRateBpm.Float64})
+			samples.HeartRate = append(samples.HeartRate, trainingload.Sample{At: at, Value: row.HeartRateBpm.Float64})
 		}
 		if row.PowerWatts.Valid {
-			power = append(power, trainingload.Sample{At: at, Value: row.PowerWatts.Float64})
+			samples.Power = append(samples.Power, trainingload.Sample{At: at, Value: row.PowerWatts.Float64})
+		}
+		// Position as well as altitude and distance: without one of the three
+		// the model has no track, and a trainer ride's "grade" means nothing.
+		if row.Latitude.Valid && row.AltitudeMetres.Valid && row.DistanceMetres.Valid {
+			samples.Track = append(samples.Track, powerestimate.Sample{
+				At:             at,
+				DistanceMetres: row.DistanceMetres.Float64,
+				AltitudeMetres: row.AltitudeMetres.Float64,
+			})
+			samples.TrackRecords = append(samples.TrackRecords, row.RecordIndex)
 		}
 	}
 
-	return heartRate, power, nil
+	return samples, nil
+}
+
+// StoreEstimatedPower replaces one ride's estimated power series, in one
+// transaction so a partial rewrite is never left behind as complete. An empty
+// series clears whatever was there, which is what a ride that has stopped
+// yielding an estimate needs.
+func (s *Store) StoreEstimatedPower(
+	ctx context.Context, targetID string, id int64, recordIndices []int64, estimates []powerestimate.Estimate,
+) error {
+	if len(recordIndices) != len(estimates) {
+		return errors.New("an estimate per record or none")
+	}
+	transaction, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return fmt.Errorf("starting the estimated power write: %w", beginErr)
+	}
+	defer rollback(transaction)
+	queries := s.queries.WithTx(transaction)
+	// Cleared first, so a record that no longer yields an estimate does not keep
+	// the one it had from a mass the rider has since changed.
+	if clearErr := queries.ClearEstimatedPower(ctx, sqlcgen.ClearEstimatedPowerParams{
+		TargetSlot: targetID, WorkoutID: id,
+	}); clearErr != nil {
+		return fmt.Errorf("clearing the estimated power: %w", clearErr)
+	}
+	for index, estimate := range estimates {
+		if !estimate.Known {
+			continue
+		}
+		if setErr := queries.SetEstimatedPower(ctx, sqlcgen.SetEstimatedPowerParams{
+			EstimatedPowerWatts: sql.NullFloat64{Float64: estimate.Watts, Valid: true},
+			TargetSlot:          targetID, WorkoutID: id, RecordIndex: recordIndices[index],
+		}); setErr != nil {
+			return fmt.Errorf("recording an estimated power: %w", setErr)
+		}
+	}
+	if commitErr := transaction.Commit(); commitErr != nil {
+		return fmt.Errorf("committing the estimated power: %w", commitErr)
+	}
+
+	return nil
 }
 
 // StoreActivityMetrics replaces one ride's derived numbers. A derivation that
@@ -98,6 +155,7 @@ func (s *Store) StoreActivityMetrics(
 		InputRestingHeartRate:   metrics.Inputs.RestingHeartRateBPM,
 		InputThresholdHeartRate: metrics.Inputs.ThresholdHeartRateBPM,
 		InputThresholdPower:     metrics.Inputs.FunctionalThresholdPowerWatts,
+		InputTotalMass:          metrics.Inputs.TotalMassKG,
 		ComputedAtUnix:          time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("storing the activity metrics: %w", err)
@@ -116,12 +174,14 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 	for index := range rows {
 		row := &rows[index]
 		one := trainingload.Metrics{
-			HasZones:        row.Zone1Seconds.Valid,
-			TRIMP:           row.Trimp.Float64,
-			HasTRIMP:        row.Trimp.Valid,
-			HeartRateTSS:    row.HeartRateTss.Float64,
-			HasHeartRateTSS: row.HeartRateTss.Valid,
-			HasPower:        row.NormalizedPowerWatts.Valid,
+			HasZones:            row.Zone1Seconds.Valid,
+			TRIMP:               row.Trimp.Float64,
+			HasTRIMP:            row.Trimp.Valid,
+			HeartRateTSS:        row.HeartRateTss.Float64,
+			HasHeartRateTSS:     row.HeartRateTss.Valid,
+			HasPower:            row.NormalizedPowerWatts.Valid,
+			EstimatedPowerWatts: row.EstimatedPowerWatts.Float64,
+			HasEstimatedPower:   row.EstimatedPowerWatts.Valid,
 			Power: trainingload.Power{
 				NormalizedWatts: row.NormalizedPowerWatts.Float64,
 				IntensityFactor: row.IntensityFactor.Float64,

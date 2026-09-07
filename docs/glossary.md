@@ -204,6 +204,11 @@ from heart rate otherwise.
 about it: time in zones, and training load. Worked out once by `activity:derive`
 and stored beside the ride, never read from a provider.
 
+**estimated power** — power this service worked out from a ride's own track,
+for a bicycle carrying no meter: a physics model over grade, speed and mass at
+fixed road-bike constants. Always named as an estimate, never mixed with
+measured power, and never an input to a [[training load]].
+
 **suggestion** — a figure a rider's own recent rides imply for one profile
 parameter, offered beside its field and stored nowhere. It is not a value until
 the rider has saved it as one.

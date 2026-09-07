@@ -281,6 +281,8 @@ export interface ActivityTrackProperties {
   state: ActivityTrackPropertiesState;
   /** The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude. */
   altitudeMetres?: (number | null)[];
+  /** Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass. */
+  estimatedPowerWatts?: (number | null)[];
 }
 
 export interface ActivityTrack {

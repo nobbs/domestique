@@ -289,8 +289,11 @@ was under way when it ran out.
 
 `activity:derive` works out what each stored ride says about how hard it was,
 from the samples already stored and the rider's own profile
-([the profile](service.md)). It reads no position and no altitude, so a ride
-recorded on a trainer derives exactly as one ridden outdoors. It derives only
+([the profile](service.md)). Every training figure it produces reads no position
+and no altitude, so a ride recorded on a trainer is scored exactly as one ridden
+outdoors. The one thing it derives from the track is the estimated power a
+bicycle with no meter would otherwise have none of, which is kept apart from
+every one of those figures and feeds none of them. It derives only
 the rides that are owed one: those never derived, and those whose stored row
 records profile values that differ from the rider's current ones. A ride still
 awaiting its file has nothing to derive from and waits for the fill. A ride the

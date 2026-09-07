@@ -243,6 +243,34 @@ func trackState(subject string) *fakeState {
 	return state
 }
 
+// The estimate is served under its own name, indexed with the coordinates and
+// null where none was made. A chart must be able to draw it as an estimate and
+// never mistake it for a measurement.
+func TestGetActivityTrackServesTheEstimatedPowerUnderItsOwnName(t *testing.T) {
+	state := trackState("rider-a")
+	track := state.tracks["rider-a/1"]
+	track[1].EstimatedPowerWatts, track[1].HasEstimatedPower = 214, true
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, view.Properties.EstimatedPowerWatts, 2, "indexed with the coordinates")
+	assert.Nil(t, view.Properties.EstimatedPowerWatts[0], "no estimate for the first sample")
+	require.NotNil(t, view.Properties.EstimatedPowerWatts[1])
+	assert.InDelta(t, 214.0, *view.Properties.EstimatedPowerWatts[1], 1e-9)
+}
+
+// A ride nothing estimated carries no such array at all, rather than one of
+// nulls the chart would have to look through to find nothing.
+func TestGetActivityTrackOmitsTheEstimateEntirelyWhenNoneWasMade(t *testing.T) {
+	handler := activityHandler(t, trackState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Nil(t, view.Properties.EstimatedPowerWatts)
+	assert.NotNil(t, view.Properties.AltitudeMetres, "the altitudes are still there")
+}
+
 func getTrack(t *testing.T, handler *Handler, target string) (int, activityTrackView) {
 	t.Helper()
 	response := httptest.NewRecorder()

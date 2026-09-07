@@ -89,7 +89,7 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
 SELECT records_state FROM activities WHERE target_slot = ? AND workout_id = ?;
 
 -- name: ListActivityTrack :many
-SELECT recorded_at_unix, latitude, longitude, altitude_metres
+SELECT recorded_at_unix, latitude, longitude, altitude_metres, estimated_power_watts
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND latitude IS NOT NULL AND longitude IS NOT NULL

@@ -117,6 +117,10 @@ type activityTrackPropertyView struct {
 	// AltitudeMetres is the altitude at each coordinate, indexed 1:1 with them;
 	// nil where that sample recorded none. Absent unless at least one did.
 	AltitudeMetres []*float64 `json:"altitudeMetres,omitempty"`
+	// EstimatedPowerWatts is what this service worked out from the track, for a
+	// bicycle carrying no meter, indexed the same way. Its own field rather than
+	// a power field, so nothing can serve it as a measurement.
+	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
 }
 
 type lineStringView struct {

@@ -51,21 +51,24 @@ type ActivityMetric struct {
 	InputThresholdHeartRate float64
 	InputThresholdPower     float64
 	ComputedAtUnix          int64
+	EstimatedPowerWatts     sql.NullFloat64
+	InputTotalMass          float64
 }
 
 type ActivityRecord struct {
-	TargetSlot         string
-	WorkoutID          int64
-	RecordIndex        int64
-	RecordedAtUnix     int64
-	DistanceMetres     sql.NullFloat64
-	Latitude           sql.NullFloat64
-	Longitude          sql.NullFloat64
-	AltitudeMetres     sql.NullFloat64
-	CadenceRpm         sql.NullFloat64
-	HeartRateBpm       sql.NullFloat64
-	PowerWatts         sql.NullFloat64
-	TemperatureCelsius sql.NullFloat64
+	TargetSlot          string
+	WorkoutID           int64
+	RecordIndex         int64
+	RecordedAtUnix      int64
+	DistanceMetres      sql.NullFloat64
+	Latitude            sql.NullFloat64
+	Longitude           sql.NullFloat64
+	AltitudeMetres      sql.NullFloat64
+	CadenceRpm          sql.NullFloat64
+	HeartRateBpm        sql.NullFloat64
+	PowerWatts          sql.NullFloat64
+	TemperatureCelsius  sql.NullFloat64
+	EstimatedPowerWatts sql.NullFloat64
 }
 
 type ActivitySkip struct {

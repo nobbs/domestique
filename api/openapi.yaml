@@ -2475,6 +2475,21 @@ components:
               - number
               - "null"
             format: double
+        estimatedPowerWatts:
+          description: >-
+            Power this service worked out from the track itself, for a bicycle
+            carrying no meter, indexed 1:1 with the coordinates; null where no
+            estimate was made. Deliberately not `powerWatts`: it is an estimate
+            from a physics model over position, altitude and time, never a
+            measurement, and nothing may present it as one. Omitted entirely for
+            a ride that carries real power, one with no usable track, and one
+            whose rider has entered no mass.
+          type: array
+          items:
+            type:
+              - number
+              - "null"
+            format: double
     GeoJSONProperties:
       type: object
       additionalProperties: false
