@@ -88,7 +88,7 @@ func (d *Deriver) readOneRidesWeather(ctx context.Context, targetID string, ride
 		return Result{Outcome: Failed, Failure: FailureUpstream}
 	}
 
-	return d.recordWeather(ctx, targetID, ride.ID, hoursOf(series, from, to))
+	return d.recordWeather(ctx, targetID, ride.ID, hoursOf(series, points, from, to))
 }
 
 func (d *Deriver) recordWeather(ctx context.Context, targetID string, id int64, hours []WeatherHour) Result {
@@ -165,76 +165,93 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
-// bearingOf reads a summed direction vector back as a compass bearing, in
-// [0, 360). Two exactly opposing winds cancel to no vector at all, and are
-// reported as north rather than as a direction the arithmetic invented.
-func bearingOf(north, east float64) float64 {
-	if north == 0 && east == 0 {
+// hourDistance is how far a moment is from an hour the provider answered for.
+// The label names the hour it opens, so a moment ridden during that hour is no
+// distance from it, and only one outside is measured to the nearer edge.
+func hourDistance(at, hour time.Time) time.Duration {
+	switch {
+	case at.Before(hour):
+		return hour.Sub(at)
+	case at.Sub(hour) < time.Hour:
 		return 0
+	default:
+		return at.Sub(hour.Add(time.Hour))
+	}
+}
+
+// readingAt is one coordinate's answer for one hour, as the provider gave it.
+func readingAt(one *WeatherSeries, index int, at time.Time) WeatherHour {
+	hour := WeatherHour{
+		Hour:                       at.UTC(),
+		TemperatureCelsius:         one.TemperatureCelsius[index],
+		ApparentTemperatureCelsius: one.ApparentTemperatureCelsius[index],
+		PrecipitationMillimetres:   one.PrecipitationMillimetres[index],
+		WindSpeedKMH:               one.WindSpeedKMH[index],
+		WindDirectionDegrees:       one.WindDirectionDegrees[index],
+		CloudCoverPercent:          one.CloudCoverPercent[index],
+		WeatherCode:                one.WeatherCode[index],
+	}
+	if index < len(one.PrecipitationProbabilityPercent) {
+		hour.PrecipitationProbabilityPercent = one.PrecipitationProbabilityPercent[index]
+		hour.HasPrecipitationProbability = true
 	}
 
-	return math.Mod(math.Atan2(east, north)*180/math.Pi+360, 360)
+	return hour
 }
 
 // hoursOf reduces the provider's per-coordinate series to one row per hour of
-// the ride, averaging across the coordinates that hour was asked at: a ride is
-// one thing, and its rider was somewhere along it rather than at all of them.
-func hoursOf(series []WeatherSeries, from, to time.Time) []WeatherHour {
-	type accumulator struct {
-		hour        WeatherHour
-		count       float64
-		probability float64
-		// A bearing wraps, so it is summed as a vector and read back as an
-		// angle: the arithmetic mean of 350 and 10 is 180, the exact opposite of
-		// the wind that blew.
-		windNorth float64
-		windEast  float64
+// the ride. Series i answers for the coordinate weatherPoints chose for step i,
+// so each hour keeps the reading of the coordinate nearest it in time: a mean
+// across the whole route says what the weather did along the ride, not what its
+// rider rode through, and erases a headwind that became a tailwind halfway.
+func hoursOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []WeatherHour {
+	type candidate struct {
+		hour WeatherHour
+		// How far the winning coordinate's own moment is from this hour, and the
+		// worst code of every coordinate that calls this hour its nearest: a code
+		// is not a quantity, and half a ride in rain was ridden in rain.
+		distance time.Duration
+		worst    int
 	}
-	byHour := map[int64]*accumulator{}
+	byHour := map[int64]*candidate{}
 	order := []int64{}
 	for seriesIndex := range series {
 		one := &series[seriesIndex]
-		for index, at := range one.Time {
-			if at.Before(from.Truncate(time.Hour)) || at.After(to) {
+		// A series the sampling has no coordinate for answers as if from the
+		// ride's start, which no ride's own hours are further from than its span.
+		at := from
+		if seriesIndex < len(points) {
+			at = points[seriesIndex].Time
+		}
+		var nearest *candidate
+		nearestDistance, nearestCode := time.Duration(0), 0
+		for index, hourAt := range one.Time {
+			if hourAt.Before(from.Truncate(time.Hour)) || hourAt.After(to) {
 				continue
 			}
-			key := at.Unix()
+			key := hourAt.Unix()
 			into, seen := byHour[key]
 			if !seen {
-				into = &accumulator{hour: WeatherHour{Hour: at.UTC()}}
+				into = &candidate{}
 				byHour[key], order = into, append(order, key)
 			}
-			into.count++
-			into.hour.TemperatureCelsius += one.TemperatureCelsius[index]
-			into.hour.ApparentTemperatureCelsius += one.ApparentTemperatureCelsius[index]
-			into.hour.PrecipitationMillimetres += one.PrecipitationMillimetres[index]
-			into.hour.WindSpeedKMH += one.WindSpeedKMH[index]
-			radians := one.WindDirectionDegrees[index] * math.Pi / 180
-			into.windNorth += math.Cos(radians)
-			into.windEast += math.Sin(radians)
-			into.hour.CloudCoverPercent += one.CloudCoverPercent[index]
-			if index < len(one.PrecipitationProbabilityPercent) {
-				into.probability += one.PrecipitationProbabilityPercent[index]
-				into.hour.HasPrecipitationProbability = true
+			distance := hourDistance(at, hourAt)
+			if !seen || distance < into.distance {
+				into.hour, into.distance = readingAt(one, index, hourAt), distance
 			}
-			// The code is the worst of them rather than a mean: half a ride in
-			// rain was ridden in rain, and averaging a code is meaningless anyway.
-			into.hour.WeatherCode = max(into.hour.WeatherCode, one.WeatherCode[index])
+			if nearest == nil || distance < nearestDistance {
+				nearest, nearestDistance, nearestCode = into, distance, one.WeatherCode[index]
+			}
+		}
+		if nearest != nil {
+			nearest.worst = max(nearest.worst, nearestCode)
 		}
 	}
 	hours := make([]WeatherHour, 0, len(order))
 	for _, key := range order {
 		into := byHour[key]
 		hour := into.hour
-		hour.TemperatureCelsius /= into.count
-		hour.ApparentTemperatureCelsius /= into.count
-		hour.PrecipitationMillimetres /= into.count
-		hour.WindSpeedKMH /= into.count
-		hour.WindDirectionDegrees = bearingOf(into.windNorth, into.windEast)
-		hour.CloudCoverPercent /= into.count
-		if hour.HasPrecipitationProbability {
-			hour.PrecipitationProbabilityPercent = into.probability / into.count
-		}
+		hour.WeatherCode = max(hour.WeatherCode, into.worst)
 		hours = append(hours, hour)
 	}
 

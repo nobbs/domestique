@@ -311,8 +311,13 @@ rather than one on every run. A provider failure is not recorded that way: it is
 a run to try again, not an answer. A bounded few rides are asked about per run,
 so a backfill of a whole stored history never contends with the course forecasts
 a rider is waiting on, and one ride is asked at one coordinate per hour of it,
-both ends included, up to a day's worth. Neither pass holds the other back, and
-the run reports whichever came to the more serious thing.
+both ends included, up to a day's worth. Each stored hour is the reading of the
+coordinate nearest it in time rather than a mean across the route, so the hour
+says what the rider rode through and not what the weather did along the whole of
+it — a headwind that became a tailwind is the point. A weather code is not a
+quantity: where an hour was asked at more than one coordinate, it keeps the
+worst of them. Neither pass holds the other back, and the run reports whichever
+came to the more serious thing.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery
