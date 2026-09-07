@@ -453,16 +453,18 @@ const archiveBody = `{"hourly":{"time":["2025-08-24T08:00"],
 	"weather_code":[1],
 	"cloud_cover":[50]}}`
 
-// A ride inside the forecast endpoint's reach is asked of that endpoint, with
-// past_days to reach back at all and the hour bounds to narrow the answer.
+// A ride of the last day or two is asked of the forecast endpoint, by hour
+// bounds alone. past_days must not be among them: the provider treats an hour
+// range and a count of past days as two ways of saying the same thing and
+// refuses a request carrying both, which is a 400 for every ride.
 func TestHistoryAsksTheForecastEndpointForARecentRide(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "/v1/forecast", request.URL.Path)
 		query := request.URL.Query()
-		assert.Equal(t, "7", query.Get("past_days"), "seven whole days back")
-		assert.Equal(t, "1", query.Get("forecast_days"), "and no prediction dragged along")
-		assert.Equal(t, "2026-08-17T10:00", query.Get("start_hour"))
-		assert.Equal(t, "2026-08-17T12:00", query.Get("end_hour"))
+		assert.Empty(t, query.Get("past_days"), "refused beside an hour range")
+		assert.Empty(t, query.Get("forecast_days"), "and so is its companion")
+		assert.Equal(t, "2026-08-23T10:00", query.Get("start_hour"))
+		assert.Equal(t, "2026-08-23T12:00", query.Get("end_hour"))
 		assert.Contains(t, query.Get("hourly"), "precipitation_probability")
 		assert.Empty(t, query.Get("start_date"), "the archive's parameters are not this endpoint's")
 
@@ -471,7 +473,7 @@ func TestHistoryAsksTheForecastEndpointForARecentRide(t *testing.T) {
 	}))
 	defer server.Close()
 
-	from := historyNow().AddDate(0, 0, -7).Add(-4 * time.Hour)
+	from := historyNow().AddDate(0, 0, -1).Add(-4 * time.Hour)
 	result, err := newHistoryClient(t, server).History(t.Context(),
 		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(2*time.Hour))
 	require.NoError(t, err)
@@ -480,13 +482,14 @@ func TestHistoryAsksTheForecastEndpointForARecentRide(t *testing.T) {
 }
 
 // A ride older than the forecast endpoint's reach is asked of the reanalysis
-// archive instead, by date and without the probability series.
+// archive instead, by the same hour bounds and without the probability series.
 func TestHistoryAsksTheArchiveForAnOlderRide(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "/v1/archive", request.URL.Path)
 		query := request.URL.Query()
-		assert.Equal(t, "2025-08-24", query.Get("start_date"))
-		assert.Equal(t, "2025-08-24", query.Get("end_date"))
+		assert.Equal(t, "2025-08-24T10:00", query.Get("start_hour"))
+		assert.Equal(t, "2025-08-24T12:00", query.Get("end_hour"))
+		assert.Empty(t, query.Get("start_date"), "asked by hour, as the forecast endpoint is")
 		assert.NotContains(t, query.Get("hourly"), "precipitation_probability",
 			"the reanalysis refuses a series it does not carry")
 		assert.Empty(t, query.Get("past_days"), "the forecast's parameters are not this endpoint's")
@@ -514,8 +517,10 @@ func TestHistoryChoosesTheEndpointAtTheBoundary(t *testing.T) {
 		body    string
 		daysAgo int
 	}{
-		"the last day the forecast reaches": {path: "/v1/forecast", body: historyBody, daysAgo: 92},
-		"the first day past it":             {path: "/v1/archive", body: archiveBody, daysAgo: 93},
+		"today":                     {path: "/v1/forecast", body: historyBody, daysAgo: 0},
+		"yesterday":                 {path: "/v1/forecast", body: historyBody, daysAgo: 1},
+		"the day the archive takes": {path: "/v1/archive", body: archiveBody, daysAgo: 2},
+		"and everything older":      {path: "/v1/archive", body: archiveBody, daysAgo: 400},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var asked string
@@ -540,7 +545,7 @@ func TestHistoryChoosesTheEndpointAtTheBoundary(t *testing.T) {
 func TestHistoryAsksAboutAFutureRideAsIfItWereTodays(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "/v1/forecast", request.URL.Path)
-		assert.Equal(t, "0", request.URL.Query().Get("past_days"))
+		assert.Empty(t, request.URL.Query().Get("past_days"))
 
 		writer.Header().Set("Content-Type", "application/json")
 		writeResponse(t, writer, http.StatusOK, historyBody)
@@ -619,15 +624,14 @@ func TestHistoryRefusesAShortProbabilitySeries(t *testing.T) {
 	require.ErrorContains(t, err, "series lengths did not match")
 }
 
-// past_days counts whole local days back, so it is the ride's own date that
-// decides it. Measured in elapsed hours instead, a ride that started late on
-// the day before yesterday asks for a window that does not reach it.
-func TestHistoryCountsPastDaysByTheDateNotTheElapsedHours(t *testing.T) {
+// The split is by local date, so a ride is asked of the endpoint that holds its
+// day rather than of whichever the elapsed hours happen to round to.
+func TestHistorySplitsByTheDateNotTheElapsedHours(t *testing.T) {
 	var asked string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		asked = request.URL.Query().Get("past_days")
+		asked = request.URL.Path
 		writer.Header().Set("Content-Type", "application/json")
-		writeResponse(t, writer, http.StatusOK, historyBody)
+		writeResponse(t, writer, http.StatusOK, archiveBody)
 	}))
 	defer server.Close()
 
@@ -639,14 +643,99 @@ func TestHistoryCountsPastDaysByTheDateNotTheElapsedHours(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// 27.5 hours old, which elapsed hours round down to one day — but in the
-	// service's own zone the ride is on the 22nd and today is the 24th, so one
-	// day would ask for a window that does not reach it.
+	// 27.5 hours old, which elapsed hours round down to one day. In the
+	// service's own zone the ride is on the 22nd and today is the 24th, so it
+	// belongs to the archive rather than to the forecast endpoint.
 	from := time.Date(2026, 8, 22, 21, 0, 0, 0, time.UTC)
 	_, err = client.History(t.Context(),
 		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
 	require.NoError(t, err)
-	assert.Equal(t, "2", asked, "two whole local days back")
+	assert.Equal(t, "/v1/archive", asked)
+}
+
+// The provider answers inside its own allowed range with nulls where it holds
+// no value. Read as numbers those become a ride at nought degrees in still air,
+// stored and drawn as though they were measured.
+func TestHistoryLeavesOutAnHourTheProviderHadNoReadingFor(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{
+			"time":["2026-08-24T08:00","2026-08-24T09:00","2026-08-24T10:00"],
+			"temperature_2m":[18.4,null,19.2],
+			"apparent_temperature":[17.1,null,18.0],
+			"precipitation":[0,null,0.2],
+			"precipitation_probability":[10,null,20],
+			"wind_speed_10m":[12.3,null,13.0],
+			"wind_direction_10m":[240,null,245],
+			"weather_code":[1,null,2],
+			"cloud_cover":[50,null,55]}}`)
+	}))
+	defer server.Close()
+
+	from := historyNow().Add(-2 * time.Hour)
+	result, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(2*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+
+	assert.Equal(t, []float64{18.4, 19.2}, result[0].TemperatureCelsius,
+		"the hour with no reading is gone, not zero")
+	assert.Len(t, result[0].Time, 2, "and every series stays aligned with the times")
+	assert.Equal(t, []float64{12.3, 13.0}, result[0].WindSpeedKMH)
+	assert.Equal(t, []int{1, 2}, result[0].WeatherCode)
+	assert.Equal(t, []float64{10, 20}, result[0].PrecipitationProbabilityPercent)
+}
+
+// A hole in the chance of rain alone is not a hole in the weather: the hour
+// still says what it was like, and no chance recorded is no chance given.
+func TestHistoryKeepsAnHourMissingOnlyTheChanceOfRain(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{
+			"time":["2026-08-24T08:00"],
+			"temperature_2m":[18.4],
+			"apparent_temperature":[17.1],
+			"precipitation":[0],
+			"precipitation_probability":[null],
+			"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],
+			"weather_code":[1],
+			"cloud_cover":[50]}}`)
+	}))
+	defer server.Close()
+
+	from := historyNow().Add(-time.Hour)
+	result, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result[0].Time, 1, "the hour is kept")
+	assert.Equal(t, []float64{0}, result[0].PrecipitationProbabilityPercent)
+}
+
+// A window the provider holds nothing at all for yields no hours rather than a
+// column of zeroes for every one of them.
+func TestHistoryYieldsNoHoursWhenTheProviderHeldNone(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{
+			"time":["2026-08-24T08:00","2026-08-24T09:00"],
+			"temperature_2m":[null,null],
+			"apparent_temperature":[null,null],
+			"precipitation":[null,null],
+			"precipitation_probability":[null,null],
+			"wind_speed_10m":[null,null],
+			"wind_direction_10m":[null,null],
+			"weather_code":[null,null],
+			"cloud_cover":[null,null]}}`)
+	}))
+	defer server.Close()
+
+	from := historyNow().Add(-time.Hour)
+	result, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Empty(t, result[0].Time, "nothing was recorded, so nothing is reported")
 }
 
 func TestHistoryRefusesAnEmptyRequest(t *testing.T) {

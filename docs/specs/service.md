@@ -503,9 +503,11 @@ The read-only JSON surface is small:
   Beside them, one row per hour of the ride, what it was actually ridden
   through: temperature, apparent temperature, precipitation, wind speed and
   direction, cloud cover and a weather code. The probability of precipitation is
-  among them only for a ride recent enough to be answered by the forecast
-  provider's own past days; an older one is answered by reanalysis, which
-  records what fell rather than what might have. The whole array is absent both
+  among them only for a ride of the last day or two, which the forecast provider
+  answers for; anything older is answered by reanalysis, which records what fell
+  rather than what might have and carries no such figure. An hour the provider
+  held no reading for is left out entirely rather than carried as a row of
+  zeroes, so every hour served was measured. The whole array is absent both
   for a ride nobody has asked about and for one that was asked about and had
   nothing to answer — a ride with no usable track, or a place and time the
   provider holds no data for. Absence is therefore "there is no weather to
