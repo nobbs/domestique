@@ -280,6 +280,41 @@ func TestClearActivityMetricsRemovesEveryRowAndCountsThem(t *testing.T) {
 	assert.Zero(t, again, "a rider who never had a profile is not a rider who cleared one")
 }
 
+// The whole of what the fitness timeline folds: one row per derived ride, with
+// the moment it was ridden, oldest first.
+func TestActivityRideLoadsCarryTheDayAndTheLoadOfEachRide(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1, 2)
+	withMeter := derivedMetrics(testInputs())
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, withMeter),
+		"StoreActivityMetrics()")
+	// A ride with a strap and no meter: its stress score is the heart-rate one.
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 2, trainingload.Metrics{
+		Inputs: testInputs(), TRIMP: 30, HasTRIMP: true,
+		HeartRateTSS: 55, HasHeartRateTSS: true,
+		Zones: trainingload.Zones{10, 20, 30, 40, 50}, HasZones: true,
+	}), "StoreActivityMetrics()")
+
+	loads, err := store.ActivityRideLoads(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRideLoads()")
+	require.Len(t, loads, 2)
+	assert.Equal(t, activityNow(), loads[0].At, "the day it was ridden")
+	assert.InDelta(t, withMeter.Power.TSS, loads[0].TSS, 1e-9, "power where the ride had a meter")
+	assert.InDelta(t, 55.0, loads[1].TSS, 1e-9, "and heart rate where it did not")
+	assert.InDelta(t, 30.0, loads[1].TRIMP, 1e-9)
+	assert.Equal(t, trainingload.Zones{10, 20, 30, 40, 50}, loads[1].Zones)
+}
+
+// A ride nothing has derived is not in the fold: it has no load to contribute.
+func TestActivityRideLoadsSkipARideWithNoDerivedRow(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	loads, err := store.ActivityRideLoads(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRideLoads()")
+	assert.Empty(t, loads)
+}
+
 func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
@@ -301,4 +336,6 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "reading the target owner")
 	_, err = store.ClearActivityMetrics(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "clearing the activity metrics")
+	_, err = store.ActivityRideLoads(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "reading the activity ride loads")
 }

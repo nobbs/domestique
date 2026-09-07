@@ -2488,6 +2488,8 @@ type fakeState struct {
 	riderSuggestionErr   error
 	activityMetricsErr   error
 	activityWeatherErr   error
+	rideLoadsErr         error
+	rideLoads            map[string][]trainingload.RideLoad
 	activityMetrics      map[string]map[int64]trainingload.Metrics
 	activityWeather      map[string]map[int64][]activities.WeatherHour
 	riderProfiles        map[string]rider.Profile
@@ -2541,6 +2543,17 @@ func (s *fakeState) ActivityWeatherHours(
 	}
 
 	return s.activityWeather[targetID][id], nil
+}
+
+// ActivityRideLoads reports the ride loads the test gave this target.
+func (s *fakeState) ActivityRideLoads(
+	_ context.Context, targetID string,
+) ([]trainingload.RideLoad, error) {
+	if s.rideLoadsErr != nil {
+		return nil, s.rideLoadsErr
+	}
+
+	return s.rideLoads[targetID], nil
 }
 
 // ActivityMetrics reports the derived rows the test gave this target.

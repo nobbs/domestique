@@ -7,6 +7,7 @@ import {
   type GetTaskRunsParams,
   getGetActivitiesQueryOptions,
   getGetActivityTrackQueryOptions,
+  getGetFitnessQueryOptions,
   getGetRiderProfileQueryOptions,
   getGetRouteGeometryQueryOptions,
   getGetRouteQueryOptions,
@@ -26,6 +27,7 @@ import {
   type ActivityList,
   type ActivityTrack,
   activityTrack,
+  type Fitness,
   type GeoJSONFeature,
   type RiderProfile,
   type Route,
@@ -91,6 +93,19 @@ export const activityTrackQuery = (id: number) =>
     query: {
       select: (response) => activityTrack(payload<ActivityTrackFeature>(response)),
       staleTime: 5 * 60 * 1000,
+    },
+  });
+
+/**
+ * The rider's fitness, fatigue and form over time. Read on the page that draws
+ * it rather than cached for the session: it is a fold the service redoes on
+ * every read, and a rider watching a ride land wants it to move.
+ */
+export const fitnessQuery = (parameters?: { from?: string; to?: string }) =>
+  getGetFitnessQueryOptions(parameters, {
+    query: {
+      select: (response) => payload<Fitness>(response),
+      staleTime: 60 * 1000,
     },
   });
 

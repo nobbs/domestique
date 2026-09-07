@@ -184,6 +184,63 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 	return items, nil
 }
 
+const listActivityRideLoads = `-- name: ListActivityRideLoads :many
+SELECT a.started_at_unix,
+  m.trimp, m.heart_rate_tss, m.power_tss,
+  m.zone_1_seconds, m.zone_2_seconds, m.zone_3_seconds, m.zone_4_seconds, m.zone_5_seconds
+FROM activity_metrics AS m
+JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
+WHERE m.target_slot = ?
+ORDER BY a.started_at_unix
+`
+
+type ListActivityRideLoadsRow struct {
+	StartedAtUnix int64
+	Trimp         sql.NullFloat64
+	HeartRateTss  sql.NullFloat64
+	PowerTss      sql.NullFloat64
+	Zone1Seconds  sql.NullFloat64
+	Zone2Seconds  sql.NullFloat64
+	Zone3Seconds  sql.NullFloat64
+	Zone4Seconds  sql.NullFloat64
+	Zone5Seconds  sql.NullFloat64
+}
+
+// Every derived ride of one target with the day it was ridden, which the
+// fitness timeline is a fold over. Ordered so a fold reads it once.
+func (q *Queries) ListActivityRideLoads(ctx context.Context, targetSlot string) ([]ListActivityRideLoadsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityRideLoads, targetSlot)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityRideLoadsRow{}
+	for rows.Next() {
+		var i ListActivityRideLoadsRow
+		if err := rows.Scan(
+			&i.StartedAtUnix,
+			&i.Trimp,
+			&i.HeartRateTss,
+			&i.PowerTss,
+			&i.Zone1Seconds,
+			&i.Zone2Seconds,
+			&i.Zone3Seconds,
+			&i.Zone4Seconds,
+			&i.Zone5Seconds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActivitySensorRecords = `-- name: ListActivitySensorRecords :many
 SELECT record_index, recorded_at_unix, heart_rate_bpm, power_watts,
   distance_metres, altitude_metres, latitude, longitude

@@ -274,6 +274,40 @@ export interface ActivityList {
   activities: Activity[];
 }
 
+/**
+ * One day of the timeline. Fitness is the long average of daily load, fatigue the short one, and form their difference: fresh above zero, buried below it. A day nobody rode carries no load and still decays both averages, which is what makes rest visible.
+ */
+export interface FitnessDay {
+  date: string;
+  trimpLoad: number;
+  trimpFitness: number;
+  trimpFatigue: number;
+  trimpForm: number;
+  /** Power TSS where the ride carried a meter and hrTSS otherwise, so the series stays continuous across the day a power meter arrives. */
+  tssLoad: number;
+  tssFitness: number;
+  tssFatigue: number;
+  tssForm: number;
+}
+
+/**
+ * How long one week held each of the five heart-rate zones.
+ */
+export interface FitnessWeek {
+  /** The Monday the week began on, in the service's own zone. */
+  weekStart: string;
+  /**
+   * @minItems 5
+   * @maxItems 5
+   */
+  zoneSeconds: number[];
+}
+
+export interface Fitness {
+  days: FitnessDay[];
+  weeks: FitnessWeek[];
+}
+
 export interface ActivityTrackLineString {
   type: "LineString";
   /**
@@ -812,6 +846,21 @@ export type GetActivitiesParams = {
    * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so the surface never confirms which targets exist.
    */
   target?: string;
+};
+
+export type GetFitnessParams = {
+  /**
+   * Whose timeline. Omitted is the caller's own; an administrator may name another target, and anyone else naming one is answered 404.
+   */
+  target?: string;
+  /**
+   * The first day to return. Earlier days still shape the averages.
+   */
+  from?: string;
+  /**
+   * The day after the last to return.
+   */
+  to?: string;
 };
 
 export type GetActivityTrackParams = {
@@ -2416,6 +2465,215 @@ export function useGetActivities<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetActivitiesQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getFitnessResponse200 = {
+  data: Fitness;
+  status: 200;
+};
+
+export type getFitnessResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getFitnessResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getFitnessResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getFitnessResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getFitnessResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getFitnessResponseSuccess = getFitnessResponse200 & {
+  headers: Headers;
+};
+export type getFitnessResponseError = (
+  | getFitnessResponse400
+  | getFitnessResponse401
+  | getFitnessResponse403
+  | getFitnessResponse404
+  | getFitnessResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetFitnessUrl = (params?: GetFitnessParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/activities/fitness?${stringifiedParams}`
+    : `/v1/activities/fitness`;
+};
+
+/**
+ * The rider's fitness, fatigue and form over time: one row per day, on both of the scales a ride's load is measured on. Scoped exactly as the activity list is.
+ */
+export const getFitness = async (
+  params?: GetFitnessParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getFitnessResponseSuccess> => {
+  return domestiqueRequest<getFitnessResponseSuccess>(getGetFitnessUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetFitnessQueryKey = (params?: GetFitnessParams) => {
+  return [`/v1/activities/fitness`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetFitnessQueryOptions = <
+  TData = Awaited<ReturnType<typeof getFitness>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetFitnessParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getFitness>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetFitnessQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getFitness>>> = ({ signal }) =>
+    getFitness(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getFitness>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetFitnessQueryResult = NonNullable<Awaited<ReturnType<typeof getFitness>>>;
+export type GetFitnessQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetFitness<
+  TData = Awaited<ReturnType<typeof getFitness>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: undefined | GetFitnessParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getFitness>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getFitness>>,
+          TError,
+          Awaited<ReturnType<typeof getFitness>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetFitness<
+  TData = Awaited<ReturnType<typeof getFitness>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetFitnessParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getFitness>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getFitness>>,
+          TError,
+          Awaited<ReturnType<typeof getFitness>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetFitness<
+  TData = Awaited<ReturnType<typeof getFitness>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetFitnessParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getFitness>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetFitness<
+  TData = Awaited<ReturnType<typeof getFitness>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params?: GetFitnessParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getFitness>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetFitnessQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

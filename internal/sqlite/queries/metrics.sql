@@ -84,3 +84,14 @@ SELECT COALESCE(owner_subject, '') AS owner_subject FROM targets WHERE slot = ?;
 -- name: ClearEstimatedPower :exec
 UPDATE activity_records SET estimated_power_watts = NULL
 WHERE target_slot = ? AND workout_id = ?;
+
+-- Every derived ride of one target with the day it was ridden, which the
+-- fitness timeline is a fold over. Ordered so a fold reads it once.
+-- name: ListActivityRideLoads :many
+SELECT a.started_at_unix,
+  m.trimp, m.heart_rate_tss, m.power_tss,
+  m.zone_1_seconds, m.zone_2_seconds, m.zone_3_seconds, m.zone_4_seconds, m.zone_5_seconds
+FROM activity_metrics AS m
+JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
+WHERE m.target_slot = ?
+ORDER BY a.started_at_unix;

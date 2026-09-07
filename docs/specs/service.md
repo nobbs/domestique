@@ -470,6 +470,30 @@ The read-only JSON surface is small:
   the target they own, or the one `target` names when they are an admin;
   naming another's is `404` rather than `403`, and a caller who has no target
   yet reads an empty list.
+- `GET /v1/activities/fitness` returns the rider's fitness, fatigue and form over
+  time: one row per day, on both of the scales a ride's load is measured on.
+  Fitness is an exponential moving average of daily load over six weeks, fatigue
+  the same over one, and form their difference — fresh above zero, buried below
+  it. A day nobody rode carries no load and still decays both, which is what
+  makes rest visible.
+
+  Which stress score a day carries follows the meter: the one measured from
+  power where the ride recorded it, and the one measured from heart rate where
+  it did not, so a rider's series stays continuous across the day a power meter
+  arrives rather than stepping. An estimate worked out from the track is never
+  either of them.
+
+  It is scoped exactly as the activity list is, over the same `target`
+  parameter, and takes the same `from` and `to`. The window cuts what is
+  returned and never what is folded: the fold always begins at the rider's first
+  ride, so a window opening years into a history opens at the fitness that
+  history had built rather than at nothing. Beside the days, the time each week
+  held in each heart-rate zone. A rider with no derived metrics, and one with no
+  target at all, is answered with an empty series rather than an error.
+
+  Nothing about it is stored. It is a fold over the derived metrics at read
+  time, which at the row counts one rider produces is cheaper than a table that
+  would have to be kept true.
 - `GET /v1/activities/{activityId}/track` returns one activity's recorded track
   as a GeoJSON Feature: the positioned samples as a line, the box around them,
   and the altitude at each coordinate indexed 1:1 with them, `null` where that
