@@ -71,6 +71,14 @@ const targetBackstopInterval = 6 * time.Hour
 // the same daily Wahoo budget the reconciliation does.
 const activityPollInterval = 12 * time.Hour
 
+// A derivation pass is bounded per run, so a rider's stored history needs
+// several to be worked through; hourly drains it in a day rather than leaving
+// it to whatever else happens to start the pass.
+const (
+	activityDeriveInterval     = time.Hour
+	activityDeriveInitialDelay = time.Hour
+)
+
 // A rider's form moves over months, so the pair is refitted weekly; the first
 // fit waits an hour rather than spending a restart on regression.
 const (
@@ -350,13 +358,18 @@ func activityPollTask(
 // FIT has just landed is derived on the same cycle rather than the next one,
 // and it holds the same resource as they do: it reads the rows they write.
 //
-// It has no schedule of its own. There is nothing to derive until either new
-// samples arrive or the rider's profile changes, and both of those already
-// start it.
-func activityDeriveTask(deriver activityDeriver, targetIDs func() []string) task.Definition {
+// It also runs on its own clock, because the edges alone never reach a stored
+// history: a poll over rides already synced reports unchanged, so nothing
+// follows it, and the pass is bounded per run.
+func activityDeriveTask(
+	deriver activityDeriver, enabled func(string) func() bool, targetIDs func() []string,
+) task.Definition {
 	return task.Definition{
-		Name:    taskActivityDerive,
-		Follows: []string{taskActivityPoll, taskActivityRecord},
+		Name:         taskActivityDerive,
+		Enabled:      enabled(taskActivityDerive),
+		Follows:      []string{taskActivityPoll, taskActivityRecord},
+		Schedule:     task.Every(func() time.Duration { return activityDeriveInterval }),
+		InitialDelay: func() time.Duration { return activityDeriveInitialDelay },
 		Resources: func(string) []task.Resource {
 			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
 		},

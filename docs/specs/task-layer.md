@@ -270,7 +270,7 @@ is checked rather than inferred.
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 | `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
 | `activity:record` | target slot and workout id | `activities` exclusive | none |
-| `activity:derive` | target slot, or none for every one | `activities` exclusive | none |
+| `activity:derive` | target slot, or none for every one | `activities` exclusive | every hour |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
 
 `activity:poll` stores cycling alone. A rider's account may record any sport
@@ -347,12 +347,16 @@ index rebuild, and runs after each: either alone leaves stages wanting it.
 reason: a new inventory leaves stages wanting a prediction, and it follows a
 calibration for the same reason again. `activity:derive` follows both readers of recorded samples and holds the same
 resource they do, because it reads exactly the rows they write: a ride whose
-file has just landed is derived on the same cycle rather than the next one. It
-has no schedule. There is nothing to derive until either new samples arrive or
-the rider changes the profile the numbers are worked out against, and both of
-those already start it — the second directly, from the settings write, over
-that rider's own targets. It fans out over targets, as `sync:target` does, so
-one rider's fault holds back nobody else's rides. `ridemodel:calibrate` takes the
+file has just landed is derived on the same cycle rather than the next one. New
+samples and a profile edit both start it — the second directly, from the
+settings write, over that rider's own targets — but neither reaches a history
+already stored: a poll over rides that are all synced reports unchanged, so
+nothing follows it, and the pass is bounded per run. It therefore also runs
+hourly, which works a stored history through over successive runs without an
+administrator pressing Run once per bound. A run with nothing owed derives
+nothing and asks no upstream anything, so the cadence costs a query per target.
+It fans out over targets, as `sync:target` does, so one rider's fault holds back
+nobody else's rides. `ridemodel:calibrate` takes the
 activities rather than the inventory: it reads the rows a poll writes and
 touches no stage. It reads only the trailing training window of them, and
 reaches past it for the rides a fit needs only when the window holds too few

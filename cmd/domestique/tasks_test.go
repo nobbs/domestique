@@ -1142,7 +1142,7 @@ func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) 
 	t.Parallel()
 
 	deriver := &fakeDeriver{results: map[string]activity.Result{"rider-a": {Outcome: activity.Polled, Derived: 3}}}
-	definition := activityDeriveTask(deriver, func() []string { return []string{"rider-a"} })
+	definition := activityDeriveTask(deriver, allEnabled, func() []string { return []string{"rider-a"} })
 
 	assert.Equal(t, taskActivityDerive, definition.Name, "name")
 	assert.ElementsMatch(t, []string{taskActivityPoll, taskActivityRecord}, definition.Follows, "follows")
@@ -1152,11 +1152,27 @@ func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) 
 		"resources",
 	)
 	assert.Equal(t, []string{"rider-a"}, definition.FanOut(), "fan-out")
-	assert.Nil(t, definition.Schedule, "nothing schedules it: new samples and a profile edit start it")
+	assert.Equal(t, activityDeriveInitialDelay, definition.InitialDelay(), "InitialDelay()")
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	assert.Equal(t, at.Add(activityDeriveInterval), definition.Schedule.NextFire(at), "NextFire()")
 
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityDerive, Argument: "rider-a"})
 	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
 	assert.Equal(t, []string{"rider-a"}, deriver.derived, "derived")
+}
+
+// The hourly pass is the only thing that reaches a stored history, so an
+// operator has to be able to switch it off from the task list like any other.
+func TestActivityDeriveTaskReadsItsScheduleSwitch(t *testing.T) {
+	t.Parallel()
+
+	definition := activityDeriveTask(
+		&fakeDeriver{},
+		func(name string) func() bool { return func() bool { return name != taskActivityDerive } },
+		func() []string { return nil },
+	)
+
+	assert.False(t, definition.Enabled(), "the switch decides whether the schedule may start it")
 }
 
 func TestActivityDeriveTaskWithoutAnArgumentDerivesEveryTarget(t *testing.T) {
@@ -1167,7 +1183,9 @@ func TestActivityDeriveTaskWithoutAnArgumentDerivesEveryTarget(t *testing.T) {
 		"rider-b": {Outcome: activity.Failed, Failure: activity.FailureState},
 		"rider-c": {Outcome: activity.Unchanged},
 	}}
-	definition := activityDeriveTask(deriver, func() []string { return []string{"rider-a", "rider-b", "rider-c"} })
+	definition := activityDeriveTask(
+		deriver, allEnabled, func() []string { return []string{"rider-a", "rider-b", "rider-c"} },
+	)
 
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityDerive})
 	assert.Equal(t, task.Failed, result.Outcome, "the most serious thing that happened")
@@ -1180,7 +1198,7 @@ func TestActivityDeriveTaskWithoutAnArgumentDerivesEveryTarget(t *testing.T) {
 func TestActivityDeriveTaskIsNotReadyWithNoTargets(t *testing.T) {
 	t.Parallel()
 
-	definition := activityDeriveTask(&fakeDeriver{}, func() []string { return nil })
+	definition := activityDeriveTask(&fakeDeriver{}, allEnabled, func() []string { return nil })
 
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityDerive})
 	assert.Equal(t, task.NotReady, result.Outcome)
