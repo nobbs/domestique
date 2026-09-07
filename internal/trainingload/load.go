@@ -41,17 +41,26 @@ func TRIMP(samples []Sample, maxHeartRate, restingHeartRate float64) (float64, b
 }
 
 // HeartRateTSS scores the ride the way power TSS does but from heart rate: an
-// hour held at the lactate threshold is 100. It needs a threshold rate, which
-// is the only rate that makes the score mean the same thing between riders.
-func HeartRateTSS(samples []Sample, thresholdHeartRate float64) (float64, bool) {
-	if thresholdHeartRate <= 0 {
+// hour held at the lactate threshold is 100. It needs a threshold rate, which is
+// the only rate that makes the score mean the same thing between riders, and a
+// resting rate to measure the reserve against.
+//
+// The intensity is the share of the rider's threshold reserve their mean rate
+// held, not their mean rate over their threshold. Heart rate does not fall to
+// zero as power does — an idle rider still beats at their resting rate — so the
+// bare ratio scores an easy ride as though it were most of a threshold effort.
+func HeartRateTSS(samples []Sample, thresholdHeartRate, restingHeartRate float64) (float64, bool) {
+	reserve := thresholdHeartRate - restingHeartRate
+	if restingHeartRate <= 0 || reserve <= 0 {
 		return 0, false
 	}
 	mean, seconds := meanHeld(samples)
 	if seconds <= 0 {
 		return 0, false
 	}
-	intensity := mean / thresholdHeartRate
+	// Clamped: a mean below the entered resting rate is a resting rate entered
+	// too high, and a negative reserve is not an intensity.
+	intensity := math.Max((mean-restingHeartRate)/reserve, 0)
 
 	return seconds / 3600 * intensity * intensity * 100, true
 }

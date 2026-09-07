@@ -586,7 +586,10 @@ The read-only JSON surface is small:
   say about how hard it was, where anything was worked out: time in each of five
   heart-rate zones, and training load on two scales side by side — Banister's
   TRIMP, which needs a maximum and a resting rate, and hrTSS, which needs a
-  lactate threshold. A ride carrying measured power, for a rider who has entered
+  lactate threshold and a resting rate. hrTSS scores the share of the rider's
+  threshold reserve their mean rate held, not that rate over their threshold: a
+  heart rate does not fall to nought as power does, so the bare ratio scores an
+  easy ride as most of a threshold effort. A ride carrying measured power, for a rider who has entered
   a threshold power, also carries its normalized power, intensity factor and
   power TSS; an estimate worked out from the track never feeds those. Each part
   is absent on its own rather than sent as a zero, a ride nothing was worked out

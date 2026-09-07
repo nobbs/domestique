@@ -128,12 +128,30 @@ func TestTRIMPClampsARateAboveTheEnteredMaximum(t *testing.T) {
 // mean the same thing as a power stress score.
 func TestHeartRateTSSScoresAnHourAtThresholdAsAHundred(t *testing.T) {
 	t.Parallel()
-	score, ok := trainingload.HeartRateTSS(steady(3601, 170), 170)
+	score, ok := trainingload.HeartRateTSS(steady(3601, 170), 170, 50)
 	require.True(t, ok)
 	assert.InDelta(t, 100.0, score, 0.1)
 
-	_, ok = trainingload.HeartRateTSS(steady(3601, 170), 0)
+	_, ok = trainingload.HeartRateTSS(steady(3601, 170), 0, 50)
 	assert.False(t, ok, "without a threshold there is no intensity to square")
+
+	_, ok = trainingload.HeartRateTSS(steady(3601, 170), 170, 0)
+	assert.False(t, ok, "nor without a resting rate to measure the reserve from")
+}
+
+// The regression: heart rate does not fall to zero as power does, so scoring a
+// ride on the bare ratio of its mean to the threshold credits the rider for
+// simply being alive. An easy ride is an easy ride.
+func TestHeartRateTSSDoesNotScoreAnEasyRideAsThreshold(t *testing.T) {
+	t.Parallel()
+	// Two hours at 120 against a threshold of 148 and a resting rate of 45: the
+	// bare ratio calls that 0.81 of threshold, the reserve calls it 0.72.
+	easy, ok := trainingload.HeartRateTSS(steady(7201, 120), 148, 45)
+	require.True(t, ok)
+	bareRatio := 2 * (120.0 / 148.0) * (120.0 / 148.0) * 100
+
+	assert.Less(t, easy, bareRatio, "the reserve scores it below the bare ratio")
+	assert.InDelta(t, 106.0, easy, 0.5)
 }
 
 // The acceptance criterion: normalized power is never below the average, and
