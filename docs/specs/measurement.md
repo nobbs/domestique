@@ -318,25 +318,39 @@ serves the Go result yet.
 
 ## Sensor cleaning
 
-**Definition (planned, not implemented).** Heart-rate samples above the
-rider's maximum, replaced by linear interpolation between the readings
-either side. Power samples clamped at an implausibility threshold.
+**Definition.** Heart-rate samples above the rider's maximum, replaced by
+linear interpolation between the readings either side. Power samples
+clamped at an implausibility threshold.
 
-**Formula.** Not yet chosen.
+**Formula.**
 
-**Constants.** Not yet chosen.
+~~~text
+hr'(t) = hr(a) + (hr(b) - hr(a)) · (t - a)/(b - a)
+~~~
+
+for a spike run between plausible readings at a and b, taking the nearest
+plausible value where a run reaches either end of the series; and
+
+~~~text
+p' = min(p, maxWatts)
+~~~
+
+**Constants.** None fixed in `measure`; maxBPM is the rider profile's
+maximum heart rate and maxWatts is a caller's threshold, neither chosen yet.
 
 **Source.** Intervals.icu forum, "Heartrate spikes now automatically fixed"
 (January 2020 announcement), for the heart-rate interpolation approach.
 
-**Applied by.** Nobody yet. The one rule this service does apply today sits
-in `internal/activity/averages.go` `meanAndPeak`: a cadence reading of zero
-is left out of a ride's average cadence, while a heart-rate or power reading
-of zero is kept in its average, because a bicycle freewheeling or a rider
+**Applied by.** `measure.CapHeartRate` and `measure.ClampPower`, called by
+nobody yet. The one rule this service does apply today sits in
+`internal/activity/averages.go` `meanAndPeak`: a cadence reading of zero is
+left out of a ride's average cadence, while a heart-rate or power reading of
+zero is kept in its average, because a bicycle freewheeling or a rider
 resting is still riding, but a cadence sensor reading zero recorded no
 pedalling to average in.
 
-**Status.** Unvalidated; not implemented.
+**Status.** Implemented and tested, unwired; wiring is a behaviour change
+that lands with a revision of service.md §Recorded activities.
 
 ## Training load
 
