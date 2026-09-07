@@ -189,8 +189,8 @@ function dateActivities(activities: Activity[]) {
     .filter(({ startedAt }) => !Number.isNaN(startedAt.getTime()));
 }
 
-/** What a totals-only bucket carries instead of its rides: nothing, shared and frozen. */
-const NO_RIDES = Object.freeze([] as Activity[]) as unknown as Activity[];
+/** What a totals-only bucket carries until it is stripped: nothing, shared and never pushed to. */
+const NO_RIDES: Activity[] = [];
 
 /** A bucket of either period with the activities that landed in it. */
 interface RidesBucket extends VolumeBucket {

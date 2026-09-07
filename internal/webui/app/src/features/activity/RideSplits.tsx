@@ -172,7 +172,10 @@ function readout(splits: ActivitySplit[], index: number): string {
   if (!split) {
     return "";
   }
-  const end = splits.slice(0, index + 1).reduce((sum, one) => sum + one.distanceMetres, 0);
+  let end = 0;
+  for (let at = 0; at <= index; at += 1) {
+    end += splits[at]?.distanceMetres ?? 0;
+  }
   const speed = speedKmh(split);
   const parts = [formatKilometres(end), speed === undefined ? "—" : `${speed.toFixed(1)} km/h`];
   // The table's own rule: ascent is said only where some stretch climbed.
