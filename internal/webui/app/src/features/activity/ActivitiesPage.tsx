@@ -142,7 +142,11 @@ export function ActivitiesPage() {
   const zone = serviceZone ?? browserZone();
   const { activities, isPending, isError } = useActivities();
   const weeks = useMemo(() => weeksWithRides(activities, zone), [activities, zone]);
-  const longest = Math.max(...activities.map((ride) => ride.distanceMetres), 1);
+  // From the rides on the page: one with an unreadable start counts nowhere here.
+  const longest = Math.max(
+    ...weeks.flatMap((week) => week.rides.map((ride) => ride.distanceMetres)),
+    1,
+  );
 
   return (
     <PageShell>
@@ -157,7 +161,7 @@ export function ActivitiesPage() {
           <p className="text-sm text-[var(--alert)]">
             The service did not say what has been ridden.
           </p>
-        ) : activities.length === 0 ? (
+        ) : weeks.length === 0 ? (
           <p className="text-[var(--ink-2)] text-sm">
             No rides have been recorded yet. Once a Wahoo account is connected on{" "}
             <Link className="underline" to="/settings">
