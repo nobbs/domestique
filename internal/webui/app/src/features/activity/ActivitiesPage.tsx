@@ -87,6 +87,14 @@ function RideBar({ ride, longest }: { ride: Activity; longest: number }) {
 
 function WeekPanel({ week, zone, longest }: { week: RideWeek; zone: string; longest: number }) {
   const range = weekRangeLabel(week.start, zone);
+  // Each ride's weekday read once, not once per column.
+  const byDay = useMemo(() => {
+    const days: Activity[][] = WEEKDAYS.map(() => []);
+    for (const ride of week.rides) {
+      days[weekdayIndex(ride, zone)]?.push(ride);
+    }
+    return days;
+  }, [week.rides, zone]);
 
   if (week.count === 0) {
     return (
@@ -125,11 +133,9 @@ function WeekPanel({ week, zone, longest }: { week: RideWeek; zone: string; long
           className="flex items-end gap-2 border-[var(--rule)] border-b pb-1"
           style={{ height: `${BAR_REM + 1.5}rem` }}
         >
-          {week.rides
-            .filter((ride) => weekdayIndex(ride, zone) === index)
-            .map((ride) => (
-              <RideBar key={ride.id} ride={ride} longest={longest} />
-            ))}
+          {byDay[index]?.map((ride) => (
+            <RideBar key={ride.id} ride={ride} longest={longest} />
+          ))}
         </div>
       ))}
     </section>
