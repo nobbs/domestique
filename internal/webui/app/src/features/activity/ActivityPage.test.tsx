@@ -15,10 +15,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activitiesQuery,
   activitySeriesQuery,
+  activitySplitsQuery,
   activityTrackQuery,
   webUIConfigQuery,
 } from "../../api/queries";
-import type { Activity, ActivityTrack, Position, WebUIConfig } from "../../api/types";
+import type {
+  Activity,
+  ActivitySplit,
+  ActivityTrack,
+  Position,
+  WebUIConfig,
+} from "../../api/types";
 import type { Profile } from "../../lib/profile";
 import type { AlignedSeries } from "../../lib/rideSeries";
 import { ActivityPage } from "./ActivityPage";
@@ -106,20 +113,28 @@ function show(
   activityId: number | string = RIDE.id,
   heartRate?: (number | null)[],
   ride: Activity = RIDE,
+  splits: ActivitySplit[] = [],
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
   client.setQueryData(activitiesQuery().queryKey, [ride]);
-  if (recorded) {
-    client.setQueryData(activityTrackQuery(RIDE.id).queryKey, recorded);
-  }
-  if (heartRate) {
-    client.setQueryData(activitySeriesQuery(RIDE.id, "heartRate").queryKey, {
-      series: "heartRate",
-      values: heartRate,
-    });
+  // The page's own guard: only a run of digits names a ride. Seeding under the
+  // id the route actually carries is what keeps a test off the network, since
+  // any key the page does not ask for leaves its query to fetch for real.
+  const asked = /^\d+$/.test(String(activityId)) ? Number(activityId) : null;
+  if (asked !== null) {
+    client.setQueryData(activitySplitsQuery(asked).queryKey, { splits });
+    if (recorded) {
+      client.setQueryData(activityTrackQuery(asked).queryKey, recorded);
+    }
+    if (heartRate) {
+      client.setQueryData(activitySeriesQuery(asked, "heartRate").queryKey, {
+        series: "heartRate",
+        values: heartRate,
+      });
+    }
   }
   render(
     <QueryClientProvider client={client}>
@@ -132,14 +147,33 @@ function show(
   );
 }
 
+/**
+ * Every activity request this page makes is seeded, so one going out means a
+ * query was missed and a test would be reaching for the network. React Query
+ * swallows a throwing fetch, so what catches it is counting the calls.
+ */
+const fetched = vi.fn((target: unknown) =>
+  Promise.reject(new Error(`a test asked for the network: ${String(target)}`)),
+);
+
+/** The activity paths asked for, which should always be none. */
+function activityRequests(): string[] {
+  return fetched.mock.calls
+    .map(([target]) => String(target))
+    .filter((path) => path.startsWith("/v1/activities"));
+}
+
 beforeEach(() => {
   drawn.coordinates = [];
   drawn.bounds = null;
   drawn.profiles = [];
   drawn.series = [];
+  fetched.mockClear();
+  vi.stubGlobal("fetch", fetched);
 });
 
 afterEach(() => {
+  expect(activityRequests()).toEqual([]);
   vi.unstubAllGlobals();
 });
 
@@ -151,6 +185,23 @@ describe("one ride's page", () => {
 
     expect(screen.getByText(/1 h moving/)).toBeInTheDocument();
     expect(screen.getByText(/1 h 6 min elapsed/)).toBeInTheDocument();
+  });
+
+  it("hands the ride's fetched splits to the table", () => {
+    show(track(), RIDE.id, undefined, RIDE, [
+      { distanceMetres: 1000, movingSeconds: 120, ascentMetres: 0 },
+      { distanceMetres: 500, movingSeconds: 90, ascentMetres: 0 },
+    ]);
+
+    expect(screen.getByLabelText("Splits")).toBeInTheDocument();
+    expect(screen.getByText("1.5 km")).toBeInTheDocument();
+  });
+
+  // A ride the service cut into no stretches shows no table at all.
+  it("shows no splits table for a ride with none", () => {
+    show();
+
+    expect(screen.queryByLabelText("Splits")).not.toBeInTheDocument();
   });
 
   // Two near-identical figures say less than one.
