@@ -174,11 +174,11 @@ function readout(splits: ActivitySplit[], index: number): string {
   }
   const end = splits.slice(0, index + 1).reduce((sum, one) => sum + one.distanceMetres, 0);
   const speed = speedKmh(split);
-  const parts = [
-    formatKilometres(end),
-    speed === undefined ? "—" : `${speed.toFixed(1)} km/h`,
-    formatAscent(split.ascentMetres),
-  ];
+  const parts = [formatKilometres(end), speed === undefined ? "—" : `${speed.toFixed(1)} km/h`];
+  // The table's own rule: ascent is said only where some stretch climbed.
+  if (splits.some((one) => one.ascentMetres > 0)) {
+    parts.push(formatAscent(split.ascentMetres));
+  }
   if (split.heartRateBpm !== undefined) {
     parts.push(`${Math.round(split.heartRateBpm)} bpm`);
   }

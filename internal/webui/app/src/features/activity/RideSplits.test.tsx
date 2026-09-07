@@ -135,6 +135,10 @@ describe("RideSplits", () => {
     );
     expect(screen.getByText("2.0 km · 20.0 km/h · 42 m · 148 bpm")).toBeInTheDocument();
 
+    // A ride no stretch of which climbed says nothing about ascent, as the table does.
+    rerender(<RideSplits splits={[split(), split()]} activeMetres={1500} />);
+    expect(screen.getByText("2.0 km · 20.0 km/h")).toBeInTheDocument();
+
     rerender(<RideSplits splits={[split(), split()]} activeMetres={null} />);
     expect(screen.getByText(/Speed by the kilometre/)).toBeInTheDocument();
   });
