@@ -148,7 +148,7 @@ export function ActivitiesPage() {
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
         <h1 className="font-semibold text-2xl tracking-tight">Activities</h1>
-        {!config.isPending && !config.isError && serviceZone === null && (
+        {!config.isPending && serviceZone === null && (
           <p className="text-[var(--ink-2)] text-xs">Periods follow this browser's time zone</p>
         )}
         {isPending ? (
