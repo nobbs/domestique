@@ -16,18 +16,21 @@ import (
 // fakeDeriveStore is stored state as a derivation sees it, and a record of what
 // it was asked to write.
 type fakeDeriveStore struct {
-	ownerErr   error
-	profileErr error
-	owedErr    error
-	samplesErr error
-	storeErr   error
-	samples    map[int64][]trainingload.Sample
-	written    map[int64]trainingload.Metrics
-	owner      string
-	owed       []int64
-	writeOrder []int64
-	profile    rider.Profile
-	owedInputs trainingload.Inputs
+	ownerErr    error
+	profileErr  error
+	owedErr     error
+	samplesErr  error
+	storeErr    error
+	clearErr    error
+	samples     map[int64][]trainingload.Sample
+	written     map[int64]trainingload.Metrics
+	owner       string
+	owed        []int64
+	writeOrder  []int64
+	profile     rider.Profile
+	owedInputs  trainingload.Inputs
+	cleared     int
+	clearedRows int
 }
 
 func (s *fakeDeriveStore) TargetOwner(context.Context, string) (string, error) {
@@ -50,6 +53,12 @@ func (s *fakeDeriveStore) ActivitySensorSamples(
 	_ context.Context, _ string, id int64,
 ) (heartRate, power []trainingload.Sample, err error) {
 	return s.samples[id], nil, s.samplesErr
+}
+
+func (s *fakeDeriveStore) ClearActivityMetrics(context.Context, string) (int, error) {
+	s.cleared++
+
+	return s.clearedRows, s.clearErr
 }
 
 //nolint:gocritic // value param: this method conforms to the activity.DeriveStore contract.
@@ -108,14 +117,42 @@ func TestDeriveWritesEveryRideOwedOne(t *testing.T) {
 		"the rides owed one are those against the profile as it stands")
 }
 
-// A rider who has entered nothing has nothing to derive from. The rides wait
-// for a profile rather than being written as rows of nothing.
+// A rider who has entered nothing has nothing to derive from, and holds no
+// stored row either. The rides wait for a profile rather than being written as
+// rows of nothing.
 func TestDeriveIsNotReadyWithoutAProfile(t *testing.T) {
 	t.Parallel()
-	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a"})
+	store := &fakeDeriveStore{owner: "rider-a"}
+	deriver, err := activity.NewDeriver(store)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.NotReady, deriver.Derive(t.Context(), "rider-a").Outcome)
+	assert.Empty(t, store.written, "and no ride was written")
+}
+
+// Clearing the whole profile takes the ground from under every stored row at
+// once. Leaving them would go on serving numbers worked out from parameters
+// the rider has removed.
+func TestDeriveClearsEveryRowWhenTheProfileIsCleared(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{owner: "rider-a", clearedRows: 12}
+	deriver, err := activity.NewDeriver(store)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+	assert.Equal(t, activity.Polled, result.Outcome, "rows going is a change")
+	assert.Equal(t, 12, result.Derived, "the rows it settled")
+	assert.Equal(t, 1, store.cleared, "in one statement, not a ride at a time")
+}
+
+func TestDeriveReportsAStoreThatCannotClear(t *testing.T) {
+	t.Parallel()
+	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a", clearErr: errors.New("unwritable")})
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+	assert.Equal(t, activity.Failed, result.Outcome)
+	assert.Equal(t, activity.FailureState, result.Failure)
 }
 
 // A slot nobody owns has no profile to derive against, which is a slot with

@@ -163,6 +163,29 @@ func TestTargetOwnerIsEmptyForASlotThisDeploymentDoesNotHave(t *testing.T) {
 	assert.Empty(t, missing, "an unknown slot is not a failure")
 }
 
+// A rider clearing their whole profile takes every stored row with it, in one
+// statement rather than a ride at a time.
+func TestClearActivityMetricsRemovesEveryRowAndCountsThem(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1, 2)
+	for _, id := range []int64{1, 2} {
+		require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", id, derivedMetrics(testInputs())),
+			"StoreActivityMetrics()")
+	}
+
+	removed, err := store.ClearActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ClearActivityMetrics()")
+	assert.Equal(t, 2, removed)
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	assert.Empty(t, read)
+
+	again, err := store.ClearActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ClearActivityMetrics() again")
+	assert.Zero(t, again, "a rider who never had a profile is not a rider who cleared one")
+}
+
 func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
@@ -180,4 +203,6 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 		"clearing the activity metrics")
 	_, err = store.TargetOwner(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the target owner")
+	_, err = store.ClearActivityMetrics(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "clearing the activity metrics")
 }

@@ -39,12 +39,13 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Recovery")).not.toBeInTheDocument();
   });
 
-  // Measured, not predicted: a zone held for forty seconds says forty seconds
-  // rather than being rounded up to the nearest five minutes.
+  // Measured, not predicted, and floored at every step: a zone held for a
+  // minute and a half says so rather than being rounded up to two minutes.
   it("says a zone's time exactly as long as it was", () => {
-    show({ zoneSeconds: [40, 0, 0, 5400, 3600] });
+    show({ zoneSeconds: [40, 90, 0, 5400, 3600] });
 
     expect(screen.getByText("40 s")).toBeInTheDocument();
+    expect(screen.getByText("1 min 30 s")).toBeInTheDocument();
     expect(screen.getByText("1 h 30 min")).toBeInTheDocument();
     expect(screen.getByText("1 h")).toBeInTheDocument();
   });

@@ -24,6 +24,9 @@ type DeriveStore interface {
 	// ActivitySensorSamples reads one ride's heart-rate and power series.
 	ActivitySensorSamples(ctx context.Context, targetID string, id int64) (heartRate, power []trainingload.Sample, err error)
 	StoreActivityMetrics(ctx context.Context, targetID string, id int64, metrics trainingload.Metrics) error
+	// ClearActivityMetrics removes every derived row one target holds and
+	// reports how many went.
+	ClearActivityMetrics(ctx context.Context, targetID string) (int, error)
 }
 
 // Deriver works out what each of a target's rides says about how hard it was.
@@ -60,8 +63,20 @@ func (d *Deriver) Derive(ctx context.Context, targetID string) Result {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 	inputs := trainingload.InputsOf(&profile)
+	// A rider who has cleared every parameter a derivation reads has taken the
+	// ground from under every stored row at once, so those rows go rather than
+	// going on being served. Cleared in one statement rather than a ride at a
+	// time: there is nothing left to work out for any of them.
 	if inputs == (trainingload.Inputs{}) {
-		return Result{Outcome: NotReady}
+		removed, clearErr := d.store.ClearActivityMetrics(ctx, targetID)
+		if clearErr != nil {
+			return Result{Outcome: Failed, Failure: FailureState}
+		}
+		if removed == 0 {
+			return Result{Outcome: NotReady}
+		}
+
+		return Result{Outcome: Polled, Derived: removed}
 	}
 	ids, err := d.store.ActivitiesAwaitingDerivation(ctx, targetID, inputs)
 	if err != nil {

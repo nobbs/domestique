@@ -241,7 +241,8 @@ type Result struct {
 	// RecordsUnreadable counts the activities this poll marked as having no
 	// readable FIT file; a mark is a change, so such a poll is not unchanged.
 	RecordsUnreadable int
-	// Derived counts the rides a derivation worked out, including those a
+	// Derived counts the rides a derivation settled — worked out, or cleared
+	// because there was nothing left to work them out from — including those a
 	// failed one managed before it stopped.
 	Derived int
 }

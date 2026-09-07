@@ -152,3 +152,16 @@ func (s *Store) TargetOwner(ctx context.Context, targetID string) (string, error
 
 	return subject, nil
 }
+
+// ClearActivityMetrics removes every derived row one target holds and reports
+// how many went. It is what a rider clearing their whole profile leaves behind:
+// numbers worked out from parameters nobody holds any more must not go on being
+// served.
+func (s *Store) ClearActivityMetrics(ctx context.Context, targetID string) (int, error) {
+	removed, err := s.queries.ClearActivityMetrics(ctx, targetID)
+	if err != nil {
+		return 0, fmt.Errorf("clearing the activity metrics: %w", err)
+	}
+
+	return int(removed), nil
+}

@@ -10,6 +10,21 @@ import (
 	"database/sql"
 )
 
+const clearActivityMetrics = `-- name: ClearActivityMetrics :execrows
+DELETE FROM activity_metrics WHERE target_slot = ?
+`
+
+// Every row one target holds, for a rider who has cleared the profile the rows
+// were worked out from. Reports how many went, so a derivation can tell a
+// clearing from a rider who never had a profile at all.
+func (q *Queries) ClearActivityMetrics(ctx context.Context, targetSlot string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearActivityMetrics, targetSlot)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteActivityMetrics = `-- name: DeleteActivityMetrics :exec
 DELETE FROM activity_metrics WHERE target_slot = ? AND workout_id = ?
 `

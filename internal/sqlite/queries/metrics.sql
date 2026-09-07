@@ -26,6 +26,12 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
 -- name: DeleteActivityMetrics :exec
 DELETE FROM activity_metrics WHERE target_slot = ? AND workout_id = ?;
 
+-- Every row one target holds, for a rider who has cleared the profile the rows
+-- were worked out from. Reports how many went, so a derivation can tell a
+-- clearing from a rider who never had a profile at all.
+-- name: ClearActivityMetrics :execrows
+DELETE FROM activity_metrics WHERE target_slot = ?;
+
 -- name: ListActivityMetrics :many
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
