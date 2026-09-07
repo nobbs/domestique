@@ -1,14 +1,16 @@
 /**
- * The activity list, as a reader drives it: the newest ride first, and every
- * row a link to the page that draws it.
+ * The activity list, as a reader drives it: weeks newest first, every ride a
+ * link to the page that draws it, its weekday and week decided in the
+ * service's own time zone.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, WebUIConfig } from "../../api/types";
+import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
 import { ActivitiesPage } from "./ActivitiesPage";
 
 const ZONE = "Europe/Berlin";
@@ -22,7 +24,7 @@ function config(): WebUIConfig {
   };
 }
 
-function activity(id: number, startedAt: string): Activity {
+function activity(id: number, startedAt: string, overrides: Partial<Activity> = {}): Activity {
   return {
     id,
     startedAt,
@@ -32,6 +34,7 @@ function activity(id: number, startedAt: string): Activity {
     ascentMetres: 300,
     typeId: 40,
     locationId: 0,
+    ...overrides,
   };
 }
 
@@ -60,8 +63,14 @@ afterEach(() => {
 });
 
 describe("the activity list", () => {
-  it("lists the rides newest first, each linking to its own page", () => {
+  it("lists weeks newest first, each ride linking to its own page", () => {
     show();
+
+    const names = screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"));
+    const newer = names.findIndex((name) => name?.includes("24 Aug"));
+    const older = names.findIndex((name) => name?.includes("17 Aug"));
+    expect(newer).toBeGreaterThanOrEqual(0);
+    expect(older).toBeGreaterThan(newer);
 
     const links = screen.getAllByRole("link").filter((link) => link.getAttribute("href") !== null);
     const rides = links.filter((link) => link.getAttribute("href")?.startsWith("/activities/"));
@@ -78,8 +87,7 @@ describe("the activity list", () => {
     expect(screen.getByRole("link", { name: "settings" })).toHaveAttribute("href", "/settings");
   });
 
-  // One line about the ride and one about what it was ridden through.
-  it("says what each ride was ridden through, where it was asked about", () => {
+  it("shows a ride's max temperature and rain when the service reported them", () => {
     show([
       {
         ...(ACTIVITIES[0] as Activity),
@@ -93,8 +101,8 @@ describe("the activity list", () => {
       },
     ]);
 
-    expect(screen.getByText(/12–18°/)).toBeInTheDocument();
-    expect(screen.getByText(/2\.4 mm/)).toBeInTheDocument();
+    expect(screen.getByText("18°")).toBeInTheDocument();
+    expect(screen.getByText("2.4 mm")).toBeInTheDocument();
   });
 
   // A dry ride says nothing about rain rather than saying none fell.
@@ -111,14 +119,63 @@ describe("the activity list", () => {
         },
       },
     ]);
-    expect(screen.getByText(/^15° · /)).toBeInTheDocument();
+
+    expect(screen.getByText("15°")).toBeInTheDocument();
     expect(screen.queryByText(/mm/)).not.toBeInTheDocument();
   });
 
-  it("says nothing at all about a ride nobody has asked the weather about", () => {
+  it("says nothing about weather for a ride nobody has asked the weather about", () => {
     show([ACTIVITIES[0] as Activity]);
 
     expect(screen.queryByText(/°/)).not.toBeInTheDocument();
+  });
+
+  it("places a ride in the weekday column of the service's own zone, not UTC", () => {
+    // 2026-08-23T22:30:00Z is 00:30 Monday 24 Aug in Europe/Berlin, still
+    // Sunday 23 Aug in UTC — the week and the weekday both hinge on the zone.
+    show([activity(3, "2026-08-23T22:30:00Z")]);
+
+    const week = screen.getByRole("region", { name: /24 Aug/ });
+    const monday = within(week).getByRole("group", { name: "Mon" });
+    expect(within(monday).getByRole("link")).toHaveAttribute("href", "/activities/3");
+  });
+
+  it("scales a bar's height against the longest ride on the page", () => {
+    show([
+      activity(1, "2026-08-19T08:00:00Z", { distanceMetres: 60_000 }),
+      activity(2, "2026-08-19T09:00:00Z", { distanceMetres: 30_000 }),
+    ]);
+
+    const longBar = document.querySelector<HTMLElement>(
+      'a[href="/activities/1"] [aria-hidden="true"]',
+    );
+    const shortBar = document.querySelector<HTMLElement>(
+      'a[href="/activities/2"] [aria-hidden="true"]',
+    );
+    const longHeight = Number.parseFloat(longBar?.style.height ?? "");
+    const shortHeight = Number.parseFloat(shortBar?.style.height ?? "");
+    expect(shortHeight).toBeCloseTo(longHeight / 2);
+  });
+
+  it("adds a week's rides into its totals line", () => {
+    show([
+      activity(1, "2026-08-19T08:00:00Z", {
+        distanceMetres: 40_000,
+        movingSeconds: 3_600,
+        ascentMetres: 300,
+      }),
+      activity(2, "2026-08-20T08:00:00Z", {
+        distanceMetres: 20_000,
+        movingSeconds: 1_800,
+        ascentMetres: 150,
+      }),
+    ]);
+
+    const week = screen.getByRole("region", { name: /17 Aug/ });
+    expect(within(week).getByText(formatDistance(60_000))).toBeInTheDocument();
+    expect(
+      within(week).getByText(`${formatDuration(5_400)} · ${formatAscent(450)}`),
+    ).toBeInTheDocument();
   });
 
   it("waits for the activities rather than claiming there are none", () => {

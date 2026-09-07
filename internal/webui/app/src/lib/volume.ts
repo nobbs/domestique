@@ -189,18 +189,23 @@ function dateActivities(activities: Activity[]) {
     .filter(({ startedAt }) => !Number.isNaN(startedAt.getTime()));
 }
 
+export interface RideWeek extends VolumeBucket {
+  rides: Activity[];
+}
+
 /**
- * One bucket per period from the earliest activity to `now`, newest first.
+ * One bucket per period from the earliest activity to `now`, newest first,
+ * each carrying the activities that landed in it.
  *
  * Periods nobody rode in are present and zero: a gap is a fact about the
  * riding, and a list that closed over it would read as an unbroken run.
  */
-export function bucketActivities(
+function bucketsWithRides(
   activities: Activity[],
   granularity: Granularity,
   zone: string,
-  now = new Date(),
-): VolumeBucket[] {
+  now: Date,
+): RideWeek[] {
   const dated = dateActivities(activities);
   if (dated.length === 0) {
     return [];
@@ -211,14 +216,14 @@ export function bucketActivities(
     granularity,
     zone,
   );
-  const buckets: VolumeBucket[] = [];
-  const byStart = new Map<number, VolumeBucket>();
+  const buckets: RideWeek[] = [];
+  const byStart = new Map<number, RideWeek>();
   for (
     let start = startOfBucket(now, granularity, zone);
     start.getTime() >= earliest.getTime();
     start = previousBucket(start, granularity, zone)
   ) {
-    const bucket = empty(start, granularity, zone);
+    const bucket = { ...empty(start, granularity, zone), rides: [] as Activity[] };
     buckets.push(bucket);
     byStart.set(start.getTime(), bucket);
   }
@@ -227,8 +232,52 @@ export function bucketActivities(
     const bucket = byStart.get(startOfBucket(startedAt, granularity, zone).getTime());
     if (bucket) {
       add(bucket, activity);
+      bucket.rides.push(activity);
     }
   });
 
   return buckets;
+}
+
+export function bucketActivities(
+  activities: Activity[],
+  granularity: Granularity,
+  zone: string,
+  now = new Date(),
+): VolumeBucket[] {
+  return bucketsWithRides(activities, granularity, zone, now);
+}
+
+/** Every week from the earliest activity to `now`, each with its own rides attached. */
+export function weeksWithRides(activities: Activity[], zone: string, now = new Date()): RideWeek[] {
+  return bucketsWithRides(activities, "week", zone, now);
+}
+
+/** Which weekday `activity` falls on in `zone`, Monday 0 through Sunday 6. */
+export function weekdayIndex(activity: Activity, zone: string): number {
+  return (zonedParts(new Date(activity.startedAt), zone).weekday + 6) % 7;
+}
+
+const RANGE_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+
+function rangeFormatter(zone: string): Intl.DateTimeFormat {
+  let formatter = RANGE_FORMATTERS.get(zone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      timeZone: zone,
+    });
+    RANGE_FORMATTERS.set(zone, formatter);
+  }
+
+  return formatter;
+}
+
+/** "31 Aug – 6 Sept": the week starting `start`, both ends read in `zone`. */
+export function weekRangeLabel(start: Date, zone: string): string {
+  const { year, month, day } = zonedParts(start, zone);
+  const end = zonedMidnight(year, month, day + 6, zone);
+
+  return `${rangeFormatter(zone).format(start)} – ${rangeFormatter(zone).format(end)}`;
 }
