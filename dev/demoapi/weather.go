@@ -5,6 +5,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/httpapi"
 )
 
@@ -126,5 +127,39 @@ func weatherPrecipitation(cloud, rain float64) (millimetres, probabilityPercent 
 		return 0, 3, 1
 	default:
 		return 0, 0, 0
+	}
+}
+
+// rideWeather adapts syntheticWeather to what a derivation asks of a provider,
+// the way cmd/domestique adapts the real client. An hour is its only step.
+func rideWeather() activity.WeatherAdapter {
+	return activity.WeatherAdapter{
+		Read: func(
+			ctx context.Context, latitudes, longitudes []float64, from, to time.Time,
+		) ([]activity.WeatherSeries, error) {
+			forecast, err := syntheticWeather(ctx, latitudes, longitudes, from, to)
+			if err != nil {
+				return nil, err
+			}
+			series := make([]activity.WeatherSeries, len(forecast))
+			for index := range forecast {
+				one := &forecast[index]
+				series[index] = activity.WeatherSeries{
+					Step:                            time.Hour,
+					Time:                            one.Time,
+					TemperatureCelsius:              one.TemperatureCelsius,
+					ApparentTemperatureCelsius:      one.ApparentTemperatureCelsius,
+					PrecipitationMillimetres:        one.PrecipitationMillimetres,
+					PrecipitationProbabilityPercent: one.PrecipitationProbabilityPercent,
+					WindSpeedKMH:                    one.WindSpeedKMH,
+					WindDirectionDegrees:            one.WindDirectionDegrees,
+					CloudCoverPercent:               one.CloudCoverPercent,
+					WeatherCode:                     one.WeatherCode,
+				}
+			}
+
+			return series, nil
+		},
+		Step: func(time.Time) time.Duration { return time.Hour },
 	}
 }

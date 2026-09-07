@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/ridemodel"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -15,6 +17,7 @@ import (
 // the package that consumes it, so a test can seed a fake and the demo does not
 // drag the SQLite adapter into anything that only wants the fixtures.
 type State interface {
+	ActivityState
 	StoreTrustedInventory(ctx context.Context, provider route.Provider, stages []route.Route) error
 	StoreStageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, indexGeneration string, ranges []byte, matchedMetres float64) error
 	StoreStageDuration(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash, surfaceGeneration, coefficientFingerprint string, movingSeconds *float64, cumulativeSeconds []byte) error
@@ -23,6 +26,15 @@ type State interface {
 	UpsertTargetStage(ctx context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error
 	RecordSyncRun(ctx context.Context, phase string, startedAt, finishedAt time.Time, outcome, detail string, sourceStages, created, updated, deleted int) (string, error)
 	RecordTargetRun(ctx context.Context, targetID string, finishedAt time.Time, outcome, detail string) error
+}
+
+// ActivityState is the part of that database a rider's own recorded rides are
+// written to, kept apart from the library it knows nothing about.
+type ActivityState interface {
+	SetRiderProfile(ctx context.Context, subject string, profile rider.Profile) error
+	StoreActivity(ctx context.Context, targetID string, listing activity.Listing,
+		summary activity.Summary, now time.Time) error
+	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit activity.FIT) error
 }
 
 // SlotState is the state a seeded Wahoo slot is left in. Between them the three
@@ -129,8 +141,15 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 			return fmt.Errorf("demo: ensuring target owner %s: %w", slot.ID, err)
 		}
 	}
+	rides, ridesErr := ridesFor(slots, now)
+	if ridesErr != nil {
+		return ridesErr
+	}
 	for _, slot := range slots {
 		if err := seedSlot(ctx, state, slot, stages, now); err != nil {
+			return err
+		}
+		if err := seedActivities(ctx, state, slot, rides, now); err != nil {
 			return err
 		}
 	}
@@ -172,6 +191,42 @@ func seedDurations(ctx context.Context, state State, stages []route.Route) error
 			movingSeconds, cumulativeSeconds,
 		); err != nil {
 			return fmt.Errorf("demo: storing duration for %d/%d: %w", key.SourceRouteID(), key.StageOrder(), err)
+		}
+	}
+
+	return nil
+}
+
+// ridesFor builds the synthetic rides once for the whole run, and not at all
+// when no slot is onboarded enough to be given any.
+func ridesFor(slots []Slot, now time.Time) ([]Ride, error) {
+	for _, slot := range slots {
+		if slot.State != SlotUnauthorized {
+			return Rides(now)
+		}
+	}
+
+	return nil, nil
+}
+
+// seedActivities gives one onboarded slot the rides and the profile that turns
+// them into training numbers. An un-onboarded slot gets neither.
+func seedActivities(ctx context.Context, state State, slot Slot, rides []Ride, now time.Time) error {
+	if slot.State == SlotUnauthorized {
+		return nil
+	}
+	if err := state.SetRiderProfile(ctx, slot.ID, Profile()); err != nil {
+		return fmt.Errorf("demo: storing the rider profile for %s: %w", slot.ID, err)
+	}
+	for index := range rides {
+		ride := &rides[index]
+		if err := state.StoreActivity(ctx, slot.ID, ride.Listing, ride.Summary, now); err != nil {
+			return fmt.Errorf("demo: storing ride %d for %s: %w", ride.Listing.ID, slot.ID, err)
+		}
+		// The samples after the ride itself: the row is what a later read finds
+		// the ride by, and it must not name samples that are not there yet.
+		if err := state.StoreActivityRecords(ctx, slot.ID, ride.Listing.ID, ride.FIT); err != nil {
+			return fmt.Errorf("demo: storing the samples of ride %d for %s: %w", ride.Listing.ID, slot.ID, err)
 		}
 	}
 
