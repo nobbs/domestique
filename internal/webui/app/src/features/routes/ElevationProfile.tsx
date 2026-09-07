@@ -39,7 +39,7 @@
  * asserting against an empty chart.
  */
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -57,6 +57,7 @@ import { useNarrowViewport } from "../../lib/mediaQuery";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile, ProfileSample } from "../../lib/profile";
 import { niceStep, sampleAt, ticksFor } from "../../lib/profile";
+import type { AlignedSeries } from "../../lib/rideSeries";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../../lib/selection";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../../lib/surface";
@@ -183,6 +184,15 @@ export interface ElevationProfileProps {
    * legends can share a line.
    */
   highlight?: Highlight | null;
+  /**
+   * Sensor series laid over the terrain, already sampled onto this profile's
+   * own samples by the caller.
+   *
+   * Each rides its own hidden axis: beats, watts and degrees share no scale,
+   * and one axis fitted to all of them would flatten every series but the
+   * largest. Empty leaves the chart exactly the elevation profile it was.
+   */
+  series?: AlignedSeries[];
   /** Whether the footer's range/readout paragraph is shown. */
   caption?: boolean;
   /** Whether the zoom-back button is shown here, for a caller that places its own elsewhere. */
@@ -278,6 +288,7 @@ export function ElevationProfile({
   zoomWindow = null,
   onZoomChange,
   highlight = null,
+  series = [],
   caption = true,
   zoomBack = true,
 }: ElevationProfileProps) {
@@ -340,6 +351,27 @@ export function ElevationProfile({
    * Whichever kind of class was picked, the answer is a list of stretches, so
    * both are veiled by one rule.
    */
+  /**
+   * The samples with each drawn series folded in under its own key.
+   *
+   * A new array only when there is a series to draw: with none, the chart keeps
+   * plotting the very samples the profile handed it.
+   */
+  const chartData = useMemo(() => {
+    if (!profile || series.length === 0) {
+      return profile?.samples ?? [];
+    }
+
+    return profile.samples.map((sample, index) => {
+      const point: ProfileSample & Record<string, number | null> = { ...sample };
+      for (const one of series) {
+        point[one.key] = one.values[index] ?? null;
+      }
+
+      return point;
+    });
+  }, [profile, series]);
+
   const veiled = useMemo(() => {
     if (!highlight || !geometry || !profile) {
       return [];
@@ -559,7 +591,7 @@ export function ElevationProfile({
     <div className="relative" ref={ref} data-zoomed={zoomed ? "true" : undefined}>
       <div>
         <AreaChart
-          data={profile.samples}
+          data={chartData}
           width={plotWidth + PADDING.left + PADDING.right}
           height={height}
           /*
@@ -644,6 +676,39 @@ export function ElevationProfile({
              */
             style={{ forcedColorAdjust: "none" }}
           />
+
+          {/*
+           * One line per drawn series, over the terrain rather than filled into
+           * it: the ground is the chart's subject and a second filled shape
+           * would bury it. Each carries its own hidden axis, fitted to its own
+           * readings, so beats and degrees are both legible at once — the
+           * shapes are comparable against distance, never against each other.
+           */}
+          {series.map((one) => (
+            <Fragment key={one.key}>
+              <YAxis yAxisId={one.key} domain={["auto", "auto"]} hide />
+              <Area
+                yAxisId={one.key}
+                dataKey={one.key}
+                type="linear"
+                fill="none"
+                fillOpacity={0}
+                stroke={one.colour}
+                strokeWidth={1.6}
+                isAnimationActive={false}
+                activeDot={false}
+                dot={false}
+                // The line's colour is which series it is; a forced palette
+                // would repaint five series into one, for the same reason the
+                // terrain keeps its own.
+                style={{ forcedColorAdjust: "none" }}
+                // A gap the sensor left is a gap in the line, not a chord drawn
+                // across ground nothing was recorded over.
+                connectNulls={false}
+                data-series={one.key}
+              />
+            </Fragment>
+          ))}
 
           {/*
            * Everything the picked class does not cover, veiled. The marks keep

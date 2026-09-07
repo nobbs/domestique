@@ -49,6 +49,11 @@
   --cloud-1: #aeb3b8;
   --cloud-2: #7d838a;
   --cloud-3: #4d5257;
+  --series-heart-rate: #c1384a;
+  --series-cadence: #00806f;
+  --series-power: #7439ad;
+  --series-temperature: #b9670c;
+  --series-speed: #236fc7;
   --surface-asphalt: #556b82;
   --surface-paving: #7d3ab7;
   --surface-compacted: #009c89;
@@ -114,6 +119,11 @@
   --cloud-1: #6e7378;
   --cloud-2: #9aa0a6;
   --cloud-3: #c7ccd1;
+  --series-heart-rate: #f0909a;
+  --series-cadence: #59ceba;
+  --series-power: #c199f4;
+  --series-temperature: #e9a55b;
+  --series-speed: #70adfb;
   --surface-asphalt: #8da8c3;
   --surface-paving: #b77ff2;
   --surface-compacted: #59ceba;
@@ -179,6 +189,11 @@
     --cloud-1: #6e7378;
     --cloud-2: #9aa0a6;
     --cloud-3: #c7ccd1;
+    --series-heart-rate: #f0909a;
+    --series-cadence: #59ceba;
+    --series-power: #c199f4;
+    --series-temperature: #e9a55b;
+    --series-speed: #70adfb;
     --surface-asphalt: #8da8c3;
     --surface-paving: #b77ff2;
     --surface-compacted: #59ceba;

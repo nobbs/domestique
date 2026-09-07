@@ -6,6 +6,7 @@ import {
   type WebUIConfig as GeneratedWebUIConfig,
   type GetTaskRunsParams,
   getGetActivitiesQueryOptions,
+  getGetActivitySeriesQueryOptions,
   getGetActivityTrackQueryOptions,
   getGetFitnessQueryOptions,
   getGetRiderProfileQueryOptions,
@@ -25,6 +26,8 @@ import {
 import {
   type Activity,
   type ActivityList,
+  type ActivitySeries,
+  type ActivitySeriesName,
   type ActivityTrack,
   activityTrack,
   type Fitness,
@@ -92,6 +95,23 @@ export const activityTrackQuery = (id: number) =>
   getGetActivityTrackQueryOptions<ActivityTrack>(id, undefined, {
     query: {
       select: (response) => activityTrack(payload<ActivityTrackFeature>(response)),
+      staleTime: 5 * 60 * 1000,
+    },
+  });
+
+/**
+ * One named series of a ride's samples, indexed with its track's coordinates.
+ *
+ * One request per series the rider actually asked to see: a ride can hold
+ * twenty thousand samples, so fetching all five to draw none of them would cost
+ * the page more than the track itself. A ride that recorded none of the series
+ * answers not found, which is the "nothing to draw" the chips read.
+ */
+export const activitySeriesQuery = (id: number, series: ActivitySeriesName) =>
+  getGetActivitySeriesQueryOptions(id, series, undefined, {
+    query: {
+      select: (response) => payload<ActivitySeries>(response),
+      retry: false,
       staleTime: 5 * 60 * 1000,
     },
   });

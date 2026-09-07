@@ -517,15 +517,31 @@ The read-only JSON surface is small:
   each coordinate, indexed the same way and named `estimatedPowerWatts` rather
   than any name a measurement could carry. It is omitted entirely for a ride
   that measured its own power, one with no usable track, and one whose rider has
-  entered no mass. Nothing else the samples hold is served, and the estimate is
-  never served as though it were a reading. It is scoped exactly as the list
-  above is. An activity with fewer than
+  entered no mass. Nothing else the samples hold is served here, and the
+  estimate is never served as though it were a reading. It is scoped exactly as
+  the list above is. An activity with fewer than
   two positioned samples is served as an unlocated Feature — a null `geometry`
   and no box — whose `properties.state` says why: `pending` for samples not
   downloaded yet, `empty` for samples too few of which carried a position to
   draw a line, and `unreadable` for a file that did not decode; a served line
   carries `stored`. Only an activity of another target, or one this service
   holds no summary for, is `404`.
+- `GET /v1/activities/{activityId}/series/{series}` returns one named series of
+  that activity's samples — `heartRate`, `cadence`, `power`, `temperature` or
+  `speed` — indexed 1:1 with the coordinates the track endpoint serves, `null`
+  where that sample recorded nothing. Every one but `speed` is read from the
+  samples as recorded; `speed` is worked out from the distance covered between
+  one sample and the next, in kilometres per hour, and has none at the first
+  sample or across a pair whose clock did not advance. A reading of nought is a
+  reading — a stopped rider's cadence — and never stands in for an absent one.
+
+  One request names one series and receives that series alone: a ride can hold
+  twenty thousand samples, and nothing of this is bundled into the track
+  response or into any listing. A series no sample of the ride recorded is
+  `404`, which is what tells a bicycle with no meter from a meter that dropped
+  out; a `speed` no pair of samples could yield — a ride that recorded no
+  distance — answers the same way rather than as a column of nulls. It is
+  scoped exactly as the track is, and answers `404` on the same terms.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.
@@ -736,9 +752,10 @@ The response schemas are defined in
 [the sync lifecycle specification](sync-lifecycle.md). They must never expose
 secrets, tokens, or raw upstream response bodies.
 
-Route geometry is served **only** on the dedicated geometry endpoint, and a
-recorded activity's track **only** on its own track endpoint, both only to
-a session belonging to an allowed subject, and only from local stored state.
+Route geometry is served **only** on the dedicated geometry endpoint, a
+recorded activity's track **only** on its own track endpoint, and its sensor
+series **only** on the series endpoint, one named series per request — all only
+to a session belonging to an allowed subject, and only from local stored state.
 Neither must ever appear in logs, notifications, error messages, the status
 endpoint, or any listing.
 

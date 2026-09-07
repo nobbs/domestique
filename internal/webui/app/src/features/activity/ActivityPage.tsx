@@ -5,17 +5,18 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { activityTrackQuery } from "../../api/queries";
-import type { ActivityTrackState } from "../../api/types";
+import type { ActivitySeriesName, ActivityTrackState } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatAscent, formatDistance, formatMovingTime, formatTimestamp } from "../../lib/format";
-import { buildActivityProfile } from "../../lib/profile";
+import { buildActivityProfile, type Profile } from "../../lib/profile";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
 import { RideConditions } from "./RideConditions";
+import { SeriesChips, useRideSeries } from "./RideSeries";
 import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
 
@@ -30,7 +31,25 @@ export function ActivityPage() {
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [shown, setShown] = useState<ReadonlySet<ActivitySeriesName>>(() => new Set());
+  const { drawn, states } = useRideSeries(id, shown, coordinates, profile);
   const title = ride ? formatTimestamp(ride.startedAt) : "Activity";
+  const toggle = useCallback((series: ActivitySeriesName) => {
+    setShown((current) => {
+      const next = new Set(current);
+      if (!next.delete(series)) {
+        next.add(series);
+      }
+
+      return next;
+    });
+  }, []);
+  // Which sample the shared cursor is on, so a chip can say what its series
+  // read there. The profile's samples are evenly spaced across its own stretch.
+  const activeIndex = useMemo(
+    () => (profile && activeMetres !== null ? sampleIndexAt(profile, activeMetres) : null),
+    [profile, activeMetres],
+  );
 
   return (
     <PageShell>
@@ -78,8 +97,15 @@ export function ActivityPage() {
                 <ElevationProfile
                   profile={profile}
                   title={title}
+                  series={drawn}
                   activeMetres={activeMetres}
                   onActiveChange={setActiveMetres}
+                />
+                <SeriesChips
+                  states={states}
+                  drawn={drawn}
+                  activeIndex={activeIndex}
+                  onToggle={toggle}
                 />
               </div>
             ) : null}
@@ -88,6 +114,24 @@ export function ActivityPage() {
       </div>
     </PageShell>
   );
+}
+
+/**
+ * The profile sample nearest one position along the ride.
+ *
+ * The samples are evenly spaced across the stretch the profile describes, so
+ * this is arithmetic rather than a search — and it is the same index the
+ * aligned series are laid out on.
+ */
+function sampleIndexAt(profile: Profile, metres: number): number | null {
+  const span = profile.endMetres - profile.startMetres;
+  const last = profile.samples.length - 1;
+  if (span <= 0 || last < 0) {
+    return null;
+  }
+  const index = Math.round(((metres - profile.startMetres) / span) * last);
+
+  return Math.min(Math.max(index, 0), last);
 }
 
 /**

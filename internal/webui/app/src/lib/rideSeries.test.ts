@@ -1,0 +1,69 @@
+/**
+ * Laying a recorded series onto the profile's axis. The two are indexed
+ * differently on purpose, and getting this wrong puts a heart rate under the
+ * wrong climb rather than failing loudly.
+ */
+
+import { describe, expect, it } from "vitest";
+import type { Position } from "../api/types";
+import { buildActivityProfile } from "./profile";
+import { alignSeries } from "./rideSeries";
+
+/** A straight run east, every sample carrying an altitude. */
+function coordinates(): Position[] {
+  return [
+    [8.4, 49, 100],
+    [8.5, 49, 120],
+    [8.6, 49, 140],
+    [8.7, 49, 160],
+  ];
+}
+
+describe("alignSeries", () => {
+  it("puts the first and last readings at the ends of the profile", () => {
+    const profile = buildActivityProfile(coordinates(), 8);
+    if (!profile) {
+      throw new Error("the fixture carries altitudes throughout");
+    }
+
+    const aligned = alignSeries([10, 20, 30, 40], coordinates(), profile);
+
+    expect(aligned).toHaveLength(profile.samples.length);
+    expect(aligned[0]).toBe(10);
+    expect(aligned.at(-1)).toBe(40);
+  });
+
+  // A gap belongs to the recording. Interpolating over one would draw a reading
+  // across ground the sensor said nothing about.
+  it("keeps a gap the sensor left as a gap", () => {
+    const profile = buildActivityProfile(coordinates(), 4);
+    if (!profile) {
+      throw new Error("the fixture carries altitudes throughout");
+    }
+
+    const aligned = alignSeries([null, null, null, null], coordinates(), profile);
+
+    expect(aligned.every((value) => value === null)).toBe(true);
+  });
+
+  // The profile drops the samples that carried no altitude, so its axis starts
+  // where the altitudes do — and the series must follow that axis, not its own
+  // index.
+  it("follows the profile's axis when the profile starts late", () => {
+    const late: Position[] = [
+      [8.4, 49],
+      [8.5, 49],
+      [8.6, 49, 140],
+      [8.7, 49, 160],
+    ];
+    const profile = buildActivityProfile(late, 4);
+    if (!profile) {
+      throw new Error("two altitudes are enough for a profile");
+    }
+
+    const aligned = alignSeries([1, 2, 3, 4], late, profile);
+
+    expect(aligned[0]).toBe(3);
+    expect(aligned.at(-1)).toBe(4);
+  });
+});

@@ -208,6 +208,74 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track, recordsState, hours))
 }
 
+// GetActivitySeries serves one named series of one activity's samples, scoped
+// exactly as its track is and indexed 1:1 with the coordinates that track
+// carries. A series no sample of the ride recorded is not found, so a page can
+// tell a bicycle with no meter from one whose meter dropped out.
+func (h *Handler) GetActivitySeries(writer http.ResponseWriter, request *http.Request) {
+	// The served surface refuses a non-numeric id and an unnamed series before
+	// they reach here.
+	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
+	if idErr != nil {
+		h.notFound(writer)
+
+		return
+	}
+	name := activities.SeriesName(request.PathValue("series"))
+	targetID, found, err := h.readableTarget(request.Context(), request.URL.Query().Get("target"))
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !found {
+		h.notFound(writer)
+
+		return
+	}
+	_, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
+	if stateErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !stored {
+		h.notFound(writer)
+
+		return
+	}
+	rows, rowsErr := h.state.ActivitySeries(request.Context(), targetID, id)
+	if rowsErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	readings, present := activities.Series(rows, name)
+	if !present {
+		h.notFound(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, activitySeriesView{Series: string(name), Values: seriesValues(readings)})
+}
+
+// seriesValues is the wire form of one series: a value where the sample carried
+// one, null where it carried none.
+func seriesValues(readings []activities.Reading) []*float64 {
+	values := make([]*float64, len(readings))
+	// One backing array for the whole series, rather than one allocation per
+	// sample; a ride can hold twenty thousand of them.
+	known := make([]float64, len(readings))
+	for index := range readings {
+		if readings[index].Known {
+			known[index] = readings[index].Value
+			values[index] = &known[index]
+		}
+	}
+
+	return values
+}
+
 // activityTrackFeature draws the Feature one track is served as: the line, the
 // box around it, and the altitudes beside it — null where a sample recorded
 // none, absent only when none did. A ride with no line carries only its state.

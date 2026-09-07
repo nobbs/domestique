@@ -9,11 +9,18 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { activitiesQuery, activityTrackQuery, webUIConfigQuery } from "../../api/queries";
+import {
+  activitiesQuery,
+  activitySeriesQuery,
+  activityTrackQuery,
+  webUIConfigQuery,
+} from "../../api/queries";
 import type { Activity, ActivityTrack, Position, WebUIConfig } from "../../api/types";
 import type { Profile } from "../../lib/profile";
+import type { AlignedSeries } from "../../lib/rideSeries";
 import { ActivityPage } from "./ActivityPage";
 
 const ZONE = "Europe/Berlin";
@@ -22,6 +29,7 @@ const drawn = vi.hoisted(() => ({
   coordinates: [] as Position[],
   bounds: null as number[] | null,
   profiles: [] as Array<Profile | null>,
+  series: [] as AlignedSeries[],
 }));
 
 vi.mock("./ActivityMap", () => ({
@@ -34,8 +42,9 @@ vi.mock("./ActivityMap", () => ({
 }));
 
 vi.mock("../routes/ElevationProfile", () => ({
-  ElevationProfile: (props: { profile: Profile | null }) => {
+  ElevationProfile: (props: { profile: Profile | null; series?: AlignedSeries[] }) => {
     drawn.profiles.push(props.profile);
+    drawn.series = props.series ?? [];
 
     return <div data-testid="elevation-profile" />;
   },
@@ -92,7 +101,11 @@ function config(): WebUIConfig {
   };
 }
 
-function show(recorded: ActivityTrack | null = track(), activityId: number | string = RIDE.id) {
+function show(
+  recorded: ActivityTrack | null = track(),
+  activityId: number | string = RIDE.id,
+  heartRate?: (number | null)[],
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -100,6 +113,12 @@ function show(recorded: ActivityTrack | null = track(), activityId: number | str
   client.setQueryData(activitiesQuery().queryKey, [RIDE]);
   if (recorded) {
     client.setQueryData(activityTrackQuery(RIDE.id).queryKey, recorded);
+  }
+  if (heartRate) {
+    client.setQueryData(activitySeriesQuery(RIDE.id, "heartRate").queryKey, {
+      series: "heartRate",
+      values: heartRate,
+    });
   }
   render(
     <QueryClientProvider client={client}>
@@ -116,6 +135,7 @@ beforeEach(() => {
   drawn.coordinates = [];
   drawn.bounds = null;
   drawn.profiles = [];
+  drawn.series = [];
 });
 
 afterEach(() => {
@@ -159,6 +179,71 @@ describe("one ride's page", () => {
 
     expect(screen.getByTestId("elevation-profile")).toBeInTheDocument();
     expect(drawn.profiles.at(-1)?.samples.length).toBeGreaterThan(0);
+  });
+
+  // Nothing is fetched until the rider asks: a ride can hold twenty thousand
+  // samples, and five series nobody looked at would cost more than the track.
+  it("draws no series until one is asked for", () => {
+    show(track(), RIDE.id, [120, 148, 130]);
+
+    expect(drawn.series).toEqual([]);
+  });
+
+  it("draws a series the rider turned on, over the profile's own samples", async () => {
+    show(track(), RIDE.id, [120, 148, 130]);
+
+    await userEvent.click(screen.getByRole("button", { name: /Heart rate/ }));
+
+    expect(drawn.series).toHaveLength(1);
+    expect(drawn.series[0]?.key).toBe("heartRate");
+    expect(drawn.series[0]?.values).toHaveLength(drawn.profiles.at(-1)?.samples.length ?? 0);
+    expect(drawn.series[0]?.values[0]).toBe(120);
+  });
+
+  it("puts the series away again when its chip is pressed a second time", async () => {
+    show(track(), RIDE.id, [120, 148, 130]);
+
+    const chip = screen.getByRole("button", { name: /Heart rate/ });
+    await userEvent.click(chip);
+    await userEvent.click(chip);
+
+    expect(drawn.series).toEqual([]);
+  });
+
+  // The endpoint answers 404 for a series the ride never carried, and that is
+  // the only failure that may read as "not recorded".
+  it("says a series the ride never recorded is not there", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: { code: "not_found", message: "no such series" } }, { status: 404 }),
+      ),
+    );
+    show();
+
+    await userEvent.click(screen.getByRole("button", { name: /Power/ }));
+
+    expect(await screen.findByRole("button", { name: /Power.*not recorded/ })).toBeInTheDocument();
+  });
+
+  // Anything else is about the service, not about the bicycle.
+  it("does not read an unreachable service as a series the ride never recorded", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: { code: "unavailable", message: "try later" } }, { status: 503 }),
+      ),
+    );
+    show();
+
+    await userEvent.click(screen.getByRole("button", { name: /Heart rate/ }));
+
+    expect(
+      await screen.findByRole("button", { name: /Heart rate.*unavailable/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Heart rate/ }).textContent).not.toContain(
+      "not recorded",
+    );
   });
 
   it("shows a placeholder while the track is still loading", () => {

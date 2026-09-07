@@ -647,6 +647,23 @@ type ActivityTrackProperties struct {
 	EstimatedPowerWatts []float64 `json:"estimatedPowerWatts,omitempty"`
 }
 
+// ActivitySeriesName A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` is worked out from the distance covered between one sample and the next.
+type ActivitySeriesName string
+
+const (
+	ActivitySeriesNameHeartRate   ActivitySeriesName = "heartRate"
+	ActivitySeriesNameCadence     ActivitySeriesName = "cadence"
+	ActivitySeriesNamePower       ActivitySeriesName = "power"
+	ActivitySeriesNameTemperature ActivitySeriesName = "temperature"
+	ActivitySeriesNameSpeed       ActivitySeriesName = "speed"
+)
+
+type ActivitySeries struct {
+	Series ActivitySeriesName `json:"series"`
+	// Values The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius and kilometres per hour respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one.
+	Values []float64 `json:"values"`
+}
+
 type GeoJSONProperties_Surface struct {
 	Ranges        []SurfaceRange `json:"ranges"`
 	MatchedMetres float64        `json:"matchedMetres"`

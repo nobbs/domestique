@@ -128,6 +128,15 @@ type activityTrackPropertyView struct {
 	Weather []openapi.RideWeatherHour `json:"weather,omitempty"`
 }
 
+// activitySeriesView is one named series of one ride's samples, indexed 1:1
+// with the coordinates its track is served as; nil where that sample recorded
+// nothing. A ride carrying nothing of the series is not found rather than
+// served as a column of nulls.
+type activitySeriesView struct {
+	Series string     `json:"series"`
+	Values []*float64 `json:"values"`
+}
+
 type lineStringView struct {
 	Type        string          `json:"type"`
 	Coordinates json.RawMessage `json:"coordinates"`
