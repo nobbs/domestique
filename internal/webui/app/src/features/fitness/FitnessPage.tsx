@@ -90,7 +90,7 @@ export function FitnessPage() {
           <Skeleton className="h-64 w-full" role="status" aria-label="Loading the timeline" />
         ) : isError ? (
           <p className="text-sm text-[var(--alert)]" role="alert">
-            The service did not say what has been ridden.
+            The service did not say what the training has come to.
           </p>
         ) : data.days.length === 0 ? (
           <p className="text-[var(--ink-2)] text-sm">
