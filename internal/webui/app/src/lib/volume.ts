@@ -189,8 +189,8 @@ function dateActivities(activities: Activity[]) {
     .filter(({ startedAt }) => !Number.isNaN(startedAt.getTime()));
 }
 
-/** What a totals-only bucket carries instead of its rides: nothing, shared and never pushed to. */
-const NO_RIDES: Activity[] = [];
+/** What a totals-only bucket carries instead of its rides: nothing, shared and frozen. */
+const NO_RIDES = Object.freeze([] as Activity[]) as unknown as Activity[];
 
 /** A bucket of either period with the activities that landed in it. */
 interface RidesBucket extends VolumeBucket {
@@ -255,7 +255,10 @@ export function bucketActivities(
   zone: string,
   now = new Date(),
 ): VolumeBucket[] {
-  return bucketsWithRides(activities, granularity, zone, now, false);
+  // Stripped rather than hidden by the type: a totals-only bucket carries nothing.
+  return bucketsWithRides(activities, granularity, zone, now, false).map(
+    ({ rides: _rides, ...bucket }) => bucket,
+  );
 }
 
 /** Every week from the earliest activity to `now`, each with its own rides attached. Volume's totals-only buckets skip the attaching. */
