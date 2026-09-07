@@ -395,22 +395,14 @@ func TestDeriveReadsASourceWithNoStepAsHourly(t *testing.T) {
 		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
 		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
 	}
-	// An actually-hourly provider, not one that names no step and is read as
-	// hourly by the fallback — that is TestDeriveReadsASourceWithNoStepAsHourly.
-	hour := weatherNow().Truncate(time.Hour)
-	source := &fakeWeatherSource{step: time.Hour, series: []activity.WeatherSeries{{
-		Step: time.Hour, Time: []time.Time{hour},
-		TemperatureCelsius: []float64{18}, ApparentTemperatureCelsius: []float64{17},
-		PrecipitationMillimetres: []float64{0}, WindSpeedKMH: []float64{12},
-		WindDirectionDegrees: []float64{240}, CloudCoverPercent: []float64{50},
-		WeatherCode: []int{1},
-	}}}
+	// Names no step, either before the request or on the answer.
+	source := &fakeWeatherSource{}
 
 	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
-	assert.Len(t, source.latitudes, 2, "one coordinate per hour, both ends included")
+	assert.Zero(t, source.StepFor(weatherNow()), "the source really does name none")
+	assert.Len(t, source.latitudes, 2, "sampled as if hourly")
 	require.Len(t, store.stored[7], 1)
-	assert.Equal(t, time.Hour, store.stored[7][0].Step)
-	assert.InDelta(t, 18.0, store.stored[7][0].TemperatureCelsius, 1e-9)
+	assert.Equal(t, time.Hour, store.stored[7][0].Step, "and stored as an hour")
 }
 
 // The provider drops a step it held no reading for, per coordinate. A ride

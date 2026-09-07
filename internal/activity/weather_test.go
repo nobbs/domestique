@@ -43,4 +43,10 @@ func TestWeatherAdapterAdaptsAPairOfFunctions(t *testing.T) {
 	}
 	_, err = failing.History(t.Context(), nil, nil, time.Time{}, time.Time{})
 	require.ErrorContains(t, err, "upstream")
+
+	// A half-built adapter is a wiring fault. It must reach the caller as one
+	// rather than as a panic inside the run that asked for the weather.
+	_, err = activity.WeatherAdapter{}.History(t.Context(), nil, nil, time.Time{}, time.Time{})
+	require.ErrorContains(t, err, "no read function")
+	assert.Zero(t, activity.WeatherAdapter{}.StepFor(time.Time{}), "and names no step")
 }

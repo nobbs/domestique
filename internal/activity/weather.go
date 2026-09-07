@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -84,12 +85,24 @@ type WeatherAdapter struct {
 	Step func(at time.Time) time.Duration
 }
 
-// History calls Read.
+// History calls Read. An adapter built without one is a wiring fault rather
+// than a provider failure, and says so instead of panicking mid-run.
 func (a WeatherAdapter) History(
 	ctx context.Context, latitudes, longitudes []float64, from, to time.Time,
 ) ([]WeatherSeries, error) {
+	if a.Read == nil {
+		return nil, errors.New("activity: the weather adapter has no read function")
+	}
+
 	return a.Read(ctx, latitudes, longitudes, from, to)
 }
 
-// StepFor calls Step.
-func (a WeatherAdapter) StepFor(at time.Time) time.Duration { return a.Step(at) }
+// StepFor calls Step. An adapter built without one names no step, which the
+// caller already answers by reading it as an hour.
+func (a WeatherAdapter) StepFor(at time.Time) time.Duration {
+	if a.Step == nil {
+		return 0
+	}
+
+	return a.Step(at)
+}
