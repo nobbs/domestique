@@ -166,8 +166,8 @@ func (s *rideSpec) ride(stages []route.Route, now time.Time) (Ride, error) {
 		FIT: activity.FIT{
 			RecordingDevice:     "Demo Head Unit",
 			Records:             records,
-			TotalTimerTime:      time.Duration(summary.MovingSeconds) * time.Second,
-			TotalElapsedTime:    time.Duration(summary.ElapsedSeconds) * time.Second,
+			TotalTimerTime:      time.Duration(summary.MovingSeconds * float64(time.Second)),
+			TotalElapsedTime:    time.Duration(summary.ElapsedSeconds * float64(time.Second)),
 			TotalAscentMetres:   summary.AscentMetres,
 			HasTotalTimerTime:   true,
 			HasTotalElapsedTime: true,

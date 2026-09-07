@@ -141,9 +141,9 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 			return fmt.Errorf("demo: ensuring target owner %s: %w", slot.ID, err)
 		}
 	}
-	rides, err := Rides(now)
-	if err != nil {
-		return err
+	rides, ridesErr := Rides(now)
+	if ridesErr != nil {
+		return ridesErr
 	}
 	for _, slot := range slots {
 		if err := seedSlot(ctx, state, slot, stages, now); err != nil {

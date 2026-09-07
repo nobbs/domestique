@@ -25,9 +25,9 @@ func TestARideRefusesAStageItCannotBeRecordedOver(t *testing.T) {
 	require.NoError(t, err)
 
 	for name, test := range map[string]struct {
-		spec    rideSpec
 		wants   string
 		because string
+		spec    rideSpec
 	}{
 		"a stage the library has dropped": {
 			spec:    rideSpec{workoutID: 90_900, routeID: 4_999, stageOrder: 1},

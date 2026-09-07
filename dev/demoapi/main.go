@@ -314,7 +314,7 @@ func (r reseeder) trigger() bool {
 func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot) error {
 	now := func() time.Time { return time.Now().UTC() }
 	if err := demo.Seed(ctx, store, slots, now()); err != nil {
-		return fmt.Errorf("seeding the demo library: %w", err)
+		return fmt.Errorf("seeding the demo library and its rides: %w", err)
 	}
 	deriver, err := activity.NewDeriver(store, store, rideWeather(), now)
 	if err != nil {

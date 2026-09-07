@@ -2,7 +2,6 @@ package demo_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -177,7 +176,7 @@ func TestSeededRidesDeriveTrainingNumbersAgainstTheSeededProfile(t *testing.T) {
 	t.Parallel()
 
 	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
-	deriver, err := activity.NewDeriver(store, nil, nil, func() time.Time { return seededAt() })
+	deriver, err := activity.NewDeriver(store, nil, nil, seededAt)
 	require.NoError(t, err)
 
 	result := deriver.Derive(t.Context(), "rider-a")
