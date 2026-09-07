@@ -164,7 +164,7 @@ type RideWeatherHour struct {
 	CloudCoverPercent               float64  `json:"cloudCoverPercent"`
 }
 
-// ActivityMetrics What this ride's recorded samples and the rider's profile say about how hard it was. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, and a profile holds what the rider entered.
+// ActivityMetrics What this ride's recorded samples say about how hard it was: the load figures the rider's profile shapes, and the plain averages its sensors came to on their own. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, and a profile holds what the rider entered. Average speed is not here — it is distance over moving time, both of which the activity already carries, and is known even for a ride whose file was never readable.
 type ActivityMetrics struct {
 	// ZoneSeconds How long the ride held each of five heart-rate zones, easiest first. Cut from the lactate threshold where the profile has one and from the maximum otherwise.
 	ZoneSeconds []float64 `json:"zoneSeconds,omitempty"`
@@ -178,6 +178,14 @@ type ActivityMetrics struct {
 	PowerTss             *float64 `json:"powerTss,omitempty"`
 	// EstimatedPowerWatts The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass.
 	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
+	// AverageHeartRateBpm The mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap.
+	AverageHeartRateBpm *float64 `json:"averageHeartRateBpm,omitempty"`
+	// MaxHeartRateBpm The highest heart rate the ride recorded.
+	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
+	// AverageCadenceRpm The mean of the ride's recorded cadence samples. A reading of zero is a reading — a stopped rider's cadence — and counts towards it.
+	AverageCadenceRpm *float64 `json:"averageCadenceRpm,omitempty"`
+	// AveragePowerWatts The mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power.
+	AveragePowerWatts *float64 `json:"averagePowerWatts,omitempty"`
 }
 
 type ActivityList struct {

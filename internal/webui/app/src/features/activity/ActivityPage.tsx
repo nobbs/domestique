@@ -16,6 +16,7 @@ import { buildActivityProfile, type Profile } from "../../lib/profile";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
 import { RideConditions } from "./RideConditions";
+import { RideFigures } from "./RideFigures";
 import { SeriesChips, useRideSeries } from "./RideSeries";
 import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
@@ -70,9 +71,10 @@ export function ActivityPage() {
           ) : null}
         </div>
         {/*
-         * Above the map: how hard the ride was is what a rider looks for first,
+         * Above the map: what the ride came to is what a rider looks for first,
          * and it is there whether or not the ride recorded a position at all.
          */}
+        <RideFigures ride={ride} />
         <TrainingLoad metrics={ride?.metrics} />
         {id === null ? (
           <p className="text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>

@@ -70,11 +70,18 @@ func getActivities(t *testing.T, handler *Handler, target string) (int, openapi.
 // or the profile did not allow it, rather than sent as a zero.
 func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
-	state.activityMetrics = map[string]map[int64]trainingload.Metrics{
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
-			Zones: trainingload.Zones{60, 120, 180, 240, 300}, HasZones: true,
-			TRIMP: 42.5, HasTRIMP: true,
-			EstimatedPowerWatts: 168.5, HasEstimatedPower: true,
+			Load: trainingload.Metrics{
+				Zones: trainingload.Zones{60, 120, 180, 240, 300}, HasZones: true,
+				TRIMP: 42.5, HasTRIMP: true,
+				EstimatedPowerWatts: 168.5, HasEstimatedPower: true,
+			},
+			Averages: activities.RideAverages{
+				HeartRateBPM: 142.5, MaxHeartRateBPM: 178, HasHeartRate: true,
+				CadenceRPM: 81.5, HasCadence: true,
+				PowerWatts: 196.25, HasPower: true,
+			},
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
@@ -89,9 +96,17 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.Equal(t, []float64{60, 120, 180, 240, 300}, derived.Metrics.ZoneSeconds)
 	require.NotNil(t, derived.Metrics.Trimp)
 	assert.InDelta(t, 42.5, *derived.Metrics.Trimp, 1e-9)
-	assert.Nil(t, derived.Metrics.PowerTss, "no ride carried a meter")
+	assert.Nil(t, derived.Metrics.PowerTss, "the rider has entered no threshold power")
 	require.NotNil(t, derived.Metrics.EstimatedPowerWatts, "which is why it has an estimate at all")
 	assert.InDelta(t, 168.5, *derived.Metrics.EstimatedPowerWatts, 1e-9)
+	require.NotNil(t, derived.Metrics.AverageHeartRateBpm)
+	assert.InDelta(t, 142.5, *derived.Metrics.AverageHeartRateBpm, 1e-9)
+	require.NotNil(t, derived.Metrics.MaxHeartRateBpm)
+	assert.InDelta(t, 178.0, *derived.Metrics.MaxHeartRateBpm, 1e-9)
+	require.NotNil(t, derived.Metrics.AverageCadenceRpm)
+	assert.InDelta(t, 81.5, *derived.Metrics.AverageCadenceRpm, 1e-9)
+	require.NotNil(t, derived.Metrics.AveragePowerWatts, "which the average power does not need")
+	assert.InDelta(t, 196.25, *derived.Metrics.AveragePowerWatts, 1e-9)
 	assert.Nil(t, plain.Metrics, "and a ride with no row carries none at all")
 }
 

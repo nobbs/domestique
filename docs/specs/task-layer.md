@@ -293,9 +293,14 @@ from the samples already stored and the rider's own profile
 and no altitude, so a ride recorded on a trainer is scored exactly as one ridden
 outdoors. The one thing it derives from the track is the estimated power a
 bicycle with no meter would otherwise have none of, which is kept apart from
-every one of those figures and feeds none of them. It derives only
-the rides that are owed one: those never derived, and those whose stored row
-records profile values that differ from the rider's current ones. A ride still
+every one of those figures and feeds none of them. It also works out the plain
+figures the ride's sensors came to on their own — the mean heart rate, cadence
+and measured power, and the highest heart rate — which need no profile but are
+stored and served beside the load figures. It derives only
+the rides that are owed one: those never derived, those whose stored row
+records profile values that differ from the rider's current ones, and those
+whose row an earlier derivation wrote and so cannot hold every figure this one
+produces. A ride still
 awaiting its file has nothing to derive from and waits for the fill. A ride the
 derivation yields nothing for has its row removed rather than written as a row
 of nothing, so a profile edit that takes a parameter away takes its numbers

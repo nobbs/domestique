@@ -2492,7 +2492,7 @@ type fakeState struct {
 	activityWeatherErr   error
 	rideLoadsErr         error
 	rideLoads            map[string][]trainingload.RideLoad
-	activityMetrics      map[string]map[int64]trainingload.Metrics
+	activityMetrics      map[string]map[int64]activities.RideMetrics
 	activityWeather      map[string]map[int64][]activities.WeatherHour
 	riderProfiles        map[string]rider.Profile
 	riderSuggestions     map[string]rider.Suggestions
@@ -2559,7 +2559,7 @@ func (s *fakeState) ActivityRideLoads(
 }
 
 // ActivityMetrics reports the derived rows the test gave this target.
-func (s *fakeState) ActivityMetrics(_ context.Context, targetID string) (map[int64]trainingload.Metrics, error) {
+func (s *fakeState) ActivityMetrics(_ context.Context, targetID string) (map[int64]activities.RideMetrics, error) {
 	if s.activityMetricsErr != nil {
 		return nil, s.activityMetricsErr
 	}

@@ -53,6 +53,11 @@ type ActivityMetric struct {
 	ComputedAtUnix          int64
 	EstimatedPowerWatts     sql.NullFloat64
 	InputTotalMass          float64
+	AverageHeartRateBpm     sql.NullFloat64
+	MaxHeartRateBpm         sql.NullFloat64
+	AverageCadenceRpm       sql.NullFloat64
+	AveragePowerWatts       sql.NullFloat64
+	DerivationVersion       int64
 }
 
 type ActivityRecord struct {

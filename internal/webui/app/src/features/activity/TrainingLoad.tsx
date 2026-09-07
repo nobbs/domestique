@@ -38,15 +38,15 @@ function formatZoneTime(seconds: number): string {
 /** The five zones, easiest first, as a rider reading a training app knows them. */
 const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
 
-/** One load figure: what it is called, and the scale it is on. */
-interface Scale {
+/** One figure: what it is called, and the scale it is on. */
+export interface Scale {
   label: string;
   scale: string;
   value: number | undefined;
   decimals?: number;
 }
 
-function Figure({ label, scale, value, decimals = 0 }: Scale) {
+export function Figure({ label, scale, value, decimals = 0 }: Scale) {
   if (value === undefined) {
     return null;
   }

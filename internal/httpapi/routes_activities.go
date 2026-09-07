@@ -9,7 +9,6 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
-	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 // weatherSummary is the wire form of what a ride's hours came to. A ride nobody
@@ -57,7 +56,8 @@ func rideWeatherHours(hours []activities.WeatherHour) []openapi.RideWeatherHour 
 // zero the page would have to read as "not worked out".
 //
 //nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
-func activityMetrics(metrics trainingload.Metrics) *openapi.ActivityMetrics {
+func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
+	metrics, averages := stored.Load, stored.Averages
 	view := &openapi.ActivityMetrics{}
 	if metrics.HasZones {
 		view.ZoneSeconds = metrics.Zones[:]
@@ -75,6 +75,16 @@ func activityMetrics(metrics trainingload.Metrics) *openapi.ActivityMetrics {
 	}
 	if metrics.HasEstimatedPower {
 		view.EstimatedPowerWatts = &metrics.EstimatedPowerWatts
+	}
+	if averages.HasHeartRate {
+		view.AverageHeartRateBpm = &averages.HeartRateBPM
+		view.MaxHeartRateBpm = &averages.MaxHeartRateBPM
+	}
+	if averages.HasCadence {
+		view.AverageCadenceRpm = &averages.CadenceRPM
+	}
+	if averages.HasPower {
+		view.AveragePowerWatts = &averages.PowerWatts
 	}
 
 	return view
