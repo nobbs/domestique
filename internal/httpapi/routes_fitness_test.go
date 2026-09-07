@@ -111,7 +111,30 @@ func TestGetFitnessFoldsFromTheFirstRideAndCutsToTheWindow(t *testing.T) {
 	require.NotEmpty(t, view.Days)
 	assert.Positive(t, view.Days[0].TssFitness,
 		"the fitness the month before it had built, not nothing")
-	assert.Len(t, view.Days, 2, "and only the days asked for")
+	assert.Len(t, view.Days, 3, "the days the window touches, and no more")
+}
+
+// A window starts at whatever moment the reader opened the page, not at
+// midnight. A day it half covers is a day it covers, and so is the week around
+// that day.
+func TestGetFitnessKeepsTheDayAndWeekAWindowOnlyPartlyCovers(t *testing.T) {
+	state := fitnessState(
+		trainingload.RideLoad{
+			At:    activityClock().Add(-36 * time.Hour),
+			TSS:   50,
+			Zones: trainingload.Zones{600, 0, 0, 0, 0},
+		},
+	)
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	// Midday on the ride's own day: the morning of it is outside the window and
+	// the afternoon inside.
+	from := activityClock().Add(-24 * time.Hour).UTC().Format(time.RFC3339)
+	code, view := getFitness(t, handler, "/v1/activities/fitness?from="+from)
+	require.Equal(t, http.StatusOK, code)
+
+	require.NotEmpty(t, view.Days, "the half-covered day is still a day of the window")
+	assert.Len(t, view.Weeks, 1, "and its week is still a week of it")
 }
 
 func TestGetFitnessSumsTimeInZoneByWeek(t *testing.T) {

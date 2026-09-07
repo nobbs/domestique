@@ -51,14 +51,17 @@ func (h *Handler) GetFitness(writer http.ResponseWriter, request *http.Request) 
 	// Folded from the rider's first ride rather than from the window, then cut
 	// to the window: a window opening years into a history opens at the fitness
 	// that history had actually built.
+	// A day is in the window when any of it is, not only when it begins inside:
+	// the window a page asks for starts at whatever moment the reader opened it,
+	// and a day it half covers is a day it covers.
 	for _, day := range trainingload.Timeline(loads, to, location) {
-		if day.Date.Before(from) || !day.Date.Before(to) {
+		if !overlaps(day.Date, day.Date.AddDate(0, 0, 1), from, to) {
 			continue
 		}
 		view.Days = append(view.Days, fitnessDay(&day))
 	}
 	for _, week := range trainingload.ZonesByWeek(loads, location) {
-		if week.WeekStart.Before(from) || !week.WeekStart.Before(to) {
+		if !overlaps(week.WeekStart, week.WeekStart.AddDate(0, 0, 7), from, to) {
 			continue
 		}
 		view.Weeks = append(view.Weeks, openapi.FitnessWeek{
@@ -67,6 +70,12 @@ func (h *Handler) GetFitness(writer http.ResponseWriter, request *http.Request) 
 		})
 	}
 	h.writeJSON(writer, http.StatusOK, view)
+}
+
+// overlaps reports whether a period shares any moment with the half-open window
+// [from, to).
+func overlaps(start, end, from, to time.Time) bool {
+	return end.After(from) && start.Before(to)
 }
 
 // timezone is the zone the service counts days in, which is the one the volume
