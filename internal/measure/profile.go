@@ -178,12 +178,12 @@ func (p Profile) Resample(intervalMetres float64) Profile {
 
 // MedianFiltered removes isolated altitude spikes with a centred moving
 // median over a window of windowMetres, on a profile already sampled every
-// intervalMetres. An interval that is not positive returns the profile as it
-// is.
+// intervalMetres. An interval or a window that is not positive returns the
+// profile as it is.
 //
 // See docs/specs/measurement.md §Profiles.
 func (p Profile) MedianFiltered(intervalMetres, windowMetres float64) Profile {
-	if intervalMetres <= 0 {
+	if intervalMetres <= 0 || windowMetres <= 0 {
 		return p.clone()
 	}
 	radius := int(windowMetres / intervalMetres / 2)

@@ -376,5 +376,6 @@ func TestProfileResampleAndMedianRefuseANonPositiveInterval(t *testing.T) {
 		assert.Equal(t, profile.AltitudeMetres(), profile.Resample(interval).AltitudeMetres())
 		assert.Equal(t, profile.DistanceMetres(), profile.Resample(interval).DistanceMetres())
 		assert.Equal(t, profile.AltitudeMetres(), profile.MedianFiltered(interval, 100).AltitudeMetres())
+		assert.Equal(t, profile.AltitudeMetres(), profile.MedianFiltered(25, interval).AltitudeMetres())
 	}
 }
