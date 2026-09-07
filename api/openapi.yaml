@@ -450,6 +450,52 @@ paths:
         "503":
           $ref: '#/components/responses/Unavailable'
 
+  /v1/activities/{activityId}/splits:
+    get:
+      tags:
+        - browser-api
+      operationId: getActivitySplits
+      description: >-
+        One activity cut into kilometres, in the order they were ridden. Cut by
+        the bicycle's own odometer rather than by the distance between recorded
+        positions, so the table agrees with the distance the ride is listed at.
+        The seconds are moving ones: a pair of samples the odometer did not
+        advance over is a rider standing still, and is left out. Scoped exactly
+        as the track is: a caller reads only an activity of the target they own,
+        and an admin may name any target. A ride whose samples are not stored,
+        or that recorded no distance to cut by, is served an empty list rather
+        than an error.
+      parameters:
+        - name: activityId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: target
+          in: query
+          description: >-
+            The target to read. Omitted means the caller's own.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The ride's kilometres, in the order they were ridden.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySplits'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+
   /v1/routes:
     get:
       tags:
@@ -2850,6 +2896,56 @@ components:
               - number
               - "null"
             format: double
+    ActivitySplit:
+      type: object
+      additionalProperties: false
+      description: >-
+        One kilometre of a ride. A ride's last split is whatever was left over,
+        which is what distanceMetres says; every other figure is of that stretch
+        alone.
+      required:
+        - distanceMetres
+        - movingSeconds
+        - ascentMetres
+      properties:
+        distanceMetres:
+          type: number
+          format: double
+        movingSeconds:
+          description: >-
+            The seconds the odometer advanced over. A stretch nothing was
+            recorded across - a gap in the recording - carries nought.
+          type: number
+          format: double
+        ascentMetres:
+          description: >-
+            The climbing parts of the stretch summed, unsmoothed, exactly as a
+            route's own gain is cut. Nought for a ride that recorded no
+            altitude.
+          type: number
+          format: double
+        heartRateBpm:
+          description: >-
+            The mean of the samples over this stretch that carried a reading.
+            Absent where none did.
+          type: number
+          format: double
+        powerWatts:
+          description: >-
+            The mean of the stretch's measured power. Never fed by an estimate:
+            a bicycle with no meter has no average power.
+          type: number
+          format: double
+    ActivitySplits:
+      type: object
+      additionalProperties: false
+      required:
+        - splits
+      properties:
+        splits:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivitySplit'
     GeoJSONProperties:
       type: object
       additionalProperties: false

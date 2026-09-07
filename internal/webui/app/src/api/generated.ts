@@ -400,6 +400,25 @@ export interface ActivitySeries {
   values: (number | null)[];
 }
 
+/**
+ * One kilometre of a ride. A ride's last split is whatever was left over, which is what distanceMetres says; every other figure is of that stretch alone.
+ */
+export interface ActivitySplit {
+  distanceMetres: number;
+  /** The seconds the odometer advanced over. A stretch nothing was recorded across - a gap in the recording - carries nought. */
+  movingSeconds: number;
+  /** The climbing parts of the stretch summed, unsmoothed, exactly as a route's own gain is cut. Nought for a ride that recorded no altitude. */
+  ascentMetres: number;
+  /** The mean of the samples over this stretch that carried a reading. Absent where none did. */
+  heartRateBpm?: number;
+  /** The mean of the stretch's measured power. Never fed by an estimate: a bicycle with no meter has no average power. */
+  powerWatts?: number;
+}
+
+export interface ActivitySplits {
+  splits: ActivitySplit[];
+}
+
 export interface RouteValidation {
   biasPercent: number;
   maePercent: number;
@@ -906,6 +925,13 @@ export type GetActivityTrackParams = {
 };
 
 export type GetActivitySeriesParams = {
+  /**
+   * The target to read. Omitted means the caller's own.
+   */
+  target?: string;
+};
+
+export type GetActivitySplitsParams = {
   /**
    * The target to read. Omitted means the caller's own.
    */
@@ -3179,6 +3205,232 @@ export function useGetActivitySeries<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetActivitySeriesQueryOptions(activityId, series, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getActivitySplitsResponse200 = {
+  data: ActivitySplits;
+  status: 200;
+};
+
+export type getActivitySplitsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getActivitySplitsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getActivitySplitsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getActivitySplitsResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getActivitySplitsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getActivitySplitsResponseSuccess = getActivitySplitsResponse200 & {
+  headers: Headers;
+};
+export type getActivitySplitsResponseError = (
+  | getActivitySplitsResponse400
+  | getActivitySplitsResponse401
+  | getActivitySplitsResponse403
+  | getActivitySplitsResponse404
+  | getActivitySplitsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetActivitySplitsUrl = (activityId: number, params?: GetActivitySplitsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/activities/${encodeURIComponent(String(activityId))}/splits?${stringifiedParams}`
+    : `/v1/activities/${encodeURIComponent(String(activityId))}/splits`;
+};
+
+/**
+ * One activity cut into kilometres, in the order they were ridden. Cut by the bicycle's own odometer rather than by the distance between recorded positions, so the table agrees with the distance the ride is listed at. The seconds are moving ones: a pair of samples the odometer did not advance over is a rider standing still, and is left out. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. A ride whose samples are not stored, or that recorded no distance to cut by, is served an empty list rather than an error.
+ */
+export const getActivitySplits = async (
+  activityId: number,
+  params?: GetActivitySplitsParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getActivitySplitsResponseSuccess> => {
+  return domestiqueRequest<getActivitySplitsResponseSuccess>(
+    getGetActivitySplitsUrl(activityId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetActivitySplitsQueryKey = (
+  activityId: number,
+  params?: GetActivitySplitsParams,
+) => {
+  return [`/v1/activities/${activityId}/splits`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetActivitySplitsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActivitySplits>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivitySplitsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetActivitySplitsQueryKey(activityId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivitySplits>>> = ({ signal }) =>
+    getActivitySplits(activityId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: activityId !== null && activityId !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetActivitySplitsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getActivitySplits>>
+>;
+export type GetActivitySplitsQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetActivitySplits<
+  TData = Awaited<ReturnType<typeof getActivitySplits>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params: undefined | GetActivitySplitsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivitySplits>>,
+          TError,
+          Awaited<ReturnType<typeof getActivitySplits>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivitySplits<
+  TData = Awaited<ReturnType<typeof getActivitySplits>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivitySplitsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivitySplits>>,
+          TError,
+          Awaited<ReturnType<typeof getActivitySplits>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivitySplits<
+  TData = Awaited<ReturnType<typeof getActivitySplits>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivitySplitsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetActivitySplits<
+  TData = Awaited<ReturnType<typeof getActivitySplits>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  params?: GetActivitySplitsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetActivitySplitsQueryOptions(activityId, params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

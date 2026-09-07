@@ -96,7 +96,8 @@ WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
 ORDER BY record_index;
 
 -- name: ListActivitySeries :many
-SELECT recorded_at_unix, distance_metres, heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius
+SELECT recorded_at_unix, distance_metres, altitude_metres,
+  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND latitude IS NOT NULL AND longitude IS NOT NULL

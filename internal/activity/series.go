@@ -30,6 +30,7 @@ type Reading struct {
 type SampleRow struct {
 	Time               time.Time
 	DistanceMetres     Reading
+	AltitudeMetres     Reading
 	HeartRateBPM       Reading
 	CadenceRPM         Reading
 	PowerWatts         Reading

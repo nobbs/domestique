@@ -253,6 +253,7 @@ func (s *Store) ActivitySeries(ctx context.Context, targetID string, id int64) (
 		samples = append(samples, activity.SampleRow{
 			Time:               time.Unix(row.RecordedAtUnix, 0).UTC(),
 			DistanceMetres:     reading(row.DistanceMetres),
+			AltitudeMetres:     reading(row.AltitudeMetres),
 			HeartRateBPM:       reading(row.HeartRateBpm),
 			CadenceRPM:         reading(row.CadenceRpm),
 			PowerWatts:         reading(row.PowerWatts),

@@ -138,6 +138,21 @@ type activitySeriesView struct {
 	Values []*float64 `json:"values"`
 }
 
+// activitySplitView is one kilometre of a ride. Heart rate and power are
+// pointers because a stretch whose samples carried neither has neither, which
+// is not the same as having nought of them.
+type activitySplitView struct {
+	HeartRateBPM   *float64 `json:"heartRateBpm,omitempty"`
+	PowerWatts     *float64 `json:"powerWatts,omitempty"`
+	DistanceMetres float64  `json:"distanceMetres"`
+	MovingSeconds  float64  `json:"movingSeconds"`
+	AscentMetres   float64  `json:"ascentMetres"`
+}
+
+type activitySplitsView struct {
+	Splits []activitySplitView `json:"splits"`
+}
+
 type lineStringView struct {
 	Type        string          `json:"type"`
 	Coordinates json.RawMessage `json:"coordinates"`
