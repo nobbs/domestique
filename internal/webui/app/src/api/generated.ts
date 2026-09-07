@@ -221,6 +221,26 @@ export interface SyncRunPage {
   next?: string;
 }
 
+/**
+ * What this ride's recorded samples and the rider's profile say about how hard it was. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, and a profile holds what the rider entered.
+ */
+export interface ActivityMetrics {
+  /**
+   * How long the ride held each of five heart-rate zones, easiest first. Cut from the lactate threshold where the profile has one and from the maximum otherwise.
+   * @minItems 5
+   * @maxItems 5
+   */
+  zoneSeconds?: number[];
+  /** Banister's training impulse: how long the ride lasted, weighted by how much of the rider's heart-rate reserve it held. */
+  trimp?: number;
+  /** An hour held at the lactate threshold is a hundred. */
+  heartRateTss?: number;
+  /** From measured power only. An estimate worked out from the track never feeds this. */
+  normalizedPowerWatts?: number;
+  intensityFactor?: number;
+  powerTss?: number;
+}
+
 export interface Activity {
   id: number;
   startedAt: string;
@@ -230,6 +250,7 @@ export interface Activity {
   ascentMetres: number;
   typeId: number;
   locationId: number;
+  metrics?: ActivityMetrics;
 }
 
 export interface ActivityList {

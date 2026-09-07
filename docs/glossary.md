@@ -194,6 +194,16 @@ threshold heart rate, functional threshold power, and rider and bike mass. Kept
 per subject, not per target, and never another rider's. Not a *setting*: the
 settings are the service's and shared, this is one person's own.
 
+**training load** — how much one ride took out of the rider, as a single
+number. This service keeps two scales side by side and converts between neither:
+Banister's TRIMP, from time and heart-rate reserve, and TSS, where an hour at
+threshold is a hundred — measured from power where the ride carried a meter and
+from heart rate otherwise.
+
+**derived metrics** — what a ride's stored samples and a [[rider profile]] say
+about it: time in zones, and training load. Worked out once by `activity:derive`
+and stored beside the ride, never read from a provider.
+
 **suggestion** — a figure a rider's own recent rides imply for one profile
 parameter, offered beside its field and stored nowhere. It is not a value until
 the rider has saved it as one.

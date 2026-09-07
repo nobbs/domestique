@@ -26,6 +26,10 @@ const (
 // RunTask checks its argument the same way.
 const TaskActivityPoll = "activity:poll"
 
+// TaskActivityDerive works out what each stored ride says about how hard it
+// was. Named here because a rider's own profile write starts it.
+const TaskActivityDerive = "activity:derive"
+
 // TaskActivityRecord is the registered name of the task that reads one notified
 // workout of one rider. Only the Wahoo receiver starts it, so RunTask refuses
 // it: its argument names a workout a browser has no way to know about.

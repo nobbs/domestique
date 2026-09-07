@@ -23,6 +23,7 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
+	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 const (
@@ -2485,6 +2486,8 @@ type fakeState struct {
 	riderProfileErr      error
 	riderProfileWriteErr error
 	riderSuggestionErr   error
+	activityMetricsErr   error
+	activityMetrics      map[string]map[int64]trainingload.Metrics
 	riderProfiles        map[string]rider.Profile
 	riderSuggestions     map[string]rider.Suggestions
 	riderSuggestionSince time.Time
@@ -2493,6 +2496,15 @@ type fakeState struct {
 	surfaceMetres        float64
 	surfaceClassified    int
 	surfaceTotal         int
+}
+
+// ActivityMetrics reports the derived rows the test gave this target.
+func (s *fakeState) ActivityMetrics(_ context.Context, targetID string) (map[int64]trainingload.Metrics, error) {
+	if s.activityMetricsErr != nil {
+		return nil, s.activityMetricsErr
+	}
+
+	return s.activityMetrics[targetID], nil
 }
 
 // RiderProfile reports what the test stored for this subject, and an empty

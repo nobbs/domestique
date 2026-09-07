@@ -34,10 +34,20 @@ func (h *Handler) SetRiderProfile(writer http.ResponseWriter, request *http.Requ
 		RiderMassKG:                   rider.FromPointer(body.RiderMassKg),
 		BikeMassKG:                    rider.FromPointer(body.BikeMassKg),
 	}
-	if err := h.state.SetRiderProfile(request.Context(), identityOf(request.Context()).Subject, profile); err != nil {
+	ctx := request.Context()
+	if err := h.state.SetRiderProfile(ctx, identityOf(ctx).Subject, profile); err != nil {
 		h.unavailable(writer)
 
 		return
+	}
+	// Everything derived from these numbers is now worked out against values
+	// nobody holds any more, so the derivation is started over this rider's own
+	// targets. A refused start means that work is already happening, and the
+	// task recomputes against the profile as it stands when it runs.
+	if targetIDs, err := h.ownTargetIDs(ctx); err == nil {
+		for _, targetID := range targetIDs {
+			h.tasks.Run(TaskActivityDerive, targetID)
+		}
 	}
 	h.writeRiderProfile(writer, request)
 }

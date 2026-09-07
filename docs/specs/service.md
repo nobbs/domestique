@@ -519,6 +519,17 @@ The read-only JSON surface is small:
   static configuration — [the configuration
   specification](configuration.md#runtime-settings) states which settings live
   here and which stay in the file.
+  Each activity also carries what its recorded samples and the rider's profile
+  say about how hard it was, where anything was worked out: time in each of five
+  heart-rate zones, and training load on two scales side by side — Banister's
+  TRIMP, which needs a maximum and a resting rate, and hrTSS, which needs a
+  lactate threshold. A ride carrying measured power, for a rider who has entered
+  a threshold power, also carries its normalized power, intensity factor and
+  power TSS; an estimate worked out from the track never feeds those. Each part
+  is absent on its own rather than sent as a zero, a ride nothing was worked out
+  for carries none of it, and the zones are cut from the threshold rate where
+  the profile has one and from the maximum otherwise. What computes them, and
+  when, is [`activity:derive`](task-layer.md).
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
   maximum, resting and threshold heart rate, functional threshold power, and
   rider and bike mass — every one of them optional, so a parameter the rider has
@@ -619,7 +630,10 @@ browser origin described above, and answer 403 without it.
   names is refused as `400`. It answers with the profile as it now stands. It is
   what later triggers the recompute of anything derived from these numbers;
   nothing about the profile reaches a log or a notification beyond the fact that
-  it was written.
+  it was written. Storing a profile also starts
+  [`activity:derive`](task-layer.md) over that rider's own targets, because
+  everything already derived from these numbers was worked out against values
+  nobody holds any more. A refused start means that work is already happening.
 
   A value the service would have refused at startup is refused here as `400`,
   in a message naming the setting, and what it stores is in force for the next

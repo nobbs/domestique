@@ -187,6 +187,12 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating the activity poller: %w", err)
 	}
+	// No upstream of its own: it reads the samples the two above stored and the
+	// rider's own profile, which is why a profile edit can start it directly.
+	activityDeriver, err := activity.NewDeriver(store)
+	if err != nil {
+		return fmt.Errorf("creating the activity deriver: %w", err)
+	}
 	tasks, err := registerTasks(
 		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
@@ -195,6 +201,7 @@ func run(ctx context.Context) error {
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
 			activityRecordTask(activityPoller),
+			activityDeriveTask(activityDeriver, destination.targetIDs),
 			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
 		),
 	)

@@ -100,14 +100,29 @@ type Route struct {
 }
 
 type Activity struct {
-	ID             int64     `json:"id"`
-	StartedAt      time.Time `json:"startedAt"`
-	DistanceMetres float64   `json:"distanceMetres"`
-	MovingSeconds  float64   `json:"movingSeconds"`
-	ElapsedSeconds float64   `json:"elapsedSeconds"`
-	AscentMetres   float64   `json:"ascentMetres"`
-	TypeID         int       `json:"typeId"`
-	LocationID     int       `json:"locationId"`
+	ID             int64            `json:"id"`
+	StartedAt      time.Time        `json:"startedAt"`
+	DistanceMetres float64          `json:"distanceMetres"`
+	MovingSeconds  float64          `json:"movingSeconds"`
+	ElapsedSeconds float64          `json:"elapsedSeconds"`
+	AscentMetres   float64          `json:"ascentMetres"`
+	TypeID         int              `json:"typeId"`
+	LocationID     int              `json:"locationId"`
+	Metrics        *ActivityMetrics `json:"metrics,omitempty"`
+}
+
+// ActivityMetrics What this ride's recorded samples and the rider's profile say about how hard it was. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, and a profile holds what the rider entered.
+type ActivityMetrics struct {
+	// ZoneSeconds How long the ride held each of five heart-rate zones, easiest first. Cut from the lactate threshold where the profile has one and from the maximum otherwise.
+	ZoneSeconds []float64 `json:"zoneSeconds,omitempty"`
+	// Trimp Banister's training impulse: how long the ride lasted, weighted by how much of the rider's heart-rate reserve it held.
+	Trimp *float64 `json:"trimp,omitempty"`
+	// HeartRateTss An hour held at the lactate threshold is a hundred.
+	HeartRateTss *float64 `json:"heartRateTss,omitempty"`
+	// NormalizedPowerWatts From measured power only. An estimate worked out from the track never feeds this.
+	NormalizedPowerWatts *float64 `json:"normalizedPowerWatts,omitempty"`
+	IntensityFactor      *float64 `json:"intensityFactor,omitempty"`
+	PowerTss             *float64 `json:"powerTss,omitempty"`
 }
 
 type ActivityList struct {

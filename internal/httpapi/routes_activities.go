@@ -9,7 +9,33 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/trainingload"
 )
+
+// activityMetrics is the wire form of one ride's derived numbers. Each part is
+// omitted where the ride or the profile did not allow it, rather than sent as a
+// zero the page would have to read as "not worked out".
+//
+//nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
+func activityMetrics(metrics trainingload.Metrics) *openapi.ActivityMetrics {
+	view := &openapi.ActivityMetrics{}
+	if metrics.HasZones {
+		view.ZoneSeconds = metrics.Zones[:]
+	}
+	if metrics.HasTRIMP {
+		view.Trimp = &metrics.TRIMP
+	}
+	if metrics.HasHeartRateTSS {
+		view.HeartRateTss = &metrics.HeartRateTSS
+	}
+	if metrics.HasPower {
+		view.NormalizedPowerWatts = &metrics.Power.NormalizedWatts
+		view.IntensityFactor = &metrics.Power.IntensityFactor
+		view.PowerTss = &metrics.Power.TSS
+	}
+
+	return view
+}
 
 // maximumActivities bounds one response. A rider who has ridden more than
 // this in the window sees the most recent of them.
@@ -46,9 +72,18 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 			return
 		}
+		// One read for the whole target rather than one per ride: the rows are
+		// small, and the list is what the ride page and the volume page both work
+		// from.
+		derived, metricsErr := h.state.ActivityMetrics(request.Context(), targetID)
+		if metricsErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
 		view.Activities = make([]openapi.Activity, 0, len(stored))
 		for _, recorded := range stored {
-			view.Activities = append(view.Activities, openapi.Activity{
+			activity := openapi.Activity{
 				ID:             recorded.ID,
 				StartedAt:      wireTime(recorded.StartedAt),
 				DistanceMetres: recorded.DistanceMetres,
@@ -57,7 +92,11 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				AscentMetres:   recorded.AscentMetres,
 				TypeID:         recorded.TypeID,
 				LocationID:     recorded.LocationID,
-			})
+			}
+			if metrics, ok := derived[recorded.ID]; ok {
+				activity.Metrics = activityMetrics(metrics)
+			}
+			view.Activities = append(view.Activities, activity)
 		}
 	}
 	h.writeJSON(writer, http.StatusOK, view)

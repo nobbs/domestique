@@ -2,6 +2,7 @@
 import {
   type Activity,
   type ActivityList,
+  type ActivityMetrics,
   type ActivityTrackPropertiesState,
   type AlertSetting,
   type BrowserBasemap,
@@ -41,6 +42,7 @@ import {
 export type {
   Activity,
   ActivityList,
+  ActivityMetrics,
   AlertSetting,
   BrowserBasemap,
   Build as BuildInfo,

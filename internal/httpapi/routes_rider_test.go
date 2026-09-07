@@ -48,7 +48,13 @@ func riderState() *fakeState {
 
 func riderHandler(t *testing.T, state State, subject string) *Handler {
 	t.Helper()
-	handler := handlerFor(t, nonAdminSessions(subject), &fakeOAuth{}, state, nil)
+
+	return riderHandlerWithTasks(t, state, subject, nil)
+}
+
+func riderHandlerWithTasks(t *testing.T, state State, subject string, tasks Tasks) *Handler {
+	t.Helper()
+	handler := handlerFor(t, nonAdminSessions(subject), &fakeOAuth{}, state, tasks)
 	handler.now = activityClock
 
 	return handler
@@ -159,6 +165,33 @@ func TestSetRiderProfileReplacesTheWholeProfile(t *testing.T) {
 	require.NotNil(t, view.Profile.MaxHeartRateBpm)
 	assert.InDelta(t, 190.0, *view.Profile.MaxHeartRateBpm, 1e-9)
 	assert.Nil(t, view.Profile.RiderMassKg, "a parameter left out of the second write is cleared")
+}
+
+// Everything derived from these numbers is now worked out against values
+// nobody holds any more, so a profile write starts the derivation — over this
+// rider's own targets and no others.
+func TestSetRiderProfileStartsTheDerivationOverTheCallersOwnTargets(t *testing.T) {
+	state := riderState()
+	state.targets = append(state.targets, fakeTarget{id: "rider-a-2", authorization: "authorized", owner: "rider-a"})
+	tasks := &fakeTasks{}
+	handler := riderHandlerWithTasks(t, state, "rider-a", tasks)
+
+	riderProfileOf(t, handler, authenticatedRequestWithBody(http.MethodPut, riderPath, riderSubmission))
+
+	assert.Equal(t, []startedTask{
+		{name: TaskActivityDerive, argument: "rider-a"},
+		{name: TaskActivityDerive, argument: "rider-a-2"},
+	}, tasks.asked, "the caller's own targets, and never rider-b's")
+}
+
+// A refused start means that work is already happening, and the task recomputes
+// against the profile as it stands when it runs — so the write still answers.
+func TestSetRiderProfileAnswersWhenTheDerivationIsAlreadyRunning(t *testing.T) {
+	state := riderState()
+	handler := riderHandlerWithTasks(t, state, "rider-a", &fakeTasks{refuse: true})
+
+	view := riderProfileOf(t, handler, authenticatedRequestWithBody(http.MethodPut, riderPath, riderSubmission))
+	require.NotNil(t, view.Profile.MaxHeartRateBpm, "the write still stored and answered")
 }
 
 func TestSetRiderProfileRefusesAValueOutsideItsRange(t *testing.T) {

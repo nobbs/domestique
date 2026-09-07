@@ -1121,3 +1121,67 @@ func (c *fakeCoefficients) reload(context.Context) error {
 
 	return nil
 }
+
+// fakeDeriver records which slots a derivation was asked about and what each
+// one came to.
+type fakeDeriver struct {
+	results map[string]activity.Result
+	derived []string
+}
+
+func (d *fakeDeriver) Derive(_ context.Context, targetID string) activity.Result {
+	d.derived = append(d.derived, targetID)
+
+	return d.results[targetID]
+}
+
+// The derivation follows both readers of recorded samples and holds the same
+// resource, so a ride whose FIT has just landed is derived on the same cycle
+// and never while the rows it reads are being written.
+func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) {
+	t.Parallel()
+
+	deriver := &fakeDeriver{results: map[string]activity.Result{"rider-a": {Outcome: activity.Polled, Derived: 3}}}
+	definition := activityDeriveTask(deriver, func() []string { return []string{"rider-a"} })
+
+	assert.Equal(t, taskActivityDerive, definition.Name, "name")
+	assert.ElementsMatch(t, []string{taskActivityPoll, taskActivityRecord}, definition.Follows, "follows")
+	assert.Equal(t,
+		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
+		definition.Resources(""),
+		"resources",
+	)
+	assert.Equal(t, []string{"rider-a"}, definition.FanOut(), "fan-out")
+	assert.Nil(t, definition.Schedule, "nothing schedules it: new samples and a profile edit start it")
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityDerive, Argument: "rider-a"})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	assert.Equal(t, []string{"rider-a"}, deriver.derived, "derived")
+}
+
+func TestActivityDeriveTaskWithoutAnArgumentDerivesEveryTarget(t *testing.T) {
+	t.Parallel()
+
+	deriver := &fakeDeriver{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Polled},
+		"rider-b": {Outcome: activity.Failed, Failure: activity.FailureState},
+		"rider-c": {Outcome: activity.Unchanged},
+	}}
+	definition := activityDeriveTask(deriver, func() []string { return []string{"rider-a", "rider-b", "rider-c"} })
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityDerive})
+	assert.Equal(t, task.Failed, result.Outcome, "the most serious thing that happened")
+	assert.Equal(t, detailActivityState, result.Detail, "detail")
+	assert.Equal(t, []string{"rider-a", "rider-b", "rider-c"}, deriver.derived, "every slot was derived")
+}
+
+// A rider who has entered no profile leaves the whole fan-out not ready, which
+// is what says "nothing to do yet" rather than "something went wrong".
+func TestActivityDeriveTaskIsNotReadyWithNoTargets(t *testing.T) {
+	t.Parallel()
+
+	definition := activityDeriveTask(&fakeDeriver{}, func() []string { return nil })
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityDerive})
+	assert.Equal(t, task.NotReady, result.Outcome)
+}
