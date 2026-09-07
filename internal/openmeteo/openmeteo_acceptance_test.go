@@ -27,6 +27,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// pastWindowStart is where to begin a two-hour window that has already
+// happened, the given number of days back.
+//
+// A day back or more it is mid-morning on that date, which no two-hour window
+// can carry across midnight into the neighbouring date and so into the other
+// endpoint. Today it is simply the last two whole hours, since mid-morning has
+// not necessarily happened yet: run before two in the morning that window sits
+// on yesterday's date, which the forecast endpoint answers for exactly as it
+// answers for today's.
+func pastWindowStart(today time.Time, daysAgo int) time.Time {
+	if daysAgo == 0 {
+		return today.Truncate(time.Hour).Add(-2 * time.Hour)
+	}
+	date := today.AddDate(0, 0, -daysAgo)
+
+	return time.Date(date.Year(), date.Month(), date.Day(), 10, 0, 0, 0, date.Location())
+}
+
 // TestOpenMeteoHistoryAcceptance asks the real provider for a ride's weather at
 // each age the split has to cover, and checks the answer is weather rather than
 // an error or a column of nulls.
@@ -60,7 +78,7 @@ func TestOpenMeteoHistoryAcceptance(t *testing.T) {
 		"last year":        {daysAgo: 400},
 	} {
 		t.Run(name, func(t *testing.T) {
-			from := today.AddDate(0, 0, -test.daysAgo).Truncate(time.Hour)
+			from := pastWindowStart(today, test.daysAgo)
 			hourlies, historyErr := client.History(t.Context(), at, from, from.Add(2*time.Hour))
 			require.NoError(t, historyErr, "History()")
 			require.Len(t, hourlies, len(at), "one series per coordinate")

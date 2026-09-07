@@ -482,7 +482,7 @@ func TestHistoryAsksTheForecastEndpointForARecentRide(t *testing.T) {
 }
 
 // A ride older than the forecast endpoint's reach is asked of the reanalysis
-// archive instead, by date and without the probability series.
+// archive instead, by the same hour bounds and without the probability series.
 func TestHistoryAsksTheArchiveForAnOlderRide(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "/v1/archive", request.URL.Path)
