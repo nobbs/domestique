@@ -15,9 +15,7 @@ function rows() {
 describe("RideSplits", () => {
   it("counts the distance up across the ride rather than repeating a kilometre", () => {
     render(
-      <RideSplits
-        splits={[split(), split(), split({ distanceMetres: 500, movingSeconds: 90 })]}
-      />,
+      <RideSplits splits={[split(), split(), split({ distanceMetres: 500, movingSeconds: 90 })]} />,
     );
 
     const cells = rows().map((row) => within(row).getAllByRole("cell")[0]?.textContent);
@@ -48,6 +46,15 @@ describe("RideSplits", () => {
     expect(screen.getByText("148 bpm")).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Power" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Ascent" })).not.toBeInTheDocument();
+  });
+
+  it("shows measured power where the bicycle carried a meter", () => {
+    render(<RideSplits splits={[split({ powerWatts: 212.6 }), split()]} />);
+
+    expect(screen.getByRole("columnheader", { name: "Power" })).toBeInTheDocument();
+    expect(screen.getByText("213 W")).toBeInTheDocument();
+    const second = within(rows()[1] as HTMLElement).getAllByRole("cell");
+    expect(second[second.length - 1]).toHaveTextContent("—");
   });
 
   it("shows ascent once any stretch of the ride climbed", () => {

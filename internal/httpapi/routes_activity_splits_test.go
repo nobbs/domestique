@@ -114,6 +114,24 @@ func TestGetActivitySplitsIsNotFoundForARideThisTargetHasNot(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code)
 }
 
+func TestGetActivitySplitsReportsAnUnreadableTargetStore(t *testing.T) {
+	state := splitsState("rider-a")
+	state.targetErr = assert.AnError
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getSplits(t, handler, "/v1/activities/1/splits")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
+
+func TestGetActivitySplitsReportsAnUnreadableRecordsState(t *testing.T) {
+	state := splitsState("rider-a")
+	state.recordsStateErr = assert.AnError
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getSplits(t, handler, "/v1/activities/1/splits")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
+
 func TestGetActivitySplitsReportsAnUnreadableSampleStore(t *testing.T) {
 	state := splitsState("rider-a")
 	state.sampleRowsErr = assert.AnError
