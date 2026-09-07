@@ -612,9 +612,15 @@ The read-only JSON surface is small:
 
   A ride carrying no meter, for a rider who has entered both a rider and a bike
   mass, also carries `estimatedPowerWatts`: its average **estimated** power. It is worked out from the
-  recorded track by a physics model — gravity against a smoothed grade, rolling
-  resistance and drag at fixed road-bike constants, and the change in speed
-  between samples, never below zero and never accounting for wind. It is an
+  recorded track by a physics model — gravity against the grade, rolling
+  resistance and drag at fixed road-bike constants, never below zero and never
+  accounting for wind. Both the grade and the speed are measured over the same
+  window of distance rather than between one sample and the next: at one sample
+  a second the step is barometric noise and GPS jitter as much as it is riding,
+  and the clamp at zero would keep the half of that noise which reads positive
+  and discard the half which reads negative. The change in speed is not charged
+  for. Over a ride it is the kinetic energy the rider gets back, and at this
+  sampling rate a real surge cannot be told from the jitter. It is an
   estimate and is named as one everywhere: it is never normalised, never scored,
   and never an input to a training load. A ride that measured its own power has
   none, because an estimate beside a reading only invites the two to be
