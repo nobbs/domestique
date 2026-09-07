@@ -17,7 +17,7 @@ type Inputs struct {
 	TotalMassKG float64
 }
 
-// InputsOf reads the four parameters a derivation uses out of a profile. A
+// InputsOf reads the profile values a derivation is worked out against. A
 // parameter the rider has not entered is zero here, which every rule below
 // reads as "not enough to work this out" rather than as a value.
 func InputsOf(profile *rider.Profile) Inputs {

@@ -65,9 +65,12 @@ func (s *Store) ActivityRideSamples(
 		if row.PowerWatts.Valid {
 			samples.Power = append(samples.Power, trainingload.Sample{At: at, Value: row.PowerWatts.Float64})
 		}
-		// Position as well as altitude and distance: without one of the three
-		// the model has no track, and a trainer ride's "grade" means nothing.
-		if row.Latitude.Valid && row.AltitudeMetres.Valid && row.DistanceMetres.Valid {
+		// A whole positioned sample — latitude and longitude both, as the track
+		// endpoint defines one — plus an altitude and a distance. Without all of
+		// them the model has no track, and a trainer ride's "grade" means
+		// nothing; with fewer than the track itself needs, the estimate would be
+		// shaped by samples nobody is ever shown.
+		if row.Latitude.Valid && row.Longitude.Valid && row.AltitudeMetres.Valid && row.DistanceMetres.Valid {
 			samples.Track = append(samples.Track, powerestimate.Sample{
 				At:             at,
 				DistanceMetres: row.DistanceMetres.Float64,

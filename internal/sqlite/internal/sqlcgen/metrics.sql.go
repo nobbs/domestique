@@ -186,9 +186,13 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 
 const listActivitySensorRecords = `-- name: ListActivitySensorRecords :many
 SELECT record_index, recorded_at_unix, heart_rate_bpm, power_watts,
-  distance_metres, altitude_metres, latitude
+  distance_metres, altitude_metres, latitude, longitude
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
+  AND (heart_rate_bpm IS NOT NULL
+    OR power_watts IS NOT NULL
+    OR (latitude IS NOT NULL AND longitude IS NOT NULL
+      AND altitude_metres IS NOT NULL AND distance_metres IS NOT NULL))
 ORDER BY record_index
 `
 
@@ -205,8 +209,14 @@ type ListActivitySensorRecordsRow struct {
 	DistanceMetres sql.NullFloat64
 	AltitudeMetres sql.NullFloat64
 	Latitude       sql.NullFloat64
+	Longitude      sql.NullFloat64
 }
 
+// Every record a derivation can do something with: one carrying a sensor, or
+// one carrying a whole track sample. A record that is neither is skipped here
+// rather than scanned and discarded in Go. The track test is latitude and
+// longitude together, which is what ListActivityTrack calls a positioned
+// sample: a record the track would not serve must not shape an estimate.
 func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivitySensorRecordsParams) ([]ListActivitySensorRecordsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listActivitySensorRecords, arg.TargetSlot, arg.WorkoutID)
 	if err != nil {
@@ -224,6 +234,7 @@ func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivit
 			&i.DistanceMetres,
 			&i.AltitudeMetres,
 			&i.Latitude,
+			&i.Longitude,
 		); err != nil {
 			return nil, err
 		}

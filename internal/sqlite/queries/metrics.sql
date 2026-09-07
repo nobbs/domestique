@@ -62,11 +62,20 @@ WHERE a.target_slot = sqlc.arg(target_slot)
     OR m.input_total_mass <> sqlc.arg(total_mass))
 ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 
+-- Every record a derivation can do something with: one carrying a sensor, or
+-- one carrying a whole track sample. A record that is neither is skipped here
+-- rather than scanned and discarded in Go. The track test is latitude and
+-- longitude together, which is what ListActivityTrack calls a positioned
+-- sample: a record the track would not serve must not shape an estimate.
 -- name: ListActivitySensorRecords :many
 SELECT record_index, recorded_at_unix, heart_rate_bpm, power_watts,
-  distance_metres, altitude_metres, latitude
+  distance_metres, altitude_metres, latitude, longitude
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
+  AND (heart_rate_bpm IS NOT NULL
+    OR power_watts IS NOT NULL
+    OR (latitude IS NOT NULL AND longitude IS NOT NULL
+      AND altitude_metres IS NOT NULL AND distance_metres IS NOT NULL))
 ORDER BY record_index;
 
 -- name: GetTargetOwner :one

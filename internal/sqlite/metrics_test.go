@@ -157,11 +157,20 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 		},
 	}), "StoreActivityRecords()")
 
+	// A latitude without a longitude, which the FIT decoder cannot produce but a
+	// hand-edited database can. The track endpoint would never serve such a
+	// sample, so it must not shape an estimate either.
+	_, execErr := store.database.ExecContext(t.Context(),
+		`INSERT INTO activity_records (target_slot, workout_id, record_index, recorded_at_unix,
+		  distance_metres, latitude, altitude_metres) VALUES ('rider-a', 1, 3, ?, 15, 49.002, 102)`,
+		activityNow().Add(3*time.Second).Unix())
+	require.NoError(t, execErr, "inserting a half-positioned record")
+
 	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRideSamples()")
 	require.Len(t, samples.HeartRate, 2, "the two records that carried a strap")
 	require.Len(t, samples.Power, 1, "and the one that carried a meter")
-	require.Len(t, samples.Track, 2, "and the two that carried a position, altitude and distance")
+	require.Len(t, samples.Track, 2, "and the two that carried a whole positioned sample")
 	assert.InDelta(t, 140.0, samples.HeartRate[0].Value, 1e-9)
 	assert.Equal(t, activityNow(), samples.HeartRate[0].At)
 	assert.Equal(t, []int64{0, 1}, samples.TrackRecords, "each naming the record it came from")
