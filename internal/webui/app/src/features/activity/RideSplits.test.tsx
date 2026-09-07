@@ -126,6 +126,19 @@ describe("RideSplits", () => {
     }
   });
 
+  // No odometer distance to scale the shared position onto means no stretch is under it.
+  it("highlights no stretch of no length under a shared position", () => {
+    render(
+      <RideSplits
+        splits={[split({ distanceMetres: 0 }), split({ distanceMetres: 0 })]}
+        activeMetres={500}
+        axisMetres={1_000}
+      />,
+    );
+
+    expect(screen.getByText(/Speed by the kilometre/)).toBeInTheDocument();
+  });
+
   it("reads out the stretch the shared position is on", () => {
     const { rerender } = render(
       <RideSplits

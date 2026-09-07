@@ -56,13 +56,13 @@ export function RideSplits({
   const onPointerMove = useCallback(
     (event: React.PointerEvent) => {
       const rect = plot.current?.getBoundingClientRect();
-      if (!onActiveChange || axis <= 0 || !rect || rect.width === 0) {
+      if (!onActiveChange || axis <= 0 || total <= 0 || !rect || rect.width === 0) {
         return;
       }
       const fraction = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
       onActiveChange(fraction * axis);
     },
-    [onActiveChange, axis],
+    [onActiveChange, axis, total],
   );
   const onPointerLeave = useCallback(() => onActiveChange?.(null), [onActiveChange]);
   if (!splits || splits.length === 0) {
@@ -75,7 +75,7 @@ export function RideSplits({
   // The shared position is on the axis; the splits are on the odometer.
   const active = activeSplit(
     splits,
-    activeMetres === null || axis <= 0 ? null : (activeMetres / axis) * total,
+    activeMetres === null || axis <= 0 || total <= 0 ? null : (activeMetres / axis) * total,
   );
   // Nought where every stretch is of no length, which the bars must not divide by.
   const perMetre = total > 0 ? LANE.width / total : 0;
