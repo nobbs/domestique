@@ -54,7 +54,14 @@ export function FitnessChart({ days, scale }: { days: FitnessDay[]; scale: Scale
     return null;
   }
   const readings = days.map((day) => reading(day, scale));
-  const highest = Math.max(...readings.map((one) => Math.max(one.load, one.fitness)), 1);
+  // Fatigue among them, not just fitness: a week of hard riding puts fatigue
+  // above fitness, which is exactly when form goes negative and the chart is
+  // worth looking at. Left out, the fatigue line would leave the frame in the
+  // one case it is drawn for.
+  const highest = Math.max(
+    ...readings.map((one) => Math.max(one.load, one.fitness, one.fatigue)),
+    1,
+  );
   // Form runs below zero, so the frame has to hold the deepest of it.
   const lowest = Math.min(...readings.map((one) => one.form), 0);
   const span = highest - lowest;

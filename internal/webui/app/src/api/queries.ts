@@ -97,9 +97,11 @@ export const activityTrackQuery = (id: number) =>
   });
 
 /**
- * The rider's fitness, fatigue and form over time. Read on the page that draws
- * it rather than cached for the session: it is a fold the service redoes on
- * every read, and a rider watching a ride land wants it to move.
+ * The rider's fitness, fatigue and form over time.
+ *
+ * Held for a minute rather than for the session, unlike the page configuration:
+ * it is a fold the service redoes on every read, and a rider who has just
+ * finished a ride should not have to reload the page to see it land.
  */
 export const fitnessQuery = (parameters?: { from?: string; to?: string }) =>
   getGetFitnessQueryOptions(parameters, {

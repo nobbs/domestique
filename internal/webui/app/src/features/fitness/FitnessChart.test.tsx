@@ -57,6 +57,35 @@ describe("FitnessChart", () => {
     expect(container.querySelectorAll("polyline")).toHaveLength(3);
   });
 
+  // A week of hard riding puts fatigue above fitness, which is exactly when
+  // form goes negative and the chart is worth looking at. Every line must stay
+  // inside the frame in that case, not just in the restful one.
+  it("keeps every line inside the frame when fatigue is above fitness", () => {
+    const { container } = render(
+      <FitnessChart
+        // Rest days after a hard block: no load of their own, fitness well
+        // below fatigue. The daily bars are what would otherwise have held the
+        // frame open, and there are none.
+        days={[
+          day("2026-08-22", { tssLoad: 0, tssFitness: 40, tssFatigue: 120, tssForm: -80 }),
+          day("2026-08-23", { tssLoad: 0, tssFitness: 38, tssFatigue: 110, tssForm: -72 }),
+        ]}
+        scale="tss"
+      />,
+    );
+
+    const viewBox = container.querySelector("svg")?.getAttribute("viewBox")?.split(" ") ?? [];
+    const height = Number(viewBox[3]);
+    expect(height).toBeGreaterThan(0);
+    for (const line of container.querySelectorAll("polyline")) {
+      for (const point of (line.getAttribute("points") ?? "").split(" ")) {
+        const y = Number(point.split(",")[1]);
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThanOrEqual(height);
+      }
+    }
+  });
+
   it("draws nothing at all for an empty series", () => {
     const { container } = render(<FitnessChart days={[]} scale="tss" />);
 
