@@ -346,3 +346,35 @@ func TestProfileResampleKeepsTheProfilesOwnDistanceOrigin(t *testing.T) {
 	assert.InDeltaSlice(t, []float64{5, 6, 7, 8}, resampled.AltitudeMetres(), 1e-9)
 	assert.InDelta(t, 7, resampled.AltitudeAt(1020), 1e-9)
 }
+
+func TestProfileOfRefusesADistanceThatGoesBackwards(t *testing.T) {
+	t.Parallel()
+	_, ok := measure.ProfileOf([]float64{0, 20, 10}, []float64{1, 2, 3})
+	assert.False(t, ok)
+}
+
+func TestProfileZeroValueIsSafeToMeasure(t *testing.T) {
+	t.Parallel()
+	var profile measure.Profile
+
+	assert.Zero(t, profile.Len())
+	assert.Zero(t, profile.LengthMetres())
+	assert.Zero(t, profile.AscentMetres())
+	assert.Zero(t, profile.DescentMetres())
+	assert.Zero(t, profile.MaxGradientPercent(100))
+	assert.Zero(t, profile.AltitudeAt(10))
+	assert.Zero(t, profile.Resample(25).Len())
+	assert.Zero(t, profile.MedianFiltered(25, 100).Len())
+}
+
+func TestProfileResampleAndMedianRefuseANonPositiveInterval(t *testing.T) {
+	t.Parallel()
+	profile, ok := measure.ProfileOf([]float64{0, 10, 30}, []float64{5, 6, 8})
+	require.True(t, ok)
+
+	for _, interval := range []float64{0, -25} {
+		assert.Equal(t, profile.AltitudeMetres(), profile.Resample(interval).AltitudeMetres())
+		assert.Equal(t, profile.DistanceMetres(), profile.Resample(interval).DistanceMetres())
+		assert.Equal(t, profile.AltitudeMetres(), profile.MedianFiltered(interval, 100).AltitudeMetres())
+	}
+}

@@ -76,7 +76,8 @@ func RollingMean(
 	weight := 0.0
 	start := 0
 	// integral[k] is the value integrated from the first reading to
-	// readings[k], reset to zero effort whenever a gap breaks the series.
+	// readings[k]; a window's mean is one subtraction of it, and a gap moves
+	// the window's start rather than the integral.
 	integral := make([]float64, len(readings))
 	for index := 1; index < len(readings); index++ {
 		held := readings[index].At.Sub(readings[index-1].At)

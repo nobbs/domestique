@@ -12,13 +12,19 @@ type Profile struct {
 }
 
 // ProfileOf builds a profile over a distance and an altitude series, copying
-// both. It reports false for unequal lengths or fewer than two points, which
-// have no step to measure a gradient over.
+// both. It reports false for unequal lengths, fewer than two points, which
+// have no step to measure a gradient over, or a distance that goes backwards,
+// which is not a track in step order.
 //
 // See docs/specs/measurement.md §Profiles.
 func ProfileOf(distanceMetres, altitudeMetres []float64) (Profile, bool) {
 	if len(distanceMetres) != len(altitudeMetres) || len(distanceMetres) < 2 {
 		return Profile{}, false
+	}
+	for index := 1; index < len(distanceMetres); index++ {
+		if distanceMetres[index] < distanceMetres[index-1] {
+			return Profile{}, false
+		}
 	}
 
 	return Profile{
@@ -35,10 +41,14 @@ func (p Profile) Len() int {
 }
 
 // LengthMetres is the distance the profile covers: its last distance minus
-// its first.
+// its first. Zero for the zero value.
 //
 // See docs/specs/measurement.md §Profiles.
 func (p Profile) LengthMetres() float64 {
+	if len(p.distanceMetres) == 0 {
+		return 0
+	}
+
 	return p.distanceMetres[len(p.distanceMetres)-1] - p.distanceMetres[0]
 }
 
@@ -135,10 +145,14 @@ func (p Profile) MaxGradientPercent(windowMetres float64) float64 {
 // Resample rebuilds the profile at a fixed distance interval, linearly
 // interpolating altitude between the points either side of each new sample.
 // The grid starts at the profile's own first distance, and the final point
-// always closes its exact length.
+// always closes its exact length. An interval that is not positive, or the
+// zero value, returns the profile as it is.
 //
 // See docs/specs/measurement.md §Profiles.
 func (p Profile) Resample(intervalMetres float64) Profile {
+	if intervalMetres <= 0 || len(p.distanceMetres) == 0 {
+		return p.clone()
+	}
 	origin := p.distanceMetres[0]
 	distances := []float64{origin}
 	altitudes := []float64{p.altitudeMetres[0]}
@@ -164,10 +178,14 @@ func (p Profile) Resample(intervalMetres float64) Profile {
 
 // MedianFiltered removes isolated altitude spikes with a centred moving
 // median over a window of windowMetres, on a profile already sampled every
-// intervalMetres.
+// intervalMetres. An interval that is not positive returns the profile as it
+// is.
 //
 // See docs/specs/measurement.md §Profiles.
 func (p Profile) MedianFiltered(intervalMetres, windowMetres float64) Profile {
+	if intervalMetres <= 0 {
+		return p.clone()
+	}
 	radius := int(windowMetres / intervalMetres / 2)
 	altitudes := make([]float64, len(p.altitudeMetres))
 	for index := range p.altitudeMetres {
@@ -180,14 +198,24 @@ func (p Profile) MedianFiltered(intervalMetres, windowMetres float64) Profile {
 	return Profile{distanceMetres: append([]float64(nil), p.distanceMetres...), altitudeMetres: altitudes}
 }
 
+func (p Profile) clone() Profile {
+	return Profile{
+		distanceMetres: append([]float64(nil), p.distanceMetres...),
+		altitudeMetres: append([]float64(nil), p.altitudeMetres...),
+	}
+}
+
 // AltitudeAt is the altitude at one distance along the profile: the last
 // sample at or before it, taken as is if it is the last sample overall, else
 // linearly interpolated to the next. A query before the first sample takes
-// the first altitude.
+// the first altitude; the zero value answers zero.
 //
 // See docs/specs/measurement.md §Profiles.
 func (p Profile) AltitudeAt(distanceMetres float64) float64 {
 	last := len(p.distanceMetres) - 1
+	if last < 0 {
+		return 0
+	}
 	if distanceMetres <= p.distanceMetres[0] {
 		return p.altitudeMetres[0]
 	}
