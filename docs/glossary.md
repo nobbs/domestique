@@ -129,7 +129,9 @@ a visible label of its own; an up/down arrow and a screen-reader-only word
 tell the two apart.
 
 **climb** — one named sustained ascent within a route, of the kind `ClimbsList`
-enumerates. A route's total ascent is not a climb.
+enumerates. A route's total ascent is not a climb. The service and the
+browser find them by the same rule, over the same window, at the same
+gradient; a disagreement between the two is a defect.
 
 **weather grid** — Open-Meteo's spatial forecast files, relayed by
 `/v1/weather-grid/*` and read straight into the map's own wind, temperature,

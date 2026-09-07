@@ -308,12 +308,13 @@ same `GRADIENT_WINDOW_METRES` as Gradient above
 
 **Source.** This service's own rule.
 
-**Applied by.** `findClimbs` in `internal/webui/app/src/lib/climbs.ts`
-today. A Go port, `measure.Climbs`, is planned; the browser and Go
-implementations must agree the way the two `HaversineMetres` copies do.
+**Applied by.** `findClimbs` in the browser
+(`internal/webui/app/src/lib/climbs.ts`) and `measure.Climbs` in Go, the
+same rule.
 
-**Status.** Validated as the browser's live behaviour; unvalidated as a
-cross-implementation agreement, since the Go port does not exist yet.
+**Status.** Both implementations exist and are pinned to each other by a
+shared table of vectors in `climbs.test.ts` and `climb_test.go`; nothing
+serves the Go result yet.
 
 ## Sensor cleaning
 

@@ -1,3 +1,5 @@
+// These vectors are mirrored in internal/measure/climb_test.go; a change here changes both.
+
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
 import { findClimbs } from "./climbs";
@@ -83,6 +85,29 @@ describe("findClimbs", () => {
     const coordinates = ramp([...steady(10, 15), ...steady(0, 13), ...steady(10, 15)]);
 
     expect(findClimbs(coordinates)).toHaveLength(2);
+  });
+
+  it("keeps a dip inside a climb as one climb", () => {
+    // ~44 m dip (four segments at -10%) inside an otherwise steady climb: too
+    // short for the 100 m look-back window to pull the gradient below 3%.
+    const coordinates = ramp([...steady(10, 15), ...steady(-10, 4), ...steady(10, 15)]);
+
+    const climbs = findClimbs(coordinates);
+
+    expect(climbs).toHaveLength(1);
+    expect(climbs[0]?.distanceMetres).toBeCloseTo(
+      (coordinates.length - 1) * FINE_SPACING_METRES,
+      0,
+    );
+  });
+
+  it("reports a climb reaching the last point", () => {
+    const coordinates = ramp(steady(10, 12));
+
+    const climbs = findClimbs(coordinates);
+
+    expect(climbs).toHaveLength(1);
+    expect(climbs[0]?.endMetres).toBeCloseTo((coordinates.length - 1) * FINE_SPACING_METRES, 0);
   });
 
   it("refuses geometry with no elevation", () => {
