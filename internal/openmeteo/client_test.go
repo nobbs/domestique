@@ -580,6 +580,22 @@ func TestHistoryRefusesAResponseMissingAColumn(t *testing.T) {
 	require.ErrorContains(t, err, "series lengths did not match")
 }
 
+// The forecast endpoint is asked for a probability of precipitation, so one
+// that comes back without it is a response to refuse rather than to read as
+// "none was recorded". Only the reanalysis, which is never asked, may omit it.
+func TestHistoryRefusesAForecastWithNoProbabilityAtAll(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, archiveBody)
+	}))
+	defer server.Close()
+
+	from := historyNow().AddDate(0, 0, -1)
+	_, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+	require.ErrorContains(t, err, "series lengths did not match")
+}
+
 // The probability of precipitation is the one series that may be absent; a
 // short one is still a mismatch.
 func TestHistoryRefusesAShortProbabilitySeries(t *testing.T) {

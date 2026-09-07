@@ -481,8 +481,11 @@ The read-only JSON surface is small:
   direction, cloud cover and a weather code. The probability of precipitation is
   among them only for a ride recent enough to be answered by the forecast
   provider's own past days; an older one is answered by reanalysis, which
-  records what fell rather than what might have. The whole array is absent for a
-  ride nobody has asked about.
+  records what fell rather than what might have. The whole array is absent both
+  for a ride nobody has asked about and for one that was asked about and had
+  nothing to answer — a ride with no usable track, or a place and time the
+  provider holds no data for. Absence is therefore "there is no weather to
+  show", never "it has not been read yet".
 
   Beside them, and only where one was worked out, the **estimated** power at
   each coordinate, indexed the same way and named `estimatedPowerWatts` rather
@@ -550,8 +553,8 @@ The read-only JSON surface is small:
   through, where that was asked about: the range the temperature moved over, the
   mean wind, the whole of what fell, and the worst of its hours' weather codes —
   the worst rather than a mean, because half a ride in rain was ridden in rain
-  and a mean of two codes names no weather. It is absent for a ride nobody has
-  asked about and for one the provider had nothing to say about.
+  and a mean of two codes names no weather. It is absent both for a ride nobody
+  has asked about and for one that was asked about and had nothing to answer.
 
   A ride carrying no meter, for a rider who has entered both a rider and a bike
   mass, also carries `estimatedPowerWatts`: its average **estimated** power. It is worked out from the

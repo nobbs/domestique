@@ -221,7 +221,7 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 		"end_hour":   {ceilHour(to.In(location)).Format(hourFormat)},
 	}.Encode()
 
-	return c.fetch(ctx, &endpoint, location, len(at))
+	return c.fetch(ctx, &endpoint, location, len(at), true)
 }
 
 // History returns one hourly series per coordinate for a window that has
@@ -264,7 +264,7 @@ func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Tim
 			"end_hour":      {ceilHour(to.In(location)).Format(hourFormat)},
 		}.Encode()
 
-		return c.fetch(ctx, &endpoint, location, len(at))
+		return c.fetch(ctx, &endpoint, location, len(at), true)
 	}
 
 	endpoint := *c.archiveURL
@@ -280,7 +280,9 @@ func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Tim
 		"end_date":   {ceilHour(to.In(location)).Format(dayFormat)},
 	}.Encode()
 
-	return c.fetch(ctx, &endpoint, location, len(at))
+	// The reanalysis is not asked for a probability of precipitation, so it is
+	// the one response allowed back without one.
+	return c.fetch(ctx, &endpoint, location, len(at), false)
 }
 
 // daysAgo is how many days back a moment's own local date is, which is what
@@ -322,7 +324,7 @@ func coordinateColumns(at []Coordinate) (latitudes, longitudes string) {
 
 // fetch asks one composed endpoint and decodes one series per coordinate.
 func (c *Client) fetch(
-	ctx context.Context, endpoint *url.URL, location *time.Location, coordinates int,
+	ctx context.Context, endpoint *url.URL, location *time.Location, coordinates int, requireProbability bool,
 ) (hourlies []Hourly, err error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
 	if err != nil {
@@ -362,7 +364,7 @@ func (c *Client) fetch(
 
 	result := make([]Hourly, len(raw))
 	for i := range raw {
-		hourly, parseErr := raw[i].Hourly.parse(location)
+		hourly, parseErr := raw[i].Hourly.parse(location, requireProbability)
 		if parseErr != nil {
 			return nil, parseErr
 		}
@@ -413,7 +415,10 @@ func decodeForecastResponse(body []byte) ([]rawForecastResponse, error) {
 
 // parse converts one coordinate's raw hourly block, validating that every
 // series is the same length as the timestamps naming them.
-func (raw *rawHourly) parse(location *time.Location) (Hourly, error) {
+//
+// requireProbability says whether this response was asked for a probability of
+// precipitation. Only a request that did not ask for one may come back without.
+func (raw *rawHourly) parse(location *time.Location, requireProbability bool) (Hourly, error) {
 	count := len(raw.Time)
 	for _, series := range [][]float64{
 		raw.Temperature2m, raw.ApparentTemperature, raw.Precipitation,
@@ -423,10 +428,14 @@ func (raw *rawHourly) parse(location *time.Location) (Hourly, error) {
 			return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
 		}
 	}
-	// The probability of precipitation is the one series the reanalysis does not
-	// carry, so it is absent rather than short: nothing, or one value per hour.
-	if len(raw.PrecipitationProbability) != 0 && len(raw.PrecipitationProbability) != count {
-		return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
+	// Absent only where it was never asked for. The reanalysis does not carry a
+	// probability of precipitation and is not asked for one; the forecast
+	// endpoint is, and a forecast that came back without it is a response this
+	// client should refuse rather than quietly read as "none was recorded".
+	if requireProbability || len(raw.PrecipitationProbability) != 0 {
+		if len(raw.PrecipitationProbability) != count {
+			return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
+		}
 	}
 	if len(raw.WeatherCode) != count {
 		return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
