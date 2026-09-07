@@ -306,6 +306,55 @@ paths:
           $ref: '#/components/responses/NotFound'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/activities/fitness:
+    get:
+      tags:
+        - browser-api
+      operationId: getFitness
+      description: >-
+        The rider's fitness, fatigue and form over time: one row per day, on
+        both of the scales a ride's load is measured on. Scoped exactly as the
+        activity list is.
+      parameters:
+        - name: target
+          in: query
+          required: false
+          description: >-
+            Whose timeline. Omitted is the caller's own; an administrator may
+            name another target, and anyone else naming one is answered 404.
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          description: The first day to return. Earlier days still shape the averages.
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: The day after the last to return.
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: The rider's timeline.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fitness'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/activities/{activityId}/track:
     get:
       tags:
@@ -1467,6 +1516,89 @@ components:
           $ref: '#/components/schemas/ActivityMetrics'
         weather:
           $ref: '#/components/schemas/ActivityWeatherSummary'
+    Fitness:
+      type: object
+      additionalProperties: false
+      required:
+        - days
+        - weeks
+      properties:
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/FitnessDay'
+        weeks:
+          type: array
+          items:
+            $ref: '#/components/schemas/FitnessWeek'
+    FitnessDay:
+      type: object
+      additionalProperties: false
+      description: >-
+        One day of the timeline. Fitness is the long average of daily load,
+        fatigue the short one, and form their difference: fresh above zero,
+        buried below it. A day nobody rode carries no load and still decays both
+        averages, which is what makes rest visible.
+      required:
+        - date
+        - trimpLoad
+        - trimpFitness
+        - trimpFatigue
+        - trimpForm
+        - tssLoad
+        - tssFitness
+        - tssFatigue
+        - tssForm
+      properties:
+        date:
+          type: string
+          format: date
+        trimpLoad:
+          type: number
+          format: double
+        trimpFitness:
+          type: number
+          format: double
+        trimpFatigue:
+          type: number
+          format: double
+        trimpForm:
+          type: number
+          format: double
+        tssLoad:
+          type: number
+          format: double
+          description: >-
+            Power TSS where the ride carried a meter and hrTSS otherwise, so the
+            series stays continuous across the day a power meter arrives.
+        tssFitness:
+          type: number
+          format: double
+        tssFatigue:
+          type: number
+          format: double
+        tssForm:
+          type: number
+          format: double
+    FitnessWeek:
+      type: object
+      additionalProperties: false
+      description: How long one week held each of the five heart-rate zones.
+      required:
+        - weekStart
+        - zoneSeconds
+      properties:
+        weekStart:
+          type: string
+          format: date
+          description: The Monday the week began on, in the service's own zone.
+        zoneSeconds:
+          type: array
+          minItems: 5
+          maxItems: 5
+          items:
+            type: number
+            format: double
     ActivityWeatherSummary:
       type: object
       additionalProperties: false

@@ -219,6 +219,9 @@ type ActivityState interface {
 	// by ride. Summed by the store rather than here: the listing wants one line
 	// about each ride, not every hour of every one of them.
 	ActivityWeatherSummaries(ctx context.Context, targetID string) (map[int64]activities.WeatherSummary, error)
+	// ActivityRideLoads is every derived ride of one target with the moment it
+	// was ridden, oldest first: the whole of what a fitness timeline folds.
+	ActivityRideLoads(ctx context.Context, targetID string) ([]trainingload.RideLoad, error)
 	// ActivityWeatherHours is one ride's own hours, in order.
 	ActivityWeatherHours(ctx context.Context, targetID string, id int64) ([]activities.WeatherHour, error)
 }

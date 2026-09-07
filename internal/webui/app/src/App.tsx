@@ -9,6 +9,7 @@ import { AdminPage } from "./features/admin/AdminPage";
 import { TasksPage } from "./features/admin/tasks/TasksPage";
 import { SignInPage } from "./features/auth/SignInPage";
 import { CataloguePage } from "./features/catalogue/CataloguePage";
+import { FitnessPage } from "./features/fitness/FitnessPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SyncPage } from "./features/sync/SyncPage";
@@ -102,6 +103,7 @@ export function App() {
       <Route path="auth/login" element={<SignInPage />} />
       <Route path="sync" element={<SyncPage />} />
       <Route path="volume" element={<VolumePage />} />
+      <Route path="fitness" element={<FitnessPage />} />
       <Route path="activities" element={<ActivitiesPage />} />
       <Route path="activities/:activityId" element={<ActivityPage />} />
       <Route path="settings" element={<SettingsPage />} />

@@ -239,3 +239,31 @@ func (s *Store) ClearActivityMetrics(ctx context.Context, targetID string) (int,
 
 	return int(removed), nil
 }
+
+// ActivityRideLoads is every derived ride of one target, with the moment it was
+// ridden, oldest first. It is the whole of what the fitness timeline folds: one
+// row per ride rather than per hour or per sample, so a rider's whole history
+// is a few hundred rows.
+func (s *Store) ActivityRideLoads(ctx context.Context, targetID string) ([]trainingload.RideLoad, error) {
+	rows, err := s.queries.ListActivityRideLoads(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("reading the activity ride loads: %w", err)
+	}
+	loads := make([]trainingload.RideLoad, 0, len(rows))
+	for index := range rows {
+		row := &rows[index]
+		metrics := trainingload.Metrics{
+			TRIMP: row.Trimp.Float64, HasTRIMP: row.Trimp.Valid,
+			HeartRateTSS: row.HeartRateTss.Float64, HasHeartRateTSS: row.HeartRateTss.Valid,
+			Power:    trainingload.Power{TSS: row.PowerTss.Float64},
+			HasPower: row.PowerTss.Valid,
+			Zones: trainingload.Zones{
+				row.Zone1Seconds.Float64, row.Zone2Seconds.Float64, row.Zone3Seconds.Float64,
+				row.Zone4Seconds.Float64, row.Zone5Seconds.Float64,
+			},
+		}
+		loads = append(loads, trainingload.LoadOf(time.Unix(row.StartedAtUnix, 0).UTC(), &metrics))
+	}
+
+	return loads, nil
+}

@@ -112,6 +112,32 @@ type Activity struct {
 	Weather        *ActivityWeatherSummary `json:"weather,omitempty"`
 }
 
+type Fitness struct {
+	Days  []FitnessDay  `json:"days"`
+	Weeks []FitnessWeek `json:"weeks"`
+}
+
+// FitnessDay One day of the timeline. Fitness is the long average of daily load, fatigue the short one, and form their difference: fresh above zero, buried below it. A day nobody rode carries no load and still decays both averages, which is what makes rest visible.
+type FitnessDay struct {
+	Date         string  `json:"date"`
+	TrimpLoad    float64 `json:"trimpLoad"`
+	TrimpFitness float64 `json:"trimpFitness"`
+	TrimpFatigue float64 `json:"trimpFatigue"`
+	TrimpForm    float64 `json:"trimpForm"`
+	// TssLoad Power TSS where the ride carried a meter and hrTSS otherwise, so the series stays continuous across the day a power meter arrives.
+	TssLoad    float64 `json:"tssLoad"`
+	TssFitness float64 `json:"tssFitness"`
+	TssFatigue float64 `json:"tssFatigue"`
+	TssForm    float64 `json:"tssForm"`
+}
+
+// FitnessWeek How long one week held each of the five heart-rate zones.
+type FitnessWeek struct {
+	// WeekStart The Monday the week began on, in the service's own zone.
+	WeekStart   string    `json:"weekStart"`
+	ZoneSeconds []float64 `json:"zoneSeconds"`
+}
+
 // ActivityWeatherSummary What the ride was ridden through, in one line: the range the temperature moved over, the wind it was ridden in, and what fell. Absent for a ride nobody has asked the weather about, and for one the provider had nothing to say about.
 type ActivityWeatherSummary struct {
 	TemperatureMinCelsius float64 `json:"temperatureMinCelsius"`

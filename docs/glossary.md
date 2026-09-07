@@ -200,6 +200,11 @@ Banister's TRIMP, from time and heart-rate reserve, and TSS, where an hour at
 threshold is a hundred — measured from power where the ride carried a meter and
 from heart rate otherwise.
 
+**fitness / fatigue / form** — the timeline every training application draws:
+[[training load]] averaged exponentially over six weeks and over one, and their
+difference. Fresh above zero, buried below it. Folded at read time from the
+stored per-ride load, never stored itself.
+
 **derived metrics** — what a ride's stored samples and a [[rider profile]] say
 about it: time in zones, and training load. Worked out once by `activity:derive`
 and stored beside the ride, never read from a provider.
