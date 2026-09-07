@@ -10,30 +10,7 @@
  */
 
 import type { ActivityMetrics } from "../../api/types";
-
-/**
- * A zone's time, exactly as long as it was. Unlike a predicted moving time this
- * is measured, so it is not rounded at all: a rider who spent forty seconds at
- * VO₂ max deserves to be told forty seconds, and one who spent ninety there is
- * not told two minutes.
- */
-function formatZoneTime(seconds: number): string {
-  // Floored at every step, never rounded: a minute and a half is a minute and
-  // a half, not two minutes. Seconds are dropped once there is an hour to show,
-  // which shortens the label without ever overstating it.
-  const whole = Math.floor(seconds);
-  const hours = Math.floor(whole / 3600);
-  const minutes = Math.floor((whole % 3600) / 60);
-  const rest = whole % 60;
-  if (hours > 0) {
-    return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
-  }
-  if (minutes > 0) {
-    return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
-  }
-
-  return `${rest} s`;
-}
+import { formatDuration } from "../../lib/format";
 
 /** The five zones, easiest first, as a rider reading a training app knows them. */
 const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
@@ -119,7 +96,7 @@ function ZoneBars({
               }}
             />
           </span>
-          <span className="text-sm tabular-nums">{formatZoneTime(seconds)}</span>
+          <span className="text-sm tabular-nums">{formatDuration(seconds)}</span>
         </li>
       ))}
     </ul>

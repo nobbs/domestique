@@ -11,7 +11,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import {
   formatAscent,
   formatDistance,
-  formatMovingTime,
+  formatDuration,
   formatPrecipitation,
   formatTimestamp,
   formatWindSpeed,
@@ -73,7 +73,7 @@ export function ActivitiesPage() {
                   <span className="text-[var(--ink-2)] text-xs">
                     {[
                       formatDistance(ride.distanceMetres),
-                      formatMovingTime(ride.movingSeconds),
+                      formatDuration(ride.movingSeconds),
                       formatAscent(ride.ascentMetres),
                     ].join(" · ")}
                   </span>

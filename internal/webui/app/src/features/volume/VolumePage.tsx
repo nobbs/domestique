@@ -14,7 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
-import { formatAscent, formatCount, formatDistance, formatMovingTime } from "../../lib/format";
+import { formatAscent, formatCount, formatDistance, formatDuration } from "../../lib/format";
 import {
   bucketActivities,
   type Granularity,
@@ -111,7 +111,7 @@ export function VolumePage() {
                         ? "No rides"
                         : [
                             formatDistance(bucket.distanceMetres),
-                            formatMovingTime(bucket.movingSeconds),
+                            formatDuration(bucket.movingSeconds),
                             formatAscent(bucket.ascentMetres),
                             formatCount(bucket.count, "ride"),
                           ].join(" · ")}
@@ -130,7 +130,7 @@ export function VolumePage() {
 function Totals({ totals }: { totals: VolumeTotals }) {
   const figures = [
     { label: "Distance", value: formatDistance(totals.distanceMetres) },
-    { label: "Moving time", value: formatMovingTime(totals.movingSeconds) },
+    { label: "Moving time", value: formatDuration(totals.movingSeconds) },
     { label: "Ascent", value: formatAscent(totals.ascentMetres) },
     { label: "Rides", value: totals.count.toLocaleString() },
   ];

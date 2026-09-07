@@ -205,6 +205,29 @@ export function formatCadence(seconds: number | undefined): string {
 }
 
 /**
+ * A measured duration, exactly as long as it was. Unlike a predicted moving
+ * time this is not rounded at all: seconds are floored at every step, and are
+ * dropped only once there is an hour to show.
+ */
+export function formatDuration(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
+    return "\u2014";
+  }
+  const whole = Math.floor(seconds);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const rest = whole % 60;
+  if (hours > 0) {
+    return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
+  }
+  if (minutes > 0) {
+    return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+  }
+
+  return `${rest} s`;
+}
+
+/**
  * Predicted moving time, rounded to the nearest five minutes — coarse enough
  * that it reads as an estimate rather than a promise. Absent, never zero,
  * when nothing has predicted this route's geometry.
