@@ -274,6 +274,31 @@ func TestDeriveEstimatesPowerForARideWithNoMeter(t *testing.T) {
 	assert.Len(t, store.estimatedRecords, 120, "each naming the record it came from")
 }
 
+// The quality diagnostics stored on the row are exactly what EstimateSeries
+// itself reports for the same track, not a value the deriver works out on its
+// own by some other route.
+func TestDeriveStoresTheEstimateQualityEstimateSeriesReports(t *testing.T) {
+	t.Parallel()
+	track := trackRide(120)
+	wantEstimates, wantQuality, ok := measure.EstimateSeries(track.Track, 82)
+	require.True(t, ok, "EstimateSeries()")
+	require.NotEmpty(t, wantEstimates)
+	store := &fakeDeriveStore{
+		owner: "rider-a",
+		profile: rider.Profile{
+			MaxHeartRateBPM: rider.Set(190), RestingHeartRateBPM: rider.Set(48),
+			RiderMassKG: rider.Set(74), BikeMassKG: rider.Set(8),
+		},
+		owed:  []int64{7},
+		rides: map[int64]activity.RideSamples{7: track},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	assert.Equal(t, wantQuality, store.written[7].EstimateQuality)
+}
+
 // An estimate exists because there is no meter. Putting one beside a real
 // reading only invites the two to be confused.
 func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {
@@ -296,6 +321,7 @@ func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {
 	assert.False(t, store.written[7].Load.HasEstimatedPower, "the ride measured its own power")
 	assert.Empty(t, store.estimated[7], "and the stored series is cleared rather than filled")
 	assert.True(t, store.written[7].Load.HasPower, "the measured numbers are still worked out")
+	assert.Zero(t, store.written[7].EstimateQuality, "no estimate means no quality to report either")
 }
 
 // A ride with no usable track is skipped rather than estimated as zero, and so

@@ -80,6 +80,35 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Power")).not.toBeInTheDocument();
   });
 
+  it("shows the estimate's quality diagnostics beside it", () => {
+    show({
+      estimatedPowerWatts: 187.4,
+      estimateQuality: {
+        autocorrelation: 0.923,
+        meanAbsDeltaWattsPerSecond: 12.34,
+        clipBiasWatts: 3.456,
+      },
+    });
+
+    expect(screen.getByText("Estimate steadiness")).toBeInTheDocument();
+    expect(screen.getByText("0.92")).toBeInTheDocument();
+    expect(screen.getByText("lag-1 correlation")).toBeInTheDocument();
+    expect(screen.getByText("Estimate jitter")).toBeInTheDocument();
+    expect(screen.getByText("12.3")).toBeInTheDocument();
+    expect(screen.getByText("watts change per second")).toBeInTheDocument();
+    expect(screen.getByText("Clamp bias")).toBeInTheDocument();
+    expect(screen.getByText("3.5")).toBeInTheDocument();
+    expect(screen.getByText("watts the zero clamp added")).toBeInTheDocument();
+  });
+
+  it("leaves out the quality diagnostics when the ride has no estimate", () => {
+    show({ averagePowerWatts: 196.2 });
+
+    expect(screen.queryByText("Estimate steadiness")).not.toBeInTheDocument();
+    expect(screen.queryByText("Estimate jitter")).not.toBeInTheDocument();
+    expect(screen.queryByText("Clamp bias")).not.toBeInTheDocument();
+  });
+
   it("names each zone and how long the ride held it", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300] });
 

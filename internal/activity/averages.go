@@ -1,6 +1,9 @@
 package activity
 
-import "github.com/nobbs/domestique/internal/trainingload"
+import (
+	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/trainingload"
+)
 
 // RideAverages is what a ride's own sensors came to, with no rider profile
 // involved: the plain figures a rider reads before any training load. Each is
@@ -73,10 +76,13 @@ func meanAndPeak(samples []trainingload.Sample, skipZeroReadings bool) (mean, pe
 }
 
 // RideMetrics is everything one derivation writes about a ride: the load
-// figures the rider's profile shapes, and the sensor averages it does not.
+// figures the rider's profile shapes, the sensor averages it does not, and —
+// present exactly when Load.HasEstimatedPower is — the estimate's own quality
+// diagnostics.
 type RideMetrics struct {
-	Load     trainingload.Metrics
-	Averages RideAverages
+	Load            trainingload.Metrics
+	Averages        RideAverages
+	EstimateQuality measure.Quality
 }
 
 // Derived reports whether anything at all came out, which is what decides

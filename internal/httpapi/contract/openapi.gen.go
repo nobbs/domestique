@@ -181,7 +181,8 @@ type ActivityMetrics struct {
 	IntensityFactor      *float64 `json:"intensityFactor,omitempty"`
 	PowerTss             *float64 `json:"powerTss,omitempty"`
 	// EstimatedPowerWatts The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass.
-	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
+	EstimatedPowerWatts *float64         `json:"estimatedPowerWatts,omitempty"`
+	EstimateQuality     *EstimateQuality `json:"estimateQuality,omitempty"`
 	// AverageHeartRateBpm The mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap.
 	AverageHeartRateBpm *float64 `json:"averageHeartRateBpm,omitempty"`
 	// MaxHeartRateBpm The highest heart rate the ride recorded.
@@ -190,6 +191,16 @@ type ActivityMetrics struct {
 	AverageCadenceRpm *float64 `json:"averageCadenceRpm,omitempty"`
 	// AveragePowerWatts The mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power.
 	AveragePowerWatts *float64 `json:"averagePowerWatts,omitempty"`
+}
+
+// EstimateQuality What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present exactly when estimatedPowerWatts is. See docs/specs/measurement.md §Estimated power.
+type EstimateQuality struct {
+	// Autocorrelation The lag-1 Pearson correlation of the estimated watts with themselves shifted by one sample.
+	Autocorrelation float64 `json:"autocorrelation"`
+	// MeanAbsDeltaWattsPerSecond The mean absolute change in watts per second of elapsed time between consecutive samples.
+	MeanAbsDeltaWattsPerSecond float64 `json:"meanAbsDeltaWattsPerSecond"`
+	// ClipBiasWatts The mean amount the zero clamp added: clamped watts minus the unclamped force times speed it would otherwise have reported.
+	ClipBiasWatts float64 `json:"clipBiasWatts"`
 }
 
 type ActivityList struct {

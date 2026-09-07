@@ -82,6 +82,11 @@ func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
 	}
 	if metrics.HasEstimatedPower {
 		view.EstimatedPowerWatts = &metrics.EstimatedPowerWatts
+		view.EstimateQuality = &openapi.EstimateQuality{
+			Autocorrelation:            stored.EstimateQuality.Autocorrelation1,
+			MeanAbsDeltaWattsPerSecond: stored.EstimateQuality.MeanAbsDeltaWattsPerSecond,
+			ClipBiasWatts:              stored.EstimateQuality.ClipBiasWatts,
+		}
 	}
 	if averages.HasHeartRate {
 		view.AverageHeartRateBpm = &averages.HeartRateBPM

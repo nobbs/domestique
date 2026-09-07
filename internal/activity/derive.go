@@ -22,7 +22,8 @@ type RideSamples struct {
 	TrackRecords []int64
 }
 
-// EstimatePower works out the ride's estimated power series and its average.
+// EstimatePower works out the ride's estimated power series, its average and
+// its quality diagnostics.
 //
 // A ride that already carries measured power yields none: an estimate exists
 // because there is no meter, and putting one beside a real reading only invites
@@ -32,19 +33,17 @@ type RideSamples struct {
 // length, so a caller cannot pair one ride's estimates with another's records.
 func (s *RideSamples) EstimatePower(
 	totalMassKG float64,
-) (records []int64, estimates []measure.Estimate, average measure.Estimate) {
+) (records []int64, estimates []measure.Estimate, average measure.Estimate, quality measure.Quality) {
 	if len(s.Power) > 0 {
-		return nil, nil, measure.Estimate{}
+		return nil, nil, measure.Estimate{}, measure.Quality{}
 	}
-	// Quality is discarded: the spec has not yet decided what should gate on
-	// it, so nothing reads it until it does.
-	estimates, _, ok := measure.EstimateSeries(s.Track, totalMassKG)
+	estimates, quality, ok := measure.EstimateSeries(s.Track, totalMassKG)
 	if !ok {
-		return nil, nil, measure.Estimate{}
+		return nil, nil, measure.Estimate{}, measure.Quality{}
 	}
 	mean, hasMean := measure.MeanEstimate(estimates)
 
-	return s.TrackRecords, estimates, measure.Estimate{Watts: mean, Known: hasMean}
+	return s.TrackRecords, estimates, measure.Estimate{Watts: mean, Known: hasMean}, quality
 }
 
 // DeriveStore is what working out a ride's training numbers needs of stored
@@ -185,9 +184,12 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
 		load := trainingload.Derive(samples.HeartRate, samples.Power, inputs)
-		records, estimates, average := samples.EstimatePower(inputs.TotalMassKG)
+		records, estimates, average, quality := samples.EstimatePower(inputs.TotalMassKG)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = average.Watts, average.Known
 		metrics := RideMetrics{Load: load, Averages: samples.Averages()}
+		if load.HasEstimatedPower {
+			metrics.EstimateQuality = quality
+		}
 		// The series first: a metrics row is what says a ride has been derived,
 		// so it must not appear before the samples it describes are in place.
 		if storeErr := d.store.StoreEstimatedPower(ctx, targetID, id, records, estimates); storeErr != nil {
