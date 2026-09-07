@@ -114,6 +114,18 @@ describe("RideSplits", () => {
     }
   });
 
+  // Nought over nought is not a position: bars of no length draw as none.
+  it("draws stretches of no length without dividing by them", () => {
+    const { container } = render(
+      <RideSplits splits={[split({ distanceMetres: 0 }), split({ distanceMetres: 0 })]} />,
+    );
+
+    for (const bar of container.querySelectorAll("rect")) {
+      expect(Number.isFinite(Number(bar.getAttribute("x")))).toBe(true);
+      expect(bar.getAttribute("width")).toBe("0");
+    }
+  });
+
   it("reads out the stretch the shared position is on", () => {
     const { rerender } = render(
       <RideSplits

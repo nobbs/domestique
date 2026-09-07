@@ -44,7 +44,7 @@ export function RideSplits({ splits, activeMetres = null, onActiveChange }: Ride
   const onPointerMove = useCallback(
     (event: React.PointerEvent) => {
       const rect = plot.current?.getBoundingClientRect();
-      if (!onActiveChange || !rect || rect.width === 0) {
+      if (!onActiveChange || total <= 0 || !rect || rect.width === 0) {
         return;
       }
       const fraction = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
@@ -61,6 +61,8 @@ export function RideSplits({ splits, activeMetres = null, onActiveChange }: Ride
   // has to divide by rather than against.
   const fastest = Math.max(...speeds.map((speed) => speed ?? 0));
   const active = activeSplit(splits, activeMetres);
+  // Nought where every stretch is of no length, which the bars must not divide by.
+  const perMetre = total > 0 ? LANE.width / total : 0;
   let covered = 0;
 
   return (
@@ -95,8 +97,8 @@ export function RideSplits({ splits, activeMetres = null, onActiveChange }: Ride
           {splits.map((split, index) => {
             const start = covered;
             covered += split.distanceMetres;
-            const x = (start / total) * LANE.width;
-            const width = (split.distanceMetres / total) * LANE.width;
+            const x = start * perMetre;
+            const width = split.distanceMetres * perMetre;
             const bar = fastest > 0 ? ((speeds[index] ?? 0) / fastest) * LANE.height : 0;
 
             return (
