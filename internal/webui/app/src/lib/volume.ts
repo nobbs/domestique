@@ -205,6 +205,7 @@ function bucketsWithRides(
   granularity: Granularity,
   zone: string,
   now: Date,
+  withRides: boolean,
 ): RideWeek[] {
   const dated = dateActivities(activities);
   if (dated.length === 0) {
@@ -232,7 +233,9 @@ function bucketsWithRides(
     const bucket = byStart.get(startOfBucket(startedAt, granularity, zone).getTime());
     if (bucket) {
       add(bucket, activity);
-      bucket.rides.push(activity);
+      if (withRides) {
+        bucket.rides.push(activity);
+      }
     }
   });
 
@@ -245,12 +248,12 @@ export function bucketActivities(
   zone: string,
   now = new Date(),
 ): VolumeBucket[] {
-  return bucketsWithRides(activities, granularity, zone, now);
+  return bucketsWithRides(activities, granularity, zone, now, false);
 }
 
-/** Every week from the earliest activity to `now`, each with its own rides attached. */
+/** Every week from the earliest activity to `now`, each with its own rides attached. Volume's totals-only buckets skip the attaching. */
 export function weeksWithRides(activities: Activity[], zone: string, now = new Date()): RideWeek[] {
-  return bucketsWithRides(activities, "week", zone, now);
+  return bucketsWithRides(activities, "week", zone, now, true);
 }
 
 /** Which weekday `activity` falls on in `zone`, Monday 0 through Sunday 6. */
