@@ -65,7 +65,6 @@ const (
 	// inside both: the forecast covers today and yesterday, the archive
 	// everything older, and neither is asked near its own boundary.
 	archiveFromDaysAgo = 2
-	dayFormat          = "2006-01-02"
 )
 
 // Options configures an Open-Meteo client. There is no API key: the free
@@ -278,10 +277,11 @@ func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Tim
 		"longitude": {longitudes},
 		"hourly":    {archiveHourlyParams},
 		"timezone":  {location.String()},
-		// Whole days: the archive is asked by date, and the caller picks the
-		// hours it wants out of what comes back.
-		"start_date": {floorHour(from.In(location)).Format(dayFormat)},
-		"end_date":   {ceilHour(to.In(location)).Format(dayFormat)},
+		// The same hour bounds the forecast endpoint takes. Asked by date
+		// instead, this returns every hour of every day the ride touched and
+		// leaves the caller to throw away the twenty-odd it did not ask for.
+		"start_hour": {floorHour(from.In(location)).Format(hourFormat)},
+		"end_hour":   {ceilHour(to.In(location)).Format(hourFormat)},
 	}.Encode()
 
 	// The reanalysis is not asked for a probability of precipitation, so it is

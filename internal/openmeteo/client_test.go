@@ -487,8 +487,9 @@ func TestHistoryAsksTheArchiveForAnOlderRide(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "/v1/archive", request.URL.Path)
 		query := request.URL.Query()
-		assert.Equal(t, "2025-08-24", query.Get("start_date"))
-		assert.Equal(t, "2025-08-24", query.Get("end_date"))
+		assert.Equal(t, "2025-08-24T10:00", query.Get("start_hour"))
+		assert.Equal(t, "2025-08-24T12:00", query.Get("end_hour"))
+		assert.Empty(t, query.Get("start_date"), "asked by hour, as the forecast endpoint is")
 		assert.NotContains(t, query.Get("hourly"), "precipitation_probability",
 			"the reanalysis refuses a series it does not carry")
 		assert.Empty(t, query.Get("past_days"), "the forecast's parameters are not this endpoint's")
