@@ -34,13 +34,17 @@ const MIN_ICON_WIDTH = 26;
 const MIN_FIGURE_WIDTH = 18;
 
 /**
- * Where along the ride each step began, in metres from the start.
+ * Where along the ride each step began, in metres from the start, on the axis
+ * `totalMetres` long that the strip is drawn against.
  *
  * Walked along the splits' own clock: the stretch being ridden when a step's
  * moving time arrives is where that step started. A stop shifts everything
  * after it earlier along the ride than it really was, which is the error of
- * having no clock on the track itself. Without splits the steps are spread by
- * elapsed time instead, which is right for a ride that never slowed down.
+ * having no clock on the track itself. The splits are cut from the odometer
+ * and the axis is measured from positions, so the two lengths differ by a
+ * little; the walked distance is scaled so the last split ends where the axis
+ * does. Without splits the steps are spread by elapsed time instead, which is
+ * right for a ride that never slowed down.
  */
 export function stepStarts(
   steps: RideWeatherStep[],
@@ -50,6 +54,8 @@ export function stepStarts(
   splits: ActivitySplit[],
 ): number[] {
   const started = new Date(startedAt).getTime();
+  const odometer = splits.reduce((sum, split) => sum + split.distanceMetres, 0);
+  const scale = odometer > 0 ? totalMetres / odometer : 0;
 
   return steps.map((step) => {
     const seconds = Math.max((new Date(step.time).getTime() - started) / 1000, 0);
@@ -62,13 +68,13 @@ export function stepStarts(
     let covered = 0;
     for (const split of splits) {
       if (elapsed >= seconds) {
-        return covered;
+        break;
       }
       elapsed += split.movingSeconds;
       covered += split.distanceMetres;
     }
 
-    return covered;
+    return Math.min(covered * scale, totalMetres);
   });
 }
 

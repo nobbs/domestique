@@ -138,6 +138,20 @@ describe("stepStarts", () => {
     expect(starts).toEqual([0, 2_000]);
   });
 
+  // The splits are cut from the odometer and the profile's axis is measured
+  // from positions: the same ride is a little longer on one than the other.
+  it("scales the splits' distance onto the axis the strip is drawn against", () => {
+    const starts = stepStarts(TWO_STEPS, started, 9_000, 4_400, [
+      split(1800),
+      split(1800),
+      split(1800),
+      split(1800),
+    ]);
+
+    expect(starts[0]).toBe(0);
+    expect(starts[1]).toBeCloseTo(2_200, 5);
+  });
+
   it("places a step the ride outlasted at its end", () => {
     const late = step({ time: "2026-08-24T09:00:00Z" });
 
