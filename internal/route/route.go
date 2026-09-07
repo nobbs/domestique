@@ -275,12 +275,11 @@ func (s *Route) Bounds() Bounds {
 // altitude noise summed over thousands of points inflates the total badly. A
 // route without full elevation reports zero.
 func (s *Route) ElevationGainMetres() float64 {
-	profile, ok := s.profile()
-	if !ok {
+	if !s.hasCompleteElevation() {
 		return 0
 	}
 
-	return profile.AscentMetres()
+	return measure.AscentMetres(s.altitudes())
 }
 
 // ElevationLossMetres returns the total descent in the route profile, summing
@@ -288,12 +287,11 @@ func (s *Route) ElevationGainMetres() float64 {
 // ElevationGainMetres — see its comment for why raw altitude cannot be summed
 // directly.
 func (s *Route) ElevationLossMetres() float64 {
-	profile, ok := s.profile()
-	if !ok {
+	if !s.hasCompleteElevation() {
 		return 0
 	}
 
-	return profile.DescentMetres()
+	return measure.DescentMetres(s.altitudes())
 }
 
 // MaxGradientPercent returns the steepest sustained gradient, measured across a
@@ -321,18 +319,25 @@ func (s *Route) hasCompleteElevation() bool {
 	return true
 }
 
-// profile builds the route's distance/altitude profile once, for the three
-// elevation-derived methods to share.
-func (s *Route) profile() (measure.Profile, bool) {
-	if !s.hasCompleteElevation() {
-		return measure.Profile{}, false
-	}
+// altitudes is the route's elevation series, for a route known to carry one at
+// every point.
+func (s *Route) altitudes() []float64 {
 	altitudes := make([]float64, len(s.geometry))
 	for index, point := range s.geometry {
 		altitudes[index] = *point.Elevation
 	}
 
-	return measure.ProfileOf(CumulativeMetres(s.geometry), altitudes)
+	return altitudes
+}
+
+// profile is the route's altitude against its cumulative distance, built on
+// each call; only the gradient needs the distances, so only it pays for them.
+func (s *Route) profile() (measure.Profile, bool) {
+	if !s.hasCompleteElevation() {
+		return measure.Profile{}, false
+	}
+
+	return measure.ProfileOf(CumulativeMetres(s.geometry), s.altitudes())
 }
 
 // CumulativeMetres returns the running great-circle distance along points,
