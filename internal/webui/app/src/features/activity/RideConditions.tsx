@@ -67,7 +67,8 @@ export function stepStarts(
     let elapsed = 0;
     let covered = 0;
     for (const split of splits) {
-      if (elapsed >= seconds) {
+      // The step begins somewhere in this stretch, so it starts where the stretch does.
+      if (elapsed + split.movingSeconds > seconds) {
         break;
       }
       elapsed += split.movingSeconds;

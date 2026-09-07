@@ -152,6 +152,16 @@ describe("stepStarts", () => {
     expect(starts[1]).toBeCloseTo(2_200, 5);
   });
 
+  // A step that arrives partway through a stretch began on that stretch, not
+  // the next one.
+  it("places a step at the start of the stretch it arrived during", () => {
+    const partway = step({ time: "2026-08-24T06:45:00Z" });
+
+    expect(stepStarts([partway], started, 9_000, 2_000, [split(1800), split(1800)])).toEqual([
+      1_000,
+    ]);
+  });
+
   it("places a step the ride outlasted at its end", () => {
     const late = step({ time: "2026-08-24T09:00:00Z" });
 

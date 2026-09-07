@@ -63,9 +63,11 @@ export function ActivityPage() {
   // The strip shares the profile's axis where there is one, and the listed
   // distance — which the splits add up to — where there is not.
   const stripMetres = profile?.totalDistanceMetres ?? ride?.distanceMetres ?? 0;
+  // Not until the splits have answered: placed by elapsed time first and by
+  // the splits a moment later, the strip would jump.
   const starts = useMemo(
     () =>
-      weather && ride
+      weather && ride && !splits.isPending
         ? stepStarts(
             weather,
             ride.startedAt,
@@ -74,7 +76,7 @@ export function ActivityPage() {
             splits.data?.splits ?? [],
           )
         : [],
-    [weather, ride, stripMetres, splits.data],
+    [weather, ride, stripMetres, splits.isPending, splits.data],
   );
   const drawable = !track.isError && !!track.data?.bbox && coordinates.length >= 2;
 
