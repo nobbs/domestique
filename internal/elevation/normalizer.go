@@ -1,9 +1,9 @@
-// Package elevation normalizes route elevation profiles for device export.
+// Package elevation holds the device-export elevation policy: which interval
+// and which window, applied through measure.
 package elevation
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
@@ -35,9 +35,18 @@ func (n *Normalizer) Process(original *route.Route) (route.Route, error) {
 		return *original, nil
 	}
 
-	profile := resampleElevations(geometry)
-	applyMovingMedian(profile)
-	applyElevations(geometry, profile)
+	distances := route.CumulativeMetres(geometry)
+	altitudes := make([]float64, len(geometry))
+	for index, point := range geometry {
+		altitudes[index] = *point.Elevation
+	}
+	// NewRoute holds every geometry to at least two points, so this cannot refuse.
+	profile, _ := measure.ProfileOf(distances, altitudes)
+	smoothed := profile.Resample(sampleIntervalMetres).MedianFiltered(sampleIntervalMetres, medianWindowMetres)
+	for index, distance := range distances {
+		elevation := smoothed.AltitudeAt(distance)
+		geometry[index].Elevation = &elevation
+	}
 
 	processed, err := route.NewRoute(
 		original.Key().Provider(),
@@ -64,72 +73,4 @@ func hasCompleteElevation(points []route.Point) bool {
 	}
 
 	return true
-}
-
-type sample struct {
-	distance  float64
-	elevation float64
-}
-
-func resampleElevations(points []route.Point) []sample {
-	result := []sample{{elevation: *points[0].Elevation}}
-	nextSample := sampleIntervalMetres
-	distanceSoFar := 0.0
-	for index := 1; index < len(points); index++ {
-		previous, current := points[index-1], points[index]
-		segmentDistance := measure.HaversineMetres(previous.Coordinate(), current.Coordinate())
-		for segmentDistance > 0 && distanceSoFar+segmentDistance >= nextSample {
-			ratio := (nextSample - distanceSoFar) / segmentDistance
-			result = append(result, sample{
-				distance:  nextSample,
-				elevation: *previous.Elevation + ratio*(*current.Elevation-*previous.Elevation),
-			})
-			nextSample += sampleIntervalMetres
-		}
-		distanceSoFar += segmentDistance
-	}
-
-	if resultLast := result[len(result)-1]; resultLast.distance != distanceSoFar {
-		result = append(result, sample{distance: distanceSoFar, elevation: *points[len(points)-1].Elevation})
-	}
-
-	return result
-}
-
-func applyMovingMedian(samples []sample) {
-	radius := int(medianWindowMetres / sampleIntervalMetres / 2)
-	elevations := make([]float64, len(samples))
-	for index, sample := range samples {
-		elevations[index] = sample.elevation
-	}
-	for index := range samples {
-		start, end := max(0, index-radius), min(len(elevations), index+radius+1)
-		window := append([]float64(nil), elevations[start:end]...)
-		sort.Float64s(window)
-		elevation := window[len(window)/2]
-		samples[index].elevation = elevation
-	}
-}
-
-func applyElevations(points []route.Point, samples []sample) {
-	distanceSoFar := 0.0
-	sampleIndex := 0
-	for index := range points {
-		if index > 0 {
-			distanceSoFar += measure.HaversineMetres(points[index-1].Coordinate(), points[index].Coordinate())
-		}
-		for sampleIndex+1 < len(samples) && samples[sampleIndex+1].distance <= distanceSoFar {
-			sampleIndex++
-		}
-		left := samples[sampleIndex]
-		if sampleIndex == len(samples)-1 {
-			elevation := left.elevation
-			points[index].Elevation = &elevation
-			continue
-		}
-		right := samples[sampleIndex+1]
-		ratio := (distanceSoFar - left.distance) / (right.distance - left.distance)
-		elevation := left.elevation + ratio*(right.elevation-left.elevation)
-		points[index].Elevation = &elevation
-	}
 }

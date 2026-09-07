@@ -275,19 +275,12 @@ func (s *Route) Bounds() Bounds {
 // altitude noise summed over thousands of points inflates the total badly. A
 // route without full elevation reports zero.
 func (s *Route) ElevationGainMetres() float64 {
-	if !s.hasCompleteElevation() {
+	profile, ok := s.profile()
+	if !ok {
 		return 0
 	}
 
-	gain := 0.0
-	for index := 1; index < len(s.geometry); index++ {
-		step := *s.geometry[index].Elevation - *s.geometry[index-1].Elevation
-		if step > 0 {
-			gain += step
-		}
-	}
-
-	return gain
+	return profile.AscentMetres()
 }
 
 // ElevationLossMetres returns the total descent in the route profile, summing
@@ -295,51 +288,24 @@ func (s *Route) ElevationGainMetres() float64 {
 // ElevationGainMetres — see its comment for why raw altitude cannot be summed
 // directly.
 func (s *Route) ElevationLossMetres() float64 {
-	if !s.hasCompleteElevation() {
+	profile, ok := s.profile()
+	if !ok {
 		return 0
 	}
 
-	loss := 0.0
-	for index := 1; index < len(s.geometry); index++ {
-		step := *s.geometry[index].Elevation - *s.geometry[index-1].Elevation
-		if step < 0 {
-			loss -= step
-		}
-	}
-
-	return loss
+	return profile.DescentMetres()
 }
 
 // MaxGradientPercent returns the steepest sustained gradient, measured across a
 // window of at least gradientWindowMetres rather than between adjacent points,
 // where altitude error dominates. Zero without a complete profile.
 func (s *Route) MaxGradientPercent() float64 {
-	if !s.hasCompleteElevation() {
+	profile, ok := s.profile()
+	if !ok {
 		return 0
 	}
 
-	// Cumulative distance along the route, so a window can be found by
-	// scanning forward rather than re-measuring.
-	distances := CumulativeMetres(s.geometry)
-
-	steepest := 0.0
-	trailing := 0
-	for leading := 1; leading < len(s.geometry); leading++ {
-		// trailing+1 stays in range without a bound check: distances is non-decreasing,
-		// so the difference reaches zero and the loop stops.
-		for distances[leading]-distances[trailing+1] >= gradientWindowMetres {
-			trailing++
-		}
-		span := distances[leading] - distances[trailing]
-		if span < gradientWindowMetres {
-			continue
-		}
-		rise := *s.geometry[leading].Elevation - *s.geometry[trailing].Elevation
-		gradient := math.Abs(rise) / span * 100
-		steepest = max(steepest, gradient)
-	}
-
-	return steepest
+	return profile.MaxGradientPercent(gradientWindowMetres)
 }
 
 func (s *Route) hasCompleteElevation() bool {
@@ -353,6 +319,20 @@ func (s *Route) hasCompleteElevation() bool {
 	}
 
 	return true
+}
+
+// profile builds the route's distance/altitude profile once, for the three
+// elevation-derived methods to share.
+func (s *Route) profile() (measure.Profile, bool) {
+	if !s.hasCompleteElevation() {
+		return measure.Profile{}, false
+	}
+	altitudes := make([]float64, len(s.geometry))
+	for index, point := range s.geometry {
+		altitudes[index] = *point.Elevation
+	}
+
+	return measure.ProfileOf(CumulativeMetres(s.geometry), altitudes)
 }
 
 // CumulativeMetres returns the running great-circle distance along points,

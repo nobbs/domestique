@@ -28,9 +28,8 @@ d is in metres; lat and lon are in radians.
 
 **Applied by.** `internal/measure/geo.go` `HaversineMetres`. Callers reach it
 as `measure.HaversineMetres` via `route.Point.Coordinate()`:
-`route` itself (route length, `MaxGradientPercent`), `elevation`
-(resampling), `fit`, `wahoo`, `surface`, `ridemodel`, `demo`.
-`route.CumulativeMetres` is the running sum over a geometry, built on
+`route` itself (route length), `fit`, `wahoo`, `surface`, `ridemodel`,
+`demo`. `route.CumulativeMetres` is the running sum over a geometry, built on
 `measure.CumulativeMetres`. `internal/webui/app/src/lib/profile.ts`
 `haversineMetres` is the browser's own copy on the same radius
 (`EARTH_RADIUS_METRES`), kept in step under
@@ -68,10 +67,9 @@ case for the even length.
 isolated spike in one sample does not drag several neighbours' filtered
 values with it; a mean would.
 
-**Applied by.** `internal/elevation/normalizer.go` `resampleElevations`,
-`applyMovingMedian`, before device export; `measure.Profile.Resample`,
-`MedianFiltered` and `AltitudeAt` are the same steps in
-`internal/measure/profile.go`, which `elevation` moves onto.
+**Applied by.** `elevation.Normalizer.Process` through
+`measure.Profile.Resample`, `MedianFiltered` and `AltitudeAt`
+(`internal/measure/profile.go`), before device export.
 
 **Status.** Validated: this is the exported profile riders load onto a
 device today.
@@ -120,9 +118,9 @@ bands and climbs (`internal/webui/app/src/lib/profile.ts`
 own reasoning. This service's own rule for choosing to apply that floor to
 `gradientWindowMetres` and `GRADIENT_WINDOW_METRES`.
 
-**Applied by.** `route.Route.MaxGradientPercent` today;
-`measure.Profile.GradientsPercent` and `MaxGradientPercent` are the same
-walk in `internal/measure/profile.go`, which `route` moves onto.
+**Applied by.** `route.Route.MaxGradientPercent` through
+`measure.Profile.MaxGradientPercent` at `gradientWindowMetres`
+(`internal/measure/profile.go`).
 
 **Status.** 100 m meets the derived floor and is validated. 30 m is a known
 deviation: it sits below the floor, so 0.2 m of altimeter noise over 30 m of
@@ -146,10 +144,11 @@ descent = Σ max(elevation[i-1] - elevation[i], 0)
 **Source.** This service's own rule.
 
 **Applied by.** `route.Route.ElevationGainMetres` and `ElevationLossMetres`
-run on the median-filtered profile (see Profiles above), which is the only
-profile this sum is meaningful on: raw satellite altitude noise summed over
-thousands of points inflates the total badly, per
-`ElevationGainMetres`'s own comment. `internal/activity/splits.go`
+through `measure.Profile.AscentMetres` and `DescentMetres`
+(`internal/measure/profile.go`), run on the median-filtered profile (see
+Profiles above), which is the only profile this sum is meaningful on: raw
+satellite altitude noise summed over thousands of points inflates the total
+badly, per `ElevationGainMetres`'s own comment. `internal/activity/splits.go`
 `splitParts.add` runs the same positive-step sum on raw recorded samples for
 a ride split's ascent — the code carries no matching descent sum for splits,
 which disagrees with what this section otherwise describes as symmetric; a
@@ -168,8 +167,6 @@ Strava uses 2 m with barometric data and 10 m without it (Strava
 second step, not something this service does today.
 
 **Status.** Known deviation from hysteresis practice.
-`measure.Profile.AscentMetres` and `DescentMetres` are the same sums in
-`internal/measure/profile.go`, which `route` moves onto.
 
 ## Recording gaps
 
