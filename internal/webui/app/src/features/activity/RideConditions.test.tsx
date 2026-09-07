@@ -50,6 +50,17 @@ describe("RideConditions", () => {
     expect(Number.parseFloat(second?.style.width ?? "")).toBeCloseTo(PLOT_WIDTH * 0.25, 5);
   });
 
+  // With no chart above it to line up with, the strip owes no gutters.
+  it("spans the whole width when it is not inset", () => {
+    render(
+      <RideConditions steps={TWO_STEPS} starts={[0, 10_000]} totalMetres={20_000} inset={false} />,
+    );
+
+    const [first, second] = screen.getAllByRole("listitem") as HTMLElement[];
+    expect(Number.parseFloat(first?.style.width ?? "")).toBeCloseTo(MIN_WIDTH / 2, 5);
+    expect(Number.parseFloat(second?.style.left ?? "")).toBeCloseTo(MIN_WIDTH / 2, 5);
+  });
+
   // The provider answers whole hours; an hour that began after the ride ended
   // has no ground to stand on.
   it("leaves out a step that began beyond the end of the ride", () => {

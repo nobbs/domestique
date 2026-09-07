@@ -18,7 +18,7 @@ import {
   formatPrecipitation,
   formatWindSpeed,
 } from "../../lib/format";
-import { PADDING, plotAxis } from "../../lib/plotAxis";
+import { MIN_WIDTH, PADDING, plotAxis } from "../../lib/plotAxis";
 import { compassPoint } from "../../lib/routeCues";
 import { useElementWidth } from "../../lib/useElementWidth";
 import { temperatureColour, weatherIcon } from "../../lib/weather";
@@ -110,7 +110,10 @@ export function RideConditions({ steps, starts, totalMetres, inset = true }: Rid
   if (!steps || steps.length === 0 || totalMetres <= 0) {
     return null;
   }
-  const { x } = plotAxis(width, 0, totalMetres);
+  // Uninset, the strip has no chart to line up with and takes the whole width.
+  const { x } = inset
+    ? plotAxis(width, 0, totalMetres)
+    : { x: (metres: number) => (metres / totalMetres) * Math.max(width, MIN_WIDTH) };
   const cells = steps
     .map((step, index) => ({
       step,
