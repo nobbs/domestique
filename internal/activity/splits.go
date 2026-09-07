@@ -41,12 +41,10 @@ func Splits(rows []SampleRow, everyMetres float64) []Split {
 			continue
 		}
 		covered = row.DistanceMetres.Value - origin
+		// A step belongs to the stretch it began in; a sample landing several
+		// stretches on leaves the ones it skipped empty rather than merged.
 		current.add(last, row)
 		last = row
-		// A sample can land more than one stretch on from the last, where the
-		// recording stopped for a while. Closing each of them keeps a split's
-		// place in the list the ground it covers, and the ones nothing was
-		// recorded over stay empty rather than swallowing a neighbour's figures.
 		for covered >= float64(len(splits)+1)*everyMetres {
 			splits = append(splits, current.close(everyMetres))
 			current = splitParts{}

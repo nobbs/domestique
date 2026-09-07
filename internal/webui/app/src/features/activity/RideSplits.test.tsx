@@ -64,6 +64,21 @@ describe("RideSplits", () => {
     expect(screen.getByText("42 m")).toBeInTheDocument();
   });
 
+  // Every stretch standing still leaves no fastest one to scale against, and
+  // nought over nought is not a width. React discards the NaN, so what pins the
+  // guard is the bar asking for a width at all.
+  it("draws an empty bar for a ride no stretch of which was ridden", () => {
+    const { container } = render(
+      <RideSplits splits={[split({ movingSeconds: 0 }), split({ movingSeconds: 0 })]} />,
+    );
+
+    const bars = container.querySelectorAll<HTMLElement>('[aria-hidden="true"] > span');
+    expect(bars).toHaveLength(2);
+    for (const bar of bars) {
+      expect(bar.style.width).toBe("0%");
+    }
+  });
+
   it("shows nothing at all for a ride with no splits", () => {
     const { rerender } = render(<RideSplits splits={[]} />);
     expect(screen.queryByLabelText("Splits")).not.toBeInTheDocument();

@@ -25,6 +25,8 @@ export function RideSplits({ splits }: { splits: ActivitySplit[] | undefined }) 
     return null;
   }
   const speeds = splits.map(speedKmh);
+  // Nought where no stretch has a moving time to be fast over, which the bar
+  // has to divide by rather than against.
   const fastest = Math.max(...speeds.map((speed) => speed ?? 0));
   const showAscent = splits.some((split) => split.ascentMetres > 0);
   const showHeartRate = splits.some((split) => split.heartRateBpm !== undefined);
@@ -72,7 +74,9 @@ export function RideSplits({ splits }: { splits: ActivitySplit[] | undefined }) 
                       >
                         <span
                           className="h-full rounded-full bg-[var(--accent)]"
-                          style={{ width: `${((speed ?? 0) / fastest) * 100}%` }}
+                          style={{
+                            width: fastest > 0 ? `${((speed ?? 0) / fastest) * 100}%` : "0%",
+                          }}
                         />
                       </span>
                       <span>{speed === undefined ? "—" : `${speed.toFixed(1)} km/h`}</span>
