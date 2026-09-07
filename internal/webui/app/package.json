@@ -23,7 +23,7 @@
     "test:browser:install": "playwright install chromium"
   },
   "dependencies": {
-    "@base-ui/react": "^1.7.0",
+    "@base-ui/react": "^1.8.0",
     "@fontsource-variable/karla": "^5.3.0",
     "@openmeteo/file-reader": "0.0.18",
     "@tabler/icons-react": "^3.46.0",
