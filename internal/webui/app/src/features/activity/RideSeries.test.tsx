@@ -81,7 +81,26 @@ describe("the ride's series chips", () => {
     );
 
     expect(screen.getByRole("button", { name: /Power/ }).textContent).toContain("not recorded");
-    expect(screen.getByRole("button", { name: /Power/ })).toHaveAttribute("aria-pressed", "false");
+    // Still pressed: the rider asked for it, and pressing it again is what
+    // puts it away.
+    expect(screen.getByRole("button", { name: /Power/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  // A service that could not be asked says so. Reading a 503 as "not recorded"
+  // would tell the rider something false about their own bicycle.
+  it("tells a series the ride never recorded from one it could not ask for", () => {
+    render(
+      <SeriesChips
+        states={{ ...allOff(), cadence: "unavailable" }}
+        drawn={[]}
+        activeIndex={null}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("button", { name: /Cadence/ });
+    expect(chip.textContent).toContain("unavailable");
+    expect(chip.textContent).not.toContain("not recorded");
   });
 
   it("marks a series still being fetched as pressed", () => {

@@ -537,8 +537,9 @@ The read-only JSON surface is small:
   twenty thousand samples, and nothing of this is bundled into the track
   response or into any listing. A series no sample of the ride recorded is
   `404`, which is what tells a bicycle with no meter from a meter that dropped
-  out. It is scoped exactly as the track is, and answers `404` on the same
-  terms.
+  out; a `speed` no pair of samples could yield — a ride that recorded no
+  distance — answers the same way rather than as a column of nulls. It is
+  scoped exactly as the track is, and answers `404` on the same terms.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.

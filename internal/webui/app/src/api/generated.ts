@@ -2996,7 +2996,7 @@ export const getGetActivitySeriesUrl = (
 };
 
 /**
- * One named series of an activity's recorded samples, indexed 1:1 with the coordinates that activity's track is served as. One request names one series and receives that series alone; nothing of this is bundled into the track response or into any listing. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. A series no sample of the ride recorded is answered not found, so a bicycle with no meter is told apart from a meter that dropped out.
+ * One named series of an activity's recorded samples, indexed 1:1 with the coordinates that activity's track is served as. One request names one series and receives that series alone; nothing of this is bundled into the track response or into any listing. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. A series no sample of the ride recorded is answered not found, so a bicycle with no meter is told apart from a meter that dropped out; a `speed` no pair of samples could yield — a ride that recorded no distance — answers the same way rather than as a column of nulls.
  */
 export const getActivitySeries = async (
   activityId: number,

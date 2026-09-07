@@ -210,6 +210,42 @@ describe("one ride's page", () => {
     expect(drawn.series).toEqual([]);
   });
 
+  // The endpoint answers 404 for a series the ride never carried, and that is
+  // the only failure that may read as "not recorded".
+  it("says a series the ride never recorded is not there", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: { code: "not_found", message: "no such series" } }, { status: 404 }),
+      ),
+    );
+    show();
+
+    await userEvent.click(screen.getByRole("button", { name: /Power/ }));
+
+    expect(await screen.findByRole("button", { name: /Power.*not recorded/ })).toBeInTheDocument();
+  });
+
+  // Anything else is about the service, not about the bicycle.
+  it("does not read an unreachable service as a series the ride never recorded", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({ error: { code: "unavailable", message: "try later" } }, { status: 503 }),
+      ),
+    );
+    show();
+
+    await userEvent.click(screen.getByRole("button", { name: /Heart rate/ }));
+
+    expect(
+      await screen.findByRole("button", { name: /Heart rate.*unavailable/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Heart rate/ }).textContent).not.toContain(
+      "not recorded",
+    );
+  });
+
   it("shows a placeholder while the track is still loading", () => {
     // Uncached, so React Query falls through to a real fetch; stub it so the
     // request never settles and the page stays in its loading state.

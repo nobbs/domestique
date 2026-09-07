@@ -10,6 +10,7 @@
 import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { activitySeriesQuery } from "../../api/queries";
+import { ApiError } from "../../api/request";
 import type { ActivitySeriesName, Position } from "../../api/types";
 import type { Profile } from "../../lib/profile";
 import { type AlignedSeries, alignSeries } from "../../lib/rideSeries";
@@ -42,8 +43,15 @@ const SERIES_COLOURS: Record<ActivitySeriesName, string> = {
   power: "var(--series-power)",
 };
 
-/** Where one series has got to, which is what its chip says out loud. */
-export type SeriesState = "off" | "loading" | "drawn" | "absent";
+/**
+ * Where one series has got to, which is what its chip says out loud.
+ *
+ * `absent` and `unavailable` are kept apart deliberately: the ride recorded no
+ * such series is an answer about the ride, and the service could not be asked
+ * is an answer about right now. A chip that said "not recorded" for a failed
+ * request would tell the rider something false about their own bicycle.
+ */
+export type SeriesState = "off" | "loading" | "drawn" | "absent" | "unavailable";
 
 export interface RideSeriesResult {
   drawn: AlignedSeries[];
@@ -81,7 +89,8 @@ export function useRideSeries(
         return;
       }
       if (result?.isError) {
-        states[series.key] = "absent";
+        const notFound = result.error instanceof ApiError && result.error.isNotFound;
+        states[series.key] = notFound ? "absent" : "unavailable";
 
         return;
       }
@@ -134,7 +143,10 @@ export function SeriesChips({ states, drawn, activeIndex, onToggle }: SeriesChip
             key={series.key}
             type="button"
             onClick={() => onToggle(series.key)}
-            aria-pressed={state === "drawn" || state === "loading"}
+            // What the rider asked for, whatever came of it: a chip whose
+            // series turned out absent must not read as one never pressed,
+            // since pressing it again is what puts it away.
+            aria-pressed={state !== "off"}
             className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-[var(--rule)] aria-pressed:bg-[var(--ground)] aria-pressed:ring-[var(--ink-2)]"
           >
             {/*
@@ -175,6 +187,9 @@ function chipReading(
 ): string {
   if (state === "absent") {
     return "not recorded";
+  }
+  if (state === "unavailable") {
+    return "unavailable";
   }
   if (state === "loading") {
     return "…";
