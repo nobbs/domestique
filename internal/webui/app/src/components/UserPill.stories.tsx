@@ -26,6 +26,9 @@ const meta = {
  * own canvas root, so every play function below reads it back with `screen`.
  */
 
+/** Headroom over the 1 s default: the portal mounts late on a loaded machine. */
+const menuAppears = { timeout: 10_000 };
+
 export default meta;
 type Story = StoryObj<typeof meta>;
 
@@ -83,7 +86,7 @@ export const SignedIn: Story = {
 
     await userEvent.click(pill);
 
-    const menu = await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu", {}, menuAppears);
     await expect(menu).toHaveTextContent("alexej.disterhoft@example.test");
     // Presence, not visibility: the menu is still animating open here. The
     // sign-out itself is exercised end to end by e2e/contract/sign-in.spec.ts.
@@ -97,7 +100,7 @@ export const Admin: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole("button", { name: /Signed in as/ }));
 
-    const menu = await screen.findByRole("menu");
+    const menu = await screen.findByRole("menu", {}, menuAppears);
     await expect(
       within(menu).getByRole("menuitemcheckbox", { name: "View as rider" }),
     ).toBeInTheDocument();
