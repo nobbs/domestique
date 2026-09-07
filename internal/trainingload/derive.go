@@ -78,7 +78,7 @@ func Derive(heartRate, power []Sample, inputs Inputs) Metrics {
 		metrics.Zones, metrics.HasZones = zones, zones.Total() > 0
 	}
 	metrics.TRIMP, metrics.HasTRIMP = TRIMP(heartRate, inputs.MaxHeartRateBPM, inputs.RestingHeartRateBPM)
-	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM)
+	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
 	return metrics

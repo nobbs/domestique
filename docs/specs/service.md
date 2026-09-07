@@ -612,7 +612,10 @@ The read-only JSON surface is small:
   say about how hard it was, where anything was worked out: time in each of five
   heart-rate zones, and training load on two scales side by side — Banister's
   TRIMP, which needs a maximum and a resting rate, and hrTSS, which needs a
-  lactate threshold. A ride carrying measured power, for a rider who has entered
+  lactate threshold and a resting rate. hrTSS scores the share of the rider's
+  threshold reserve their mean rate held, not that rate over their threshold: a
+  heart rate does not fall to nought as power does, so the bare ratio scores an
+  easy ride as most of a threshold effort. A ride carrying measured power, for a rider who has entered
   a threshold power, also carries its normalized power, intensity factor and
   power TSS; an estimate worked out from the track never feeds those. Each part
   is absent on its own rather than sent as a zero, a ride nothing was worked out
@@ -623,7 +626,11 @@ The read-only JSON surface is small:
   Beside those, and worked out by the same task from the same stored samples,
   are the plain figures the ride's own sensors came to with no profile
   involved: the mean of its heart-rate, cadence and measured power samples, and
-  the highest heart rate it reached. Each is present only where the ride carried
+  the highest heart rate it reached. A cadence of nought is the rider not
+  pedalling rather than pedalling slowly and is left out of that mean, which is
+  what makes the figure the same one every other platform reports; a measured
+  power of nought is left in, freewheeling being part of what a ride averaged.
+  A sensor that read nought throughout recorded nothing, and has no mean at all. Each is present only where the ride carried
   that sensor, and an estimate never feeds the average power — a bicycle with no
   meter has none. Average speed is not among them: it is the distance and moving
   time the activity already carries, divided, and is therefore known even for a
@@ -638,9 +645,15 @@ The read-only JSON surface is small:
 
   A ride carrying no meter, for a rider who has entered both a rider and a bike
   mass, also carries `estimatedPowerWatts`: its average **estimated** power. It is worked out from the
-  recorded track by a physics model — gravity against a smoothed grade, rolling
-  resistance and drag at fixed road-bike constants, and the change in speed
-  between samples, never below zero and never accounting for wind. It is an
+  recorded track by a physics model — gravity against the grade, rolling
+  resistance and drag at fixed road-bike constants, never below zero and never
+  accounting for wind. Both the grade and the speed are measured over the same
+  window of distance rather than between one sample and the next: at one sample
+  a second the step is barometric noise and GPS jitter as much as it is riding,
+  and the clamp at zero would keep the half of that noise which reads positive
+  and discard the half which reads negative. The change in speed is not charged
+  for. Over a ride it is the kinetic energy the rider gets back, and at this
+  sampling rate a real surge cannot be told from the jitter. It is an
   estimate and is named as one everywhere: it is never normalised, never scored,
   and never an input to a training load. A ride that measured its own power has
   none, because an estimate beside a reading only invites the two to be

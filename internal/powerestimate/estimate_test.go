@@ -102,28 +102,38 @@ func TestSeriesWillNotCrossARecordingGap(t *testing.T) {
 	assert.True(t, estimates[3].Known, "and the stretch after it starts again")
 }
 
-// Accelerating costs more than holding the same speed, which is the whole
-// reason the term is in the model.
-func TestSeriesChargesForAcceleration(t *testing.T) {
+// The regression this model was rebuilt for: a real recorder's distance jitters
+// by a metre or so a second and its barometer steps in fifths of a metre.
+// Measured sample to sample that noise reaches the zero clamp, which keeps its
+// positive half and throws the negative half away, and the mean comes out
+// several times the truth. Measured over the window it is a rounding error.
+//
+// The live ride that found this averaged 441 W against Strava's 184 W.
+func TestSeriesIsNotInflatedByRecorderNoise(t *testing.T) {
 	t.Parallel()
-	accelerating := make([]powerestimate.Sample, 10)
-	for index := range accelerating {
-		// Distance under constant acceleration from rest at 0.5 m/s².
-		seconds := float64(index)
-		accelerating[index] = powerestimate.Sample{
-			At:             start().Add(time.Duration(index) * time.Second),
-			DistanceMetres: 0.25 * seconds * seconds,
-			AltitudeMetres: 100,
-		}
+	const speedMS, mass = 7.0, 82.0
+	clean := ride(1200, speedMS, 0)
+	noisy := slices.Clone(clean)
+	// A deterministic wobble: a metre of distance error either way and the
+	// barometer's own 0.2 m quantisation, neither of which the rider did.
+	for index := range noisy {
+		noisy[index].DistanceMetres += []float64{0, 1, -1, 0.5, -0.5, 1, -1}[index%7]
+		noisy[index].AltitudeMetres += []float64{0, 0.2, -0.2, 0.2, 0, -0.2, 0.4}[index%7]
 	}
 
-	estimates, ok := powerestimate.Series(accelerating, 82)
+	quiet, ok := powerestimate.Series(clean, mass)
 	require.True(t, ok)
-	// At the same speed on the flat, the steady rider pays only rolling and drag.
-	speed := estimates[len(estimates)-1]
-	require.True(t, speed.Known)
-	assert.Greater(t, speed.Watts, closedForm(4.25, 0, 82),
-		"a rider still gaining speed is paying for the gain as well")
+	rough, ok := powerestimate.Series(noisy, mass)
+	require.True(t, ok)
+	quietMean, ok := powerestimate.Average(quiet)
+	require.True(t, ok)
+	roughMean, ok := powerestimate.Average(rough)
+	require.True(t, ok)
+
+	assert.InDelta(t, closedForm(speedMS, 0, mass), quietMean, 1,
+		"the clean track is the closed form")
+	assert.InDelta(t, quietMean, roughMean, 0.1*quietMean,
+		"and noise the rider never rode moves the mean by less than a tenth")
 }
 
 // The altitude either side of a pause is minutes of barometric drift apart, and

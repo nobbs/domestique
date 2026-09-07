@@ -22,10 +22,15 @@ const (
 	// already labelled an estimate, and one more constant to defend.
 )
 
-// gradeWindowMetres is the distance a grade is measured over. Sample-to-sample
-// altitude is barometric noise as much as hill; thirty metres is short enough
-// to follow a real ramp and long enough not to invent one.
-const gradeWindowMetres = 30
+// windowMetres is the distance both the grade and the speed are measured over.
+// Sample to sample, altitude is barometric noise as much as hill and distance
+// is GPS jitter as much as travel; thirty metres is short enough to follow a
+// real ramp and long enough not to invent one.
+//
+// Measuring speed over the same window is what keeps the zero clamp in watts
+// honest. Fed raw one-second deltas the clamp fires on half the noise and keeps
+// the other half, which on a real ride inflated the mean fourfold.
+const windowMetres = 30
 
 // maxSampleGap is the longest step the model will cross. Beyond it the recorder
 // had stopped, and a speed worked out across the pause is not a speed.
@@ -51,47 +56,44 @@ type Estimate struct {
 // reports whether the ride yielded any estimate at all.
 //
 // totalMassKG is the rider and everything they are carrying, the bicycle
-// included: gravity and acceleration both act on the whole of it.
+// included: gravity acts on the whole of it.
 func Series(samples []Sample, totalMassKG float64) ([]Estimate, bool) {
 	if totalMassKG <= 0 || len(samples) < 2 {
 		return nil, false
 	}
 	estimates := make([]Estimate, len(samples))
 	bounds := unbrokenStretches(samples)
-	previousSpeed, hasPreviousSpeed, known := 0.0, false, false
+	known := false
 	for index := 1; index < len(samples); index++ {
-		step := samples[index].At.Sub(samples[index-1].At)
-		distance := samples[index].DistanceMetres - samples[index-1].DistanceMetres
-		if step <= 0 || step > maxSampleGap || distance < 0 {
-			previousSpeed, hasPreviousSpeed = 0, false
-
+		// The step to the sample before is what marks a pause; the window the
+		// speed and grade are then measured over never crosses one.
+		if step := samples[index].At.Sub(samples[index-1].At); step <= 0 || step > maxSampleGap {
 			continue
 		}
-		seconds := step.Seconds()
-		speed := distance / seconds
-		acceleration := 0.0
-		if hasPreviousSpeed {
-			acceleration = (speed - previousSpeed) / seconds
+		low, high := windowAt(samples, index, bounds)
+		span := samples[high].At.Sub(samples[low].At).Seconds()
+		run := samples[high].DistanceMetres - samples[low].DistanceMetres
+		if span <= 0 || run < 0 {
+			continue
 		}
 		estimates[index] = Estimate{
-			Watts: watts(speed, acceleration, gradeAt(samples, index, bounds), totalMassKG),
+			Watts: watts(run/span, slope(samples[low], samples[high]), totalMassKG),
 			Known: true,
 		}
-		previousSpeed, hasPreviousSpeed, known = speed, true, true
+		known = true
 	}
 
 	return estimates, known
 }
 
-// watts is the model itself: what it costs to climb the grade, roll along it,
-// push the air aside and change speed, all at once.
+// watts is the model itself: what it costs to climb the grade, roll along it
+// and push the air aside, all at once.
 //
 // Clamped at zero, never negative: a rider freewheeling down a hill is putting
 // nothing in, and the model has no way to say they are taking something out.
-func watts(speed, acceleration, grade, totalMassKG float64) float64 {
+func watts(speed, grade, totalMassKG float64) float64 {
 	weight := totalMassKG * gravity
-	force := weight*grade + weight*rollingResistance +
-		0.5*airDensity*dragArea*speed*speed + totalMassKG*acceleration
+	force := weight*grade + weight*rollingResistance + 0.5*airDensity*dragArea*speed*speed
 	if power := force * speed; power > 0 {
 		return power
 	}
@@ -106,9 +108,9 @@ type stretch struct {
 }
 
 // unbrokenStretches marks, for each sample, the stretch of recording it belongs
-// to. A grade must not be measured across a pause: the altitude either side of
-// one is minutes of barometric drift apart, and the distance between them is
-// not a slope the rider ever rode.
+// to. Neither a grade nor a speed may be measured across a pause: the altitude
+// either side of one is minutes of barometric drift apart, and the distance
+// between them was covered over a gap that is not riding time.
 func unbrokenStretches(samples []Sample) []stretch {
 	bounds := make([]stretch, len(samples))
 	for first := 0; first < len(samples); {
@@ -125,19 +127,20 @@ func unbrokenStretches(samples []Sample) []stretch {
 	return bounds
 }
 
-// gradeAt measures the slope around one sample over gradeWindowMetres of
-// distance, or over as much of it as that stretch of recording holds.
-func gradeAt(samples []Sample, index int, bounds []stretch) float64 {
+// windowAt is the span of samples around one sample that covers windowMetres of
+// distance, or as much of it as that stretch of recording holds. Both bounds
+// are inclusive.
+func windowAt(samples []Sample, index int, bounds []stretch) (low, high int) {
 	within := bounds[index]
 	// A stretch shorter than the window has one answer for every sample in it,
 	// so it is measured end to end rather than walked outward from each. A long
 	// stationary stretch is exactly that case, and walking it per sample would
 	// cost the square of its length.
-	if run := samples[within.past-1].DistanceMetres - samples[within.first].DistanceMetres; run < gradeWindowMetres {
-		return slope(samples[within.first], samples[within.past-1])
+	if run := samples[within.past-1].DistanceMetres - samples[within.first].DistanceMetres; run < windowMetres {
+		return within.first, within.past - 1
 	}
-	low, high := index, index
-	for samples[high].DistanceMetres-samples[low].DistanceMetres < gradeWindowMetres {
+	low, high = index, index
+	for samples[high].DistanceMetres-samples[low].DistanceMetres < windowMetres {
 		moved := false
 		if low > within.first {
 			low--
@@ -151,7 +154,8 @@ func gradeAt(samples []Sample, index int, bounds []stretch) float64 {
 			break
 		}
 	}
-	return slope(samples[low], samples[high])
+
+	return low, high
 }
 
 // slope is the rise between two samples over the distance between them, and

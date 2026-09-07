@@ -8,8 +8,10 @@ import "github.com/nobbs/domestique/internal/trainingload"
 // has no average power rather than an average of nothing.
 //
 // Every one is a mean over the recorded samples, in the order they were
-// recorded. A reading of zero is a reading — a stopped rider's cadence — and
-// counts towards the mean like any other.
+// recorded. A cadence of zero is the rider not pedalling rather than pedalling
+// slowly, and is left out of the mean, which is what every other platform
+// reports and what makes this figure comparable to theirs. A measured power of
+// zero is left in: freewheeling is part of what a ride averaged.
 type RideAverages struct {
 	HeartRateBPM    float64
 	MaxHeartRateBPM float64
@@ -28,28 +30,46 @@ func (a *RideAverages) Any() bool {
 // Averages works the ride's plain sensor figures out from its stored samples.
 func (s *RideSamples) Averages() RideAverages {
 	averages := RideAverages{}
-	averages.HeartRateBPM, averages.MaxHeartRateBPM, averages.HasHeartRate = meanAndPeak(s.HeartRate)
-	averages.CadenceRPM, _, averages.HasCadence = meanAndPeak(s.Cadence)
-	averages.PowerWatts, _, averages.HasPower = meanAndPeak(s.Power)
+	averages.HeartRateBPM, averages.MaxHeartRateBPM, averages.HasHeartRate = meanAndPeak(s.HeartRate, countZero)
+	averages.CadenceRPM, _, averages.HasCadence = meanAndPeak(s.Cadence, skipZero)
+	averages.PowerWatts, _, averages.HasPower = meanAndPeak(s.Power, countZero)
 
 	return averages
 }
 
-// meanAndPeak is one series' mean and highest reading. known is false for a
-// series no sample carried, which is what tells an unfitted sensor from one
-// that read nought.
-func meanAndPeak(samples []trainingload.Sample) (mean, peak float64, known bool) {
+// How a zero reading is treated, named at the call site rather than passed as a
+// bare true: which of the two a sensor wants is the whole of what differs.
+const (
+	skipZero  = true
+	countZero = false
+)
+
+// meanAndPeak is one series' mean and highest reading, over the samples that
+// count towards it. known is false for a series that yielded none, which is
+// what tells an unfitted sensor from one that read nought throughout.
+//
+// The peak is over every sample either way: a zero is never the highest reading
+// of a series that holds anything else.
+func meanAndPeak(samples []trainingload.Sample, skipZeroReadings bool) (mean, peak float64, known bool) {
 	if len(samples) == 0 {
 		return 0, 0, false
 	}
-	total := 0.0
+	total, counted := 0.0, 0
 	peak = samples[0].Value
 	for index := range samples {
-		total += samples[index].Value
-		peak = max(peak, samples[index].Value)
+		value := samples[index].Value
+		peak = max(peak, value)
+		if skipZeroReadings && value == 0 {
+			continue
+		}
+		total += value
+		counted++
+	}
+	if counted == 0 {
+		return 0, 0, false
 	}
 
-	return total / float64(len(samples)), peak, true
+	return total / float64(counted), peak, true
 }
 
 // RideMetrics is everything one derivation writes about a ride: the load
