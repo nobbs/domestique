@@ -17,6 +17,7 @@ import {
   formatDistance,
   formatDuration,
   formatPrecipitation,
+  formatTimestamp,
 } from "../../lib/format";
 import { type RideWeek, weekdayIndex, weekRangeLabel, weeksWithRides } from "../../lib/volume";
 import { temperatureColour, weatherIcon } from "../../lib/weather";
@@ -73,6 +74,8 @@ function RideBar({ ride, longest }: { ride: Activity; longest: number }) {
         style={{ height: `${(ride.distanceMetres / longest) * BAR_REM}rem` }}
       />
       <span className="flex flex-col gap-0.5 pb-0.5">
+        {/* The figures alone do not tell one ride from another to a reader who cannot see its column. */}
+        <span className="sr-only">{formatTimestamp(ride.startedAt)}</span>
         <span className="font-semibold text-sm tabular-nums">
           {formatDistance(ride.distanceMetres)}
         </span>

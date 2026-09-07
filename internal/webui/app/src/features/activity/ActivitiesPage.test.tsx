@@ -10,7 +10,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, WebUIConfig } from "../../api/types";
-import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
+import { formatAscent, formatDistance, formatDuration, formatTimestamp } from "../../lib/format";
 import { ActivitiesPage } from "./ActivitiesPage";
 
 /** The day a week's label starts with, in the platform's own locale. */
@@ -88,6 +88,15 @@ describe("the activity list", () => {
       "/activities/1",
     ]);
     expect(rides[0]?.textContent).toContain("30.0 km");
+  });
+
+  // Two rides of the same distance would otherwise be two links of the same name.
+  it("names each ride link by when it started", () => {
+    show();
+
+    expect(
+      screen.getByRole("link", { name: new RegExp(formatTimestamp(ACTIVITIES[1]?.startedAt)) }),
+    ).toHaveAttribute("href", "/activities/2");
   });
 
   it("says where a Wahoo account is connected when nothing has been recorded", () => {
