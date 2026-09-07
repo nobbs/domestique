@@ -12,6 +12,7 @@ import (
 	"github.com/muktihari/fit/profile/filedef"
 	"github.com/muktihari/fit/profile/mesgdef"
 	"github.com/muktihari/fit/profile/typedef"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -52,7 +53,7 @@ func (e *Encoder) Encode(ctx context.Context, stage route.Route) ([]byte, error)
 			return nil, fmt.Errorf("fit: encoding cancelled: %w", err)
 		}
 		if index > 0 {
-			distance += route.HaversineMetres(geometry[index-1], point)
+			distance += measure.HaversineMetres(geometry[index-1].Coordinate(), point.Coordinate())
 		}
 
 		record := mesgdef.NewRecord(nil).

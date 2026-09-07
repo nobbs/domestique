@@ -3,6 +3,7 @@ package ridemodel
 import (
 	"math"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -33,7 +34,7 @@ func Predict(points []route.Point, coefficients Coefficients) (Result, bool) {
 
 	cumulative := make([]float64, len(points))
 	for index := 1; index < len(points); index++ {
-		span := route.HaversineMetres(points[index-1], points[index])
+		span := measure.HaversineMetres(points[index-1].Coordinate(), points[index].Coordinate())
 		if span <= 0 {
 			// No progress along the ground: a repeated point's elevation noise
 			// must not read as climbing.

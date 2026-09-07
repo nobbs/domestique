@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -23,7 +24,7 @@ func testCoefficients() Coefficients {
 // circle arc — an exact, deterministic way to build geometry of a known length
 // without depending on the distance function under test.
 func metresToLongitudeDegrees(metres float64) float64 {
-	return metres / route.EarthRadiusMetres * 180 / math.Pi
+	return metres / measure.EarthRadiusMetres * 180 / math.Pi
 }
 
 // sampledStage builds n points evenly spaced over totalDistanceMetres along the
