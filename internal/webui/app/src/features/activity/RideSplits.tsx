@@ -3,9 +3,12 @@
  * climbed.
  *
  * The service cuts the stretches, from the bicycle's own odometer, so the table
- * agrees with the distance the ride is listed at. A column no stretch carried —
- * a ride with no strap, no meter, no barometer — is left out rather than ruled
- * down the page as a row of dashes.
+ * agrees with the distance the ride is listed at. A column with nothing to put
+ * in it is left out rather than ruled down the page as dashes: heart rate and
+ * power where no stretch carried the sensor, ascent where no stretch climbed —
+ * the served figure being nought for a flat ride and for one that measured no
+ * altitude alike, which is why the rule there is what was climbed rather than
+ * what was fitted.
  */
 
 import type { ActivitySplit } from "../../api/types";
