@@ -9,9 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func weatherHour(at time.Time, temperature float64, chance bool) activity.WeatherHour {
-	return activity.WeatherHour{
-		Hour:                            at,
+func weatherStep(at time.Time, temperature float64, chance bool) activity.WeatherStep {
+	return activity.WeatherStep{
+		At:                              at,
+		Step:                            time.Hour,
 		TemperatureCelsius:              temperature,
 		ApparentTemperatureCelsius:      temperature - 1,
 		PrecipitationMillimetres:        0.4,
@@ -28,21 +29,21 @@ func weatherHour(at time.Time, temperature float64, chance bool) activity.Weathe
 func TestActivityWeatherRoundTrips(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
-	hours := []activity.WeatherHour{
-		weatherHour(activityNow(), 18, true),
-		weatherHour(activityNow().Add(time.Hour), 20, true),
+	steps := []activity.WeatherStep{
+		weatherStep(activityNow(), 18, true),
+		weatherStep(activityNow().Add(time.Hour), 20, true),
 	}
 
-	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 1, hours, activityNow()),
+	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 1, steps, activityNow()),
 		"StoreActivityWeather()")
 
-	read, err := store.ActivityWeatherHours(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityWeatherHours()")
+	read, err := store.ActivityWeatherSteps(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityWeatherSteps()")
 	require.Len(t, read, 2)
-	assert.Equal(t, hours[0], read[0])
-	assert.Equal(t, hours[1], read[1])
+	assert.Equal(t, steps[0], read[0])
+	assert.Equal(t, steps[1], read[1])
 
-	// The listing reads a summary rather than the hours, summed in SQL.
+	// The listing reads a summary rather than the steps, summed in SQL.
 	summaries, err := store.ActivityWeatherSummaries(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityWeatherSummaries()")
 	assert.Equal(t, activity.WeatherSummary{
@@ -61,11 +62,11 @@ func TestActivityWeatherKeepsAnAbsentProbabilityAbsent(t *testing.T) {
 	store := metricsStore(t, 1)
 
 	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 1,
-		[]activity.WeatherHour{weatherHour(activityNow(), 18, false)}, activityNow()),
+		[]activity.WeatherStep{weatherStep(activityNow(), 18, false)}, activityNow()),
 		"StoreActivityWeather()")
 
-	read, err := store.ActivityWeatherHours(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityWeatherHours()")
+	read, err := store.ActivityWeatherSteps(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityWeatherSteps()")
 	require.Len(t, read, 1)
 	assert.False(t, read[0].HasPrecipitationProbability)
 	assert.Zero(t, read[0].PrecipitationProbabilityPercent)
@@ -82,7 +83,7 @@ func TestActivitiesAwaitingWeatherSkipsWhatWasAlreadyAsked(t *testing.T) {
 		}), "StoreActivityRecords()")
 	}
 	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 1,
-		[]activity.WeatherHour{weatherHour(activityNow(), 18, true)}, activityNow()),
+		[]activity.WeatherStep{weatherStep(activityNow(), 18, true)}, activityNow()),
 		"StoreActivityWeather() with rows")
 	// A read that found nothing still records the asking, which is what keeps a
 	// ride the provider has nothing for from being asked again on every run.
@@ -121,24 +122,35 @@ func TestActivitiesAwaitingWeatherHonoursTheLimit(t *testing.T) {
 	assert.Len(t, pending, 2)
 }
 
-// A second read replaces the hours whole rather than adding to them.
+// A second read replaces the steps whole rather than adding to them.
 func TestStoreActivityWeatherReplacesWhatWasThere(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
 	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 1,
-		[]activity.WeatherHour{
-			weatherHour(activityNow(), 18, true),
-			weatherHour(activityNow().Add(time.Hour), 20, true),
+		[]activity.WeatherStep{
+			weatherStep(activityNow(), 18, true),
+			weatherStep(activityNow().Add(time.Hour), 20, true),
 		}, activityNow()), "StoreActivityWeather()")
 
 	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 1,
-		[]activity.WeatherHour{weatherHour(activityNow(), 5, true)}, activityNow()),
+		[]activity.WeatherStep{weatherStep(activityNow(), 5, true)}, activityNow()),
 		"StoreActivityWeather() again")
 
-	read, err := store.ActivityWeatherHours(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityWeatherHours()")
+	read, err := store.ActivityWeatherSteps(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityWeatherSteps()")
 	require.Len(t, read, 1)
 	assert.InDelta(t, 5.0, read[0].TemperatureCelsius, 1e-9)
+}
+
+// A step for a ride this store never stored violates the foreign key rather
+// than being written orphaned.
+func TestStoreActivityWeatherReportsAWriteFailureForAnUnstoredRide(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	err := store.StoreActivityWeather(t.Context(), "rider-a", 99,
+		[]activity.WeatherStep{weatherStep(activityNow(), 18, true)}, activityNow())
+	require.ErrorContains(t, err, "recording an activity weather step")
 }
 
 func TestActivityWeatherReportsAnUnreadableStore(t *testing.T) {
@@ -148,7 +160,7 @@ func TestActivityWeatherReportsAnUnreadableStore(t *testing.T) {
 
 	_, err := store.ActivityWeatherSummaries(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the activity weather")
-	_, err = store.ActivityWeatherHours(t.Context(), "rider-a", 1)
+	_, err = store.ActivityWeatherSteps(t.Context(), "rider-a", 1)
 	require.ErrorContains(t, err, "reading the activity weather")
 	_, err = store.ActivitiesAwaitingWeather(t.Context(), "rider-a", 10)
 	require.ErrorContains(t, err, "listing activities awaiting weather")

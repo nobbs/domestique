@@ -96,6 +96,7 @@ type ActivityWeather struct {
 	WindDirectionDegrees            float64
 	WeatherCode                     int64
 	CloudCoverPercent               float64
+	StepSeconds                     int64
 }
 
 type ActivityWeatherRead struct {

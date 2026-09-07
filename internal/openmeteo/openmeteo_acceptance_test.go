@@ -64,18 +64,22 @@ func TestOpenMeteoHistoryAcceptance(t *testing.T) {
 	today := time.Now().In(berlin)
 
 	at := []openmeteo.Coordinate{{Latitude: 49.0, Longitude: 8.4}, {Latitude: 49.2, Longitude: 8.6}}
+	// wantStep is what each window should come back at: the forecast endpoint
+	// answers the recent past every quarter hour, the reanalysis only ever by
+	// the hour. A fixture cannot say which the provider will actually honour.
 	for name, test := range map[string]struct {
+		wantStep        time.Duration
 		daysAgo         int
 		wantProbability bool
 	}{
-		"today":                     {daysAgo: 0, wantProbability: true},
-		"yesterday":                 {daysAgo: 1, wantProbability: true},
-		"the day the archive takes": {daysAgo: 2},
-		"a month back":              {daysAgo: 30},
+		"today":                     {daysAgo: 0, wantProbability: true, wantStep: 15 * time.Minute},
+		"yesterday":                 {daysAgo: 1, wantProbability: true, wantStep: 15 * time.Minute},
+		"the day the archive takes": {daysAgo: 2, wantStep: time.Hour},
+		"a month back":              {daysAgo: 30, wantStep: time.Hour},
 		// Past where the forecast endpoint stops holding values, which is the
 		// boundary this split exists to stay clear of.
-		"four months back": {daysAgo: 120},
-		"last year":        {daysAgo: 400},
+		"four months back": {daysAgo: 120, wantStep: time.Hour},
+		"last year":        {daysAgo: 400, wantStep: time.Hour},
 	} {
 		t.Run(name, func(t *testing.T) {
 			from := pastWindowStart(today, test.daysAgo)
@@ -84,8 +88,15 @@ func TestOpenMeteoHistoryAcceptance(t *testing.T) {
 			require.Len(t, hourlies, len(at), "one series per coordinate")
 
 			for index, one := range hourlies {
-				require.NotEmpty(t, one.Time, "coordinate %d: the provider held hours", index)
+				require.NotEmpty(t, one.Time, "coordinate %d: the provider held steps", index)
 				require.Len(t, one.TemperatureCelsius, len(one.Time), "aligned with its timestamps")
+				assert.Equal(t, test.wantStep, one.Step, "coordinate %d: the step asked for", index)
+			}
+
+			// Two hours at the quarter hour is nine steps, at the hour three: the
+			// finer request is worth nothing if the provider answers it coarsely.
+			if test.wantStep < time.Hour {
+				assert.Len(t, hourlies[0].Time, 9, "a two-hour window, every quarter of an hour")
 			}
 
 			probability := hourlies[0].PrecipitationProbabilityPercent

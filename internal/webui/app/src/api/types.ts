@@ -19,7 +19,7 @@ import {
   type RiderParameters,
   type RiderProfile,
   type RiderSuggestions,
-  type RideWeatherHour,
+  type RideWeatherStep,
   type Route,
   type RouteValidation,
   type Settings,
@@ -63,7 +63,7 @@ export type {
   RiderParameters,
   RiderProfile,
   RiderSuggestions,
-  RideWeatherHour,
+  RideWeatherStep,
   Route,
   RouteValidation,
   Settings,
@@ -130,8 +130,8 @@ export interface ActivityTrack {
   bbox?: BoundingBox | undefined;
   coordinates: Position[];
   state: ActivityTrackState;
-  /** What the ride was ridden through, by the hour. Absent where nothing was asked. */
-  weather?: RideWeatherHour[] | undefined;
+  /** What the ride was ridden through, by the step. Absent where nothing was asked. */
+  weather?: RideWeatherStep[] | undefined;
 }
 
 export type ActivityTrackState = ActivityTrackPropertiesState;

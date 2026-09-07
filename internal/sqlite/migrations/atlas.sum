@@ -1,4 +1,4 @@
-h1:y/VpbZvvLtxxk7rd33WXgdyQvfIes6MzE7zcOEq7XzA=
+h1:D+9c6UeKrsjsWw5nbFaKGTjMr39YQRYtBW8oF1yGsoY=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -33,3 +33,5 @@ h1:y/VpbZvvLtxxk7rd33WXgdyQvfIes6MzE7zcOEq7XzA=
 000042_activity_weather.up.sql h1:CgO7hf7geVh7u8HViWwvq3JK4Vt4AC2ASb2GDyl0dwg=
 000043_activity_averages.down.sql h1:5cCMOzYJZeQOzBFeEeAJ0ajuUTlAN0f0TA99wmWQV+M=
 000043_activity_averages.up.sql h1:t/v1vgCjuipMbfY6tHOkCLIoER5bGS30am77UoWIL34=
+000044_activity_weather_step.down.sql h1:XMEZjLfXLqfxsPje8VpnVVdS4wrRz7mqXHxeKnLE5jE=
+000044_activity_weather_step.up.sql h1:RF1sGEcM3lq1pi+B1DG/onxPAR2PuSX9Gj2bpiQmysw=

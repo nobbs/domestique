@@ -1,10 +1,11 @@
 -- name: InsertActivityWeather :exec
 INSERT INTO activity_weather (
-  target_slot, workout_id, hour_unix, temperature_celsius, apparent_temperature_celsius,
+  target_slot, workout_id, hour_unix, step_seconds, temperature_celsius, apparent_temperature_celsius,
   precipitation_millimetres, precipitation_probability_percent, wind_speed_kmh,
   wind_direction_degrees, weather_code, cloud_cover_percent
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id, hour_unix) DO UPDATE SET
+  step_seconds = excluded.step_seconds,
   temperature_celsius = excluded.temperature_celsius,
   apparent_temperature_celsius = excluded.apparent_temperature_celsius,
   precipitation_millimetres = excluded.precipitation_millimetres,
@@ -36,9 +37,9 @@ WHERE a.target_slot = sqlc.arg(target_slot)
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
 LIMIT sqlc.arg(row_limit);
 
--- One row per ride rather than one per hour: the listing wants a line about each
--- ride, and a rider with years of history has an hour of weather for every hour
--- they have ridden. The wind is a mean speed and never a mean direction: a
+-- One row per ride rather than one per step: the listing wants a line about
+-- each ride, and a rider with years of history has a step of weather for every
+-- step they have ridden. The wind is a mean speed and never a mean direction: a
 -- bearing does not average, so the summary carries none.
 -- name: SummariseActivityWeather :many
 SELECT workout_id,
@@ -52,8 +53,11 @@ WHERE target_slot = ?
 GROUP BY workout_id
 ORDER BY workout_id;
 
--- name: ListActivityWeatherHours :many
-SELECT hour_unix, temperature_celsius, apparent_temperature_celsius,
+-- Aliased to at_unix rather than the stored hour_unix: the column keeps its
+-- name so a preceding release can still read and write it, but every step of
+-- a ride is not necessarily an hour any more.
+-- name: ListActivityWeatherSteps :many
+SELECT hour_unix AS at_unix, step_seconds, temperature_celsius, apparent_temperature_celsius,
   precipitation_millimetres, precipitation_probability_percent, wind_speed_kmh,
   wind_direction_degrees, weather_code, cloud_cover_percent
 FROM activity_weather

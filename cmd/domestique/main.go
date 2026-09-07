@@ -189,19 +189,7 @@ func run(ctx context.Context) error {
 	}
 	// No upstream of its own: it reads the samples the two above stored and the
 	// rider's own profile, which is why a profile edit can start it directly.
-	// Adapted the same way httpapi's forecast is, and for the same reason: the
-	// activity package is kept to primitive types so it never imports this
-	// adapter. History rather than Forecast — a stored ride is in the past.
-	rideWeather := activity.WeatherFunc(func(
-		ctx context.Context, latitudes, longitudes []float64, from, to time.Time,
-	) ([]activity.WeatherSeries, error) {
-		hourlies, historyErr := weatherProvider.History(ctx, weatherCoordinates(latitudes, longitudes), from, to)
-		if historyErr != nil {
-			return nil, historyErr //nolint:wrapcheck // the boundary discards the detail rather than reflecting it
-		}
-
-		return rideWeatherSeriesOf(hourlies), nil
-	})
+	rideWeather := rideWeatherAdapter(weatherProvider)
 	activityDeriver, err := activity.NewDeriver(store, store, rideWeather, time.Now)
 	if err != nil {
 		return fmt.Errorf("creating the activity deriver: %w", err)
@@ -452,10 +440,31 @@ func weatherCoordinates(latitudes, longitudes []float64) []openmeteo.Coordinate 
 // rideWeatherSeriesOf is weatherSeriesOf for the activity package's own shape.
 // The two are separate because the packages are: neither imports the other, and
 // a shared type would have to live somewhere both could reach.
-func rideWeatherSeriesOf(hourlies []openmeteo.Hourly) []activity.WeatherSeries {
+// rideWeatherAdapter adapts the Open-Meteo client the same way httpapi's
+// forecast is adapted, and for the same reason: the activity package is kept to
+// primitive types so it never imports this one. History rather than Forecast —
+// a stored ride is in the past.
+func rideWeatherAdapter(provider *openmeteo.Client) activity.WeatherAdapter {
+	return activity.WeatherAdapter{
+		Read: func(
+			ctx context.Context, latitudes, longitudes []float64, from, to time.Time,
+		) ([]activity.WeatherSeries, error) {
+			series, historyErr := provider.History(ctx, weatherCoordinates(latitudes, longitudes), from, to)
+			if historyErr != nil {
+				return nil, historyErr //nolint:wrapcheck // the boundary discards the detail rather than reflecting it
+			}
+
+			return rideWeatherSeriesOf(series), nil
+		},
+		Step: provider.StepFor,
+	}
+}
+
+func rideWeatherSeriesOf(hourlies []openmeteo.Series) []activity.WeatherSeries {
 	series := make([]activity.WeatherSeries, len(hourlies))
 	for index := range hourlies {
 		series[index] = activity.WeatherSeries{
+			Step:                            hourlies[index].Step,
 			Time:                            hourlies[index].Time,
 			TemperatureCelsius:              hourlies[index].TemperatureCelsius,
 			ApparentTemperatureCelsius:      hourlies[index].ApparentTemperatureCelsius,
@@ -471,7 +480,7 @@ func rideWeatherSeriesOf(hourlies []openmeteo.Hourly) []activity.WeatherSeries {
 	return series
 }
 
-func weatherSeriesOf(hourlies []openmeteo.Hourly) []httpapi.WeatherSeries {
+func weatherSeriesOf(hourlies []openmeteo.Series) []httpapi.WeatherSeries {
 	series := make([]httpapi.WeatherSeries, len(hourlies))
 	for i := range hourlies {
 		series[i] = httpapi.WeatherSeries{

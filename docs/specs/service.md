@@ -500,18 +500,21 @@ The read-only JSON surface is small:
   sample recorded none. The altitudes are omitted entirely, never all null, when
   no positioned sample recorded one.
 
-  Beside them, one row per hour of the ride, what it was actually ridden
+  Beside them, one row per step of the ride, what it was actually ridden
   through: temperature, apparent temperature, precipitation, wind speed and
-  direction, cloud cover and a weather code. The probability of precipitation is
-  among them only for a ride of the last day or two, which the forecast provider
-  answers for; anything older is answered by reanalysis, which records what fell
-  rather than what might have and carries no such figure. An hour the provider
-  held no reading for is left out entirely rather than carried as a row of
-  zeroes, so every hour served was measured. The whole array is absent both
-  for a ride nobody has asked about and for one that was asked about and had
-  nothing to answer — a ride with no usable track, or a place and time the
-  provider holds no data for. Absence is therefore "there is no weather to
-  show", never "it has not been read yet".
+  direction, cloud cover and a weather code. Each row says how long its step
+  covers, so a reader can tell a quarter hour from an hour rather than inferring
+  it from the spacing: a ride of the last day or two is answered by the forecast
+  provider every quarter hour, anything older by hourly reanalysis, and a ride
+  keeps the step it was first given. The probability of precipitation is among
+  them only for the recent ride the forecast provider answers for; the
+  reanalysis records what fell rather than what might have and carries no such
+  figure. A step the provider held no reading for is left out entirely rather
+  than carried as a row of zeroes, so every step served was measured. The whole
+  array is absent both for a ride nobody has asked about and for one that was
+  asked about and had nothing to answer — a ride with no usable track, or a
+  place and time the provider holds no data for. Absence is therefore "there is
+  no weather to show", never "it has not been read yet".
 
   Beside them, and only where one was worked out, the **estimated** power at
   each coordinate, indexed the same way and named `estimatedPowerWatts` rather

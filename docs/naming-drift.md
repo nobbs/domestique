@@ -118,6 +118,23 @@ schema — the compatibility harness requires that release to open the database,
 and the column is `NOT NULL` with a default, so removing it needs a table
 rebuild rather than a `DROP COLUMN`.
 
+## 19. `activity_weather.hour_unix` no longer names an hour
+
+A ride's weather is stored one row per *step*, which is a quarter of an hour for
+a ride the forecast endpoint answered and an hour for one the reanalysis did.
+The Go type is `activity.WeatherStep` with an `At` and a `Step`, and the wire
+carries `stepSeconds`, but the columns underneath are still
+`activity_weather.hour_unix` and `activity_weather_reads.hours`
+(`internal/sqlite/migrations/000042_activity_weather.up.sql:11`, `:34`). The
+read query already aliases `hour_unix AS at_unix` so nothing above the store
+reads the old word.
+
+**Proposed:** rename them to `at_unix` and `steps`. Not done with the change
+that made the names wrong, because [service.md](specs/service.md) requires every
+migration to leave the previous release's binary able to read and write what it
+already did, and that release reads `hour_unix` by name. The rename waits for a
+release that never did.
+
 ## Suggested order
 
 1. Item 16's comments, which touch no contract and need no compiler.
@@ -129,3 +146,5 @@ rebuild rather than a `DROP COLUMN`.
 5. Item 17, a migration and a rename together, on its own terms.
 6. Item 18, whenever a release that never read the column is the oldest one
    supported.
+7. Item 19, on the same terms as item 18 and ideally in the same migration:
+   both are renames the compatibility window forbids today.

@@ -225,8 +225,8 @@ type ActivityState interface {
 	// ActivityRideLoads is every derived ride of one target with the moment it
 	// was ridden, oldest first: the whole of what a fitness timeline folds.
 	ActivityRideLoads(ctx context.Context, targetID string) ([]trainingload.RideLoad, error)
-	// ActivityWeatherHours is one ride's own hours, in order.
-	ActivityWeatherHours(ctx context.Context, targetID string, id int64) ([]activities.WeatherHour, error)
+	// ActivityWeatherSteps is one ride's own steps, in order.
+	ActivityWeatherSteps(ctx context.Context, targetID string, id int64) ([]activities.WeatherStep, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.

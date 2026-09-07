@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -233,7 +234,7 @@ func TestWeatherSeriesOfConvertsEveryField(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
-	series := weatherSeriesOf([]openmeteo.Hourly{
+	series := weatherSeriesOf([]openmeteo.Series{
 		{
 			Time:                            []time.Time{now},
 			TemperatureCelsius:              []float64{18.4},
@@ -260,13 +261,72 @@ func TestWeatherSeriesOfConvertsEveryField(t *testing.T) {
 	}, series[0])
 }
 
+// The adapter is what the deriver actually calls: it must hand the coordinates
+// to the client, carry the step back, and pass a provider failure through
+// rather than reporting an empty answer.
+func TestRideWeatherAdapterAsksTheClientAndCarriesTheStep(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "50.11,49.2", request.URL.Query().Get("latitude"), "both coordinates, in order")
+		writer.Header().Set("Content-Type", "application/json")
+		_, writeErr := writer.Write([]byte(`[
+			{"minutely_15":{"time":["2026-08-24T08:15"],
+				"temperature_2m":[18.4],"apparent_temperature":[17.1],"precipitation":[0],
+				"precipitation_probability":[10],"wind_speed_10m":[12.3],
+				"wind_direction_10m":[240],"weather_code":[1],"cloud_cover":[50]}},
+			{"minutely_15":{"time":["2026-08-24T08:15"],
+				"temperature_2m":[17.0],"apparent_temperature":[16.0],"precipitation":[0],
+				"precipitation_probability":[5],"wind_speed_10m":[10.0],
+				"wind_direction_10m":[200],"weather_code":[0],"cloud_cover":[20]}}
+		]`))
+		assert.NoError(t, writeErr, "writing the response")
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC)
+	provider, err := openmeteo.New(&openmeteo.Options{
+		BaseURL: server.URL, ArchiveBaseURL: server.URL, Timeout: time.Second,
+		Transport: server.Client().Transport, Now: func() time.Time { return now },
+	})
+	require.NoError(t, err, "New()")
+	adapter := rideWeatherAdapter(provider)
+
+	from := now.Add(-2 * time.Hour)
+	series, err := adapter.History(t.Context(), []float64{50.11, 49.2}, []float64{8.68, 8.6}, from, now)
+	require.NoError(t, err)
+	require.Len(t, series, 2)
+	assert.Equal(t, []float64{18.4}, series[0].TemperatureCelsius)
+	assert.Equal(t, 15*time.Minute, series[0].Step, "the step the provider answered at")
+
+	assert.Equal(t, 15*time.Minute, adapter.StepFor(from), "a recent ride, by the quarter hour")
+	assert.Equal(t, time.Hour, adapter.StepFor(now.AddDate(0, 0, -30)), "an old one, by the hour")
+}
+
+// A provider failure is the deriver's cue to try again rather than to record an
+// answer, so it must not arrive as an empty set of series.
+func TestRideWeatherAdapterPassesAProviderFailureThrough(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusBadGateway)
+	}))
+	defer server.Close()
+
+	provider, err := openmeteo.New(&openmeteo.Options{
+		BaseURL: server.URL, ArchiveBaseURL: server.URL, Timeout: time.Second,
+		Transport: server.Client().Transport,
+	})
+	require.NoError(t, err, "New()")
+
+	_, err = rideWeatherAdapter(provider).History(
+		t.Context(), []float64{50.11}, []float64{8.68}, time.Now().Add(-time.Hour), time.Now())
+	require.Error(t, err)
+}
+
 // The activity package has its own shape for the same eight series, because
 // neither package imports the other.
 func TestRideWeatherSeriesOfConvertsEveryField(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
-	series := rideWeatherSeriesOf([]openmeteo.Hourly{
+	series := rideWeatherSeriesOf([]openmeteo.Series{
 		{
 			Time:                            []time.Time{now},
 			TemperatureCelsius:              []float64{18.4},
@@ -298,7 +358,7 @@ func TestRideWeatherSeriesOfConvertsEveryField(t *testing.T) {
 func TestRideWeatherSeriesOfKeepsAnAbsentProbabilityAbsent(t *testing.T) {
 	t.Parallel()
 
-	series := rideWeatherSeriesOf([]openmeteo.Hourly{{
+	series := rideWeatherSeriesOf([]openmeteo.Series{{
 		Time:               []time.Time{time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)},
 		TemperatureCelsius: []float64{18.4},
 	}})
