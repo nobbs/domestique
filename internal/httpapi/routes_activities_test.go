@@ -114,11 +114,11 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 // moved over, the wind, and the whole of what fell.
 func TestGetActivitiesSummarisesTheWeatherEachRideWasRiddenThrough(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
-	state.activityWeather = map[string]map[int64][]activities.WeatherHour{
+	state.activityWeather = map[string]map[int64][]activities.WeatherStep{
 		"rider-a": {1: {
-			{Hour: activityClock(), TemperatureCelsius: 12, PrecipitationMillimetres: 0.4,
+			{At: activityClock(), Step: time.Hour, TemperatureCelsius: 12, PrecipitationMillimetres: 0.4,
 				WindSpeedKMH: 10, WeatherCode: 61},
-			{Hour: activityClock().Add(time.Hour), TemperatureCelsius: 18,
+			{At: activityClock().Add(time.Hour), Step: time.Hour, TemperatureCelsius: 18,
 				PrecipitationMillimetres: 0.2, WindSpeedKMH: 20, WeatherCode: 3},
 		}},
 	}
@@ -132,19 +132,19 @@ func TestGetActivitiesSummarisesTheWeatherEachRideWasRiddenThrough(t *testing.T)
 	require.NotNil(t, summary, "the ride that was asked about")
 	assert.InDelta(t, 12.0, summary.TemperatureMinCelsius, 1e-9)
 	assert.InDelta(t, 18.0, summary.TemperatureMaxCelsius, 1e-9)
-	assert.InDelta(t, 15.0, summary.WindSpeedKmh, 1e-9, "the mean over the hours")
+	assert.InDelta(t, 15.0, summary.WindSpeedKmh, 1e-9, "the mean over the steps")
 	assert.InDelta(t, 0.6, summary.PrecipitationMillimetres, 1e-9, "the whole of what fell")
-	assert.Equal(t, 61, summary.WeatherCode, "the worst hour, not a mean of codes")
+	assert.Equal(t, 61, summary.WeatherCode, "the worst step, not a mean of codes")
 	assert.Nil(t, list.Activities[1].Weather, "and a ride nobody asked about carries none")
 }
 
-// The ride page's strip is one row per hour, on the endpoint the page already
+// The ride page's strip is one row per step, on the endpoint the page already
 // fetches for the track.
-func TestGetActivityTrackCarriesTheHoursTheRideWasRiddenThrough(t *testing.T) {
+func TestGetActivityTrackCarriesTheStepsTheRideWasRiddenThrough(t *testing.T) {
 	state := trackState("rider-a")
-	state.activityWeather = map[string]map[int64][]activities.WeatherHour{
+	state.activityWeather = map[string]map[int64][]activities.WeatherStep{
 		"rider-a": {1: {{
-			Hour: activityClock(), TemperatureCelsius: 12, ApparentTemperatureCelsius: 10,
+			At: activityClock(), Step: time.Hour, TemperatureCelsius: 12, ApparentTemperatureCelsius: 10,
 			PrecipitationMillimetres: 0.4, WindSpeedKMH: 10, WindDirectionDegrees: 240,
 			CloudCoverPercent: 55, WeatherCode: 61,
 		}}},
@@ -157,6 +157,26 @@ func TestGetActivityTrackCarriesTheHoursTheRideWasRiddenThrough(t *testing.T) {
 	assert.InDelta(t, 12.0, view.Properties.Weather[0].TemperatureCelsius, 1e-9)
 	assert.Nil(t, view.Properties.Weather[0].PrecipitationProbabilityPercent,
 		"the reanalysis carries none, and none is invented")
+}
+
+// A recent ride is answered by the quarter hour rather than the hour, and
+// carries a chance of rain the reanalysis does not.
+func TestGetActivityTrackCarriesAQuarterHourStepWithItsChanceOfRain(t *testing.T) {
+	state := trackState("rider-a")
+	state.activityWeather = map[string]map[int64][]activities.WeatherStep{
+		"rider-a": {1: {{
+			At: activityClock(), Step: 15 * time.Minute, TemperatureCelsius: 12,
+			PrecipitationProbabilityPercent: 40, HasPrecipitationProbability: true,
+		}}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, view.Properties.Weather, 1)
+	assert.Equal(t, 900, view.Properties.Weather[0].StepSeconds)
+	require.NotNil(t, view.Properties.Weather[0].PrecipitationProbabilityPercent)
+	assert.InDelta(t, 40.0, *view.Properties.Weather[0].PrecipitationProbabilityPercent, 1e-9)
 }
 
 func TestGetActivityTrackOmitsTheWeatherOfARideNobodyAskedAbout(t *testing.T) {

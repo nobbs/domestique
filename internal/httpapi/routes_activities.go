@@ -11,7 +11,7 @@ import (
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
-// weatherSummary is the wire form of what a ride's hours came to. A ride nobody
+// weatherSummary is the wire form of what a ride's steps came to. A ride nobody
 // has asked about, and one that was asked and had nothing to answer, carry none
 // at all rather than a row of zeroes.
 func weatherSummary(summary activities.WeatherSummary) *openapi.ActivityWeatherSummary {
@@ -24,26 +24,27 @@ func weatherSummary(summary activities.WeatherSummary) *openapi.ActivityWeatherS
 	}
 }
 
-// rideWeatherHours is the wire form of one ride's hours.
-func rideWeatherHours(hours []activities.WeatherHour) []openapi.RideWeatherHour {
-	if len(hours) == 0 {
+// rideWeatherSteps is the wire form of one ride's steps.
+func rideWeatherSteps(steps []activities.WeatherStep) []openapi.RideWeatherStep {
+	if len(steps) == 0 {
 		return nil
 	}
-	view := make([]openapi.RideWeatherHour, 0, len(hours))
-	for index := range hours {
-		hour := &hours[index]
-		one := openapi.RideWeatherHour{
-			Time:                       wireTime(hour.Hour),
-			TemperatureCelsius:         hour.TemperatureCelsius,
-			ApparentTemperatureCelsius: hour.ApparentTemperatureCelsius,
-			PrecipitationMillimetres:   hour.PrecipitationMillimetres,
-			WindSpeedKmh:               hour.WindSpeedKMH,
-			WindDirectionDegrees:       hour.WindDirectionDegrees,
-			WeatherCode:                hour.WeatherCode,
-			CloudCoverPercent:          hour.CloudCoverPercent,
+	view := make([]openapi.RideWeatherStep, 0, len(steps))
+	for index := range steps {
+		step := &steps[index]
+		one := openapi.RideWeatherStep{
+			Time:                       wireTime(step.At),
+			StepSeconds:                int(step.Step.Seconds()),
+			TemperatureCelsius:         step.TemperatureCelsius,
+			ApparentTemperatureCelsius: step.ApparentTemperatureCelsius,
+			PrecipitationMillimetres:   step.PrecipitationMillimetres,
+			WindSpeedKmh:               step.WindSpeedKMH,
+			WindDirectionDegrees:       step.WindDirectionDegrees,
+			WeatherCode:                step.WeatherCode,
+			CloudCoverPercent:          step.CloudCoverPercent,
 		}
-		if hour.HasPrecipitationProbability {
-			one.PrecipitationProbabilityPercent = &hours[index].PrecipitationProbabilityPercent
+		if step.HasPrecipitationProbability {
+			one.PrecipitationProbabilityPercent = &steps[index].PrecipitationProbabilityPercent
 		}
 		view = append(view, one)
 	}
@@ -207,7 +208,7 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 
 		return
 	}
-	hours, weatherErr := h.state.ActivityWeatherHours(request.Context(), targetID, id)
+	steps, weatherErr := h.state.ActivityWeatherSteps(request.Context(), targetID, id)
 	if weatherErr != nil {
 		h.unavailable(writer)
 
@@ -215,7 +216,7 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 	}
 
 	writer.Header().Set("Content-Type", "application/geo+json")
-	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track, recordsState, hours))
+	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track, recordsState, steps))
 }
 
 // GetActivitySeries serves one named series of one activity's samples, scoped
@@ -290,7 +291,7 @@ func seriesValues(readings []activities.Reading) []*float64 {
 // box around it, and the altitudes beside it — null where a sample recorded
 // none, absent only when none did. A ride with no line carries only its state.
 func activityTrackFeature(
-	track []activities.TrackPoint, state activities.RecordsState, hours []activities.WeatherHour,
+	track []activities.TrackPoint, state activities.RecordsState, steps []activities.WeatherStep,
 ) activityTrackView {
 	if len(track) < 2 {
 		// No line to draw, but a ride sampled at one point still has weather, and
@@ -299,7 +300,7 @@ func activityTrackFeature(
 			Type: "Feature",
 			Properties: activityTrackPropertyView{
 				State:   absentTrackState(state),
-				Weather: rideWeatherHours(hours),
+				Weather: rideWeatherSteps(steps),
 			},
 		}
 	}
@@ -343,7 +344,7 @@ func activityTrackFeature(
 	if anyEstimate {
 		view.Properties.EstimatedPowerWatts = estimates
 	}
-	view.Properties.Weather = rideWeatherHours(hours)
+	view.Properties.Weather = rideWeatherSteps(steps)
 
 	return view
 }

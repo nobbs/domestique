@@ -123,9 +123,10 @@ type activityTrackPropertyView struct {
 	// bicycle carrying no meter, indexed the same way. Its own field rather than
 	// a power field, so nothing can serve it as a measurement.
 	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
-	// Weather is what the ride was actually ridden through, one row per hour of
-	// it rather than one per coordinate: the provider answers by the hour.
-	Weather []openapi.RideWeatherHour `json:"weather,omitempty"`
+	// Weather is what the ride was actually ridden through, one row per step of
+	// it rather than one per coordinate: the provider answers by the hour or the
+	// quarter hour, and a ride keeps whichever step it was first given.
+	Weather []openapi.RideWeatherStep `json:"weather,omitempty"`
 }
 
 // activitySeriesView is one named series of one ride's samples, indexed 1:1

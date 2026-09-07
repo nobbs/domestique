@@ -432,11 +432,23 @@ func newHistoryClient(t *testing.T, server *httptest.Server) *Client {
 	return client
 }
 
-const historyBody = `{"hourly":{"time":["2026-08-24T08:00"],
+const historyBody = `{"minutely_15":{"time":["2026-08-24T08:15"],
 	"temperature_2m":[18.4],
 	"apparent_temperature":[17.1],
 	"precipitation":[0],
 	"precipitation_probability":[10],
+	"wind_speed_10m":[12.3],
+	"wind_direction_10m":[240],
+	"weather_code":[1],
+	"cloud_cover":[50]}}`
+
+// A quarter-hourly block with no probability of precipitation, which only the
+// reanalysis may answer with: shaped like a forecast, so refusing it is about
+// the missing series and not the missing block.
+const quarterBodyWithoutProbability = `{"minutely_15":{"time":["2026-08-24T08:15"],
+	"temperature_2m":[18.4],
+	"apparent_temperature":[17.1],
+	"precipitation":[0],
 	"wind_speed_10m":[12.3],
 	"wind_direction_10m":[240],
 	"weather_code":[1],
@@ -461,11 +473,13 @@ func TestHistoryAsksTheForecastEndpointForARecentRide(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "/v1/forecast", request.URL.Path)
 		query := request.URL.Query()
-		assert.Empty(t, query.Get("past_days"), "refused beside an hour range")
+		assert.Empty(t, query.Get("past_days"), "refused beside a range")
 		assert.Empty(t, query.Get("forecast_days"), "and so is its companion")
-		assert.Equal(t, "2026-08-23T10:00", query.Get("start_hour"))
-		assert.Equal(t, "2026-08-23T12:00", query.Get("end_hour"))
-		assert.Contains(t, query.Get("hourly"), "precipitation_probability")
+		assert.Equal(t, "2026-08-23T10:00", query.Get("start_minutely_15"))
+		assert.Equal(t, "2026-08-23T12:00", query.Get("end_minutely_15"))
+		assert.Contains(t, query.Get("minutely_15"), "precipitation_probability")
+		assert.Empty(t, query.Get("hourly"), "the hourly block is not asked for")
+		assert.Empty(t, query.Get("start_hour"), "and its bounds address only that one")
 		assert.Empty(t, query.Get("start_date"), "the archive's parameters are not this endpoint's")
 
 		writer.Header().Set("Content-Type", "application/json")
@@ -479,6 +493,7 @@ func TestHistoryAsksTheForecastEndpointForARecentRide(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	assert.Equal(t, []float64{10}, result[0].PrecipitationProbabilityPercent)
+	assert.Equal(t, quarterHourStep, result[0].Step, "answered by the quarter hour")
 }
 
 // A ride older than the forecast endpoint's reach is asked of the reanalysis
@@ -493,6 +508,7 @@ func TestHistoryAsksTheArchiveForAnOlderRide(t *testing.T) {
 		assert.NotContains(t, query.Get("hourly"), "precipitation_probability",
 			"the reanalysis refuses a series it does not carry")
 		assert.Empty(t, query.Get("past_days"), "the forecast's parameters are not this endpoint's")
+		assert.Empty(t, query.Get("minutely_15"), "there is no sub-hourly reanalysis to ask for")
 
 		writer.Header().Set("Content-Type", "application/json")
 		writeResponse(t, writer, http.StatusOK, archiveBody)
@@ -507,6 +523,7 @@ func TestHistoryAsksTheArchiveForAnOlderRide(t *testing.T) {
 	assert.Equal(t, []float64{18.4}, result[0].TemperatureCelsius)
 	assert.Empty(t, result[0].PrecipitationProbabilityPercent,
 		"absent, rather than a column of invented numbers")
+	assert.Equal(t, time.Hour, result[0].Step, "the reanalysis is hourly and only hourly")
 }
 
 // The boundary itself: the last day the forecast endpoint reaches, and the
@@ -568,7 +585,7 @@ func TestNewRefusesAnArchiveHostThatIsNotAnOrigin(t *testing.T) {
 func TestHistoryRefusesAResponseMissingAColumn(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T08:00","2026-08-24T09:00"],
+		writeResponse(t, writer, http.StatusOK, `{"minutely_15":{"time":["2026-08-24T08:00","2026-08-24T09:00"],
 			"temperature_2m":[18.4],
 			"apparent_temperature":[17.1],
 			"precipitation":[0],
@@ -591,7 +608,7 @@ func TestHistoryRefusesAResponseMissingAColumn(t *testing.T) {
 func TestHistoryRefusesAForecastWithNoProbabilityAtAll(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		writeResponse(t, writer, http.StatusOK, archiveBody)
+		writeResponse(t, writer, http.StatusOK, quarterBodyWithoutProbability)
 	}))
 	defer server.Close()
 
@@ -606,7 +623,7 @@ func TestHistoryRefusesAForecastWithNoProbabilityAtAll(t *testing.T) {
 func TestHistoryRefusesAShortProbabilitySeries(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T08:00","2026-08-24T09:00"],
+		writeResponse(t, writer, http.StatusOK, `{"minutely_15":{"time":["2026-08-24T08:00","2026-08-24T09:00"],
 			"temperature_2m":[18.4,18.5],
 			"apparent_temperature":[17.1,17.2],
 			"precipitation":[0,0],
@@ -659,7 +676,7 @@ func TestHistorySplitsByTheDateNotTheElapsedHours(t *testing.T) {
 func TestHistoryLeavesOutAnHourTheProviderHadNoReadingFor(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		writeResponse(t, writer, http.StatusOK, `{"hourly":{
+		writeResponse(t, writer, http.StatusOK, `{"minutely_15":{
 			"time":["2026-08-24T08:00","2026-08-24T09:00","2026-08-24T10:00"],
 			"temperature_2m":[18.4,null,19.2],
 			"apparent_temperature":[17.1,null,18.0],
@@ -691,7 +708,7 @@ func TestHistoryLeavesOutAnHourTheProviderHadNoReadingFor(t *testing.T) {
 func TestHistoryKeepsAnHourMissingOnlyTheChanceOfRain(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		writeResponse(t, writer, http.StatusOK, `{"hourly":{
+		writeResponse(t, writer, http.StatusOK, `{"minutely_15":{
 			"time":["2026-08-24T08:00"],
 			"temperature_2m":[18.4],
 			"apparent_temperature":[17.1],
@@ -717,7 +734,7 @@ func TestHistoryKeepsAnHourMissingOnlyTheChanceOfRain(t *testing.T) {
 func TestHistoryYieldsNoHoursWhenTheProviderHeldNone(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		writeResponse(t, writer, http.StatusOK, `{"hourly":{
+		writeResponse(t, writer, http.StatusOK, `{"minutely_15":{
 			"time":["2026-08-24T08:00","2026-08-24T09:00"],
 			"temperature_2m":[null,null],
 			"apparent_temperature":[null,null],
@@ -736,6 +753,39 @@ func TestHistoryYieldsNoHoursWhenTheProviderHeldNone(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result, 1)
 	assert.Empty(t, result[0].Time, "nothing was recorded, so nothing is reported")
+}
+
+// StepFor is asked before the request, so it has to agree with the endpoint
+// History will actually choose: a caller that samples once per step and is told
+// the wrong one asks about the wrong number of places.
+func TestStepForAgreesWithTheEndpointHistoryChooses(t *testing.T) {
+	t.Parallel()
+	client, err := New(&Options{Now: historyNow, Timezone: func() string { return "Europe/Berlin" }})
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, quarterHourStep, client.StepFor(historyNow()), "today")
+	assert.Equal(t, quarterHourStep, client.StepFor(historyNow().AddDate(0, 0, -1)), "yesterday")
+	assert.Equal(t, time.Hour, client.StepFor(historyNow().AddDate(0, 0, -2)),
+		"the day the archive takes, which has no sub-hourly reanalysis behind it")
+	assert.Equal(t, time.Hour, client.StepFor(historyNow().AddDate(0, 0, -400)), "last year")
+}
+
+// The zone is a runtime setting, so it can turn unloadable after construction
+// validated it. The split is still made, against the fallback zone.
+func TestStepForFallsBackWhenTheZoneStopsLoading(t *testing.T) {
+	t.Parallel()
+	asked := 0
+	client, err := New(&Options{Now: historyNow, Timezone: func() string {
+		asked++
+		if asked > 1 {
+			return "Not/AZone"
+		}
+
+		return "Europe/Berlin"
+	}})
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, quarterHourStep, client.StepFor(historyNow()))
 }
 
 func TestHistoryRefusesAnEmptyRequest(t *testing.T) {

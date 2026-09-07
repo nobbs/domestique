@@ -1675,7 +1675,7 @@ components:
         windSpeedKmh:
           type: number
           format: double
-          description: The mean over the ride's hours.
+          description: The mean over the ride's steps.
         precipitationMillimetres:
           type: number
           format: double
@@ -1683,14 +1683,15 @@ components:
         weatherCode:
           type: integer
           description: >-
-            The worst of the ride's hours rather than a mean: half a ride in
+            The worst of the ride's steps rather than a mean: half a ride in
             rain was ridden in rain, and a mean of two codes names no weather.
-    RideWeatherHour:
+    RideWeatherStep:
       type: object
       additionalProperties: false
-      description: One hour of what a ride was actually ridden through.
+      description: One step of what a ride was actually ridden through.
       required:
         - time
+        - stepSeconds
         - temperatureCelsius
         - apparentTemperatureCelsius
         - precipitationMillimetres
@@ -1702,6 +1703,12 @@ components:
         time:
           type: string
           format: date-time
+        stepSeconds:
+          type: integer
+          description: >-
+            How long this step covers: 3600 for a ride answered by the
+            reanalysis, 900 for a recent one answered by the forecast
+            endpoint.
         temperatureCelsius:
           type: number
           format: double
@@ -2775,13 +2782,13 @@ components:
             format: double
         weather:
           description: >-
-            What this ride was actually ridden through, one row per hour of it,
+            What this ride was actually ridden through, one row per step of it,
             asked of the weather provider once after the ride's samples were
             stored. Absent for a ride nobody has asked about yet and for one the
             provider had nothing to say about.
           type: array
           items:
-            $ref: '#/components/schemas/RideWeatherHour'
+            $ref: '#/components/schemas/RideWeatherStep'
         estimatedPowerWatts:
           description: >-
             Power this service worked out from the track itself, for a bicycle

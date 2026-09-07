@@ -26,11 +26,12 @@ func (q *Queries) DeleteActivityWeather(ctx context.Context, arg DeleteActivityW
 
 const insertActivityWeather = `-- name: InsertActivityWeather :exec
 INSERT INTO activity_weather (
-  target_slot, workout_id, hour_unix, temperature_celsius, apparent_temperature_celsius,
+  target_slot, workout_id, hour_unix, step_seconds, temperature_celsius, apparent_temperature_celsius,
   precipitation_millimetres, precipitation_probability_percent, wind_speed_kmh,
   wind_direction_degrees, weather_code, cloud_cover_percent
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id, hour_unix) DO UPDATE SET
+  step_seconds = excluded.step_seconds,
   temperature_celsius = excluded.temperature_celsius,
   apparent_temperature_celsius = excluded.apparent_temperature_celsius,
   precipitation_millimetres = excluded.precipitation_millimetres,
@@ -45,6 +46,7 @@ type InsertActivityWeatherParams struct {
 	TargetSlot                      string
 	WorkoutID                       int64
 	HourUnix                        int64
+	StepSeconds                     int64
 	TemperatureCelsius              float64
 	ApparentTemperatureCelsius      float64
 	PrecipitationMillimetres        float64
@@ -60,6 +62,7 @@ func (q *Queries) InsertActivityWeather(ctx context.Context, arg InsertActivityW
 		arg.TargetSlot,
 		arg.WorkoutID,
 		arg.HourUnix,
+		arg.StepSeconds,
 		arg.TemperatureCelsius,
 		arg.ApparentTemperatureCelsius,
 		arg.PrecipitationMillimetres,
@@ -119,8 +122,8 @@ func (q *Queries) ListActivitiesAwaitingWeather(ctx context.Context, arg ListAct
 	return items, nil
 }
 
-const listActivityWeatherHours = `-- name: ListActivityWeatherHours :many
-SELECT hour_unix, temperature_celsius, apparent_temperature_celsius,
+const listActivityWeatherSteps = `-- name: ListActivityWeatherSteps :many
+SELECT hour_unix AS at_unix, step_seconds, temperature_celsius, apparent_temperature_celsius,
   precipitation_millimetres, precipitation_probability_percent, wind_speed_kmh,
   wind_direction_degrees, weather_code, cloud_cover_percent
 FROM activity_weather
@@ -128,13 +131,14 @@ WHERE target_slot = ? AND workout_id = ?
 ORDER BY hour_unix
 `
 
-type ListActivityWeatherHoursParams struct {
+type ListActivityWeatherStepsParams struct {
 	TargetSlot string
 	WorkoutID  int64
 }
 
-type ListActivityWeatherHoursRow struct {
-	HourUnix                        int64
+type ListActivityWeatherStepsRow struct {
+	AtUnix                          int64
+	StepSeconds                     int64
 	TemperatureCelsius              float64
 	ApparentTemperatureCelsius      float64
 	PrecipitationMillimetres        float64
@@ -145,17 +149,21 @@ type ListActivityWeatherHoursRow struct {
 	CloudCoverPercent               float64
 }
 
-func (q *Queries) ListActivityWeatherHours(ctx context.Context, arg ListActivityWeatherHoursParams) ([]ListActivityWeatherHoursRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActivityWeatherHours, arg.TargetSlot, arg.WorkoutID)
+// Aliased to at_unix rather than the stored hour_unix: the column keeps its
+// name so a preceding release can still read and write it, but every step of
+// a ride is not necessarily an hour any more.
+func (q *Queries) ListActivityWeatherSteps(ctx context.Context, arg ListActivityWeatherStepsParams) ([]ListActivityWeatherStepsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityWeatherSteps, arg.TargetSlot, arg.WorkoutID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListActivityWeatherHoursRow{}
+	items := []ListActivityWeatherStepsRow{}
 	for rows.Next() {
-		var i ListActivityWeatherHoursRow
+		var i ListActivityWeatherStepsRow
 		if err := rows.Scan(
-			&i.HourUnix,
+			&i.AtUnix,
+			&i.StepSeconds,
 			&i.TemperatureCelsius,
 			&i.ApparentTemperatureCelsius,
 			&i.PrecipitationMillimetres,
@@ -225,9 +233,9 @@ type SummariseActivityWeatherRow struct {
 	WeatherCode              int64
 }
 
-// One row per ride rather than one per hour: the listing wants a line about each
-// ride, and a rider with years of history has an hour of weather for every hour
-// they have ridden. The wind is a mean speed and never a mean direction: a
+// One row per ride rather than one per step: the listing wants a line about
+// each ride, and a rider with years of history has a step of weather for every
+// step they have ridden. The wind is a mean speed and never a mean direction: a
 // bearing does not average, so the summary carries none.
 func (q *Queries) SummariseActivityWeather(ctx context.Context, targetSlot string) ([]SummariseActivityWeatherRow, error) {
 	rows, err := q.db.QueryContext(ctx, summariseActivityWeather, targetSlot)

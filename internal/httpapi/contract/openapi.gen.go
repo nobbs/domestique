@@ -142,20 +142,22 @@ type FitnessWeek struct {
 type ActivityWeatherSummary struct {
 	TemperatureMinCelsius float64 `json:"temperatureMinCelsius"`
 	TemperatureMaxCelsius float64 `json:"temperatureMaxCelsius"`
-	// WindSpeedKmh The mean over the ride's hours.
+	// WindSpeedKmh The mean over the ride's steps.
 	WindSpeedKmh float64 `json:"windSpeedKmh"`
 	// PrecipitationMillimetres The whole of what fell over the ride, not an hourly rate.
 	PrecipitationMillimetres float64 `json:"precipitationMillimetres"`
-	// WeatherCode The worst of the ride's hours rather than a mean: half a ride in rain was ridden in rain, and a mean of two codes names no weather.
+	// WeatherCode The worst of the ride's steps rather than a mean: half a ride in rain was ridden in rain, and a mean of two codes names no weather.
 	WeatherCode int `json:"weatherCode"`
 }
 
-// RideWeatherHour One hour of what a ride was actually ridden through.
-type RideWeatherHour struct {
-	Time                       time.Time `json:"time"`
-	TemperatureCelsius         float64   `json:"temperatureCelsius"`
-	ApparentTemperatureCelsius float64   `json:"apparentTemperatureCelsius"`
-	PrecipitationMillimetres   float64   `json:"precipitationMillimetres"`
+// RideWeatherStep One step of what a ride was actually ridden through.
+type RideWeatherStep struct {
+	Time time.Time `json:"time"`
+	// StepSeconds How long this step covers: 3600 for a ride answered by the reanalysis, 900 for a recent one answered by the forecast endpoint.
+	StepSeconds                int     `json:"stepSeconds"`
+	TemperatureCelsius         float64 `json:"temperatureCelsius"`
+	ApparentTemperatureCelsius float64 `json:"apparentTemperatureCelsius"`
+	PrecipitationMillimetres   float64 `json:"precipitationMillimetres"`
 	// PrecipitationProbabilityPercent Absent for a ride old enough to be answered by reanalysis, which records what fell rather than what might have.
 	PrecipitationProbabilityPercent *float64 `json:"precipitationProbabilityPercent,omitempty"`
 	WindSpeedKmh                    float64  `json:"windSpeedKmh"`
@@ -649,8 +651,8 @@ type ActivityTrackProperties struct {
 	State ActivityTrackProperties_State `json:"state"`
 	// AltitudeMetres The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude.
 	AltitudeMetres []float64 `json:"altitudeMetres,omitempty"`
-	// Weather What this ride was actually ridden through, one row per hour of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about.
-	Weather []RideWeatherHour `json:"weather,omitempty"`
+	// Weather What this ride was actually ridden through, one row per step of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about.
+	Weather []RideWeatherStep `json:"weather,omitempty"`
 	// EstimatedPowerWatts Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass.
 	EstimatedPowerWatts []float64 `json:"estimatedPowerWatts,omitempty"`
 }

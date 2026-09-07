@@ -93,7 +93,7 @@ export function ActivityPage() {
                 onActiveChange={setActiveMetres}
               />
             </div>
-            <RideConditions hours={track.data.weather} />
+            <RideConditions steps={track.data.weather} />
             {profile ? (
               <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
                 <ElevationProfile

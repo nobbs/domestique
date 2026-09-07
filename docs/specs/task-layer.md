@@ -316,11 +316,17 @@ rather than one on every run. A provider failure is not recorded that way: it is
 a run to try again, not an answer. A bounded few rides are asked about per
 target per run, so a backfill of a whole stored history never contends with the
 course forecasts a rider is waiting on, and one ride is asked at one coordinate
-per hour of it, both ends included, up to a day's worth. Each stored hour is the
+per step of it, both ends included, up to a day's worth of them. A step is a
+quarter of an hour for a ride recent enough for the forecast endpoint and an
+hour for anything older, which is all the reanalysis behind it has — so the step
+a ride was given is the step it keeps, and a history reaching back years stays
+hourly whatever is asked of it now. That ceiling on coordinates holds whichever
+the step, so a long ride at the finer one is sampled more coarsely in space than
+in time: the weather moves faster than the rider. Each stored step is the
 reading of the coordinate nearest it in time rather than a mean across the
-route, so the hour says what the rider rode through and not what the weather did
+route, so the step says what the rider rode through and not what the weather did
 along the whole of it — a headwind that became a tailwind is the point. A
-weather code is not a quantity: where an hour was asked at more than one
+weather code is not a quantity: where a step was asked at more than one
 coordinate, it keeps the worst of them. Neither pass holds the other back, and
 the run reports whichever came to the more serious thing.
 

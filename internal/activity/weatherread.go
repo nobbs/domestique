@@ -12,10 +12,15 @@ import (
 const weatherRidesPerRun = 20
 
 // maximumWeatherPoints bounds the coordinates one ride is asked about, however
-// long it lasted. A ride is sampled at one point per hour, so this is a day on
-// the bicycle — beyond it the ride is asked about at a coarser spacing rather
-// than with a request nobody's quota can afford.
+// long it lasted and however fine its step. Beyond it the ride is asked about
+// at a coarser spacing rather than with a request nobody's quota can afford: a
+// quarter-hourly ride over six hours is sampled more coarsely in space than in
+// time, which is the right way round — the weather moves faster than the rider.
 const maximumWeatherPoints = 24
+
+// weatherStepFallback is the step assumed for a provider that named none. Only
+// a hand-built source reaches this; both real endpoints say what they answered.
+const weatherStepFallback = time.Hour
 
 // WeatherStore is what recording a ride's weather needs of stored state.
 type WeatherStore interface {
@@ -26,9 +31,9 @@ type WeatherStore interface {
 	// were recorded.
 	ActivityTrack(ctx context.Context, targetID string, id int64) ([]TrackPoint, error)
 	// StoreActivityWeather replaces one ride's weather and records that it was
-	// asked about. An empty set of hours records the asking and nothing else.
+	// asked about. An empty set of steps records the asking and nothing else.
 	StoreActivityWeather(ctx context.Context, targetID string, id int64,
-		hours []WeatherHour, readAt time.Time) error
+		steps []WeatherStep, readAt time.Time) error
 }
 
 // readWeather asks a provider what the rides nobody has asked about were ridden
@@ -70,7 +75,9 @@ func (d *Deriver) readOneRidesWeather(ctx context.Context, targetID string, ride
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 	from, to := ride.StartedAt, ride.StartedAt.Add(time.Duration(ride.ElapsedSeconds)*time.Second)
-	points := weatherPoints(track, from, to)
+	// Asked before the request rather than read off the answer: the coordinates
+	// have to be chosen to match the step, and they travel in that same request.
+	points := weatherPoints(track, from, to, d.weather.StepFor(from))
 	if len(points) == 0 {
 		// A ride with no track has no place to ask about. Recorded as asked all
 		// the same: no later run will find it a track it did not record.
@@ -88,26 +95,29 @@ func (d *Deriver) readOneRidesWeather(ctx context.Context, targetID string, ride
 		return Result{Outcome: Failed, Failure: FailureUpstream}
 	}
 
-	return d.recordWeather(ctx, targetID, ride.ID, hoursOf(series, points, from, to))
+	return d.recordWeather(ctx, targetID, ride.ID, stepsOf(series, points, from, to))
 }
 
-func (d *Deriver) recordWeather(ctx context.Context, targetID string, id int64, hours []WeatherHour) Result {
-	if err := d.weatherStore.StoreActivityWeather(ctx, targetID, id, hours, d.now()); err != nil {
+func (d *Deriver) recordWeather(ctx context.Context, targetID string, id int64, steps []WeatherStep) Result {
+	if err := d.weatherStore.StoreActivityWeather(ctx, targetID, id, steps, d.now()); err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
 	return Result{Outcome: Polled}
 }
 
-// weatherPoints picks where along the ride to ask: one point per hour of it,
+// weatherPoints picks where along the ride to ask: one point per step of it,
 // the first and the last always among them, so a long ride crossing a front is
 // not described by where it happened to start.
-func weatherPoints(track []TrackPoint, from, to time.Time) []TrackPoint {
+func weatherPoints(track []TrackPoint, from, to time.Time, step time.Duration) []TrackPoint {
 	if len(track) == 0 {
 		return nil
 	}
-	hours := int(math.Ceil(to.Sub(from).Hours()))
-	wanted := min(max(hours, 1)+1, maximumWeatherPoints, len(track))
+	if step <= 0 {
+		step = weatherStepFallback
+	}
+	steps := int(math.Ceil(float64(to.Sub(from)) / float64(step)))
+	wanted := min(max(steps, 1)+1, maximumWeatherPoints, len(track))
 	if wanted <= 1 {
 		return track[:1]
 	}
@@ -165,24 +175,25 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
-// hourDistance is how far a moment is from an hour the provider answered for.
-// The label names the hour it opens, so a moment ridden during that hour is no
+// stepDistance is how far a moment is from a step the provider answered for.
+// The label names the step it opens, so a moment ridden during that step is no
 // distance from it, and only one outside is measured to the nearer edge.
-func hourDistance(at, hour time.Time) time.Duration {
+func stepDistance(at, start time.Time, step time.Duration) time.Duration {
 	switch {
-	case at.Before(hour):
-		return hour.Sub(at)
-	case at.Sub(hour) < time.Hour:
+	case at.Before(start):
+		return start.Sub(at)
+	case at.Sub(start) < step:
 		return 0
 	default:
-		return at.Sub(hour.Add(time.Hour))
+		return at.Sub(start.Add(step))
 	}
 }
 
-// readingAt is one coordinate's answer for one hour, as the provider gave it.
-func readingAt(one *WeatherSeries, index int, at time.Time) WeatherHour {
-	hour := WeatherHour{
-		Hour:                       at.UTC(),
+// readingAt is one coordinate's answer for one step, as the provider gave it.
+func readingAt(one *WeatherSeries, index int, at time.Time, step time.Duration) WeatherStep {
+	hour := WeatherStep{
+		At:                         at.UTC(),
+		Step:                       step,
 		TemperatureCelsius:         one.TemperatureCelsius[index],
 		ApparentTemperatureCelsius: one.ApparentTemperatureCelsius[index],
 		PrecipitationMillimetres:   one.PrecipitationMillimetres[index],
@@ -199,14 +210,14 @@ func readingAt(one *WeatherSeries, index int, at time.Time) WeatherHour {
 	return hour
 }
 
-// hoursOf reduces the provider's per-coordinate series to one row per hour of
+// stepsOf reduces the provider's per-coordinate series to one row per step of
 // the ride. Series i answers for the coordinate weatherPoints chose for step i,
-// so each hour keeps the reading of the coordinate nearest it in time: a mean
+// so each step keeps the reading of the coordinate nearest it in time: a mean
 // across the whole route says what the weather did along the ride, not what its
 // rider rode through, and erases a headwind that became a tailwind halfway.
-func hoursOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []WeatherHour {
+func stepsOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []WeatherStep {
 	type candidate struct {
-		hour WeatherHour
+		hour WeatherStep
 		// How far the winning coordinate's own moment is from this hour, and the
 		// worst code of every coordinate that calls this hour its nearest: a code
 		// is not a quantity, and half a ride in rain was ridden in rain.
@@ -225,8 +236,12 @@ func hoursOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []
 		}
 		var nearest *candidate
 		nearestDistance, nearestCode := time.Duration(0), 0
+		step := one.Step
+		if step <= 0 {
+			step = weatherStepFallback
+		}
 		for index, hourAt := range one.Time {
-			if hourAt.Before(from.Truncate(time.Hour)) || hourAt.After(to) {
+			if hourAt.Before(from.Truncate(step)) || hourAt.After(to) {
 				continue
 			}
 			key := hourAt.Unix()
@@ -235,9 +250,9 @@ func hoursOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []
 				into = &candidate{}
 				byHour[key], order = into, append(order, key)
 			}
-			distance := hourDistance(at, hourAt)
+			distance := stepDistance(at, hourAt, step)
 			if !seen || distance < into.distance {
-				into.hour, into.distance = readingAt(one, index, hourAt), distance
+				into.hour, into.distance = readingAt(one, index, hourAt, step), distance
 			}
 			if nearest == nil || distance < nearestDistance {
 				nearest, nearestDistance, nearestCode = into, distance, one.WeatherCode[index]
@@ -247,7 +262,7 @@ func hoursOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []
 			nearest.worst = max(nearest.worst, nearestCode)
 		}
 	}
-	hours := make([]WeatherHour, 0, len(order))
+	hours := make([]WeatherStep, 0, len(order))
 	for _, key := range order {
 		into := byHour[key]
 		hour := into.hour

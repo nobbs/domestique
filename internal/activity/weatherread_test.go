@@ -20,7 +20,7 @@ type fakeWeatherStore struct {
 	trackErr   error
 	storeErr   error
 	tracks     map[int64][]activity.TrackPoint
-	stored     map[int64][]activity.WeatherHour
+	stored     map[int64][]activity.WeatherStep
 	pending    []activity.PendingWeather
 	recorded   []int64
 	askedLimit int
@@ -39,30 +39,37 @@ func (s *fakeWeatherStore) ActivityTrack(_ context.Context, _ string, id int64) 
 }
 
 func (s *fakeWeatherStore) StoreActivityWeather(
-	_ context.Context, _ string, id int64, hours []activity.WeatherHour, _ time.Time,
+	_ context.Context, _ string, id int64, steps []activity.WeatherStep, _ time.Time,
 ) error {
 	if s.storeErr != nil {
 		return s.storeErr
 	}
 	if s.stored == nil {
-		s.stored = map[int64][]activity.WeatherHour{}
+		s.stored = map[int64][]activity.WeatherStep{}
 	}
-	s.stored[id] = hours
+	s.stored[id] = steps
 	s.recorded = append(s.recorded, id)
 
 	return nil
 }
 
-// fakeWeatherSource answers with one hour per coordinate asked about.
+// fakeWeatherSource answers with one step per coordinate asked about, hourly
+// unless a test says otherwise.
 type fakeWeatherSource struct {
 	err        error
 	from       time.Time
 	to         time.Time
 	series     []activity.WeatherSeries
 	latitudes  []float64
+	step       time.Duration
 	calls      int
 	omitChance bool
 }
+
+// StepFor is the step this source was built to answer with, named as bluntly as
+// a provider would: a zero here is a source that says nothing about its step,
+// which the caller has to decide for itself.
+func (s *fakeWeatherSource) StepFor(time.Time) time.Duration { return s.step }
 
 func (s *fakeWeatherSource) History(
 	_ context.Context, latitudes, _ []float64, from, to time.Time,
@@ -292,6 +299,98 @@ func TestDeriveKeepsTheCoordinateRiddenDuringTheHour(t *testing.T) {
 	// and beat the coordinate at 12:44 that was actually out in that hour.
 	assert.InDelta(t, 29.0, store.stored[7][1].TemperatureCelsius, 1e-9,
 		"and 12:44 during the 12:00 one")
+}
+
+// A ride recent enough for the forecast endpoint is answered by the quarter
+// hour, and is sampled once per step so each of those still names where the
+// rider was. Series i answers for point i, so the temperatures come back in the
+// order the ride passed through them.
+func TestDeriveRecordsARecentRideByTheQuarterHour(t *testing.T) {
+	t.Parallel()
+	hour := weatherNow().Truncate(time.Hour)
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: hour, ElapsedSeconds: 3600}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
+	}
+	quarters := []time.Time{
+		hour, hour.Add(15 * time.Minute), hour.Add(30 * time.Minute),
+		hour.Add(45 * time.Minute), hour.Add(time.Hour),
+	}
+	at := func(temperature float64) activity.WeatherSeries {
+		one := activity.WeatherSeries{Step: 15 * time.Minute, Time: quarters}
+		for range quarters {
+			one.TemperatureCelsius = append(one.TemperatureCelsius, temperature)
+			one.ApparentTemperatureCelsius = append(one.ApparentTemperatureCelsius, temperature-1)
+			one.PrecipitationMillimetres = append(one.PrecipitationMillimetres, 0)
+			one.PrecipitationProbabilityPercent = append(one.PrecipitationProbabilityPercent, 10)
+			one.WindSpeedKMH = append(one.WindSpeedKMH, 12)
+			one.WindDirectionDegrees = append(one.WindDirectionDegrees, 240)
+			one.CloudCoverPercent = append(one.CloudCoverPercent, 50)
+			one.WeatherCode = append(one.WeatherCode, 1)
+		}
+
+		return one
+	}
+	source := &fakeWeatherSource{step: 15 * time.Minute, series: []activity.WeatherSeries{
+		at(10), at(11), at(12), at(13), at(14),
+	}}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	assert.Len(t, source.latitudes, 5, "one coordinate per quarter hour, both ends included")
+	require.Len(t, store.stored[7], 5, "four rows an hour, and the one it ended on")
+	for index, step := range store.stored[7] {
+		assert.InDelta(t, float64(10+index), step.TemperatureCelsius, 1e-9,
+			"the coordinate the rider was at that quarter")
+		assert.Equal(t, 15*time.Minute, step.Step, "the step is stored, not inferred")
+	}
+}
+
+// Everything older is answered by the reanalysis, which is hourly and only
+// hourly. Such a ride keeps the hour it was given however it ages.
+func TestDeriveRecordsAnOlderRideByTheHour(t *testing.T) {
+	t.Parallel()
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
+	}
+	source := &fakeWeatherSource{}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	assert.Len(t, source.latitudes, 2, "one coordinate per hour, both ends included")
+	require.Len(t, store.stored[7], 1)
+	assert.Equal(t, time.Hour, store.stored[7][0].Step)
+}
+
+// A finer step must not multiply the coordinates a long ride is asked at: the
+// cap is the same one, and a ride past it is sampled more coarsely in space
+// than in time.
+func TestDeriveBoundsTheCoordinatesOfALongQuarterHourlyRide(t *testing.T) {
+	t.Parallel()
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 24 * 3600}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(500)},
+	}
+	source := &fakeWeatherSource{step: 15 * time.Minute}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	assert.Len(t, source.latitudes, 24, "the same ceiling, whatever the step")
+}
+
+// A source that names no step at all is read as hourly rather than dividing the
+// ride by nothing. Only a hand-built one reaches this; both real endpoints say
+// what they answered.
+func TestDeriveReadsASourceWithNoStepAsHourly(t *testing.T) {
+	t.Parallel()
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
+	}
+	source := &fakeWeatherSource{}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	assert.Len(t, source.latitudes, 2, "one coordinate per hour, both ends included")
+	require.Len(t, store.stored[7], 1)
+	assert.Equal(t, time.Hour, store.stored[7][0].Step)
 }
 
 // A ride asked about at one coordinate has one answer per hour, and reports it

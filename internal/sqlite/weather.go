@@ -37,11 +37,11 @@ func (s *Store) ActivitiesAwaitingWeather(
 }
 
 // StoreActivityWeather replaces one ride's weather and records that it was
-// asked about, in one transaction. An empty set of hours is a read that found
+// asked about, in one transaction. An empty set of steps is a read that found
 // nothing: the record is still written, so the ride is not asked about again on
 // every run for as long as the provider has nothing to say.
 func (s *Store) StoreActivityWeather(
-	ctx context.Context, targetID string, id int64, hours []activity.WeatherHour, readAt time.Time,
+	ctx context.Context, targetID string, id int64, steps []activity.WeatherStep, readAt time.Time,
 ) error {
 	transaction, beginErr := s.database.BeginTx(ctx, nil)
 	if beginErr != nil {
@@ -54,23 +54,23 @@ func (s *Store) StoreActivityWeather(
 	}); deleteErr != nil {
 		return fmt.Errorf("clearing prior activity weather: %w", deleteErr)
 	}
-	for _, hour := range hours {
+	for _, step := range steps {
 		if insertErr := queries.InsertActivityWeather(ctx, sqlcgen.InsertActivityWeatherParams{
-			TargetSlot: targetID, WorkoutID: id, HourUnix: hour.Hour.Unix(),
-			TemperatureCelsius:              hour.TemperatureCelsius,
-			ApparentTemperatureCelsius:      hour.ApparentTemperatureCelsius,
-			PrecipitationMillimetres:        hour.PrecipitationMillimetres,
-			PrecipitationProbabilityPercent: nullFloat(hour.PrecipitationProbabilityPercent, hour.HasPrecipitationProbability),
-			WindSpeedKmh:                    hour.WindSpeedKMH,
-			WindDirectionDegrees:            hour.WindDirectionDegrees,
-			WeatherCode:                     int64(hour.WeatherCode),
-			CloudCoverPercent:               hour.CloudCoverPercent,
+			TargetSlot: targetID, WorkoutID: id, HourUnix: step.At.Unix(), StepSeconds: int64(step.Step.Seconds()),
+			TemperatureCelsius:              step.TemperatureCelsius,
+			ApparentTemperatureCelsius:      step.ApparentTemperatureCelsius,
+			PrecipitationMillimetres:        step.PrecipitationMillimetres,
+			PrecipitationProbabilityPercent: nullFloat(step.PrecipitationProbabilityPercent, step.HasPrecipitationProbability),
+			WindSpeedKmh:                    step.WindSpeedKMH,
+			WindDirectionDegrees:            step.WindDirectionDegrees,
+			WeatherCode:                     int64(step.WeatherCode),
+			CloudCoverPercent:               step.CloudCoverPercent,
 		}); insertErr != nil {
-			return fmt.Errorf("recording an activity weather hour: %w", insertErr)
+			return fmt.Errorf("recording an activity weather step: %w", insertErr)
 		}
 	}
 	if readErr := queries.RecordActivityWeatherRead(ctx, sqlcgen.RecordActivityWeatherReadParams{
-		TargetSlot: targetID, WorkoutID: id, ReadAtUnix: readAt.Unix(), Hours: int64(len(hours)),
+		TargetSlot: targetID, WorkoutID: id, ReadAtUnix: readAt.Unix(), Hours: int64(len(steps)),
 	}); readErr != nil {
 		return fmt.Errorf("recording an activity weather read: %w", readErr)
 	}
@@ -82,8 +82,8 @@ func (s *Store) StoreActivityWeather(
 }
 
 // ActivityWeatherSummaries is what each of one target's rides came to, keyed by
-// ride. Summed in SQL rather than in Go: a rider with years of history holds an
-// hour of weather for every hour they have ridden, and the listing wants one
+// ride. Summed in SQL rather than in Go: a rider with years of history holds a
+// step of weather for every step they have ridden, and the listing wants one
 // line about each ride rather than all of them.
 func (s *Store) ActivityWeatherSummaries(
 	ctx context.Context, targetID string,
@@ -106,22 +106,23 @@ func (s *Store) ActivityWeatherSummaries(
 	return summaries, nil
 }
 
-// ActivityWeatherHours is one ride's weather, in order. Read on its own rather
+// ActivityWeatherSteps is one ride's weather, in order. Read on its own rather
 // than out of the whole target's: a ride page asks about one ride.
-func (s *Store) ActivityWeatherHours(
+func (s *Store) ActivityWeatherSteps(
 	ctx context.Context, targetID string, id int64,
-) ([]activity.WeatherHour, error) {
-	rows, err := s.queries.ListActivityWeatherHours(ctx, sqlcgen.ListActivityWeatherHoursParams{
+) ([]activity.WeatherStep, error) {
+	rows, err := s.queries.ListActivityWeatherSteps(ctx, sqlcgen.ListActivityWeatherStepsParams{
 		TargetSlot: targetID, WorkoutID: id,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading the activity weather: %w", err)
 	}
-	hours := make([]activity.WeatherHour, 0, len(rows))
+	steps := make([]activity.WeatherStep, 0, len(rows))
 	for index := range rows {
 		row := &rows[index]
-		hours = append(hours, activity.WeatherHour{
-			Hour:                            time.Unix(row.HourUnix, 0).UTC(),
+		steps = append(steps, activity.WeatherStep{
+			At:                              time.Unix(row.AtUnix, 0).UTC(),
+			Step:                            time.Duration(row.StepSeconds) * time.Second,
 			TemperatureCelsius:              row.TemperatureCelsius,
 			ApparentTemperatureCelsius:      row.ApparentTemperatureCelsius,
 			PrecipitationMillimetres:        row.PrecipitationMillimetres,
@@ -134,5 +135,5 @@ func (s *Store) ActivityWeatherHours(
 		})
 	}
 
-	return hours, nil
+	return steps, nil
 }

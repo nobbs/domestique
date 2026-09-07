@@ -257,11 +257,11 @@ export interface ActivityMetrics {
 export interface ActivityWeatherSummary {
   temperatureMinCelsius: number;
   temperatureMaxCelsius: number;
-  /** The mean over the ride's hours. */
+  /** The mean over the ride's steps. */
   windSpeedKmh: number;
   /** The whole of what fell over the ride, not an hourly rate. */
   precipitationMillimetres: number;
-  /** The worst of the ride's hours rather than a mean: half a ride in rain was ridden in rain, and a mean of two codes names no weather. */
+  /** The worst of the ride's steps rather than a mean: half a ride in rain was ridden in rain, and a mean of two codes names no weather. */
   weatherCode: number;
 }
 
@@ -337,10 +337,12 @@ export const ActivityTrackPropertiesState = {
 } as const;
 
 /**
- * One hour of what a ride was actually ridden through.
+ * One step of what a ride was actually ridden through.
  */
-export interface RideWeatherHour {
+export interface RideWeatherStep {
   time: string;
+  /** How long this step covers: 3600 for a ride answered by the reanalysis, 900 for a recent one answered by the forecast endpoint. */
+  stepSeconds: number;
   temperatureCelsius: number;
   apparentTemperatureCelsius: number;
   precipitationMillimetres: number;
@@ -356,8 +358,8 @@ export interface ActivityTrackProperties {
   state: ActivityTrackPropertiesState;
   /** The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude. */
   altitudeMetres?: (number | null)[];
-  /** What this ride was actually ridden through, one row per hour of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about. */
-  weather?: RideWeatherHour[];
+  /** What this ride was actually ridden through, one row per step of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about. */
+  weather?: RideWeatherStep[];
   /** Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass. */
   estimatedPowerWatts?: (number | null)[];
 }
