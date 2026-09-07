@@ -7,6 +7,7 @@ import {
   type GetTaskRunsParams,
   getGetActivitiesQueryOptions,
   getGetActivitySeriesQueryOptions,
+  getGetActivitySplitsQueryOptions,
   getGetActivityTrackQueryOptions,
   getGetFitnessQueryOptions,
   getGetRiderProfileQueryOptions,
@@ -28,6 +29,7 @@ import {
   type ActivityList,
   type ActivitySeries,
   type ActivitySeriesName,
+  type ActivitySplits,
   type ActivityTrack,
   activityTrack,
   type Fitness,
@@ -112,6 +114,19 @@ export const activitySeriesQuery = (id: number, series: ActivitySeriesName) =>
     query: {
       select: (response) => payload<ActivitySeries>(response),
       retry: false,
+      staleTime: 5 * 60 * 1000,
+    },
+  });
+
+/**
+ * One ride cut into kilometres. Cheap next to the track it sits beside — tens
+ * of rows against tens of thousands of coordinates — so it is fetched with the
+ * page rather than behind a chip.
+ */
+export const activitySplitsQuery = (id: number) =>
+  getGetActivitySplitsQueryOptions(id, undefined, {
+    query: {
+      select: (response) => payload<ActivitySplits>(response),
       staleTime: 5 * 60 * 1000,
     },
   });

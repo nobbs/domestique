@@ -7,7 +7,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import { activityTrackQuery } from "../../api/queries";
+import { activitySplitsQuery, activityTrackQuery } from "../../api/queries";
 import type { Activity, ActivitySeriesName, ActivityTrackState } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -18,6 +18,7 @@ import { ActivityMap } from "./ActivityMap";
 import { RideConditions } from "./RideConditions";
 import { RideFigures } from "./RideFigures";
 import { SeriesChips, useRideSeries } from "./RideSeries";
+import { RideSplits } from "./RideSplits";
 import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
 
@@ -29,6 +30,7 @@ export function ActivityPage() {
   const { activities } = useActivities();
   const ride = activities.find((activity) => activity.id === id);
   const track = useQuery({ ...activityTrackQuery(id ?? 0), enabled: id !== null });
+  const splits = useQuery({ ...activitySplitsQuery(id ?? 0), enabled: id !== null });
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
@@ -105,6 +107,7 @@ export function ActivityPage() {
             ) : null}
           </>
         )}
+        <RideSplits splits={splits.data?.splits} />
       </div>
     </PageShell>
   );
