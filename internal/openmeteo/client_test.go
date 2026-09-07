@@ -755,6 +755,44 @@ func TestHistoryYieldsNoHoursWhenTheProviderHeldNone(t *testing.T) {
 	assert.Empty(t, result[0].Time, "nothing was recorded, so nothing is reported")
 }
 
+// Not every zone is a whole number of hours from UTC. Rounded against the zero
+// instant rather than the local clock, an hourly bound in a half-hour zone
+// lands on :30 and goes out carrying a minute the endpoint does not take.
+func TestHistoryRoundsTheBoundsByTheLocalClock(t *testing.T) {
+	t.Parallel()
+	for zone, want := range map[string][2]string{
+		"Asia/Kolkata":   {"2025-08-24T08:00", "2025-08-24T11:00"},
+		"Asia/Kathmandu": {"2025-08-24T08:00", "2025-08-24T11:00"},
+	} {
+		t.Run(zone, func(t *testing.T) {
+			t.Parallel()
+			var start, end string
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				start, end = request.URL.Query().Get("start_hour"), request.URL.Query().Get("end_hour")
+				writer.Header().Set("Content-Type", "application/json")
+				writeResponse(t, writer, http.StatusOK, archiveBody)
+			}))
+			defer server.Close()
+
+			location, err := time.LoadLocation(zone)
+			require.NoError(t, err, "LoadLocation()")
+			client, err := New(&Options{
+				BaseURL: server.URL, ArchiveBaseURL: server.URL, Timeout: time.Second,
+				Transport: server.Client().Transport, Now: historyNow,
+				Timezone: func() string { return zone },
+			})
+			require.NoError(t, err, "New()")
+
+			from := time.Date(2025, 8, 24, 8, 45, 0, 0, location)
+			_, err = client.History(t.Context(),
+				[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(2*time.Hour))
+			require.NoError(t, err, "History()")
+			assert.Equal(t, want[0], start, "floored to the local hour it began in")
+			assert.Equal(t, want[1], end, "and up to the local hour it ended in")
+		})
+	}
+}
+
 // StepFor is asked before the request, so it has to agree with the endpoint
 // History will actually choose: a caller that samples once per step and is told
 // the wrong one asks about the wrong number of places.

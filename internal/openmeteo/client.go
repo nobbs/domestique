@@ -554,9 +554,17 @@ func probabilityAt(raw *rawSeries, index int) float64 {
 	return 0
 }
 
-// floorStep rounds t down to the start of the step it falls in.
+// floorStep rounds t down to the start of the step it falls in, by the local
+// clock the provider is addressed in.
+//
+// Truncate rounds against the zero instant rather than the wall clock, so in a
+// zone offset by half an hour an hourly floor lands on :30 and the bounds go
+// out carrying minutes the endpoint does not take.
 func floorStep(t time.Time, step time.Duration) time.Time {
-	return t.Truncate(step)
+	_, offset := t.Zone()
+	shift := time.Duration(offset) * time.Second
+
+	return t.Add(shift).Truncate(step).Add(-shift)
 }
 
 // ceilStep rounds t up to the start of the next step, or leaves it alone when
