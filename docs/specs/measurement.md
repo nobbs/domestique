@@ -114,7 +114,7 @@ points gives 0.2 / 0.002 = 100 m.
 (`internal/route/route.go` `gradientWindowMetres`) and for the browser's
 bands and climbs (`internal/webui/app/src/lib/profile.ts`
 `GRADIENT_WINDOW_METRES`); W = 30 m for the estimated-power model
-(`internal/powerestimate/estimate.go` `windowMetres`).
+(`internal/measure/estimate.go` `windowMetres`).
 
 **Source.** The 100 m floor is derived above from the handover document's
 own reasoning. This service's own rule for choosing to apply that floor to
@@ -188,15 +188,15 @@ mean    = Σ value[i]·held(i)  /  Σ held(i),  over counted i only
 
 **Constants.** maxGap = 10 s
 (`internal/trainingload/zones.go` `maxSampleGap`; the same 10 s appears
-separately in `internal/powerestimate/estimate.go` `maxSampleGap` and
-`internal/rider/best.go` `maxSampleGap`).
+separately in `internal/rider/best.go` `maxSampleGap` and as
+`internal/measure/gap.go` `DefaultMaxGap`).
 
 **Source.** This service's own rule.
 
 **Applied by.** `internal/trainingload/zones.go` `forEachHeld`, `meanHeld`,
 and `TimeInZones`'s use of them; `measure.DefaultMaxGap`, `Stretches`,
 `ForEachHeld` and `MeanHeld` are the same rule in `internal/measure/gap.go`,
-which `trainingload`, `powerestimate` and `rider` move onto.
+which `trainingload`, `measure.EstimateSeries` and `rider` move onto.
 
 **Status.** Validated: this is the gap rule live training-load figures use
 today.
@@ -252,7 +252,7 @@ Gradient section above (measured over the 30 m window), m is total system
 mass in kg.
 
 **Constants.** g = 9.80665 m/s², Crr = 0.005, CdA = 0.32 m², ρ = 1.225 kg/m³
-(`internal/powerestimate/estimate.go` `gravity`, `rollingResistance`,
+(`internal/measure/estimate.go` `gravity`, `rollingResistance`,
 `dragArea`, `airDensity`).
 
 **Source.** Martin et al. 1998. The source model also carries three terms
@@ -262,24 +262,24 @@ it); rotational inertia as an added 1.5 kg of equivalent linear mass in the
 inertial term; and wind as a signed `|v+w|·(v+w)` aerodynamic term rather
 than squaring `v` alone, so a tailwind faster than the rider still drags
 correctly instead of reading as a spurious push
-(`internal/powerestimate/estimate.go`'s own comment already states drivetrain
+(`internal/measure/estimate.go`'s own comment already states drivetrain
 loss is left out as "a couple of per cent on a figure already labelled an
 estimate"). The handover document treats air density as a function of
 altitude and temperature rather than the fixed sea-level, fifteen-degree
 constant this service uses.
 
-**Quality diagnostics (not yet computed).** The handover document
+**Quality diagnostics.** The handover document
 ([power-estimation-handover.md](../references/power-estimation-handover.md)
 §7) gates its output on three self-diagnosing checks: lag-1 autocorrelation
 greater than +0.8, mean absolute second-to-second power change under 40 W,
 and a clipping bias under roughly 8 W. A series failing them should report
 average power and energy only, because normalised power and best-average
 figures both take a maximum or a fourth power and so amplify noise rather
-than average it away. This service does not compute these diagnostics
-today.
+than average it away. Computed by `EstimateSeries` and returned beside the
+series; not stored or acted on yet.
 
-**Applied by.** `internal/powerestimate/estimate.go` `Series` today, to
-become `measure.EstimateSeries` when the package moves.
+**Applied by.** `measure.EstimateSeries`, called by
+`activity.RideSamples.EstimatePower`.
 
 **Status.** Unvalidated against a power meter. The handover document's
 one-ride validation, on a different bicycle and rider than this service's

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/nobbs/domestique/internal/powerestimate"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
@@ -18,7 +18,7 @@ type RideSamples struct {
 	HeartRate    []trainingload.Sample
 	Cadence      []trainingload.Sample
 	Power        []trainingload.Sample
-	Track        []powerestimate.Sample
+	Track        []measure.Sample
 	TrackRecords []int64
 }
 
@@ -32,17 +32,19 @@ type RideSamples struct {
 // length, so a caller cannot pair one ride's estimates with another's records.
 func (s *RideSamples) EstimatePower(
 	totalMassKG float64,
-) (records []int64, estimates []powerestimate.Estimate, average powerestimate.Estimate) {
+) (records []int64, estimates []measure.Estimate, average measure.Estimate) {
 	if len(s.Power) > 0 {
-		return nil, nil, powerestimate.Estimate{}
+		return nil, nil, measure.Estimate{}
 	}
-	estimates, ok := powerestimate.Series(s.Track, totalMassKG)
+	// Quality is discarded: the spec has not yet decided what should gate on
+	// it, so nothing reads it until it does.
+	estimates, _, ok := measure.EstimateSeries(s.Track, totalMassKG)
 	if !ok {
-		return nil, nil, powerestimate.Estimate{}
+		return nil, nil, measure.Estimate{}
 	}
-	mean, hasMean := powerestimate.Average(estimates)
+	mean, hasMean := measure.MeanEstimate(estimates)
 
-	return s.TrackRecords, estimates, powerestimate.Estimate{Watts: mean, Known: hasMean}
+	return s.TrackRecords, estimates, measure.Estimate{Watts: mean, Known: hasMean}
 }
 
 // DeriveStore is what working out a ride's training numbers needs of stored
@@ -67,7 +69,7 @@ type DeriveStore interface {
 	// StoreEstimatedPower replaces one ride's estimated power series. An empty
 	// series clears whatever was there.
 	StoreEstimatedPower(ctx context.Context, targetID string, id int64,
-		recordIndices []int64, estimates []powerestimate.Estimate) error
+		recordIndices []int64, estimates []measure.Estimate) error
 	// ClearActivityMetrics removes every derived row one target holds and
 	// reports how many went.
 	ClearActivityMetrics(ctx context.Context, targetID string) (int, error)

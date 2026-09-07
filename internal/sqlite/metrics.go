@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
-	"github.com/nobbs/domestique/internal/powerestimate"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
@@ -75,7 +75,7 @@ func (s *Store) ActivityRideSamples(
 		// nothing; with fewer than the track itself needs, the estimate would be
 		// shaped by samples nobody is ever shown.
 		if row.Latitude.Valid && row.Longitude.Valid && row.AltitudeMetres.Valid && row.DistanceMetres.Valid {
-			samples.Track = append(samples.Track, powerestimate.Sample{
+			samples.Track = append(samples.Track, measure.Sample{
 				At:             at,
 				DistanceMetres: row.DistanceMetres.Float64,
 				AltitudeMetres: row.AltitudeMetres.Float64,
@@ -98,7 +98,7 @@ WHERE target_slot = ? AND workout_id = ? AND record_index = ?`
 // series clears whatever was there, which is what a ride that has stopped
 // yielding an estimate needs.
 func (s *Store) StoreEstimatedPower(
-	ctx context.Context, targetID string, id int64, recordIndices []int64, estimates []powerestimate.Estimate,
+	ctx context.Context, targetID string, id int64, recordIndices []int64, estimates []measure.Estimate,
 ) error {
 	if len(recordIndices) != len(estimates) {
 		return errors.New("an estimate per record or none")
