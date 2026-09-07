@@ -360,6 +360,9 @@ func (s *Route) hasCompleteElevation() bool {
 //
 // See docs/specs/measurement.md §Spherical distance.
 func CumulativeMetres(points []Point) []float64 {
+	if len(points) == 0 {
+		return nil
+	}
 	coordinates := make([]measure.Coordinate, len(points))
 	for index, point := range points {
 		coordinates[index] = point.Coordinate()
