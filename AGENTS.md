@@ -76,6 +76,7 @@ before changing behavior:
 | [configuration.md](docs/specs/configuration.md) | File schema, the one secret input, runtime settings and credentials |
 | [sync-lifecycle.md](docs/specs/sync-lifecycle.md) | State transitions, safety gates, JSON contracts |
 | [task-layer.md](docs/specs/task-layer.md) | Background activities, their state, when they run |
+| [measurement.md](docs/specs/measurement.md) | Every formula computed over ground and time, its constants, sources and the function that applies it |
 | [delivery.md](docs/specs/delivery.md) | Quality gate, container hardening, published images |
 
 When code contradicts a spec, the spec is correct — say so rather than quietly
