@@ -210,23 +210,79 @@ func TestDeriveBoundsHowManyPointsOneRideIsAskedAt(t *testing.T) {
 	assert.Len(t, source.latitudes, 24, "a day on the bicycle is the ceiling")
 }
 
-// The hour is one thing across the coordinates it was asked at, because the
-// rider was somewhere along the ride rather than at all of it at once.
-func TestDeriveAveragesTheCoordinatesOfOneHour(t *testing.T) {
+// Each point is asked about for the step it was chosen for, so each stored hour
+// must be what the rider rode through then — not a mean across the whole route,
+// which flattens the temperature and outright misleads about the wind.
+func TestDeriveGivesEachHourThePlaceTheRiderWas(t *testing.T) {
 	t.Parallel()
+	hour := weatherNow().Truncate(time.Hour)
 	store := &fakeWeatherStore{
-		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: hour, ElapsedSeconds: 3600}},
 		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
+	}
+	// Two ends 70 km apart, each carrying its own deliberately different series
+	// over the two hours the ride touches.
+	end := func(temperature, direction float64, codes []int) activity.WeatherSeries {
+		return activity.WeatherSeries{
+			Time:                            []time.Time{hour, hour.Add(time.Hour)},
+			TemperatureCelsius:              []float64{temperature, temperature + 1},
+			ApparentTemperatureCelsius:      []float64{temperature - 1, temperature},
+			PrecipitationMillimetres:        []float64{0, 0},
+			WindSpeedKMH:                    []float64{12, 13},
+			WindDirectionDegrees:            []float64{direction, direction},
+			CloudCoverPercent:               []float64{50, 55},
+			PrecipitationProbabilityPercent: []float64{10, 20},
+			WeatherCode:                     codes,
+		}
+	}
+	source := &fakeWeatherSource{series: []activity.WeatherSeries{
+		end(18, 350, []int{1, 0}), end(28, 10, []int{0, 2}),
+	}}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	require.Len(t, store.stored[7], 2, "the hour it started in and the one it ended in")
+	assert.InDelta(t, 18.0, store.stored[7][0].TemperatureCelsius, 1e-9, "where it started")
+	assert.InDelta(t, 29.0, store.stored[7][1].TemperatureCelsius, 1e-9, "where it finished")
+	// A route-wide mean would report 350 and 10 as one bearing for both hours,
+	// and no arithmetic could say which end the rider was at.
+	assert.InDelta(t, 350.0, store.stored[7][0].WindDirectionDegrees, 1e-9, "the wind at the start")
+	assert.InDelta(t, 10.0, store.stored[7][1].WindDirectionDegrees, 1e-9, "and the one at the finish")
+	assert.True(t, store.stored[7][0].HasPrecipitationProbability)
+}
+
+// A ride asked about at one coordinate has one answer per hour, and reports it
+// unchanged.
+func TestDeriveKeepsASinglePointRideAsItStands(t *testing.T) {
+	t.Parallel()
+	hour := weatherNow().Truncate(time.Hour)
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: hour, ElapsedSeconds: 0}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(1)},
+	}
+	source := &fakeWeatherSource{}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	require.Len(t, source.latitudes, 1, "one coordinate is all there is")
+	require.Len(t, store.stored[7], 1)
+	assert.InDelta(t, 18.0, store.stored[7][0].TemperatureCelsius, 1e-9, "the one reading, as it stands")
+}
+
+// Where a whole ride falls inside one hour, both its ends are asked about for
+// that one step. The nearest in time wins the reading, but a code is not a
+// quantity to be picked: rain at either end was rain the ride was ridden in.
+func TestDeriveKeepsTheWorstCodeOfAStepAskedAtSeveralPoints(t *testing.T) {
+	t.Parallel()
+	hour := weatherNow().Truncate(time.Hour)
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: hour, ElapsedSeconds: 1800}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(30)},
 	}
 	source := &fakeWeatherSource{}
 
 	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
 	require.Len(t, store.stored[7], 1)
-	hour := store.stored[7][0]
-	assert.InDelta(t, 18.5, hour.TemperatureCelsius, 1e-9, "18 at one end and 19 at the other")
-	// A code is not a quantity: half a ride in rain was ridden in rain.
-	assert.Equal(t, 1, hour.WeatherCode, "the worst of them, not their mean")
-	assert.True(t, hour.HasPrecipitationProbability)
+	assert.InDelta(t, 18.0, store.stored[7][0].TemperatureCelsius, 1e-9, "the nearer end's reading")
+	assert.Equal(t, 1, store.stored[7][0].WeatherCode, "the worst of the step's own points")
 }
 
 // The reanalysis that answers for an older ride carries no probability of
@@ -331,32 +387,6 @@ func TestDeriveSpacesTheAskedPointsByTimeNotByRecordIndex(t *testing.T) {
 	assert.Greater(t, source.latitudes[1], 49.05, "an hour in, not ten minutes in")
 	assert.Greater(t, source.latitudes[2], 49.1, "and two hours in")
 	assert.InDelta(t, 49.233, source.latitudes[4], 0.001, "the last sample either way")
-}
-
-// A bearing wraps. Averaged as plain numbers, a north wind read at 350 degrees
-// at one end of the ride and 10 at the other comes out as 180 — a south wind,
-// the exact opposite of the one that blew.
-func TestDeriveAveragesWindDirectionAroundTheWrap(t *testing.T) {
-	t.Parallel()
-	hour := weatherNow().Truncate(time.Hour)
-	store := &fakeWeatherStore{
-		pending: []activity.PendingWeather{{ID: 7, StartedAt: hour, ElapsedSeconds: 1800}},
-		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(30)},
-	}
-	one := func(direction float64) activity.WeatherSeries {
-		return activity.WeatherSeries{
-			Time: []time.Time{hour}, TemperatureCelsius: []float64{18},
-			ApparentTemperatureCelsius: []float64{17}, PrecipitationMillimetres: []float64{0},
-			WindSpeedKMH: []float64{12}, WindDirectionDegrees: []float64{direction},
-			CloudCoverPercent: []float64{50}, WeatherCode: []int{1},
-		}
-	}
-	source := &fakeWeatherSource{series: []activity.WeatherSeries{one(350), one(10)}}
-
-	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
-	require.Len(t, store.stored[7], 1)
-	assert.InDelta(t, 0.0, store.stored[7][0].WindDirectionDegrees, 0.001,
-		"due north, not the south the arithmetic mean would invent")
 }
 
 func TestDeriveReportsAWeatherStoreItCannotRead(t *testing.T) {
