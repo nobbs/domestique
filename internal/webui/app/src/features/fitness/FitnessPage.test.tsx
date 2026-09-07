@@ -98,7 +98,9 @@ describe("FitnessPage", () => {
     expect(screen.getByRole("button", { name: "Stress score" })).toBeInTheDocument();
   });
 
-  it("offers the same range control the volume page has", async () => {
+  // A date range, which is this page's own: the volume page's toggle picks the
+  // period it counts in, not the span it counts over.
+  it("offers a range to read the timeline over", async () => {
     show();
 
     expect(await screen.findByRole("group", { name: "Range" })).toBeInTheDocument();
