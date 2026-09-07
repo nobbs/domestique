@@ -597,7 +597,11 @@ The read-only JSON surface is small:
   Beside those, and worked out by the same task from the same stored samples,
   are the plain figures the ride's own sensors came to with no profile
   involved: the mean of its heart-rate, cadence and measured power samples, and
-  the highest heart rate it reached. Each is present only where the ride carried
+  the highest heart rate it reached. A cadence of nought is the rider not
+  pedalling rather than pedalling slowly and is left out of that mean, which is
+  what makes the figure the same one every other platform reports; a measured
+  power of nought is left in, freewheeling being part of what a ride averaged.
+  A sensor that read nought throughout recorded nothing, and has no mean at all. Each is present only where the ride carried
   that sensor, and an estimate never feeds the average power — a bicycle with no
   meter has none. Average speed is not among them: it is the distance and moving
   time the activity already carries, divided, and is therefore known even for a

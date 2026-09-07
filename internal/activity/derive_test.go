@@ -418,6 +418,56 @@ func TestDeriveWritesTheRidesSensorAverages(t *testing.T) {
 	assert.True(t, averages.HasHeartRate && averages.HasCadence && averages.HasPower)
 }
 
+// The regression: a cadence of zero is the rider freewheeling, not pedalling at
+// nought, and averaging it in drags the figure below what every other platform
+// reports for the same ride. Measured power is the other way round — a
+// freewheeling rider really is putting out nothing.
+func TestDeriveAveragesCadenceOverThePedallingOnly(t *testing.T) {
+	t.Parallel()
+	coasted := append(varyingRide(5, 60), trainingload.Sample{
+		At: time.Date(2026, 8, 24, 6, 0, 5, 0, time.UTC), Value: 0,
+	})
+	store := &fakeDeriveStore{
+		owner:   "rider-a",
+		profile: fullProfile(),
+		owed:    []int64{7},
+		rides: map[int64]activity.RideSamples{
+			7: {Cadence: coasted, Power: append(varyingRide(5, 200), trainingload.Sample{
+				At: time.Date(2026, 8, 24, 6, 0, 5, 0, time.UTC), Value: 0,
+			})},
+		},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	averages := store.written[7].Averages
+	assert.InDelta(t, 62.0, averages.CadenceRPM, 1e-9, "the coasting second is not pedalling")
+	assert.InDelta(t, 1010.0/6, averages.PowerWatts, 1e-9, "but it is a reading of the meter")
+}
+
+// A cadence sensor that read nought for the whole ride recorded no cadence,
+// which is not the same as a ride that averaged nought.
+func TestDeriveLeavesCadenceAbsentWhereTheRiderNeverPedalled(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{
+		owner:   "rider-a",
+		profile: fullProfile(),
+		owed:    []int64{7},
+		rides:   map[int64]activity.RideSamples{7: {Cadence: varyingRide(5, 0), HeartRate: varyingRide(5, 100)}},
+	}
+	// varyingRide(5, 0) rises 0..4, so only its first sample is a zero; a ride
+	// that never turned the cranks is every sample at nought.
+	for index := range store.rides[7].Cadence {
+		store.rides[7].Cadence[index].Value = 0
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	assert.False(t, store.written[7].Averages.HasCadence)
+}
+
 // A ride carries the sensors it carries: one with no strap has no heart rate
 // rather than a heart rate of nought.
 func TestDeriveLeavesAnAverageAbsentWhereTheRideCarriedNoSensor(t *testing.T) {
