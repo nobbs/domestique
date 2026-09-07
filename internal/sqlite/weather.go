@@ -81,32 +81,29 @@ func (s *Store) StoreActivityWeather(
 	return nil
 }
 
-// ActivityWeather is every hour one target holds, keyed by ride. One read for
-// the whole target rather than one per ride: the listing card wants a line
-// about each of them at once.
-func (s *Store) ActivityWeather(ctx context.Context, targetID string) (map[int64][]activity.WeatherHour, error) {
-	rows, err := s.queries.ListActivityWeather(ctx, targetID)
+// ActivityWeatherSummaries is what each of one target's rides came to, keyed by
+// ride. Summed in SQL rather than in Go: a rider with years of history holds an
+// hour of weather for every hour they have ridden, and the listing wants one
+// line about each ride rather than all of them.
+func (s *Store) ActivityWeatherSummaries(
+	ctx context.Context, targetID string,
+) (map[int64]activity.WeatherSummary, error) {
+	rows, err := s.queries.SummariseActivityWeather(ctx, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("reading the activity weather: %w", err)
 	}
-	weather := map[int64][]activity.WeatherHour{}
-	for index := range rows {
-		row := &rows[index]
-		weather[row.WorkoutID] = append(weather[row.WorkoutID], activity.WeatherHour{
-			Hour:                            time.Unix(row.HourUnix, 0).UTC(),
-			TemperatureCelsius:              row.TemperatureCelsius,
-			ApparentTemperatureCelsius:      row.ApparentTemperatureCelsius,
-			PrecipitationMillimetres:        row.PrecipitationMillimetres,
-			PrecipitationProbabilityPercent: row.PrecipitationProbabilityPercent.Float64,
-			WindSpeedKMH:                    row.WindSpeedKmh,
-			WindDirectionDegrees:            row.WindDirectionDegrees,
-			CloudCoverPercent:               row.CloudCoverPercent,
-			WeatherCode:                     int(row.WeatherCode),
-			HasPrecipitationProbability:     row.PrecipitationProbabilityPercent.Valid,
-		})
+	summaries := make(map[int64]activity.WeatherSummary, len(rows))
+	for _, row := range rows {
+		summaries[row.WorkoutID] = activity.WeatherSummary{
+			TemperatureMinCelsius:    row.TemperatureMinCelsius,
+			TemperatureMaxCelsius:    row.TemperatureMaxCelsius,
+			WindSpeedKMH:             row.WindSpeedKmh,
+			PrecipitationMillimetres: row.PrecipitationMillimetres,
+			WeatherCode:              int(row.WeatherCode),
+		}
 	}
 
-	return weather, nil
+	return summaries, nil
 }
 
 // ActivityWeatherHours is one ride's weather, in order. Read on its own rather

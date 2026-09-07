@@ -12,31 +12,17 @@ import (
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
-// weatherSummary reduces a ride's hours to the line a listing card shows. A
-// ride nobody has asked about, and one the provider had nothing to say about,
-// carry none at all rather than a row of zeroes.
-func weatherSummary(hours []activities.WeatherHour) *openapi.ActivityWeatherSummary {
-	if len(hours) == 0 {
-		return nil
+// weatherSummary is the wire form of what a ride's hours came to. A ride nobody
+// has asked about, and one that was asked and had nothing to answer, carry none
+// at all rather than a row of zeroes.
+func weatherSummary(summary activities.WeatherSummary) *openapi.ActivityWeatherSummary {
+	return &openapi.ActivityWeatherSummary{
+		TemperatureMinCelsius:    summary.TemperatureMinCelsius,
+		TemperatureMaxCelsius:    summary.TemperatureMaxCelsius,
+		WindSpeedKmh:             summary.WindSpeedKMH,
+		PrecipitationMillimetres: summary.PrecipitationMillimetres,
+		WeatherCode:              summary.WeatherCode,
 	}
-	summary := openapi.ActivityWeatherSummary{
-		TemperatureMinCelsius: hours[0].TemperatureCelsius,
-		TemperatureMaxCelsius: hours[0].TemperatureCelsius,
-	}
-	wind := 0.0
-	for index := range hours {
-		hour := &hours[index]
-		summary.TemperatureMinCelsius = min(summary.TemperatureMinCelsius, hour.TemperatureCelsius)
-		summary.TemperatureMaxCelsius = max(summary.TemperatureMaxCelsius, hour.TemperatureCelsius)
-		// The whole of what fell, not a rate: the hourly figures are millimetres
-		// in that hour, and a ride is the sum of its hours.
-		summary.PrecipitationMillimetres += hour.PrecipitationMillimetres
-		wind += hour.WindSpeedKMH
-		summary.WeatherCode = max(summary.WeatherCode, hour.WeatherCode)
-	}
-	summary.WindSpeedKmh = wind / float64(len(hours))
-
-	return &summary
 }
 
 // rideWeatherHours is the wire form of one ride's hours.
@@ -138,7 +124,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 			return
 		}
-		hours, weatherErr := h.state.ActivityWeather(request.Context(), targetID)
+		summaries, weatherErr := h.state.ActivityWeatherSummaries(request.Context(), targetID)
 		if weatherErr != nil {
 			h.unavailable(writer)
 
@@ -159,7 +145,9 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 			if metrics, ok := derived[recorded.ID]; ok {
 				activity.Metrics = activityMetrics(metrics)
 			}
-			activity.Weather = weatherSummary(hours[recorded.ID])
+			if summary, ok := summaries[recorded.ID]; ok {
+				activity.Weather = weatherSummary(summary)
+			}
 			view.Activities = append(view.Activities, activity)
 		}
 	}
@@ -227,9 +215,14 @@ func activityTrackFeature(
 	track []activities.TrackPoint, state activities.RecordsState, hours []activities.WeatherHour,
 ) activityTrackView {
 	if len(track) < 2 {
+		// No line to draw, but a ride sampled at one point still has weather, and
+		// the page can still say what it was ridden through.
 		return activityTrackView{
-			Type:       "Feature",
-			Properties: activityTrackPropertyView{State: absentTrackState(state)},
+			Type: "Feature",
+			Properties: activityTrackPropertyView{
+				State:   absentTrackState(state),
+				Weather: rideWeatherHours(hours),
+			},
 		}
 	}
 	coordinates := make([][2]float64, 0, len(track))

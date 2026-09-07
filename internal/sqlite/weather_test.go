@@ -42,9 +42,16 @@ func TestActivityWeatherRoundTrips(t *testing.T) {
 	assert.Equal(t, hours[0], read[0])
 	assert.Equal(t, hours[1], read[1])
 
-	byRide, err := store.ActivityWeather(t.Context(), "rider-a")
-	require.NoError(t, err, "ActivityWeather()")
-	assert.Equal(t, hours, byRide[1])
+	// The listing reads a summary rather than the hours, summed in SQL.
+	summaries, err := store.ActivityWeatherSummaries(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityWeatherSummaries()")
+	assert.Equal(t, activity.WeatherSummary{
+		TemperatureMinCelsius:    18,
+		TemperatureMaxCelsius:    20,
+		WindSpeedKMH:             12,
+		PrecipitationMillimetres: 0.8,
+		WeatherCode:              61,
+	}, summaries[1], "the range, the mean wind, the whole of what fell, the worst code")
 }
 
 // The reanalysis that answers for an older ride carries no probability of
@@ -139,7 +146,7 @@ func TestActivityWeatherReportsAnUnreadableStore(t *testing.T) {
 	store := metricsStore(t, 1)
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.ActivityWeather(t.Context(), "rider-a")
+	_, err := store.ActivityWeatherSummaries(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the activity weather")
 	_, err = store.ActivityWeatherHours(t.Context(), "rider-a", 1)
 	require.ErrorContains(t, err, "reading the activity weather")

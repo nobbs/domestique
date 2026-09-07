@@ -36,13 +36,21 @@ WHERE a.target_slot = sqlc.arg(target_slot)
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
 LIMIT sqlc.arg(row_limit);
 
--- name: ListActivityWeather :many
-SELECT workout_id, hour_unix, temperature_celsius, apparent_temperature_celsius,
-  precipitation_millimetres, precipitation_probability_percent, wind_speed_kmh,
-  wind_direction_degrees, weather_code, cloud_cover_percent
+-- One row per ride rather than one per hour: the listing wants a line about each
+-- ride, and a rider with years of history has an hour of weather for every hour
+-- they have ridden. The wind is a mean speed and never a mean direction: a
+-- bearing does not average, so the summary carries none.
+-- name: SummariseActivityWeather :many
+SELECT workout_id,
+  CAST(MIN(temperature_celsius) AS REAL) AS temperature_min_celsius,
+  CAST(MAX(temperature_celsius) AS REAL) AS temperature_max_celsius,
+  CAST(AVG(wind_speed_kmh) AS REAL) AS wind_speed_kmh,
+  CAST(SUM(precipitation_millimetres) AS REAL) AS precipitation_millimetres,
+  CAST(MAX(weather_code) AS INTEGER) AS weather_code
 FROM activity_weather
 WHERE target_slot = ?
-ORDER BY workout_id, hour_unix;
+GROUP BY workout_id
+ORDER BY workout_id;
 
 -- name: ListActivityWeatherHours :many
 SELECT hour_unix, temperature_celsius, apparent_temperature_celsius,

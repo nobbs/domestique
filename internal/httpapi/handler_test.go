@@ -2500,15 +2500,37 @@ type fakeState struct {
 	surfaceTotal         int
 }
 
-// ActivityWeather reports the recorded hours the test gave this target.
-func (s *fakeState) ActivityWeather(
+// ActivityWeatherSummaries sums the hours the test gave this target the way the
+// store's own query does, so a test writes hours and reads a summary.
+func (s *fakeState) ActivityWeatherSummaries(
 	_ context.Context, targetID string,
-) (map[int64][]activities.WeatherHour, error) {
+) (map[int64]activities.WeatherSummary, error) {
 	if s.activityWeatherErr != nil {
 		return nil, s.activityWeatherErr
 	}
+	summaries := map[int64]activities.WeatherSummary{}
+	for id, hours := range s.activityWeather[targetID] {
+		if len(hours) == 0 {
+			continue
+		}
+		summary := activities.WeatherSummary{
+			TemperatureMinCelsius: hours[0].TemperatureCelsius,
+			TemperatureMaxCelsius: hours[0].TemperatureCelsius,
+		}
+		wind := 0.0
+		for index := range hours {
+			hour := &hours[index]
+			summary.TemperatureMinCelsius = min(summary.TemperatureMinCelsius, hour.TemperatureCelsius)
+			summary.TemperatureMaxCelsius = max(summary.TemperatureMaxCelsius, hour.TemperatureCelsius)
+			summary.PrecipitationMillimetres += hour.PrecipitationMillimetres
+			wind += hour.WindSpeedKMH
+			summary.WeatherCode = max(summary.WeatherCode, hour.WeatherCode)
+		}
+		summary.WindSpeedKMH = wind / float64(len(hours))
+		summaries[id] = summary
+	}
 
-	return s.activityWeather[targetID], nil
+	return summaries, nil
 }
 
 func (s *fakeState) ActivityWeatherHours(

@@ -23,6 +23,18 @@ type WeatherHour struct {
 	HasPrecipitationProbability     bool
 }
 
+// WeatherSummary is what a ride's hours come to, in one line: the range the
+// temperature moved over, the mean wind speed, the whole of what fell, and the
+// worst of its weather codes. It carries no wind direction — a bearing does not
+// average into a summary, and one line has no room to say why.
+type WeatherSummary struct {
+	TemperatureMinCelsius    float64
+	TemperatureMaxCelsius    float64
+	WindSpeedKMH             float64
+	PrecipitationMillimetres float64
+	WeatherCode              int
+}
+
 // PendingWeather is one ride still owed a weather read: when it started and how
 // long it lasted, which together are the window to ask about.
 type PendingWeather struct {
