@@ -6,7 +6,8 @@ package trainingload
 
 import (
 	"math"
-	"time"
+
+	"github.com/nobbs/domestique/internal/measure"
 )
 
 // Zones is how long a ride was spent in each of five heart-rate zones, in
@@ -58,11 +59,11 @@ func BoundsFrom(thresholdHeartRate, maxHeartRate float64) (Bounds, bool) {
 }
 
 // TimeInZones sums how long the ride held each zone. Each sample counts for as
-// long as it stands, up to maxSampleGap: a recorder that paused must not book
-// the whole pause to whichever zone it stopped in.
+// long as it stands, up to measure.DefaultMaxGap: a recorder that paused must
+// not book the whole pause to whichever zone it stopped in.
 func TimeInZones(samples []Sample, bounds Bounds) Zones {
 	zones := Zones{}
-	forEachHeld(samples, func(value, seconds float64) {
+	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(value, seconds float64) {
 		zones[zoneOf(value, bounds)] += seconds
 	})
 
@@ -83,40 +84,7 @@ func zoneOf(heartRate float64, bounds Bounds) int {
 }
 
 // Sample is one recorded moment of whichever sensor is being read.
-type Sample struct {
-	At    time.Time
-	Value float64
-}
-
-// maxSampleGap is the longest a single sample may stand for. Beyond it the
-// recorder had stopped, and the rider with it.
-const maxSampleGap = 10 * time.Second
-
-// forEachHeld visits each sample with how long it stood, which is the gap to
-// the next one. The last sample stands for nothing, having nothing after it.
-func forEachHeld(samples []Sample, visit func(value, seconds float64)) {
-	for index := range len(samples) - 1 {
-		held := samples[index+1].At.Sub(samples[index].At)
-		if held <= 0 || held > maxSampleGap {
-			continue
-		}
-		visit(samples[index].Value, held.Seconds())
-	}
-}
-
-// meanHeld is the time-weighted mean of the samples, and how long they stood.
-func meanHeld(samples []Sample) (mean, seconds float64) {
-	total := 0.0
-	forEachHeld(samples, func(value, held float64) {
-		total += value * held
-		seconds += held
-	})
-	if seconds <= 0 {
-		return 0, 0
-	}
-
-	return total / seconds, seconds
-}
+type Sample = measure.Reading
 
 // round4 is the fourth root, which normalized power ends on.
 func round4(value float64) float64 {
