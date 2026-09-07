@@ -50,6 +50,16 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("170 bpm and up")).toBeInTheDocument();
   });
 
+  // A bound of 144.2 puts 144 bpm in the easiest zone and 145 in the next, so
+  // the edge is the beat above it rather than the nearer one.
+  it("keeps a bound between two beats on the side the zones were cut", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], zoneBoundsBpm: [144.2, 153.6, 161.5, 170.9] });
+
+    expect(screen.getByText("below 145 bpm")).toBeInTheDocument();
+    expect(screen.getByText("145–153 bpm")).toBeInTheDocument();
+    expect(screen.getByText("171 bpm and up")).toBeInTheDocument();
+  });
+
   it("leaves the rates out for a row that was derived without them", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300] });
 

@@ -63,14 +63,15 @@ export function Figure({ label, scale, value, decimals = 0 }: Scale) {
 /**
  * The heart rates each zone covers, easiest first. Open at both ends — the
  * easiest zone has nothing below it and the hardest nothing above — so neither
- * is given a limit the profile never said. Rounded, because a bound cut from a
- * percentage lands between two beats and no rider rides to a tenth of one.
+ * is given a limit the profile never said. A bound cut from a percentage lands
+ * between two beats, and a sample below it is still the easier zone, so both
+ * edges take the ceiling rather than the nearer beat.
  */
 function zoneRanges(bounds: number[]): string[] {
   const ranges: string[] = [];
   let low: number | undefined;
   for (const bound of bounds) {
-    const edge = Math.round(bound);
+    const edge = Math.ceil(bound);
     ranges.push(low === undefined ? `below ${edge} bpm` : `${low}–${edge - 1} bpm`);
     low = edge;
   }
