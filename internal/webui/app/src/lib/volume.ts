@@ -189,9 +189,13 @@ function dateActivities(activities: Activity[]) {
     .filter(({ startedAt }) => !Number.isNaN(startedAt.getTime()));
 }
 
-export interface RideWeek extends VolumeBucket {
+/** A bucket of either period with the activities that landed in it. */
+interface RidesBucket extends VolumeBucket {
   rides: Activity[];
 }
+
+/** One week, with its rides: the shape the activities index reads. */
+export type RideWeek = RidesBucket;
 
 /**
  * One bucket per period from the earliest activity to `now`, newest first,
@@ -206,7 +210,7 @@ function bucketsWithRides(
   zone: string,
   now: Date,
   withRides: boolean,
-): RideWeek[] {
+): RidesBucket[] {
   const dated = dateActivities(activities);
   if (dated.length === 0) {
     return [];
@@ -217,8 +221,8 @@ function bucketsWithRides(
     granularity,
     zone,
   );
-  const buckets: RideWeek[] = [];
-  const byStart = new Map<number, RideWeek>();
+  const buckets: RidesBucket[] = [];
+  const byStart = new Map<number, RidesBucket>();
   for (
     let start = startOfBucket(now, granularity, zone);
     start.getTime() >= earliest.getTime();
