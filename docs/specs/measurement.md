@@ -21,8 +21,9 @@ d      = R · 2 · atan2(sqrt(a), sqrt(1 - a))
 
 d is in metres; lat and lon are in radians.
 
-**Constants.** R = EarthRadiusMetres = 6 371 000 m
-(`internal/route/route.go`).
+**Constants.** R = `measure.EarthRadiusMetres` = 6 371 000 m
+(`internal/measure/geo.go`). `internal/route/route.go` still declares the
+same value as `route.EarthRadiusMetres` until its callers move.
 
 **Source.** Sinnott 1984 (haversine formula).
 
@@ -174,9 +175,11 @@ second step, not something this service does today.
 
 ## Recording gaps
 
-**Definition.** A step to the next sample longer than a fixed gap, or not
-positive, marks a pause. A sample stands for the time until the next one;
-the last sample stands for nothing.
+**Definition.** A step to the next sample longer than a fixed gap marks a
+pause and ends a stretch of recording. A step that is not positive is
+skipped where it stands, holding nothing, but does not end the stretch. A
+sample stands for the time until the next one; the last sample stands for
+nothing.
 
 **Formula.** In symbols:
 

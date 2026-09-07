@@ -12,7 +12,9 @@ type Stretch struct {
 }
 
 // Stretches marks, for each sample, the stretch of recording it belongs to: a
-// step of at most maxGap continues a stretch, a longer one starts another.
+// step of at most maxGap continues a stretch, a longer one starts another. A
+// clock that did not advance is skipped where it stands by the per-step
+// rules, not treated as a pause, so it never ends a stretch.
 //
 // See docs/specs/measurement.md §Recording gaps.
 func Stretches(times []time.Time, maxGap time.Duration) []Stretch {
