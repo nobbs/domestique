@@ -349,6 +349,58 @@ func (q *Queries) ListActivityRides(ctx context.Context, arg ListActivityRidesPa
 	return items, nil
 }
 
+const listActivitySeries = `-- name: ListActivitySeries :many
+SELECT recorded_at_unix, distance_metres, heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius
+FROM activity_records
+WHERE target_slot = ?1 AND workout_id = ?2
+  AND latitude IS NOT NULL AND longitude IS NOT NULL
+ORDER BY record_index
+`
+
+type ListActivitySeriesParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+type ListActivitySeriesRow struct {
+	RecordedAtUnix     int64
+	DistanceMetres     sql.NullFloat64
+	HeartRateBpm       sql.NullFloat64
+	CadenceRpm         sql.NullFloat64
+	PowerWatts         sql.NullFloat64
+	TemperatureCelsius sql.NullFloat64
+}
+
+func (q *Queries) ListActivitySeries(ctx context.Context, arg ListActivitySeriesParams) ([]ListActivitySeriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivitySeries, arg.TargetSlot, arg.WorkoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivitySeriesRow{}
+	for rows.Next() {
+		var i ListActivitySeriesRow
+		if err := rows.Scan(
+			&i.RecordedAtUnix,
+			&i.DistanceMetres,
+			&i.HeartRateBpm,
+			&i.CadenceRpm,
+			&i.PowerWatts,
+			&i.TemperatureCelsius,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActivitySkips = `-- name: ListActivitySkips :many
 SELECT workout_id, attempts, last_attempt_unix FROM activity_skips WHERE target_slot = ? ORDER BY workout_id
 `

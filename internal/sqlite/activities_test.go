@@ -628,6 +628,51 @@ func TestActivityTrackReadsBackPositionedSamples(t *testing.T) {
 	assert.Empty(t, other, "another target's activity id must read as no track")
 }
 
+// The series read back is indexed with the track: the same positioned samples,
+// in the same order, carrying what each of them recorded and nothing where it
+// recorded nothing.
+func TestActivitySeriesIsIndexedWithTheTrack(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{
+				Time: activityNow(), Latitude: 49.0, Longitude: 8.4, HasPosition: true,
+				HeartRateBPM: 128, HasHeartRate: true, DistanceMetres: 0, HasDistance: true,
+			},
+			{Time: activityNow().Add(time.Second), HeartRateBPM: 130, HasHeartRate: true},
+			{
+				Time: activityNow().Add(2 * time.Second), Latitude: 49.1, Longitude: 8.5, HasPosition: true,
+				CadenceRPM: 84, HasCadence: true, DistanceMetres: 20, HasDistance: true,
+			},
+		},
+	}), "StoreActivityRecords()")
+
+	track, err := store.ActivityTrack(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityTrack()")
+	rows, err := store.ActivitySeries(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivitySeries()")
+	require.Len(t, rows, len(track), "one row per coordinate of the track")
+	assert.Equal(t, activityNow(), rows[0].Time)
+	assert.InDelta(t, 128.0, rows[0].HeartRateBPM.Value, 1e-9)
+	assert.False(t, rows[1].HeartRateBPM.Known, "the second positioned sample carried no heart rate")
+	assert.InDelta(t, 84.0, rows[1].CadenceRPM.Value, 1e-9)
+	assert.InDelta(t, 20.0, rows[1].DistanceMetres.Value, 1e-9)
+
+	other, err := store.ActivitySeries(t.Context(), "rider-b", 1)
+	require.NoError(t, err, "ActivitySeries() for another target")
+	assert.Empty(t, other, "another target's activity id must read as no samples")
+}
+
+func TestActivitySeriesReportsAnUnreadableStore(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.ActivitySeries(t.Context(), "rider-a", 1)
+	require.ErrorContains(t, err, "reading an activity series")
+}
+
 // The state read is what tells a ride still awaiting its samples from one that
 // stored none, and either from a ride this target does not have at all.
 func TestActivityRecordsStateTellsPendingFromStored(t *testing.T) {

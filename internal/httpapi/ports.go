@@ -208,6 +208,9 @@ type ActivityState interface {
 	// ActivityTrack lists the positioned samples of one target's activity, in
 	// the order they were recorded.
 	ActivityTrack(ctx context.Context, targetID string, id int64) ([]activities.TrackPoint, error)
+	// ActivitySeries lists the non-positional part of one target's activity's
+	// positioned samples, indexed 1:1 with what ActivityTrack returns for it.
+	ActivitySeries(ctx context.Context, targetID string, id int64) ([]activities.SampleRow, error)
 	// ActivityRecordsState reports how far one target's activity has got in
 	// storing its recorded samples, and whether that target has the activity at
 	// all.

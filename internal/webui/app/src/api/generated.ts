@@ -365,6 +365,25 @@ export interface ActivityTrack {
   properties: ActivityTrackProperties;
 }
 
+/**
+ * A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` is worked out from the distance covered between one sample and the next.
+ */
+export type ActivitySeriesName = (typeof ActivitySeriesName)[keyof typeof ActivitySeriesName];
+
+export const ActivitySeriesName = {
+  heartRate: "heartRate",
+  cadence: "cadence",
+  power: "power",
+  temperature: "temperature",
+  speed: "speed",
+} as const;
+
+export interface ActivitySeries {
+  series: ActivitySeriesName;
+  /** The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius and kilometres per hour respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one. */
+  values: (number | null)[];
+}
+
 export interface RouteValidation {
   biasPercent: number;
   maePercent: number;
@@ -864,6 +883,13 @@ export type GetFitnessParams = {
 };
 
 export type GetActivityTrackParams = {
+  /**
+   * The target to read. Omitted means the caller's own.
+   */
+  target?: string;
+};
+
+export type GetActivitySeriesParams = {
   /**
    * The target to read. Omitted means the caller's own.
    */
@@ -2898,6 +2924,245 @@ export function useGetActivityTrack<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetActivityTrackQueryOptions(activityId, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getActivitySeriesResponse200 = {
+  data: ActivitySeries;
+  status: 200;
+};
+
+export type getActivitySeriesResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getActivitySeriesResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getActivitySeriesResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getActivitySeriesResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getActivitySeriesResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getActivitySeriesResponseSuccess = getActivitySeriesResponse200 & {
+  headers: Headers;
+};
+export type getActivitySeriesResponseError = (
+  | getActivitySeriesResponse400
+  | getActivitySeriesResponse401
+  | getActivitySeriesResponse403
+  | getActivitySeriesResponse404
+  | getActivitySeriesResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetActivitySeriesUrl = (
+  activityId: number,
+  series: ActivitySeriesName,
+  params?: GetActivitySeriesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/activities/${encodeURIComponent(String(activityId))}/series/${encodeURIComponent(String(series))}?${stringifiedParams}`
+    : `/v1/activities/${encodeURIComponent(String(activityId))}/series/${encodeURIComponent(String(series))}`;
+};
+
+/**
+ * One named series of an activity's recorded samples, indexed 1:1 with the coordinates that activity's track is served as. One request names one series and receives that series alone; nothing of this is bundled into the track response or into any listing. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. A series no sample of the ride recorded is answered not found, so a bicycle with no meter is told apart from a meter that dropped out.
+ */
+export const getActivitySeries = async (
+  activityId: number,
+  series: ActivitySeriesName,
+  params?: GetActivitySeriesParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getActivitySeriesResponseSuccess> => {
+  return domestiqueRequest<getActivitySeriesResponseSuccess>(
+    getGetActivitySeriesUrl(activityId, series, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetActivitySeriesQueryKey = (
+  activityId: number,
+  series: ActivitySeriesName,
+  params?: GetActivitySeriesParams,
+) => {
+  return [`/v1/activities/${activityId}/series/${series}`, ...(params ? [params] : [])] as const;
+};
+
+export const getGetActivitySeriesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActivitySeries>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  series: ActivitySeriesName,
+  params?: GetActivitySeriesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySeries>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetActivitySeriesQueryKey(activityId, series, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivitySeries>>> = ({ signal }) =>
+    getActivitySeries(activityId, series, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled:
+      activityId !== null && activityId !== undefined && series !== null && series !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getActivitySeries>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetActivitySeriesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getActivitySeries>>
+>;
+export type GetActivitySeriesQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetActivitySeries<
+  TData = Awaited<ReturnType<typeof getActivitySeries>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  series: ActivitySeriesName,
+  params: undefined | GetActivitySeriesParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySeries>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivitySeries>>,
+          TError,
+          Awaited<ReturnType<typeof getActivitySeries>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivitySeries<
+  TData = Awaited<ReturnType<typeof getActivitySeries>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  series: ActivitySeriesName,
+  params?: GetActivitySeriesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySeries>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivitySeries>>,
+          TError,
+          Awaited<ReturnType<typeof getActivitySeries>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivitySeries<
+  TData = Awaited<ReturnType<typeof getActivitySeries>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  series: ActivitySeriesName,
+  params?: GetActivitySeriesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySeries>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetActivitySeries<
+  TData = Awaited<ReturnType<typeof getActivitySeries>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: number,
+  series: ActivitySeriesName,
+  params?: GetActivitySeriesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySeries>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetActivitySeriesQueryOptions(activityId, series, params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

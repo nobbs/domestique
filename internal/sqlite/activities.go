@@ -240,6 +240,34 @@ func (s *Store) ActivityTrack(ctx context.Context, targetID string, id int64) ([
 	return track, nil
 }
 
+// ActivitySeries is the non-positional part of one target's activity's
+// positioned samples, in the order they were recorded — indexed 1:1 with what
+// ActivityTrack returns for the same ride.
+func (s *Store) ActivitySeries(ctx context.Context, targetID string, id int64) ([]activity.SampleRow, error) {
+	rows, err := s.queries.ListActivitySeries(ctx, sqlcgen.ListActivitySeriesParams{TargetSlot: targetID, WorkoutID: id})
+	if err != nil {
+		return nil, fmt.Errorf("reading an activity series: %w", err)
+	}
+	samples := make([]activity.SampleRow, 0, len(rows))
+	for _, row := range rows {
+		samples = append(samples, activity.SampleRow{
+			Time:               time.Unix(row.RecordedAtUnix, 0).UTC(),
+			DistanceMetres:     reading(row.DistanceMetres),
+			HeartRateBPM:       reading(row.HeartRateBpm),
+			CadenceRPM:         reading(row.CadenceRpm),
+			PowerWatts:         reading(row.PowerWatts),
+			TemperatureCelsius: reading(row.TemperatureCelsius),
+		})
+	}
+
+	return samples, nil
+}
+
+// reading carries a nullable column across as the optional value it is.
+func reading(column sql.NullFloat64) activity.Reading {
+	return activity.Reading{Value: column.Float64, Known: column.Valid}
+}
+
 // ActivitiesAwaitingRecords are one target's stored activities whose FIT
 // samples are still absent, newest first, at most limit of them.
 func (s *Store) ActivitiesAwaitingRecords(

@@ -8,6 +8,7 @@ import type { Highlight } from "../../lib/highlight";
 import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow } from "../../lib/profile";
 import { buildProfile, buildWindowedProfile } from "../../lib/profile";
+import type { AlignedSeries } from "../../lib/rideSeries";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
 import { ElevationProfile, LONG_PRESS_MS, profileReadout } from "./ElevationProfile";
@@ -234,6 +235,38 @@ describe("ElevationProfile", () => {
     await user.keyboard("{ArrowRight}");
 
     expect(screen.queryByText(/Gravel|Asphalt|Unsurveyed/)).not.toBeInTheDocument();
+  });
+
+  // A ride's sensor series ride over the terrain on their own hidden axes, so
+  // beats and degrees are both legible at once instead of one flattening the
+  // other. A chart given none is exactly the profile it was.
+  it("draws one line per series handed to it, and none otherwise", () => {
+    const profile = buildProfile(climb());
+    const heartRate: AlignedSeries = {
+      key: "heartRate",
+      label: "Heart rate",
+      unit: "bpm",
+      colour: "var(--series-heart-rate)",
+      values: (profile?.samples ?? []).map((_, index) => 120 + index),
+    };
+
+    const { container, unmount } = render(
+      <ElevationProfile
+        profile={profile}
+        title="Eich Rundkurs 90"
+        series={[heartRate]}
+        activeMetres={null}
+        onActiveChange={vi.fn()}
+      />,
+    );
+    expect(container.querySelector("[data-series='heartRate']")).not.toBeNull();
+    expect(container.querySelectorAll("[data-series]:not([data-series='heartRate'])")).toHaveLength(
+      0,
+    );
+    unmount();
+
+    const bare = render(<Harness />);
+    expect(bare.container.querySelector("[data-series]")).toBeNull();
   });
 
   it("says so plainly when a route has no elevation", () => {
