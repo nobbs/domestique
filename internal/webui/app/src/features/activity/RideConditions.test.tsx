@@ -80,6 +80,16 @@ describe("RideConditions", () => {
     expect(screen.getByText("Wind 14 km/h toward the north-east")).toBeInTheDocument();
   });
 
+  // Steps not placed yet — the ride's summary still loading — draw no strip
+  // either, rather than an empty bordered one.
+  it("draws nothing until the steps have somewhere to stand", () => {
+    const { container } = render(
+      <RideConditions steps={TWO_STEPS} starts={[]} totalMetres={20_000} />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   // A ride nobody has asked about carries no strip at all, rather than an empty
   // one claiming the weather is unknown.
   it("draws nothing for a ride with no recorded weather", () => {

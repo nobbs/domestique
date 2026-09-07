@@ -110,6 +110,11 @@ export function RideConditions({ steps, starts, totalMetres, inset = true }: Rid
       endMetres: starts[index + 1] ?? totalMetres,
     }))
     .filter((cell) => cell.startMetres < totalMetres);
+  // Nothing placed yet — the ride's summary still loading — is not a strip
+  // with nothing in it.
+  if (cells.length === 0) {
+    return null;
+  }
 
   return (
     <div
