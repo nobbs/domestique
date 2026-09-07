@@ -239,6 +239,8 @@ export interface ActivityMetrics {
   normalizedPowerWatts?: number;
   intensityFactor?: number;
   powerTss?: number;
+  /** The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass. */
+  estimatedPowerWatts?: number;
 }
 
 export interface Activity {

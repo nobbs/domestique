@@ -33,6 +33,9 @@ func activityMetrics(metrics trainingload.Metrics) *openapi.ActivityMetrics {
 		view.IntensityFactor = &metrics.Power.IntensityFactor
 		view.PowerTss = &metrics.Power.TSS
 	}
+	if metrics.HasEstimatedPower {
+		view.EstimatedPowerWatts = &metrics.EstimatedPowerWatts
+	}
 
 	return view
 }

@@ -74,6 +74,7 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 		"rider-a": {1: {
 			Zones: trainingload.Zones{60, 120, 180, 240, 300}, HasZones: true,
 			TRIMP: 42.5, HasTRIMP: true,
+			EstimatedPowerWatts: 168.5, HasEstimatedPower: true,
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
@@ -89,6 +90,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	require.NotNil(t, derived.Metrics.Trimp)
 	assert.InDelta(t, 42.5, *derived.Metrics.Trimp, 1e-9)
 	assert.Nil(t, derived.Metrics.PowerTss, "no ride carried a meter")
+	require.NotNil(t, derived.Metrics.EstimatedPowerWatts, "which is why it has an estimate at all")
+	assert.InDelta(t, 168.5, *derived.Metrics.EstimatedPowerWatts, 1e-9)
 	assert.Nil(t, plain.Metrics, "and a ride with no row carries none at all")
 }
 

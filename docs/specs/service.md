@@ -539,7 +539,7 @@ The read-only JSON surface is small:
   when, is [`activity:derive`](task-layer.md).
 
   A ride carrying no meter, for a rider who has entered both a rider and a bike
-  mass, also carries an average **estimated** power. It is worked out from the
+  mass, also carries `estimatedPowerWatts`: its average **estimated** power. It is worked out from the
   recorded track by a physics model — gravity against a smoothed grade, rolling
   resistance and drag at fixed road-bike constants, and the change in speed
   between samples, never below zero and never accounting for wind. It is an

@@ -15,15 +15,17 @@ import (
 // drops one is visible.
 func derivedMetrics(inputs trainingload.Inputs) trainingload.Metrics {
 	return trainingload.Metrics{
-		Inputs:          inputs,
-		Zones:           trainingload.Zones{60, 120, 180, 240, 300},
-		HasZones:        true,
-		TRIMP:           42.5,
-		HasTRIMP:        true,
-		HeartRateTSS:    88.25,
-		HasHeartRateTSS: true,
-		Power:           trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
-		HasPower:        true,
+		Inputs:              inputs,
+		Zones:               trainingload.Zones{60, 120, 180, 240, 300},
+		HasZones:            true,
+		TRIMP:               42.5,
+		HasTRIMP:            true,
+		HeartRateTSS:        88.25,
+		HasHeartRateTSS:     true,
+		Power:               trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
+		HasPower:            true,
+		EstimatedPowerWatts: 168.5,
+		HasEstimatedPower:   true,
 	}
 }
 
@@ -61,7 +63,9 @@ func TestActivityMetricsRoundTrip(t *testing.T) {
 	assert.InDelta(t, stored.TRIMP, read[1].TRIMP, 1e-9)
 	assert.InDelta(t, stored.HeartRateTSS, read[1].HeartRateTSS, 1e-9)
 	assert.InDelta(t, stored.Power.NormalizedWatts, read[1].Power.NormalizedWatts, 1e-9)
+	assert.InDelta(t, stored.EstimatedPowerWatts, read[1].EstimatedPowerWatts, 1e-9)
 	assert.True(t, read[1].HasZones && read[1].HasTRIMP && read[1].HasHeartRateTSS && read[1].HasPower)
+	assert.True(t, read[1].HasEstimatedPower, "the ride's average estimate")
 }
 
 // A ride with heart rate but no meter keeps its zones and loses nothing to a

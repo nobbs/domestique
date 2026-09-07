@@ -75,7 +75,3 @@ SELECT COALESCE(owner_subject, '') AS owner_subject FROM targets WHERE slot = ?;
 -- name: ClearEstimatedPower :exec
 UPDATE activity_records SET estimated_power_watts = NULL
 WHERE target_slot = ? AND workout_id = ?;
-
--- name: SetEstimatedPower :exec
-UPDATE activity_records SET estimated_power_watts = ?
-WHERE target_slot = ? AND workout_id = ? AND record_index = ?;

@@ -1507,6 +1507,16 @@ components:
         powerTss:
           type: number
           format: double
+        estimatedPowerWatts:
+          type: number
+          format: double
+          description: >-
+            The ride's average estimated power, for a bicycle carrying no meter.
+            An estimate from a physics model over the recorded track, never a
+            measurement: it feeds none of the figures above and must not be
+            presented as though it were one of them. Absent for a ride that
+            measured its own power, one with no usable track, and one whose
+            rider has entered no mass.
     ActivityList:
       type: object
       additionalProperties: false

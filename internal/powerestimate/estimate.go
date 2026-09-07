@@ -57,6 +57,7 @@ func Series(samples []Sample, totalMassKG float64) ([]Estimate, bool) {
 		return nil, false
 	}
 	estimates := make([]Estimate, len(samples))
+	bounds := unbrokenStretches(samples)
 	previousSpeed, hasPreviousSpeed, known := 0.0, false, false
 	for index := 1; index < len(samples); index++ {
 		step := samples[index].At.Sub(samples[index-1].At)
@@ -73,7 +74,7 @@ func Series(samples []Sample, totalMassKG float64) ([]Estimate, bool) {
 			acceleration = (speed - previousSpeed) / seconds
 		}
 		estimates[index] = Estimate{
-			Watts: watts(speed, acceleration, gradeAt(samples, index), totalMassKG),
+			Watts: watts(speed, acceleration, gradeAt(samples, index, bounds), totalMassKG),
 			Known: true,
 		}
 		previousSpeed, hasPreviousSpeed, known = speed, true, true
@@ -98,17 +99,44 @@ func watts(speed, acceleration, grade, totalMassKG float64) float64 {
 	return 0
 }
 
+// stretch is the half-open range of samples recorded without a pause in them.
+type stretch struct {
+	first int
+	past  int
+}
+
+// unbrokenStretches marks, for each sample, the stretch of recording it belongs
+// to. A grade must not be measured across a pause: the altitude either side of
+// one is minutes of barometric drift apart, and the distance between them is
+// not a slope the rider ever rode.
+func unbrokenStretches(samples []Sample) []stretch {
+	bounds := make([]stretch, len(samples))
+	for first := 0; first < len(samples); {
+		past := first + 1
+		for past < len(samples) && samples[past].At.Sub(samples[past-1].At) <= maxSampleGap {
+			past++
+		}
+		for index := first; index < past; index++ {
+			bounds[index] = stretch{first: first, past: past}
+		}
+		first = past
+	}
+
+	return bounds
+}
+
 // gradeAt measures the slope around one sample over gradeWindowMetres of
-// distance, or over as much of it as the ride holds at that point.
-func gradeAt(samples []Sample, index int) float64 {
+// distance, or over as much of it as that stretch of recording holds.
+func gradeAt(samples []Sample, index int, bounds []stretch) float64 {
+	within := bounds[index]
 	low, high := index, index
 	for samples[high].DistanceMetres-samples[low].DistanceMetres < gradeWindowMetres {
 		moved := false
-		if low > 0 {
+		if low > within.first {
 			low--
 			moved = true
 		}
-		if high < len(samples)-1 {
+		if high < within.past-1 {
 			high++
 			moved = true
 		}

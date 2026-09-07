@@ -238,28 +238,6 @@ func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivit
 	return items, nil
 }
 
-const setEstimatedPower = `-- name: SetEstimatedPower :exec
-UPDATE activity_records SET estimated_power_watts = ?
-WHERE target_slot = ? AND workout_id = ? AND record_index = ?
-`
-
-type SetEstimatedPowerParams struct {
-	EstimatedPowerWatts sql.NullFloat64
-	TargetSlot          string
-	WorkoutID           int64
-	RecordIndex         int64
-}
-
-func (q *Queries) SetEstimatedPower(ctx context.Context, arg SetEstimatedPowerParams) error {
-	_, err := q.db.ExecContext(ctx, setEstimatedPower,
-		arg.EstimatedPowerWatts,
-		arg.TargetSlot,
-		arg.WorkoutID,
-		arg.RecordIndex,
-	)
-	return err
-}
-
 const upsertActivityMetrics = `-- name: UpsertActivityMetrics :exec
 INSERT INTO activity_metrics (
   target_slot, workout_id,

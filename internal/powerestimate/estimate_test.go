@@ -1,6 +1,7 @@
 package powerestimate_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -123,6 +124,32 @@ func TestSeriesChargesForAcceleration(t *testing.T) {
 	require.True(t, speed.Known)
 	assert.Greater(t, speed.Watts, closedForm(4.25, 0, 82),
 		"a rider still gaining speed is paying for the gain as well")
+}
+
+// The altitude either side of a pause is minutes of barometric drift apart, and
+// the distance between them is not a slope the rider ever rode.
+func TestGradeIsNotMeasuredAcrossARecordingGap(t *testing.T) {
+	t.Parallel()
+	// Flat before the pause, flat after it, and forty metres higher afterwards —
+	// a coffee stop at the top of a hill the recorder never saw.
+	before := ride(120, 7.5, 0)
+	after := ride(120, 7.5, 0)
+	for index := range after {
+		after[index].At = before[len(before)-1].At.Add(time.Hour + time.Duration(index)*time.Second)
+		after[index].DistanceMetres += before[len(before)-1].DistanceMetres
+		after[index].AltitudeMetres += 40
+	}
+	samples := slices.Concat(before, after)
+
+	estimates, ok := powerestimate.Series(samples, 82)
+	require.True(t, ok)
+
+	flat := closedForm(7.5, 0, 82)
+	for index := len(before) + 1; index < len(samples); index++ {
+		require.True(t, estimates[index].Known, "sample %d", index)
+		assert.InEpsilon(t, flat, estimates[index].Watts, 0.05,
+			"sample %d rides flat ground, whatever happened during the stop", index)
+	}
 }
 
 func TestSeriesNeedsAMassAndMoreThanOneSample(t *testing.T) {
