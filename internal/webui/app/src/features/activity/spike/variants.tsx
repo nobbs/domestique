@@ -21,11 +21,14 @@ import {
   formatKilometres,
   formatWindSpeed,
 } from "../../../lib/format";
+import { PADDING, plotAxis } from "../../../lib/plotAxis";
 import { buildActivityProfile, gradientBand } from "../../../lib/profile";
 import type { AlignedSeries } from "../../../lib/rideSeries";
+import { useElementWidth } from "../../../lib/useElementWidth";
 import { temperatureColour, weatherIcon } from "../../../lib/weather";
 import { flowBearingDegrees } from "../../../lib/windField";
 import { ElevationProfile } from "../../routes/ElevationProfile";
+import { windWeight } from "../../routes/forecastCells";
 import { RouteOverlay } from "../../routes/RouteOverlay";
 import { RideSplits } from "../RideSplits";
 import {
@@ -273,6 +276,90 @@ function conditionsSentence(): string {
   )}${rain > 0 ? `, ${rain} mm of rain` : ""}`;
 }
 
+/**
+ * The ride's weather as tiles under the terrain, each as wide as the ground
+ * the ride covered in that hour: the route page's forecast strip, read back.
+ * Where each hour began is taken from the splits' own clock.
+ */
+function RideStrip() {
+  const { ref, width } = useElementWidth<HTMLDivElement>();
+  const { x } = plotAxis(width, 0, TOTAL_METRES);
+  const cells = WEATHER.map((step, index) => ({
+    step,
+    startMetres: STEP_METRES[index] ?? TOTAL_METRES,
+    endMetres: STEP_METRES[index + 1] ?? TOTAL_METRES,
+  })).filter((cell) => cell.startMetres < TOTAL_METRES);
+
+  return (
+    <div ref={ref} style={{ paddingLeft: PADDING.left, paddingRight: PADDING.right }}>
+      <div className="relative h-[68px] overflow-hidden rounded-md border border-[var(--rule)]">
+        {cells.map(({ step, startMetres, endMetres }) => {
+          const Glyph = weatherIcon(step.weatherCode);
+          const left = x(startMetres);
+          const cellWidth = Math.max(x(endMetres) - left, 0);
+          const wet = Math.min(step.precipitationMillimetres / 5, 1) * 0.5;
+          // What a tile gives up as it narrows, in the route strip's order.
+          const place =
+            cellWidth >= 84
+              ? `${formatKilometres(startMetres)} · ${formatClock(new Date(step.time))}`
+              : cellWidth >= 34
+                ? formatClock(new Date(step.time))
+                : null;
+          const wind = cellWidth >= 34;
+
+          return (
+            <div
+              key={step.time}
+              className="absolute top-0 flex h-full flex-col items-center justify-center gap-0.5 overflow-hidden border-[var(--rule)] not-last:border-r"
+              style={{
+                left,
+                width: cellWidth,
+                backgroundColor: `color-mix(in srgb, var(--rain-1) ${wet * 100}%, transparent)`,
+              }}
+            >
+              {place === null ? null : (
+                <span className="text-[10px] text-[var(--ink-2)] tabular-nums whitespace-nowrap">
+                  {place}
+                </span>
+              )}
+              <span className="flex items-center gap-1.5">
+                <Glyph size={15} stroke={1.7} aria-hidden="true" className="text-[var(--ink-2)]" />
+                <span
+                  className="rounded px-1 font-semibold text-[11px] tabular-nums"
+                  style={{
+                    backgroundColor: `color-mix(in srgb, ${temperatureColour(step.temperatureCelsius)} 60%, transparent)`,
+                  }}
+                >
+                  {Math.round(step.temperatureCelsius)}°
+                </span>
+              </span>
+              <span
+                className="flex items-center gap-0.5 text-[10px] text-[var(--ink-2)] tabular-nums"
+                style={{ opacity: 0.4 + windWeight(step.windSpeedKmh) * 0.6 }}
+              >
+                {wind ? (
+                  <IconArrowUp
+                    size={12}
+                    stroke={2.2}
+                    aria-hidden="true"
+                    style={{
+                      transform: `rotate(${flowBearingDegrees(step.windDirectionDegrees)}deg)`,
+                    }}
+                  />
+                ) : null}
+                {wind ? Math.round(step.windSpeedKmh) : null}
+                {wind && step.precipitationMillimetres > 0
+                  ? ` · ${step.precipitationMillimetres} mm`
+                  : ""}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** Pointer position across a plot as metres along the ride. */
 function useCursorHandlers(onActive: (metres: number | null) => void) {
   const plot = useRef<HTMLDivElement>(null);
@@ -508,12 +595,13 @@ export function HeadlinePage() {
           onActiveChange={setActive}
           caption={false}
         />
+        <RideStrip />
         <SeriesLegend active={active} />
       </Panel>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Panel title="Effort">
+      <Panel title="Effort">
+        <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <ZoneStack />
-          <div className="grid grid-cols-3 gap-x-4 gap-y-3 pt-1">
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3">
             <Stat label="Avg heart rate" value="143" unit="bpm" size="sm" />
             <Stat label="Max heart rate" value="172" unit="bpm" size="sm" />
             <Stat label="Cadence" value="76" unit="rpm" size="sm" />
@@ -521,11 +609,8 @@ export function HeadlinePage() {
             <Stat label="hrTSS" value="73" size="sm" />
             <Stat label="TRIMP" value="130" size="sm" />
           </div>
-        </Panel>
-        <Panel title="Conditions">
-          <Steps />
-        </Panel>
-      </div>
+        </div>
+      </Panel>
       <Panel
         title="By the kilometre"
         action={
