@@ -1179,7 +1179,10 @@ for one. A library emptied after the fact is the other case, its matches naming
 routes that are gone, and those are removed. A match is measured
 against where the library's routes run, so a route added, removed or moved has
 every ride matched again by the next derivation, while renaming one leaves every
-match alone; a ride whose samples are replaced loses its match with them.
+match alone; a ride whose samples are replaced loses its match with them. The
+match and its direction are served on the activity, and a route serves the rides
+one target rode on it with the direction of each, both scoped to the owning
+subject exactly as the activities themselves are.
 
 These summaries are also what the ride model is calibrated from. Once a week the
 service refits the coefficient pair over every target's stored rides pooled

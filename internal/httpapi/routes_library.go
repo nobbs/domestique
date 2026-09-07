@@ -139,6 +139,53 @@ func (h *Handler) ReprocessRoute(writer http.ResponseWriter, request *http.Reque
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
 }
 
+// GetRouteActivities serves the rides one target rode on one route, newest
+// first, scoped exactly as the activity list is: a caller reads only the target
+// they own, and so reads their own history of a route and never another
+// rider's. A route nobody has ridden is an empty list, not a missing page.
+func (h *Handler) GetRouteActivities(writer http.ResponseWriter, request *http.Request) {
+	provider, sourceRouteID, stageOrder, ok := routeKey(request)
+	if !ok {
+		h.notFound(writer)
+
+		return
+	}
+	requested := request.URL.Query().Get("target")
+	targetID, found, err := h.readableTarget(request.Context(), requested)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	// A named target the caller may not read is refused; a caller who simply has
+	// no target of their own has ridden nothing, not a missing page.
+	if !found && requested != "" {
+		h.notFound(writer)
+
+		return
+	}
+	view := openapi.RouteActivityList{Activities: []openapi.RouteActivity{}}
+	if found {
+		rides, ridesErr := h.state.RouteActivities(
+			request.Context(), targetID, route.NewKey(provider, sourceRouteID, stageOrder),
+		)
+		if ridesErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
+		for _, ride := range rides {
+			view.Activities = append(view.Activities, openapi.RouteActivity{
+				ID:            ride.ID,
+				RouteCoverage: ride.RouteCoverage,
+				RideCoverage:  ride.RideCoverage,
+				Direction:     openapi.RouteRideDirection(ride.Direction.String()),
+			})
+		}
+	}
+	h.writeJSON(writer, http.StatusOK, view)
+}
+
 // routeSurface reads the classification stored for this exact geometry, nil when
 // none is recorded and unreadable when the store failed. The content hash is part
 // of the lookup: ranges index the stored coordinates, so a classification from an

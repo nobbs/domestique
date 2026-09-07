@@ -2490,10 +2490,13 @@ type fakeState struct {
 	riderSuggestionErr   error
 	activityMetricsErr   error
 	activityWeatherErr   error
+	routeMatchErr        error
+	routeRidesErr        error
 	rideLoadsErr         error
 	rideLoads            map[string][]trainingload.RideLoad
 	activityMetrics      map[string]map[int64]activities.RideMetrics
 	activityWeather      map[string]map[int64][]activities.WeatherStep
+	routeMatches         map[string]map[int64]activities.RouteMatch
 	riderProfiles        map[string]rider.Profile
 	riderSuggestions     map[string]rider.Suggestions
 	riderSuggestionSince time.Time
@@ -2506,6 +2509,36 @@ type fakeState struct {
 
 // ActivityWeatherSummaries sums the steps the test gave this target the way
 // the store's own query does, so a test writes steps and reads a summary.
+func (s *fakeState) ActivityRouteMatches(
+	_ context.Context, targetID string,
+) (map[int64]activities.RouteMatch, error) {
+	if s.routeMatchErr != nil {
+		return nil, s.routeMatchErr
+	}
+
+	return s.routeMatches[targetID], nil
+}
+
+func (s *fakeState) RouteActivities(
+	_ context.Context, targetID string, key route.Key,
+) ([]activities.RouteRide, error) {
+	if s.routeRidesErr != nil {
+		return nil, s.routeRidesErr
+	}
+	rides := []activities.RouteRide{}
+	for id, match := range s.routeMatches[targetID] {
+		if match.Key == key {
+			rides = append(rides, activities.RouteRide{
+				ID: id, RouteCoverage: match.RouteCoverage, RideCoverage: match.RideCoverage,
+				Direction: match.Direction,
+			})
+		}
+	}
+	slices.SortFunc(rides, func(a, b activities.RouteRide) int { return int(b.ID - a.ID) })
+
+	return rides, nil
+}
+
 func (s *fakeState) ActivityWeatherSummaries(
 	_ context.Context, targetID string,
 ) (map[int64]activities.WeatherSummary, error) {

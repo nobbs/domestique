@@ -269,6 +269,9 @@ func (h *Handler) routes() {
 		"GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/geometry",
 		h.GetRouteGeometry)
 	h.mux.HandleFunc(
+		"GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/activities",
+		h.GetRouteActivities)
+	h.mux.HandleFunc(
 		"POST /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/reprocess",
 		h.adminOnly(h.ReprocessRoute))
 	h.mux.HandleFunc("GET /v1/providers/{provider}/routes/{routeId}/stages/{stage}", h.RedirectStageRoute)

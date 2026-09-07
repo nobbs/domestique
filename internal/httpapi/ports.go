@@ -227,6 +227,11 @@ type ActivityState interface {
 	ActivityRideLoads(ctx context.Context, targetID string) ([]trainingload.RideLoad, error)
 	// ActivityWeatherSteps is one ride's own steps, in order.
 	ActivityWeatherSteps(ctx context.Context, targetID string, id int64) ([]activities.WeatherStep, error)
+	// ActivityRouteMatches is the library route each of one target's rides was
+	// ridden on, keyed by ride. A ride matched to none is absent from the map.
+	ActivityRouteMatches(ctx context.Context, targetID string) (map[int64]activities.RouteMatch, error)
+	// RouteActivities is the rides one target rode on one route, newest first.
+	RouteActivities(ctx context.Context, targetID string, key route.Key) ([]activities.RouteRide, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.
