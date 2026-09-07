@@ -214,7 +214,7 @@ func run(ctx context.Context) error {
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
 			activityRecordTask(activityPoller),
-			activityDeriveTask(activityDeriver, destination.targetIDs),
+			activityDeriveTask(activityDeriver, switches.enabledFor, destination.targetIDs),
 			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
 		),
 	)

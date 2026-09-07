@@ -270,7 +270,7 @@ is checked rather than inferred.
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 | `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
 | `activity:record` | target slot and workout id | `activities` exclusive | none |
-| `activity:derive` | target slot, or none for every one | `activities` exclusive | none |
+| `activity:derive` | target slot, or none for every one | `activities` exclusive | every hour |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
 
 `activity:poll` stores cycling alone. A rider's account may record any sport
@@ -308,16 +308,16 @@ nothing still rode through weather. A ride is asked about **once**, after its
 samples are stored, and whatever comes back — including nothing — is recorded as
 having been asked, so a ride the provider has no data for costs one request
 rather than one on every run. A provider failure is not recorded that way: it is
-a run to try again, not an answer. A bounded few rides are asked about per run,
-so a backfill of a whole stored history never contends with the course forecasts
-a rider is waiting on, and one ride is asked at one coordinate per hour of it,
-both ends included, up to a day's worth. Each stored hour is the reading of the
-coordinate nearest it in time rather than a mean across the route, so the hour
-says what the rider rode through and not what the weather did along the whole of
-it — a headwind that became a tailwind is the point. A weather code is not a
-quantity: where an hour was asked at more than one coordinate, it keeps the
-worst of them. Neither pass holds the other back, and the run reports whichever
-came to the more serious thing.
+a run to try again, not an answer. A bounded few rides are asked about per
+target per run, so a backfill of a whole stored history never contends with the
+course forecasts a rider is waiting on, and one ride is asked at one coordinate
+per hour of it, both ends included, up to a day's worth. Each stored hour is the
+reading of the coordinate nearest it in time rather than a mean across the
+route, so the hour says what the rider rode through and not what the weather did
+along the whole of it — a headwind that became a tailwind is the point. A
+weather code is not a quantity: where an hour was asked at more than one
+coordinate, it keeps the worst of them. Neither pass holds the other back, and
+the run reports whichever came to the more serious thing.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery
@@ -347,12 +347,19 @@ index rebuild, and runs after each: either alone leaves stages wanting it.
 reason: a new inventory leaves stages wanting a prediction, and it follows a
 calibration for the same reason again. `activity:derive` follows both readers of recorded samples and holds the same
 resource they do, because it reads exactly the rows they write: a ride whose
-file has just landed is derived on the same cycle rather than the next one. It
-has no schedule. There is nothing to derive until either new samples arrive or
-the rider changes the profile the numbers are worked out against, and both of
-those already start it — the second directly, from the settings write, over
-that rider's own targets. It fans out over targets, as `sync:target` does, so
-one rider's fault holds back nobody else's rides. `ridemodel:calibrate` takes the
+file has just landed is derived on the same cycle rather than the next one. New
+samples and a profile edit both start it — the second directly, from the
+settings write, over that rider's own targets — but neither reaches a history
+already stored: a poll over rides that are all synced reports unchanged, so
+nothing follows it, and the weather half asks about only the bounded few rides
+per target described above, where the training figures derive every ride owed
+one. It therefore also runs hourly, which asks about a stored history over
+successive runs without an administrator pressing Run once per bound. A
+scheduled run takes every target, so the upstream cost of the cadence is that
+bound times the number of targets an hour rather than the bound itself; a run
+with nothing owed derives nothing and asks no upstream anything, leaving a
+query per target. It fans out over targets, as `sync:target` does, so one rider's
+fault holds back nobody else's rides. `ridemodel:calibrate` takes the
 activities rather than the inventory: it reads the rows a poll writes and
 touches no stage. It reads only the trailing training window of them, and
 reaches past it for the rides a fit needs only when the window holds too few
