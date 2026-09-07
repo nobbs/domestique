@@ -167,10 +167,16 @@ statements live in the linked specs.
 ## Testing
 
 - Tests live beside the package, using deterministic in-memory fakes or
-  `httptest`. **No normal test contacts any network service.** The sandbox
-  acceptance check
-  ([wahoo_sandbox_test.go](internal/fit/wahoo_sandbox_test.go)) is invoked
-  separately, never with production secrets in CI.
+  `httptest`. **No normal test contacts any network service.** Two acceptance
+  checks are invoked separately, behind build tags, never with production
+  secrets in CI: the Wahoo sandbox check
+  ([wahoo_sandbox_test.go](internal/fit/wahoo_sandbox_test.go), `-tags
+  wahoo_sandbox`) and the Open-Meteo check
+  ([openmeteo_acceptance_test.go](internal/openmeteo/openmeteo_acceptance_test.go),
+  `-tags openmeteo_acceptance`, no credentials needed). Run the latter after
+  changing what this service asks a weather endpoint for: an `httptest` fixture
+  asserts the request this client sends, which it always agrees with, and the
+  provider is the only thing that can say whether it accepts it.
 - **Regression test for every behavior change**, especially safety gates. Use
   the `task` package's clock seams, not wall-clock sleeps. No personal route
   data in fixtures.

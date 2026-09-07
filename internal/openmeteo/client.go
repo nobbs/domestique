@@ -54,12 +54,18 @@ const (
 	archiveHourlyParams = "temperature_2m,apparent_temperature,precipitation," +
 		"wind_speed_10m,wind_direction_10m,weather_code,cloud_cover"
 
-	// forecastPastDays is how far back the forecast endpoint will reach, and so
-	// the line between it and the archive. The archive itself runs about five
-	// days behind the present, which is why the recent past is asked of the
-	// forecast rather than of both.
-	forecastPastDays = 92
-	dayFormat        = "2006-01-02"
+	// archiveFromDaysAgo is the line between the two endpoints, and it sits where
+	// both sides are known to hold real data rather than at the edge of either.
+	//
+	// The forecast endpoint answers for a window in the past without being asked
+	// for one — past_days is mutually exclusive with an hour range and refuses
+	// the request outright — but it carries values for only a few weeks back and
+	// then answers inside its own allowed range with nulls. The archive carries
+	// values up to about a day behind the present. Two days is comfortably
+	// inside both: the forecast covers today and yesterday, the archive
+	// everything older, and neither is asked near its own boundary.
+	archiveFromDaysAgo = 2
+	dayFormat          = "2006-01-02"
 )
 
 // Options configures an Open-Meteo client. There is no API key: the free
@@ -246,22 +252,20 @@ func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Tim
 	}
 	latitudes, longitudes := coordinateColumns(at)
 
-	if days := c.daysAgo(from, location); days <= forecastPastDays {
+	if c.daysAgo(from, location) < archiveFromDaysAgo {
 		endpoint := *c.baseURL
 		endpoint.Path = "/v1/forecast"
+		// The hour bounds alone, which reach into the past on their own. Asking
+		// for past_days beside them is refused: the provider treats an hour range
+		// and a count of past days as two ways of saying the same thing, and
+		// will not take both.
 		endpoint.RawQuery = url.Values{
-			"latitude":  {latitudes},
-			"longitude": {longitudes},
-			"hourly":    {hourlyParams},
-			"timezone":  {location.String()},
-			// past_days is what reaches back at all; the hour bounds then narrow
-			// the answer to the ride itself. forecast_days is pinned to one
-			// rather than left at its default, so a ride from last week does not
-			// drag a week of prediction along with it.
-			"past_days":     {strconv.Itoa(days)},
-			"forecast_days": {"1"},
-			"start_hour":    {floorHour(from.In(location)).Format(hourFormat)},
-			"end_hour":      {ceilHour(to.In(location)).Format(hourFormat)},
+			"latitude":   {latitudes},
+			"longitude":  {longitudes},
+			"hourly":     {hourlyParams},
+			"timezone":   {location.String()},
+			"start_hour": {floorHour(from.In(location)).Format(hourFormat)},
+			"end_hour":   {ceilHour(to.In(location)).Format(hourFormat)},
 		}.Encode()
 
 		return c.fetch(ctx, &endpoint, location, len(at), true)
@@ -379,23 +383,27 @@ type rawForecastResponse struct {
 	Hourly rawHourly `json:"hourly"`
 }
 
+// rawHourly is one coordinate's block as Open-Meteo shapes it. Every series is
+// nullable per hour: the provider answers inside its own allowed range with
+// nulls where it holds no value, and a plain []float64 would take each of those
+// as a reading of zero — a ride at nought degrees in still air.
 type rawHourly struct {
-	Time          []string  `json:"time"`
-	Precipitation []float64 `json:"precipitation"`
+	Time          []string   `json:"time"`
+	Precipitation []*float64 `json:"precipitation"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
-	Temperature2m []float64 `json:"temperature_2m"`
+	Temperature2m []*float64 `json:"temperature_2m"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
-	ApparentTemperature []float64 `json:"apparent_temperature"`
+	ApparentTemperature []*float64 `json:"apparent_temperature"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
-	PrecipitationProbability []float64 `json:"precipitation_probability"`
+	PrecipitationProbability []*float64 `json:"precipitation_probability"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
-	WindSpeed10m []float64 `json:"wind_speed_10m"`
+	WindSpeed10m []*float64 `json:"wind_speed_10m"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
-	WindDirection10m []float64 `json:"wind_direction_10m"`
+	WindDirection10m []*float64 `json:"wind_direction_10m"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
-	WeatherCode []int `json:"weather_code"`
+	WeatherCode []*int `json:"weather_code"`
 	//nolint:tagliatelle // Mirrors Open-Meteo's own field name.
-	CloudCover []float64 `json:"cloud_cover"`
+	CloudCover []*float64 `json:"cloud_cover"`
 }
 
 // decodeForecastResponse handles both response shapes: a bare object for one
@@ -420,7 +428,7 @@ func decodeForecastResponse(body []byte) ([]rawForecastResponse, error) {
 // precipitation. Only a request that did not ask for one may come back without.
 func (raw *rawHourly) parse(location *time.Location, requireProbability bool) (Hourly, error) {
 	count := len(raw.Time)
-	for _, series := range [][]float64{
+	for _, series := range [][]*float64{
 		raw.Temperature2m, raw.ApparentTemperature, raw.Precipitation,
 		raw.WindSpeed10m, raw.WindDirection10m, raw.CloudCover,
 	} {
@@ -441,26 +449,62 @@ func (raw *rawHourly) parse(location *time.Location, requireProbability bool) (H
 		return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
 	}
 
-	times := make([]time.Time, count)
-	for i, value := range raw.Time {
+	// An hour the provider had no reading for is left out rather than carried as
+	// a zero. Dropping it keeps every series aligned with the timestamps beside
+	// them, which is the whole contract of this shape.
+	hourly := Hourly{}
+	withProbability := len(raw.PrecipitationProbability) == count
+	for index, value := range raw.Time {
+		if !recorded(raw, index) {
+			continue
+		}
 		parsed, err := time.ParseInLocation(hourFormat, value, location)
 		if err != nil {
 			return Hourly{}, fmt.Errorf("openmeteo: parsing hourly time: %w", err)
 		}
-		times[i] = parsed
+		hourly.Time = append(hourly.Time, parsed)
+		hourly.TemperatureCelsius = append(hourly.TemperatureCelsius, *raw.Temperature2m[index])
+		hourly.ApparentTemperatureCelsius = append(hourly.ApparentTemperatureCelsius, *raw.ApparentTemperature[index])
+		hourly.PrecipitationMillimetres = append(hourly.PrecipitationMillimetres, *raw.Precipitation[index])
+		hourly.WindSpeedKMH = append(hourly.WindSpeedKMH, *raw.WindSpeed10m[index])
+		hourly.WindDirectionDegrees = append(hourly.WindDirectionDegrees, *raw.WindDirection10m[index])
+		hourly.WeatherCode = append(hourly.WeatherCode, *raw.WeatherCode[index])
+		hourly.CloudCoverPercent = append(hourly.CloudCoverPercent, *raw.CloudCover[index])
+		if withProbability {
+			hourly.PrecipitationProbabilityPercent = append(
+				hourly.PrecipitationProbabilityPercent, probabilityAt(raw, index))
+		}
 	}
 
-	return Hourly{
-		Time:                            times,
-		TemperatureCelsius:              raw.Temperature2m,
-		ApparentTemperatureCelsius:      raw.ApparentTemperature,
-		PrecipitationMillimetres:        raw.Precipitation,
-		PrecipitationProbabilityPercent: raw.PrecipitationProbability,
-		WindSpeedKMH:                    raw.WindSpeed10m,
-		WindDirectionDegrees:            raw.WindDirection10m,
-		WeatherCode:                     raw.WeatherCode,
-		CloudCoverPercent:               raw.CloudCover,
-	}, nil
+	return hourly, nil
+}
+
+// recorded reports whether the provider held a value for every series it
+// answered this hour with. The probability of precipitation is not among them:
+// the reanalysis carries none at all, and a forecast hour missing only that one
+// still describes the weather.
+func recorded(raw *rawHourly, index int) bool {
+	for _, series := range [][]*float64{
+		raw.Temperature2m, raw.ApparentTemperature, raw.Precipitation,
+		raw.WindSpeed10m, raw.WindDirection10m, raw.CloudCover,
+	} {
+		if series[index] == nil {
+			return false
+		}
+	}
+
+	return raw.WeatherCode[index] != nil
+}
+
+// probabilityAt is the hour's chance of rain, or zero where the provider
+// answered with a null for that hour alone. Zero is the honest reading here in
+// a way it is not for a temperature: no chance recorded is no chance given.
+func probabilityAt(raw *rawHourly, index int) float64 {
+	if value := raw.PrecipitationProbability[index]; value != nil {
+		return *value
+	}
+
+	return 0
 }
 
 // floorHour rounds t down to the start of its hour.
