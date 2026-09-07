@@ -247,11 +247,15 @@ export function CardsIndex() {
 
 /* ---------------------------------------------------------------- C: Weeks */
 
+/** The tallest bar, which the longest ride in the range gets; every other bar is scaled to it. */
+const BAR_REM = 6;
+
 /**
  * The bet: what a rider wants from the index is the rhythm — which weeks were
  * big, which were rest, whether the weekend ride happened. One row per week,
- * seven day columns, each ride a chip whose height is its distance, and the
- * week's totals along the left. Volume's numbers, but with the rides in them.
+ * seven day columns, each ride a bar whose height is its distance on one
+ * scale shared by every week, with its figures beside it and the week's
+ * totals along the left. Volume's numbers, but with the rides in them.
  */
 export function WeeksIndex() {
   const weeks = useMemo(() => groupBy(RIDES, weekOf), []);
@@ -289,29 +293,41 @@ export function WeeksIndex() {
             </div>
           </div>
           {WEEKDAYS.map((day, index) => (
-            <div key={day} className="flex min-h-24 flex-col justify-end gap-1">
+            // The floor every bar stands on, so a row with one short ride is
+            // read against the same height as a row with a long one.
+            <div
+              key={day}
+              className="flex items-end gap-2 border-[var(--rule)] border-b pb-1"
+              style={{ height: `${BAR_REM + 1.5}rem` }}
+            >
               {week.rides
                 .filter((ride) => dayOf(ride.startedAt) === index)
                 .map((ride) => (
                   <button
                     type="button"
                     key={ride.id}
-                    className="flex flex-col justify-end gap-0.5 rounded-lg p-1.5 text-left ring-1 ring-black/5 hover:ring-[var(--ink-2)]"
-                    style={{
-                      minHeight: `${2.5 + (ride.distanceMetres / longest) * 5}rem`,
-                      backgroundColor: `color-mix(in oklab, var(--grade-${ride.band}) 22%, var(--panel))`,
-                    }}
+                    className="flex items-end gap-1.5 rounded text-left hover:bg-[var(--base)]"
                   >
-                    <div className="size-6 self-end">
-                      <RouteGlyph coordinates={ride.coordinates} title="ride" band={ride.band} />
-                    </div>
-                    <span className="font-semibold text-sm tabular-nums">
-                      {formatDistance(ride.distanceMetres)}
+                    <span
+                      aria-hidden="true"
+                      className="w-3 shrink-0 rounded-t"
+                      style={{
+                        height: `${(ride.distanceMetres / longest) * BAR_REM}rem`,
+                        backgroundColor: `var(--grade-${ride.band})`,
+                      }}
+                    />
+                    <span className="flex flex-col gap-0.5 pb-0.5">
+                      <span className="size-5">
+                        <RouteGlyph coordinates={ride.coordinates} title="ride" band={ride.band} />
+                      </span>
+                      <span className="font-semibold text-sm tabular-nums">
+                        {formatDistance(ride.distanceMetres)}
+                      </span>
+                      <span className="text-[10px] text-[var(--ink-2)] tabular-nums">
+                        {formatAscent(ride.ascentMetres)}
+                      </span>
+                      <Weather ride={ride} temperature={false} />
                     </span>
-                    <span className="text-[10px] text-[var(--ink-2)] tabular-nums">
-                      {formatAscent(ride.ascentMetres)}
-                    </span>
-                    <Weather ride={ride} temperature={false} />
                   </button>
                 ))}
             </div>
