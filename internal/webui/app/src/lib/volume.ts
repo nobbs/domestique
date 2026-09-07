@@ -189,9 +189,12 @@ function dateActivities(activities: Activity[]) {
     .filter(({ startedAt }) => !Number.isNaN(startedAt.getTime()));
 }
 
+/** What a totals-only bucket carries instead of its rides: nothing, shared. */
+const NO_RIDES: readonly Activity[] = [];
+
 /** A bucket of either period with the activities that landed in it. */
 interface RidesBucket extends VolumeBucket {
-  rides: Activity[];
+  rides: readonly Activity[];
 }
 
 /** One week, with its rides: the shape the activities index reads. */
@@ -228,7 +231,7 @@ function bucketsWithRides(
     start.getTime() >= earliest.getTime();
     start = previousBucket(start, granularity, zone)
   ) {
-    const bucket = { ...empty(start, granularity, zone), rides: [] as Activity[] };
+    const bucket = { ...empty(start, granularity, zone), rides: withRides ? [] : NO_RIDES };
     buckets.push(bucket);
     byStart.set(start.getTime(), bucket);
   }
@@ -238,7 +241,7 @@ function bucketsWithRides(
     if (bucket) {
       add(bucket, activity);
       if (withRides) {
-        bucket.rides.push(activity);
+        (bucket.rides as Activity[]).push(activity);
       }
     }
   });
