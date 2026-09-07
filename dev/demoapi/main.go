@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/demo"
 	"github.com/nobbs/domestique/internal/httpapi"
@@ -100,7 +101,9 @@ func run(ctx context.Context, sessionFile, states, callbackURL string) error {
 
 	// Fixed rather than read from settings: a self-service target exists because
 	// its owning subject connected, not because an operator configured a slot.
-	slots, err := slotsFor([]string{"rider-a", "rider-b"}, states)
+	// The first is the demo rider's own, because a per-rider view resolves its
+	// target from the signed-in subject and an admin owning none reads nothing.
+	slots, err := slotsFor([]string{demoSubject, "rider-b"}, states)
 	if err != nil {
 		return err
 	}
@@ -304,12 +307,23 @@ func (r reseeder) trigger() bool {
 	return true
 }
 
-// seed fills the database with the synthetic library. The clock is the wall
-// clock, because a demo whose last run is dated years ago reads as a broken
-// service rather than as a fixture.
+// seed fills the database with the synthetic library and the recorded rides,
+// then derives what the shipped binary would: the training numbers, the
+// estimated power and the weather. The clock is the wall clock, because a demo
+// whose last run is dated years ago reads as broken rather than as a fixture.
 func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot) error {
-	if err := demo.Seed(ctx, store, slots, time.Now().UTC()); err != nil {
+	now := func() time.Time { return time.Now().UTC() }
+	if err := demo.Seed(ctx, store, slots, now()); err != nil {
 		return fmt.Errorf("seeding the demo library: %w", err)
+	}
+	deriver, err := activity.NewDeriver(store, store, rideWeather(), now)
+	if err != nil {
+		return fmt.Errorf("creating the demo deriver: %w", err)
+	}
+	for _, slot := range slots {
+		if result := deriver.Derive(ctx, slot.ID); result.Outcome == activity.Failed {
+			return fmt.Errorf("deriving the rides of %s: %s", slot.ID, result.Failure)
+		}
 	}
 
 	return nil
