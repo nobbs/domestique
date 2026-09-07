@@ -13,6 +13,7 @@ import (
 	"time"
 
 	activities "github.com/nobbs/domestique/internal/activity"
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 	"github.com/nobbs/domestique/internal/route"
 	validator "github.com/pb33f/libopenapi-validator"
 	"github.com/stretchr/testify/assert"
@@ -271,4 +272,23 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 			require.True(t, valid, "the response does not satisfy the contract: %v", validationErrors)
 		})
 	}
+}
+
+// The generator pointerises a nullable field but not a nullable array element,
+// which `api/generate.go` repairs. Unrepaired, a generated type reads a
+// documented null as a reading of zero.
+func TestGeneratedTypesKeepNullableItems(t *testing.T) {
+	value := func(reading float64) *float64 { return &reading }
+
+	var properties openapi.ActivityTrackProperties
+	require.NoError(t, json.Unmarshal(
+		[]byte(`{"state":"stored","altitudeMetres":[180,null],"estimatedPowerWatts":[null,120]}`),
+		&properties,
+	))
+	assert.Equal(t, []*float64{value(180), nil}, properties.AltitudeMetres)
+	assert.Equal(t, []*float64{nil, value(120)}, properties.EstimatedPowerWatts)
+
+	var series openapi.ActivitySeries
+	require.NoError(t, json.Unmarshal([]byte(`{"series":"cadence","values":[null,0]}`), &series))
+	assert.Equal(t, []*float64{nil, value(0)}, series.Values)
 }

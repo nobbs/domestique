@@ -652,11 +652,11 @@ const (
 type ActivityTrackProperties struct {
 	State ActivityTrackProperties_State `json:"state"`
 	// AltitudeMetres The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude.
-	AltitudeMetres []float64 `json:"altitudeMetres,omitempty"`
+	AltitudeMetres []*float64 `json:"altitudeMetres,omitempty"`
 	// Weather What this ride was actually ridden through, one row per step of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about.
 	Weather []RideWeatherStep `json:"weather,omitempty"`
 	// EstimatedPowerWatts Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass.
-	EstimatedPowerWatts []float64 `json:"estimatedPowerWatts,omitempty"`
+	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
 }
 
 // ActivitySeriesName A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` is worked out from the distance covered between one sample and the next.
@@ -673,7 +673,7 @@ const (
 type ActivitySeries struct {
 	Series ActivitySeriesName `json:"series"`
 	// Values The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius and kilometres per hour respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one.
-	Values []float64 `json:"values"`
+	Values []*float64 `json:"values"`
 }
 
 type GeoJSONProperties_Surface struct {
