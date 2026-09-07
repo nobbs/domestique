@@ -186,17 +186,14 @@ held(i) = at[i+1] - at[i],  counted only where 0 < held(i) <= maxGap
 mean    = Σ value[i]·held(i)  /  Σ held(i),  over counted i only
 ~~~
 
-**Constants.** maxGap = 10 s
-(`internal/trainingload/zones.go` `maxSampleGap`; the same 10 s appears
-separately in `internal/rider/best.go` `maxSampleGap` and as
-`internal/measure/gap.go` `DefaultMaxGap`).
+**Constants.** maxGap = 10 s (`measure.DefaultMaxGap`,
+`internal/measure/gap.go`).
 
 **Source.** This service's own rule.
 
-**Applied by.** `internal/trainingload/zones.go` `forEachHeld`, `meanHeld`,
-and `TimeInZones`'s use of them; `measure.DefaultMaxGap`, `Stretches`,
-`ForEachHeld` and `MeanHeld` are the same rule in `internal/measure/gap.go`,
-which `trainingload`, `measure.EstimateSeries` and `rider` move onto.
+**Applied by.** `trainingload.TRIMP`, `HeartRateTSS` and `TimeInZones`
+through `measure.ForEachHeld`/`MeanHeld`; `measure.Stretches` and
+`measure.EstimateSeries` are the same rule in `internal/measure/gap.go`.
 
 **Status.** Validated: this is the gap rule live training-load figures use
 today.
@@ -229,9 +226,9 @@ constant in that package).
 window; 20 minutes is this service's own choice of a conventional
 best-average duration.
 
-**Applied by.** `internal/trainingload/load.go` `rollingFourthPowerMean` and
-`internal/rider/best.go` `BestAverage`; `measure.RollingMean` is the one
-window both become in `internal/measure/gap.go`.
+**Applied by.** `trainingload.PowerLoad` and `rider.BestAverage`, both through
+`measure.RollingMean` (`internal/measure/gap.go`); the private copies each
+package once carried are gone.
 
 **Status.** Validated: these are the figures live training-load and
 best-average pages show today.
@@ -383,7 +380,7 @@ TSS = heldSeconds · NP · IF / (FTP · 3600) · 100
 ~~~
 
 using the Rolling mean section's 30 s window
-(`internal/trainingload/load.go` `PowerLoad`, `rollingFourthPowerMean`).
+(`internal/trainingload/load.go` `PowerLoad`, via `measure.RollingMean`).
 
 **Fitness, fatigue, form.** Two exponential moving averages of daily load,
 42 days and 7 days (`internal/trainingload/fitness.go` `FitnessDays`,
@@ -409,9 +406,8 @@ measured and a maximum is often guessed.
 Coggan, in Allen and Coggan 2010.
 
 **Applied by.** `internal/trainingload/load.go` (`TRIMP`, `HeartRateTSS`,
-`PowerLoad`, `rollingFourthPowerMean`), `internal/trainingload/zones.go`
-(`BoundsFrom`, `TimeInZones`), `internal/trainingload/fitness.go`
-(`Timeline`, `decay`).
+`PowerLoad`), `internal/trainingload/zones.go` (`BoundsFrom`, `TimeInZones`),
+`internal/trainingload/fitness.go` (`Timeline`, `decay`).
 
 **Status.** Validated: these are the figures a rider's own training-load
 pages show today.

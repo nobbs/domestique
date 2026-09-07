@@ -3,6 +3,8 @@ package trainingload
 import (
 	"math"
 	"time"
+
+	"github.com/nobbs/domestique/internal/measure"
 )
 
 // Banister's exponential weighting. The rider's sex is not among the profile's
@@ -26,7 +28,7 @@ func TRIMP(samples []Sample, maxHeartRate, restingHeartRate float64) (float64, b
 	}
 	impulse := 0.0
 	held := 0.0
-	forEachHeld(samples, func(heartRate, seconds float64) {
+	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(heartRate, seconds float64) {
 		held += seconds
 		// Clamped: a rate above the entered maximum is a maximum entered too
 		// low, and an unclamped exponential turns that into a wild number.
@@ -54,7 +56,7 @@ func HeartRateTSS(samples []Sample, thresholdHeartRate, restingHeartRate float64
 	if restingHeartRate <= 0 || reserve <= 0 {
 		return 0, false
 	}
-	mean, seconds := meanHeld(samples)
+	mean, seconds := measure.MeanHeld(samples, measure.DefaultMaxGap)
 	if seconds <= 0 {
 		return 0, false
 	}
@@ -87,11 +89,16 @@ func PowerLoad(samples []Sample, functionalThresholdPower float64) (Power, bool)
 	if functionalThresholdPower <= 0 {
 		return Power{}, false
 	}
-	rolling, seconds, ok := rollingFourthPowerMean(samples)
-	if !ok || seconds <= 0 {
+	total, weight := 0.0, 0.0
+	seconds, ok := measure.RollingMean(samples, normalizedPowerWindow, measure.DefaultMaxGap,
+		func(mean, held float64) {
+			total += math.Pow(mean, 4) * held
+			weight += held
+		})
+	if !ok {
 		return Power{}, false
 	}
-	normalized := round4(rolling)
+	normalized := round4(total / weight)
 	intensity := normalized / functionalThresholdPower
 
 	return Power{
@@ -99,47 +106,4 @@ func PowerLoad(samples []Sample, functionalThresholdPower float64) (Power, bool)
 		IntensityFactor: intensity,
 		TSS:             seconds * normalized * intensity / (functionalThresholdPower * 3600) * 100,
 	}, true
-}
-
-// rollingFourthPowerMean averages the fourth power of a rolling thirty-second
-// mean, which is normalized power one fourth root from the end. It reports how
-// long the ride's samples stood, which the stress score is scaled by, and
-// whether the ride ever held a full window — a ride shorter than one has no
-// rolling mean to raise, and its own average is not normalized power.
-func rollingFourthPowerMean(samples []Sample) (mean, seconds float64, ok bool) {
-	// A sample with less than a full window behind it has no rolling mean to
-	// raise, and a silence breaks the series rather than being averaged across.
-	total := 0.0
-	weight := 0.0
-	start := 0
-	// integral[k] is the power integrated from the first sample to samples[k].
-	integral := make([]float64, len(samples))
-	for index := 1; index < len(samples); index++ {
-		held := samples[index].At.Sub(samples[index-1].At)
-		if held <= 0 || held > maxSampleGap {
-			// A silence breaks the series: what follows starts a new window.
-			integral[index] = integral[index-1]
-			start = index
-
-			continue
-		}
-		seconds += held.Seconds()
-		integral[index] = integral[index-1] + samples[index-1].Value*held.Seconds()
-		for start+1 < index &&
-			samples[index].At.Sub(samples[start+1].At) >= normalizedPowerWindow {
-			start++
-		}
-		span := samples[index].At.Sub(samples[start].At)
-		if span < normalizedPowerWindow {
-			continue
-		}
-		rolling := (integral[index] - integral[start]) / span.Seconds()
-		total += math.Pow(rolling, 4) * held.Seconds()
-		weight += held.Seconds()
-	}
-	if weight <= 0 {
-		return 0, seconds, false
-	}
-
-	return total / weight, seconds, true
 }
