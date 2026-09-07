@@ -71,9 +71,9 @@ const targetBackstopInterval = 6 * time.Hour
 // the same daily Wahoo budget the reconciliation does.
 const activityPollInterval = 12 * time.Hour
 
-// The weather half of a derivation pass is bounded per run, so a stored history
-// needs several to be asked about; hourly drains it in a day rather than
-// leaving it to whatever else happens to start the pass.
+// The weather half of a derivation pass is bounded per target per run, so a
+// stored history needs several to be asked about; hourly drains one in a day at
+// a cost of that bound times the number of targets an hour.
 const (
 	activityDeriveInterval     = time.Hour
 	activityDeriveInitialDelay = time.Hour
@@ -360,7 +360,7 @@ func activityPollTask(
 //
 // It also runs on its own clock, because the edges alone never reach a stored
 // history: a poll over rides already synced reports unchanged, so nothing
-// follows it, and the weather it asks about is bounded per run.
+// follows it, and the weather it asks about is bounded per target per run.
 func activityDeriveTask(
 	deriver activityDeriver, enabled func(string) func() bool, targetIDs func() []string,
 ) task.Definition {
