@@ -24,6 +24,10 @@ import (
 
 const (
 	defaultBaseURL = "https://api.open-meteo.com"
+	// defaultArchiveBaseURL serves ERA5 reanalysis, which is what a ride older
+	// than the forecast endpoint's reach is asked about. It is a different host,
+	// not a different path.
+	defaultArchiveBaseURL = "https://archive-api.open-meteo.com"
 	// defaultTimezone is where every route this service holds is, and what the
 	// forecast was asked in before the zone became a setting.
 	defaultTimezone = "Europe/Berlin"
@@ -41,6 +45,20 @@ const (
 	// metric, and that is what this service transmits throughout.
 	hourlyParams = "temperature_2m,apparent_temperature,precipitation," +
 		"precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code,cloud_cover"
+
+	// archiveHourlyParams is the same list without the probability of
+	// precipitation, which the reanalysis does not carry: it is a forecast's
+	// statement about what might happen, and the archive records what did.
+	// Asking for it is refused outright rather than answered with nulls.
+	archiveHourlyParams = "temperature_2m,apparent_temperature,precipitation," +
+		"wind_speed_10m,wind_direction_10m,weather_code,cloud_cover"
+
+	// forecastPastDays is how far back the forecast endpoint will reach, and so
+	// the line between it and the archive. The archive itself runs about five
+	// days behind the present, which is why the recent past is asked of the
+	// forecast rather than of both.
+	forecastPastDays = 92
+	dayFormat        = "2006-01-02"
 )
 
 // Options configures an Open-Meteo client. There is no API key: the free
@@ -48,13 +66,19 @@ const (
 // secret and nothing here belongs in configuration.
 type Options struct {
 	Transport http.RoundTripper
+	// Now is the clock the choice between the two endpoints is made against.
+	// Nil is time.Now.
+	Now func() time.Time
 	// Timezone reports the IANA zone a forecast is asked and returned in, read
 	// again on every request rather than once: an operator editing the setting
 	// reaches the next forecast, not the next restart. Nil, or one returning
 	// "", is Europe/Berlin, which is where every route this service holds is.
 	Timezone func() string
 	BaseURL  string
-	Timeout  time.Duration
+	// ArchiveBaseURL is the reanalysis host, overridden by a test rather than by
+	// an operator, exactly as BaseURL is.
+	ArchiveBaseURL string
+	Timeout        time.Duration
 }
 
 // Coordinate is one point Forecast asks about.
@@ -79,10 +103,12 @@ type Hourly struct {
 // Client asks Open-Meteo for an hourly forecast. The host is hardcoded:
 // BaseURL exists to be overridden by a test, not by an operator.
 type Client struct {
-	client   *http.Client
-	baseURL  *url.URL
-	zone     func() string
-	fallback *time.Location
+	client     *http.Client
+	baseURL    *url.URL
+	archiveURL *url.URL
+	zone       func() string
+	now        func() time.Time
+	fallback   *time.Location
 }
 
 // New creates an Open-Meteo client without contacting the upstream service.
@@ -97,6 +123,14 @@ func New(options *Options) (*Client, error) {
 	parsedBaseURL, err := parseOrigin(baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("openmeteo: base url: %w", err)
+	}
+	archiveBaseURL := options.ArchiveBaseURL
+	if archiveBaseURL == "" {
+		archiveBaseURL = defaultArchiveBaseURL
+	}
+	parsedArchiveURL, err := parseOrigin(archiveBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("openmeteo: archive base url: %w", err)
 	}
 	timeout := options.Timeout
 	if timeout == 0 {
@@ -122,14 +156,21 @@ func New(options *Options) (*Client, error) {
 		return nil, err
 	}
 
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
+
 	return &Client{
 		client: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
 		},
-		baseURL:  parsedBaseURL,
-		zone:     zone,
-		fallback: fallback,
+		baseURL:    parsedBaseURL,
+		archiveURL: parsedArchiveURL,
+		zone:       zone,
+		now:        now,
+		fallback:   fallback,
 	}, nil
 }
 
@@ -166,24 +207,108 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 		location = c.fallback
 	}
 
-	latitudes := make([]string, len(at))
-	longitudes := make([]string, len(at))
-	for i, point := range at {
-		latitudes[i] = strconv.FormatFloat(point.Latitude, 'f', -1, 64)
-		longitudes[i] = strconv.FormatFloat(point.Longitude, 'f', -1, 64)
-	}
+	latitudes, longitudes := coordinateColumns(at)
 
 	endpoint := *c.baseURL
 	endpoint.Path = "/v1/forecast"
 	endpoint.RawQuery = url.Values{
-		"latitude":   {strings.Join(latitudes, ",")},
-		"longitude":  {strings.Join(longitudes, ",")},
+		"latitude":   {latitudes},
+		"longitude":  {longitudes},
 		"hourly":     {hourlyParams},
 		"timezone":   {location.String()},
 		"start_hour": {floorHour(from.In(location)).Format(hourFormat)},
 		"end_hour":   {ceilHour(to.In(location)).Format(hourFormat)},
 	}.Encode()
 
+	return c.fetch(ctx, &endpoint, location, len(at))
+}
+
+// History returns one hourly series per coordinate for a window that has
+// already happened: what the rider actually rode through, rather than what was
+// predicted.
+//
+// A ride inside the forecast endpoint's reach is asked of that endpoint with
+// past_days, at model resolution; an older one is asked of the reanalysis
+// archive, which is coarser but goes back decades. The archive carries no
+// probability of precipitation — it records what fell, not what might have —
+// so that one series comes back empty from it.
+func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Time) ([]Hourly, error) {
+	if len(at) == 0 {
+		return nil, errors.New("openmeteo: at least one coordinate is required")
+	}
+	if to.Before(from) {
+		return nil, errors.New("openmeteo: to must not be before from")
+	}
+	location, err := resolveLocation(c.zone(), c.fallback)
+	if err != nil {
+		location = c.fallback
+	}
+	latitudes, longitudes := coordinateColumns(at)
+
+	if days := c.daysAgo(from); days <= forecastPastDays {
+		endpoint := *c.baseURL
+		endpoint.Path = "/v1/forecast"
+		endpoint.RawQuery = url.Values{
+			"latitude":  {latitudes},
+			"longitude": {longitudes},
+			"hourly":    {hourlyParams},
+			"timezone":  {location.String()},
+			// past_days is what reaches back at all; the hour bounds then narrow
+			// the answer to the ride itself. forecast_days is pinned to one
+			// rather than left at its default, so a ride from last week does not
+			// drag a week of prediction along with it.
+			"past_days":     {strconv.Itoa(days)},
+			"forecast_days": {"1"},
+			"start_hour":    {floorHour(from.In(location)).Format(hourFormat)},
+			"end_hour":      {ceilHour(to.In(location)).Format(hourFormat)},
+		}.Encode()
+
+		return c.fetch(ctx, &endpoint, location, len(at))
+	}
+
+	endpoint := *c.archiveURL
+	endpoint.Path = "/v1/archive"
+	endpoint.RawQuery = url.Values{
+		"latitude":  {latitudes},
+		"longitude": {longitudes},
+		"hourly":    {archiveHourlyParams},
+		"timezone":  {location.String()},
+		// Whole days: the archive is asked by date, and the caller picks the
+		// hours it wants out of what comes back.
+		"start_date": {floorHour(from.In(location)).Format(dayFormat)},
+		"end_date":   {ceilHour(to.In(location)).Format(dayFormat)},
+	}.Encode()
+
+	return c.fetch(ctx, &endpoint, location, len(at))
+}
+
+// daysAgo is how many whole days back a moment is, never negative: a ride
+// recorded in the future, by a device with a wrong clock, is asked about as if
+// it were today's.
+func (c *Client) daysAgo(at time.Time) int {
+	days := int(c.now().Sub(at).Hours() / 24)
+	if days < 0 {
+		return 0
+	}
+
+	return days
+}
+
+func coordinateColumns(at []Coordinate) (latitudes, longitudes string) {
+	latitude := make([]string, len(at))
+	longitude := make([]string, len(at))
+	for index, point := range at {
+		latitude[index] = strconv.FormatFloat(point.Latitude, 'f', -1, 64)
+		longitude[index] = strconv.FormatFloat(point.Longitude, 'f', -1, 64)
+	}
+
+	return strings.Join(latitude, ","), strings.Join(longitude, ",")
+}
+
+// fetch asks one composed endpoint and decodes one series per coordinate.
+func (c *Client) fetch(
+	ctx context.Context, endpoint *url.URL, location *time.Location, coordinates int,
+) (hourlies []Hourly, err error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("openmeteo: creating request: %w", err)
@@ -216,7 +341,7 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 	if decodeErr != nil {
 		return nil, decodeErr
 	}
-	if len(raw) != len(at) {
+	if len(raw) != coordinates {
 		return nil, errors.New("openmeteo: response coordinate count did not match the request")
 	}
 
@@ -276,12 +401,17 @@ func decodeForecastResponse(body []byte) ([]rawForecastResponse, error) {
 func (raw *rawHourly) parse(location *time.Location) (Hourly, error) {
 	count := len(raw.Time)
 	for _, series := range [][]float64{
-		raw.Temperature2m, raw.ApparentTemperature, raw.Precipitation, raw.PrecipitationProbability,
+		raw.Temperature2m, raw.ApparentTemperature, raw.Precipitation,
 		raw.WindSpeed10m, raw.WindDirection10m, raw.CloudCover,
 	} {
 		if len(series) != count {
 			return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
 		}
+	}
+	// The probability of precipitation is the one series the reanalysis does not
+	// carry, so it is absent rather than short: nothing, or one value per hour.
+	if len(raw.PrecipitationProbability) != 0 && len(raw.PrecipitationProbability) != count {
+		return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")
 	}
 	if len(raw.WeatherCode) != count {
 		return Hourly{}, errors.New("openmeteo: hourly series lengths did not match")

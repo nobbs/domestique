@@ -215,6 +215,10 @@ type ActivityState interface {
 	// ActivityMetrics is every derived row one target holds, keyed by ride. A
 	// ride with none is absent from the map rather than present and empty.
 	ActivityMetrics(ctx context.Context, targetID string) (map[int64]trainingload.Metrics, error)
+	// ActivityWeather is every recorded hour one target holds, keyed by ride.
+	ActivityWeather(ctx context.Context, targetID string) (map[int64][]activities.WeatherHour, error)
+	// ActivityWeatherHours is one ride's own hours, in order.
+	ActivityWeatherHours(ctx context.Context, targetID string, id int64) ([]activities.WeatherHour, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.

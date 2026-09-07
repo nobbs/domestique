@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/nobbs/domestique/internal/powerestimate"
 	"github.com/nobbs/domestique/internal/rider"
@@ -69,28 +70,74 @@ type DeriveStore interface {
 	ClearActivityMetrics(ctx context.Context, targetID string) (int, error)
 }
 
-// Deriver works out what each of a target's rides says about how hard it was.
+// Deriver works out what each of a target's rides says about how hard it was,
+// and what it was ridden through.
 type Deriver struct {
-	store DeriveStore
+	store        DeriveStore
+	weatherStore WeatherStore
+	weather      WeatherSource
+	now          func() time.Time
 }
 
 // NewDeriver builds a deriver over stored state.
-func NewDeriver(store DeriveStore) (*Deriver, error) {
+//
+// The weather source and its store are optional together: a build wired
+// without them derives the training numbers and asks nobody about the weather,
+// rather than refusing to derive at all.
+func NewDeriver(store DeriveStore, weatherStore WeatherStore, weather WeatherSource, now func() time.Time) (*Deriver, error) {
 	if store == nil {
 		return nil, errors.New("activity: a store is required")
 	}
+	if now == nil {
+		now = time.Now
+	}
 
-	return &Deriver{store: store}, nil
+	return &Deriver{store: store, weatherStore: weatherStore, weather: weather, now: now}, nil
 }
 
-// Derive works out every ride of one target that is owed a derivation, against
-// the owner's profile as it stands now.
+// Derive settles what this service can work out about one target's rides: the
+// training numbers, which follow the rider's profile and are worked out again
+// whenever it changes, and the weather each ride was ridden through, which is
+// asked of a provider once and never again.
+//
+// The two are independent — a rider who has entered no profile still rode
+// through weather — so neither holds the other back, and the run reports
+// whichever of them came to the more serious thing.
+func (d *Deriver) Derive(ctx context.Context, targetID string) Result {
+	metrics := d.deriveMetrics(ctx, targetID)
+	weather := d.readWeather(ctx, targetID)
+	if severityOf(weather.Outcome) > severityOf(metrics.Outcome) {
+		return weather
+	}
+	// At equal severity the metrics pass is reported, having done the work a
+	// derivation is named for.
+	return metrics
+}
+
+// severityOf orders what a pass came to, worst highest, so a run over both
+// reports the one an operator would act on first.
+func severityOf(outcome Outcome) int {
+	switch outcome {
+	case Failed:
+		return 3
+	case Polled:
+		return 2
+	case Unchanged:
+		return 1
+	case NotReady:
+	}
+
+	return 0
+}
+
+// deriveMetrics works out every ride of one target that is owed a derivation,
+// against the owner's profile as it stands now.
 //
 // A rider who has entered no profile is not a failure: there is nothing to work
 // out yet, and the rides wait for the profile rather than being written as
 // rows of nothing. A ride the derivation yields nothing for has its row
 // removed, so a profile edit that takes a parameter away takes its numbers with it.
-func (d *Deriver) Derive(ctx context.Context, targetID string) Result {
+func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 	subject, err := d.store.TargetOwner(ctx, targetID)
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}

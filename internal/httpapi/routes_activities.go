@@ -12,6 +12,60 @@ import (
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
+// weatherSummary reduces a ride's hours to the line a listing card shows. A
+// ride nobody has asked about, and one the provider had nothing to say about,
+// carry none at all rather than a row of zeroes.
+func weatherSummary(hours []activities.WeatherHour) *openapi.ActivityWeatherSummary {
+	if len(hours) == 0 {
+		return nil
+	}
+	summary := openapi.ActivityWeatherSummary{
+		TemperatureMinCelsius: hours[0].TemperatureCelsius,
+		TemperatureMaxCelsius: hours[0].TemperatureCelsius,
+	}
+	wind := 0.0
+	for index := range hours {
+		hour := &hours[index]
+		summary.TemperatureMinCelsius = min(summary.TemperatureMinCelsius, hour.TemperatureCelsius)
+		summary.TemperatureMaxCelsius = max(summary.TemperatureMaxCelsius, hour.TemperatureCelsius)
+		// The whole of what fell, not a rate: the hourly figures are millimetres
+		// in that hour, and a ride is the sum of its hours.
+		summary.PrecipitationMillimetres += hour.PrecipitationMillimetres
+		wind += hour.WindSpeedKMH
+		summary.WeatherCode = max(summary.WeatherCode, hour.WeatherCode)
+	}
+	summary.WindSpeedKmh = wind / float64(len(hours))
+
+	return &summary
+}
+
+// rideWeatherHours is the wire form of one ride's hours.
+func rideWeatherHours(hours []activities.WeatherHour) []openapi.RideWeatherHour {
+	if len(hours) == 0 {
+		return nil
+	}
+	view := make([]openapi.RideWeatherHour, 0, len(hours))
+	for index := range hours {
+		hour := &hours[index]
+		one := openapi.RideWeatherHour{
+			Time:                       wireTime(hour.Hour),
+			TemperatureCelsius:         hour.TemperatureCelsius,
+			ApparentTemperatureCelsius: hour.ApparentTemperatureCelsius,
+			PrecipitationMillimetres:   hour.PrecipitationMillimetres,
+			WindSpeedKmh:               hour.WindSpeedKMH,
+			WindDirectionDegrees:       hour.WindDirectionDegrees,
+			WeatherCode:                hour.WeatherCode,
+			CloudCoverPercent:          hour.CloudCoverPercent,
+		}
+		if hour.HasPrecipitationProbability {
+			one.PrecipitationProbabilityPercent = &hours[index].PrecipitationProbabilityPercent
+		}
+		view = append(view, one)
+	}
+
+	return view
+}
+
 // activityMetrics is the wire form of one ride's derived numbers. Each part is
 // omitted where the ride or the profile did not allow it, rather than sent as a
 // zero the page would have to read as "not worked out".
@@ -84,6 +138,12 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 			return
 		}
+		hours, weatherErr := h.state.ActivityWeather(request.Context(), targetID)
+		if weatherErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
 		view.Activities = make([]openapi.Activity, 0, len(stored))
 		for _, recorded := range stored {
 			activity := openapi.Activity{
@@ -99,6 +159,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 			if metrics, ok := derived[recorded.ID]; ok {
 				activity.Metrics = activityMetrics(metrics)
 			}
+			activity.Weather = weatherSummary(hours[recorded.ID])
 			view.Activities = append(view.Activities, activity)
 		}
 	}
@@ -148,15 +209,23 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 
 		return
 	}
+	hours, weatherErr := h.state.ActivityWeatherHours(request.Context(), targetID, id)
+	if weatherErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
 
 	writer.Header().Set("Content-Type", "application/geo+json")
-	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track, recordsState))
+	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track, recordsState, hours))
 }
 
 // activityTrackFeature draws the Feature one track is served as: the line, the
 // box around it, and the altitudes beside it — null where a sample recorded
 // none, absent only when none did. A ride with no line carries only its state.
-func activityTrackFeature(track []activities.TrackPoint, state activities.RecordsState) activityTrackView {
+func activityTrackFeature(
+	track []activities.TrackPoint, state activities.RecordsState, hours []activities.WeatherHour,
+) activityTrackView {
 	if len(track) < 2 {
 		return activityTrackView{
 			Type:       "Feature",
@@ -203,6 +272,7 @@ func activityTrackFeature(track []activities.TrackPoint, state activities.Record
 	if anyEstimate {
 		view.Properties.EstimatedPowerWatts = estimates
 	}
+	view.Properties.Weather = rideWeatherHours(hours)
 
 	return view
 }

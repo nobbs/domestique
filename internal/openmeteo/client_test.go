@@ -411,3 +411,205 @@ func TestNewRefusesAZoneItCannotLoad(t *testing.T) {
 	require.Error(t, err, "New() accepted a zone it cannot load")
 	assert.Contains(t, err.Error(), "Middle/Earth", "the message names the zone")
 }
+
+// historyNow is the clock every choice between the two endpoints below is made
+// against.
+func historyNow() time.Time { return time.Date(2026, 8, 24, 12, 0, 0, 0, time.UTC) }
+
+// newHistoryClient points the forecast and archive hosts at the same test
+// server, so one handler can assert which of the two paths was asked.
+func newHistoryClient(t *testing.T, server *httptest.Server) *Client {
+	t.Helper()
+	client, err := New(&Options{
+		BaseURL:        server.URL,
+		ArchiveBaseURL: server.URL,
+		Timeout:        time.Second,
+		Transport:      server.Client().Transport,
+		Now:            historyNow,
+	})
+	require.NoError(t, err)
+
+	return client
+}
+
+const historyBody = `{"hourly":{"time":["2026-08-24T08:00"],
+	"temperature_2m":[18.4],
+	"apparent_temperature":[17.1],
+	"precipitation":[0],
+	"precipitation_probability":[10],
+	"wind_speed_10m":[12.3],
+	"wind_direction_10m":[240],
+	"weather_code":[1],
+	"cloud_cover":[50]}}`
+
+// The archive carries no probability of precipitation: it records what fell,
+// not what might have.
+const archiveBody = `{"hourly":{"time":["2025-08-24T08:00"],
+	"temperature_2m":[18.4],
+	"apparent_temperature":[17.1],
+	"precipitation":[0],
+	"wind_speed_10m":[12.3],
+	"wind_direction_10m":[240],
+	"weather_code":[1],
+	"cloud_cover":[50]}}`
+
+// A ride inside the forecast endpoint's reach is asked of that endpoint, with
+// past_days to reach back at all and the hour bounds to narrow the answer.
+func TestHistoryAsksTheForecastEndpointForARecentRide(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "/v1/forecast", request.URL.Path)
+		query := request.URL.Query()
+		assert.Equal(t, "7", query.Get("past_days"), "seven whole days back")
+		assert.Equal(t, "1", query.Get("forecast_days"), "and no prediction dragged along")
+		assert.Equal(t, "2026-08-17T10:00", query.Get("start_hour"))
+		assert.Equal(t, "2026-08-17T12:00", query.Get("end_hour"))
+		assert.Contains(t, query.Get("hourly"), "precipitation_probability")
+		assert.Empty(t, query.Get("start_date"), "the archive's parameters are not this endpoint's")
+
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, historyBody)
+	}))
+	defer server.Close()
+
+	from := historyNow().AddDate(0, 0, -7).Add(-4 * time.Hour)
+	result, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(2*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, []float64{10}, result[0].PrecipitationProbabilityPercent)
+}
+
+// A ride older than the forecast endpoint's reach is asked of the reanalysis
+// archive instead, by date and without the probability series.
+func TestHistoryAsksTheArchiveForAnOlderRide(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "/v1/archive", request.URL.Path)
+		query := request.URL.Query()
+		assert.Equal(t, "2025-08-24", query.Get("start_date"))
+		assert.Equal(t, "2025-08-24", query.Get("end_date"))
+		assert.NotContains(t, query.Get("hourly"), "precipitation_probability",
+			"the reanalysis refuses a series it does not carry")
+		assert.Empty(t, query.Get("past_days"), "the forecast's parameters are not this endpoint's")
+
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, archiveBody)
+	}))
+	defer server.Close()
+
+	from := time.Date(2025, 8, 24, 8, 0, 0, 0, time.UTC)
+	result, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(2*time.Hour))
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, []float64{18.4}, result[0].TemperatureCelsius)
+	assert.Empty(t, result[0].PrecipitationProbabilityPercent,
+		"absent, rather than a column of invented numbers")
+}
+
+// The boundary itself: the last day the forecast endpoint reaches, and the
+// first the archive has to answer for.
+func TestHistoryChoosesTheEndpointAtTheBoundary(t *testing.T) {
+	for name, test := range map[string]struct {
+		path    string
+		body    string
+		daysAgo int
+	}{
+		"the last day the forecast reaches": {path: "/v1/forecast", body: historyBody, daysAgo: 92},
+		"the first day past it":             {path: "/v1/archive", body: archiveBody, daysAgo: 93},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var asked string
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				asked = request.URL.Path
+				writer.Header().Set("Content-Type", "application/json")
+				writeResponse(t, writer, http.StatusOK, test.body)
+			}))
+			defer server.Close()
+
+			from := historyNow().AddDate(0, 0, -test.daysAgo)
+			_, err := newHistoryClient(t, server).History(t.Context(),
+				[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+			require.NoError(t, err)
+			assert.Equal(t, test.path, asked)
+		})
+	}
+}
+
+// A device with a wrong clock can date a ride in the future. It is asked about
+// as if it were today's rather than with a negative reach.
+func TestHistoryAsksAboutAFutureRideAsIfItWereTodays(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "/v1/forecast", request.URL.Path)
+		assert.Equal(t, "0", request.URL.Query().Get("past_days"))
+
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, historyBody)
+	}))
+	defer server.Close()
+
+	from := historyNow().AddDate(0, 0, 3)
+	_, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+	require.NoError(t, err)
+}
+
+func TestNewRefusesAnArchiveHostThatIsNotAnOrigin(t *testing.T) {
+	t.Parallel()
+	_, err := New(&Options{ArchiveBaseURL: "http://archive.example.test/with/a/path"})
+	require.ErrorContains(t, err, "archive base url")
+}
+
+// A series the response is short of is refused rather than read past the end of.
+func TestHistoryRefusesAResponseMissingAColumn(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T08:00","2026-08-24T09:00"],
+			"temperature_2m":[18.4],
+			"apparent_temperature":[17.1],
+			"precipitation":[0],
+			"wind_speed_10m":[12.3],
+			"wind_direction_10m":[240],
+			"weather_code":[1],
+			"cloud_cover":[50]}}`)
+	}))
+	defer server.Close()
+
+	from := historyNow().AddDate(0, 0, -1)
+	_, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+	require.ErrorContains(t, err, "series lengths did not match")
+}
+
+// The probability of precipitation is the one series that may be absent; a
+// short one is still a mismatch.
+func TestHistoryRefusesAShortProbabilitySeries(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":["2026-08-24T08:00","2026-08-24T09:00"],
+			"temperature_2m":[18.4,18.5],
+			"apparent_temperature":[17.1,17.2],
+			"precipitation":[0,0],
+			"precipitation_probability":[10],
+			"wind_speed_10m":[12.3,12.4],
+			"wind_direction_10m":[240,241],
+			"weather_code":[1,1],
+			"cloud_cover":[50,51]}}`)
+	}))
+	defer server.Close()
+
+	from := historyNow().AddDate(0, 0, -1)
+	_, err := newHistoryClient(t, server).History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+	require.ErrorContains(t, err, "series lengths did not match")
+}
+
+func TestHistoryRefusesAnEmptyRequest(t *testing.T) {
+	client, err := New(&Options{Now: historyNow})
+	require.NoError(t, err)
+
+	_, err = client.History(t.Context(), nil, historyNow(), historyNow())
+	require.ErrorContains(t, err, "at least one coordinate is required")
+
+	_, err = client.History(t.Context(), []Coordinate{{}}, historyNow(), historyNow().Add(-time.Hour))
+	require.ErrorContains(t, err, "to must not be before from")
+}

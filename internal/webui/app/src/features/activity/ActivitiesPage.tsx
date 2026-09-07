@@ -5,9 +5,35 @@
 
 import { useMemo } from "react";
 import { Link } from "react-router";
+import type { ActivityWeatherSummary } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
-import { formatAscent, formatDistance, formatMovingTime, formatTimestamp } from "../../lib/format";
+import {
+  formatAscent,
+  formatDistance,
+  formatMovingTime,
+  formatPrecipitation,
+  formatTimestamp,
+  formatWindSpeed,
+} from "../../lib/format";
+
+/**
+ * What the ride was ridden through, in one line: the range the temperature
+ * moved over, the wind, and what fell if anything did. A dry ride says nothing
+ * about rain rather than saying none fell — the absence is the reading.
+ */
+function conditionsLine(weather: ActivityWeatherSummary): string {
+  const low = Math.round(weather.temperatureMinCelsius);
+  const high = Math.round(weather.temperatureMaxCelsius);
+  const temperature = low === high ? `${low}°` : `${low}–${high}°`;
+  const parts = [temperature, formatWindSpeed(weather.windSpeedKmh)];
+  if (weather.precipitationMillimetres > 0) {
+    parts.push(formatPrecipitation(weather.precipitationMillimetres));
+  }
+
+  return parts.join(" · ");
+}
+
 import { useActivities } from "./useActivities";
 
 export function ActivitiesPage() {
@@ -51,6 +77,16 @@ export function ActivitiesPage() {
                       formatAscent(ride.ascentMetres),
                     ].join(" · ")}
                   </span>
+                  {/*
+                   * A second line rather than more of the first: what the ride
+                   * was is one sentence and what it was ridden through is
+                   * another, and a card that runs them together reads as neither.
+                   */}
+                  {ride.weather ? (
+                    <span className="text-[var(--ink-2)] text-xs">
+                      {conditionsLine(ride.weather)}
+                    </span>
+                  ) : null}
                 </Link>
               </li>
             ))}
