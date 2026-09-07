@@ -72,6 +72,7 @@ type DeriveStore interface {
 	// ClearActivityMetrics removes every derived row one target holds and
 	// reports how many went.
 	ClearActivityMetrics(ctx context.Context, targetID string) (int, error)
+	RouteMatchStore
 }
 
 // Deriver works out what each of a target's rides says about how hard it was,
@@ -101,21 +102,33 @@ func NewDeriver(store DeriveStore, weatherStore WeatherStore, weather WeatherSou
 
 // Derive settles what this service can work out about one target's rides: the
 // training numbers, which follow the rider's profile and are worked out again
-// whenever it changes, and the weather each ride was ridden through, which is
-// asked of a provider once and never again.
+// whenever it changes; the weather each ride was ridden through, which is asked
+// of a provider once and never again; and which library route each was ridden
+// on, which follows the library's geometry.
 //
-// The two are independent — a rider who has entered no profile still rode
-// through weather — so neither holds the other back, and the run reports
-// whichever of them came to the more serious thing.
+// The three are independent — a rider who has entered no profile still rode
+// through weather, and still rode somewhere — so none holds the others back,
+// and the run reports whichever of them came to the more serious thing.
 func (d *Deriver) Derive(ctx context.Context, targetID string) Result {
 	metrics := d.deriveMetrics(ctx, targetID)
 	weather := d.readWeather(ctx, targetID)
-	if severityOf(weather.Outcome) > severityOf(metrics.Outcome) {
-		return weather
-	}
+	matches := d.matchRoutes(ctx, targetID)
+
 	// At equal severity the metrics pass is reported, having done the work a
 	// derivation is named for.
-	return metrics
+	worst := metrics
+	for _, pass := range []Result{weather, matches} {
+		if severityOf(pass.Outcome) > severityOf(worst.Outcome) {
+			worst = pass
+		}
+	}
+	// However the run is reported, what each pass settled is counted, so a
+	// derivation that matched rides does not read as having done nothing
+	// because the profile it works from has not changed.
+	worst.Derived = metrics.Derived
+	worst.Matched = matches.Matched
+
+	return worst
 }
 
 // severityOf orders what a pass came to, worst highest, so a run over both

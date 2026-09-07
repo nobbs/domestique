@@ -250,6 +250,9 @@ type Result struct {
 	// because there was nothing left to work them out from — including those a
 	// failed one managed before it stopped.
 	Derived int
+	// Matched counts the rides a derivation attributed to a library route or
+	// recorded as being on none of them.
+	Matched int
 }
 
 // Poller reads one target's recorded activities into the store. It adds and

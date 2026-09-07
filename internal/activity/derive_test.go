@@ -3,12 +3,14 @@ package activity_test
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,17 +26,57 @@ type fakeDeriveStore struct {
 	storeErr         error
 	clearErr         error
 	estimateErr      error
+	libraryErr       error
+	owedMatchesErr   error
+	trackErr         error
+	matchErr         error
 	rides            map[int64]activity.RideSamples
 	written          map[int64]activity.RideMetrics
 	estimated        map[int64][]measure.Estimate
+	tracks           map[int64][]activity.TrackPoint
+	matches          map[int64]*activity.RouteMatch
 	owner            string
+	libraryHash      string
+	matchedAgainst   string
 	owed             []int64
 	writeOrder       []int64
 	estimatedRecords []int64
+	library          []activity.RouteCandidate
+	owedMatches      []int64
+	matchWriteOrder  []int64
 	profile          rider.Profile
 	owedInputs       trainingload.Inputs
 	cleared          int
 	clearedRows      int
+}
+
+func (s *fakeDeriveStore) LibraryRoutes(context.Context) ([]activity.RouteCandidate, string, error) {
+	return s.library, s.libraryHash, s.libraryErr
+}
+
+func (s *fakeDeriveStore) ActivitiesAwaitingRouteMatch(_ context.Context, _, libraryHash string) ([]int64, error) {
+	s.matchedAgainst = libraryHash
+
+	return s.owedMatches, s.owedMatchesErr
+}
+
+func (s *fakeDeriveStore) ActivityTrack(_ context.Context, _ string, id int64) ([]activity.TrackPoint, error) {
+	return s.tracks[id], s.trackErr
+}
+
+func (s *fakeDeriveStore) StoreActivityRouteMatch(
+	_ context.Context, _ string, id int64, match *activity.RouteMatch, _ string, _ time.Time,
+) error {
+	if s.matchErr != nil {
+		return s.matchErr
+	}
+	if s.matches == nil {
+		s.matches = map[int64]*activity.RouteMatch{}
+	}
+	s.matches[id] = match
+	s.matchWriteOrder = append(s.matchWriteOrder, id)
+
+	return nil
 }
 
 func (s *fakeDeriveStore) TargetOwner(context.Context, string) (string, error) {
@@ -595,4 +637,152 @@ func TestDeriveWritesARideThatOnlyYieldsAnAverage(t *testing.T) {
 	written := store.written[7]
 	assert.False(t, written.Load.Derived(), "the load figures yielded nothing")
 	assert.True(t, written.Derived(), "but the ride still averaged a cadence")
+}
+
+// squareRoute is a 500 m square, and squareTrack is a ride round it. They are
+// the same ground, so the ride covers the route entirely.
+func squareRoute() []measure.Coordinate {
+	const metresPerDegree = measure.EarthRadiusMetres * math.Pi / 180
+
+	corners := [][2]float64{{0, 0}, {500, 0}, {500, 500}, {0, 500}, {0, 0}}
+	points := []measure.Coordinate{}
+	for index := 1; index < len(corners); index++ {
+		start, end := corners[index-1], corners[index]
+		for step := range 25 {
+			ratio := float64(step) / 25
+			east := start[0] + ratio*(end[0]-start[0])
+			north := start[1] + ratio*(end[1]-start[1])
+			points = append(points, measure.Coordinate{
+				Latitude:  49.9 + north/metresPerDegree,
+				Longitude: 8.2 + east/(metresPerDegree*math.Cos(49.9*math.Pi/180)),
+			})
+		}
+	}
+
+	return points
+}
+
+func squareTrack() []activity.TrackPoint {
+	track := []activity.TrackPoint{}
+	for _, point := range squareRoute() {
+		track = append(track, activity.TrackPoint{Latitude: point.Latitude, Longitude: point.Longitude})
+	}
+
+	return track
+}
+
+func libraryStore(owed []int64, tracks map[int64][]activity.TrackPoint) *fakeDeriveStore {
+	return &fakeDeriveStore{
+		owner:       "rider-a",
+		library:     []activity.RouteCandidate{{Key: route.NewKey(route.ProviderVeloPlanner, 4, 1), Geometry: squareRoute()}},
+		libraryHash: "library-1",
+		owedMatches: owed,
+		tracks:      tracks,
+	}
+}
+
+func TestDeriveMatchesARideToTheRouteItWasRiddenOn(t *testing.T) {
+	t.Parallel()
+	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: squareTrack()})
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, 1, result.Matched)
+	require.NotNil(t, store.matches[11], "the ride was ridden on the route")
+	assert.Equal(t, route.NewKey(route.ProviderVeloPlanner, 4, 1), store.matches[11].Key)
+	assert.InDelta(t, 1, store.matches[11].RouteCoverage, 0.02)
+	assert.Equal(t, "library-1", store.matchedAgainst,
+		"the rides owed a match are those measured against another library")
+}
+
+// A ride on no library route is recorded as being on none. Without that row it
+// would be offered for matching again on every run for as long as it is stored.
+func TestDeriveRecordsARideThatMatchedNoRoute(t *testing.T) {
+	t.Parallel()
+	elsewhere := []activity.TrackPoint{
+		{Latitude: 52.5, Longitude: 13.4},
+		{Latitude: 52.51, Longitude: 13.41},
+		{Latitude: 52.52, Longitude: 13.42},
+	}
+	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: elsewhere})
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, 1, result.Matched)
+	require.Contains(t, store.matches, int64(11), "the answer was still recorded")
+	assert.Nil(t, store.matches[11])
+}
+
+// An empty library is not an answer about any ride: recording every ride as
+// having matched nothing would have to be undone by the first route stored.
+func TestDeriveMatchesNothingAgainstAnEmptyLibrary(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{owner: "rider-a", owedMatches: []int64{11}}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	deriver.Derive(t.Context(), "rider-a")
+
+	assert.Empty(t, store.matches)
+}
+
+// The passes are independent: a rider with no profile still rode somewhere.
+func TestDeriveMatchesRoutesForARiderWithNoProfile(t *testing.T) {
+	t.Parallel()
+	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: squareTrack()})
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, 1, result.Matched)
+	assert.Equal(t, 0, result.Derived)
+}
+
+func TestDeriveKeepsTheMatchesItStoredWhenATrackReadFails(t *testing.T) {
+	t.Parallel()
+	store := libraryStore([]int64{11}, nil)
+	store.trackErr = errors.New("unavailable")
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, activity.Failed, result.Outcome)
+	assert.Equal(t, activity.FailureState, result.Failure)
+	assert.Empty(t, store.matches)
+}
+
+func TestDeriveReportsALibraryItCannotRead(t *testing.T) {
+	t.Parallel()
+	store := libraryStore(nil, nil)
+	store.libraryErr = errors.New("unavailable")
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, activity.Failed, result.Outcome)
+	assert.Equal(t, activity.FailureState, result.Failure)
+}
+
+// A run that matched rides has done something, whatever the metrics pass found.
+func TestDeriveCountsBothWhatItDerivedAndWhatItMatched(t *testing.T) {
+	t.Parallel()
+	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: squareTrack()})
+	store.profile = fullProfile()
+	store.owed = []int64{7}
+	store.rides = map[int64]activity.RideSamples{7: {HeartRate: heartRateRide(600, 150)}}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, activity.Polled, result.Outcome)
+	assert.Equal(t, 1, result.Derived)
+	assert.Equal(t, 1, result.Matched)
 }

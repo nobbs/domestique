@@ -1133,6 +1133,43 @@ stops the records phase, marks nothing, and is retried by the next poll, so one
 outage never condemns a day's rides. Nothing is deleted: a file downloaded
 again replaces that activity's samples.
 
+Each stored ride is also attributed to the library route it was ridden on, from
+its own track and the routes' stored geometry, at no upstream request. A ride is
+that route when the two account for each other within forty metres of its line:
+at least 92 per cent of the route's length lay under the ride, and at least 92
+per cent of the ride's length lay on the route. The second half is what keeps a
+day out that takes a short route in on its way from being recorded as a ride of
+it. That share is fitted to the operator's own judgement over 89 decided rides
+and swept across every share from 0.85 to 0.95: it is the last at which no ride
+clears the gate against two routes at once. It separates a route ridden from one
+merely followed for most of its length, and the margin below the whole is what a
+closure detour and a commute either side of the route cost. Neither share alone
+settles a route that doubles back along its own road, whose return leg lies
+under a ride that only went out, so the route length credited may not exceed the
+ride's own length beside that route by more than a sixth: riding a road once
+covers it once.
+
+Which way round the route was ridden does not decide the match — a loop ridden
+anticlockwise is the same loop — but it is recorded beside it, because a route
+ridden the other way is not the same ride: its climbs are its descents, and
+anything comparing rides over one route must know which it is looking at. It is
+read by following how far along the route each position falls and totting up the
+advance around the route's length, so a loop joined part way round reads like
+one started at its beginning. A ride that advances less than half the route's
+length either way has no direction rather than the sign the noise came to, which
+is the honest answer for a route ridden out and back.
+
+A ride matches at most one route, the one accounting for most of the ride. Where
+a library holds two routes over the same roads no ride can separate them, and
+the one recorded is settled by the coverage figures and then by the route's
+identity, so the same library always yields the same answer.
+
+What is stored is that route, the share of each the two had in common and the
+direction, or an explicit no-match, which every stored ride carries one of. A match is measured
+against the library's geometry as a whole, so a route edited, added or removed
+has every ride matched again by the next derivation; a ride whose samples are
+replaced loses its match with them.
+
 These summaries are also what the ride model is calibrated from. Once a week the
 service refits the coefficient pair over every target's stored rides pooled
 together — each ride's moving time against its distance and ascent — by a robust

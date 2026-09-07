@@ -1,0 +1,249 @@
+package sqlite
+
+import (
+	"testing"
+	"time"
+
+	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/route"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func libraryGeometry() []route.Point {
+	return []route.Point{
+		{Longitude: 8.4, Latitude: 49.0},
+		{Longitude: 8.5, Latitude: 49.2},
+	}
+}
+
+// storeTestLibrary seeds one stage and returns its key.
+func storeTestLibrary(t *testing.T, store *Store, routeID int64, contentHash string) route.Key {
+	t.Helper()
+	stage := storeTestStageWithGeometry(t, routeID, 1, "revision", contentHash, "Alpine loop", "Descent", libraryGeometry())
+	require.NoError(t,
+		store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}),
+		"StoreTrustedInventory()")
+
+	return stage.Key()
+}
+
+// matchStore is a store with the targets these cases record rides against.
+func matchStore(t *testing.T, targets ...string) *Store {
+	t.Helper()
+	store := openTestStore(t, testKey(1))
+	for _, target := range targets {
+		require.NoError(t, store.EnsureTargetOwner(t.Context(), target), "EnsureTargetOwner()")
+	}
+
+	return store
+}
+
+func matchOf(key route.Key) *activity.RouteMatch {
+	return &activity.RouteMatch{
+		Key: key, RouteCoverage: 0.93, RideCoverage: 0.81, Direction: activity.DirectionReverse,
+	}
+}
+
+func TestStoreRoundTripsARouteMatch(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRouteMatches()")
+	require.Contains(t, matches, int64(11))
+	assert.Equal(t, key, matches[11].Key)
+	assert.InDelta(t, 0.93, matches[11].RouteCoverage, 1e-9)
+	assert.InDelta(t, 0.81, matches[11].RideCoverage, 1e-9)
+	assert.Equal(t, activity.DirectionReverse, matches[11].Direction,
+		"which way round the ride went is stored with it")
+}
+
+// A ride recorded as being on no route is not served as a match, but is still
+// a stored answer: the ride is not offered for matching again.
+func TestStoreRecordsANoMatchWithoutServingOne(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, nil, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRouteMatches()")
+	assert.Empty(t, matches)
+
+	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
+	assert.Empty(t, owed, "a recorded no-match is an answer, not an omission")
+}
+
+func TestStoreOwesAMatchForARideMeasuredAgainstAnotherLibrary(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, storeTestRecords(t, store, "rider-a", 11), "StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	unchanged, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
+	assert.Empty(t, unchanged)
+
+	edited, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-2")
+	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
+	assert.Equal(t, []int64{11}, edited, "a library that has changed owes every ride a fresh match")
+}
+
+// Only a ride whose samples are stored can be matched: there is no track to
+// match one whose FIT never arrived.
+func TestStoreOwesNoMatchForARideWithoutSamples(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+
+	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
+	assert.Empty(t, owed)
+}
+
+// The match describes the samples it was worked out from. Replacing them takes
+// it with them, so the next derivation works it out again from the new track.
+func TestStoreDropsARouteMatchWhenTheSamplesAreReplaced(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, storeTestRecords(t, store, "rider-a", 11), "StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	require.NoError(t, storeTestRecords(t, store, "rider-a", 11), "StoreActivityRecords() again")
+
+	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRouteMatches()")
+	assert.Empty(t, matches)
+
+	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
+	assert.Equal(t, []int64{11}, owed)
+}
+
+func TestStoreServesARoutesRidesToTheTargetThatRodeThem(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-b", 12, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-b", 12, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	rides, err := store.RouteActivities(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteActivities()")
+	require.Len(t, rides, 1, "one rider's rides are not another's")
+	assert.Equal(t, int64(11), rides[0].ID)
+	assert.InDelta(t, 0.93, rides[0].RouteCoverage, 1e-9)
+	assert.Equal(t, activity.DirectionReverse, rides[0].Direction)
+}
+
+func TestStoreServesNoRidesForARouteNobodyRode(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	storeTestLibrary(t, store, 7, "hash-a")
+
+	rides, err := store.RouteActivities(
+		t.Context(), "rider-a", route.NewKey(route.ProviderVeloPlanner, 99, 1),
+	)
+	require.NoError(t, err, "RouteActivities()")
+	assert.Empty(t, rides)
+}
+
+// The hash covers the library's geometry, so an edit to any route's line
+// changes it and every stored match is owed working out again.
+func TestStoreLibraryHashFollowsTheGeometryItCovers(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	storeTestLibrary(t, store, 7, "hash-a")
+
+	routes, first, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes()")
+	require.Len(t, routes, 1)
+	assert.Equal(t, route.NewKey(route.ProviderVeloPlanner, 7, 1), routes[0].Key)
+	assert.Len(t, routes[0].Geometry, 2, "the stored line is what a ride is matched against")
+
+	storeTestLibrary(t, store, 7, "hash-b")
+	_, edited, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes()")
+	assert.NotEqual(t, first, edited)
+
+	storeTestLibrary(t, store, 8, "hash-c")
+	_, added, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes()")
+	assert.NotEqual(t, edited, added, "a route joining the library changes it too")
+}
+
+func TestStoreReportsAnUnreadableRouteMatchStore(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, _, libraryErr := store.LibraryRoutes(t.Context())
+	require.ErrorContains(t, libraryErr, "reading the library geometry")
+
+	_, owedErr := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	require.ErrorContains(t, owedErr, "listing activities awaiting a route match")
+
+	_, matchesErr := store.ActivityRouteMatches(t.Context(), "rider-a")
+	require.ErrorContains(t, matchesErr, "reading activity route matches")
+
+	_, ridesErr := store.RouteActivities(t.Context(), "rider-a", route.NewKey(route.ProviderVeloPlanner, 7, 1))
+	require.ErrorContains(t, ridesErr, "reading a route's activities")
+
+	writeErr := store.StoreActivityRouteMatch(t.Context(), "rider-a", 11, nil, "library-1", activityNow())
+	require.ErrorContains(t, writeErr, "storing an activity's route match")
+}
+
+// storeTestRecords gives a ride the stored samples that make it matchable.
+func storeTestRecords(t *testing.T, store *Store, targetID string, id int64) error {
+	t.Helper()
+
+	return store.StoreActivityRecords(t.Context(), targetID, id, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), Latitude: 49.0, Longitude: 8.4, HasPosition: true},
+			{Time: activityNow().Add(time.Second), Latitude: 49.2, Longitude: 8.5, HasPosition: true},
+		},
+	})
+}
+
+// A ride whose direction could not be told stores that, rather than a direction
+// nothing measured.
+func TestStoreRoundTripsAMatchWithNoDirection(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	match := matchOf(key)
+	match.Direction = activity.DirectionUnknown
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, match, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRouteMatches()")
+	assert.Equal(t, activity.DirectionUnknown, matches[11].Direction)
+}
