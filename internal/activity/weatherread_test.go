@@ -250,6 +250,50 @@ func TestDeriveGivesEachHourThePlaceTheRiderWas(t *testing.T) {
 	assert.True(t, store.stored[7][0].HasPrecipitationProbability)
 }
 
+// An hour is labelled by the hour it opens, not centred on that label. A
+// coordinate ridden thirty minutes into an hour was ridden during it; one
+// thirty minutes before it was not, however close its label looks.
+func TestDeriveKeepsTheCoordinateRiddenDuringTheHour(t *testing.T) {
+	t.Parallel()
+	start := time.Date(2026, 8, 24, 11, 45, 0, 0, time.UTC)
+	track := make([]activity.TrackPoint, 60)
+	for index := range track {
+		track[index] = activity.TrackPoint{
+			Time:      start.Add(time.Duration(index) * time.Minute),
+			Latitude:  49 + float64(index)/1000,
+			Longitude: 8,
+		}
+	}
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: start, ElapsedSeconds: 3600}},
+		tracks:  map[int64][]activity.TrackPoint{7: track},
+	}
+	end := func(temperature float64) activity.WeatherSeries {
+		return activity.WeatherSeries{
+			Time: []time.Time{
+				start.Truncate(time.Hour), start.Truncate(time.Hour).Add(time.Hour),
+			},
+			TemperatureCelsius:         []float64{temperature, temperature + 1},
+			ApparentTemperatureCelsius: []float64{temperature - 1, temperature},
+			PrecipitationMillimetres:   []float64{0, 0},
+			WindSpeedKMH:               []float64{12, 13},
+			WindDirectionDegrees:       []float64{240, 250},
+			CloudCoverPercent:          []float64{50, 55},
+			WeatherCode:                []int{0, 0},
+		}
+	}
+	source := &fakeWeatherSource{series: []activity.WeatherSeries{end(18), end(28)}}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	require.Len(t, store.stored[7], 2)
+	assert.InDelta(t, 18.0, store.stored[7][0].TemperatureCelsius, 1e-9,
+		"11:45 was ridden during the 11:00 hour")
+	// Measured to the label alone, 11:45 would look fifteen minutes from 12:00
+	// and beat the coordinate at 12:44 that was actually out in that hour.
+	assert.InDelta(t, 29.0, store.stored[7][1].TemperatureCelsius, 1e-9,
+		"and 12:44 during the 12:00 one")
+}
+
 // A ride asked about at one coordinate has one answer per hour, and reports it
 // unchanged.
 func TestDeriveKeepsASinglePointRideAsItStands(t *testing.T) {

@@ -165,6 +165,20 @@ func absDuration(d time.Duration) time.Duration {
 	return d
 }
 
+// hourDistance is how far a moment is from an hour the provider answered for.
+// The label names the hour it opens, so a moment ridden during that hour is no
+// distance from it, and only one outside is measured to the nearer edge.
+func hourDistance(at, hour time.Time) time.Duration {
+	switch {
+	case at.Before(hour):
+		return hour.Sub(at)
+	case at.Sub(hour) < time.Hour:
+		return 0
+	default:
+		return at.Sub(hour.Add(time.Hour))
+	}
+}
+
 // readingAt is one coordinate's answer for one hour, as the provider gave it.
 func readingAt(one *WeatherSeries, index int, at time.Time) WeatherHour {
 	hour := WeatherHour{
@@ -221,7 +235,7 @@ func hoursOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []
 				into = &candidate{}
 				byHour[key], order = into, append(order, key)
 			}
-			distance := absDuration(at.Sub(hourAt))
+			distance := hourDistance(at, hourAt)
 			if !seen || distance < into.distance {
 				into.hour, into.distance = readingAt(one, index, hourAt), distance
 			}
