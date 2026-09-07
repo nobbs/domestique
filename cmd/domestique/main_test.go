@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/openmeteo"
@@ -257,6 +258,52 @@ func TestWeatherSeriesOfConvertsEveryField(t *testing.T) {
 		WeatherCode:                     []int{1},
 		CloudCoverPercent:               []float64{62},
 	}, series[0])
+}
+
+// The activity package has its own shape for the same eight series, because
+// neither package imports the other.
+func TestRideWeatherSeriesOfConvertsEveryField(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	series := rideWeatherSeriesOf([]openmeteo.Hourly{
+		{
+			Time:                            []time.Time{now},
+			TemperatureCelsius:              []float64{18.4},
+			ApparentTemperatureCelsius:      []float64{17.1},
+			PrecipitationMillimetres:        []float64{0.2},
+			PrecipitationProbabilityPercent: []float64{10},
+			WindSpeedKMH:                    []float64{12.3},
+			WindDirectionDegrees:            []float64{240},
+			WeatherCode:                     []int{1},
+			CloudCoverPercent:               []float64{62},
+		},
+	})
+	require.Len(t, series, 1)
+	assert.Equal(t, activity.WeatherSeries{
+		Time:                            []time.Time{now},
+		TemperatureCelsius:              []float64{18.4},
+		ApparentTemperatureCelsius:      []float64{17.1},
+		PrecipitationMillimetres:        []float64{0.2},
+		PrecipitationProbabilityPercent: []float64{10},
+		WindSpeedKMH:                    []float64{12.3},
+		WindDirectionDegrees:            []float64{240},
+		WeatherCode:                     []int{1},
+		CloudCoverPercent:               []float64{62},
+	}, series[0])
+}
+
+// The reanalysis carries no probability of precipitation, and an absent series
+// must stay absent across the boundary rather than becoming a column of zeroes.
+func TestRideWeatherSeriesOfKeepsAnAbsentProbabilityAbsent(t *testing.T) {
+	t.Parallel()
+
+	series := rideWeatherSeriesOf([]openmeteo.Hourly{{
+		Time:               []time.Time{time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)},
+		TemperatureCelsius: []float64{18.4},
+	}})
+	require.Len(t, series, 1)
+	assert.Empty(t, series[0].PrecipitationProbabilityPercent)
 }
 
 func TestServeWaitsForTheCancelledTaskLayerBeforeReturning(t *testing.T) {

@@ -95,6 +95,80 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.Nil(t, plain.Metrics, "and a ride with no row carries none at all")
 }
 
+// The listing card gets one line about the ride: the range the temperature
+// moved over, the wind, and the whole of what fell.
+func TestGetActivitiesSummarisesTheWeatherEachRideWasRiddenThrough(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityWeather = map[string]map[int64][]activities.WeatherHour{
+		"rider-a": {1: {
+			{Hour: activityClock(), TemperatureCelsius: 12, PrecipitationMillimetres: 0.4,
+				WindSpeedKMH: 10, WeatherCode: 61},
+			{Hour: activityClock().Add(time.Hour), TemperatureCelsius: 18,
+				PrecipitationMillimetres: 0.2, WindSpeedKMH: 20, WeatherCode: 3},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+
+	summary := list.Activities[0].Weather
+	require.NotNil(t, summary, "the ride that was asked about")
+	assert.InDelta(t, 12.0, summary.TemperatureMinCelsius, 1e-9)
+	assert.InDelta(t, 18.0, summary.TemperatureMaxCelsius, 1e-9)
+	assert.InDelta(t, 15.0, summary.WindSpeedKmh, 1e-9, "the mean over the hours")
+	assert.InDelta(t, 0.6, summary.PrecipitationMillimetres, 1e-9, "the whole of what fell")
+	assert.Equal(t, 61, summary.WeatherCode, "the worst hour, not a mean of codes")
+	assert.Nil(t, list.Activities[1].Weather, "and a ride nobody asked about carries none")
+}
+
+// The ride page's strip is one row per hour, on the endpoint the page already
+// fetches for the track.
+func TestGetActivityTrackCarriesTheHoursTheRideWasRiddenThrough(t *testing.T) {
+	state := trackState("rider-a")
+	state.activityWeather = map[string]map[int64][]activities.WeatherHour{
+		"rider-a": {1: {{
+			Hour: activityClock(), TemperatureCelsius: 12, ApparentTemperatureCelsius: 10,
+			PrecipitationMillimetres: 0.4, WindSpeedKMH: 10, WindDirectionDegrees: 240,
+			CloudCoverPercent: 55, WeatherCode: 61,
+		}}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, view.Properties.Weather, 1)
+	assert.InDelta(t, 12.0, view.Properties.Weather[0].TemperatureCelsius, 1e-9)
+	assert.Nil(t, view.Properties.Weather[0].PrecipitationProbabilityPercent,
+		"the reanalysis carries none, and none is invented")
+}
+
+func TestGetActivityTrackOmitsTheWeatherOfARideNobodyAskedAbout(t *testing.T) {
+	handler := activityHandler(t, trackState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Nil(t, view.Properties.Weather)
+}
+
+func TestGetActivitiesReportsAnUnreadableWeatherStore(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activityWeatherErr = errors.New("unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getActivities(t, handler, "/v1/activities")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+
+	// The track is served from a ride this target does hold, so the failure it
+	// reports is the weather read rather than a missing ride.
+	tracked := trackState("rider-a")
+	tracked.activityWeatherErr = errors.New("unreadable")
+	trackCode, _ := getTrack(t, activityHandler(t, tracked, nonAdminSessions("rider-a")),
+		"/v1/activities/1/track")
+	assert.Equal(t, http.StatusServiceUnavailable, trackCode, "and the track alongside it")
+}
+
 func TestGetActivitiesReportsAnUnreadableMetricsStore(t *testing.T) {
 	state := activityState("rider-a", time.Hour)
 	state.activityMetricsErr = errors.New("unreadable")

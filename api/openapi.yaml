@@ -1465,6 +1465,85 @@ components:
           type: integer
         metrics:
           $ref: '#/components/schemas/ActivityMetrics'
+        weather:
+          $ref: '#/components/schemas/ActivityWeatherSummary'
+    ActivityWeatherSummary:
+      type: object
+      additionalProperties: false
+      description: >-
+        What the ride was ridden through, in one line: the range the temperature
+        moved over, the wind it was ridden in, and what fell. Absent for a ride
+        nobody has asked the weather about, and for one the provider had nothing
+        to say about.
+      required:
+        - temperatureMinCelsius
+        - temperatureMaxCelsius
+        - windSpeedKmh
+        - precipitationMillimetres
+        - weatherCode
+      properties:
+        temperatureMinCelsius:
+          type: number
+          format: double
+        temperatureMaxCelsius:
+          type: number
+          format: double
+        windSpeedKmh:
+          type: number
+          format: double
+          description: The mean over the ride's hours.
+        precipitationMillimetres:
+          type: number
+          format: double
+          description: The whole of what fell over the ride, not an hourly rate.
+        weatherCode:
+          type: integer
+          description: >-
+            The worst of the ride's hours rather than a mean: half a ride in
+            rain was ridden in rain, and a mean of two codes names no weather.
+    RideWeatherHour:
+      type: object
+      additionalProperties: false
+      description: One hour of what a ride was actually ridden through.
+      required:
+        - time
+        - temperatureCelsius
+        - apparentTemperatureCelsius
+        - precipitationMillimetres
+        - windSpeedKmh
+        - windDirectionDegrees
+        - weatherCode
+        - cloudCoverPercent
+      properties:
+        time:
+          type: string
+          format: date-time
+        temperatureCelsius:
+          type: number
+          format: double
+        apparentTemperatureCelsius:
+          type: number
+          format: double
+        precipitationMillimetres:
+          type: number
+          format: double
+        precipitationProbabilityPercent:
+          type: number
+          format: double
+          description: >-
+            Absent for a ride old enough to be answered by reanalysis, which
+            records what fell rather than what might have.
+        windSpeedKmh:
+          type: number
+          format: double
+        windDirectionDegrees:
+          type: number
+          format: double
+        weatherCode:
+          type: integer
+        cloudCoverPercent:
+          type: number
+          format: double
     ActivityMetrics:
       type: object
       additionalProperties: false
@@ -2485,6 +2564,15 @@ components:
               - number
               - "null"
             format: double
+        weather:
+          description: >-
+            What this ride was actually ridden through, one row per hour of it,
+            asked of the weather provider once after the ride's samples were
+            stored. Absent for a ride nobody has asked about yet and for one the
+            provider had nothing to say about.
+          type: array
+          items:
+            $ref: '#/components/schemas/RideWeatherHour'
         estimatedPowerWatts:
           description: >-
             Power this service worked out from the track itself, for a bicycle

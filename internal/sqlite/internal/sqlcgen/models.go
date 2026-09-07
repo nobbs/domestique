@@ -79,6 +79,27 @@ type ActivitySkip struct {
 	Observed        string
 }
 
+type ActivityWeather struct {
+	TargetSlot                      string
+	WorkoutID                       int64
+	HourUnix                        int64
+	TemperatureCelsius              float64
+	ApparentTemperatureCelsius      float64
+	PrecipitationMillimetres        float64
+	PrecipitationProbabilityPercent sql.NullFloat64
+	WindSpeedKmh                    float64
+	WindDirectionDegrees            float64
+	WeatherCode                     int64
+	CloudCoverPercent               float64
+}
+
+type ActivityWeatherRead struct {
+	TargetSlot string
+	WorkoutID  int64
+	ReadAtUnix int64
+	Hours      int64
+}
+
 type AlertToggle struct {
 	Task          string
 	Scope         string

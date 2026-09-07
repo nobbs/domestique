@@ -15,6 +15,7 @@ import { formatAscent, formatDistance, formatMovingTime, formatTimestamp } from 
 import { buildActivityProfile } from "../../lib/profile";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
+import { RideConditions } from "./RideConditions";
 import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
 
@@ -71,6 +72,7 @@ export function ActivityPage() {
                 onActiveChange={setActiveMetres}
               />
             </div>
+            <RideConditions hours={track.data.weather} />
             {profile ? (
               <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
                 <ElevationProfile

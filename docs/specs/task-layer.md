@@ -302,6 +302,18 @@ of nothing, so a profile edit that takes a parameter away takes its numbers
 with it. A slot nobody owns, and a rider who has entered no profile at all,
 leave the rides untouched rather than failing.
 
+The same task also records what each ride was actually ridden through, which is
+independent of the profile and of everything above: a rider who has entered
+nothing still rode through weather. A ride is asked about **once**, after its
+samples are stored, and whatever comes back — including nothing — is recorded as
+having been asked, so a ride the provider has no data for costs one request
+rather than one on every run. A provider failure is not recorded that way: it is
+a run to try again, not an answer. A bounded few rides are asked about per run,
+so a backfill of a whole stored history never contends with the course forecasts
+a rider is waiting on, and one ride is asked at one coordinate per hour of it,
+both ends included, up to a day's worth. Neither pass holds the other back, and
+the run reports whichever came to the more serious thing.
+
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery
 that arrives while a poll is running is refused and changes nothing, and the

@@ -209,6 +209,11 @@ for a bicycle carrying no meter: a physics model over grade, speed and mass at
 fixed road-bike constants. Always named as an estimate, never mixed with
 measured power, and never an input to a [[training load]].
 
+**recorded weather** — what a ride was actually ridden through, asked of the
+weather provider once after the ride's samples were stored and kept per hour.
+Distinct from a *forecast*, which is about a course somebody is planning to
+ride: one is the past tense of the other, and the two are never mixed.
+
 **suggestion** — a figure a rider's own recent rides imply for one profile
 parameter, offered beside its field and stored nowhere. It is not a value until
 the rider has saved it as one.

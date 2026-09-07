@@ -78,6 +78,49 @@ describe("the activity list", () => {
     expect(screen.getByRole("link", { name: "settings" })).toHaveAttribute("href", "/settings");
   });
 
+  // One line about the ride and one about what it was ridden through.
+  it("says what each ride was ridden through, where it was asked about", () => {
+    show([
+      {
+        ...(ACTIVITIES[0] as Activity),
+        weather: {
+          temperatureMinCelsius: 11.6,
+          temperatureMaxCelsius: 18.2,
+          windSpeedKmh: 14,
+          precipitationMillimetres: 2.4,
+          weatherCode: 61,
+        },
+      },
+    ]);
+
+    expect(screen.getByText(/12–18°/)).toBeInTheDocument();
+    expect(screen.getByText(/2\.4 mm/)).toBeInTheDocument();
+  });
+
+  // A dry ride says nothing about rain rather than saying none fell.
+  it("leaves rain out of a dry ride", () => {
+    show([
+      {
+        ...(ACTIVITIES[0] as Activity),
+        weather: {
+          temperatureMinCelsius: 15,
+          temperatureMaxCelsius: 15,
+          windSpeedKmh: 9,
+          precipitationMillimetres: 0,
+          weatherCode: 0,
+        },
+      },
+    ]);
+    expect(screen.getByText(/^15° · /)).toBeInTheDocument();
+    expect(screen.queryByText(/mm/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing at all about a ride nobody has asked the weather about", () => {
+    show([ACTIVITIES[0] as Activity]);
+
+    expect(screen.queryByText(/°/)).not.toBeInTheDocument();
+  });
+
   it("waits for the activities rather than claiming there are none", () => {
     // Uncached, so React Query falls through to a real fetch; stub it so the
     // request never settles and the page stays in its loading state.

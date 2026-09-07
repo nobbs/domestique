@@ -4,6 +4,7 @@ import {
   type ActivityList,
   type ActivityMetrics,
   type ActivityTrackPropertiesState,
+  type ActivityWeatherSummary,
   type AlertSetting,
   type BrowserBasemap,
   type Build,
@@ -13,6 +14,7 @@ import {
   type RiderParameters,
   type RiderProfile,
   type RiderSuggestions,
+  type RideWeatherHour,
   type Route,
   type RouteValidation,
   type Settings,
@@ -43,6 +45,7 @@ export type {
   Activity,
   ActivityList,
   ActivityMetrics,
+  ActivityWeatherSummary,
   AlertSetting,
   BrowserBasemap,
   Build as BuildInfo,
@@ -50,6 +53,7 @@ export type {
   RiderParameters,
   RiderProfile,
   RiderSuggestions,
+  RideWeatherHour,
   Route,
   RouteValidation,
   Settings,
@@ -116,6 +120,8 @@ export interface ActivityTrack {
   bbox?: BoundingBox | undefined;
   coordinates: Position[];
   state: ActivityTrackState;
+  /** What the ride was ridden through, by the hour. Absent where nothing was asked. */
+  weather?: RideWeatherHour[] | undefined;
 }
 
 export type ActivityTrackState = ActivityTrackPropertiesState;
@@ -133,13 +139,15 @@ export function activityTrack(feature: GeneratedActivityTrack | ActivityTrack): 
   }
   const altitudes = feature.properties.altitudeMetres;
   const geometry = feature.geometry;
+  const weather = feature.properties.weather;
   if (geometry === null) {
-    return { coordinates: [], state: feature.properties.state };
+    return { coordinates: [], state: feature.properties.state, weather };
   }
 
   return {
     bbox: feature.bbox as BoundingBox,
     state: feature.properties.state,
+    weather,
     coordinates: geometry.coordinates.map(([longitude = 0, latitude = 0], index) => {
       const altitude = altitudes?.[index];
 

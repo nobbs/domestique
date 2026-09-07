@@ -3,6 +3,8 @@ package httpapi
 import (
 	"encoding/json"
 	"time"
+
+	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
 )
 
 // wireTime renders an instant the way the contract declares every timestamp:
@@ -121,6 +123,9 @@ type activityTrackPropertyView struct {
 	// bicycle carrying no meter, indexed the same way. Its own field rather than
 	// a power field, so nothing can serve it as a measurement.
 	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
+	// Weather is what the ride was actually ridden through, one row per hour of
+	// it rather than one per coordinate: the provider answers by the hour.
+	Weather []openapi.RideWeatherHour `json:"weather,omitempty"`
 }
 
 type lineStringView struct {

@@ -2487,7 +2487,9 @@ type fakeState struct {
 	riderProfileWriteErr error
 	riderSuggestionErr   error
 	activityMetricsErr   error
+	activityWeatherErr   error
 	activityMetrics      map[string]map[int64]trainingload.Metrics
+	activityWeather      map[string]map[int64][]activities.WeatherHour
 	riderProfiles        map[string]rider.Profile
 	riderSuggestions     map[string]rider.Suggestions
 	riderSuggestionSince time.Time
@@ -2496,6 +2498,49 @@ type fakeState struct {
 	surfaceMetres        float64
 	surfaceClassified    int
 	surfaceTotal         int
+}
+
+// ActivityWeatherSummaries sums the hours the test gave this target the way the
+// store's own query does, so a test writes hours and reads a summary.
+func (s *fakeState) ActivityWeatherSummaries(
+	_ context.Context, targetID string,
+) (map[int64]activities.WeatherSummary, error) {
+	if s.activityWeatherErr != nil {
+		return nil, s.activityWeatherErr
+	}
+	summaries := map[int64]activities.WeatherSummary{}
+	for id, hours := range s.activityWeather[targetID] {
+		if len(hours) == 0 {
+			continue
+		}
+		summary := activities.WeatherSummary{
+			TemperatureMinCelsius: hours[0].TemperatureCelsius,
+			TemperatureMaxCelsius: hours[0].TemperatureCelsius,
+		}
+		wind := 0.0
+		for index := range hours {
+			hour := &hours[index]
+			summary.TemperatureMinCelsius = min(summary.TemperatureMinCelsius, hour.TemperatureCelsius)
+			summary.TemperatureMaxCelsius = max(summary.TemperatureMaxCelsius, hour.TemperatureCelsius)
+			summary.PrecipitationMillimetres += hour.PrecipitationMillimetres
+			wind += hour.WindSpeedKMH
+			summary.WeatherCode = max(summary.WeatherCode, hour.WeatherCode)
+		}
+		summary.WindSpeedKMH = wind / float64(len(hours))
+		summaries[id] = summary
+	}
+
+	return summaries, nil
+}
+
+func (s *fakeState) ActivityWeatherHours(
+	_ context.Context, targetID string, id int64,
+) ([]activities.WeatherHour, error) {
+	if s.activityWeatherErr != nil {
+		return nil, s.activityWeatherErr
+	}
+
+	return s.activityWeather[targetID][id], nil
 }
 
 // ActivityMetrics reports the derived rows the test gave this target.
