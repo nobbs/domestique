@@ -466,8 +466,8 @@ func decodeForecastResponse(body []byte) ([]rawForecastResponse, error) {
 	return []rawForecastResponse{single}, nil
 }
 
-// parse converts one coordinate's raw hourly block, validating that every
-// series is the same length as the timestamps naming them.
+// parse converts one coordinate's raw block, validating that every series is
+// the same length as the timestamps naming them.
 //
 // requireProbability says whether this response was asked for a probability of
 // precipitation. Only a request that did not ask for one may come back without.
@@ -480,7 +480,7 @@ func (raw *rawSeries) parse(
 		raw.WindSpeed10m, raw.WindDirection10m, raw.CloudCover,
 	} {
 		if len(series) != count {
-			return Series{}, errors.New("openmeteo: hourly series lengths did not match")
+			return Series{}, errors.New("openmeteo: series lengths did not match")
 		}
 	}
 	// Absent only where it was never asked for. The reanalysis does not carry a
@@ -489,14 +489,14 @@ func (raw *rawSeries) parse(
 	// client should refuse rather than quietly read as "none was recorded".
 	if requireProbability || len(raw.PrecipitationProbability) != 0 {
 		if len(raw.PrecipitationProbability) != count {
-			return Series{}, errors.New("openmeteo: hourly series lengths did not match")
+			return Series{}, errors.New("openmeteo: series lengths did not match")
 		}
 	}
 	if len(raw.WeatherCode) != count {
-		return Series{}, errors.New("openmeteo: hourly series lengths did not match")
+		return Series{}, errors.New("openmeteo: series lengths did not match")
 	}
 
-	// An hour the provider had no reading for is left out rather than carried as
+	// A step the provider had no reading for is left out rather than carried as
 	// a zero. Dropping it keeps every series aligned with the timestamps beside
 	// them, which is the whole contract of this shape.
 	hourly := Series{Step: step}
@@ -507,7 +507,7 @@ func (raw *rawSeries) parse(
 		}
 		parsed, err := time.ParseInLocation(hourFormat, value, location)
 		if err != nil {
-			return Series{}, fmt.Errorf("openmeteo: parsing hourly time: %w", err)
+			return Series{}, fmt.Errorf("openmeteo: parsing a step time: %w", err)
 		}
 		hourly.Time = append(hourly.Time, parsed)
 		hourly.TemperatureCelsius = append(hourly.TemperatureCelsius, *raw.Temperature2m[index])
@@ -527,7 +527,7 @@ func (raw *rawSeries) parse(
 }
 
 // recorded reports whether the provider held a value for every series it
-// answered this hour with. The probability of precipitation is not among them:
+// answered this step with. The probability of precipitation is not among them:
 // the reanalysis carries none at all, and a forecast hour missing only that one
 // still describes the weather.
 func recorded(raw *rawSeries, index int) bool {
@@ -543,8 +543,8 @@ func recorded(raw *rawSeries, index int) bool {
 	return raw.WeatherCode[index] != nil
 }
 
-// probabilityAt is the hour's chance of rain, or zero where the provider
-// answered with a null for that hour alone. Zero is the honest reading here in
+// probabilityAt is the step's chance of rain, or zero where the provider
+// answered with a null for that step alone. Zero is the honest reading here in
 // a way it is not for a temperature: no chance recorded is no chance given.
 func probabilityAt(raw *rawSeries, index int) float64 {
 	if value := raw.PrecipitationProbability[index]; value != nil {

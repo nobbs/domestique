@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -262,6 +263,10 @@ func stepsOf(series []WeatherSeries, points []TrackPoint, from, to time.Time) []
 			nearest.worst = max(nearest.worst, nearestCode)
 		}
 	}
+	// Sorted rather than first seen: a coordinate the provider held no reading
+	// for at one step contributes its later steps first, so the order keys were
+	// met in is not the order the ride was ridden in.
+	slices.Sort(order)
 	hours := make([]WeatherStep, 0, len(order))
 	for _, key := range order {
 		into := byHour[key]

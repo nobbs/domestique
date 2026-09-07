@@ -393,6 +393,42 @@ func TestDeriveReadsASourceWithNoStepAsHourly(t *testing.T) {
 	assert.Equal(t, time.Hour, store.stored[7][0].Step)
 }
 
+// The provider drops a step it held no reading for, per coordinate. A ride
+// whose first coordinate has such a hole meets its later steps first, and the
+// order the steps were met in is not the order the ride was ridden in.
+func TestDeriveStoresTheStepsInTheOrderTheRideWasRidden(t *testing.T) {
+	t.Parallel()
+	hour := weatherNow().Truncate(time.Hour)
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: hour, ElapsedSeconds: 3600}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
+	}
+	one := func(times []time.Time, temperature float64) activity.WeatherSeries {
+		series := activity.WeatherSeries{Step: time.Hour, Time: times}
+		for range times {
+			series.TemperatureCelsius = append(series.TemperatureCelsius, temperature)
+			series.ApparentTemperatureCelsius = append(series.ApparentTemperatureCelsius, temperature-1)
+			series.PrecipitationMillimetres = append(series.PrecipitationMillimetres, 0)
+			series.WindSpeedKMH = append(series.WindSpeedKMH, 12)
+			series.WindDirectionDegrees = append(series.WindDirectionDegrees, 240)
+			series.CloudCoverPercent = append(series.CloudCoverPercent, 50)
+			series.WeatherCode = append(series.WeatherCode, 1)
+		}
+
+		return series
+	}
+	// The first coordinate has no reading for the hour the ride began in.
+	source := &fakeWeatherSource{step: time.Hour, series: []activity.WeatherSeries{
+		one([]time.Time{hour.Add(time.Hour)}, 19),
+		one([]time.Time{hour, hour.Add(time.Hour)}, 28),
+	}}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	require.Len(t, store.stored[7], 2)
+	assert.Equal(t, hour, store.stored[7][0].At, "the hour it started in comes first")
+	assert.Equal(t, hour.Add(time.Hour), store.stored[7][1].At, "and the one it ended in second")
+}
+
 // A ride asked about at one coordinate has one answer per hour, and reports it
 // unchanged.
 func TestDeriveKeepsASinglePointRideAsItStands(t *testing.T) {
