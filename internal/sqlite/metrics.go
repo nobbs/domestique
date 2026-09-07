@@ -13,16 +13,16 @@ import (
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
-// StoredMetrics is one ride's derived numbers as they come back out.
-type StoredMetrics struct {
-	Metrics trainingload.Metrics
-	ID      int64
-}
+// derivationVersion is which derivation wrote a stored row. Bumped whenever a
+// derivation starts producing a figure the rows before it cannot hold, so those
+// rows are listed again rather than keeping the new columns null for good.
+const derivationVersion = 1
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
-// could yield something these profile values allow: those never derived, and
-// those derived against different values. Newest first, so a rider watching a
-// long recompute sees the rides they care about settle first.
+// could yield something this derivation now allows: those never derived, those
+// derived against different profile values, and those an earlier derivation
+// wrote. Newest first, so a rider watching a long recompute sees the rides they
+// care about settle first.
 func (s *Store) ActivitiesAwaitingDerivation(
 	ctx context.Context, targetID string, inputs trainingload.Inputs,
 ) ([]int64, error) {
@@ -33,6 +33,7 @@ func (s *Store) ActivitiesAwaitingDerivation(
 		ThresholdHeartRate: inputs.ThresholdHeartRateBPM,
 		ThresholdPower:     inputs.FunctionalThresholdPowerWatts,
 		TotalMass:          inputs.TotalMassKG,
+		DerivationVersion:  derivationVersion,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing activities awaiting derivation: %w", err)
@@ -61,6 +62,9 @@ func (s *Store) ActivityRideSamples(
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
 		if row.HeartRateBpm.Valid {
 			samples.HeartRate = append(samples.HeartRate, trainingload.Sample{At: at, Value: row.HeartRateBpm.Float64})
+		}
+		if row.CadenceRpm.Valid {
+			samples.Cadence = append(samples.Cadence, trainingload.Sample{At: at, Value: row.CadenceRpm.Float64})
 		}
 		if row.PowerWatts.Valid {
 			samples.Power = append(samples.Power, trainingload.Sample{At: at, Value: row.PowerWatts.Float64})
@@ -140,9 +144,10 @@ func (s *Store) StoreEstimatedPower(
 //
 //nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
 func (s *Store) StoreActivityMetrics(
-	ctx context.Context, targetID string, id int64, metrics trainingload.Metrics,
+	ctx context.Context, targetID string, id int64, stored activity.RideMetrics,
 ) error {
-	if !metrics.Derived() {
+	metrics, averages := stored.Load, stored.Averages
+	if !stored.Derived() {
 		if err := s.queries.DeleteActivityMetrics(ctx, sqlcgen.DeleteActivityMetricsParams{
 			TargetSlot: targetID, WorkoutID: id,
 		}); err != nil {
@@ -165,11 +170,16 @@ func (s *Store) StoreActivityMetrics(
 		IntensityFactor:         nullFloat(metrics.Power.IntensityFactor, metrics.HasPower),
 		PowerTss:                nullFloat(metrics.Power.TSS, metrics.HasPower),
 		EstimatedPowerWatts:     nullFloat(metrics.EstimatedPowerWatts, metrics.HasEstimatedPower),
+		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
+		MaxHeartRateBpm:         nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
+		AverageCadenceRpm:       nullFloat(averages.CadenceRPM, averages.HasCadence),
+		AveragePowerWatts:       nullFloat(averages.PowerWatts, averages.HasPower),
 		InputMaxHeartRate:       metrics.Inputs.MaxHeartRateBPM,
 		InputRestingHeartRate:   metrics.Inputs.RestingHeartRateBPM,
 		InputThresholdHeartRate: metrics.Inputs.ThresholdHeartRateBPM,
 		InputThresholdPower:     metrics.Inputs.FunctionalThresholdPowerWatts,
 		InputTotalMass:          metrics.Inputs.TotalMassKG,
+		DerivationVersion:       derivationVersion,
 		ComputedAtUnix:          time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("storing the activity metrics: %w", err)
@@ -179,12 +189,12 @@ func (s *Store) StoreActivityMetrics(
 }
 
 // ActivityMetrics reads every derived row one target holds, keyed by ride.
-func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64]trainingload.Metrics, error) {
+func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64]activity.RideMetrics, error) {
 	rows, err := s.queries.ListActivityMetrics(ctx, targetID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("reading the activity metrics: %w", err)
 	}
-	metrics := make(map[int64]trainingload.Metrics, len(rows))
+	metrics := make(map[int64]activity.RideMetrics, len(rows))
 	for index := range rows {
 		row := &rows[index]
 		one := trainingload.Metrics{
@@ -206,7 +216,15 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 			row.Zone1Seconds.Float64, row.Zone2Seconds.Float64, row.Zone3Seconds.Float64,
 			row.Zone4Seconds.Float64, row.Zone5Seconds.Float64,
 		}
-		metrics[row.WorkoutID] = one
+		metrics[row.WorkoutID] = activity.RideMetrics{Load: one, Averages: activity.RideAverages{
+			HeartRateBPM:    row.AverageHeartRateBpm.Float64,
+			MaxHeartRateBPM: row.MaxHeartRateBpm.Float64,
+			CadenceRPM:      row.AverageCadenceRpm.Float64,
+			PowerWatts:      row.AveragePowerWatts.Float64,
+			HasHeartRate:    row.AverageHeartRateBpm.Valid,
+			HasCadence:      row.AverageCadenceRpm.Valid,
+			HasPower:        row.AveragePowerWatts.Valid,
+		}}
 	}
 
 	return metrics, nil

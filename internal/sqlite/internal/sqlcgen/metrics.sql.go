@@ -76,7 +76,8 @@ WHERE a.target_slot = ?1
     OR m.input_resting_heart_rate <> ?3
     OR m.input_threshold_heart_rate <> ?4
     OR m.input_threshold_power <> ?5
-    OR m.input_total_mass <> ?6)
+    OR m.input_total_mass <> ?6
+    OR m.derivation_version <> ?7)
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
 `
 
@@ -87,12 +88,15 @@ type ListActivitiesAwaitingDerivationParams struct {
 	ThresholdHeartRate float64
 	ThresholdPower     float64
 	TotalMass          float64
+	DerivationVersion  int64
 }
 
-// Rides whose stored samples could still yield something the profile now
-// allows: those with no metrics row at all, and those whose row was worked out
-// against different profile values. A ride still awaiting its FIT has nothing
-// to derive from and is left for the download to bring in.
+// Rides whose stored samples could still yield something this derivation now
+// allows: those with no metrics row at all, those whose row was worked out
+// against different profile values, and those whose row an earlier derivation
+// wrote and so cannot hold every figure this one produces. A ride still
+// awaiting its FIT has nothing to derive from and is left for the download to
+// bring in.
 func (q *Queries) ListActivitiesAwaitingDerivation(ctx context.Context, arg ListActivitiesAwaitingDerivationParams) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingDerivation,
 		arg.TargetSlot,
@@ -101,6 +105,7 @@ func (q *Queries) ListActivitiesAwaitingDerivation(ctx context.Context, arg List
 		arg.ThresholdHeartRate,
 		arg.ThresholdPower,
 		arg.TotalMass,
+		arg.DerivationVersion,
 	)
 	if err != nil {
 		return nil, err
@@ -127,7 +132,8 @@ const listActivityMetrics = `-- name: ListActivityMetrics :many
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts
+  estimated_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
 FROM activity_metrics
 WHERE target_slot = ?
 ORDER BY workout_id
@@ -146,6 +152,10 @@ type ListActivityMetricsRow struct {
 	IntensityFactor      sql.NullFloat64
 	PowerTss             sql.NullFloat64
 	EstimatedPowerWatts  sql.NullFloat64
+	AverageHeartRateBpm  sql.NullFloat64
+	MaxHeartRateBpm      sql.NullFloat64
+	AverageCadenceRpm    sql.NullFloat64
+	AveragePowerWatts    sql.NullFloat64
 }
 
 func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([]ListActivityMetricsRow, error) {
@@ -170,6 +180,10 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 			&i.IntensityFactor,
 			&i.PowerTss,
 			&i.EstimatedPowerWatts,
+			&i.AverageHeartRateBpm,
+			&i.MaxHeartRateBpm,
+			&i.AverageCadenceRpm,
+			&i.AveragePowerWatts,
 		); err != nil {
 			return nil, err
 		}
@@ -242,11 +256,12 @@ func (q *Queries) ListActivityRideLoads(ctx context.Context, targetSlot string) 
 }
 
 const listActivitySensorRecords = `-- name: ListActivitySensorRecords :many
-SELECT record_index, recorded_at_unix, heart_rate_bpm, power_watts,
+SELECT record_index, recorded_at_unix, heart_rate_bpm, cadence_rpm, power_watts,
   distance_metres, altitude_metres, latitude, longitude
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
   AND (heart_rate_bpm IS NOT NULL
+    OR cadence_rpm IS NOT NULL
     OR power_watts IS NOT NULL
     OR (latitude IS NOT NULL AND longitude IS NOT NULL
       AND altitude_metres IS NOT NULL AND distance_metres IS NOT NULL))
@@ -262,6 +277,7 @@ type ListActivitySensorRecordsRow struct {
 	RecordIndex    int64
 	RecordedAtUnix int64
 	HeartRateBpm   sql.NullFloat64
+	CadenceRpm     sql.NullFloat64
 	PowerWatts     sql.NullFloat64
 	DistanceMetres sql.NullFloat64
 	AltitudeMetres sql.NullFloat64
@@ -287,6 +303,7 @@ func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivit
 			&i.RecordIndex,
 			&i.RecordedAtUnix,
 			&i.HeartRateBpm,
+			&i.CadenceRpm,
 			&i.PowerWatts,
 			&i.DistanceMetres,
 			&i.AltitudeMetres,
@@ -312,9 +329,10 @@ INSERT INTO activity_metrics (
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
-  input_total_mass, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  input_total_mass, derivation_version, computed_at_unix
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -327,11 +345,16 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   intensity_factor = excluded.intensity_factor,
   power_tss = excluded.power_tss,
   estimated_power_watts = excluded.estimated_power_watts,
+  average_heart_rate_bpm = excluded.average_heart_rate_bpm,
+  max_heart_rate_bpm = excluded.max_heart_rate_bpm,
+  average_cadence_rpm = excluded.average_cadence_rpm,
+  average_power_watts = excluded.average_power_watts,
   input_max_heart_rate = excluded.input_max_heart_rate,
   input_resting_heart_rate = excluded.input_resting_heart_rate,
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
   input_threshold_power = excluded.input_threshold_power,
   input_total_mass = excluded.input_total_mass,
+  derivation_version = excluded.derivation_version,
   computed_at_unix = excluded.computed_at_unix
 `
 
@@ -349,11 +372,16 @@ type UpsertActivityMetricsParams struct {
 	IntensityFactor         sql.NullFloat64
 	PowerTss                sql.NullFloat64
 	EstimatedPowerWatts     sql.NullFloat64
+	AverageHeartRateBpm     sql.NullFloat64
+	MaxHeartRateBpm         sql.NullFloat64
+	AverageCadenceRpm       sql.NullFloat64
+	AveragePowerWatts       sql.NullFloat64
 	InputMaxHeartRate       float64
 	InputRestingHeartRate   float64
 	InputThresholdHeartRate float64
 	InputThresholdPower     float64
 	InputTotalMass          float64
+	DerivationVersion       int64
 	ComputedAtUnix          int64
 }
 
@@ -372,11 +400,16 @@ func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityM
 		arg.IntensityFactor,
 		arg.PowerTss,
 		arg.EstimatedPowerWatts,
+		arg.AverageHeartRateBpm,
+		arg.MaxHeartRateBpm,
+		arg.AverageCadenceRpm,
+		arg.AveragePowerWatts,
 		arg.InputMaxHeartRate,
 		arg.InputRestingHeartRate,
 		arg.InputThresholdHeartRate,
 		arg.InputThresholdPower,
 		arg.InputTotalMass,
+		arg.DerivationVersion,
 		arg.ComputedAtUnix,
 	)
 	return err

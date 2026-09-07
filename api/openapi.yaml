@@ -1732,10 +1732,13 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        What this ride's recorded samples and the rider's profile say about how
-        hard it was. Absent from a ride that has none, and each part is absent
-        on its own: a ride carries the sensors it carries, and a profile holds
-        what the rider entered.
+        What this ride's recorded samples say about how hard it was: the load
+        figures the rider's profile shapes, and the plain averages its sensors
+        came to on their own. Absent from a ride that has none, and each part is
+        absent on its own: a ride carries the sensors it carries, and a profile
+        holds what the rider entered. Average speed is not here — it is distance
+        over moving time, both of which the activity already carries, and is
+        known even for a ride whose file was never readable.
       properties:
         zoneSeconds:
           type: array
@@ -1780,6 +1783,28 @@ components:
             presented as though it were one of them. Absent for a ride that
             measured its own power, one with no usable track, and one whose
             rider has entered no mass.
+        averageHeartRateBpm:
+          type: number
+          format: double
+          description: >-
+            The mean of the ride's recorded heart-rate samples. Absent for a
+            ride that carried no strap.
+        maxHeartRateBpm:
+          type: number
+          format: double
+          description: The highest heart rate the ride recorded.
+        averageCadenceRpm:
+          type: number
+          format: double
+          description: >-
+            The mean of the ride's recorded cadence samples. A reading of zero
+            is a reading — a stopped rider's cadence — and counts towards it.
+        averagePowerWatts:
+          type: number
+          format: double
+          description: >-
+            The mean of the ride's measured power samples. Never fed by an
+            estimate: a bicycle with no meter has no average power.
     ActivityList:
       type: object
       additionalProperties: false

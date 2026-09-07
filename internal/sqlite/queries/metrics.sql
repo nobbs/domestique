@@ -4,9 +4,10 @@ INSERT INTO activity_metrics (
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
-  input_total_mass, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  input_total_mass, derivation_version, computed_at_unix
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -19,11 +20,16 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   intensity_factor = excluded.intensity_factor,
   power_tss = excluded.power_tss,
   estimated_power_watts = excluded.estimated_power_watts,
+  average_heart_rate_bpm = excluded.average_heart_rate_bpm,
+  max_heart_rate_bpm = excluded.max_heart_rate_bpm,
+  average_cadence_rpm = excluded.average_cadence_rpm,
+  average_power_watts = excluded.average_power_watts,
   input_max_heart_rate = excluded.input_max_heart_rate,
   input_resting_heart_rate = excluded.input_resting_heart_rate,
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
   input_threshold_power = excluded.input_threshold_power,
   input_total_mass = excluded.input_total_mass,
+  derivation_version = excluded.derivation_version,
   computed_at_unix = excluded.computed_at_unix;
 
 -- name: DeleteActivityMetrics :exec
@@ -39,15 +45,18 @@ DELETE FROM activity_metrics WHERE target_slot = ?;
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts
+  estimated_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
 FROM activity_metrics
 WHERE target_slot = ?
 ORDER BY workout_id;
 
--- Rides whose stored samples could still yield something the profile now
--- allows: those with no metrics row at all, and those whose row was worked out
--- against different profile values. A ride still awaiting its FIT has nothing
--- to derive from and is left for the download to bring in.
+-- Rides whose stored samples could still yield something this derivation now
+-- allows: those with no metrics row at all, those whose row was worked out
+-- against different profile values, and those whose row an earlier derivation
+-- wrote and so cannot hold every figure this one produces. A ride still
+-- awaiting its FIT has nothing to derive from and is left for the download to
+-- bring in.
 -- name: ListActivitiesAwaitingDerivation :many
 SELECT a.workout_id
 FROM activities AS a
@@ -59,7 +68,8 @@ WHERE a.target_slot = sqlc.arg(target_slot)
     OR m.input_resting_heart_rate <> sqlc.arg(resting_heart_rate)
     OR m.input_threshold_heart_rate <> sqlc.arg(threshold_heart_rate)
     OR m.input_threshold_power <> sqlc.arg(threshold_power)
-    OR m.input_total_mass <> sqlc.arg(total_mass))
+    OR m.input_total_mass <> sqlc.arg(total_mass)
+    OR m.derivation_version <> sqlc.arg(derivation_version))
 ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 
 -- Every record a derivation can do something with: one carrying a sensor, or
@@ -68,11 +78,12 @@ ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 -- longitude together, which is what ListActivityTrack calls a positioned
 -- sample: a record the track would not serve must not shape an estimate.
 -- name: ListActivitySensorRecords :many
-SELECT record_index, recorded_at_unix, heart_rate_bpm, power_watts,
+SELECT record_index, recorded_at_unix, heart_rate_bpm, cadence_rpm, power_watts,
   distance_metres, altitude_metres, latitude, longitude
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND (heart_rate_bpm IS NOT NULL
+    OR cadence_rpm IS NOT NULL
     OR power_watts IS NOT NULL
     OR (latitude IS NOT NULL AND longitude IS NOT NULL
       AND altitude_metres IS NOT NULL AND distance_metres IS NOT NULL))

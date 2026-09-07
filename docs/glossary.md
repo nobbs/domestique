@@ -205,9 +205,10 @@ from heart rate otherwise.
 difference. Fresh above zero, buried below it. Folded at read time from the
 stored per-ride load, never stored itself.
 
-**derived metrics** — what a ride's stored samples and a [[rider profile]] say
-about it: time in zones, and training load. Worked out once by `activity:derive`
-and stored beside the ride, never read from a provider.
+**derived metrics** — what a ride's stored samples say about it: time in zones
+and [[training load]], which a [[rider profile]] shapes, and the plain means its
+own sensors came to, which it does not. Worked out once by `activity:derive` and
+stored beside the ride, never read from a provider.
 
 **estimated power** — power this service worked out from a ride's own track,
 for a bicycle carrying no meter: a physics model over grade, speed and mass at

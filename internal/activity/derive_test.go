@@ -25,7 +25,7 @@ type fakeDeriveStore struct {
 	clearErr         error
 	estimateErr      error
 	rides            map[int64]activity.RideSamples
-	written          map[int64]trainingload.Metrics
+	written          map[int64]activity.RideMetrics
 	estimated        map[int64][]powerestimate.Estimate
 	owner            string
 	owed             []int64
@@ -82,13 +82,13 @@ func (s *fakeDeriveStore) ClearActivityMetrics(context.Context, string) (int, er
 
 //nolint:gocritic // value param: this method conforms to the activity.DeriveStore contract.
 func (s *fakeDeriveStore) StoreActivityMetrics(
-	_ context.Context, _ string, id int64, metrics trainingload.Metrics,
+	_ context.Context, _ string, id int64, metrics activity.RideMetrics,
 ) error {
 	if s.storeErr != nil {
 		return s.storeErr
 	}
 	if s.written == nil {
-		s.written = map[int64]trainingload.Metrics{}
+		s.written = map[int64]activity.RideMetrics{}
 	}
 	s.written[id] = metrics
 	s.writeOrder = append(s.writeOrder, id)
@@ -131,7 +131,7 @@ func TestDeriveWritesEveryRideOwedOne(t *testing.T) {
 	assert.Equal(t, activity.Polled, result.Outcome)
 	assert.Equal(t, 2, result.Derived)
 	assert.ElementsMatch(t, []int64{7, 8}, store.writeOrder)
-	assert.True(t, store.written[7].HasZones, "a maximum alone still cuts zones")
+	assert.True(t, store.written[7].Load.HasZones, "a maximum alone still cuts zones")
 	assert.InDelta(t, 190.0, store.owedInputs.MaxHeartRateBPM, 1e-9,
 		"the rides owed one are those against the profile as it stands")
 }
@@ -268,8 +268,8 @@ func TestDeriveEstimatesPowerForARideWithNoMeter(t *testing.T) {
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
-	assert.True(t, store.written[7].HasEstimatedPower, "the ride's average estimate")
-	assert.Positive(t, store.written[7].EstimatedPowerWatts)
+	assert.True(t, store.written[7].Load.HasEstimatedPower, "the ride's average estimate")
+	assert.Positive(t, store.written[7].Load.EstimatedPowerWatts)
 	assert.Len(t, store.estimated[7], 120, "an entry per track sample")
 	assert.Len(t, store.estimatedRecords, 120, "each naming the record it came from")
 }
@@ -293,9 +293,9 @@ func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
-	assert.False(t, store.written[7].HasEstimatedPower, "the ride measured its own power")
+	assert.False(t, store.written[7].Load.HasEstimatedPower, "the ride measured its own power")
 	assert.Empty(t, store.estimated[7], "and the stored series is cleared rather than filled")
-	assert.True(t, store.written[7].HasPower, "the measured numbers are still worked out")
+	assert.True(t, store.written[7].Load.HasPower, "the measured numbers are still worked out")
 }
 
 // A ride with no usable track is skipped rather than estimated as zero, and so
@@ -325,7 +325,7 @@ func TestDeriveEstimatesNoPowerWithoutATrackOrAMass(t *testing.T) {
 			require.NoError(t, err, "NewDeriver()")
 
 			require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
-			assert.False(t, store.written[7].HasEstimatedPower)
+			assert.False(t, store.written[7].Load.HasEstimatedPower)
 			assert.Empty(t, store.estimated[7])
 		})
 	}
@@ -346,7 +346,7 @@ func TestDeriveRecordsTheMassItWorkedTheEstimateOutAgainst(t *testing.T) {
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
 	assert.InDelta(t, 82.0, store.owedInputs.TotalMassKG, 1e-9, "rider and bicycle together")
-	assert.InDelta(t, 82.0, store.written[7].Inputs.TotalMassKG, 1e-9)
+	assert.InDelta(t, 82.0, store.written[7].Load.Inputs.TotalMassKG, 1e-9)
 }
 
 // The metrics row is what says a ride has been derived, so a failure writing
@@ -372,4 +372,96 @@ func TestNewDeriverNeedsAStore(t *testing.T) {
 	t.Parallel()
 	_, err := activity.NewDeriver(nil, nil, nil, nil)
 	require.ErrorContains(t, err, "a store is required")
+}
+
+// varyingRide is a series that rises by one each second, so a mean and a peak
+// that were swapped, or a peak taken as the last reading, are both visible.
+func varyingRide(seconds int, first float64) []trainingload.Sample {
+	start := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	samples := make([]trainingload.Sample, seconds)
+	for index := range samples {
+		samples[index] = trainingload.Sample{
+			At:    start.Add(time.Duration(index) * time.Second),
+			Value: first + float64(index),
+		}
+	}
+
+	return samples
+}
+
+// The plain figures a rider reads before any training load, worked out from the
+// samples already stored rather than asked of Wahoo again.
+func TestDeriveWritesTheRidesSensorAverages(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{
+		owner:   "rider-a",
+		profile: fullProfile(),
+		owed:    []int64{7},
+		rides: map[int64]activity.RideSamples{
+			// 100..104, 60..64 and 200..204: mean is the middle, peak the last.
+			7: {
+				HeartRate: varyingRide(5, 100),
+				Cadence:   varyingRide(5, 60),
+				Power:     varyingRide(5, 200),
+			},
+		},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	averages := store.written[7].Averages
+	assert.InDelta(t, 102.0, averages.HeartRateBPM, 1e-9)
+	assert.InDelta(t, 104.0, averages.MaxHeartRateBPM, 1e-9, "the peak, not the last reading")
+	assert.InDelta(t, 62.0, averages.CadenceRPM, 1e-9)
+	assert.InDelta(t, 202.0, averages.PowerWatts, 1e-9)
+	assert.True(t, averages.HasHeartRate && averages.HasCadence && averages.HasPower)
+}
+
+// A ride carries the sensors it carries: one with no strap has no heart rate
+// rather than a heart rate of nought.
+func TestDeriveLeavesAnAverageAbsentWhereTheRideCarriedNoSensor(t *testing.T) {
+	t.Parallel()
+	for name, samples := range map[string]activity.RideSamples{
+		"no strap":  {Cadence: varyingRide(5, 60), Power: varyingRide(5, 200)},
+		"no meter":  {HeartRate: varyingRide(5, 100), Cadence: varyingRide(5, 60)},
+		"no sensor": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store := &fakeDeriveStore{
+				owner:   "rider-a",
+				profile: fullProfile(),
+				owed:    []int64{7},
+				rides:   map[int64]activity.RideSamples{7: samples},
+			}
+			deriver, err := activity.NewDeriver(store, nil, nil, nil)
+			require.NoError(t, err, "NewDeriver()")
+			deriver.Derive(t.Context(), "rider-a")
+
+			averages := store.written[7].Averages
+			assert.Equal(t, len(samples.HeartRate) > 0, averages.HasHeartRate)
+			assert.Equal(t, len(samples.Cadence) > 0, averages.HasCadence)
+			assert.Equal(t, len(samples.Power) > 0, averages.HasPower)
+		})
+	}
+}
+
+// A ride whose only sensor is one the load figures cannot use still has
+// something to say, so its row is written rather than removed.
+func TestDeriveWritesARideThatOnlyYieldsAnAverage(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{
+		owner:   "rider-a",
+		profile: fullProfile(),
+		owed:    []int64{7},
+		rides:   map[int64]activity.RideSamples{7: {Cadence: varyingRide(5, 60)}},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	written := store.written[7]
+	assert.False(t, written.Load.Derived(), "the load figures yielded nothing")
+	assert.True(t, written.Derived(), "but the ride still averaged a cadence")
 }

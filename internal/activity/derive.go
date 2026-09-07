@@ -16,6 +16,7 @@ import (
 // written back beside the sample it describes.
 type RideSamples struct {
 	HeartRate    []trainingload.Sample
+	Cadence      []trainingload.Sample
 	Power        []trainingload.Sample
 	Track        []powerestimate.Sample
 	TrackRecords []int64
@@ -56,11 +57,13 @@ type DeriveStore interface {
 	// ActivitiesAwaitingDerivation lists the rides whose stored samples could
 	// yield something these profile values allow: those never derived, and
 	// those derived against different values.
+	// Rides an earlier derivation wrote are listed too: its row cannot hold
+	// every figure this one produces.
 	ActivitiesAwaitingDerivation(ctx context.Context, targetID string, inputs trainingload.Inputs) ([]int64, error)
 	// ActivityRideSamples reads one ride's recorded series, split by what each
 	// is for.
 	ActivityRideSamples(ctx context.Context, targetID string, id int64) (RideSamples, error)
-	StoreActivityMetrics(ctx context.Context, targetID string, id int64, metrics trainingload.Metrics) error
+	StoreActivityMetrics(ctx context.Context, targetID string, id int64, metrics RideMetrics) error
 	// StoreEstimatedPower replaces one ride's estimated power series. An empty
 	// series clears whatever was there.
 	StoreEstimatedPower(ctx context.Context, targetID string, id int64,
@@ -179,9 +182,10 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		if samplesErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
-		metrics := trainingload.Derive(samples.HeartRate, samples.Power, inputs)
+		load := trainingload.Derive(samples.HeartRate, samples.Power, inputs)
 		records, estimates, average := samples.EstimatePower(inputs.TotalMassKG)
-		metrics.EstimatedPowerWatts, metrics.HasEstimatedPower = average.Watts, average.Known
+		load.EstimatedPowerWatts, load.HasEstimatedPower = average.Watts, average.Known
+		metrics := RideMetrics{Load: load, Averages: samples.Averages()}
 		// The series first: a metrics row is what says a ride has been derived,
 		// so it must not appear before the samples it describes are in place.
 		if storeErr := d.store.StoreEstimatedPower(ctx, targetID, id, records, estimates); storeErr != nil {
