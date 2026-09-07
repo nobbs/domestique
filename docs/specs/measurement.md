@@ -144,8 +144,9 @@ descent = Σ max(elevation[i-1] - elevation[i], 0)
 **Source.** This service's own rule.
 
 **Applied by.** `route.Route.ElevationGainMetres` and `ElevationLossMetres`
-through `measure.Profile.AscentMetres` and `DescentMetres`
-(`internal/measure/profile.go`), run on the median-filtered profile (see
+through the package-level `measure.AscentMetres` and `DescentMetres`
+(`internal/measure/profile.go`, which `Profile`'s methods of the same name
+also call), run on the median-filtered profile (see
 Profiles above), which is the only profile this sum is meaningful on: raw
 satellite altitude noise summed over thousands of points inflates the total
 badly, per `ElevationGainMetres`'s own comment. `internal/activity/splits.go`
