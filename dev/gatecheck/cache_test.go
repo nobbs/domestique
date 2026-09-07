@@ -26,18 +26,23 @@ func TestCICachesTheDirectoriesTheToolchainWritesTo(t *testing.T) {
 }
 
 // miseCacheDir returns one cache directory from .mise.toml's [env] table, as the
-// repository-relative path a workflow names. The variables are written against
-// `{{config_root}}`, which is the repository root when mise runs there.
+// repository-relative path a workflow names. Each variable is a template that
+// resolves to the main checkout's root, followed by that path.
 func miseCacheDir(t *testing.T, name string) string {
 	t.Helper()
 
-	pattern := regexp.MustCompile(fmt.Sprintf(`(?m)^%s = "(.*)"$`, regexp.QuoteMeta(name)))
+	pattern := regexp.MustCompile(fmt.Sprintf(`(?m)^%s = ['"](.*)['"]$`, regexp.QuoteMeta(name)))
 
 	match := pattern.FindStringSubmatch(repositoryFile(t, ".mise.toml"))
 	require.Len(t, match, 2, ".mise.toml sets no %s", name)
 
-	path, found := strings.CutPrefix(match[1], "{{config_root}}/")
-	require.True(t, found, "%s must be set relative to {{config_root}}, not %q", name, match[1])
+	// Against the main checkout, never `config_root`: a linked worktree's
+	// config_root is the worktree, and each would grow its own copy of the cache.
+	assert.Contains(t, match[1], "--git-common-dir",
+		"%s must resolve against the main checkout's git directory", name)
+
+	_, path, found := strings.Cut(match[1], "}}/")
+	require.True(t, found, "%s must be a template resolving to the repository root, then the path, not %q", name, match[1])
 
 	return path
 }

@@ -6,10 +6,6 @@
           {
             "type": "command",
             "command": "mise run skills-sync"
-          },
-          {
-            "type": "command",
-            "command": "dev/share-build-cache.sh"
           }
         ]
       }
