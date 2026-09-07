@@ -195,7 +195,18 @@ describe("weekdayIndex", () => {
 });
 
 describe("weekRangeLabel", () => {
+  // Through the platform's own formatter, so the assertion carries no locale
+  // of its own and still fails if the range ends on the wrong day.
   it("spans the Monday to the Sunday six days later", () => {
-    expect(weekRangeLabel(new Date(Date.UTC(2026, 7, 31)), "UTC")).toBe("31 Aug – 6 Sept");
+    const day = (at: Date) =>
+      new Intl.DateTimeFormat(undefined, {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      }).format(at);
+
+    expect(weekRangeLabel(new Date(Date.UTC(2026, 7, 31)), "UTC")).toBe(
+      `${day(new Date(Date.UTC(2026, 7, 31)))} – ${day(new Date(Date.UTC(2026, 8, 6)))}`,
+    );
   });
 });

@@ -13,6 +13,15 @@ import type { Activity, WebUIConfig } from "../../api/types";
 import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
 import { ActivitiesPage } from "./ActivitiesPage";
 
+/** The day a week's label starts with, in the platform's own locale. */
+function weekOf(day: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    month: "short",
+    timeZone: ZONE,
+  }).format(new Date(Date.UTC(2026, 7, day, 12)));
+}
+
 const ZONE = "Europe/Berlin";
 
 function config(): WebUIConfig {
@@ -67,8 +76,8 @@ describe("the activity list", () => {
     show();
 
     const names = screen.getAllByRole("region").map((region) => region.getAttribute("aria-label"));
-    const newer = names.findIndex((name) => name?.includes("24 Aug"));
-    const older = names.findIndex((name) => name?.includes("17 Aug"));
+    const newer = names.findIndex((name) => name?.startsWith(`Week ${weekOf(24)}`));
+    const older = names.findIndex((name) => name?.startsWith(`Week ${weekOf(17)}`));
     expect(newer).toBeGreaterThanOrEqual(0);
     expect(older).toBeGreaterThan(newer);
 
@@ -135,7 +144,7 @@ describe("the activity list", () => {
     // Sunday 23 Aug in UTC — the week and the weekday both hinge on the zone.
     show([activity(3, "2026-08-23T22:30:00Z")]);
 
-    const week = screen.getByRole("region", { name: /24 Aug/ });
+    const week = screen.getByRole("region", { name: new RegExp(`^Week ${weekOf(24)}`) });
     const monday = within(week).getByRole("group", { name: "Mon" });
     expect(within(monday).getByRole("link")).toHaveAttribute("href", "/activities/3");
   });
@@ -171,7 +180,7 @@ describe("the activity list", () => {
       }),
     ]);
 
-    const week = screen.getByRole("region", { name: /17 Aug/ });
+    const week = screen.getByRole("region", { name: new RegExp(`^Week ${weekOf(17)}`) });
     expect(within(week).getByText(formatDistance(60_000))).toBeInTheDocument();
     expect(
       within(week).getByText(`${formatDuration(5_400)} · ${formatAscent(450)}`),

@@ -263,7 +263,7 @@ const RANGE_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
 function rangeFormatter(zone: string): Intl.DateTimeFormat {
   let formatter = RANGE_FORMATTERS.get(zone);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat("en-GB", {
+    formatter = new Intl.DateTimeFormat(undefined, {
       day: "numeric",
       month: "short",
       timeZone: zone,
@@ -274,7 +274,7 @@ function rangeFormatter(zone: string): Intl.DateTimeFormat {
   return formatter;
 }
 
-/** "31 Aug – 6 Sept": the week starting `start`, both ends read in `zone`. */
+/** The week starting `start` as "31 Aug – 6 Sept" in the reader's own locale, both ends read in `zone`. */
 export function weekRangeLabel(start: Date, zone: string): string {
   const { year, month, day } = zonedParts(start, zone);
   const end = zonedMidnight(year, month, day + 6, zone);
