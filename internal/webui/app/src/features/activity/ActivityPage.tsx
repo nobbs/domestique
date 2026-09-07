@@ -152,6 +152,7 @@ export function ActivityPage() {
           splits={splits.data?.splits}
           activeMetres={activeMetres}
           onActiveChange={setActiveMetres}
+          {...(profile ? { axisMetres: profile.totalDistanceMetres } : {})}
         />
       </div>
     </PageShell>

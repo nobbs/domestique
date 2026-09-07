@@ -35,22 +35,34 @@ export interface RideSplitsProps {
   /** The position shared with the map and the profile, in metres from the start. */
   activeMetres?: number | null;
   onActiveChange?: (metres: number | null) => void;
+  /**
+   * How long the shared position's axis is — the profile's, measured from
+   * positions — where the splits, cut from the odometer, add up to something
+   * a little different. Absent leaves the splits' own sum as the axis.
+   */
+  axisMetres?: number;
 }
 
-export function RideSplits({ splits, activeMetres = null, onActiveChange }: RideSplitsProps) {
+export function RideSplits({
+  splits,
+  activeMetres = null,
+  onActiveChange,
+  axisMetres,
+}: RideSplitsProps) {
   const [table, setTable] = useState(false);
   const plot = useRef<HTMLDivElement>(null);
   const total = splits?.reduce((sum, split) => sum + split.distanceMetres, 0) ?? 0;
+  const axis = axisMetres ?? total;
   const onPointerMove = useCallback(
     (event: React.PointerEvent) => {
       const rect = plot.current?.getBoundingClientRect();
-      if (!onActiveChange || total <= 0 || !rect || rect.width === 0) {
+      if (!onActiveChange || axis <= 0 || !rect || rect.width === 0) {
         return;
       }
       const fraction = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
-      onActiveChange(fraction * total);
+      onActiveChange(fraction * axis);
     },
-    [onActiveChange, total],
+    [onActiveChange, axis],
   );
   const onPointerLeave = useCallback(() => onActiveChange?.(null), [onActiveChange]);
   if (!splits || splits.length === 0) {
@@ -60,7 +72,11 @@ export function RideSplits({ splits, activeMetres = null, onActiveChange }: Ride
   // Nought where no stretch has a moving time to be fast over, which the bar
   // has to divide by rather than against.
   const fastest = Math.max(...speeds.map((speed) => speed ?? 0));
-  const active = activeSplit(splits, activeMetres);
+  // The shared position is on the axis; the splits are on the odometer.
+  const active = activeSplit(
+    splits,
+    activeMetres === null || axis <= 0 ? null : (activeMetres / axis) * total,
+  );
   // Nought where every stretch is of no length, which the bars must not divide by.
   const perMetre = total > 0 ? LANE.width / total : 0;
   let covered = 0;

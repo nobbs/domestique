@@ -139,6 +139,17 @@ describe("RideSplits", () => {
     expect(screen.getByText(/Speed by the kilometre/)).toBeInTheDocument();
   });
 
+  // The shared position is on the profile's axis, which the odometer's
+  // kilometres add up to a little short of: a position two thirds along the
+  // axis is on the second of three stretches, not the third.
+  it("reads the shared position on the axis it was given", () => {
+    render(
+      <RideSplits splits={[split(), split(), split()]} activeMetres={2_100} axisMetres={3_300} />,
+    );
+
+    expect(screen.getByText(/^2\.0 km/)).toBeInTheDocument();
+  });
+
   it("shows nothing at all for a ride with no splits", () => {
     const { rerender } = render(<RideSplits splits={[]} />);
     expect(screen.queryByLabelText("Splits")).not.toBeInTheDocument();
