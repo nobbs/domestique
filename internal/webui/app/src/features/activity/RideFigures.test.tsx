@@ -60,6 +60,17 @@ describe("RideFigures", () => {
     expect(screen.queryByText("Power")).not.toBeInTheDocument();
   });
 
+  // The service serves an estimate only where it served no measurement, so the
+  // two never sit side by side — but the estimate must say what it is either way.
+  it("names estimated power as an estimate rather than a reading", () => {
+    render(<RideFigures ride={ride({ estimatedPowerWatts: 187.4 })} />);
+
+    expect(screen.getByText("Estimated power")).toBeInTheDocument();
+    expect(screen.getByText("187")).toBeInTheDocument();
+    expect(screen.getByText("watts, from the track")).toBeInTheDocument();
+    expect(screen.queryByText("Power")).not.toBeInTheDocument();
+  });
+
   it("shows no speed for a ride that has not moved", () => {
     render(<RideFigures ride={ride(undefined, { movingSeconds: 0 })} />);
 

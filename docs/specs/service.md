@@ -545,6 +545,32 @@ The read-only JSON surface is small:
   out; a `speed` no pair of samples could yield — a ride that recorded no
   distance — answers the same way rather than as a column of nulls. It is
   scoped exactly as the track is, and answers `404` on the same terms.
+- `GET /v1/activities/{activityId}/splits` returns that activity cut into
+  kilometres, in the order they were ridden: for each, how far it covered, the
+  moving seconds it took, what it climbed, and — only where its samples carried
+  the sensor — its mean heart rate and its mean **measured** power. An estimate
+  worked out from the track never feeds that last figure, exactly as it never
+  feeds the ride's own average.
+
+  The stretches are cut by the bicycle's own odometer rather than by the
+  distance between recorded positions, so the table agrees with the distance the
+  ride is listed at. They are measured from the first sample that carried a
+  distance, not from nought, so a ride whose odometer was already running is
+  still cut from where its own samples begin. The seconds are moving ones: a
+  pair of samples the odometer did not advance over is a rider standing still
+  and is left out, which is what keeps a café stop from reading as a slow
+  kilometre. A pair whose clock did not advance either — two records in the same
+  second, or a device correcting itself mid-ride — times nothing rather than
+  nought or less, on the same terms the `speed` series refuses one a speed. A stretch nothing was recorded across — a gap in the recording —
+  keeps its place in the list and carries nought rather than handing its ground
+  to a neighbour. A ride's last stretch is whatever was left over, which is what
+  its own distance says.
+
+  Nothing about it is stored: it is a fold over the samples at read time, on the
+  same rows the series endpoint reads. A ride whose samples are not stored, and
+  one that recorded no distance to cut by, is answered with an empty list rather
+  than an error — a splits table with no rows says what it needs to. It is
+  scoped exactly as the track is, and answers `404` on the same terms.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.

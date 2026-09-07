@@ -7,17 +7,18 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import { activityTrackQuery } from "../../api/queries";
-import type { ActivitySeriesName, ActivityTrackState } from "../../api/types";
+import { activitySplitsQuery, activityTrackQuery } from "../../api/queries";
+import type { Activity, ActivitySeriesName, ActivityTrackState } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
-import { formatAscent, formatDistance, formatMovingTime, formatTimestamp } from "../../lib/format";
+import { formatAscent, formatDistance, formatDuration, formatTimestamp } from "../../lib/format";
 import { buildActivityProfile, type Profile } from "../../lib/profile";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
 import { RideConditions } from "./RideConditions";
 import { RideFigures } from "./RideFigures";
 import { SeriesChips, useRideSeries } from "./RideSeries";
+import { RideSplits } from "./RideSplits";
 import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
 
@@ -29,6 +30,7 @@ export function ActivityPage() {
   const { activities } = useActivities();
   const ride = activities.find((activity) => activity.id === id);
   const track = useQuery({ ...activityTrackQuery(id ?? 0), enabled: id !== null });
+  const splits = useQuery({ ...activitySplitsQuery(id ?? 0), enabled: id !== null });
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
@@ -60,15 +62,7 @@ export function ActivityPage() {
             Activities
           </Link>
           <h1 className="font-semibold text-2xl tracking-tight">{title}</h1>
-          {ride ? (
-            <p className="text-[var(--ink-2)] text-sm">
-              {[
-                formatDistance(ride.distanceMetres),
-                formatMovingTime(ride.movingSeconds),
-                formatAscent(ride.ascentMetres),
-              ].join(" · ")}
-            </p>
-          ) : null}
+          {ride ? <p className="text-[var(--ink-2)] text-sm">{totalsLine(ride)}</p> : null}
         </div>
         {/*
          * Above the map: what the ride came to is what a rider looks for first,
@@ -113,9 +107,28 @@ export function ActivityPage() {
             ) : null}
           </>
         )}
+        <RideSplits splits={splits.data?.splits} />
       </div>
     </PageShell>
   );
+}
+
+/**
+ * What the ride came to, in one line. Elapsed time is only worth a reader's
+ * eye where it says something moving time did not, so a ride that barely
+ * stopped shows the one figure rather than two near-identical ones.
+ */
+function totalsLine(ride: Activity): string {
+  const parts = [
+    formatDistance(ride.distanceMetres),
+    `${formatDuration(ride.movingSeconds)} moving`,
+  ];
+  if (ride.elapsedSeconds - ride.movingSeconds >= 60) {
+    parts.push(`${formatDuration(ride.elapsedSeconds)} elapsed`);
+  }
+  parts.push(formatAscent(ride.ascentMetres));
+
+  return parts.join(" · ");
 }
 
 /**

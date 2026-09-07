@@ -350,7 +350,8 @@ func (q *Queries) ListActivityRides(ctx context.Context, arg ListActivityRidesPa
 }
 
 const listActivitySeries = `-- name: ListActivitySeries :many
-SELECT recorded_at_unix, distance_metres, heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius
+SELECT recorded_at_unix, distance_metres, altitude_metres,
+  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
   AND latitude IS NOT NULL AND longitude IS NOT NULL
@@ -365,6 +366,7 @@ type ListActivitySeriesParams struct {
 type ListActivitySeriesRow struct {
 	RecordedAtUnix     int64
 	DistanceMetres     sql.NullFloat64
+	AltitudeMetres     sql.NullFloat64
 	HeartRateBpm       sql.NullFloat64
 	CadenceRpm         sql.NullFloat64
 	PowerWatts         sql.NullFloat64
@@ -383,6 +385,7 @@ func (q *Queries) ListActivitySeries(ctx context.Context, arg ListActivitySeries
 		if err := rows.Scan(
 			&i.RecordedAtUnix,
 			&i.DistanceMetres,
+			&i.AltitudeMetres,
 			&i.HeartRateBpm,
 			&i.CadenceRpm,
 			&i.PowerWatts,

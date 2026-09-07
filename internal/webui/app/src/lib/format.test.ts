@@ -6,6 +6,7 @@ import {
   formatCount,
   formatDescent,
   formatDistance,
+  formatDuration,
   formatElevation,
   formatGradient,
   formatKilometres,
@@ -167,6 +168,36 @@ describe("formatGradient", () => {
   it("holds a decimal place under ten percent and drops it at ten and above", () => {
     expect(formatGradient(9.2)).toBe("9.2%");
     expect(formatGradient(11.6)).toBe("12%");
+  });
+});
+
+describe("formatDuration", () => {
+  it("says nothing for a time it does not have", () => {
+    expect(formatDuration(undefined)).toBe("\u2014");
+    expect(formatDuration(-4)).toBe("\u2014");
+    expect(formatDuration(Number.NaN)).toBe("\u2014");
+  });
+
+  // Nought is an answer here, unlike a prediction: a zone held for no time at
+  // all was held for no time at all.
+  it("reports a measured nought rather than nothing", () => {
+    expect(formatDuration(0)).toBe("0 s");
+  });
+
+  it("floors rather than rounding, at every step", () => {
+    expect(formatDuration(59.9)).toBe("59 s");
+    expect(formatDuration(90)).toBe("1 min 30 s");
+    expect(formatDuration(2 * 3600 + 47 * 60 + 59)).toBe("2 h 47 min");
+  });
+
+  it("drops a component that is nought", () => {
+    expect(formatDuration(120)).toBe("2 min");
+    expect(formatDuration(2 * 3600)).toBe("2 h");
+  });
+
+  // Seconds matter under an hour and are noise above one.
+  it("drops seconds once there is an hour to show", () => {
+    expect(formatDuration(3600 + 61)).toBe("1 h 1 min");
   });
 });
 

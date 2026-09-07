@@ -276,6 +276,83 @@ func (h *Handler) GetActivitySeries(writer http.ResponseWriter, request *http.Re
 	h.writeJSON(writer, http.StatusOK, activitySeriesView{Series: string(name), Values: seriesValues(readings)})
 }
 
+// GetActivitySplits serves one activity cut into kilometres, scoped exactly as
+// its track is. A ride whose samples are not stored, or that recorded no
+// distance to cut by, is served an empty list: a splits table with no rows says
+// what it needs to, and there is no error to report.
+func (h *Handler) GetActivitySplits(writer http.ResponseWriter, request *http.Request) {
+	// The served surface refuses a non-numeric id before it reaches here.
+	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
+	if idErr != nil {
+		h.notFound(writer)
+
+		return
+	}
+	targetID, found, err := h.readableTarget(request.Context(), request.URL.Query().Get("target"))
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !found {
+		h.notFound(writer)
+
+		return
+	}
+	_, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
+	if stateErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	// Only a ride this service holds no summary for is missing.
+	if !stored {
+		h.notFound(writer)
+
+		return
+	}
+	rows, rowsErr := h.state.ActivitySeries(request.Context(), targetID, id)
+	if rowsErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, activitySplitsView{
+		Splits: splitViews(activities.Splits(rows, splitMetres)),
+	})
+}
+
+// splitMetres is the stretch a ride is cut into. This service reads in
+// kilometres everywhere a rider sees a distance, and splits are no exception.
+const splitMetres = 1000
+
+// splitViews is the wire form of a ride's splits: a mean where the stretch
+// carried the series, absent where it carried none.
+func splitViews(splits []activities.Split) []activitySplitView {
+	views := make([]activitySplitView, len(splits))
+	for index, split := range splits {
+		views[index] = activitySplitView{
+			DistanceMetres: split.DistanceMetres,
+			MovingSeconds:  split.MovingSeconds,
+			AscentMetres:   split.AscentMetres,
+			HeartRateBPM:   known(split.HeartRateBPM),
+			PowerWatts:     known(split.PowerWatts),
+		}
+	}
+
+	return views
+}
+
+// known is a reading's value where it has one, and nothing at all where it does
+// not.
+func known(reading activities.Reading) *float64 {
+	if !reading.Known {
+		return nil
+	}
+
+	return &reading.Value
+}
+
 // seriesValues is the wire form of one series: a value where the sample carried
 // one, null where it carried none.
 func seriesValues(readings []activities.Reading) []*float64 {

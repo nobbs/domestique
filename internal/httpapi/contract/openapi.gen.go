@@ -676,6 +676,23 @@ type ActivitySeries struct {
 	Values []*float64 `json:"values"`
 }
 
+// ActivitySplit One kilometre of a ride. A ride's last split is whatever was left over, which is what distanceMetres says; every other figure is of that stretch alone.
+type ActivitySplit struct {
+	DistanceMetres float64 `json:"distanceMetres"`
+	// MovingSeconds The seconds the odometer advanced over. A stretch nothing was recorded across - a gap in the recording - carries nought.
+	MovingSeconds float64 `json:"movingSeconds"`
+	// AscentMetres The climbing parts of the stretch summed, unsmoothed, exactly as a route's own gain is cut. Nought for a ride that recorded no altitude.
+	AscentMetres float64 `json:"ascentMetres"`
+	// HeartRateBpm The mean of the samples over this stretch that carried a reading. Absent where none did.
+	HeartRateBpm *float64 `json:"heartRateBpm,omitempty"`
+	// PowerWatts The mean of the stretch's measured power. Never fed by an estimate: a bicycle with no meter has no average power.
+	PowerWatts *float64 `json:"powerWatts,omitempty"`
+}
+
+type ActivitySplits struct {
+	Splits []ActivitySplit `json:"splits"`
+}
+
 type GeoJSONProperties_Surface struct {
 	Ranges        []SurfaceRange `json:"ranges"`
 	MatchedMetres float64        `json:"matchedMetres"`
