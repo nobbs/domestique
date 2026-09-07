@@ -131,8 +131,12 @@ type WeeklyZones struct {
 }
 
 // ZonesByWeek sums time in zone into the weeks the rides fell in, oldest first.
-// Weeks with no ride are absent rather than present and empty: a bar chart of
-// them has nothing to draw.
+//
+// A week is absent unless it holds some time in some zone. That covers the week
+// nobody rode and also the week whose rides yielded no zones at all — a rider
+// with no heart-rate strap, or none of the rates zones are cut from. Emitting
+// those as a row of zeroes would draw "you rode nothing" over "nothing here was
+// measured", which are not the same thing and do not look the same to a rider.
 func ZonesByWeek(rides []RideLoad, location *time.Location) []WeeklyZones {
 	weeks := map[time.Time]Zones{}
 	order := []time.Time{}
@@ -150,6 +154,9 @@ func ZonesByWeek(rides []RideLoad, location *time.Location) []WeeklyZones {
 	sortDays(order)
 	weekly := make([]WeeklyZones, 0, len(order))
 	for _, start := range order {
+		if weeks[start].Total() <= 0 {
+			continue
+		}
 		weekly = append(weekly, WeeklyZones{WeekStart: start, Zones: weeks[start]})
 	}
 

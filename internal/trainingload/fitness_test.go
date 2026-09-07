@@ -182,6 +182,22 @@ func TestZonesByWeekOrdersOldestFirstWhateverOrderTheyArriveIn(t *testing.T) {
 	assert.True(t, weeks[1].WeekStart.Before(weeks[2].WeekStart))
 }
 
+// A rider with no strap still rides. Their weeks hold no time in any zone, and
+// a bar of zeroes would say they rode nothing rather than that nothing here was
+// measured.
+func TestZonesByWeekOmitsAWeekWhoseRidesYieldedNoZones(t *testing.T) {
+	t.Parallel()
+	rides := []trainingload.RideLoad{
+		{At: day(2026, time.June, 3), TSS: 80},
+		{At: day(2026, time.June, 4), TSS: 90},
+		{At: day(2026, time.June, 10), Zones: trainingload.Zones{0, 300, 0, 0, 0}},
+	}
+
+	weeks := trainingload.ZonesByWeek(rides, berlin(t))
+	require.Len(t, weeks, 1, "only the week that measured something")
+	assert.Equal(t, 8, weeks[0].WeekStart.Day())
+}
+
 func TestZonesByWeekIsEmptyForNoRides(t *testing.T) {
 	t.Parallel()
 	assert.Empty(t, trainingload.ZonesByWeek(nil, berlin(t)))
