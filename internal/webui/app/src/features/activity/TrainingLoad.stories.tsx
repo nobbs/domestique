@@ -1,8 +1,24 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { Activity, ActivityMetrics } from "../../api/types";
 import { TrainingLoad } from "./TrainingLoad";
 
+/** A two-hour ride carrying the given metrics. */
+function ride(metrics: ActivityMetrics): Activity {
+  return {
+    id: 1,
+    startedAt: "2026-09-01T06:00:00Z",
+    distanceMetres: 62_000,
+    movingSeconds: 7_800,
+    elapsedSeconds: 8_400,
+    ascentMetres: 640,
+    typeId: 0,
+    locationId: 0,
+    metrics: { averageHeartRateBpm: 141, maxHeartRateBpm: 176, averageCadenceRpm: 84, ...metrics },
+  };
+}
+
 const meta = {
-  title: "Features/Activity/Training Load",
+  title: "Features/Activity/Effort",
   component: TrainingLoad,
   tags: ["autodocs"],
   decorators: [
@@ -20,7 +36,7 @@ type Story = StoryObj<typeof meta>;
 /** A steady endurance ride: one long zone, and short visits either side of it. */
 export const Endurance: Story = {
   args: {
-    metrics: {
+    ride: ride({
       zoneSeconds: [540, 7200, 1260, 240, 40],
       zoneBoundsBpm: [144.5, 153, 161.5, 170],
       trimp: 142.6,
@@ -28,29 +44,29 @@ export const Endurance: Story = {
       powerTss: 91.2,
       normalizedPowerWatts: 214,
       intensityFactor: 0.74,
-    },
+    }),
   },
 };
 
 /** Intervals, where the hardest zones hold long enough to be worth comparing. */
 export const Intervals: Story = {
   args: {
-    metrics: {
+    ride: ride({
       zoneSeconds: [300, 1500, 600, 1800, 900],
       zoneBoundsBpm: [144.5, 153, 161.5, 170],
       trimp: 198.2,
-    },
+    }),
   },
 };
 
 /** A rider with no threshold entered: zones cut from the maximum instead. */
 export const CutFromTheMaximum: Story = {
   args: {
-    metrics: {
+    ride: ride({
       zoneSeconds: [1200, 2400, 300, 0, 0],
       zoneBoundsBpm: [114, 133, 152, 171],
       trimp: 96.8,
       heartRateTss: 61.3,
-    },
+    }),
   },
 };

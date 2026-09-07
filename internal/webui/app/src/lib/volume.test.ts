@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Activity } from "../api/types";
-import { bucketActivities, volumeTotals } from "./volume";
+import {
+  bucketActivities,
+  volumeTotals,
+  weekdayIndex,
+  weekRangeLabel,
+  weeksWithRides,
+} from "./volume";
 
 // The runner's own zone, so the pre-existing assertions below (none of which
 // probe a zone edge) keep reading as local wall-clock times.
@@ -154,4 +160,53 @@ it("leaves an activity with an unreadable start out of the totals too", () => {
 
   expect(totals.count).toBe(1);
   expect(totals.distanceMetres).toBe(30_000);
+});
+
+describe("weeksWithRides", () => {
+  it("attaches each activity to its own week, in the order given", () => {
+    const first = activity(new Date(2026, 8, 5, 8));
+    const second = activity(new Date(2026, 8, 5, 18));
+    const weeks = weeksWithRides([first, second], ZONE, NOW);
+
+    expect(weeks).toHaveLength(1);
+    expect(weeks[0]?.rides).toEqual([first, second]);
+  });
+
+  it("leaves a rideless week with an empty rides array", () => {
+    const weeks = weeksWithRides([activity(new Date(2026, 7, 17, 8))], ZONE, NOW);
+
+    expect(weeks.map((week) => week.rides.length)).toEqual([0, 0, 1]);
+  });
+});
+
+describe("weekdayIndex", () => {
+  it("reads Monday as 0 in the given zone", () => {
+    expect(weekdayIndex(activity(new Date("2026-08-24T10:00:00Z")), "UTC")).toBe(0);
+  });
+
+  it("follows the zone across a UTC day boundary", () => {
+    // 2026-08-23T22:30:00Z is 00:30 Monday 24 Aug in Europe/Berlin but is
+    // still Sunday 23 Aug in UTC — the same instant, two different weekdays.
+    const ride = activity(new Date("2026-08-23T22:30:00Z"));
+
+    expect(weekdayIndex(ride, "UTC")).toBe(6);
+    expect(weekdayIndex(ride, "Europe/Berlin")).toBe(0);
+  });
+});
+
+describe("weekRangeLabel", () => {
+  // Through the platform's own formatter, so the assertion carries no locale
+  // of its own and still fails if the range ends on the wrong day.
+  it("spans the Monday to the Sunday six days later", () => {
+    const day = (at: Date) =>
+      new Intl.DateTimeFormat(undefined, {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      }).format(at);
+
+    expect(weekRangeLabel(new Date(Date.UTC(2026, 7, 31)), "UTC")).toBe(
+      `${day(new Date(Date.UTC(2026, 7, 31)))} – ${day(new Date(Date.UTC(2026, 8, 6)))}`,
+    );
+  });
 });

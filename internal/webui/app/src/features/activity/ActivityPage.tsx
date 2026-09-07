@@ -1,21 +1,27 @@
 /**
- * One recorded ride: where it went, and how much of it was uphill. The summary
- * is read from the same activities query the list uses, so arriving from the
- * list costs only the track request; a direct link fetches both.
+ * One recorded ride: the four figures that decide it set large beside the map,
+ * then the terrain with the weather laid under it, the effort, and the ride by
+ * the kilometre. The summary is read from the same activities query the list
+ * uses, so arriving from the list costs only the track request; a direct link
+ * fetches both.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { activitySplitsQuery, activityTrackQuery } from "../../api/queries";
-import type { Activity, ActivitySeriesName, ActivityTrackState } from "../../api/types";
+import type {
+  ActivitySeriesName,
+  ActivityTrackState,
+  ActivityWeatherSummary,
+} from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
-import { formatAscent, formatDistance, formatDuration, formatTimestamp } from "../../lib/format";
+import { formatPrecipitation, formatTimestamp, formatWindSpeed } from "../../lib/format";
 import { buildActivityProfile, type Profile } from "../../lib/profile";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
-import { RideConditions } from "./RideConditions";
+import { RideConditions, stepStarts } from "./RideConditions";
 import { RideFigures } from "./RideFigures";
 import { SeriesChips, useRideSeries } from "./RideSeries";
 import { RideSplits } from "./RideSplits";
@@ -53,32 +59,57 @@ export function ActivityPage() {
     () => (profile && activeMetres !== null ? sampleIndexAt(profile, activeMetres) : null),
     [profile, activeMetres],
   );
+  const weather = track.data?.weather;
+  // The strip shares the profile's axis where there is one, and the listed
+  // distance — which the splits add up to — where there is not.
+  const stripMetres = profile?.totalDistanceMetres ?? ride?.distanceMetres ?? 0;
+  // Not until the splits have answered: placed by elapsed time first and by
+  // the splits a moment later, the strip would jump.
+  const starts = useMemo(
+    () =>
+      weather && ride && !splits.isPending
+        ? stepStarts(
+            weather,
+            ride.startedAt,
+            ride.elapsedSeconds,
+            stripMetres,
+            splits.data?.splits ?? [],
+          )
+        : [],
+    [weather, ride, stripMetres, splits.isPending, splits.data],
+  );
+  const drawable = !track.isError && !!track.data?.bbox && coordinates.length >= 2;
 
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <Link className="text-[var(--ink-2)] text-xs underline" to="/activities">
-            Activities
-          </Link>
-          <h1 className="font-semibold text-2xl tracking-tight">{title}</h1>
-          {ride ? <p className="text-[var(--ink-2)] text-sm">{totalsLine(ride)}</p> : null}
-        </div>
-        {/*
-         * Above the map: what the ride came to is what a rider looks for first,
-         * and it is there whether or not the ride recorded a position at all.
-         */}
-        <RideFigures ride={ride} />
-        <TrainingLoad metrics={ride?.metrics} />
-        {id === null ? (
-          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
-        ) : track.isPending ? (
-          <Skeleton className="h-96 w-full" role="status" aria-label="Loading the recorded track" />
-        ) : track.isError || !track.data?.bbox || coordinates.length < 2 ? (
-          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(track.data?.state)}</p>
-        ) : (
-          <>
-            <div className="h-96 overflow-hidden rounded-xl ring-1 ring-black/5">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          <div className="flex flex-col justify-between gap-6 py-1">
+            <div className="flex flex-col gap-1">
+              <Link className="text-[var(--ink-2)] text-xs underline" to="/activities">
+                Activities
+              </Link>
+              <h1 className="font-semibold text-4xl tracking-tight">{title}</h1>
+              {ride?.weather ? (
+                <p className="text-[var(--ink-2)] text-sm">{conditionsSentence(ride.weather)}</p>
+              ) : null}
+            </div>
+            <RideFigures ride={ride} />
+          </div>
+          {id === null ? (
+            <p className="self-center text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
+          ) : track.isPending ? (
+            <Skeleton
+              className="h-80 w-full"
+              role="status"
+              aria-label="Loading the recorded track"
+            />
+          ) : !drawable || !track.data?.bbox ? (
+            <p className="self-center text-[var(--ink-2)] text-sm">
+              {absenceMessage(track.data?.state)}
+            </p>
+          ) : (
+            <div className="h-80 overflow-hidden rounded-2xl ring-1 ring-black/5">
               <ActivityMap
                 coordinates={coordinates}
                 bounds={track.data.bbox}
@@ -87,48 +118,64 @@ export function ActivityPage() {
                 onActiveChange={setActiveMetres}
               />
             </div>
-            <RideConditions steps={track.data.weather} />
-            {profile ? (
-              <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
-                <ElevationProfile
-                  profile={profile}
-                  title={title}
-                  series={drawn}
-                  activeMetres={activeMetres}
-                  onActiveChange={setActiveMetres}
-                />
-                <SeriesChips
-                  states={states}
-                  drawn={drawn}
-                  activeIndex={activeIndex}
-                  onToggle={toggle}
-                />
-              </div>
-            ) : null}
-          </>
-        )}
-        <RideSplits splits={splits.data?.splits} />
+          )}
+        </div>
+        {drawable && profile ? (
+          <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
+            <ElevationProfile
+              profile={profile}
+              title={title}
+              series={drawn}
+              activeMetres={activeMetres}
+              onActiveChange={setActiveMetres}
+            />
+            <RideConditions steps={weather} starts={starts} totalMetres={stripMetres} />
+            <SeriesChips
+              states={states}
+              drawn={drawn}
+              activeIndex={activeIndex}
+              onToggle={toggle}
+            />
+          </div>
+        ) : weather && weather.length > 0 && ride ? (
+          <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
+            <RideConditions
+              steps={weather}
+              starts={starts}
+              totalMetres={stripMetres}
+              inset={false}
+            />
+          </div>
+        ) : null}
+        <TrainingLoad ride={ride} />
+        <RideSplits
+          splits={splits.data?.splits}
+          activeMetres={activeMetres}
+          onActiveChange={setActiveMetres}
+          {...(profile ? { axisMetres: profile.totalDistanceMetres } : {})}
+        />
       </div>
     </PageShell>
   );
 }
 
 /**
- * What the ride came to, in one line. Elapsed time is only worth a reader's
- * eye where it says something moving time did not, so a ride that barely
- * stopped shows the one figure rather than two near-identical ones.
+ * What the ride was ridden through, in one line: the range the temperature
+ * moved over, the wind, and what fell if anything did. A dry ride says nothing
+ * about rain rather than saying none fell — the absence is the reading.
  */
-function totalsLine(ride: Activity): string {
+function conditionsSentence(weather: ActivityWeatherSummary): string {
+  const low = Math.round(weather.temperatureMinCelsius);
+  const high = Math.round(weather.temperatureMaxCelsius);
   const parts = [
-    formatDistance(ride.distanceMetres),
-    `${formatDuration(ride.movingSeconds)} moving`,
+    low === high ? `${low}°` : `${low}–${high}°`,
+    `wind ${formatWindSpeed(weather.windSpeedKmh)}`,
   ];
-  if (ride.elapsedSeconds - ride.movingSeconds >= 60) {
-    parts.push(`${formatDuration(ride.elapsedSeconds)} elapsed`);
+  if (weather.precipitationMillimetres > 0) {
+    parts.push(`${formatPrecipitation(weather.precipitationMillimetres)} of rain`);
   }
-  parts.push(formatAscent(ride.ascentMetres));
 
-  return parts.join(" · ");
+  return parts.join(", ");
 }
 
 /**

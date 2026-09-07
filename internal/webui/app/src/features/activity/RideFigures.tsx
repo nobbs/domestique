@@ -1,62 +1,83 @@
 /**
- * The plain figures a rider looks at first, beside the training load rather
- * than inside it: what the ride's own sensors averaged, and how fast it was.
+ * The four figures that decide a ride, set large beside the map: how far, how
+ * long, how much climbing, and how hard. Everything else the ride's sensors
+ * averaged lives in the effort panel below.
  *
- * Every one but the speed is worked out from the stored samples and served on
- * the ride's metrics, so a ride carrying no strap or no meter simply has none
- * of that figure. The speed is the ride's own totals divided, which is why it
- * is here even for a ride whose recorded file was never readable.
+ * The load figure is whichever scale the ride allowed, most specific first: a
+ * power TSS where the bicycle carried a meter, a heart-rate TSS where it
+ * carried a strap, Banister's TRIMP otherwise — and none for a ride whose
+ * recorded file was never readable.
  */
 
 import type { Activity } from "../../api/types";
-import { Figure, type Scale } from "./TrainingLoad";
+import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
 
-/**
- * The ride's average speed in kilometres per hour, from the summary totals.
- *
- * A ride whose moving time is nought — one still being recorded, or one whose
- * summary carried none — has no speed rather than an infinite one.
- */
-function averageSpeedKmh(ride: Activity): number | undefined {
-  if (!Number.isFinite(ride.distanceMetres) || !(ride.movingSeconds > 0)) {
-    return undefined;
+interface Headline {
+  label: string;
+  value: string;
+  unit?: string;
+  note?: string;
+}
+
+/** Which load scale the ride can be named on, and what it came to. */
+function loadFigure(ride: Activity): Headline | null {
+  const metrics = ride.metrics;
+  if (metrics?.powerTss !== undefined) {
+    return {
+      label: "Training stress",
+      value: metrics.powerTss.toFixed(0),
+      unit: "TSS",
+      ...(metrics.intensityFactor !== undefined
+        ? { note: `${metrics.intensityFactor.toFixed(2)} of threshold` }
+        : {}),
+    };
+  }
+  if (metrics?.heartRateTss !== undefined) {
+    return { label: "Training stress", value: metrics.heartRateTss.toFixed(0), unit: "hrTSS" };
+  }
+  if (metrics?.trimp !== undefined) {
+    return { label: "Training impulse", value: metrics.trimp.toFixed(0), unit: "TRIMP" };
   }
 
-  return (ride.distanceMetres / ride.movingSeconds) * 3.6;
+  return null;
 }
 
 export function RideFigures({ ride }: { ride: Activity | undefined }) {
   if (!ride) {
     return null;
   }
-  const metrics = ride.metrics;
-  const figures: Scale[] = [
-    { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride), decimals: 1 },
-    { label: "Heart rate", scale: "bpm average", value: metrics?.averageHeartRateBpm },
-    { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
-    { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
-    { label: "Power", scale: "watts average", value: metrics?.averagePowerWatts },
-    // Never beside a measured average: the service serves one or the other, and
-    // the label carries the estimate's provenance so it cannot read as a reading.
+  const load = loadFigure(ride);
+  const figures: Headline[] = [
+    { label: "Distance", value: formatDistance(ride.distanceMetres) },
     {
-      label: "Estimated power",
-      scale: "watts, from the track",
-      value: metrics?.estimatedPowerWatts,
+      label: "Moving",
+      value: formatDuration(ride.movingSeconds),
+      // Elapsed time is only worth a reader's eye where it says something
+      // moving time did not.
+      ...(ride.elapsedSeconds - ride.movingSeconds >= 60
+        ? { note: `${formatDuration(ride.elapsedSeconds)} elapsed` }
+        : {}),
     },
+    { label: "Climbed", value: formatAscent(ride.ascentMetres) },
+    ...(load ? [load] : []),
   ];
-  const shown = figures.filter((figure) => figure.value !== undefined);
-  if (shown.length === 0) {
-    return null;
-  }
 
   return (
-    <section
-      className="flex flex-wrap gap-x-8 gap-y-3 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
-      aria-label="Ride averages"
-    >
-      {shown.map((figure) => (
-        <Figure key={figure.label} {...figure} />
+    <dl className="grid grid-cols-2 gap-x-6 gap-y-5" aria-label="Ride figures">
+      {figures.map((figure) => (
+        <div key={figure.label} className="flex flex-col gap-0.5">
+          <dt className="font-semibold text-[10px] text-[var(--ink-2)] uppercase tracking-[0.08em]">
+            {figure.label}
+          </dt>
+          <dd className="font-semibold text-4xl tabular-nums tracking-tight">
+            {figure.value}
+            {figure.unit ? (
+              <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{figure.unit}</span>
+            ) : null}
+          </dd>
+          {figure.note ? <dd className="text-[var(--ink-2)] text-xs">{figure.note}</dd> : null}
+        </div>
       ))}
-    </section>
+    </dl>
   );
 }
