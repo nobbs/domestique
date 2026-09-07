@@ -77,12 +77,13 @@ const ROAD: Position[] = Array.from({ length: 41 }, (_, index): Position => [8 +
 
 /**
  * The same road out and back, the two arms a kilometre apart — far tighter than
- * the corridor's own half-width, which is the shape a wide line folded over
- * itself on and drew a dark streak along.
+ * the corridor's 700 m half-width, which is the shape a wide line folded over
+ * itself on and drew a dark streak along. Short arms: the fold comes from the
+ * gap between them, and length only buys `polygon-clipping` more vertices.
  */
 const HAIRPIN: Position[] = [
-  ...Array.from({ length: 21 }, (_, index): Position => [8 + index * 0.01, 49]),
-  ...Array.from({ length: 21 }, (_, index): Position => [8.2 - index * 0.01, 49.009]),
+  ...Array.from({ length: 21 }, (_, index): Position => [8 + index * 0.0025, 49]),
+  ...Array.from({ length: 21 }, (_, index): Position => [8.05 - index * 0.0025, 49.009]),
 ];
 
 /**
@@ -301,6 +302,9 @@ describe("the ground the wash covers", () => {
 
     expect(features.length).toBeGreaterThan(1);
     expect(overlapping(features)).toEqual([]);
+    // The ground between the arms is 500 m from each, so both buffers reach it
+    // and one ring painting it is the fold having been resolved rather than absent.
+    expect(features.filter((feature) => covers(feature, 8.025, 49.0045))).toHaveLength(1);
   });
 
   /* The rings being disjoint would also be true of no rings at all. */
