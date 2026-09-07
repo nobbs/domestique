@@ -69,6 +69,8 @@ func (s *Store) StoreActivityWeather(
 			return fmt.Errorf("recording an activity weather step: %w", insertErr)
 		}
 	}
+	// Hours counts the rows written, which are steps and no longer always hours.
+	// The column keeps its name so the previous release can still read it.
 	if readErr := queries.RecordActivityWeatherRead(ctx, sqlcgen.RecordActivityWeatherReadParams{
 		TargetSlot: targetID, WorkoutID: id, ReadAtUnix: readAt.Unix(), Hours: int64(len(steps)),
 	}); readErr != nil {
