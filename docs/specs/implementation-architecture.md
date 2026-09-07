@@ -94,7 +94,7 @@ owns a distinct responsibility in this tree.
 | --- | --- | --- |
 | config | TOML and environment layering, the state key's file-secret resolution, validation of the file's own fields | HTTP clients, business decisions, provider-specific secret syntax, anything an operator edits while the service runs |
 | runtimeconfig | the settings and credentials held in the database: their types, the rules both the write path and startup check them against, and the live snapshot readers copy from | SQL, HTTP routing, the file's fields, and any decision made *from* a setting |
-| route | route identity — including which provider issued it — geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
+| route | route identity — including which provider issued it — geometry, measured through `measure`, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
 | measure | the spherical distance model and every measurement over ground and time: cumulative distance, altitude profiles and their resampling, median filtering, gradient, ascent and descent, gap-aware means and rolling windows over recorded series; each formula and its source is in [measurement.md](measurement.md) | route identity or validation, what a series is served as, SQL, HTTP, any rider parameter, and the window or threshold a caller chooses — those stay with the caller |
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
@@ -102,7 +102,7 @@ owns a distinct responsibility in this tree.
 | httpapi | routing, request parsing, JSON status and error mapping, per-target convergence derived from stored revisions, serving and writing the runtime settings, response security and cache headers, redirecting an unauthenticated page request and answering an unauthenticated API request | Wahoo or Auth0 exchange, sync logic, session issuance or storage, how a course is encoded, or how the UI is built |
 | readiness | the loopback readiness probe: whether local configuration and state are usable | any upstream call, identity, routing of the served surface, or authorisation state |
 | webui | the embedded browser bundle and serving it; the TypeScript application | HTTP routing, identity, or any knowledge of persistence |
-| elevation | sampling and median-filtering the exported elevation profile | source fetching, storage, FIT bytes |
+| elevation | the device-export elevation policy: which sample interval and which median window, applied through `measure` | source fetching, storage, FIT bytes |
 | surface | OSM surface and tracktype classification, snapping a route to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a route | classification rules, SQL of the state store, what a route is |
 | ridemodel | the calibrated coefficient pair and its built-in default, fitting the pair from recorded rides, the forward model — distance and ascent priced by those two terms — that turns a route's geometry into a predicted moving time, caching that prediction against geometry and coefficient fingerprints | reading the rides to fit (SQL), the offline corpus tooling in `dev/fitter`, HTTP routing, how a route's surface is classified |

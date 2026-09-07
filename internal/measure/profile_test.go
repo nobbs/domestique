@@ -379,3 +379,13 @@ func TestProfileResampleAndMedianRefuseANonPositiveInterval(t *testing.T) {
 		assert.Equal(t, profile.AltitudeMetres(), profile.MedianFiltered(25, interval).AltitudeMetres())
 	}
 }
+
+func TestAscentAndDescentMetresOverABareAltitudeSeries(t *testing.T) {
+	t.Parallel()
+	altitudes := []float64{10, 12, 11, 15, 15, 9}
+
+	assert.InDelta(t, 6, measure.AscentMetres(altitudes), 1e-9)
+	assert.InDelta(t, 7, measure.DescentMetres(altitudes), 1e-9)
+	assert.Zero(t, measure.AscentMetres(nil))
+	assert.Zero(t, measure.DescentMetres([]float64{3}))
+}

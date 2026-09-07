@@ -73,14 +73,7 @@ func (p Profile) AltitudeMetres() []float64 {
 //
 // See docs/specs/measurement.md §Ascent and descent.
 func (p Profile) AscentMetres() float64 {
-	gain := 0.0
-	for index := 1; index < len(p.altitudeMetres); index++ {
-		if step := p.altitudeMetres[index] - p.altitudeMetres[index-1]; step > 0 {
-			gain += step
-		}
-	}
-
-	return gain
+	return AscentMetres(p.altitudeMetres)
 }
 
 // DescentMetres is the total descent along the profile, summing the negative
@@ -88,9 +81,32 @@ func (p Profile) AscentMetres() float64 {
 //
 // See docs/specs/measurement.md §Ascent and descent.
 func (p Profile) DescentMetres() float64 {
+	return DescentMetres(p.altitudeMetres)
+}
+
+// AscentMetres sums the positive adjacent steps of an altitude series, for a
+// caller that has no distances to build a profile from and needs none.
+//
+// See docs/specs/measurement.md §Ascent and descent.
+func AscentMetres(altitudeMetres []float64) float64 {
+	gain := 0.0
+	for index := 1; index < len(altitudeMetres); index++ {
+		if step := altitudeMetres[index] - altitudeMetres[index-1]; step > 0 {
+			gain += step
+		}
+	}
+
+	return gain
+}
+
+// DescentMetres sums the negative adjacent steps of an altitude series, as a
+// positive figure.
+//
+// See docs/specs/measurement.md §Ascent and descent.
+func DescentMetres(altitudeMetres []float64) float64 {
 	loss := 0.0
-	for index := 1; index < len(p.altitudeMetres); index++ {
-		if step := p.altitudeMetres[index] - p.altitudeMetres[index-1]; step < 0 {
+	for index := 1; index < len(altitudeMetres); index++ {
+		if step := altitudeMetres[index] - altitudeMetres[index-1]; step < 0 {
 			loss -= step
 		}
 	}
