@@ -105,12 +105,13 @@ function show(
   recorded: ActivityTrack | null = track(),
   activityId: number | string = RIDE.id,
   heartRate?: (number | null)[],
+  ride: Activity = RIDE,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
-  client.setQueryData(activitiesQuery().queryKey, [RIDE]);
+  client.setQueryData(activitiesQuery().queryKey, [ride]);
   if (recorded) {
     client.setQueryData(activityTrackQuery(RIDE.id).queryKey, recorded);
   }
@@ -143,6 +144,23 @@ afterEach(() => {
 });
 
 describe("one ride's page", () => {
+  // Measured, not predicted: the header used to round a ride's own moving time
+  // to five minutes, which is a route estimate's manner rather than a record's.
+  it("shows the ride's moving and elapsed times as measured", () => {
+    show();
+
+    expect(screen.getByText(/1 h moving/)).toBeInTheDocument();
+    expect(screen.getByText(/1 h 6 min elapsed/)).toBeInTheDocument();
+  });
+
+  // Two near-identical figures say less than one.
+  it("leaves out elapsed time for a ride that barely stopped", () => {
+    show(track(), RIDE.id, undefined, { ...RIDE, elapsedSeconds: RIDE.movingSeconds + 30 });
+
+    expect(screen.getByText(/1 h moving/)).toBeInTheDocument();
+    expect(screen.queryByText(/elapsed/)).not.toBeInTheDocument();
+  });
+
   it("names the ride and hands its track to the map", () => {
     show();
 
