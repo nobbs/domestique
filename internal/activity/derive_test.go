@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/powerestimate"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
@@ -16,21 +17,24 @@ import (
 // fakeDeriveStore is stored state as a derivation sees it, and a record of what
 // it was asked to write.
 type fakeDeriveStore struct {
-	ownerErr    error
-	profileErr  error
-	owedErr     error
-	samplesErr  error
-	storeErr    error
-	clearErr    error
-	samples     map[int64][]trainingload.Sample
-	written     map[int64]trainingload.Metrics
-	owner       string
-	owed        []int64
-	writeOrder  []int64
-	profile     rider.Profile
-	owedInputs  trainingload.Inputs
-	cleared     int
-	clearedRows int
+	ownerErr         error
+	profileErr       error
+	owedErr          error
+	samplesErr       error
+	storeErr         error
+	clearErr         error
+	estimateErr      error
+	rides            map[int64]activity.RideSamples
+	written          map[int64]trainingload.Metrics
+	estimated        map[int64][]powerestimate.Estimate
+	owner            string
+	owed             []int64
+	writeOrder       []int64
+	estimatedRecords []int64
+	profile          rider.Profile
+	owedInputs       trainingload.Inputs
+	cleared          int
+	clearedRows      int
 }
 
 func (s *fakeDeriveStore) TargetOwner(context.Context, string) (string, error) {
@@ -49,10 +53,25 @@ func (s *fakeDeriveStore) ActivitiesAwaitingDerivation(
 	return s.owed, s.owedErr
 }
 
-func (s *fakeDeriveStore) ActivitySensorSamples(
+func (s *fakeDeriveStore) ActivityRideSamples(
 	_ context.Context, _ string, id int64,
-) (heartRate, power []trainingload.Sample, err error) {
-	return s.samples[id], nil, s.samplesErr
+) (activity.RideSamples, error) {
+	return s.rides[id], s.samplesErr
+}
+
+func (s *fakeDeriveStore) StoreEstimatedPower(
+	_ context.Context, _ string, id int64, records []int64, estimates []powerestimate.Estimate,
+) error {
+	if s.estimateErr != nil {
+		return s.estimateErr
+	}
+	if s.estimated == nil {
+		s.estimated = map[int64][]powerestimate.Estimate{}
+	}
+	s.estimated[id] = estimates
+	s.estimatedRecords = records
+
+	return nil
 }
 
 func (s *fakeDeriveStore) ClearActivityMetrics(context.Context, string) (int, error) {
@@ -100,9 +119,9 @@ func TestDeriveWritesEveryRideOwedOne(t *testing.T) {
 		owner:   "rider-a",
 		profile: fullProfile(),
 		owed:    []int64{7, 8},
-		samples: map[int64][]trainingload.Sample{
-			7: heartRateRide(600, 150),
-			8: heartRateRide(600, 160),
+		rides: map[int64]activity.RideSamples{
+			7: {HeartRate: heartRateRide(600, 150)},
+			8: {HeartRate: heartRateRide(600, 160)},
 		},
 	}
 	deriver, err := activity.NewDeriver(store)
@@ -200,7 +219,7 @@ func TestDeriveReportsAnUnreadableStore(t *testing.T) {
 		"the rides cannot be listed": {owner: "rider-a", profile: fullProfile(), owedErr: errors.New("unreadable")},
 		"the metrics cannot be written": {
 			owner: "rider-a", profile: fullProfile(), owed: []int64{7},
-			samples:  map[int64][]trainingload.Sample{7: heartRateRide(600, 150)},
+			rides:    map[int64]activity.RideSamples{7: {HeartRate: heartRateRide(600, 150)}},
 			storeErr: errors.New("unwritable"),
 		},
 	} {
@@ -213,6 +232,140 @@ func TestDeriveReportsAnUnreadableStore(t *testing.T) {
 			assert.Equal(t, activity.FailureState, result.Failure)
 		})
 	}
+}
+
+// trackRide is a ride recorded once a second at a steady speed on the flat,
+// carrying position, altitude and distance and no meter.
+func trackRide(seconds int) activity.RideSamples {
+	samples := activity.RideSamples{}
+	base := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	for index := range seconds {
+		samples.Track = append(samples.Track, powerestimate.Sample{
+			At:             base.Add(time.Duration(index) * time.Second),
+			DistanceMetres: 7.5 * float64(index),
+			AltitudeMetres: 100,
+		})
+		samples.TrackRecords = append(samples.TrackRecords, int64(index))
+	}
+
+	return samples
+}
+
+// The estimate is worked out beside the rest, and its average lands on the
+// ride's row so a ride page can show it without reading every sample.
+func TestDeriveEstimatesPowerForARideWithNoMeter(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{
+		owner: "rider-a",
+		profile: rider.Profile{
+			MaxHeartRateBPM: rider.Set(190), RestingHeartRateBPM: rider.Set(48),
+			RiderMassKG: rider.Set(74), BikeMassKG: rider.Set(8),
+		},
+		owed:  []int64{7},
+		rides: map[int64]activity.RideSamples{7: trackRide(120)},
+	}
+	deriver, err := activity.NewDeriver(store)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	assert.True(t, store.written[7].HasEstimatedPower, "the ride's average estimate")
+	assert.Positive(t, store.written[7].EstimatedPowerWatts)
+	assert.Len(t, store.estimated[7], 120, "an entry per track sample")
+	assert.Len(t, store.estimatedRecords, 120, "each naming the record it came from")
+}
+
+// An estimate exists because there is no meter. Putting one beside a real
+// reading only invites the two to be confused.
+func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {
+	t.Parallel()
+	ride := trackRide(120)
+	ride.Power = heartRateRide(120, 220)
+	store := &fakeDeriveStore{
+		owner: "rider-a",
+		profile: rider.Profile{
+			FunctionalThresholdPowerWatts: rider.Set(250),
+			RiderMassKG:                   rider.Set(74), BikeMassKG: rider.Set(8),
+		},
+		owed:  []int64{7},
+		rides: map[int64]activity.RideSamples{7: ride},
+	}
+	deriver, err := activity.NewDeriver(store)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	assert.False(t, store.written[7].HasEstimatedPower, "the ride measured its own power")
+	assert.Empty(t, store.estimated[7], "and the stored series is cleared rather than filled")
+	assert.True(t, store.written[7].HasPower, "the measured numbers are still worked out")
+}
+
+// A ride with no usable track is skipped rather than estimated as zero, and so
+// is a rider who has entered only half a mass.
+func TestDeriveEstimatesNoPowerWithoutATrackOrAMass(t *testing.T) {
+	t.Parallel()
+	for name, store := range map[string]*fakeDeriveStore{
+		"no track": {
+			owner: "rider-a",
+			profile: rider.Profile{
+				MaxHeartRateBPM: rider.Set(190), RiderMassKG: rider.Set(74), BikeMassKG: rider.Set(8),
+			},
+			owed:  []int64{7},
+			rides: map[int64]activity.RideSamples{7: {HeartRate: heartRateRide(600, 150)}},
+		},
+		"only half a mass": {
+			owner: "rider-a",
+			profile: rider.Profile{
+				MaxHeartRateBPM: rider.Set(190), RiderMassKG: rider.Set(74),
+			},
+			owed:  []int64{7},
+			rides: map[int64]activity.RideSamples{7: trackRide(120)},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			deriver, err := activity.NewDeriver(store)
+			require.NoError(t, err, "NewDeriver()")
+
+			require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+			assert.False(t, store.written[7].HasEstimatedPower)
+			assert.Empty(t, store.estimated[7])
+		})
+	}
+}
+
+// A mass change makes every estimate stale, so it is one of the values a row
+// records having been worked out against.
+func TestDeriveRecordsTheMassItWorkedTheEstimateOutAgainst(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{
+		owner:   "rider-a",
+		profile: rider.Profile{RiderMassKG: rider.Set(74), BikeMassKG: rider.Set(8)},
+		owed:    []int64{7},
+		rides:   map[int64]activity.RideSamples{7: trackRide(120)},
+	}
+	deriver, err := activity.NewDeriver(store)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+	assert.InDelta(t, 82.0, store.owedInputs.TotalMassKG, 1e-9, "rider and bicycle together")
+	assert.InDelta(t, 82.0, store.written[7].Inputs.TotalMassKG, 1e-9)
+}
+
+// The metrics row is what says a ride has been derived, so a failure writing
+// the series must not leave one behind claiming otherwise.
+func TestDeriveWritesNoMetricsWhenTheEstimateCannotBeStored(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{
+		owner:       "rider-a",
+		profile:     rider.Profile{RiderMassKG: rider.Set(74), BikeMassKG: rider.Set(8)},
+		owed:        []int64{7},
+		rides:       map[int64]activity.RideSamples{7: trackRide(120)},
+		estimateErr: errors.New("unwritable"),
+	}
+	deriver, err := activity.NewDeriver(store)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+	assert.Equal(t, activity.Failed, result.Outcome)
+	assert.Empty(t, store.written, "no row claims this ride was derived")
 }
 
 func TestNewDeriverNeedsAStore(t *testing.T) {

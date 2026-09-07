@@ -33,6 +33,9 @@ func activityMetrics(metrics trainingload.Metrics) *openapi.ActivityMetrics {
 		view.IntensityFactor = &metrics.Power.IntensityFactor
 		view.PowerTss = &metrics.Power.TSS
 	}
+	if metrics.HasEstimatedPower {
+		view.EstimatedPowerWatts = &metrics.EstimatedPowerWatts
+	}
 
 	return view
 }
@@ -162,9 +165,11 @@ func activityTrackFeature(track []activities.TrackPoint, state activities.Record
 	}
 	coordinates := make([][2]float64, 0, len(track))
 	altitudes := make([]*float64, 0, len(track))
-	// One backing array for every altitude, rather than one allocation per sample.
+	estimates := make([]*float64, 0, len(track))
+	// One backing array per series, rather than one allocation per sample.
 	recorded := make([]float64, len(track))
-	anyAltitude := false
+	estimated := make([]float64, len(track))
+	anyAltitude, anyEstimate := false, false
 	west, south := track[0].Longitude, track[0].Latitude
 	east, north := west, south
 	for index, point := range track {
@@ -175,6 +180,13 @@ func activityTrackFeature(track []activities.TrackPoint, state activities.Record
 			anyAltitude = true
 		} else {
 			altitudes = append(altitudes, nil)
+		}
+		if point.HasEstimatedPower {
+			estimated[index] = point.EstimatedPowerWatts
+			estimates = append(estimates, &estimated[index])
+			anyEstimate = true
+		} else {
+			estimates = append(estimates, nil)
 		}
 		west, east = min(west, point.Longitude), max(east, point.Longitude)
 		south, north = min(south, point.Latitude), max(north, point.Latitude)
@@ -187,6 +199,9 @@ func activityTrackFeature(track []activities.TrackPoint, state activities.Record
 	}
 	if anyAltitude {
 		view.Properties.AltitudeMetres = altitudes
+	}
+	if anyEstimate {
+		view.Properties.EstimatedPowerWatts = estimates
 	}
 
 	return view

@@ -4,9 +4,44 @@ import (
 	"context"
 	"errors"
 
+	"github.com/nobbs/domestique/internal/powerestimate"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
+
+// RideSamples is one ride's recorded series, split by what each is for. Track
+// is only the records that carried a position, an altitude and a distance;
+// TrackRecords names which record each of them came from, so an estimate can be
+// written back beside the sample it describes.
+type RideSamples struct {
+	HeartRate    []trainingload.Sample
+	Power        []trainingload.Sample
+	Track        []powerestimate.Sample
+	TrackRecords []int64
+}
+
+// EstimatePower works out the ride's estimated power series and its average.
+//
+// A ride that already carries measured power yields none: an estimate exists
+// because there is no meter, and putting one beside a real reading only invites
+// the two to be confused. A ride with no track yields none either — it is
+// skipped, never estimated as zero.
+// The records and the estimates are returned together and are always the same
+// length, so a caller cannot pair one ride's estimates with another's records.
+func (s *RideSamples) EstimatePower(
+	totalMassKG float64,
+) (records []int64, estimates []powerestimate.Estimate, average powerestimate.Estimate) {
+	if len(s.Power) > 0 {
+		return nil, nil, powerestimate.Estimate{}
+	}
+	estimates, ok := powerestimate.Series(s.Track, totalMassKG)
+	if !ok {
+		return nil, nil, powerestimate.Estimate{}
+	}
+	mean, hasMean := powerestimate.Average(estimates)
+
+	return s.TrackRecords, estimates, powerestimate.Estimate{Watts: mean, Known: hasMean}
+}
 
 // DeriveStore is what working out a ride's training numbers needs of stored
 // state. Reads samples and a profile, writes metrics: no upstream is involved,
@@ -21,9 +56,14 @@ type DeriveStore interface {
 	// yield something these profile values allow: those never derived, and
 	// those derived against different values.
 	ActivitiesAwaitingDerivation(ctx context.Context, targetID string, inputs trainingload.Inputs) ([]int64, error)
-	// ActivitySensorSamples reads one ride's heart-rate and power series.
-	ActivitySensorSamples(ctx context.Context, targetID string, id int64) (heartRate, power []trainingload.Sample, err error)
+	// ActivityRideSamples reads one ride's recorded series, split by what each
+	// is for.
+	ActivityRideSamples(ctx context.Context, targetID string, id int64) (RideSamples, error)
 	StoreActivityMetrics(ctx context.Context, targetID string, id int64, metrics trainingload.Metrics) error
+	// StoreEstimatedPower replaces one ride's estimated power series. An empty
+	// series clears whatever was there.
+	StoreEstimatedPower(ctx context.Context, targetID string, id int64,
+		recordIndices []int64, estimates []powerestimate.Estimate) error
 	// ClearActivityMetrics removes every derived row one target holds and
 	// reports how many went.
 	ClearActivityMetrics(ctx context.Context, targetID string) (int, error)
@@ -88,13 +128,19 @@ func (d *Deriver) Derive(ctx context.Context, targetID string) Result {
 		// A read or write that fails part way keeps what it already stored: the
 		// rides left are still owed a derivation, and the next attempt finds them
 		// exactly as this one did.
-		heartRate, power, samplesErr := d.store.ActivitySensorSamples(ctx, targetID, id)
+		samples, samplesErr := d.store.ActivityRideSamples(ctx, targetID, id)
 		if samplesErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
-		if storeErr := d.store.StoreActivityMetrics(
-			ctx, targetID, id, trainingload.Derive(heartRate, power, inputs),
-		); storeErr != nil {
+		metrics := trainingload.Derive(samples.HeartRate, samples.Power, inputs)
+		records, estimates, average := samples.EstimatePower(inputs.TotalMassKG)
+		metrics.EstimatedPowerWatts, metrics.HasEstimatedPower = average.Watts, average.Known
+		// The series first: a metrics row is what says a ride has been derived,
+		// so it must not appear before the samples it describes are in place.
+		if storeErr := d.store.StoreEstimatedPower(ctx, targetID, id, records, estimates); storeErr != nil {
+			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
+		}
+		if storeErr := d.store.StoreActivityMetrics(ctx, targetID, id, metrics); storeErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
 		derived++

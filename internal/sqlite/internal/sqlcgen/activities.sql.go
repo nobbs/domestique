@@ -383,7 +383,7 @@ func (q *Queries) ListActivitySkips(ctx context.Context, targetSlot string) ([]L
 }
 
 const listActivityTrack = `-- name: ListActivityTrack :many
-SELECT recorded_at_unix, latitude, longitude, altitude_metres
+SELECT recorded_at_unix, latitude, longitude, altitude_metres, estimated_power_watts
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
   AND latitude IS NOT NULL AND longitude IS NOT NULL
@@ -396,10 +396,11 @@ type ListActivityTrackParams struct {
 }
 
 type ListActivityTrackRow struct {
-	RecordedAtUnix int64
-	Latitude       sql.NullFloat64
-	Longitude      sql.NullFloat64
-	AltitudeMetres sql.NullFloat64
+	RecordedAtUnix      int64
+	Latitude            sql.NullFloat64
+	Longitude           sql.NullFloat64
+	AltitudeMetres      sql.NullFloat64
+	EstimatedPowerWatts sql.NullFloat64
 }
 
 func (q *Queries) ListActivityTrack(ctx context.Context, arg ListActivityTrackParams) ([]ListActivityTrackRow, error) {
@@ -416,6 +417,7 @@ func (q *Queries) ListActivityTrack(ctx context.Context, arg ListActivityTrackPa
 			&i.Latitude,
 			&i.Longitude,
 			&i.AltitudeMetres,
+			&i.EstimatedPowerWatts,
 		); err != nil {
 			return nil, err
 		}
