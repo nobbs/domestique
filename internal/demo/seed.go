@@ -141,7 +141,7 @@ func Seed(ctx context.Context, state State, slots []Slot, now time.Time) error {
 			return fmt.Errorf("demo: ensuring target owner %s: %w", slot.ID, err)
 		}
 	}
-	rides, ridesErr := Rides(now)
+	rides, ridesErr := ridesFor(slots, now)
 	if ridesErr != nil {
 		return ridesErr
 	}
@@ -195,6 +195,18 @@ func seedDurations(ctx context.Context, state State, stages []route.Route) error
 	}
 
 	return nil
+}
+
+// ridesFor builds the synthetic rides once for the whole run, and not at all
+// when no slot is onboarded enough to be given any.
+func ridesFor(slots []Slot, now time.Time) ([]Ride, error) {
+	for _, slot := range slots {
+		if slot.State != SlotUnauthorized {
+			return Rides(now)
+		}
+	}
+
+	return nil, nil
 }
 
 // seedActivities gives one onboarded slot the rides and the profile that turns

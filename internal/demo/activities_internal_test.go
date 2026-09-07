@@ -101,3 +101,25 @@ func TestGradientIsNothingWithoutTwoHeightsAndGroundBetweenThem(t *testing.T) {
 	assert.InDelta(t, 0.0, gradientAt([]route.Point{somewhere, elsewhere}, 1), 1e-12,
 		"two equal heights a kilometre apart are level")
 }
+
+// A demo whose every slot is un-onboarded gives no ride to anybody, so it
+// builds none — and so cannot be stopped by fixtures nothing would have read.
+func TestNoRidesAreBuiltForADemoThatWouldGiveNoneAway(t *testing.T) {
+	t.Parallel()
+
+	none, err := ridesFor([]Slot{
+		{ID: "rider-a", State: SlotUnauthorized},
+		{ID: "rider-b", State: SlotUnauthorized},
+	}, fixtureTime())
+	require.NoError(t, err)
+	assert.Empty(t, none, "nothing would have received them")
+
+	for _, state := range []SlotState{SlotCurrent, SlotFailed} {
+		some, buildErr := ridesFor([]Slot{
+			{ID: "rider-a", State: SlotUnauthorized},
+			{ID: "rider-b", State: state},
+		}, fixtureTime())
+		require.NoError(t, buildErr)
+		assert.NotEmpty(t, some, "one onboarded slot is enough to need them, in state %q", state)
+	}
+}
