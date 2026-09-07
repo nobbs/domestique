@@ -56,7 +56,7 @@ func (s *Store) StoreActivityWeather(
 	}
 	for _, step := range steps {
 		if insertErr := queries.InsertActivityWeather(ctx, sqlcgen.InsertActivityWeatherParams{
-			TargetSlot: targetID, WorkoutID: id, HourUnix: step.At.Unix(), StepSeconds: int64(step.Step.Seconds()),
+			TargetSlot: targetID, WorkoutID: id, HourUnix: step.At.Unix(), StepSeconds: int64(step.Step / time.Second),
 			TemperatureCelsius:              step.TemperatureCelsius,
 			ApparentTemperatureCelsius:      step.ApparentTemperatureCelsius,
 			PrecipitationMillimetres:        step.PrecipitationMillimetres,

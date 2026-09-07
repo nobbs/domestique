@@ -34,7 +34,7 @@ func rideWeatherSteps(steps []activities.WeatherStep) []openapi.RideWeatherStep 
 		step := &steps[index]
 		one := openapi.RideWeatherStep{
 			Time:                       wireTime(step.At),
-			StepSeconds:                int(step.Step.Seconds()),
+			StepSeconds:                int(step.Step / time.Second),
 			TemperatureCelsius:         step.TemperatureCelsius,
 			ApparentTemperatureCelsius: step.ApparentTemperatureCelsius,
 			PrecipitationMillimetres:   step.PrecipitationMillimetres,

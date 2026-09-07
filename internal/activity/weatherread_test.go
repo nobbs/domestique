@@ -353,12 +353,22 @@ func TestDeriveRecordsAnOlderRideByTheHour(t *testing.T) {
 		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
 		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
 	}
-	source := &fakeWeatherSource{}
+	// An actually-hourly provider, not one that names no step and is read as
+	// hourly by the fallback — that is TestDeriveReadsASourceWithNoStepAsHourly.
+	hour := weatherNow().Truncate(time.Hour)
+	source := &fakeWeatherSource{step: time.Hour, series: []activity.WeatherSeries{{
+		Step: time.Hour, Time: []time.Time{hour},
+		TemperatureCelsius: []float64{18}, ApparentTemperatureCelsius: []float64{17},
+		PrecipitationMillimetres: []float64{0}, WindSpeedKMH: []float64{12},
+		WindDirectionDegrees: []float64{240}, CloudCoverPercent: []float64{50},
+		WeatherCode: []int{1},
+	}}}
 
 	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
 	assert.Len(t, source.latitudes, 2, "one coordinate per hour, both ends included")
 	require.Len(t, store.stored[7], 1)
 	assert.Equal(t, time.Hour, store.stored[7][0].Step)
+	assert.InDelta(t, 18.0, store.stored[7][0].TemperatureCelsius, 1e-9)
 }
 
 // A finer step must not multiply the coordinates a long ride is asked at: the
@@ -385,12 +395,22 @@ func TestDeriveReadsASourceWithNoStepAsHourly(t *testing.T) {
 		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
 		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(60)},
 	}
-	source := &fakeWeatherSource{}
+	// An actually-hourly provider, not one that names no step and is read as
+	// hourly by the fallback — that is TestDeriveReadsASourceWithNoStepAsHourly.
+	hour := weatherNow().Truncate(time.Hour)
+	source := &fakeWeatherSource{step: time.Hour, series: []activity.WeatherSeries{{
+		Step: time.Hour, Time: []time.Time{hour},
+		TemperatureCelsius: []float64{18}, ApparentTemperatureCelsius: []float64{17},
+		PrecipitationMillimetres: []float64{0}, WindSpeedKMH: []float64{12},
+		WindDirectionDegrees: []float64{240}, CloudCoverPercent: []float64{50},
+		WeatherCode: []int{1},
+	}}}
 
 	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
 	assert.Len(t, source.latitudes, 2, "one coordinate per hour, both ends included")
 	require.Len(t, store.stored[7], 1)
 	assert.Equal(t, time.Hour, store.stored[7][0].Step)
+	assert.InDelta(t, 18.0, store.stored[7][0].TemperatureCelsius, 1e-9)
 }
 
 // The provider drops a step it held no reading for, per coordinate. A ride
