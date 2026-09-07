@@ -10,6 +10,12 @@
 //	go test -tags openmeteo_acceptance ./internal/openmeteo/ -run Acceptance -v
 //
 // It needs no credentials. The free endpoints this exercises take none.
+//
+// What it does not check is the handling of a null hour. The provider returns
+// none at the ages asked for below, so an assertion about them here passes
+// whether the handling is right or wrong — verified by putting the old
+// behaviour back and watching this file still pass. The deterministic cases in
+// client_test.go are what guard that, and they fail without it.
 package openmeteo_test
 
 import (
@@ -30,6 +36,15 @@ func TestOpenMeteoHistoryAcceptance(t *testing.T) {
 	})
 	require.NoError(t, err, "New()")
 
+	// The client asks in this zone and splits the endpoints on the ride's date in
+	// it, so the windows below are counted in it too. Counted in the runner's own
+	// zone instead, a ride two days back could fall on a different Berlin date
+	// and be asked of the other endpoint, which is a test that fails by
+	// geography rather than by fault.
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	require.NoError(t, err, "LoadLocation()")
+	today := time.Now().In(berlin)
+
 	at := []openmeteo.Coordinate{{Latitude: 49.0, Longitude: 8.4}, {Latitude: 49.2, Longitude: 8.6}}
 	for name, test := range map[string]struct {
 		daysAgo         int
@@ -45,7 +60,7 @@ func TestOpenMeteoHistoryAcceptance(t *testing.T) {
 		"last year":        {daysAgo: 400},
 	} {
 		t.Run(name, func(t *testing.T) {
-			from := time.Now().AddDate(0, 0, -test.daysAgo).Truncate(time.Hour)
+			from := today.AddDate(0, 0, -test.daysAgo).Truncate(time.Hour)
 			hourlies, historyErr := client.History(t.Context(), at, from, from.Add(2*time.Hour))
 			require.NoError(t, historyErr, "History()")
 			require.Len(t, hourlies, len(at), "one series per coordinate")
@@ -53,12 +68,6 @@ func TestOpenMeteoHistoryAcceptance(t *testing.T) {
 			for index, one := range hourlies {
 				require.NotEmpty(t, one.Time, "coordinate %d: the provider held hours", index)
 				require.Len(t, one.TemperatureCelsius, len(one.Time), "aligned with its timestamps")
-				// Nulls are dropped rather than read as zero, so every value
-				// served is one the provider actually recorded. A whole window at
-				// exactly nought degrees is what the old reading of a null looked
-				// like, and is not weather anywhere this service rides.
-				assert.NotEqual(t, make([]float64, len(one.Time)), one.TemperatureCelsius,
-					"coordinate %d: a column of zeroes is a null read as a number", index)
 			}
 
 			probability := hourlies[0].PrecipitationProbabilityPercent

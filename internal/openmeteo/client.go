@@ -233,11 +233,16 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 // already happened: what the rider actually rode through, rather than what was
 // predicted.
 //
-// A ride inside the forecast endpoint's reach is asked of that endpoint with
-// past_days, at model resolution; an older one is asked of the reanalysis
-// archive, which is coarser but goes back decades. The archive carries no
-// probability of precipitation — it records what fell, not what might have —
-// so that one series comes back empty from it.
+// A ride of the last day or two is asked of the forecast endpoint, which holds
+// the recent past at model resolution; anything older is asked of the
+// reanalysis archive, which is coarser but goes back decades and carries values
+// to within about a day of the present. Both are asked by hour bounds alone.
+//
+// The archive carries no probability of precipitation — it records what fell,
+// not what might have — so that one series comes back empty from it.
+//
+// An hour either endpoint held no reading for is left out rather than reported
+// as zero, so every hour returned is one the provider recorded.
 func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Time) ([]Hourly, error) {
 	if len(at) == 0 {
 		return nil, errors.New("openmeteo: at least one coordinate is required")
