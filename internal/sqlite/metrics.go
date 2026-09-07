@@ -16,7 +16,7 @@ import (
 // derivationVersion is which derivation wrote a stored row. Bumped whenever a
 // derivation starts producing a figure the rows before it cannot hold, so those
 // rows are listed again rather than keeping the new columns null for good.
-const derivationVersion = 1
+const derivationVersion = 2
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
