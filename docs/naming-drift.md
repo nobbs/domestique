@@ -135,6 +135,17 @@ migration to leave the previous release's binary able to read and write what it
 already did, and that release reads `hour_unix` by name. The rename waits for a
 release that never did.
 
+## 20. `Reading` means two things
+
+`internal/activity/series.go` `Reading{Value, Known}` is one served sample
+with presence; `internal/measure` `Reading{At, Value}` is one timestamped
+sensor value — what `internal/trainingload/zones.go` calls `Sample`.
+
+**Proposed:** nothing now; `trainingload.Sample` becomes an alias of
+`measure.Reading` as callers move, and the served `Reading` keeps its name
+because `api/openapi.yaml` does not use the word. Revisit if both ever meet
+in one package.
+
 ## Suggested order
 
 1. Item 16's comments, which touch no contract and need no compiler.

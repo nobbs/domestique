@@ -11,3 +11,5 @@ ignores:
   - ".worktrees/**"
   - "**/node_modules/**"
   - "**/dist/**"
+  # External documents reproduced verbatim for citation keep their own style.
+  - "docs/references/**"

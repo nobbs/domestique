@@ -37,6 +37,7 @@ private to this service.
 │   ├── config/                     Koanf loading, secret input, validation
 │   ├── runtimeconfig/              the settings held in the database, live
 │   ├── route/                      route value types and invariants
+│   ├── measure/                    the spherical distance model and every measurement over ground and time
 │   ├── sync/                       reconciliation use case and its interfaces
 │   ├── oauth/                      Wahoo OAuth use case and its interfaces
 │   ├── schedule/                   delayed-start and hourly execution
@@ -94,6 +95,7 @@ owns a distinct responsibility in this tree.
 | config | TOML and environment layering, the state key's file-secret resolution, validation of the file's own fields | HTTP clients, business decisions, provider-specific secret syntax, anything an operator edits while the service runs |
 | runtimeconfig | the settings and credentials held in the database: their types, the rules both the write path and startup check them against, and the live snapshot readers copy from | SQL, HTTP routing, the file's fields, and any decision made *from* a setting |
 | route | route identity — including which provider issued it — geometry, revision, and validation types | SQL, HTTP, FIT, Wahoo details |
+| measure | the spherical distance model and every measurement over ground and time: cumulative distance, altitude profiles and their resampling, median filtering, gradient, ascent and descent, gap-aware means and rolling windows over recorded series; each formula and its source is in [measurement.md](measurement.md) | route identity or validation, what a series is served as, SQL, HTTP, any rider parameter, and the window or threshold a caller chooses — those stay with the caller |
 | sync | inventory reconciliation, deletion gates, target progress, aggregate run result, per-target run result | HTTP handlers, SQL queries, Wahoo URLs |
 | oauth | one-time callback state, target onboarding, duplicate-account rejection | HTTP routing, SQL queries, Wahoo URL formatting |
 | schedule | startup delay, hourly cadence, no-overlap guard, cancellation | sync decisions or notification content |
