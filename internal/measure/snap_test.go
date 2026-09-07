@@ -1,0 +1,164 @@
+package measure
+
+import (
+	"math"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// metresEast offsets a coordinate by a distance east, at the latitude given.
+func metresEast(from Coordinate, metres float64) Coordinate {
+	degrees := metres / (EarthRadiusMetres * math.Pi / 180) / math.Cos(from.Latitude*math.Pi/180)
+
+	return Coordinate{Latitude: from.Latitude, Longitude: from.Longitude + degrees}
+}
+
+// metresNorth offsets a coordinate by a distance north.
+func metresNorth(from Coordinate, metres float64) Coordinate {
+	return Coordinate{
+		Latitude:  from.Latitude + metres/(EarthRadiusMetres*math.Pi/180),
+		Longitude: from.Longitude,
+	}
+}
+
+// snapOrigin is the arbitrary point every case here is laid out around.
+func snapOrigin() Coordinate {
+	return Coordinate{Latitude: 49.9, Longitude: 8.2}
+}
+
+func TestSnapIndexFindsTheLineRunningThroughAPoint(t *testing.T) {
+	line := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 1000)}
+	index := NewSnapIndex([][]Coordinate{line}, 25)
+
+	metres, found := index.NearestMetres(metresNorth(metresEast(snapOrigin(), 500), 10))
+
+	require.True(t, found)
+	assert.InDelta(t, 10, metres, 0.5)
+}
+
+func TestSnapIndexFindsNothingBeyondItsRadius(t *testing.T) {
+	line := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 1000)}
+	index := NewSnapIndex([][]Coordinate{line}, 25)
+
+	_, found := index.NearestMetres(metresNorth(metresEast(snapOrigin(), 500), 60))
+
+	assert.False(t, found)
+}
+
+func TestSnapIndexReportsEveryLineWithinTheRadius(t *testing.T) {
+	near := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 1000)}
+	parallel := []Coordinate{metresNorth(snapOrigin(), 15), metresNorth(metresEast(snapOrigin(), 1000), 15)}
+	index := NewSnapIndex([][]Coordinate{near, parallel}, 25)
+
+	lines := map[int]bool{}
+	for _, hit := range index.Near(metresEast(snapOrigin(), 400)) {
+		lines[hit.Line] = true
+	}
+
+	assert.Equal(t, map[int]bool{0: true, 1: true}, lines)
+}
+
+func TestSnapIndexAlignmentSeparatesAParallelLineFromASquareOne(t *testing.T) {
+	alongside := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 200)}
+	crossing := []Coordinate{metresNorth(metresEast(snapOrigin(), 100), -100), metresNorth(metresEast(snapOrigin(), 100), 100)}
+	index := NewSnapIndex([][]Coordinate{alongside, crossing}, 25)
+
+	east, north := index.Offset(snapOrigin(), metresEast(snapOrigin(), 100))
+	alignments := map[int]float64{}
+	for _, hit := range index.Near(metresEast(snapOrigin(), 100)) {
+		alignments[hit.Line] = hit.Alignment(east, north)
+	}
+
+	assert.InDelta(t, 1, alignments[0], 0.01)
+	assert.InDelta(t, 0, alignments[1], 0.01)
+}
+
+// A direction with no length cannot disagree with anything, and a caller that
+// weights alignment must not be charged a penalty for the ends of a track.
+func TestSnapIndexAlignmentIsWholeForADirectionOfNoLength(t *testing.T) {
+	assert.InDelta(t, 1, SnapHit{runEast: 1, runNorth: 0}.Alignment(0, 0), 0.0001)
+	assert.InDelta(t, 1, SnapHit{}.Alignment(1, 0), 0.0001)
+}
+
+func TestSnapIndexOverNoLinesFindsNothingRatherThanPanicking(t *testing.T) {
+	index := NewSnapIndex(nil, 25)
+
+	_, found := index.NearestMetres(snapOrigin())
+
+	assert.False(t, found)
+	assert.Empty(t, index.Near(snapOrigin()))
+}
+
+// A line of one coordinate has no segment to measure against, and must not
+// stop the lines around it being indexed.
+func TestSnapIndexSkipsALineTooShortToHaveASegment(t *testing.T) {
+	index := NewSnapIndex([][]Coordinate{
+		{},
+		{snapOrigin()},
+		{metresNorth(snapOrigin(), 5), metresNorth(metresEast(snapOrigin(), 100), 5)},
+	}, 25)
+
+	lines := map[int]bool{}
+	for _, hit := range index.Near(metresEast(snapOrigin(), 50)) {
+		lines[hit.Line] = true
+	}
+
+	assert.Equal(t, map[int]bool{2: true}, lines)
+}
+
+func TestSnapIndexOffsetIsMeasuredInMetres(t *testing.T) {
+	index := NewSnapIndex([][]Coordinate{{snapOrigin(), metresEast(snapOrigin(), 100)}}, 25)
+
+	east, north := index.Offset(snapOrigin(), metresNorth(metresEast(snapOrigin(), 300), 400))
+
+	assert.InDelta(t, 300, east, 1)
+	assert.InDelta(t, 400, north, 1)
+}
+
+func TestSnapIndexReportsHowFarAlongTheLineAPositionFell(t *testing.T) {
+	line := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 400), metresNorth(metresEast(snapOrigin(), 400), 300)}
+	index := NewSnapIndex([][]Coordinate{line}, 25)
+
+	quarter, found := index.Nearest(metresEast(snapOrigin(), 100))
+	require.True(t, found)
+	assert.InDelta(t, 100, quarter.AlongMetres, 1)
+
+	past, found := index.Nearest(metresNorth(metresEast(snapOrigin(), 400), 150))
+	require.True(t, found)
+	assert.InDelta(t, 550, past.AlongMetres, 1, "the corner is 400 m along, then 150 m up")
+
+	assert.InDelta(t, 700, index.LineMetres(0), 1)
+}
+
+// The position along the line is what tells one direction of travel from the
+// other, so it must grow with the line's own order rather than with proximity.
+func TestSnapIndexAlongGrowsWithTheLinesOwnOrder(t *testing.T) {
+	line := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 1000)}
+	index := NewSnapIndex([][]Coordinate{line}, 25)
+
+	previous := -1.0
+	for metres := 0.0; metres <= 1000; metres += 100 {
+		hit, found := index.Nearest(metresEast(snapOrigin(), metres))
+		require.True(t, found)
+		assert.Greater(t, hit.AlongMetres, previous)
+		previous = hit.AlongMetres
+	}
+}
+
+func TestSnapIndexNearestFindsNothingBeyondTheRadius(t *testing.T) {
+	index := NewSnapIndex([][]Coordinate{{snapOrigin(), metresEast(snapOrigin(), 400)}}, 25)
+
+	_, found := index.Nearest(metresNorth(metresEast(snapOrigin(), 200), 90))
+
+	assert.False(t, found)
+}
+
+// A line the index does not hold has no length, rather than the length of
+// whichever line happens to be first.
+func TestSnapIndexLineMetresIsZeroForALineItDoesNotHold(t *testing.T) {
+	index := NewSnapIndex([][]Coordinate{{snapOrigin(), metresEast(snapOrigin(), 400)}}, 25)
+
+	assert.InDelta(t, 0, index.LineMetres(7), 1e-9)
+}

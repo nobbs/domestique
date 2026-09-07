@@ -1,4 +1,4 @@
-package surface
+package measure
 
 import (
 	"math/rand/v2"
@@ -17,11 +17,11 @@ func TestSegmentGridFindsEverySegmentWithinTheRadius(t *testing.T) {
 
 	//nolint:gosec // A fixed seed keeps a failure reproducible; nothing here is a secret.
 	generator := rand.New(rand.NewPCG(1, 2))
-	segments := make([]segment, 0, 300)
+	segments := make([]snapSegment, 0, 300)
 	for range 300 {
 		startEast := generator.Float64()*1000 - 500
 		startNorth := generator.Float64()*1000 - 500
-		segments = append(segments, segment{
+		segments = append(segments, snapSegment{
 			startEast:  startEast,
 			startNorth: startNorth,
 			endEast:    startEast + generator.Float64()*400 - 200,
@@ -39,7 +39,7 @@ func TestSegmentGridFindsEverySegmentWithinTheRadius(t *testing.T) {
 			found[index] = true
 		}
 		for index := range segments {
-			distance := segments[index].distanceTo(east, north)
+			distance, _ := segments[index].distanceTo(east, north)
 			if distance > radius {
 				continue
 			}
@@ -50,32 +50,32 @@ func TestSegmentGridFindsEverySegmentWithinTheRadius(t *testing.T) {
 }
 
 // TestSegmentGridFindsASegmentAcrossItsLength covers the case the sampling in
-// insert exists for: a segment far longer than one cell, whose nearest point to
+// insert exists for: a snapSegment far longer than one cell, whose nearest point to
 // the query is in the middle of it rather than at either end.
 func TestSegmentGridFindsASegmentAcrossItsLength(t *testing.T) {
 	const radius = 25.0
 
 	tests := []struct {
 		name       string
-		target     segment
+		target     snapSegment
 		queryEast  float64
 		queryNorth float64
 	}{
 		{
-			name:       "a long segment is found at its midpoint",
-			target:     segment{startEast: -5000, startNorth: 0, endEast: 5000, endNorth: 0},
+			name:       "a long snapSegment is found at its midpoint",
+			target:     snapSegment{startEast: -5000, startNorth: 0, endEast: 5000, endNorth: 0},
 			queryEast:  0,
 			queryNorth: 10,
 		},
 		{
-			name:       "a segment exactly at the radius is still a candidate",
-			target:     segment{startEast: -100, startNorth: radius, endEast: 100, endNorth: radius},
+			name:       "a snapSegment exactly at the radius is still a candidate",
+			target:     snapSegment{startEast: -100, startNorth: radius, endEast: 100, endNorth: radius},
 			queryEast:  0,
 			queryNorth: 0,
 		},
 		{
-			name:       "a degenerate segment is found at its point",
-			target:     segment{startEast: 300, startNorth: -300, endEast: 300, endNorth: -300},
+			name:       "a degenerate snapSegment is found at its point",
+			target:     snapSegment{startEast: 300, startNorth: -300, endEast: 300, endNorth: -300},
 			queryEast:  310,
 			queryNorth: -300,
 		},
@@ -83,11 +83,11 @@ func TestSegmentGridFindsASegmentAcrossItsLength(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			distance := test.target.distanceTo(test.queryEast, test.queryNorth)
+			distance, _ := test.target.distanceTo(test.queryEast, test.queryNorth)
 			require.LessOrEqualf(t, distance, radius,
 				"the test's own query is %.2fm away, beyond the %.2fm radius", distance, radius)
 
-			grid := newSegmentGrid([]segment{test.target}, radius)
+			grid := newSegmentGrid([]snapSegment{test.target}, radius)
 			assert.NotEmpty(t, grid.near(test.queryEast, test.queryNorth),
 				"near() returned no candidates, want the segment")
 		})
@@ -105,11 +105,11 @@ func TestSegmentGridPrunesDistantSegments(t *testing.T) {
 
 	//nolint:gosec // A fixed seed keeps a failure reproducible; nothing here is a secret.
 	generator := rand.New(rand.NewPCG(3, 4))
-	segments := make([]segment, 0, segmentCount)
+	segments := make([]snapSegment, 0, segmentCount)
 	for range segmentCount {
 		startEast := generator.Float64()*4000 - 2000
 		startNorth := generator.Float64()*4000 - 2000
-		segments = append(segments, segment{
+		segments = append(segments, snapSegment{
 			startEast:  startEast,
 			startNorth: startNorth,
 			endEast:    startEast + generator.Float64()*100 - 50,
@@ -131,7 +131,7 @@ func TestSegmentGridPrunesDistantSegments(t *testing.T) {
 }
 
 func TestSegmentGridDistanceToClampsToTheSegmentEnds(t *testing.T) {
-	target := segment{startEast: 0, startNorth: 0, endEast: 100, endNorth: 0}
+	target := snapSegment{startEast: 0, startNorth: 0, endEast: 100, endNorth: 0}
 
 	tests := []struct {
 		name  string
@@ -147,7 +147,8 @@ func TestSegmentGridDistanceToClampsToTheSegmentEnds(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.InDelta(t, test.want, target.distanceTo(test.east, test.north), 0.001,
+			distance, _ := target.distanceTo(test.east, test.north)
+			assert.InDelta(t, test.want, distance, 0.001,
 				"distanceTo(%v, %v)", test.east, test.north)
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -144,9 +145,9 @@ func (s *fakeSource) Ways(_ context.Context, points []route.Point) ([]Way, error
 		return nil, err
 	}
 
-	line := make([]Coordinate, 0, len(points))
+	line := make([]measure.Coordinate, 0, len(points))
 	for _, point := range points {
-		line = append(line, Coordinate{Longitude: point.Longitude, Latitude: point.Latitude})
+		line = append(line, measure.Coordinate{Longitude: point.Longitude, Latitude: point.Latitude})
 	}
 
 	return []Way{{ID: routeID, Kind: KindAsphalt, Line: line}}, nil
