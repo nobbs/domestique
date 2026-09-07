@@ -73,7 +73,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
 			Load: trainingload.Metrics{
-				Zones: trainingload.Zones{60, 120, 180, 240, 300}, HasZones: true,
+				Inputs: trainingload.Inputs{ThresholdHeartRateBPM: 170},
+				Zones:  trainingload.Zones{60, 120, 180, 240, 300}, HasZones: true,
 				TRIMP: 42.5, HasTRIMP: true,
 				EstimatedPowerWatts: 168.5, HasEstimatedPower: true,
 			},
@@ -94,6 +95,9 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	derived, plain := list.Activities[0], list.Activities[1]
 	require.NotNil(t, derived.Metrics, "the ride that was derived")
 	assert.Equal(t, []float64{60, 120, 180, 240, 300}, derived.Metrics.ZoneSeconds)
+	// The rates the zones were cut at, from the threshold this row was derived
+	// against rather than whatever the profile holds now.
+	assert.Equal(t, []float64{144.5, 153, 161.5, 170}, derived.Metrics.ZoneBoundsBpm)
 	require.NotNil(t, derived.Metrics.Trimp)
 	assert.InDelta(t, 42.5, *derived.Metrics.Trimp, 1e-9)
 	assert.Nil(t, derived.Metrics.PowerTss, "the rider has entered no threshold power")

@@ -26,6 +26,45 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("VO₂ max")).toBeInTheDocument();
     expect(screen.getByText("1 min")).toBeInTheDocument();
     expect(screen.getByText("5 min")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Recovery1 min");
+  });
+
+  it("draws one bar per zone, all on the scale the longest zone sets", () => {
+    show({ zoneSeconds: [60, 120, 0, 240, 120] });
+
+    const bars = screen
+      .getAllByRole("listitem")
+      .map((row) => row.querySelector<HTMLElement>("span[style]"));
+
+    expect(bars).toHaveLength(5);
+    expect(bars.map((bar) => bar?.style.width)).toEqual(["25%", "50%", "0%", "100%", "50%"]);
+  });
+
+  // Open at both ends: neither the easiest nor the hardest zone is given a
+  // limit the profile never said.
+  it("says the heart rates each zone covered", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], zoneBoundsBpm: [144.5, 153, 161.5, 170] });
+
+    expect(screen.getByText("below 145 bpm")).toBeInTheDocument();
+    expect(screen.getByText("145–152 bpm")).toBeInTheDocument();
+    expect(screen.getByText("170 bpm and up")).toBeInTheDocument();
+  });
+
+  // A bound of 144.2 puts 144 bpm in the easiest zone and 145 in the next, so
+  // the edge is the beat above it rather than the nearer one.
+  it("keeps a bound between two beats on the side the zones were cut", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], zoneBoundsBpm: [144.2, 153.6, 161.5, 170.9] });
+
+    expect(screen.getByText("below 145 bpm")).toBeInTheDocument();
+    expect(screen.getByText("145–153 bpm")).toBeInTheDocument();
+    expect(screen.getByText("171 bpm and up")).toBeInTheDocument();
+  });
+
+  it("leaves the rates out for a row that was derived without them", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300] });
+
+    expect(screen.getByText("Recovery")).toBeInTheDocument();
+    expect(screen.queryByText(/bpm/)).not.toBeInTheDocument();
   });
 
   // A ride carries the sensors it carries: a figure the profile or the ride did

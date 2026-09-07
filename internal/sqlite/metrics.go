@@ -211,6 +211,12 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				IntensityFactor: row.IntensityFactor.Float64,
 				TSS:             row.PowerTss.Float64,
 			},
+			// Only the two rates the zones were cut at: the rest of the inputs
+			// are read back by the staleness check, from its own query.
+			Inputs: trainingload.Inputs{
+				MaxHeartRateBPM:       row.InputMaxHeartRate,
+				ThresholdHeartRateBPM: row.InputThresholdHeartRate,
+			},
 		}
 		one.Zones = trainingload.Zones{
 			row.Zone1Seconds.Float64, row.Zone2Seconds.Float64, row.Zone3Seconds.Float64,

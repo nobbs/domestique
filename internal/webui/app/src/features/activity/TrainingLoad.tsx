@@ -60,39 +60,69 @@ export function Figure({ label, scale, value, decimals = 0 }: Scale) {
   );
 }
 
-/** The zone bar, each zone as wide as the share of the ride it held. */
-function ZoneBar({ zoneSeconds }: { zoneSeconds: number[] }) {
-  const total = zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
-  if (total <= 0) {
-    return null;
+/**
+ * The heart rates each zone covers, easiest first. Open at both ends — the
+ * easiest zone has nothing below it and the hardest nothing above — so neither
+ * is given a limit the profile never said. A bound cut from a percentage lands
+ * between two beats, and a sample below it is still the easier zone, so both
+ * edges take the ceiling rather than the nearer beat.
+ */
+function zoneRanges(bounds: number[]): string[] {
+  const ranges: string[] = [];
+  let low: number | undefined;
+  for (const bound of bounds) {
+    const edge = Math.ceil(bound);
+    ranges.push(low === undefined ? `below ${edge} bpm` : `${low}–${edge - 1} bpm`);
+    low = edge;
+  }
+  if (low !== undefined) {
+    ranges.push(`${low} bpm and up`);
   }
 
+  return ranges;
+}
+
+/** One bar per zone, all on the scale the longest zone sets. */
+function ZoneBars({
+  zoneSeconds,
+  zoneBounds,
+}: {
+  zoneSeconds: number[];
+  zoneBounds: number[] | undefined;
+}) {
+  const longest = Math.max(...zoneSeconds);
+  if (longest <= 0) {
+    return null;
+  }
+  const ranges = zoneBounds ? zoneRanges(zoneBounds) : [];
+
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex h-3 overflow-hidden rounded-full" role="presentation">
-        {zoneSeconds.map((seconds, zone) => (
-          <div
-            // Zones are a fixed ordered set of five, so the index is their identity.
-            key={ZONE_NAMES[zone]}
-            className="h-full"
-            style={{
-              width: `${(seconds / total) * 100}%`,
-              // Easiest to hardest across the accent, so the bar reads as one
-              // gradient rather than five unrelated colours.
-              backgroundColor: `color-mix(in oklab, var(--accent) ${20 + zone * 20}%, var(--panel))`,
-            }}
-          />
-        ))}
-      </div>
-      <ul className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-5">
-        {zoneSeconds.map((seconds, zone) => (
-          <li key={ZONE_NAMES[zone]} className="flex flex-col">
-            <span className="text-[var(--ink-2)] text-xs">{ZONE_NAMES[zone]}</span>
-            <span className="text-sm tabular-nums">{formatZoneTime(seconds)}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul className="flex flex-col gap-1.5">
+      {zoneSeconds.map((seconds, zone) => (
+        // Zones are a fixed ordered set of five, so the name is their identity.
+        <li key={ZONE_NAMES[zone]} className="grid grid-cols-[7.5rem_1fr_auto] items-center gap-3">
+          <span className="flex flex-col text-[var(--ink-2)]">
+            <span className="text-xs">{ZONE_NAMES[zone]}</span>
+            {ranges[zone] ? (
+              <span className="text-[10px] tabular-nums opacity-70">{ranges[zone]}</span>
+            ) : null}
+          </span>
+          {/* The time beside it says the same thing, so the bar is decoration. */}
+          <span aria-hidden="true" className="flex h-2.5 rounded-full bg-black/5">
+            <span
+              className="h-full rounded-full"
+              style={{
+                width: `${(seconds / longest) * 100}%`,
+                // Easiest to hardest across the accent, so the five bars read as
+                // one scale rather than five unrelated colours.
+                backgroundColor: `color-mix(in oklab, var(--accent) ${20 + zone * 20}%, var(--panel))`,
+              }}
+            />
+          </span>
+          <span className="text-sm tabular-nums">{formatZoneTime(seconds)}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -118,7 +148,9 @@ export function TrainingLoad({ metrics }: { metrics: ActivityMetrics | undefined
       aria-label="Training load"
     >
       <h2 className="font-medium text-sm">Training load</h2>
-      {metrics.zoneSeconds ? <ZoneBar zoneSeconds={metrics.zoneSeconds} /> : null}
+      {metrics.zoneSeconds ? (
+        <ZoneBars zoneSeconds={metrics.zoneSeconds} zoneBounds={metrics.zoneBoundsBpm} />
+      ) : null}
       {shown.length > 0 ? (
         <div className="flex flex-wrap gap-x-8 gap-y-3">
           {shown.map((figure) => (

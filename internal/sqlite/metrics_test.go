@@ -74,6 +74,11 @@ func TestActivityMetricsRoundTrip(t *testing.T) {
 	assert.True(t, read[1].Load.HasZones && read[1].Load.HasTRIMP && read[1].Load.HasHeartRateTSS && read[1].Load.HasPower)
 	assert.True(t, read[1].Load.HasEstimatedPower, "the ride's average estimate")
 	assert.Equal(t, stored.Averages, read[1].Averages, "and the plain sensor figures beside them")
+	// The two rates the zones were cut at come back, so the page can say what
+	// each zone covered without reading the rider's current profile.
+	assert.InDelta(t, stored.Load.Inputs.ThresholdHeartRateBPM,
+		read[1].Load.Inputs.ThresholdHeartRateBPM, 1e-9)
+	assert.InDelta(t, stored.Load.Inputs.MaxHeartRateBPM, read[1].Load.Inputs.MaxHeartRateBPM, 1e-9)
 }
 
 // A ride with heart rate but no meter keeps its zones and loses nothing to a
