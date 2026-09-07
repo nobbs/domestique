@@ -322,7 +322,7 @@ func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {
 	assert.False(t, store.written[7].Load.HasEstimatedPower, "the ride measured its own power")
 	assert.Empty(t, store.estimated[7], "and the stored series is cleared rather than filled")
 	assert.True(t, store.written[7].Load.HasPower, "the measured numbers are still worked out")
-	assert.Zero(t, store.written[7].EstimateQuality, "no estimate means no quality to report either")
+	assert.False(t, store.written[7].HasEstimateQuality, "no estimate means no quality to report either")
 }
 
 // A ride with no usable track is skipped rather than estimated as zero, and so

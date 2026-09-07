@@ -162,6 +162,8 @@ func (s *Store) StoreActivityMetrics(
 	for index := range zones {
 		zones[index] = nullFloat(metrics.Zones[index], metrics.HasZones)
 	}
+	// A quality without an estimate is not one: the columns go together.
+	hasQuality := metrics.HasEstimatedPower && stored.HasEstimateQuality
 	if err := s.queries.UpsertActivityMetrics(ctx, sqlcgen.UpsertActivityMetricsParams{
 		TargetSlot: targetID, WorkoutID: id,
 		Zone1Seconds: zones[0], Zone2Seconds: zones[1], Zone3Seconds: zones[2],
@@ -172,10 +174,10 @@ func (s *Store) StoreActivityMetrics(
 		IntensityFactor:         nullFloat(metrics.Power.IntensityFactor, metrics.HasPower),
 		PowerTss:                nullFloat(metrics.Power.TSS, metrics.HasPower),
 		EstimatedPowerWatts:     nullFloat(metrics.EstimatedPowerWatts, metrics.HasEstimatedPower),
-		EstimateAutocorrelation: nullFloat(stored.EstimateQuality.Autocorrelation1, stored.HasEstimateQuality),
+		EstimateAutocorrelation: nullFloat(stored.EstimateQuality.Autocorrelation1, hasQuality),
 		EstimateDeltaWattsPerSecond: nullFloat(
-			stored.EstimateQuality.MeanAbsDeltaWattsPerSecond, stored.HasEstimateQuality),
-		EstimateClipBiasWatts:   nullFloat(stored.EstimateQuality.ClipBiasWatts, stored.HasEstimateQuality),
+			stored.EstimateQuality.MeanAbsDeltaWattsPerSecond, hasQuality),
+		EstimateClipBiasWatts:   nullFloat(stored.EstimateQuality.ClipBiasWatts, hasQuality),
 		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
 		MaxHeartRateBpm:         nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
 		AverageCadenceRpm:       nullFloat(averages.CadenceRPM, averages.HasCadence),
@@ -245,8 +247,9 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				ClipBiasWatts:              row.EstimateClipBiasWatts.Float64,
 			},
 			// A row derived before the diagnostics existed holds nulls here
-			// until it is derived again; a null is not a quality of nought.
-			HasEstimateQuality: row.EstimateAutocorrelation.Valid &&
+			// until it is derived again; a null is not a quality of nought, and
+			// a quality without an estimate is not one either.
+			HasEstimateQuality: row.EstimatedPowerWatts.Valid && row.EstimateAutocorrelation.Valid &&
 				row.EstimateDeltaWattsPerSecond.Valid && row.EstimateClipBiasWatts.Valid,
 		}
 	}

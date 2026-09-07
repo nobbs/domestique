@@ -108,7 +108,7 @@ func TestActivityMetricsKeepEachPartAbsentOnItsOwn(t *testing.T) {
 	assert.False(t, read[1].Load.HasPower, "and no ride carried a meter")
 	assert.False(t, read[1].Averages.HasCadence, "nor a cadence sensor")
 	assert.False(t, read[1].Load.HasEstimatedPower, "nor an estimate")
-	assert.Zero(t, read[1].EstimateQuality, "so its quality reads back null, not zero as a value")
+	assert.False(t, read[1].HasEstimateQuality, "so its quality reads back absent, not zero as a value")
 }
 
 // A profile edit that takes a parameter away takes its numbers with it: a
