@@ -152,6 +152,28 @@ func TestGradeIsNotMeasuredAcrossARecordingGap(t *testing.T) {
 	}
 }
 
+// A rider stopped at the lights still records. The stretch covers no distance,
+// so there is no gradient to name and nothing to charge them for — and the
+// window is measured end to end rather than walked outward from every one of
+// those samples, which would cost the square of the stop's length.
+func TestSeriesHandlesAStretchShorterThanTheGradeWindow(t *testing.T) {
+	t.Parallel()
+	stationary := make([]powerestimate.Sample, 600)
+	for index := range stationary {
+		stationary[index] = powerestimate.Sample{
+			At:             start().Add(time.Duration(index) * time.Second),
+			DistanceMetres: 0,
+			AltitudeMetres: 100,
+		}
+	}
+
+	estimates, ok := powerestimate.Series(stationary, 82)
+	require.True(t, ok, "the samples are still samples")
+	for index, estimate := range estimates {
+		assert.Zero(t, estimate.Watts, "sample %d: standing still costs nothing", index)
+	}
+}
+
 func TestSeriesNeedsAMassAndMoreThanOneSample(t *testing.T) {
 	t.Parallel()
 	_, ok := powerestimate.Series(ride(300, 7.5, 0), 0)

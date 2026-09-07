@@ -129,6 +129,13 @@ func unbrokenStretches(samples []Sample) []stretch {
 // distance, or over as much of it as that stretch of recording holds.
 func gradeAt(samples []Sample, index int, bounds []stretch) float64 {
 	within := bounds[index]
+	// A stretch shorter than the window has one answer for every sample in it,
+	// so it is measured end to end rather than walked outward from each. A long
+	// stationary stretch is exactly that case, and walking it per sample would
+	// cost the square of its length.
+	if run := samples[within.past-1].DistanceMetres - samples[within.first].DistanceMetres; run < gradeWindowMetres {
+		return slope(samples[within.first], samples[within.past-1])
+	}
 	low, high := index, index
 	for samples[high].DistanceMetres-samples[low].DistanceMetres < gradeWindowMetres {
 		moved := false
@@ -144,12 +151,19 @@ func gradeAt(samples []Sample, index int, bounds []stretch) float64 {
 			break
 		}
 	}
-	run := samples[high].DistanceMetres - samples[low].DistanceMetres
+	return slope(samples[low], samples[high])
+}
+
+// slope is the rise between two samples over the distance between them, and
+// zero where they cover no distance at all: a rider who has not moved is on no
+// gradient this model can name.
+func slope(low, high Sample) float64 {
+	run := high.DistanceMetres - low.DistanceMetres
 	if run <= 0 {
 		return 0
 	}
 
-	return (samples[high].AltitudeMetres - samples[low].AltitudeMetres) / run
+	return (high.AltitudeMetres - low.AltitudeMetres) / run
 }
 
 // Average is the mean of the estimates that were worked out, and whether there
