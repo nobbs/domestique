@@ -185,8 +185,9 @@ function Stat({
   );
 }
 
+/** Easiest to hardest on the same severity ramp the gradient bands wear. */
 function zoneColour(zone: number): string {
-  return `color-mix(in oklab, var(--accent) ${20 + zone * 20}%, var(--panel))`;
+  return `var(--grade-${zone})`;
 }
 
 /** One bar, five segments: the ride's time as a whole rather than five races to the right edge. */
