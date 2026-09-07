@@ -84,6 +84,7 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 				CadenceRPM: 81.5, HasCadence: true,
 				PowerWatts: 196.25, HasPower: true,
 			},
+			HasEstimateQuality: true,
 			EstimateQuality: measure.Quality{
 				Autocorrelation1: 0.91, MeanAbsDeltaWattsPerSecond: 11.4, ClipBiasWatts: 2.1,
 			},
@@ -140,6 +141,26 @@ func TestGetActivitiesCarriesNoEstimateQualityWithoutAnEstimate(t *testing.T) {
 	derived := list.Activities[0]
 	require.NotNil(t, derived.Metrics)
 	assert.Nil(t, derived.Metrics.EstimatedPowerWatts)
+	assert.Nil(t, derived.Metrics.EstimateQuality)
+}
+
+// A ride derived before the diagnostics existed carries an estimate and no
+// quality until it is derived again; nulls are not a quality of nought.
+func TestGetActivitiesCarriesNoEstimateQualityForAnEstimateDerivedBeforeItExisted(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{EstimatedPowerWatts: 150, HasEstimatedPower: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedPowerWatts)
 	assert.Nil(t, derived.Metrics.EstimateQuality)
 }
 

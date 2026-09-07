@@ -297,6 +297,7 @@ func TestDeriveStoresTheEstimateQualityEstimateSeriesReports(t *testing.T) {
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
 	assert.Equal(t, wantQuality, store.written[7].EstimateQuality)
+	assert.True(t, store.written[7].HasEstimateQuality)
 }
 
 // An estimate exists because there is no meter. Putting one beside a real

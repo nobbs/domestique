@@ -273,8 +273,11 @@ figures both take a maximum or a fourth power and so amplify noise rather
 than average it away. Computed by `EstimateSeries` and returned beside the
 series; stored on the ride's metrics row alongside the estimate
 (`activity_metrics.estimate_autocorrelation`,
-`estimate_delta_watts_per_second`, `estimate_clip_bias_watts`), served as
-`estimateQuality` beside `estimatedPowerWatts`, and shown on the ride page.
+`activity_metrics.estimate_delta_watts_per_second`,
+`activity_metrics.estimate_clip_bias_watts`), served as `estimateQuality`
+beside `estimatedPowerWatts`, and shown on the ride page. A ride derived
+before those columns existed holds nulls in them and is served without an
+`estimateQuality` until the bumped derivation version lists it again.
 The three thresholds above remain the handover's own targets, not a rule this
 service enforces: nothing in this service gates on the diagnostics yet.
 

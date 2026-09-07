@@ -172,10 +172,10 @@ func (s *Store) StoreActivityMetrics(
 		IntensityFactor:         nullFloat(metrics.Power.IntensityFactor, metrics.HasPower),
 		PowerTss:                nullFloat(metrics.Power.TSS, metrics.HasPower),
 		EstimatedPowerWatts:     nullFloat(metrics.EstimatedPowerWatts, metrics.HasEstimatedPower),
-		EstimateAutocorrelation: nullFloat(stored.EstimateQuality.Autocorrelation1, metrics.HasEstimatedPower),
+		EstimateAutocorrelation: nullFloat(stored.EstimateQuality.Autocorrelation1, stored.HasEstimateQuality),
 		EstimateDeltaWattsPerSecond: nullFloat(
-			stored.EstimateQuality.MeanAbsDeltaWattsPerSecond, metrics.HasEstimatedPower),
-		EstimateClipBiasWatts:   nullFloat(stored.EstimateQuality.ClipBiasWatts, metrics.HasEstimatedPower),
+			stored.EstimateQuality.MeanAbsDeltaWattsPerSecond, stored.HasEstimateQuality),
+		EstimateClipBiasWatts:   nullFloat(stored.EstimateQuality.ClipBiasWatts, stored.HasEstimateQuality),
 		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
 		MaxHeartRateBpm:         nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
 		AverageCadenceRpm:       nullFloat(averages.CadenceRPM, averages.HasCadence),
@@ -244,6 +244,10 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				MeanAbsDeltaWattsPerSecond: row.EstimateDeltaWattsPerSecond.Float64,
 				ClipBiasWatts:              row.EstimateClipBiasWatts.Float64,
 			},
+			// A row derived before the diagnostics existed holds nulls here
+			// until it is derived again; a null is not a quality of nought.
+			HasEstimateQuality: row.EstimateAutocorrelation.Valid &&
+				row.EstimateDeltaWattsPerSecond.Valid && row.EstimateClipBiasWatts.Valid,
 		}
 	}
 

@@ -188,7 +188,7 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		load.EstimatedPowerWatts, load.HasEstimatedPower = average.Watts, average.Known
 		metrics := RideMetrics{Load: load, Averages: samples.Averages()}
 		if load.HasEstimatedPower {
-			metrics.EstimateQuality = quality
+			metrics.EstimateQuality, metrics.HasEstimateQuality = quality, true
 		}
 		// The series first: a metrics row is what says a ride has been derived,
 		// so it must not appear before the samples it describes are in place.

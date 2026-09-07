@@ -76,13 +76,14 @@ func meanAndPeak(samples []trainingload.Sample, skipZeroReadings bool) (mean, pe
 }
 
 // RideMetrics is everything one derivation writes about a ride: the load
-// figures the rider's profile shapes, the sensor averages it does not, and —
-// present exactly when Load.HasEstimatedPower is — the estimate's own quality
-// diagnostics.
+// figures the rider's profile shapes, the sensor averages it does not, and the
+// estimate's own quality diagnostics. A row derived before those existed holds
+// an estimate and no quality, so the quality carries its own presence.
 type RideMetrics struct {
-	Load            trainingload.Metrics
-	Averages        RideAverages
-	EstimateQuality measure.Quality
+	Load               trainingload.Metrics
+	Averages           RideAverages
+	EstimateQuality    measure.Quality
+	HasEstimateQuality bool
 }
 
 // Derived reports whether anything at all came out, which is what decides

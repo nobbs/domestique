@@ -33,6 +33,7 @@ func derivedMetrics(inputs trainingload.Inputs) activity.RideMetrics {
 			CadenceRPM: 81.5, HasCadence: true,
 			PowerWatts: 196.25, HasPower: true,
 		},
+		HasEstimateQuality: true,
 		EstimateQuality: measure.Quality{
 			Autocorrelation1:           0.912,
 			MeanAbsDeltaWattsPerSecond: 14.2,
@@ -425,4 +426,18 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "clearing the activity metrics")
 	_, err = store.ActivityRideLoads(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the activity ride loads")
+}
+
+func TestActivityMetricsReadsNoQualityForAnEstimateDerivedBeforeItExisted(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs(), EstimatedPowerWatts: 150, HasEstimatedPower: true},
+	}), "StoreActivityMetrics()")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	assert.True(t, read[1].Load.HasEstimatedPower)
+	assert.False(t, read[1].HasEstimateQuality, "an estimate alone is not a quality")
 }

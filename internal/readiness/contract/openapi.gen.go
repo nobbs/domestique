@@ -193,7 +193,7 @@ type ActivityMetrics struct {
 	AveragePowerWatts *float64 `json:"averagePowerWatts,omitempty"`
 }
 
-// EstimateQuality What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present exactly when estimatedPowerWatts is. See docs/specs/measurement.md §Estimated power.
+// EstimateQuality What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present beside estimatedPowerWatts once the ride has been derived since these existed; a ride derived before then omits it until it is derived again. See docs/specs/measurement.md §Estimated power.
 type EstimateQuality struct {
 	// Autocorrelation The lag-1 Pearson correlation of the estimated watts with themselves shifted by one sample.
 	Autocorrelation float64 `json:"autocorrelation"`
