@@ -45,7 +45,7 @@ DELETE FROM activity_metrics WHERE target_slot = ?;
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts,
+  estimated_power_watts, input_max_heart_rate, input_threshold_heart_rate,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
 FROM activity_metrics
 WHERE target_slot = ?

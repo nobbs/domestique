@@ -168,6 +168,8 @@ type RideWeatherHour struct {
 type ActivityMetrics struct {
 	// ZoneSeconds How long the ride held each of five heart-rate zones, easiest first. Cut from the lactate threshold where the profile has one and from the maximum otherwise.
 	ZoneSeconds []float64 `json:"zoneSeconds,omitempty"`
+	// ZoneBoundsBpm The four heart rates the five zones were cut at, ascending, in beats per minute. Worked out from the profile values this ride was derived against, not the rider's current ones. Present whenever zoneSeconds is.
+	ZoneBoundsBpm []float64 `json:"zoneBoundsBpm,omitempty"`
 	// Trimp Banister's training impulse: how long the ride lasted, weighted by how much of the rider's heart-rate reserve it held.
 	Trimp *float64 `json:"trimp,omitempty"`
 	// HeartRateTss An hour held at the lactate threshold is a hundred.

@@ -132,7 +132,7 @@ const listActivityMetrics = `-- name: ListActivityMetrics :many
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts,
+  estimated_power_watts, input_max_heart_rate, input_threshold_heart_rate,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
 FROM activity_metrics
 WHERE target_slot = ?
@@ -140,22 +140,24 @@ ORDER BY workout_id
 `
 
 type ListActivityMetricsRow struct {
-	WorkoutID            int64
-	Zone1Seconds         sql.NullFloat64
-	Zone2Seconds         sql.NullFloat64
-	Zone3Seconds         sql.NullFloat64
-	Zone4Seconds         sql.NullFloat64
-	Zone5Seconds         sql.NullFloat64
-	Trimp                sql.NullFloat64
-	HeartRateTss         sql.NullFloat64
-	NormalizedPowerWatts sql.NullFloat64
-	IntensityFactor      sql.NullFloat64
-	PowerTss             sql.NullFloat64
-	EstimatedPowerWatts  sql.NullFloat64
-	AverageHeartRateBpm  sql.NullFloat64
-	MaxHeartRateBpm      sql.NullFloat64
-	AverageCadenceRpm    sql.NullFloat64
-	AveragePowerWatts    sql.NullFloat64
+	WorkoutID               int64
+	Zone1Seconds            sql.NullFloat64
+	Zone2Seconds            sql.NullFloat64
+	Zone3Seconds            sql.NullFloat64
+	Zone4Seconds            sql.NullFloat64
+	Zone5Seconds            sql.NullFloat64
+	Trimp                   sql.NullFloat64
+	HeartRateTss            sql.NullFloat64
+	NormalizedPowerWatts    sql.NullFloat64
+	IntensityFactor         sql.NullFloat64
+	PowerTss                sql.NullFloat64
+	EstimatedPowerWatts     sql.NullFloat64
+	InputMaxHeartRate       float64
+	InputThresholdHeartRate float64
+	AverageHeartRateBpm     sql.NullFloat64
+	MaxHeartRateBpm         sql.NullFloat64
+	AverageCadenceRpm       sql.NullFloat64
+	AveragePowerWatts       sql.NullFloat64
 }
 
 func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([]ListActivityMetricsRow, error) {
@@ -180,6 +182,8 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 			&i.IntensityFactor,
 			&i.PowerTss,
 			&i.EstimatedPowerWatts,
+			&i.InputMaxHeartRate,
+			&i.InputThresholdHeartRate,
 			&i.AverageHeartRateBpm,
 			&i.MaxHeartRateBpm,
 			&i.AverageCadenceRpm,

@@ -231,6 +231,12 @@ export interface ActivityMetrics {
    * @maxItems 5
    */
   zoneSeconds?: number[];
+  /**
+   * The four heart rates the five zones were cut at, ascending, in beats per minute. Worked out from the profile values this ride was derived against, not the rider's current ones. Present whenever zoneSeconds is.
+   * @minItems 4
+   * @maxItems 4
+   */
+  zoneBoundsBpm?: number[];
   /** Banister's training impulse: how long the ride lasted, weighted by how much of the rider's heart-rate reserve it held. */
   trimp?: number;
   /** An hour held at the lactate threshold is a hundred. */

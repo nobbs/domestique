@@ -9,6 +9,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 // weatherSummary is the wire form of what a ride's hours came to. A ride nobody
@@ -61,6 +62,11 @@ func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
 	view := &openapi.ActivityMetrics{}
 	if metrics.HasZones {
 		view.ZoneSeconds = metrics.Zones[:]
+		if bounds, ok := trainingload.BoundsFrom(
+			metrics.Inputs.ThresholdHeartRateBPM, metrics.Inputs.MaxHeartRateBPM,
+		); ok {
+			view.ZoneBoundsBpm = bounds[:]
+		}
 	}
 	if metrics.HasTRIMP {
 		view.Trimp = &metrics.TRIMP
