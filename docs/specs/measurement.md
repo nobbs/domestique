@@ -22,23 +22,21 @@ d      = R · 2 · atan2(sqrt(a), sqrt(1 - a))
 d is in metres; lat and lon are in radians.
 
 **Constants.** R = `measure.EarthRadiusMetres` = 6 371 000 m
-(`internal/measure/geo.go`). `internal/route/route.go` still declares the
-same value as `route.EarthRadiusMetres` until its callers move.
+(`internal/measure/geo.go`).
 
 **Source.** Sinnott 1984 (haversine formula).
 
-**Applied by.** `internal/route/route.go` `HaversineMetres`. Callers today
-reach it as `route.HaversineMetres`: `route` itself (route length,
-`MaxGradientPercent`), `elevation` (resampling), `fit`, `wahoo`, `surface`,
-`ridemodel`, `demo`. `internal/webui/app/src/lib/profile.ts`
+**Applied by.** `internal/measure/geo.go` `HaversineMetres`. Callers reach it
+as `measure.HaversineMetres` via `route.Point.Coordinate()`:
+`route` itself (route length, `MaxGradientPercent`), `elevation`
+(resampling), `fit`, `wahoo`, `surface`, `ridemodel`, `demo`.
+`route.CumulativeMetres` is the running sum over a geometry, built on
+`measure.CumulativeMetres`. `internal/webui/app/src/lib/profile.ts`
 `haversineMetres` is the browser's own copy on the same radius
 (`EARTH_RADIUS_METRES`), kept in step under
 [implementation-architecture.md](implementation-architecture.md)'s
 "interaction pulls work forwards" rule: route-only arithmetic run on every
 hover or drag frame is implemented in the browser as well as in Go.
-`measure.HaversineMetres` is the same body in `internal/measure/geo.go`; the
-Go callers move onto it one package at a time, and nothing above changes
-when they do.
 
 **Status.** Validated: this is the standard formula, and both
 implementations agree to the metre by construction.

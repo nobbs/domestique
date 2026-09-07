@@ -3,6 +3,7 @@ package surface
 import (
 	"math"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -140,7 +141,7 @@ func MatchedMetres(points []route.Point, kinds []Kind) float64 {
 		if kinds[index-1] == KindUnknown && kinds[index] == KindUnknown {
 			continue
 		}
-		total += route.HaversineMetres(points[index-1], points[index])
+		total += measure.HaversineMetres(points[index-1].Coordinate(), points[index].Coordinate())
 	}
 
 	return total
@@ -212,7 +213,7 @@ func newProjection(longitude, latitude float64) projection {
 }
 
 func (p projection) project(longitude, latitude float64) (east, north float64) {
-	metresPerDegree := route.EarthRadiusMetres * math.Pi / 180
+	metresPerDegree := measure.EarthRadiusMetres * math.Pi / 180
 
 	return (longitude - p.referenceLongitude) * metresPerDegree * p.longitudeScale,
 		(latitude - p.referenceLatitude) * metresPerDegree

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -76,7 +77,7 @@ func resampleElevations(points []route.Point) []sample {
 	distanceSoFar := 0.0
 	for index := 1; index < len(points); index++ {
 		previous, current := points[index-1], points[index]
-		segmentDistance := route.HaversineMetres(previous, current)
+		segmentDistance := measure.HaversineMetres(previous.Coordinate(), current.Coordinate())
 		for segmentDistance > 0 && distanceSoFar+segmentDistance >= nextSample {
 			ratio := (nextSample - distanceSoFar) / segmentDistance
 			result = append(result, sample{
@@ -115,7 +116,7 @@ func applyElevations(points []route.Point, samples []sample) {
 	sampleIndex := 0
 	for index := range points {
 		if index > 0 {
-			distanceSoFar += route.HaversineMetres(points[index-1], points[index])
+			distanceSoFar += measure.HaversineMetres(points[index-1].Coordinate(), points[index].Coordinate())
 		}
 		for sampleIndex+1 < len(samples) && samples[sampleIndex+1].distance <= distanceSoFar {
 			sampleIndex++

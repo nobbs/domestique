@@ -3,13 +3,14 @@ package wahoo
 import (
 	"strconv"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
 func calculateMetrics(geometry []route.Point) routeMetrics {
 	var metrics routeMetrics
 	for index := 1; index < len(geometry); index++ {
-		metrics.distance += route.HaversineMetres(geometry[index-1], geometry[index])
+		metrics.distance += measure.HaversineMetres(geometry[index-1].Coordinate(), geometry[index].Coordinate())
 		if geometry[index-1].Elevation != nil && geometry[index].Elevation != nil {
 			delta := *geometry[index].Elevation - *geometry[index-1].Elevation
 			if delta > 0 {

@@ -8,11 +8,9 @@ import (
 	"math"
 	"slices"
 	"strings"
-)
 
-// EarthRadiusMetres is the one spherical Earth model distances are computed
-// on, exported so every package's lengths agree with the ones shown beside them.
-const EarthRadiusMetres = 6_371_000.0
+	"github.com/nobbs/domestique/internal/measure"
+)
 
 // gradientWindowMetres is the shortest span a gradient is measured over. It
 // matches the elevation normalizer's median window.
@@ -82,6 +80,11 @@ type Point struct {
 	Elevation *float64
 	Longitude float64
 	Latitude  float64
+}
+
+// Coordinate returns the point's position on the sphere, without its elevation.
+func (p Point) Coordinate() measure.Coordinate {
+	return measure.Coordinate{Latitude: p.Latitude, Longitude: p.Longitude}
 }
 
 // Bounds is the axis-aligned geographic extent of a route geometry.
@@ -236,7 +239,7 @@ func (s *Route) Geometry() []Point {
 func (s *Route) DistanceMetres() float64 {
 	total := 0.0
 	for index := 1; index < len(s.geometry); index++ {
-		total += HaversineMetres(s.geometry[index-1], s.geometry[index])
+		total += measure.HaversineMetres(s.geometry[index-1].Coordinate(), s.geometry[index].Coordinate())
 	}
 
 	return total
@@ -317,10 +320,7 @@ func (s *Route) MaxGradientPercent() float64 {
 
 	// Cumulative distance along the route, so a window can be found by
 	// scanning forward rather than re-measuring.
-	distances := make([]float64, len(s.geometry))
-	for index := 1; index < len(s.geometry); index++ {
-		distances[index] = distances[index-1] + HaversineMetres(s.geometry[index-1], s.geometry[index])
-	}
+	distances := CumulativeMetres(s.geometry)
 
 	steepest := 0.0
 	trailing := 0
@@ -355,18 +355,20 @@ func (s *Route) hasCompleteElevation() bool {
 	return true
 }
 
-// HaversineMetres returns the great-circle distance between two points on the
-// EarthRadiusMetres sphere.
-func HaversineMetres(left, right Point) float64 {
-	latitudeDelta := (right.Latitude - left.Latitude) * math.Pi / 180
-	longitudeDelta := (right.Longitude - left.Longitude) * math.Pi / 180
-	leftLatitude := left.Latitude * math.Pi / 180
-	rightLatitude := right.Latitude * math.Pi / 180
-	chord := math.Sin(latitudeDelta/2)*math.Sin(latitudeDelta/2) +
-		math.Cos(leftLatitude)*math.Cos(rightLatitude)*
-			math.Sin(longitudeDelta/2)*math.Sin(longitudeDelta/2)
+// CumulativeMetres returns the running great-circle distance along points,
+// one entry per point with the first at zero. Nil for empty input.
+//
+// See docs/specs/measurement.md §Spherical distance.
+func CumulativeMetres(points []Point) []float64 {
+	if len(points) == 0 {
+		return nil
+	}
+	coordinates := make([]measure.Coordinate, len(points))
+	for index, point := range points {
+		coordinates[index] = point.Coordinate()
+	}
 
-	return EarthRadiusMetres * 2 * math.Atan2(math.Sqrt(chord), math.Sqrt(1-chord))
+	return measure.CumulativeMetres(coordinates)
 }
 
 func validatePoint(point Point) error {

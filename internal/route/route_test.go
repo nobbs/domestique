@@ -255,3 +255,16 @@ func TestNewStageRejectsInvalidIdentityAndGeometry(t *testing.T) {
 		})
 	}
 }
+
+func TestCumulativeMetresRunsFromZeroAndIsNilForNoPoints(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, CumulativeMetres(nil))
+
+	points := []Point{{Latitude: 50, Longitude: 8}, {Latitude: 50, Longitude: 8}, {Latitude: 50.001, Longitude: 8}}
+	distances := CumulativeMetres(points)
+
+	require.Len(t, distances, 3)
+	assert.Zero(t, distances[0])
+	assert.Zero(t, distances[1])
+	assert.InDelta(t, 111.2, distances[2], 0.1)
+}

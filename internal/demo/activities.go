@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
@@ -207,7 +208,7 @@ func (s *rideSpec) records(stages []route.Route, start time.Time) ([]activity.Re
 	for index := range geometry {
 		point := &geometry[index]
 		if index > 0 {
-			distance += route.HaversineMetres(geometry[index-1], geometry[index])
+			distance += measure.HaversineMetres(geometry[index-1].Coordinate(), geometry[index].Coordinate())
 		}
 		fraction := float64(index) / float64(len(geometry)-1)
 		elapsed := prediction.CumulativeSeconds[index] * riddenSlowerThanPredicted
@@ -284,7 +285,7 @@ func gradientAt(geometry []route.Point, index int) float64 {
 	if index == 0 || geometry[index].Elevation == nil || geometry[index-1].Elevation == nil {
 		return 0
 	}
-	span := route.HaversineMetres(geometry[index-1], geometry[index])
+	span := measure.HaversineMetres(geometry[index-1].Coordinate(), geometry[index].Coordinate())
 	if span <= 0 {
 		return 0
 	}
