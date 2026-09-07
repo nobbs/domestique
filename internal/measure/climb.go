@@ -7,7 +7,10 @@ type Climb struct {
 	StartMetres, EndMetres, DistanceMetres float64
 	AscentMetres                           float64 // the rises within the climb only
 	AverageGradePercent                    float64 // net rise over the climb's length, which a dip inside it can only lower
-	MaxGradePercent                        float64 // the steepest window inside the climb
+	// MaxGradePercent is the steepest gradient measured inside the climb, over
+	// the full window where the profile holds one behind the point and over
+	// the shorter span it does at the profile's start, as the browser reports it.
+	MaxGradePercent float64
 }
 
 // climbRun is a stretch of the profile classified climbing or not, by index range.
