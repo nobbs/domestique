@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
-	"github.com/nobbs/domestique/internal/powerestimate"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +26,7 @@ type fakeDeriveStore struct {
 	estimateErr      error
 	rides            map[int64]activity.RideSamples
 	written          map[int64]activity.RideMetrics
-	estimated        map[int64][]powerestimate.Estimate
+	estimated        map[int64][]measure.Estimate
 	owner            string
 	owed             []int64
 	writeOrder       []int64
@@ -60,13 +60,13 @@ func (s *fakeDeriveStore) ActivityRideSamples(
 }
 
 func (s *fakeDeriveStore) StoreEstimatedPower(
-	_ context.Context, _ string, id int64, records []int64, estimates []powerestimate.Estimate,
+	_ context.Context, _ string, id int64, records []int64, estimates []measure.Estimate,
 ) error {
 	if s.estimateErr != nil {
 		return s.estimateErr
 	}
 	if s.estimated == nil {
-		s.estimated = map[int64][]powerestimate.Estimate{}
+		s.estimated = map[int64][]measure.Estimate{}
 	}
 	s.estimated[id] = estimates
 	s.estimatedRecords = records
@@ -240,7 +240,7 @@ func trackRide(seconds int) activity.RideSamples {
 	samples := activity.RideSamples{}
 	base := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
 	for index := range seconds {
-		samples.Track = append(samples.Track, powerestimate.Sample{
+		samples.Track = append(samples.Track, measure.Sample{
 			At:             base.Add(time.Duration(index) * time.Second),
 			DistanceMetres: 7.5 * float64(index),
 			AltitudeMetres: 100,

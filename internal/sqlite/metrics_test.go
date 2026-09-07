@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
-	"github.com/nobbs/domestique/internal/powerestimate"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -248,7 +248,7 @@ func TestStoreEstimatedPowerWritesTheSeriesAndClearsItAgain(t *testing.T) {
 	}), "StoreActivityRecords()")
 
 	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
-		[]int64{0, 1}, []powerestimate.Estimate{{}, {Watts: 214, Known: true}}),
+		[]int64{0, 1}, []measure.Estimate{{}, {Watts: 214, Known: true}}),
 		"StoreEstimatedPower()")
 
 	track, err := store.ActivityTrack(t.Context(), "rider-a", 1)
@@ -272,7 +272,7 @@ func TestStoreEstimatedPowerRefusesMismatchedSeries(t *testing.T) {
 	store := metricsStore(t, 1)
 
 	require.ErrorContains(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
-		[]int64{0}, []powerestimate.Estimate{{}, {}}), "an estimate per record or none")
+		[]int64{0}, []measure.Estimate{{}, {}}), "an estimate per record or none")
 }
 
 // A mass change makes every estimate stale, so a row worked out against another

@@ -15,7 +15,6 @@ func flat(n int, speedMS float64) []measure.Sample {
 }
 
 // ramp records one sample a second at a constant speed up a constant grade.
-// internal/powerestimate/estimate_test.go ride, copied verbatim.
 func ramp(n int, speedMS, grade float64) []measure.Sample {
 	samples := make([]measure.Sample, n)
 	for index := range samples {
