@@ -559,7 +559,9 @@ The read-only JSON surface is small:
   still cut from where its own samples begin. The seconds are moving ones: a
   pair of samples the odometer did not advance over is a rider standing still
   and is left out, which is what keeps a café stop from reading as a slow
-  kilometre. A stretch nothing was recorded across — a gap in the recording —
+  kilometre. A pair whose clock did not advance either — two records in the same
+  second, or a device correcting itself mid-ride — times nothing rather than
+  nought or less, on the same terms the `speed` series refuses one a speed. A stretch nothing was recorded across — a gap in the recording —
   keeps its place in the list and carries nought rather than handing its ground
   to a neighbour. A ride's last stretch is whatever was left over, which is what
   its own distance says.

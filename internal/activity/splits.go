@@ -65,10 +65,13 @@ type splitParts struct {
 	power         mean
 }
 
-// add folds the step from one sample to the next into the stretch it ended in.
+// add folds the step from one sample to the next into the stretch it began in.
 func (p *splitParts) add(previous, current *SampleRow) {
-	if current.DistanceMetres.Value > previous.DistanceMetres.Value {
-		p.movingSeconds += current.Time.Sub(previous.Time).Seconds()
+	// The same pair `speedSeries` refuses to report a speed for: a clock that
+	// did not advance, or went backwards over a correction, times nothing.
+	seconds := current.Time.Sub(previous.Time).Seconds()
+	if seconds > 0 && current.DistanceMetres.Value > previous.DistanceMetres.Value {
+		p.movingSeconds += seconds
 	}
 	if current.AltitudeMetres.Known && previous.AltitudeMetres.Known {
 		// Raw positive steps, unsmoothed, exactly as a route's own gain is cut.

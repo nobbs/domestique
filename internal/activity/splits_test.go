@@ -101,6 +101,25 @@ func TestSplitsLeavesOutTheSecondsTheOdometerDidNotAdvanceOver(t *testing.T) {
 	assert.InDelta(t, 120.0, splits[0].MovingSeconds, 0.001)
 }
 
+// Two records in the same second are ordinary at one hertz, and a device
+// correcting its clock mid-ride puts a pair behind. Neither times anything,
+// rather than timing nought or less.
+func TestSplitsIgnoresAPairWhoseClockDidNotAdvance(t *testing.T) {
+	rows := []activity.SampleRow{
+		sample(0, 0),
+		sample(60, 400),
+		// The same second, with the odometer still advancing.
+		sample(60, 700),
+		// And a correction that puts the clock behind the sample before it.
+		sample(30, 1000),
+	}
+
+	splits := activity.Splits(rows, 1000)
+
+	require.Len(t, splits, 1)
+	assert.InDelta(t, 60.0, splits[0].MovingSeconds, 0.001)
+}
+
 func TestSplitsCountsOnlyTheClimbingPartsOfAStretch(t *testing.T) {
 	rows := []activity.SampleRow{
 		sample(0, 0, altitude(100)),
