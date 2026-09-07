@@ -175,9 +175,12 @@ describe("stepStarts", () => {
     expect(stepStarts([early], started, 3_600, 2_000, [split(1800), split(1800)])).toEqual([0]);
   });
 
-  // Without splits there is only elapsed time to spread the steps by.
-  it("spreads the steps by elapsed time when there are no splits", () => {
+  // Without splits there is only elapsed time to spread the steps by, and
+  // splits that add up to no distance are no better than none.
+  it("spreads the steps by elapsed time when the splits place nothing", () => {
     expect(stepStarts(TWO_STEPS, started, 7_200, 20_000, [])).toEqual([0, 10_000]);
     expect(stepStarts(TWO_STEPS, started, 0, 20_000, [])).toEqual([0, 0]);
+    const unmoved: ActivitySplit = { distanceMetres: 0, movingSeconds: 0, ascentMetres: 0 };
+    expect(stepStarts(TWO_STEPS, started, 7_200, 20_000, [unmoved, unmoved])).toEqual([0, 10_000]);
   });
 });

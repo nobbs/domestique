@@ -55,11 +55,12 @@ export function stepStarts(
 ): number[] {
   const started = new Date(startedAt).getTime();
   const odometer = splits.reduce((sum, split) => sum + split.distanceMetres, 0);
-  const scale = odometer > 0 ? totalMetres / odometer : 0;
+  const scale = totalMetres / odometer;
 
   return steps.map((step) => {
     const seconds = Math.max((new Date(step.time).getTime() - started) / 1000, 0);
-    if (splits.length === 0) {
+    // Splits that add up to no distance place nothing, the same as none at all.
+    if (odometer <= 0) {
       return elapsedSeconds > 0
         ? Math.min((seconds / elapsedSeconds) * totalMetres, totalMetres)
         : 0;
