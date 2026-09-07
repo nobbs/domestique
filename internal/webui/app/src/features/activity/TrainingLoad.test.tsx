@@ -1,10 +1,32 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ActivityMetrics } from "../../api/types";
+import type { Activity, ActivityMetrics } from "../../api/types";
 import { TrainingLoad } from "./TrainingLoad";
 
-function show(metrics: ActivityMetrics | undefined) {
-  render(<TrainingLoad metrics={metrics} />);
+function ride(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>): Activity {
+  return {
+    id: 1,
+    startedAt: "2026-09-01T06:00:00Z",
+    distanceMetres: 36000,
+    movingSeconds: 3600,
+    elapsedSeconds: 4000,
+    ascentMetres: 420,
+    typeId: 0,
+    locationId: 0,
+    ...(metrics ? { metrics } : {}),
+    ...totals,
+  };
+}
+
+function show(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>) {
+  return render(<TrainingLoad ride={ride(metrics, totals)} />);
+}
+
+/** The zone bar's five segments, in zone order. */
+function segments(container: HTMLElement): HTMLElement[] {
+  const bar = container.querySelector<HTMLElement>('div[aria-hidden="true"]');
+
+  return bar ? Array.from(bar.children as HTMLCollectionOf<HTMLElement>) : [];
 }
 
 describe("TrainingLoad", () => {
@@ -19,6 +41,45 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("heart rate")).toBeInTheDocument();
   });
 
+  it("shows what each sensor averaged, and the ride's peak heart rate", () => {
+    show({
+      averageHeartRateBpm: 142.4,
+      maxHeartRateBpm: 178,
+      averageCadenceRpm: 81.6,
+      averagePowerWatts: 196.2,
+    });
+
+    expect(screen.getByText("Heart rate")).toBeInTheDocument();
+    expect(screen.getByText("142")).toBeInTheDocument();
+    expect(screen.getByText("Max heart rate")).toBeInTheDocument();
+    expect(screen.getByText("178")).toBeInTheDocument();
+    expect(screen.getByText("Cadence")).toBeInTheDocument();
+    expect(screen.getByText("82")).toBeInTheDocument();
+    expect(screen.getByText("Power")).toBeInTheDocument();
+    expect(screen.getByText("196")).toBeInTheDocument();
+  });
+
+  // Distance over moving time, so it is there for a ride whose recorded file
+  // was never readable and which therefore has no derived metrics at all.
+  it("works the average speed out from the ride's own totals", () => {
+    show(undefined);
+
+    expect(screen.getByText("Speed")).toBeInTheDocument();
+    expect(screen.getByText("36.0")).toBeInTheDocument();
+    expect(screen.queryByText("Heart rate")).not.toBeInTheDocument();
+  });
+
+  // The service serves an estimate only where it served no measurement, so the
+  // two never sit side by side — but the estimate must say what it is either way.
+  it("names estimated power as an estimate rather than a reading", () => {
+    show({ estimatedPowerWatts: 187.4 });
+
+    expect(screen.getByText("Estimated power")).toBeInTheDocument();
+    expect(screen.getByText("187")).toBeInTheDocument();
+    expect(screen.getByText("watts, from the track")).toBeInTheDocument();
+    expect(screen.queryByText("Power")).not.toBeInTheDocument();
+  });
+
   it("names each zone and how long the ride held it", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300] });
 
@@ -29,15 +90,16 @@ describe("TrainingLoad", () => {
     expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Recovery1 min");
   });
 
-  it("draws one bar per zone, all on the scale the longest zone sets", () => {
-    show({ zoneSeconds: [60, 120, 0, 240, 120] });
+  it("draws one bar whose segments are each zone's share of the ride", () => {
+    const { container } = show({ zoneSeconds: [60, 120, 0, 240, 120] });
 
-    const bars = screen
-      .getAllByRole("listitem")
-      .map((row) => row.querySelector<HTMLElement>("span[style]"));
-
-    expect(bars).toHaveLength(5);
-    expect(bars.map((bar) => bar?.style.width)).toEqual(["25%", "50%", "0%", "100%", "50%"]);
+    const widths = segments(container).map((segment) => Number.parseFloat(segment.style.width));
+    expect(widths).toHaveLength(5);
+    expect(widths[0]).toBeCloseTo(11.11, 1);
+    expect(widths[1]).toBeCloseTo(22.22, 1);
+    expect(widths[2]).toBe(0);
+    expect(widths[3]).toBeCloseTo(44.44, 1);
+    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(100, 5);
   });
 
   // Open at both ends: neither the easiest nor the hardest zone is given a
@@ -89,15 +151,18 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("1 h")).toBeInTheDocument();
   });
 
-  it("shows nothing at all for a ride with no derived metrics", () => {
-    show(undefined);
+  it("shows nothing at all for a ride with nothing to say about effort", () => {
+    const { rerender } = show(undefined, { movingSeconds: 0 });
+    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
 
-    expect(screen.queryByLabelText("Training load")).not.toBeInTheDocument();
+    rerender(<TrainingLoad ride={undefined} />);
+    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
   });
 
-  it("shows nothing for a row whose zones are all empty", () => {
+  it("shows no zones for a row whose zones are all empty", () => {
     show({ zoneSeconds: [0, 0, 0, 0, 0] });
 
     expect(screen.queryByText("Recovery")).not.toBeInTheDocument();
+    expect(screen.getByText("Speed")).toBeInTheDocument();
   });
 });

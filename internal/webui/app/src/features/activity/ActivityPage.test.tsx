@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -183,18 +183,67 @@ describe("one ride's page", () => {
   it("shows the ride's moving and elapsed times as measured", () => {
     show();
 
-    expect(screen.getByText(/1 h moving/)).toBeInTheDocument();
-    expect(screen.getByText(/1 h 6 min elapsed/)).toBeInTheDocument();
+    expect(screen.getByText("Moving")).toBeInTheDocument();
+    expect(screen.getByText("1 h")).toBeInTheDocument();
+    expect(screen.getByText("1 h 6 min elapsed")).toBeInTheDocument();
   });
 
-  it("hands the ride's fetched splits to the table", () => {
+  it("hands the ride's fetched splits to the table", async () => {
     show(track(), RIDE.id, undefined, RIDE, [
       { distanceMetres: 1000, movingSeconds: 120, ascentMetres: 0 },
       { distanceMetres: 500, movingSeconds: 90, ascentMetres: 0 },
     ]);
 
     expect(screen.getByLabelText("Splits")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Show the table" }));
     expect(screen.getByText("1.5 km")).toBeInTheDocument();
+  });
+
+  it("says what the ride was ridden through, where it was asked about", () => {
+    show(track(), RIDE.id, undefined, {
+      ...RIDE,
+      weather: {
+        temperatureMinCelsius: 11.6,
+        temperatureMaxCelsius: 18.2,
+        windSpeedKmh: 14,
+        precipitationMillimetres: 2.4,
+        weatherCode: 61,
+      },
+    });
+
+    expect(screen.getByText("12–18°, wind 14 km/h, 2.4 mm of rain")).toBeInTheDocument();
+  });
+
+  // The strip under the terrain is placed from the splits' clock: a ride that
+  // took a minute a kilometre reaches its second hour sixty kilometres in.
+  it("lays the ride's weather under the terrain, placed by the splits", () => {
+    const hour = (at: string) => ({
+      time: at,
+      stepSeconds: 3600,
+      temperatureCelsius: 12,
+      apparentTemperatureCelsius: 10,
+      precipitationMillimetres: 0,
+      windSpeedKmh: 14,
+      windDirectionDegrees: 240,
+      weatherCode: 3,
+      cloudCoverPercent: 55,
+    });
+    show(
+      { ...track(), weather: [hour("2026-08-26T08:00:00Z"), hour("2026-08-26T08:30:00Z")] },
+      RIDE.id,
+      undefined,
+      RIDE,
+      Array.from({ length: 4 }, () => ({
+        distanceMetres: 1000,
+        movingSeconds: 600,
+        ascentMetres: 0,
+      })),
+    );
+
+    const tiles = within(screen.getByRole("list", { name: "Conditions" })).getAllByRole("listitem");
+    expect(tiles).toHaveLength(2);
+    expect(tiles[0]?.style.left).toBe("0px");
+    expect(Number.parseFloat(tiles[1]?.style.left ?? "")).toBeGreaterThan(0);
   });
 
   // A ride the service cut into no stretches shows no table at all.
@@ -208,7 +257,7 @@ describe("one ride's page", () => {
   it("leaves out elapsed time for a ride that barely stopped", () => {
     show(track(), RIDE.id, undefined, { ...RIDE, elapsedSeconds: RIDE.movingSeconds + 30 });
 
-    expect(screen.getByText(/1 h moving/)).toBeInTheDocument();
+    expect(screen.getByText("1 h")).toBeInTheDocument();
     expect(screen.queryByText(/elapsed/)).not.toBeInTheDocument();
   });
 

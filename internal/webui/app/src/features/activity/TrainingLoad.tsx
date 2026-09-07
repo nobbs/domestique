@@ -1,15 +1,15 @@
 /**
- * How hard one ride was, in the two vocabularies this service keeps side by
- * side: time in heart-rate zones, and training load on two scales.
+ * How hard one ride was: its time in heart-rate zones as one bar, beside what
+ * its sensors averaged and the load it came to on every scale the ride allowed.
  *
- * The two load scales are shown together rather than reconciled — they answer
- * different questions and neither converts to the other — and each is named, so
- * a number is never a bare figure the reader has to guess the meaning of.
+ * The load scales are shown together rather than reconciled — they answer
+ * different questions and neither converts to the other — and each is named,
+ * so a number is never a bare figure the reader has to guess the meaning of.
  * Anything the ride's sensors or the rider's profile did not allow is left out
  * rather than shown as a zero.
  */
 
-import type { ActivityMetrics } from "../../api/types";
+import type { Activity, ActivityMetrics } from "../../api/types";
 import { formatDuration } from "../../lib/format";
 
 /** The five zones, easiest first, as a rider reading a training app knows them. */
@@ -59,82 +59,124 @@ function zoneRanges(bounds: number[]): string[] {
   return ranges;
 }
 
-/** One bar per zone, all on the scale the longest zone sets. */
-function ZoneBars({
+/** Easiest to hardest on the severity ramp the gradient bands wear. */
+function zoneColour(zone: number): string {
+  return `var(--grade-${zone})`;
+}
+
+/** One bar, five segments: the ride's time as a whole, each zone its share of it. */
+function ZoneStack({
   zoneSeconds,
   zoneBounds,
 }: {
   zoneSeconds: number[];
   zoneBounds: number[] | undefined;
 }) {
-  const longest = Math.max(...zoneSeconds);
-  if (longest <= 0) {
+  const total = zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
+  if (total <= 0) {
     return null;
   }
   const ranges = zoneBounds ? zoneRanges(zoneBounds) : [];
 
   return (
-    <ul className="flex flex-col gap-1.5">
-      {zoneSeconds.map((seconds, zone) => (
-        // Zones are a fixed ordered set of five, so the name is their identity.
-        <li key={ZONE_NAMES[zone]} className="grid grid-cols-[7.5rem_1fr_auto] items-center gap-3">
-          <span className="flex flex-col text-[var(--ink-2)]">
-            <span className="text-xs">{ZONE_NAMES[zone]}</span>
-            {ranges[zone] ? (
-              <span className="text-[10px] tabular-nums opacity-70">{ranges[zone]}</span>
-            ) : null}
-          </span>
-          {/* The time beside it says the same thing, so the bar is decoration. */}
-          <span aria-hidden="true" className="flex h-2.5 rounded-full bg-black/5">
+    <div className="flex flex-col gap-3">
+      {/* The legend beside it says the same thing, so the bar is decoration. */}
+      <div aria-hidden="true" className="flex h-3 overflow-hidden rounded-full bg-black/5">
+        {zoneSeconds.map((seconds, zone) => (
+          <span
+            key={ZONE_NAMES[zone]}
+            className="h-full"
+            style={{ width: `${(seconds / total) * 100}%`, backgroundColor: zoneColour(zone) }}
+          />
+        ))}
+      </div>
+      <ul className="grid grid-cols-5 gap-2">
+        {zoneSeconds.map((seconds, zone) => (
+          // Zones are a fixed ordered set of five, so the name is their identity.
+          <li key={ZONE_NAMES[zone]} className="flex flex-col gap-0.5">
             <span
-              className="h-full rounded-full"
-              style={{
-                width: `${(seconds / longest) * 100}%`,
-                // Easiest to hardest across the accent, so the five bars read as
-                // one scale rather than five unrelated colours.
-                backgroundColor: `color-mix(in oklab, var(--accent) ${20 + zone * 20}%, var(--panel))`,
-              }}
+              aria-hidden="true"
+              className="h-1 rounded-full"
+              style={{ backgroundColor: zoneColour(zone) }}
             />
-          </span>
-          <span className="text-sm tabular-nums">{formatDuration(seconds)}</span>
-        </li>
-      ))}
-    </ul>
+            <span className="text-[var(--ink-2)] text-xs">{ZONE_NAMES[zone]}</span>
+            {ranges[zone] ? (
+              <span className="text-[10px] text-[var(--ink-2)] tabular-nums opacity-70">
+                {ranges[zone]}
+              </span>
+            ) : null}
+            <span className="text-sm tabular-nums">{formatDuration(seconds)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
-export function TrainingLoad({ metrics }: { metrics: ActivityMetrics | undefined }) {
-  if (!metrics) {
+/**
+ * The ride's average speed in kilometres per hour, from the summary totals.
+ *
+ * Distance over moving time, so it is there even for a ride whose recorded
+ * file was never readable; a ride whose moving time is nought has no speed
+ * rather than an infinite one.
+ */
+function averageSpeedKmh(ride: Activity): number | undefined {
+  if (!Number.isFinite(ride.distanceMetres) || !(ride.movingSeconds > 0)) {
+    return undefined;
+  }
+
+  return (ride.distanceMetres / ride.movingSeconds) * 3.6;
+}
+
+function figuresFor(ride: Activity, metrics: ActivityMetrics | undefined): Scale[] {
+  return [
+    { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride), decimals: 1 },
+    { label: "Heart rate", scale: "bpm average", value: metrics?.averageHeartRateBpm },
+    { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
+    { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
+    { label: "Power", scale: "watts average", value: metrics?.averagePowerWatts },
+    // Never beside a measured average: the service serves one or the other, and
+    // the label carries the estimate's provenance so it cannot read as a reading.
+    {
+      label: "Estimated power",
+      scale: "watts, from the track",
+      value: metrics?.estimatedPowerWatts,
+    },
+    { label: "Normalized power", scale: "watts", value: metrics?.normalizedPowerWatts },
+    { label: "Intensity", scale: "of threshold", value: metrics?.intensityFactor, decimals: 2 },
+    { label: "TSS", scale: "power", value: metrics?.powerTss },
+    { label: "hrTSS", scale: "heart rate", value: metrics?.heartRateTss },
+    { label: "TRIMP", scale: "Banister", value: metrics?.trimp },
+  ].filter((figure) => figure.value !== undefined);
+}
+
+export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
+  if (!ride) {
     return null;
   }
-  const figures: Scale[] = [
-    { label: "TRIMP", scale: "Banister", value: metrics.trimp },
-    { label: "hrTSS", scale: "heart rate", value: metrics.heartRateTss },
-    { label: "TSS", scale: "power", value: metrics.powerTss },
-    { label: "Normalized power", scale: "watts", value: metrics.normalizedPowerWatts },
-    { label: "Intensity", scale: "of threshold", value: metrics.intensityFactor, decimals: 2 },
-  ];
-  const shown = figures.filter((figure) => figure.value !== undefined);
-  if (shown.length === 0 && !metrics.zoneSeconds) {
+  const metrics = ride.metrics;
+  const zones = metrics?.zoneSeconds?.some((seconds) => seconds > 0) ? metrics.zoneSeconds : null;
+  const figures = figuresFor(ride, metrics);
+  if (!zones && figures.length === 0) {
     return null;
   }
 
   return (
     <section
       className="flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
-      aria-label="Training load"
+      aria-label="Effort"
     >
-      <h2 className="font-medium text-sm">Training load</h2>
-      {metrics.zoneSeconds ? (
-        <ZoneBars zoneSeconds={metrics.zoneSeconds} zoneBounds={metrics.zoneBoundsBpm} />
-      ) : null}
-      {shown.length > 0 ? (
-        <div className="flex flex-wrap gap-x-8 gap-y-3">
-          {shown.map((figure) => (
-            <Figure key={figure.label} {...figure} />
-          ))}
-        </div>
-      ) : null}
+      <h2 className="font-medium text-sm">Effort</h2>
+      <div className={zones ? "grid gap-6 md:grid-cols-2" : ""}>
+        {zones ? <ZoneStack zoneSeconds={zones} zoneBounds={metrics?.zoneBoundsBpm} /> : null}
+        {figures.length > 0 ? (
+          <div className="grid grid-cols-3 gap-x-4 gap-y-3">
+            {figures.map((figure) => (
+              <Figure key={figure.label} {...figure} />
+            ))}
+          </div>
+        ) : null}
+      </div>
     </section>
   );
 }
