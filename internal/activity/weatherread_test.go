@@ -295,6 +295,44 @@ func TestDeriveKeepsOnlyTheHoursTheRideCovered(t *testing.T) {
 	assert.InDelta(t, 19.0, store.stored[7][1].TemperatureCelsius, 1e-9)
 }
 
+// The whole reason to ask at more than one place is to cross the ground the
+// ride crossed. A recorder that sampled densely for the first few minutes and
+// sparsely after would, spaced by record index, put every point in that first
+// stretch and describe a four-hour ride by its first ten minutes.
+func TestDeriveSpacesTheAskedPointsByTimeNotByRecordIndex(t *testing.T) {
+	t.Parallel()
+	// Four hundred samples in the first ten minutes, then one a minute for the
+	// rest of a four-hour ride.
+	track := make([]activity.TrackPoint, 0, 630)
+	for index := range 400 {
+		track = append(track, activity.TrackPoint{
+			Time:      weatherNow().Add(time.Duration(index) * 1500 * time.Millisecond),
+			Latitude:  49 + float64(index)/100000,
+			Longitude: 8,
+		})
+	}
+	for index := range 230 {
+		track = append(track, activity.TrackPoint{
+			Time:      weatherNow().Add(10*time.Minute + time.Duration(index)*time.Minute),
+			Latitude:  49.004 + float64(index)/1000,
+			Longitude: 8,
+		})
+	}
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: weatherNow(), ElapsedSeconds: 4 * 3600}},
+		tracks:  map[int64][]activity.TrackPoint{7: track},
+	}
+	source := &fakeWeatherSource{}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	require.Len(t, source.latitudes, 5, "one point per hour, both ends included")
+	// Spaced by index, the middle three would all sit inside the dense opening
+	// stretch, within a thousandth of a degree of the start.
+	assert.Greater(t, source.latitudes[1], 49.05, "an hour in, not ten minutes in")
+	assert.Greater(t, source.latitudes[2], 49.1, "and two hours in")
+	assert.InDelta(t, 49.233, source.latitudes[4], 0.001, "the last sample either way")
+}
+
 // A bearing wraps. Averaged as plain numbers, a north wind read at 350 degrees
 // at one end of the ride and 10 at the other comes out as 180 — a south wind,
 // the exact opposite of the one that blew.

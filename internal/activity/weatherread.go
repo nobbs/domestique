@@ -113,13 +113,56 @@ func weatherPoints(track []TrackPoint, from, to time.Time) []TrackPoint {
 	}
 	points := make([]TrackPoint, 0, wanted)
 	last := len(track) - 1
+	cursor := 0
 	for index := range wanted {
-		// Evenly spaced across the recorded track, ends included: index 0 is the
-		// first sample and the last is the last, whatever the spacing between.
-		points = append(points, track[last*index/(wanted-1)])
+		// Evenly spaced in time, not in record index: a recorder that paused, or
+		// that samples unevenly, would otherwise cluster every point in whichever
+		// stretch it recorded most densely — and the whole reason to ask at more
+		// than one place is to cross the ground the ride crossed.
+		//
+		// The ends are the first and last samples themselves rather than whatever
+		// lies nearest the window's edges, so a ride is always asked about where
+		// it started and where it finished.
+		switch index {
+		case 0:
+			points = append(points, track[0])
+		case wanted - 1:
+			points = append(points, track[last])
+		default:
+			at := from.Add(time.Duration(float64(to.Sub(from)) * float64(index) / float64(wanted-1)))
+			cursor = nearestInTime(track, at, cursor)
+			points = append(points, track[cursor])
+		}
 	}
 
 	return points
+}
+
+// nearestInTime is the sample closest to a moment, searched forward from where
+// the last one was found: the track is in recorded order and the moments asked
+// for only ever move forward, so one pass covers all of them.
+func nearestInTime(track []TrackPoint, at time.Time, from int) int {
+	nearest := from
+	for index := from; index < len(track); index++ {
+		if absDuration(track[index].Time.Sub(at)) <= absDuration(track[nearest].Time.Sub(at)) {
+			nearest = index
+
+			continue
+		}
+		// Ordered by time, so once a sample is further away than the one before
+		// it, every sample after it is further still.
+		break
+	}
+
+	return nearest
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+
+	return d
 }
 
 // bearingOf reads a summed direction vector back as a compass bearing, in
