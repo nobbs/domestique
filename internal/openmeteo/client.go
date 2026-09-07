@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -245,7 +246,7 @@ func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Tim
 	}
 	latitudes, longitudes := coordinateColumns(at)
 
-	if days := c.daysAgo(from); days <= forecastPastDays {
+	if days := c.daysAgo(from, location); days <= forecastPastDays {
 		endpoint := *c.baseURL
 		endpoint.Path = "/v1/forecast"
 		endpoint.RawQuery = url.Values{
@@ -282,16 +283,30 @@ func (c *Client) History(ctx context.Context, at []Coordinate, from, to time.Tim
 	return c.fetch(ctx, &endpoint, location, len(at))
 }
 
-// daysAgo is how many whole days back a moment is, never negative: a ride
-// recorded in the future, by a device with a wrong clock, is asked about as if
-// it were today's.
-func (c *Client) daysAgo(at time.Time) int {
-	days := int(c.now().Sub(at).Hours() / 24)
+// daysAgo is how many days back a moment's own local date is, which is what
+// past_days counts: the endpoint reaches back that many whole local days, so an
+// elapsed-hours figure would undercount a ride that started late in the day
+// before, and ask for a window that does not reach it.
+//
+// Never negative: a ride recorded in the future, by a device with a wrong
+// clock, is asked about as if it were today's.
+func (c *Client) daysAgo(at time.Time, location *time.Location) int {
+	today := c.now().In(location)
+	then := at.In(location)
+	days := int(math.Round(
+		startOfDay(today).Sub(startOfDay(then)).Hours() / 24))
 	if days < 0 {
 		return 0
 	}
 
 	return days
+}
+
+// startOfDay is midnight at the start of a moment's own local day.
+func startOfDay(at time.Time) time.Time {
+	year, month, day := at.Date()
+
+	return time.Date(year, month, day, 0, 0, 0, 0, at.Location())
 }
 
 func coordinateColumns(at []Coordinate) (latitudes, longitudes string) {

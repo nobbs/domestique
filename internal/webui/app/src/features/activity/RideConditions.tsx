@@ -15,13 +15,18 @@ import type { RideWeatherHour } from "../../api/types";
 import { formatClock, formatPrecipitation, formatWindSpeed } from "../../lib/format";
 import { compassPoint } from "../../lib/routeCues";
 import { temperatureColour, weatherIcon } from "../../lib/weather";
+import { flowBearingDegrees } from "../../lib/windField";
 
 /**
  * What the arrow and the tint say, for a reader who has neither. A dry hour
  * says nothing about rain rather than saying none fell.
  */
 function windAndRain(hour: RideWeatherHour): string {
-  const wind = `${compassPoint(hour.windDirectionDegrees)} wind`;
+  // Toward, not from: the provider says where the wind came from, and every
+  // arrow in this application points the way the air is going.
+  const wind = `Wind ${formatWindSpeed(hour.windSpeedKmh)} toward the ${compassPoint(
+    flowBearingDegrees(hour.windDirectionDegrees),
+  )}`;
 
   return hour.precipitationMillimetres > 0
     ? `${wind}, ${formatPrecipitation(hour.precipitationMillimetres)}`
@@ -52,7 +57,7 @@ function HourTile({ hour }: { hour: RideWeatherHour }) {
           aria-hidden="true"
           size={12}
           stroke={1.8}
-          style={{ transform: `rotate(${hour.windDirectionDegrees}deg)` }}
+          style={{ transform: `rotate(${flowBearingDegrees(hour.windDirectionDegrees)}deg)` }}
         />
         <span className="tabular-nums">{formatWindSpeed(hour.windSpeedKmh)}</span>
       </span>

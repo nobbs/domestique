@@ -295,6 +295,32 @@ func TestDeriveKeepsOnlyTheHoursTheRideCovered(t *testing.T) {
 	assert.InDelta(t, 19.0, store.stored[7][1].TemperatureCelsius, 1e-9)
 }
 
+// A bearing wraps. Averaged as plain numbers, a north wind read at 350 degrees
+// at one end of the ride and 10 at the other comes out as 180 — a south wind,
+// the exact opposite of the one that blew.
+func TestDeriveAveragesWindDirectionAroundTheWrap(t *testing.T) {
+	t.Parallel()
+	hour := weatherNow().Truncate(time.Hour)
+	store := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 7, StartedAt: hour, ElapsedSeconds: 1800}},
+		tracks:  map[int64][]activity.TrackPoint{7: weatherTrack(30)},
+	}
+	one := func(direction float64) activity.WeatherSeries {
+		return activity.WeatherSeries{
+			Time: []time.Time{hour}, TemperatureCelsius: []float64{18},
+			ApparentTemperatureCelsius: []float64{17}, PrecipitationMillimetres: []float64{0},
+			WindSpeedKMH: []float64{12}, WindDirectionDegrees: []float64{direction},
+			CloudCoverPercent: []float64{50}, WeatherCode: []int{1},
+		}
+	}
+	source := &fakeWeatherSource{series: []activity.WeatherSeries{one(350), one(10)}}
+
+	weatherDeriver(t, store, source).Derive(t.Context(), "rider-a")
+	require.Len(t, store.stored[7], 1)
+	assert.InDelta(t, 0.0, store.stored[7][0].WindDirectionDegrees, 0.001,
+		"due north, not the south the arithmetic mean would invent")
+}
+
 func TestDeriveReportsAWeatherStoreItCannotRead(t *testing.T) {
 	t.Parallel()
 	for name, store := range map[string]*fakeWeatherStore{

@@ -17,6 +17,8 @@ import {
   formatWindSpeed,
 } from "../../lib/format";
 
+import { useActivities } from "./useActivities";
+
 /**
  * What the ride was ridden through, in one line: the range the temperature
  * moved over, the wind, and what fell if anything did. A dry ride says nothing
@@ -33,8 +35,6 @@ function conditionsLine(weather: ActivityWeatherSummary): string {
 
   return parts.join(" · ");
 }
-
-import { useActivities } from "./useActivities";
 
 export function ActivitiesPage() {
   const { activities, isPending, isError } = useActivities();

@@ -122,6 +122,17 @@ func weatherPoints(track []TrackPoint, from, to time.Time) []TrackPoint {
 	return points
 }
 
+// bearingOf reads a summed direction vector back as a compass bearing, in
+// [0, 360). Two exactly opposing winds cancel to no vector at all, and are
+// reported as north rather than as a direction the arithmetic invented.
+func bearingOf(north, east float64) float64 {
+	if north == 0 && east == 0 {
+		return 0
+	}
+
+	return math.Mod(math.Atan2(east, north)*180/math.Pi+360, 360)
+}
+
 // hoursOf reduces the provider's per-coordinate series to one row per hour of
 // the ride, averaging across the coordinates that hour was asked at: a ride is
 // one thing, and its rider was somewhere along it rather than at all of them.
@@ -130,6 +141,11 @@ func hoursOf(series []WeatherSeries, from, to time.Time) []WeatherHour {
 		hour        WeatherHour
 		count       float64
 		probability float64
+		// A bearing wraps, so it is summed as a vector and read back as an
+		// angle: the arithmetic mean of 350 and 10 is 180, the exact opposite of
+		// the wind that blew.
+		windNorth float64
+		windEast  float64
 	}
 	byHour := map[int64]*accumulator{}
 	order := []int64{}
@@ -150,7 +166,9 @@ func hoursOf(series []WeatherSeries, from, to time.Time) []WeatherHour {
 			into.hour.ApparentTemperatureCelsius += one.ApparentTemperatureCelsius[index]
 			into.hour.PrecipitationMillimetres += one.PrecipitationMillimetres[index]
 			into.hour.WindSpeedKMH += one.WindSpeedKMH[index]
-			into.hour.WindDirectionDegrees += one.WindDirectionDegrees[index]
+			radians := one.WindDirectionDegrees[index] * math.Pi / 180
+			into.windNorth += math.Cos(radians)
+			into.windEast += math.Sin(radians)
 			into.hour.CloudCoverPercent += one.CloudCoverPercent[index]
 			if index < len(one.PrecipitationProbabilityPercent) {
 				into.probability += one.PrecipitationProbabilityPercent[index]
@@ -169,7 +187,7 @@ func hoursOf(series []WeatherSeries, from, to time.Time) []WeatherHour {
 		hour.ApparentTemperatureCelsius /= into.count
 		hour.PrecipitationMillimetres /= into.count
 		hour.WindSpeedKMH /= into.count
-		hour.WindDirectionDegrees /= into.count
+		hour.WindDirectionDegrees = bearingOf(into.windNorth, into.windEast)
 		hour.CloudCoverPercent /= into.count
 		if hour.HasPrecipitationProbability {
 			hour.PrecipitationProbabilityPercent = into.probability / into.count

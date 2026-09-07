@@ -603,6 +603,36 @@ func TestHistoryRefusesAShortProbabilitySeries(t *testing.T) {
 	require.ErrorContains(t, err, "series lengths did not match")
 }
 
+// past_days counts whole local days back, so it is the ride's own date that
+// decides it. Measured in elapsed hours instead, a ride that started late on
+// the day before yesterday asks for a window that does not reach it.
+func TestHistoryCountsPastDaysByTheDateNotTheElapsedHours(t *testing.T) {
+	var asked string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		asked = request.URL.Query().Get("past_days")
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, historyBody)
+	}))
+	defer server.Close()
+
+	client, err := New(&Options{
+		BaseURL: server.URL, ArchiveBaseURL: server.URL, Timeout: time.Second,
+		Transport: server.Client().Transport,
+		// Just after midnight, Berlin time.
+		Now: func() time.Time { return time.Date(2026, 8, 24, 0, 30, 0, 0, time.UTC) },
+	})
+	require.NoError(t, err)
+
+	// 27.5 hours old, which elapsed hours round down to one day — but in the
+	// service's own zone the ride is on the 22nd and today is the 24th, so one
+	// day would ask for a window that does not reach it.
+	from := time.Date(2026, 8, 22, 21, 0, 0, 0, time.UTC)
+	_, err = client.History(t.Context(),
+		[]Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, from.Add(time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, "2", asked, "two whole local days back")
+}
+
 func TestHistoryRefusesAnEmptyRequest(t *testing.T) {
 	client, err := New(&Options{Now: historyNow})
 	require.NoError(t, err)

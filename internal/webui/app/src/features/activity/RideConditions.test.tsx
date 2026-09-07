@@ -30,19 +30,26 @@ describe("RideConditions", () => {
     expect(screen.getByText("19°")).toBeInTheDocument();
   });
 
+  // The provider says where the wind came from; every arrow in this application
+  // points the way the air is going, and the spoken label says the same thing.
+  // A wind from the south-west is a wind toward the north-east.
   it("says which way the wind was going, for a reader who cannot see the arrow", () => {
     render(<RideConditions hours={[hour({ windDirectionDegrees: 240 })]} />);
 
-    // Words rather than an abbreviation: this is read aloud, not navigated by.
-    expect(screen.getByText("south-west wind")).toBeInTheDocument();
+    expect(screen.getByText("Wind 14 km/h toward the north-east")).toBeInTheDocument();
   });
 
-  it("names what fell, and says nothing about rain on a dry hour", () => {
+  it("names what fell on a wet hour", () => {
     render(<RideConditions hours={[hour({ precipitationMillimetres: 2.4 })]} />);
-    expect(screen.getByText("south-west wind, 2.4 mm")).toBeInTheDocument();
 
+    expect(screen.getByText("Wind 14 km/h toward the north-east, 2.4 mm")).toBeInTheDocument();
+  });
+
+  // The absence is the reading: a dry hour says nothing about rain.
+  it("says nothing about rain on a dry hour", () => {
     render(<RideConditions hours={[hour()]} />);
-    expect(screen.getByText("south-west wind")).toBeInTheDocument();
+
+    expect(screen.getByText("Wind 14 km/h toward the north-east")).toBeInTheDocument();
   });
 
   // A ride nobody has asked about carries no strip at all, rather than an empty
