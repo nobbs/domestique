@@ -36,6 +36,13 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
     { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
     { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
     { label: "Power", scale: "watts average", value: metrics?.averagePowerWatts },
+    // Never beside a measured average: the service serves one or the other, and
+    // the label carries the estimate's provenance so it cannot read as a reading.
+    {
+      label: "Estimated power",
+      scale: "watts, from the track",
+      value: metrics?.estimatedPowerWatts,
+    },
   ];
   const shown = figures.filter((figure) => figure.value !== undefined);
   if (shown.length === 0) {
