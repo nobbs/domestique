@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/sqlite"
 )
@@ -26,10 +27,11 @@ const (
 	candidateRoute = "route"
 )
 
-// parseThresholds splits a comma-separated hysteresis threshold list into
-// metres, rejecting anything that is not a positive, finite number.
-func parseThresholds(list string) ([]float64, error) {
-	thresholds := make([]float64, 0)
+// parsePositiveMetresList splits a comma-separated list of positive, finite,
+// non-repeating metre values (hysteresis thresholds, distance grids),
+// labelling any rejection with what kind of value it was parsing.
+func parsePositiveMetresList(list, label string) ([]float64, error) {
+	values := make([]float64, 0)
 	for part := range strings.SplitSeq(list, ",") {
 		trimmed := strings.TrimSpace(part)
 		if trimmed == "" {
@@ -37,21 +39,39 @@ func parseThresholds(list string) ([]float64, error) {
 		}
 		value, err := strconv.ParseFloat(trimmed, 64)
 		if err != nil {
-			return nil, fmt.Errorf("parsing threshold %q: %w", trimmed, err)
+			return nil, fmt.Errorf("parsing %s %q: %w", label, trimmed, err)
 		}
 		if value <= 0 || math.IsInf(value, 0) || math.IsNaN(value) {
-			return nil, fmt.Errorf("threshold %q is not a positive number of metres", trimmed)
+			return nil, fmt.Errorf("%s %q is not a positive number of metres", label, trimmed)
 		}
-		if slices.Contains(thresholds, value) {
-			return nil, fmt.Errorf("threshold %q is listed twice", trimmed)
+		if slices.Contains(values, value) {
+			return nil, fmt.Errorf("%s %q is listed twice", label, trimmed)
 		}
-		thresholds = append(thresholds, value)
+		values = append(values, value)
 	}
-	if len(thresholds) == 0 {
-		return nil, errors.New("at least one threshold is required")
+	if len(values) == 0 {
+		return nil, fmt.Errorf("at least one %s is required", label)
 	}
 
-	return thresholds, nil
+	return values, nil
+}
+
+func parseThresholds(list string) ([]float64, error) {
+	return parsePositiveMetresList(list, "threshold")
+}
+
+func parseGrids(list string) ([]float64, error) {
+	return parsePositiveMetresList(list, "grid")
+}
+
+// validateStillSpeed rejects a -still-speed that could not be a real minimum
+// moving speed.
+func validateStillSpeed(metresPerSecond float64) error {
+	if metresPerSecond <= 0 || math.IsInf(metresPerSecond, 0) || math.IsNaN(metresPerSecond) {
+		return errors.New("-still-speed must be a positive number of metres per second")
+	}
+
+	return nil
 }
 
 func hystName(thresholdMetres float64) string {
@@ -61,6 +81,61 @@ func hystName(thresholdMetres float64) string {
 func routeHystName(thresholdMetres float64) string {
 	return "route+" + hystName(thresholdMetres)
 }
+
+func gridName(gridMetres float64) string {
+	return "grid" + strconv.FormatFloat(gridMetres, 'g', -1, 64)
+}
+
+func gridHystName(gridMetres, thresholdMetres float64) string {
+	return gridName(gridMetres) + "+" + hystName(thresholdMetres)
+}
+
+func stillHystName(thresholdMetres float64) string {
+	return "still+" + hystName(thresholdMetres)
+}
+
+// fullCandidateOrder is every candidate the main table prints, in the fixed
+// order it prints them: the existing candidates first, unchanged, so a run
+// against the same flags stays comparable with one from before this file
+// grew grid and stationary candidates, then those two families after.
+func fullCandidateOrder(thresholdsMetres, gridsMetres []float64) []string {
+	order := []string{candidateRaw, candidateRoute}
+	for _, t := range thresholdsMetres {
+		order = append(order, hystName(t))
+	}
+	for _, t := range thresholdsMetres {
+		order = append(order, routeHystName(t))
+	}
+	for _, g := range gridsMetres {
+		for _, t := range thresholdsMetres {
+			order = append(order, gridHystName(g, t))
+		}
+	}
+	for _, t := range thresholdsMetres {
+		order = append(order, stillHystName(t))
+	}
+
+	return order
+}
+
+// splitCandidateOrder is the fixed, small candidate subset the split tables
+// print so they stay readable, keeping only the ones the run's own flags
+// actually produced.
+func splitCandidateOrder(fullOrder []string) []string {
+	wanted := []string{candidateRaw, candidateRoute, hystName(3), routeHystName(2), stillHystName(3), gridHystName(20, 2)}
+	order := make([]string, 0, len(wanted))
+	for _, name := range wanted {
+		if slices.Contains(fullOrder, name) {
+			order = append(order, name)
+		}
+	}
+
+	return order
+}
+
+func weatherSplitLabels() []string { return []string{"dry", "wet", "no weather"} }
+
+func speedSplitLabels() []string { return []string{"<5 m/s", "5-7 m/s", ">=7 m/s"} }
 
 // quantumBucketLabels is the fixed, ordered set a smallest-positive-step
 // reading is bucketed into.
@@ -97,26 +172,61 @@ func smallestPositiveStep(altitudeMetres []float64) (float64, bool) {
 	return smallest, found
 }
 
+// stillFilteredAltitudes drops every sample whose speed since the previous
+// sample (distance moved over time elapsed) falls below minSpeedMS, along
+// with any sample whose step took non-positive time — a repeated or
+// reordered timestamp, not a rest the rider took. The first sample always
+// survives: it has no previous step to judge it by.
+func stillFilteredAltitudes(track []measure.Sample, minSpeedMS float64) []float64 {
+	if len(track) == 0 {
+		return nil
+	}
+	kept := []float64{track[0].AltitudeMetres}
+	for index := 1; index < len(track); index++ {
+		dtSeconds := track[index].At.Sub(track[index-1].At).Seconds()
+		run := track[index].DistanceMetres - track[index-1].DistanceMetres
+		// A clock or an odometer that went backwards is a glitch, not a
+		// standstill: the sample is kept as it is.
+		if dtSeconds <= 0 || run < 0 {
+			kept = append(kept, track[index].AltitudeMetres)
+
+			continue
+		}
+		if run/dtSeconds < minSpeedMS {
+			continue
+		}
+		kept = append(kept, track[index].AltitudeMetres)
+	}
+
+	return kept
+}
+
+// namedReport pairs one split's label with the report scoring only that
+// split's rides.
+type namedReport struct {
+	report *report
+	label  string
+}
+
 // report accumulates one candidate's relative errors against the device
 // ascent, and the corpus counts a reader needs to judge them by.
 type report struct {
-	errorsPercent map[string][]float64
-	quantumCounts map[string]int
-	order         []string
-	totalRides    int
-	skippedZeroAscent,
-	skippedMinSamples,
+	errorsPercent       map[string][]float64
+	quantumCounts       map[string]int
+	order               []string
+	driftPerHourMetres  []float64
+	weatherSplits       []namedReport
+	speedSplits         []namedReport
+	totalRides          int
+	skippedZeroAscent   int
+	skippedMinSamples   int
 	skippedNonMonotonic int
+	splitsEnabled       bool
 }
 
-func newReport(thresholdsMetres []float64) *report {
-	order := []string{candidateRaw, candidateRoute}
-	for _, t := range thresholdsMetres {
-		order = append(order, hystName(t))
-	}
-	for _, t := range thresholdsMetres {
-		order = append(order, routeHystName(t))
-	}
+// newReportWithOrder is a report scoring exactly the named candidates, in the
+// order given — the full candidate table, or a split's smaller subset.
+func newReportWithOrder(order []string) *report {
 	errorsPercent := make(map[string][]float64, len(order))
 	for _, name := range order {
 		errorsPercent[name] = nil
@@ -129,10 +239,79 @@ func (r *report) record(name string, candidateAscent, deviceAscent float64) {
 	r.errorsPercent[name] = append(r.errorsPercent[name], (candidateAscent/deviceAscent-1)*100)
 }
 
+// wants reports whether name is one of this report's own candidates, so a
+// caller scoring several reports at once from one candidate list can skip the
+// ones a smaller split table left out.
+func (r *report) wants(name string) bool {
+	_, ok := r.errorsPercent[name]
+
+	return ok
+}
+
+// recordAll scores one candidate's ascent into every report that wants it —
+// the main table always does; a split report only for the handful of names
+// splitCandidateOrder kept, and a nil report (splits disabled, or a ride with
+// no moving time to bucket by speed) is skipped.
+func recordAll(name string, candidateAscent, deviceAscent float64, reports ...*report) {
+	for _, r := range reports {
+		if r != nil && r.wants(name) {
+			r.record(name, candidateAscent, deviceAscent)
+		}
+	}
+}
+
 func (r *report) addQuantum(altitudeMetres []float64) {
 	if step, ok := smallestPositiveStep(altitudeMetres); ok {
 		r.quantumCounts[quantumBucketLabel(step)]++
 	}
+}
+
+// addDrift records one ride's barometer drift, in metres per hour of moving
+// time: the height the barometer says a ride that returned to its start gained
+// or lost between leaving and coming back, which the ground says is nought.
+func (r *report) addDrift(residualMetres, movingSeconds float64) {
+	r.driftPerHourMetres = append(r.driftPerHourMetres, residualMetres/(movingSeconds/3600))
+}
+
+// loopEndsWithinMetres is how close a ride's last position must be to its
+// first for the ride to count as returning to its start.
+const loopEndsWithinMetres = 200
+
+// loopDrift is the altitude the barometer gained or lost between a ride's
+// first and last samples that carry a height, for a ride whose last positioned
+// sample lies within loopEndsWithinMetres of its first; not a loop for any
+// other ride, and an error only where the track could not be read.
+func loopDrift(
+	ctx context.Context, store *sqlite.Store, ride sqlite.RecordedRide,
+) (residualMetres float64, loop bool, err error) {
+	track, err := store.ActivityTrack(ctx, ride.TargetID, ride.WorkoutID)
+	if err != nil {
+		return 0, false, fmt.Errorf("reading a ride's track: %w", err)
+	}
+	if len(track) < 2 {
+		return 0, false, nil
+	}
+	apart := measure.HaversineMetres(
+		measure.Coordinate{Latitude: track[0].Latitude, Longitude: track[0].Longitude},
+		measure.Coordinate{Latitude: track[len(track)-1].Latitude, Longitude: track[len(track)-1].Longitude})
+	if apart > loopEndsWithinMetres {
+		return 0, false, nil
+	}
+	// The height comes from the samples that carry one: a positioned sample
+	// with no altitude says nothing about the barometer.
+	firstIndex := slices.IndexFunc(track, func(point activity.TrackPoint) bool { return point.HasAltitude })
+	if firstIndex < 0 {
+		return 0, false, nil
+	}
+	lastIndex := len(track) - 1
+	for lastIndex > firstIndex && !track[lastIndex].HasAltitude {
+		lastIndex--
+	}
+	if lastIndex == firstIndex {
+		return 0, false, nil
+	}
+
+	return track[lastIndex].AltitudeMetres - track[firstIndex].AltitudeMetres, true, nil
 }
 
 // candidateSummary is one candidate's statistics against the device ascent:
@@ -182,15 +361,33 @@ func percentileOf(sorted []float64, fraction float64) float64 {
 	return sorted[lower]*(1-weight) + sorted[upper]*weight
 }
 
-func (r *report) String() string {
+// tableString renders this report's candidate table alone: the header and one
+// row per candidate, in this report's own order. Shared by the main report
+// and every split's smaller table.
+func (r *report) tableString() string {
 	var b strings.Builder
-	fmt.Fprintln(&b, "ascent candidates vs device (relative error %, positive = candidate over-reports)")
 	fmt.Fprintf(&b, "  %-14s %6s %10s %10s %10s %10s\n", "candidate", "rides", "median", "q1", "q3", "mean|err|")
 	for _, name := range r.order {
 		s := r.summarize(name)
 		fmt.Fprintf(&b, "  %-14s %6d %9.1f%% %9.1f%% %9.1f%% %9.1f%%\n",
 			s.name, s.rides, s.medianPercent, s.q1Percent, s.q3Percent, s.meanAbsPercent)
 	}
+
+	return b.String()
+}
+
+// driftSummary is the median and quartiles of every ride's barometer drift.
+func (r *report) driftSummary() (median, q1, q3 float64) {
+	values := append([]float64(nil), r.driftPerHourMetres...)
+	sort.Float64s(values)
+
+	return percentileOf(values, 0.5), percentileOf(values, 0.25), percentileOf(values, 0.75)
+}
+
+func (r *report) String() string {
+	var b strings.Builder
+	fmt.Fprintln(&b, "ascent candidates vs device (relative error %, positive = candidate over-reports)")
+	b.WriteString(r.tableString())
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "altimeter quantum: smallest positive altitude step per ride, bucketed")
 	for _, label := range quantumBucketLabels() {
@@ -200,19 +397,117 @@ func (r *report) String() string {
 	fmt.Fprintf(&b, "rides: total=%d skipped_zero_device_ascent=%d skipped_short_or_unpositioned_track=%d skipped_route_non_monotonic=%d\n",
 		r.totalRides, r.skippedZeroAscent, r.skippedMinSamples, r.skippedNonMonotonic)
 
+	if r.splitsEnabled {
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "split: weather (dry vs wet vs no weather)")
+		for _, entry := range r.weatherSplits {
+			fmt.Fprintf(&b, "  %s\n", entry.label)
+			b.WriteString(entry.report.tableString())
+		}
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "split: mean moving speed")
+		for _, entry := range r.speedSplits {
+			fmt.Fprintf(&b, "  %s\n", entry.label)
+			b.WriteString(entry.report.tableString())
+		}
+	}
+
+	fmt.Fprintln(&b)
+	if len(r.driftPerHourMetres) == 0 {
+		fmt.Fprintln(&b, "drift: no ride returned to its start")
+	} else {
+		median, q1, q3 := r.driftSummary()
+		fmt.Fprintf(&b, "drift: median %.1f m/h (%.1f, %.1f) over %d rides that returned to their start\n",
+			median, q1, q3, len(r.driftPerHourMetres))
+	}
+
 	return b.String()
+}
+
+// weatherSplitFor is the split report for one ride's weather group — wet if
+// its summary recorded any precipitation, dry if it recorded a summary with
+// none, and "no weather" if the target never got one for this ride. Summaries
+// are read once per target and cached, since RecordedRides orders every
+// target's rides together.
+func weatherSplitFor(
+	ctx context.Context, store *sqlite.Store, cache map[string]map[int64]activity.WeatherSummary,
+	weatherSplits []namedReport, ride sqlite.RecordedRide,
+) (*report, error) {
+	summaries, ok := cache[ride.TargetID]
+	if !ok {
+		var err error
+		summaries, err = store.ActivityWeatherSummaries(ctx, ride.TargetID)
+		if err != nil {
+			return nil, fmt.Errorf("reading a target's weather summaries: %w", err)
+		}
+		cache[ride.TargetID] = summaries
+	}
+	label := "no weather"
+	if summary, found := summaries[ride.WorkoutID]; found {
+		label = "dry"
+		if summary.PrecipitationMillimetres > 0 {
+			label = "wet"
+		}
+	}
+	for _, entry := range weatherSplits {
+		if entry.label == label {
+			return entry.report, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no %q weather split report was built", label)
+}
+
+// speedSplitFor is the split report for one ride's mean moving speed bucket,
+// or nil for a ride with no moving time to divide by.
+func speedSplitFor(speedSplits []namedReport, ride sqlite.RecordedRide) *report {
+	if ride.MovingSeconds <= 0 {
+		return nil
+	}
+	speedMS := ride.DistanceMetres / ride.MovingSeconds
+	label := ">=7 m/s"
+	switch {
+	case speedMS < 5:
+		label = "<5 m/s"
+	case speedMS < 7:
+		label = "5-7 m/s"
+	}
+	for _, entry := range speedSplits {
+		if entry.label == label {
+			return entry.report
+		}
+	}
+
+	return nil
 }
 
 // study reads every recorded ride the store holds and scores each candidate
 // ascent definition (see the package doc comment) against the ascent the
 // device reported for it.
-func study(ctx context.Context, store *sqlite.Store, thresholdsMetres []float64, minSamples int) (*report, error) {
+func study(
+	ctx context.Context, store *sqlite.Store,
+	thresholdsMetres, gridsMetres []float64, stillSpeedMS float64,
+	minSamples int, splitsEnabled bool,
+) (*report, error) {
 	rides, err := store.RecordedRides(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing recorded rides: %w", err)
 	}
 
-	result := newReport(thresholdsMetres)
+	fullOrder := fullCandidateOrder(thresholdsMetres, gridsMetres)
+	result := newReportWithOrder(fullOrder)
+	result.splitsEnabled = splitsEnabled
+	if splitsEnabled {
+		splitOrder := splitCandidateOrder(fullOrder)
+		for _, label := range weatherSplitLabels() {
+			result.weatherSplits = append(result.weatherSplits, namedReport{label: label, report: newReportWithOrder(splitOrder)})
+		}
+		for _, label := range speedSplitLabels() {
+			result.speedSplits = append(result.speedSplits, namedReport{label: label, report: newReportWithOrder(splitOrder)})
+		}
+	}
+	weatherCache := map[string]map[int64]activity.WeatherSummary{}
+
 	for _, ride := range rides {
 		result.totalRides++
 		if ride.AscentMetres <= 0 {
@@ -240,9 +535,36 @@ func study(ctx context.Context, store *sqlite.Store, thresholdsMetres []float64,
 		result.addQuantum(altitudeMetres)
 
 		device := ride.AscentMetres
-		result.record(candidateRaw, measure.AscentMetres(altitudeMetres), device)
+
+		var weatherReport, speedReport *report
+		if splitsEnabled {
+			weatherReport, err = weatherSplitFor(ctx, store, weatherCache, result.weatherSplits, ride)
+			if err != nil {
+				return nil, err
+			}
+			speedReport = speedSplitFor(result.speedSplits, ride)
+		}
+
+		recordAll(candidateRaw, measure.AscentMetres(altitudeMetres), device, result, weatherReport, speedReport)
 		for _, threshold := range thresholdsMetres {
-			result.record(hystName(threshold), measure.AscentWithHysteresisMetres(altitudeMetres, threshold), device)
+			recordAll(hystName(threshold), measure.AscentWithHysteresisMetres(altitudeMetres, threshold), device,
+				result, weatherReport, speedReport)
+		}
+
+		stillAltitudeMetres := stillFilteredAltitudes(samples.Track, stillSpeedMS)
+		for _, threshold := range thresholdsMetres {
+			recordAll(stillHystName(threshold), measure.AscentWithHysteresisMetres(stillAltitudeMetres, threshold), device,
+				result, weatherReport, speedReport)
+		}
+
+		if ride.MovingSeconds > 0 {
+			residual, ok, err := loopDrift(ctx, store, ride)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				result.addDrift(residual, ride.MovingSeconds)
+			}
 		}
 
 		profile, ok := measure.ProfileOf(distanceMetres, altitudeMetres)
@@ -251,10 +573,18 @@ func study(ctx context.Context, store *sqlite.Store, thresholdsMetres []float64,
 			continue
 		}
 		smoothed := profile.Resample(routeIntervalMetres).MedianFiltered(routeIntervalMetres, routeWindowMetres)
-		result.record(candidateRoute, smoothed.AscentMetres(), device)
+		recordAll(candidateRoute, smoothed.AscentMetres(), device, result, weatherReport, speedReport)
 		routeAltitudeMetres := smoothed.AltitudeMetres()
 		for _, threshold := range thresholdsMetres {
-			result.record(routeHystName(threshold), measure.AscentWithHysteresisMetres(routeAltitudeMetres, threshold), device)
+			recordAll(routeHystName(threshold), measure.AscentWithHysteresisMetres(routeAltitudeMetres, threshold), device,
+				result, weatherReport, speedReport)
+		}
+		for _, grid := range gridsMetres {
+			gridAltitudeMetres := profile.Resample(grid).AltitudeMetres()
+			for _, threshold := range thresholdsMetres {
+				recordAll(gridHystName(grid, threshold), measure.AscentWithHysteresisMetres(gridAltitudeMetres, threshold), device,
+					result, weatherReport, speedReport)
+			}
 		}
 	}
 

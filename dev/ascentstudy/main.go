@@ -22,16 +22,19 @@ import (
 func main() {
 	database := flag.String("database", "", "state database to read recorded rides from")
 	thresholds := flag.String("thresholds", "1.2,2,3", "comma-separated hysteresis thresholds in metres")
+	grids := flag.String("grids", "10,20,50", "comma-separated distance-grid resample intervals in metres")
+	stillSpeed := flag.Float64("still-speed", 1.0, "minimum metres per second a sample must move at to count as moving")
 	minSamples := flag.Int("min-samples", 60, "rides with fewer positioned track samples are skipped and counted")
+	splits := flag.Bool("splits", true, "print the weather and moving-speed split tables")
 	flag.Parse()
 
-	if err := run(*database, *thresholds, *minSamples); err != nil {
+	if err := run(*database, *thresholds, *grids, *stillSpeed, *minSamples, *splits); err != nil {
 		fmt.Fprintf(os.Stderr, "ascentstudy: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(database, thresholdList string, minSamples int) error {
+func run(database, thresholdList, gridList string, stillSpeedMS float64, minSamples int, splitsEnabled bool) error {
 	if minSamples <= 0 {
 		return errors.New("-min-samples must be a positive number of samples")
 	}
@@ -41,6 +44,13 @@ func run(database, thresholdList string, minSamples int) error {
 	thresholds, err := parseThresholds(thresholdList)
 	if err != nil {
 		return err
+	}
+	grids, err := parseGrids(gridList)
+	if err != nil {
+		return err
+	}
+	if speedErr := validateStillSpeed(stillSpeedMS); speedErr != nil {
+		return speedErr
 	}
 
 	ctx := context.Background()
@@ -62,7 +72,7 @@ func run(database, thresholdList string, minSamples int) error {
 		}
 	}()
 
-	report, err := study(ctx, store, thresholds, minSamples)
+	report, err := study(ctx, store, thresholds, grids, stillSpeedMS, minSamples, splitsEnabled)
 	if err != nil {
 		return err
 	}

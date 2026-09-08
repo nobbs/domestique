@@ -414,12 +414,15 @@ func (s *Store) ActivityRides(
 	return rides, nil
 }
 
-// RecordedRide identifies one ride whose samples are stored, and the ascent
-// its device reported for it.
+// RecordedRide identifies one ride whose samples are stored, the ascent its
+// device reported for it, and the summary distance and moving time it also
+// reported.
 type RecordedRide struct {
-	TargetID     string
-	WorkoutID    int64
-	AscentMetres float64
+	TargetID       string
+	WorkoutID      int64
+	AscentMetres   float64
+	DistanceMetres float64
+	MovingSeconds  float64
 }
 
 // RecordedRides is every target's ride whose samples are stored, ordered by
@@ -432,7 +435,10 @@ func (s *Store) RecordedRides(ctx context.Context) ([]RecordedRide, error) {
 	}
 	rides := make([]RecordedRide, 0, len(rows))
 	for _, row := range rows {
-		rides = append(rides, RecordedRide{TargetID: row.TargetSlot, WorkoutID: row.WorkoutID, AscentMetres: row.AscentMetres})
+		rides = append(rides, RecordedRide{
+			TargetID: row.TargetSlot, WorkoutID: row.WorkoutID, AscentMetres: row.AscentMetres,
+			DistanceMetres: row.DistanceMetres, MovingSeconds: row.MovingSeconds,
+		})
 	}
 
 	return rides, nil

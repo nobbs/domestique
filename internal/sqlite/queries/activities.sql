@@ -67,7 +67,7 @@ WHERE started_at_unix >= sqlc.arg(since_unix)
 ORDER BY started_at_unix;
 
 -- name: ListRecordedActivities :many
-SELECT target_slot, workout_id, ascent_metres
+SELECT target_slot, workout_id, ascent_metres, distance_metres, moving_seconds
 FROM activities
 WHERE records_state = 'stored'
 ORDER BY target_slot, workout_id;

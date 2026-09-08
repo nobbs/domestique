@@ -615,7 +615,8 @@ func TestRecordedRidesReadsEveryTargetsStoredRide(t *testing.T) {
 
 	require.NoError(t, store.StoreActivity(t.Context(), "rider-b",
 		activity.Listing{ID: 2, TypeID: 61, LocationID: 1, Starts: activityNow()},
-		activity.Summary{AscentMetres: 50, Raw: []byte(`{}`)}, activityNow()), "StoreActivity() an indoor ride")
+		activity.Summary{AscentMetres: 50, DistanceMetres: 30000, MovingSeconds: 3600, Raw: []byte(`{}`)}, activityNow()),
+		"StoreActivity() an indoor ride")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 2, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}},
 	}), "StoreActivityRecords()")
@@ -629,7 +630,9 @@ func TestRecordedRidesReadsEveryTargetsStoredRide(t *testing.T) {
 	require.NoError(t, err, "RecordedRides()")
 	require.Len(t, rides, 2, "an indoor ride counts and a pending one does not")
 	assert.Equal(t, RecordedRide{TargetID: "rider-a", WorkoutID: 1, AscentMetres: 300}, rides[0])
-	assert.Equal(t, RecordedRide{TargetID: "rider-b", WorkoutID: 2, AscentMetres: 50}, rides[1])
+	assert.Equal(t, RecordedRide{
+		TargetID: "rider-b", WorkoutID: 2, AscentMetres: 50, DistanceMetres: 30000, MovingSeconds: 3600,
+	}, rides[1])
 }
 
 func TestRecordedRidesReportsAnUnreadableStore(t *testing.T) {
