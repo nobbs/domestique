@@ -488,16 +488,18 @@ func (q *Queries) ListActivityTrack(ctx context.Context, arg ListActivityTrackPa
 }
 
 const listRecordedActivities = `-- name: ListRecordedActivities :many
-SELECT target_slot, workout_id, ascent_metres
+SELECT target_slot, workout_id, ascent_metres, distance_metres, moving_seconds
 FROM activities
 WHERE records_state = 'stored'
 ORDER BY target_slot, workout_id
 `
 
 type ListRecordedActivitiesRow struct {
-	TargetSlot   string
-	WorkoutID    int64
-	AscentMetres float64
+	TargetSlot     string
+	WorkoutID      int64
+	AscentMetres   float64
+	DistanceMetres float64
+	MovingSeconds  float64
 }
 
 func (q *Queries) ListRecordedActivities(ctx context.Context) ([]ListRecordedActivitiesRow, error) {
@@ -509,7 +511,13 @@ func (q *Queries) ListRecordedActivities(ctx context.Context) ([]ListRecordedAct
 	items := []ListRecordedActivitiesRow{}
 	for rows.Next() {
 		var i ListRecordedActivitiesRow
-		if err := rows.Scan(&i.TargetSlot, &i.WorkoutID, &i.AscentMetres); err != nil {
+		if err := rows.Scan(
+			&i.TargetSlot,
+			&i.WorkoutID,
+			&i.AscentMetres,
+			&i.DistanceMetres,
+			&i.MovingSeconds,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
