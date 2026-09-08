@@ -1848,6 +1848,8 @@ components:
             presented as though it were one of them. Absent for a ride that
             measured its own power, one with no usable track, and one whose
             rider has entered no mass.
+        estimateQuality:
+          $ref: '#/components/schemas/EstimateQuality'
         averageHeartRateBpm:
           type: number
           format: double
@@ -1870,6 +1872,40 @@ components:
           description: >-
             The mean of the ride's measured power samples. Never fed by an
             estimate: a bicycle with no meter has no average power.
+    EstimateQuality:
+      type: object
+      additionalProperties: false
+      description: >-
+        What the estimate's own shape says about whether to trust it: a real
+        ride's power is strongly autocorrelated sample to sample and moves by
+        a few watts a second, and a series driven by recorder noise is
+        neither. Present beside estimatedPowerWatts once the ride has been
+        derived since these existed; a ride derived before then omits it
+        until it is derived again. See
+        docs/specs/measurement.md §Estimated power.
+      required:
+        - autocorrelation
+        - meanAbsDeltaWattsPerSecond
+        - clipBiasWatts
+      properties:
+        autocorrelation:
+          type: number
+          format: double
+          description: >-
+            The lag-1 Pearson correlation of the estimated watts with
+            themselves shifted by one sample.
+        meanAbsDeltaWattsPerSecond:
+          type: number
+          format: double
+          description: >-
+            The mean absolute change in watts per second of elapsed time
+            between consecutive samples.
+        clipBiasWatts:
+          type: number
+          format: double
+          description: >-
+            The mean amount the zero clamp added: clamped watts minus the
+            unclamped force times speed it would otherwise have reported.
     ActivityList:
       type: object
       additionalProperties: false

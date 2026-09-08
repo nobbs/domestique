@@ -3,11 +3,11 @@ INSERT INTO activity_metrics (
   target_slot, workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts,
+  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -20,6 +20,9 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   intensity_factor = excluded.intensity_factor,
   power_tss = excluded.power_tss,
   estimated_power_watts = excluded.estimated_power_watts,
+  estimate_autocorrelation = excluded.estimate_autocorrelation,
+  estimate_delta_watts_per_second = excluded.estimate_delta_watts_per_second,
+  estimate_clip_bias_watts = excluded.estimate_clip_bias_watts,
   average_heart_rate_bpm = excluded.average_heart_rate_bpm,
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
@@ -45,7 +48,8 @@ DELETE FROM activity_metrics WHERE target_slot = ?;
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts, input_max_heart_rate, input_threshold_heart_rate,
+  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
+  input_max_heart_rate, input_threshold_heart_rate,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
 FROM activity_metrics
 WHERE target_slot = ?

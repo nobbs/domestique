@@ -132,7 +132,8 @@ const listActivityMetrics = `-- name: ListActivityMetrics :many
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts, input_max_heart_rate, input_threshold_heart_rate,
+  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
+  input_max_heart_rate, input_threshold_heart_rate,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
 FROM activity_metrics
 WHERE target_slot = ?
@@ -140,24 +141,27 @@ ORDER BY workout_id
 `
 
 type ListActivityMetricsRow struct {
-	WorkoutID               int64
-	Zone1Seconds            sql.NullFloat64
-	Zone2Seconds            sql.NullFloat64
-	Zone3Seconds            sql.NullFloat64
-	Zone4Seconds            sql.NullFloat64
-	Zone5Seconds            sql.NullFloat64
-	Trimp                   sql.NullFloat64
-	HeartRateTss            sql.NullFloat64
-	NormalizedPowerWatts    sql.NullFloat64
-	IntensityFactor         sql.NullFloat64
-	PowerTss                sql.NullFloat64
-	EstimatedPowerWatts     sql.NullFloat64
-	InputMaxHeartRate       float64
-	InputThresholdHeartRate float64
-	AverageHeartRateBpm     sql.NullFloat64
-	MaxHeartRateBpm         sql.NullFloat64
-	AverageCadenceRpm       sql.NullFloat64
-	AveragePowerWatts       sql.NullFloat64
+	WorkoutID                   int64
+	Zone1Seconds                sql.NullFloat64
+	Zone2Seconds                sql.NullFloat64
+	Zone3Seconds                sql.NullFloat64
+	Zone4Seconds                sql.NullFloat64
+	Zone5Seconds                sql.NullFloat64
+	Trimp                       sql.NullFloat64
+	HeartRateTss                sql.NullFloat64
+	NormalizedPowerWatts        sql.NullFloat64
+	IntensityFactor             sql.NullFloat64
+	PowerTss                    sql.NullFloat64
+	EstimatedPowerWatts         sql.NullFloat64
+	EstimateAutocorrelation     sql.NullFloat64
+	EstimateDeltaWattsPerSecond sql.NullFloat64
+	EstimateClipBiasWatts       sql.NullFloat64
+	InputMaxHeartRate           float64
+	InputThresholdHeartRate     float64
+	AverageHeartRateBpm         sql.NullFloat64
+	MaxHeartRateBpm             sql.NullFloat64
+	AverageCadenceRpm           sql.NullFloat64
+	AveragePowerWatts           sql.NullFloat64
 }
 
 func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([]ListActivityMetricsRow, error) {
@@ -182,6 +186,9 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 			&i.IntensityFactor,
 			&i.PowerTss,
 			&i.EstimatedPowerWatts,
+			&i.EstimateAutocorrelation,
+			&i.EstimateDeltaWattsPerSecond,
+			&i.EstimateClipBiasWatts,
 			&i.InputMaxHeartRate,
 			&i.InputThresholdHeartRate,
 			&i.AverageHeartRateBpm,
@@ -332,11 +339,11 @@ INSERT INTO activity_metrics (
   target_slot, workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts,
+  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -349,6 +356,9 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   intensity_factor = excluded.intensity_factor,
   power_tss = excluded.power_tss,
   estimated_power_watts = excluded.estimated_power_watts,
+  estimate_autocorrelation = excluded.estimate_autocorrelation,
+  estimate_delta_watts_per_second = excluded.estimate_delta_watts_per_second,
+  estimate_clip_bias_watts = excluded.estimate_clip_bias_watts,
   average_heart_rate_bpm = excluded.average_heart_rate_bpm,
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
@@ -363,30 +373,33 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
 `
 
 type UpsertActivityMetricsParams struct {
-	TargetSlot              string
-	WorkoutID               int64
-	Zone1Seconds            sql.NullFloat64
-	Zone2Seconds            sql.NullFloat64
-	Zone3Seconds            sql.NullFloat64
-	Zone4Seconds            sql.NullFloat64
-	Zone5Seconds            sql.NullFloat64
-	Trimp                   sql.NullFloat64
-	HeartRateTss            sql.NullFloat64
-	NormalizedPowerWatts    sql.NullFloat64
-	IntensityFactor         sql.NullFloat64
-	PowerTss                sql.NullFloat64
-	EstimatedPowerWatts     sql.NullFloat64
-	AverageHeartRateBpm     sql.NullFloat64
-	MaxHeartRateBpm         sql.NullFloat64
-	AverageCadenceRpm       sql.NullFloat64
-	AveragePowerWatts       sql.NullFloat64
-	InputMaxHeartRate       float64
-	InputRestingHeartRate   float64
-	InputThresholdHeartRate float64
-	InputThresholdPower     float64
-	InputTotalMass          float64
-	DerivationVersion       int64
-	ComputedAtUnix          int64
+	TargetSlot                  string
+	WorkoutID                   int64
+	Zone1Seconds                sql.NullFloat64
+	Zone2Seconds                sql.NullFloat64
+	Zone3Seconds                sql.NullFloat64
+	Zone4Seconds                sql.NullFloat64
+	Zone5Seconds                sql.NullFloat64
+	Trimp                       sql.NullFloat64
+	HeartRateTss                sql.NullFloat64
+	NormalizedPowerWatts        sql.NullFloat64
+	IntensityFactor             sql.NullFloat64
+	PowerTss                    sql.NullFloat64
+	EstimatedPowerWatts         sql.NullFloat64
+	EstimateAutocorrelation     sql.NullFloat64
+	EstimateDeltaWattsPerSecond sql.NullFloat64
+	EstimateClipBiasWatts       sql.NullFloat64
+	AverageHeartRateBpm         sql.NullFloat64
+	MaxHeartRateBpm             sql.NullFloat64
+	AverageCadenceRpm           sql.NullFloat64
+	AveragePowerWatts           sql.NullFloat64
+	InputMaxHeartRate           float64
+	InputRestingHeartRate       float64
+	InputThresholdHeartRate     float64
+	InputThresholdPower         float64
+	InputTotalMass              float64
+	DerivationVersion           int64
+	ComputedAtUnix              int64
 }
 
 func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityMetricsParams) error {
@@ -404,6 +417,9 @@ func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityM
 		arg.IntensityFactor,
 		arg.PowerTss,
 		arg.EstimatedPowerWatts,
+		arg.EstimateAutocorrelation,
+		arg.EstimateDeltaWattsPerSecond,
+		arg.EstimateClipBiasWatts,
 		arg.AverageHeartRateBpm,
 		arg.MaxHeartRateBpm,
 		arg.AverageCadenceRpm,

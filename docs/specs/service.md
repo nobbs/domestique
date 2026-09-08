@@ -658,6 +658,15 @@ The read-only JSON surface is small:
   and never an input to a training load. A ride that measured its own power has
   none, because an estimate beside a reading only invites the two to be
   confused.
+
+  `estimatedPowerWatts` carries `estimateQuality` beside it, present once the
+  ride has been derived since the diagnostics existed and never without the
+  estimate; a ride derived before then omits it until it is derived again. It
+  holds the lag-1 autocorrelation of the estimated watts, the mean
+  absolute change in watts per second between consecutive samples, and the
+  mean amount the zero clamp added. What the estimate's own shape says about
+  whether to trust it, not a judgement this service makes about it — see
+  [measurement.md](measurement.md) §Estimated power.
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
   maximum, resting and threshold heart rate, functional threshold power, and
   rider and bike mass — every one of them optional, so a parameter the rider has

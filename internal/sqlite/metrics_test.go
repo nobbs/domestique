@@ -33,6 +33,12 @@ func derivedMetrics(inputs trainingload.Inputs) activity.RideMetrics {
 			CadenceRPM: 81.5, HasCadence: true,
 			PowerWatts: 196.25, HasPower: true,
 		},
+		HasEstimateQuality: true,
+		EstimateQuality: measure.Quality{
+			Autocorrelation1:           0.912,
+			MeanAbsDeltaWattsPerSecond: 14.2,
+			ClipBiasWatts:              2.6,
+		},
 	}
 }
 
@@ -74,6 +80,10 @@ func TestActivityMetricsRoundTrip(t *testing.T) {
 	assert.True(t, read[1].Load.HasZones && read[1].Load.HasTRIMP && read[1].Load.HasHeartRateTSS && read[1].Load.HasPower)
 	assert.True(t, read[1].Load.HasEstimatedPower, "the ride's average estimate")
 	assert.Equal(t, stored.Averages, read[1].Averages, "and the plain sensor figures beside them")
+	assert.InDelta(t, stored.EstimateQuality.Autocorrelation1, read[1].EstimateQuality.Autocorrelation1, 1e-9)
+	assert.InDelta(t, stored.EstimateQuality.MeanAbsDeltaWattsPerSecond,
+		read[1].EstimateQuality.MeanAbsDeltaWattsPerSecond, 1e-9)
+	assert.InDelta(t, stored.EstimateQuality.ClipBiasWatts, read[1].EstimateQuality.ClipBiasWatts, 1e-9)
 	// The two rates the zones were cut at come back, so the page can say what
 	// each zone covered without reading the rider's current profile.
 	assert.InDelta(t, stored.Load.Inputs.ThresholdHeartRateBPM,
@@ -97,6 +107,8 @@ func TestActivityMetricsKeepEachPartAbsentOnItsOwn(t *testing.T) {
 	assert.False(t, read[1].Load.HasZones, "no zones were worked out")
 	assert.False(t, read[1].Load.HasPower, "and no ride carried a meter")
 	assert.False(t, read[1].Averages.HasCadence, "nor a cadence sensor")
+	assert.False(t, read[1].Load.HasEstimatedPower, "nor an estimate")
+	assert.False(t, read[1].HasEstimateQuality, "so its quality reads back absent, not zero as a value")
 }
 
 // A profile edit that takes a parameter away takes its numbers with it: a
@@ -162,6 +174,27 @@ func TestActivitiesAwaitingDerivationRelistsARowAnEarlierDerivationWrote(t *test
 	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
 	require.NoError(t, listErr, "ActivitiesAwaitingDerivation()")
 	assert.Equal(t, []int64{1}, owed, "the row predates the figures this derivation produces")
+}
+
+// The same relisting, a version later: a row version 2 wrote has no quality
+// diagnostics either, exactly what migration 045 leaves behind.
+func TestActivitiesAwaitingDerivationRelistsARowVersion2Wrote(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
+	}), "StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+		"StoreActivityMetrics()")
+	_, err := store.database.ExecContext(t.Context(),
+		`UPDATE activity_metrics SET derivation_version = 2,
+			estimate_autocorrelation = NULL, estimate_delta_watts_per_second = NULL,
+			estimate_clip_bias_watts = NULL`)
+	require.NoError(t, err, "ageing the stored row to version 2")
+
+	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	require.NoError(t, listErr, "ActivitiesAwaitingDerivation()")
+	assert.Equal(t, []int64{1}, owed, "the row predates the estimate quality this derivation produces")
 
 	// And the next run fills it in rather than leaving the columns null for good.
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
@@ -393,4 +426,18 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "clearing the activity metrics")
 	_, err = store.ActivityRideLoads(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the activity ride loads")
+}
+
+func TestActivityMetricsReadsNoQualityForAnEstimateDerivedBeforeItExisted(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs(), EstimatedPowerWatts: 150, HasEstimatedPower: true},
+	}), "StoreActivityMetrics()")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	assert.True(t, read[1].Load.HasEstimatedPower)
+	assert.False(t, read[1].HasEstimateQuality, "an estimate alone is not a quality")
 }

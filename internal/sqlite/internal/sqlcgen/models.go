@@ -34,30 +34,33 @@ type ActivityListing struct {
 }
 
 type ActivityMetric struct {
-	TargetSlot              string
-	WorkoutID               int64
-	Zone1Seconds            sql.NullFloat64
-	Zone2Seconds            sql.NullFloat64
-	Zone3Seconds            sql.NullFloat64
-	Zone4Seconds            sql.NullFloat64
-	Zone5Seconds            sql.NullFloat64
-	Trimp                   sql.NullFloat64
-	HeartRateTss            sql.NullFloat64
-	NormalizedPowerWatts    sql.NullFloat64
-	IntensityFactor         sql.NullFloat64
-	PowerTss                sql.NullFloat64
-	InputMaxHeartRate       float64
-	InputRestingHeartRate   float64
-	InputThresholdHeartRate float64
-	InputThresholdPower     float64
-	ComputedAtUnix          int64
-	EstimatedPowerWatts     sql.NullFloat64
-	InputTotalMass          float64
-	AverageHeartRateBpm     sql.NullFloat64
-	MaxHeartRateBpm         sql.NullFloat64
-	AverageCadenceRpm       sql.NullFloat64
-	AveragePowerWatts       sql.NullFloat64
-	DerivationVersion       int64
+	TargetSlot                  string
+	WorkoutID                   int64
+	Zone1Seconds                sql.NullFloat64
+	Zone2Seconds                sql.NullFloat64
+	Zone3Seconds                sql.NullFloat64
+	Zone4Seconds                sql.NullFloat64
+	Zone5Seconds                sql.NullFloat64
+	Trimp                       sql.NullFloat64
+	HeartRateTss                sql.NullFloat64
+	NormalizedPowerWatts        sql.NullFloat64
+	IntensityFactor             sql.NullFloat64
+	PowerTss                    sql.NullFloat64
+	InputMaxHeartRate           float64
+	InputRestingHeartRate       float64
+	InputThresholdHeartRate     float64
+	InputThresholdPower         float64
+	ComputedAtUnix              int64
+	EstimatedPowerWatts         sql.NullFloat64
+	InputTotalMass              float64
+	AverageHeartRateBpm         sql.NullFloat64
+	MaxHeartRateBpm             sql.NullFloat64
+	AverageCadenceRpm           sql.NullFloat64
+	AveragePowerWatts           sql.NullFloat64
+	DerivationVersion           int64
+	EstimateAutocorrelation     sql.NullFloat64
+	EstimateDeltaWattsPerSecond sql.NullFloat64
+	EstimateClipBiasWatts       sql.NullFloat64
 }
 
 type ActivityRecord struct {
