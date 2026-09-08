@@ -169,16 +169,15 @@ which disagrees with what this section otherwise describes as symmetric; a
 split's `AscentMetres` is the only figure `Split` reports.
 
 **Calibration coupling.** `ridemodel.Predict` prices a route's raw-step
-ascent on the median-filtered profile (`internal/ridemodel/model.go`), and
-the two fits of `seconds_per_ascent_m` do not agree on what ascent that
-coefficient is fitted against: the offline fitter (`dev/fitter`
-`distanceAndAscent`) prices a ride's own track by the same route definition,
-while the weekly in-service calibration (`internal/ridemodel/calibrate.go`,
-fed by `activities.ascent_metres`) fits against the ascent Wahoo's device
-reported for the ride, which the device counted with its own threshold.
-Changing the route definition therefore moves the prediction's input
-towards or away from what the in-service fit already measures against;
-which way is a question for the rider's own rides, not for this document.
+ascent on the median-filtered profile (`internal/ridemodel/model.go`), while
+the weekly calibration that fits `seconds_per_ascent_m`
+(`internal/ridemodel/calibrate.go`, fed by `activities.ascent_metres`) fits
+against the ascent Wahoo's device reported for each ride, which the device
+counted with its own threshold. The prediction and its calibration therefore
+price different definitions of ascent today, and the ascent study
+(`dev/ascentstudy`, #608) measures how far apart they are on the rider's own
+rides. The offline fitter that once benchmarked the model against a Strava
+export was retired with the model's calibration moving into the service.
 
 **Other platforms.** Strava and Intervals.icu both count ascent with a
 hysteresis threshold: Strava uses 2 m with barometric data and 10 m without

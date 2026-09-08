@@ -362,39 +362,11 @@ description = "Run the whole stack against a synthetic library"
 depends = ["ui-install"]
 run = "./dev/demo.sh"
 
-# Turns a Strava bulk export into a flat ride sample corpus for dev/fitter's
-# ETA benchmark to score against. Never built into the image and always
-# outside quick and check: it needs an export directory only the operator
-# has, and its own unit suite runs entirely on in-module synthetic fixtures.
-# The export path is required and has no default; pass it and where to write
-# the corpus with
-# `mise run ridemodel -- -export /path/to/export -out .local/ridemodel`.
-[ridemodel]
-description = "Turn a Strava bulk export into a ride sample corpus"
-run = "go run ./dev/ridemodel"
-
-# Benchmarks the accepted ETA model (#213, #239, #240) — the real
-# internal/ridemodel.Predict, never a second implementation of it — against
-# the corpus dev/ridemodel emits, and can recalibrate its two route
-# coefficients when explicitly asked (#241). Never built into the image and
-# always outside quick and check for the same reason ridemodel is: it needs a
-# real corpus only the operator has, and its own unit suite runs entirely on
-# in-module synthetic fixtures. The corpus directory and the coefficient file
-# being evaluated are both required and have no default:
-# `mise run fitter -- -corpus .local/ridemodel -coefficients
-# /etc/domestique/ridemodel.toml`. Append `-recalibrate` to also refit
-# seconds_per_km and seconds_per_ascent_m over the newest
-# -eta-training-months of the corpus, validate that recipe against the
-# rolling-origin folds of #251, and print a copy-ready profile.
-[fitter]
-description = "Benchmark and recalibrate the ETA model against the ride corpus"
-run = "go run ./dev/fitter"
-
 # Answers #608's second bullet: for every recorded ride in a state database, how
 # each candidate ascent definition over the ride's own samples compares with
 # the ascent the device reported. Never built into the image and always
-# outside quick and check, for the same reason fitter is: it needs the
-# operator's own snapshot of real rides, and its own unit suite runs entirely
+# outside quick and check: it needs the operator's own snapshot of real
+# rides, and its own unit suite runs entirely
 # on in-module synthetic fixtures. The database path is required and has no
 # default: `mise run ascent-study -- -database .local/dev/state.db`. Its
 # report is aggregate numbers only and is safe to paste into an issue.

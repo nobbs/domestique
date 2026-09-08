@@ -1,6 +1,6 @@
 // Package ridemodel is the forward model that turns a stage's geometry and a
 // calibrated coefficient pair into a predicted moving time. It is a pure
-// function of its inputs, and dev/fitter's benchmark runs exactly this model.
+// function of its inputs.
 package ridemodel
 
 import (
