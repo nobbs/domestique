@@ -278,9 +278,11 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				HeartRateBPM:       row.HeatDriftHeartRateBpm.Float64,
 				TemperatureCelsius: row.HeatDriftTemperatureCelsius.Float64,
 				Samples:            int(row.HeatDriftSamples.Int64),
-				// A reading is the pair: a heart rate with no temperature beside
-				// it is not a point on a season's drift.
-				Known: row.HeatDriftHeartRateBpm.Valid && row.HeatDriftTemperatureCelsius.Valid,
+				// A reading is the whole of what was written: a heart rate with
+				// no temperature beside it is not a point on a season's drift,
+				// and one with no count is a row half a derivation wrote.
+				Known: row.HeatDriftHeartRateBpm.Valid && row.HeatDriftTemperatureCelsius.Valid &&
+					row.HeatDriftSamples.Valid,
 			},
 		}
 	}
