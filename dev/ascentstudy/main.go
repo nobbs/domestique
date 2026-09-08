@@ -26,15 +26,22 @@ func main() {
 	stillSpeed := flag.Float64("still-speed", 1.0, "minimum metres per second a sample must move at to count as moving")
 	minSamples := flag.Int("min-samples", 60, "rides with fewer positioned track samples are skipped and counted")
 	splits := flag.Bool("splits", true, "print the weather and moving-speed split tables")
+	routeCoverage := flag.Float64("route-coverage", 0.95, "minimum share of a route's length a matched ride must have covered")
+	rideCoverage := flag.Float64("ride-coverage", 0.90, "minimum share of a ride's length that must lie on its matched route")
+	routes := flag.Bool("routes", true, "print the matched-route-vs-device comparison table")
 	flag.Parse()
 
-	if err := run(*database, *thresholds, *grids, *stillSpeed, *minSamples, *splits); err != nil {
+	if err := run(*database, *thresholds, *grids, *stillSpeed, *minSamples, *splits,
+		*routeCoverage, *rideCoverage, *routes); err != nil {
 		fmt.Fprintf(os.Stderr, "ascentstudy: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(database, thresholdList, gridList string, stillSpeedMS float64, minSamples int, splitsEnabled bool) error {
+func run(
+	database, thresholdList, gridList string, stillSpeedMS float64, minSamples int, splitsEnabled bool,
+	routeCoverageMin, rideCoverageMin float64, routesEnabled bool,
+) error {
 	if minSamples <= 0 {
 		return errors.New("-min-samples must be a positive number of samples")
 	}
@@ -51,6 +58,12 @@ func run(database, thresholdList, gridList string, stillSpeedMS float64, minSamp
 	}
 	if speedErr := validateStillSpeed(stillSpeedMS); speedErr != nil {
 		return speedErr
+	}
+	if coverageErr := validateCoverage(routeCoverageMin, "route-coverage"); coverageErr != nil {
+		return coverageErr
+	}
+	if coverageErr := validateCoverage(rideCoverageMin, "ride-coverage"); coverageErr != nil {
+		return coverageErr
 	}
 
 	ctx := context.Background()
@@ -72,7 +85,8 @@ func run(database, thresholdList, gridList string, stillSpeedMS float64, minSamp
 		}
 	}()
 
-	report, err := study(ctx, store, thresholds, grids, stillSpeedMS, minSamples, splitsEnabled)
+	report, err := study(ctx, store, thresholds, grids, stillSpeedMS, minSamples, splitsEnabled,
+		routeCoverageMin, rideCoverageMin, routesEnabled)
 	if err != nil {
 		return err
 	}

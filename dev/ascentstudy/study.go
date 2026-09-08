@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 )
 
@@ -74,12 +76,53 @@ func validateStillSpeed(metresPerSecond float64) error {
 	return nil
 }
 
+// validateCoverage rejects a -route-coverage or -ride-coverage that could not
+// be a real share of a length: RouteMatch coverages live in (0, 1].
+func validateCoverage(share float64, flagName string) error {
+	if share <= 0 || share > 1 || math.IsNaN(share) {
+		return fmt.Errorf("-%s must be a share greater than 0 and at most 1", flagName)
+	}
+
+	return nil
+}
+
 func hystName(thresholdMetres float64) string {
 	return "hyst" + strconv.FormatFloat(thresholdMetres, 'g', -1, 64)
 }
 
 func routeHystName(thresholdMetres float64) string {
 	return "route+" + hystName(thresholdMetres)
+}
+
+// routeProfileName is the matched-route candidate read straight off the stored
+// library geometry, which the sync stored already resampled and median
+// filtered for export: its raw steps are what route.Route.ElevationGainMetres
+// and the stored Summary price today.
+func routeProfileName() string { return "routeprofile" }
+
+func routeProfileHystName(thresholdMetres float64) string {
+	return routeProfileName() + "+" + hystName(thresholdMetres)
+}
+
+// crossRideHyst3VsRouteProfileHyst2 and crossRideHyst3VsRouteProfile are the
+// two columns comparing a ride's own hysteresis-3 ascent against the route's
+// figure instead of the device's, fixed at these two thresholds regardless of
+// -thresholds: they answer how a route summary would compare with what the
+// rider's own ride already says, not how either compares with the device.
+const (
+	crossRideHyst3VsRouteProfileHyst2 = "ride hyst3 vs routeprofile+hyst2"
+	crossRideHyst3VsRouteProfile      = "ride hyst3 vs routeprofile"
+)
+
+// routeCandidateOrder is the fixed order the matched-routes report prints its
+// columns in.
+func routeCandidateOrder(thresholdsMetres []float64) []string {
+	order := []string{routeProfileName()}
+	for _, t := range thresholdsMetres {
+		order = append(order, routeProfileHystName(t))
+	}
+
+	return append(order, crossRideHyst3VsRouteProfileHyst2, crossRideHyst3VsRouteProfile)
 }
 
 func gridName(gridMetres float64) string {
@@ -210,18 +253,25 @@ type namedReport struct {
 
 // report accumulates one candidate's relative errors against the device
 // ascent, and the corpus counts a reader needs to judge them by.
+// skippedRouteUnmatched and skippedRouteBelowCoverage are only counted for a
+// ride that already passed the zero-ascent and min-samples gates above.
 type report struct {
-	errorsPercent       map[string][]float64
-	quantumCounts       map[string]int
-	order               []string
-	driftPerHourMetres  []float64
-	weatherSplits       []namedReport
-	speedSplits         []namedReport
-	totalRides          int
-	skippedZeroAscent   int
-	skippedMinSamples   int
-	skippedNonMonotonic int
-	splitsEnabled       bool
+	errorsPercent                map[string][]float64
+	quantumCounts                map[string]int
+	routeReport                  *report
+	order                        []string
+	driftPerHourMetres           []float64
+	weatherSplits                []namedReport
+	speedSplits                  []namedReport
+	skippedZeroAscent            int
+	totalRides                   int
+	skippedMinSamples            int
+	skippedNonMonotonic          int
+	skippedRouteUnmatched        int
+	skippedRouteBelowCoverage    int
+	skippedRouteMissingElevation int
+	splitsEnabled                bool
+	routesEnabled                bool
 }
 
 // newReportWithOrder is a report scoring exactly the named candidates, in the
@@ -394,8 +444,9 @@ func (r *report) String() string {
 		fmt.Fprintf(&b, "  %-5s %d\n", label, r.quantumCounts[label])
 	}
 	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "rides: total=%d skipped_zero_device_ascent=%d skipped_short_or_unpositioned_track=%d skipped_route_non_monotonic=%d\n",
-		r.totalRides, r.skippedZeroAscent, r.skippedMinSamples, r.skippedNonMonotonic)
+	fmt.Fprintf(&b, "rides: total=%d skipped_zero_device_ascent=%d skipped_short_or_unpositioned_track=%d skipped_route_non_monotonic=%d skipped_route_below_coverage=%d skipped_route_unmatched=%d\n",
+		r.totalRides, r.skippedZeroAscent, r.skippedMinSamples, r.skippedNonMonotonic,
+		r.skippedRouteBelowCoverage, r.skippedRouteUnmatched)
 
 	if r.splitsEnabled {
 		fmt.Fprintln(&b)
@@ -410,6 +461,13 @@ func (r *report) String() string {
 			fmt.Fprintf(&b, "  %s\n", entry.label)
 			b.WriteString(entry.report.tableString())
 		}
+	}
+
+	if r.routesEnabled {
+		fmt.Fprintln(&b)
+		fmt.Fprintln(&b, "matched routes vs device (relative error %, positive = route over-reports)")
+		b.WriteString(r.routeReport.tableString())
+		fmt.Fprintf(&b, "  missing elevation: %d\n", r.skippedRouteMissingElevation)
 	}
 
 	fmt.Fprintln(&b)
@@ -458,6 +516,92 @@ func weatherSplitFor(
 	return nil, fmt.Errorf("no %q weather split report was built", label)
 }
 
+// routeProfile is one library route's geometry, decoded once and cached by
+// key: distance and altitude are in the route's own stored (forward) order.
+// hasElevation is false for a route missing any point's elevation or whose
+// geometry could not be read, and its series are then unset.
+type routeProfile struct {
+	distanceMetres []float64
+	altitudeMetres []float64
+	hasElevation   bool
+}
+
+// loadRouteProfile reads and decodes one matched route's cached geometry, or
+// returns the cached result of an earlier ride's match against the same
+// route: the geometry cost is paid once per route, not once per ride.
+func loadRouteProfile(
+	ctx context.Context, store *sqlite.Store, cache map[route.Key]routeProfile, key route.Key,
+) (routeProfile, error) {
+	if cached, ok := cache[key]; ok {
+		return cached, nil
+	}
+	_, coordinates, _, found, err := store.StageGeometry(ctx, key.Provider(), key.SourceRouteID(), key.StageOrder())
+	if err != nil {
+		return routeProfile{}, fmt.Errorf("reading a matched route's geometry: %w", err)
+	}
+	if !found {
+		cache[key] = routeProfile{}
+
+		return routeProfile{}, nil
+	}
+	var positions [][]float64
+	if err := json.Unmarshal(coordinates, &positions); err != nil {
+		return routeProfile{}, fmt.Errorf("decoding a matched route's geometry: %w", err)
+	}
+	altitudeMetres := make([]float64, len(positions))
+	coordinatesForDistance := make([]measure.Coordinate, len(positions))
+	for index, position := range positions {
+		if len(position) < 3 {
+			cache[key] = routeProfile{}
+
+			return routeProfile{}, nil
+		}
+		coordinatesForDistance[index] = measure.Coordinate{Longitude: position[0], Latitude: position[1]}
+		altitudeMetres[index] = position[2]
+	}
+	profile := routeProfile{
+		distanceMetres: measure.CumulativeMetres(coordinatesForDistance),
+		altitudeMetres: altitudeMetres,
+		hasElevation:   true,
+	}
+	cache[key] = profile
+
+	return profile, nil
+}
+
+// orientedAltitudes is a route's altitude series as the ride rode it: reversed
+// for a ride that went the route backwards, since its descents were the
+// route's ascents, and left as stored for a forward or unknown direction — an
+// out-and-back ascends as much either way.
+func orientedAltitudes(altitudeMetres []float64, direction activity.Direction) []float64 {
+	oriented := append([]float64(nil), altitudeMetres...)
+	if direction == activity.DirectionReverse {
+		slices.Reverse(oriented)
+	}
+
+	return oriented
+}
+
+// scoreRouteMatch records one qualifying ride's matched-route ascent
+// candidates against its device ascent, and the two cross columns that need
+// no device figure at all.
+func scoreRouteMatch(
+	routeReport *report, profile routeProfile, direction activity.Direction,
+	thresholdsMetres []float64, rideAltitudeMetres []float64, device float64,
+) {
+	routeAltitudes := orientedAltitudes(profile.altitudeMetres, direction)
+	routeProfileAscent := measure.AscentMetres(routeAltitudes)
+	routeReport.record(routeProfileName(), routeProfileAscent, device)
+	for _, threshold := range thresholdsMetres {
+		routeReport.record(routeProfileHystName(threshold), measure.AscentWithHysteresisMetres(routeAltitudes, threshold), device)
+	}
+
+	rideHyst3 := measure.AscentWithHysteresisMetres(rideAltitudeMetres, 3)
+	routeProfileHyst2 := measure.AscentWithHysteresisMetres(routeAltitudes, 2)
+	routeReport.record(crossRideHyst3VsRouteProfileHyst2, rideHyst3, routeProfileHyst2)
+	routeReport.record(crossRideHyst3VsRouteProfile, rideHyst3, routeProfileAscent)
+}
+
 // speedSplitFor is the split report for one ride's mean moving speed bucket,
 // or nil for a ride with no moving time to divide by.
 func speedSplitFor(speedSplits []namedReport, ride sqlite.RecordedRide) *report {
@@ -488,6 +632,7 @@ func study(
 	ctx context.Context, store *sqlite.Store,
 	thresholdsMetres, gridsMetres []float64, stillSpeedMS float64,
 	minSamples int, splitsEnabled bool,
+	routeCoverageMin, rideCoverageMin float64, routesEnabled bool,
 ) (*report, error) {
 	rides, err := store.RecordedRides(ctx)
 	if err != nil {
@@ -506,7 +651,13 @@ func study(
 			result.speedSplits = append(result.speedSplits, namedReport{label: label, report: newReportWithOrder(splitOrder)})
 		}
 	}
+	result.routesEnabled = routesEnabled
+	if routesEnabled {
+		result.routeReport = newReportWithOrder(routeCandidateOrder(thresholdsMetres))
+	}
 	weatherCache := map[string]map[int64]activity.WeatherSummary{}
+	routeMatchCache := map[string]map[int64]activity.RouteMatch{}
+	routeProfileCache := map[route.Key]routeProfile{}
 
 	for _, ride := range rides {
 		result.totalRides++
@@ -535,6 +686,31 @@ func study(
 		result.addQuantum(altitudeMetres)
 
 		device := ride.AscentMetres
+
+		matches, cached := routeMatchCache[ride.TargetID]
+		if !cached {
+			matches, err = store.ActivityRouteMatches(ctx, ride.TargetID)
+			if err != nil {
+				return nil, fmt.Errorf("reading a target's route matches: %w", err)
+			}
+			routeMatchCache[ride.TargetID] = matches
+		}
+		switch match, found := matches[ride.WorkoutID]; {
+		case !found:
+			result.skippedRouteUnmatched++
+		case match.RouteCoverage < routeCoverageMin || match.RideCoverage < rideCoverageMin:
+			result.skippedRouteBelowCoverage++
+		case routesEnabled:
+			profile, profileErr := loadRouteProfile(ctx, store, routeProfileCache, match.Key)
+			if profileErr != nil {
+				return nil, profileErr
+			}
+			if !profile.hasElevation {
+				result.skippedRouteMissingElevation++
+			} else {
+				scoreRouteMatch(result.routeReport, profile, match.Direction, thresholdsMetres, altitudeMetres, device)
+			}
+		}
 
 		var weatherReport, speedReport *report
 		if splitsEnabled {
