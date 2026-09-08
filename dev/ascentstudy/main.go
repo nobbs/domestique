@@ -14,6 +14,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/nobbs/domestique/internal/sqlite"
 )
@@ -42,8 +43,13 @@ func run(database, thresholdList string, minSamples int) error {
 	ctx := context.Background()
 	// A placeholder key: this tool only reads, and the development snapshot's
 	// stored credentials are already undecryptable.
+	// sqlite.Open takes an absolute path; the task's example passes a relative one.
+	databasePath, err := filepath.Abs(database)
+	if err != nil {
+		return fmt.Errorf("resolving the database path: %w", err)
+	}
 	var key [32]byte
-	store, err := sqlite.Open(ctx, database, key)
+	store, err := sqlite.Open(ctx, databasePath, key)
 	if err != nil {
 		return fmt.Errorf("opening state: %w", err)
 	}

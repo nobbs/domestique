@@ -415,9 +415,9 @@ type RecordedRide struct {
 	AscentMetres float64
 }
 
-// RecordedRides is every target's ride whose samples are stored, oldest
-// target slot first then workout id, for an offline tool that walks every
-// ride's own track rather than one target's.
+// RecordedRides is every target's ride whose samples are stored, ordered by
+// target slot then workout id, for an offline tool that walks every ride's
+// own track rather than one target's.
 func (s *Store) RecordedRides(ctx context.Context) ([]RecordedRide, error) {
 	rows, err := s.queries.ListRecordedActivities(ctx)
 	if err != nil {

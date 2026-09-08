@@ -269,3 +269,11 @@ func assertNoIdentifyingDigits(t *testing.T, printed string) {
 	assert.NotContains(t, printed, "2026", "a date must never reach the report")
 	assert.NotContains(t, printed, "rider-", "a target slot must never reach the report")
 }
+
+func TestParseThresholdsRejectsAThresholdThatIsNotAPositiveDistance(t *testing.T) {
+	t.Parallel()
+	for _, list := range []string{"0", "-2", "NaN", "Inf", "1.2,0"} {
+		_, err := parseThresholds(list)
+		require.Error(t, err, "parseThresholds(%q)", list)
+	}
+}

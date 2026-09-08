@@ -26,7 +26,7 @@ const (
 )
 
 // parseThresholds splits a comma-separated hysteresis threshold list into
-// metres, rejecting anything that does not parse as a number.
+// metres, rejecting anything that is not a positive, finite number.
 func parseThresholds(list string) ([]float64, error) {
 	thresholds := make([]float64, 0)
 	for part := range strings.SplitSeq(list, ",") {
@@ -37,6 +37,9 @@ func parseThresholds(list string) ([]float64, error) {
 		value, err := strconv.ParseFloat(trimmed, 64)
 		if err != nil {
 			return nil, fmt.Errorf("parsing threshold %q: %w", trimmed, err)
+		}
+		if value <= 0 || math.IsInf(value, 0) || math.IsNaN(value) {
+			return nil, fmt.Errorf("threshold %q is not a positive number of metres", trimmed)
 		}
 		thresholds = append(thresholds, value)
 	}
