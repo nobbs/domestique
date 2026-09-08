@@ -4,6 +4,10 @@
  * browser alone: no endpoint accepts it and the served figure stays the moving
  * time. Seeds: the current-bike corpus of 242 rides, median 266 s/h, quartiles
  * 114 and 493 s/h.
+ *
+ * A rider whose own rides measure a habit gets that spread in place of the
+ * corpus's. The measurement is served; the choice on the slider is still only
+ * ever this browser's.
  */
 
 import { useCallback, useState } from "react";
@@ -17,37 +21,54 @@ export const CORPUS_RIDES = 242;
 /** Far enough for a café day; the slider's domain and the stored bound. */
 export const MAX_ALLOWANCE_SECONDS_PER_HOUR = 900;
 
-const LOWER_QUARTILE_SECONDS_PER_HOUR = 114;
-const UPPER_QUARTILE_SECONDS_PER_HOUR = 493;
 const SECONDS_PER_HOUR = 3600;
+
+/** How much a rider stops, as a middle and the spread either side of it. */
+export interface StoppingSpread {
+  medianSecondsPerHour: number;
+  lowerQuartileSecondsPerHour: number;
+  upperQuartileSecondsPerHour: number;
+}
+
+/** The seeded corpus, and what a rider with too few rides of their own gets. */
+export const CORPUS_SPREAD: StoppingSpread = {
+  medianSecondsPerHour: DEFAULT_ALLOWANCE_SECONDS_PER_HOUR,
+  lowerQuartileSecondsPerHour: 114,
+  upperQuartileSecondsPerHour: 493,
+};
 
 const STORAGE_KEY = "domestique.stopping-allowance";
 
-/** Door to door: the same ride, stopping as little and as much as the corpus does. */
+/** Door to door: the same ride, stopping as little and as much as the spread it was drawn from does. */
 export interface ArrivalWindow {
   earliestSeconds: number;
   latestSeconds: number;
 }
 
 /**
- * The door-to-door window for `movingSeconds`: the corpus quartiles scaled by
- * the allowance's ratio to the median, so the spread moves with the middle.
- * Null without a moving time, which the caller shows as no arrival at all.
+ * The door-to-door window for `movingSeconds`: the spread's quartiles scaled by
+ * the allowance's ratio to its median, so the shape survives wherever the rider
+ * puts the middle. Null without a moving time, which the caller shows as no
+ * arrival at all.
  */
 export function arrivalWindow(
   movingSeconds: number | undefined,
   allowanceSecondsPerHour: number,
+  spread: StoppingSpread = CORPUS_SPREAD,
 ): ArrivalWindow | null {
   if (movingSeconds === undefined || !Number.isFinite(movingSeconds) || movingSeconds <= 0) {
     return null;
   }
-  const scale = allowanceSecondsPerHour / DEFAULT_ALLOWANCE_SECONDS_PER_HOUR;
+  // A measured median of zero would divide by nothing; that rider never stops,
+  // so the window is the moving time either side.
+  const scale =
+    spread.medianSecondsPerHour > 0 ? allowanceSecondsPerHour / spread.medianSecondsPerHour : 0;
 
   return {
     earliestSeconds:
-      movingSeconds * (1 + (LOWER_QUARTILE_SECONDS_PER_HOUR * scale) / SECONDS_PER_HOUR),
+      movingSeconds * (1 + (spread.lowerQuartileSecondsPerHour * scale) / SECONDS_PER_HOUR),
     latestSeconds:
-      movingSeconds * (1 + (UPPER_QUARTILE_SECONDS_PER_HOUR * scale) / SECONDS_PER_HOUR),
+      movingSeconds * (1 + (spread.upperQuartileSecondsPerHour * scale) / SECONDS_PER_HOUR),
   };
 }
 

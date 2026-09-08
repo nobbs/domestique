@@ -543,12 +543,22 @@ type RiderParameters struct {
 	BikeMassKg *float64 `json:"bikeMassKg,omitempty"`
 }
 
-// RiderSuggestions What the rider's rides of the last ninety days say two of these numbers could be, offered beside the fields and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
+// RiderSuggestions What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
 type RiderSuggestions struct {
 	// MaxHeartRateBpm The highest heart rate held over a rolling minute.
 	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
 	// FunctionalThresholdPowerWatts The best twenty-minute average power, taken at 95%.
-	FunctionalThresholdPowerWatts *float64 `json:"functionalThresholdPowerWatts,omitempty"`
+	FunctionalThresholdPowerWatts *float64            `json:"functionalThresholdPowerWatts,omitempty"`
+	Stopping                      *StoppingSuggestion `json:"stopping,omitempty"`
+}
+
+// StoppingSuggestion How long the rider stood still per hour of moving over their own outdoor rides under their own power in the last ninety days, as a median and the quartiles either side of it. An indoor ride stands still without stopping and a motor does not stop for a cafe, so neither is counted. Measured over the caller's own targets alone and never pooled across riders, and absent until enough rides carry it.
+type StoppingSuggestion struct {
+	MedianSecondsPerHour        float64 `json:"medianSecondsPerHour"`
+	LowerQuartileSecondsPerHour float64 `json:"lowerQuartileSecondsPerHour"`
+	UpperQuartileSecondsPerHour float64 `json:"upperQuartileSecondsPerHour"`
+	// Rides How many of the rider's rides the figures were read from.
+	Rides int `json:"rides"`
 }
 
 type TimezoneUpdate struct {

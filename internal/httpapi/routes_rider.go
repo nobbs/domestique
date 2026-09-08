@@ -70,7 +70,9 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
-	suggestions, err := h.state.RiderSuggestions(ctx, targetIDs, h.now().Add(-rider.SuggestionWindow))
+	suggestions, err := h.state.RiderSuggestions(
+		ctx, targetIDs, h.stoppingTypes, h.now().Add(-rider.SuggestionWindow),
+	)
 	if err != nil {
 		h.unavailable(writer)
 
@@ -88,6 +90,7 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 		Suggestions: openapi.RiderSuggestions{
 			MaxHeartRateBpm:               suggestions.MaxHeartRateBPM.Pointer(),
 			FunctionalThresholdPowerWatts: suggestions.FunctionalThresholdPowerWatts.Pointer(),
+			Stopping:                      stoppingSuggestion(suggestions.Stopping),
 		},
 	})
 }
@@ -109,4 +112,19 @@ func (h *Handler) ownTargetIDs(ctx context.Context) ([]string, error) {
 	}
 
 	return ids, nil
+}
+
+// stoppingSuggestion renders the measured habit the way an optional object is
+// rendered: absent, rather than a set of zeroes, until enough rides carry it.
+func stoppingSuggestion(stopping rider.Stopping) *openapi.StoppingSuggestion {
+	if !stopping.Set {
+		return nil
+	}
+
+	return &openapi.StoppingSuggestion{
+		MedianSecondsPerHour:        stopping.MedianSecondsPerHour,
+		LowerQuartileSecondsPerHour: stopping.LowerQuartileSecondsPerHour,
+		UpperQuartileSecondsPerHour: stopping.UpperQuartileSecondsPerHour,
+		Rides:                       stopping.Rides,
+	}
 }

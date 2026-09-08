@@ -14,6 +14,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activitiesQuery,
+  riderProfileQuery,
   routeGeometryQuery,
   routesQuery,
   statusQuery,
@@ -26,6 +27,7 @@ import type {
   Route,
   RouteGeometry,
   RouteSurface,
+  StoppingSuggestion,
   WebUIConfig,
 } from "../../api/types";
 import { routeKey } from "../../api/types";
@@ -146,6 +148,8 @@ function renderPage(
     themeChoice?: ThemeChoice;
     /** The rider's own rides, which an open route reads its history off. */
     activities?: Activity[];
+    /** The rider's own stopping habit, which the open panel's window uses. */
+    stopping?: StoppingSuggestion;
   } = {},
 ) {
   const client = new QueryClient({
@@ -153,6 +157,10 @@ function renderPage(
   });
   client.setQueryData(routesQuery().queryKey, library);
   client.setQueryData(activitiesQuery().queryKey, options.activities ?? []);
+  client.setQueryData(riderProfileQuery().queryKey, {
+    profile: {},
+    suggestions: options.stopping ? { stopping: options.stopping } : {},
+  });
   client.setQueryData(webUIConfigQuery().queryKey, {
     basemaps: options.basemaps ?? [
       { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },

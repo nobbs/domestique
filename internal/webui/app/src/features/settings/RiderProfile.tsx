@@ -28,8 +28,12 @@ interface Parameter {
   label: string;
   unit: string;
   description: string;
-  /** Absent where the parameter has no suggestion to offer. */
-  suggested?: keyof RiderProfileView["suggestions"];
+  /**
+   * Absent where the parameter has no suggestion to offer. Every suggestion but
+   * the stopping habit, which is a distribution the route panel draws rather
+   * than a figure this page can put beside a field.
+   */
+  suggested?: Exclude<keyof RiderProfileView["suggestions"], "stopping">;
 }
 
 const PARAMETERS: Parameter[] = [

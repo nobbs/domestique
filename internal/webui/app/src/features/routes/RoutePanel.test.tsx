@@ -136,11 +136,89 @@ describe("RoutePanel", () => {
 
     expect(screen.getByText("1 h 50 min to 2 h")).toBeInTheDocument();
     expect(
-      screen.getByText("4.4 min stopped per moving hour · default and spread from", {
+      screen.getByText("4.4 min stopped per moving hour · spread from", {
         exact: false,
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText("242 current-bike rides", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: /^Stopping allowance, / })).toBeInTheDocument();
+  });
+
+  /*
+   * The acceptance criterion for the measured habit: a rider whose own rides
+   * carry one is offered it, and accepting moves the window onto their median.
+   */
+  it("offers the rider's own stopping habit and moves the window onto it", async () => {
+    // The allowance is remembered in storage, so a choice made here would be
+    // the next test's starting point.
+    localStorage.clear();
+    const user = userEvent.setup();
+    renderPanel({
+      route: route({ movingSeconds: 3600 }),
+      stopping: {
+        medianSecondsPerHour: 600,
+        lowerQuartileSecondsPerHour: 300,
+        upperQuartileSecondsPerHour: 1200,
+        rides: 37,
+      },
+    });
+
+    expect(screen.getByText("your 37 rides", { exact: false })).toBeInTheDocument();
+    const offer = screen.getByRole("button", { name: /Your rides stop 10.0 min per moving hour/ });
+    expect(offer).toHaveAccessibleName("Your rides stop 10.0 min per moving hour — use that");
+
+    await user.click(offer);
+
+    expect(screen.getByText("1 h 5 min to 1 h 20 min")).toBeInTheDocument();
+    expect(
+      screen.getByText("10.0 min stopped per moving hour", { exact: false }),
+    ).toBeInTheDocument();
+  });
+
+  // A habit past the slider's end lands on the end, so the offer is withdrawn
+  // there rather than staying up for a figure the slider cannot reach.
+  it("withdraws the offer at the slider's end for a habit that runs past it", async () => {
+    localStorage.clear();
+    const user = userEvent.setup();
+    renderPanel({
+      route: route({ movingSeconds: 3600 }),
+      stopping: {
+        medianSecondsPerHour: 1800,
+        lowerQuartileSecondsPerHour: 900,
+        upperQuartileSecondsPerHour: 2700,
+        rides: 8,
+      },
+    });
+
+    const offer = screen.getByRole("button", { name: /Your rides stop 30.0 min/ });
+    // The button names both figures rather than promising the one it cannot set.
+    expect(offer).toHaveAccessibleName(
+      "Your rides stop 30.0 min per moving hour — use the 15.0 min this allows",
+    );
+
+    await user.click(offer);
+
+    expect(screen.queryByRole("button", { name: /Your rides stop/ })).toBeNull();
+    expect(
+      screen.getByText("15.0 min stopped per moving hour", { exact: false }),
+    ).toBeInTheDocument();
+  });
+
+  // Nothing to accept once the allowance already sits on the measured median.
+  it("withdraws the offer once the rider is on their own median", () => {
+    localStorage.clear();
+    renderPanel({
+      route: route({ movingSeconds: 3600 }),
+      stopping: {
+        medianSecondsPerHour: 266,
+        lowerQuartileSecondsPerHour: 100,
+        upperQuartileSecondsPerHour: 500,
+        rides: 12,
+      },
+    });
+
+    expect(screen.queryByRole("button", { name: /use that/ })).toBeNull();
+    expect(screen.getByText("your 12 rides", { exact: false })).toBeInTheDocument();
   });
 
   it("shows no arrival at all for a route nothing has predicted", () => {

@@ -67,7 +67,7 @@ func TestRiderProfileReportsAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "reading the rider profile")
 	require.ErrorContains(t, store.SetRiderProfile(t.Context(), "rider-a", rider.Profile{}),
 		"storing the rider profile")
-	_, err = store.RiderSuggestions(t.Context(), []string{"rider-a"}, activityNow())
+	_, err = store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow())
 	require.ErrorContains(t, err, "reading the recorded samples")
 }
 
@@ -97,7 +97,7 @@ func TestRiderSuggestionsReadTheBestEffortAcrossTheCallersRides(t *testing.T) {
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 2, steady(1500, 170, 240)),
 		"StoreActivityRecords()")
 
-	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, activityNow().Add(-time.Hour))
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.InDelta(t, 170.0, suggestions.MaxHeartRateBPM.Number, 0.5, "the harder ride's minute")
 	assert.InDelta(t, 228.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "240 W taken at 95%")
@@ -113,7 +113,7 @@ func TestRiderSuggestionsOmitASensorTheRidesDoNotCarry(t *testing.T) {
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 0)),
 		"StoreActivityRecords()")
 
-	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, activityNow().Add(-time.Hour))
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.True(t, suggestions.MaxHeartRateBPM.Set, "the rides carried a heart-rate strap")
 	assert.False(t, suggestions.FunctionalThresholdPowerWatts.Set, "no ride carried a meter")
@@ -128,7 +128,7 @@ func TestRiderSuggestionsIgnoreARideShorterThanTheWindow(t *testing.T) {
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(300, 150, 200)),
 		"StoreActivityRecords()")
 
-	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, activityNow().Add(-time.Hour))
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.True(t, suggestions.MaxHeartRateBPM.Set, "five minutes covers the minute asked for")
 	assert.False(t, suggestions.FunctionalThresholdPowerWatts.Set, "and not the twenty")
@@ -144,7 +144,7 @@ func TestRiderSuggestionsReadOnlyRidesSinceTheCutoff(t *testing.T) {
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 190, 400)),
 		"StoreActivityRecords()")
 
-	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, activityNow().Add(time.Hour))
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.False(t, suggestions.MaxHeartRateBPM.Set, "the only ride started before the cutoff")
 }
@@ -164,7 +164,7 @@ func TestRiderSuggestionsTakeTheBestAcrossEveryTargetAsked(t *testing.T) {
 		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(
-		t.Context(), []string{"rider-a", "rider-b"}, activityNow().Add(-time.Hour))
+		t.Context(), []string{"rider-a", "rider-b"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.InDelta(t, 170.0, suggestions.MaxHeartRateBPM.Number, 0.5, "the second target's minute")
 	assert.InDelta(t, 228.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the first target's twenty")
@@ -174,7 +174,7 @@ func TestRiderSuggestionsAreEmptyForACallerWithNoTarget(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
-	suggestions, err := store.RiderSuggestions(t.Context(), nil, activityNow().Add(-time.Hour))
+	suggestions, err := store.RiderSuggestions(t.Context(), nil, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.Equal(t, rider.Suggestions{}, suggestions, "no target, nothing to read")
 }
@@ -190,7 +190,100 @@ func TestRiderSuggestionsReadOnlyTheTargetsAsked(t *testing.T) {
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 1, steady(1500, 190, 400)),
 		"StoreActivityRecords()")
 
-	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, activityNow().Add(-time.Hour))
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.False(t, suggestions.MaxHeartRateBPM.Set, "another rider's ride is not this rider's suggestion")
+}
+
+// storeStoppingRide stores one ride of the given type that moved for an hour
+// and stood still for the given seconds.
+func storeStoppingRide(
+	t *testing.T, store *Store, targetID string, id int64, typeID int, stoppedSeconds float64,
+) {
+	t.Helper()
+	require.NoError(t, store.StoreActivity(t.Context(), targetID,
+		activity.Listing{ID: id, TypeID: typeID, LocationID: 1, Starts: activityNow()},
+		activity.Summary{
+			DistanceMetres: 20_000, MovingSeconds: 3600, ElapsedSeconds: 3600 + stoppedSeconds,
+			AscentMetres: 120, Raw: []byte(`{}`),
+		},
+		activityNow(),
+	), "StoreActivity()")
+}
+
+func outdoorTypes() []int { return []int{15} }
+
+func TestRiderSuggestionsReadTheCallersOwnStoppingHabit(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	for index, seconds := range []float64{100, 200, 300, 400, 500} {
+		storeStoppingRide(t, store, "rider-a", int64(index+1), 15, seconds)
+	}
+
+	suggestions, err := store.RiderSuggestions(
+		t.Context(), []string{"rider-a"}, outdoorTypes(), activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	require.True(t, suggestions.Stopping.Set, "five eligible rides are a habit")
+	assert.InDelta(t, 300.0, suggestions.Stopping.MedianSecondsPerHour, 0.001)
+	assert.InDelta(t, 200.0, suggestions.Stopping.LowerQuartileSecondsPerHour, 0.001)
+	assert.InDelta(t, 400.0, suggestions.Stopping.UpperQuartileSecondsPerHour, 0.001)
+	assert.Equal(t, 5, suggestions.Stopping.Rides)
+}
+
+// A habit is the rider's own: another target's rides are not read, however many
+// of them there are.
+func TestRiderSuggestionsNeverPoolStoppingAcrossRiders(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	for index, seconds := range []float64{100, 200, 300, 400, 500} {
+		storeStoppingRide(t, store, "rider-b", int64(index+1), 15, seconds)
+	}
+
+	suggestions, err := store.RiderSuggestions(
+		t.Context(), []string{"rider-a"}, outdoorTypes(), activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.False(t, suggestions.Stopping.Set, "another rider's rides are not this rider's habit")
+}
+
+// An indoor trainer stands still without stopping, so its type is not eligible
+// and its rides never reach the habit.
+func TestRiderSuggestionsReadStoppingOnlyFromEligibleTypes(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	for index, seconds := range []float64{100, 200, 300, 400, 500} {
+		storeStoppingRide(t, store, "rider-a", int64(index+1), 61, seconds)
+	}
+
+	suggestions, err := store.RiderSuggestions(
+		t.Context(), []string{"rider-a"}, outdoorTypes(), activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.False(t, suggestions.Stopping.Set, "an indoor ride carries no stopping habit")
+}
+
+func TestRiderSuggestionsReadStoppingOnlySinceTheCutoff(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	for index, seconds := range []float64{100, 200, 300, 400, 500} {
+		storeStoppingRide(t, store, "rider-a", int64(index+1), 15, seconds)
+	}
+
+	suggestions, err := store.RiderSuggestions(
+		t.Context(), []string{"rider-a"}, outdoorTypes(), activityNow().Add(time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.False(t, suggestions.Stopping.Set, "rides before the cutoff are not read")
+}
+
+func TestRiderSuggestionsReportAnUnreadableStoppingCorpus(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.RiderSuggestions(
+		t.Context(), []string{"rider-a"}, outdoorTypes(), activityNow())
+	require.ErrorContains(t, err, "reading the recorded ride summaries")
 }

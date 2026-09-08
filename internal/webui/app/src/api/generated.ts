@@ -790,13 +790,31 @@ export interface RiderParameters {
 }
 
 /**
- * What the rider's rides of the last ninety days say two of these numbers could be, offered beside the fields and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
+ * How long the rider stood still per hour of moving over their own outdoor rides under their own power in the last ninety days, as a median and the quartiles either side of it. An indoor ride stands still without stopping and a motor does not stop for a cafe, so neither is counted. Measured over the caller's own targets alone and never pooled across riders, and absent until enough rides carry it.
+ */
+export interface StoppingSuggestion {
+  /** @minimum 0 */
+  medianSecondsPerHour: number;
+  /** @minimum 0 */
+  lowerQuartileSecondsPerHour: number;
+  /** @minimum 0 */
+  upperQuartileSecondsPerHour: number;
+  /**
+   * How many of the rider's rides the figures were read from.
+   * @minimum 1
+   */
+  rides: number;
+}
+
+/**
+ * What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
  */
 export interface RiderSuggestions {
   /** The highest heart rate held over a rolling minute. */
   maxHeartRateBpm?: number;
   /** The best twenty-minute average power, taken at 95%. */
   functionalThresholdPowerWatts?: number;
+  stopping?: StoppingSuggestion;
 }
 
 export interface RiderProfile {
