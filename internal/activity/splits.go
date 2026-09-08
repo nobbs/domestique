@@ -1,8 +1,19 @@
 package activity
 
+import "github.com/nobbs/domestique/internal/measure"
+
+// splitAscentHysteresisMetres is the rise a climb must reach before a stretch
+// counts it, and the fall that ends one: the walk a head unit does over the
+// same barometric samples, to within a few per cent on the rider's own rides
+// (docs/specs/measurement.md, Ascent and descent).
+const splitAscentHysteresisMetres = 3
+
 // Split is one fixed stretch of a ride, as a splits table reads it. Every
 // figure is of that stretch alone. A ride's last split is whatever was left
-// over, which is what DistanceMetres says.
+// over, which is what DistanceMetres says. Its ascent is counted with
+// hysteresis over the stretch's own samples, so a climb that straddles two
+// stretches is counted in each from where that stretch found it, and a
+// sample with no height breaks the series rather than bridging it.
 type Split struct {
 	DistanceMetres float64
 	MovingSeconds  float64
@@ -59,8 +70,10 @@ func Splits(rows []SampleRow, everyMetres float64) []Split {
 
 // splitParts accumulates one stretch as the samples over it arrive.
 type splitParts struct {
+	// runs are the stretch's altitude series, one per unbroken run of samples
+	// that carried a height, since a climb must not be read across a gap.
+	runs          [][]float64
 	movingSeconds float64
-	ascentMetres  float64
 	heartRate     mean
 	power         mean
 }
@@ -73,11 +86,22 @@ func (p *splitParts) add(previous, current *SampleRow) {
 	if seconds > 0 && current.DistanceMetres.Value > previous.DistanceMetres.Value {
 		p.movingSeconds += seconds
 	}
-	if current.AltitudeMetres.Known && previous.AltitudeMetres.Known {
-		// Raw positive steps, unsmoothed, exactly as a route's own gain is cut.
-		if climb := current.AltitudeMetres.Value - previous.AltitudeMetres.Value; climb > 0 {
-			p.ascentMetres += climb
+	// The first sample the stretch began from opens its series where it
+	// carried a height; a sample without one ends the run, and the next that
+	// carries one starts another.
+	if len(p.runs) == 0 && previous.AltitudeMetres.Known {
+		p.runs = append(p.runs, []float64{previous.AltitudeMetres.Value})
+	}
+	switch {
+	case !current.AltitudeMetres.Known:
+		if last := len(p.runs) - 1; last >= 0 && len(p.runs[last]) > 0 {
+			p.runs = append(p.runs, nil)
 		}
+	case len(p.runs) == 0:
+		p.runs = append(p.runs, []float64{current.AltitudeMetres.Value})
+	default:
+		last := len(p.runs) - 1
+		p.runs[last] = append(p.runs[last], current.AltitudeMetres.Value)
 	}
 	p.heartRate.add(current.HeartRateBPM)
 	p.power.add(current.PowerWatts)
@@ -87,10 +111,21 @@ func (p splitParts) close(distanceMetres float64) Split {
 	return Split{
 		DistanceMetres: distanceMetres,
 		MovingSeconds:  p.movingSeconds,
-		AscentMetres:   p.ascentMetres,
+		AscentMetres:   p.ascentMetres(),
 		HeartRateBPM:   p.heartRate.reading(),
 		PowerWatts:     p.power.reading(),
 	}
+}
+
+// ascentMetres is the hysteresis walk over each unbroken run of heights,
+// summed: a gap contributes nothing and hides nothing either side of it.
+func (p splitParts) ascentMetres() float64 {
+	total := 0.0
+	for _, run := range p.runs {
+		total += measure.AscentWithHysteresisMetres(run, splitAscentHysteresisMetres)
+	}
+
+	return total
 }
 
 // mean averages the samples of one series that carried a reading at all.

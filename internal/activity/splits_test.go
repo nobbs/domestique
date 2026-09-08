@@ -134,6 +134,45 @@ func TestSplitsCountsOnlyTheClimbingPartsOfAStretch(t *testing.T) {
 	assert.InDelta(t, 100.0, splits[0].AscentMetres, 0.001)
 }
 
+// A barometer steps by a fifth of a metre on level ground; summed, those steps
+// were most of what a flat kilometre used to report as climbing.
+func TestSplitsLeaveABarometerWobbleUncounted(t *testing.T) {
+	rows := []activity.SampleRow{
+		sample(0, 0, altitude(100)),
+		sample(10, 100, altitude(101)),
+		sample(20, 200, altitude(100.4)),
+		sample(30, 300, altitude(101.6)),
+		sample(40, 400, altitude(100.2)),
+		sample(50, 500, altitude(102)),
+		sample(60, 600, altitude(100.6)),
+		sample(70, 700, altitude(104)),
+	}
+
+	splits := activity.Splits(rows, 1000)
+
+	require.Len(t, splits, 1)
+	assert.InDelta(t, 4.0, splits[0].AscentMetres, 0.001,
+		"only the rise that reached three metres counts, from the stretch's lowest point")
+}
+
+// A sample with no height is a hole in the series, not a bridge across it: a
+// stretch whose heights read 100, 102, then nothing, then 105, 106 climbed
+// nothing it can vouch for, whatever a line drawn across the hole would say.
+func TestSplitsDoNotReadAClimbAcrossAMissingAltitude(t *testing.T) {
+	rows := []activity.SampleRow{
+		sample(0, 0, altitude(100)),
+		sample(10, 100, altitude(102)),
+		sample(20, 200),
+		sample(30, 300, altitude(105)),
+		sample(40, 400, altitude(106)),
+	}
+
+	splits := activity.Splits(rows, 1000)
+
+	require.Len(t, splits, 1)
+	assert.Zero(t, splits[0].AscentMetres)
+}
+
 func TestSplitsAveragesOnlyTheSamplesThatCarriedAReading(t *testing.T) {
 	rows := []activity.SampleRow{
 		sample(0, 0),

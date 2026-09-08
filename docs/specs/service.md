@@ -550,7 +550,10 @@ The read-only JSON surface is small:
   moving seconds it took, what it climbed, and — only where its samples carried
   the sensor — its mean heart rate and its mean **measured** power. An estimate
   worked out from the track never feeds that last figure, exactly as it never
-  feeds the ride's own average.
+  feeds the ride's own average. The climbing is counted with the three-metre
+  hysteresis the rider's own head unit agrees with, over that stretch's own
+  samples, so a flat kilometre's barometric wobble reads as nought rather than
+  as climbing.
 
   The stretches are cut by the bicycle's own odometer rather than by the
   distance between recorded positions, so the table agrees with the distance the

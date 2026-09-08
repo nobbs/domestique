@@ -151,8 +151,12 @@ last one closed by the end of the series. Descent is the same walk over
 the falls.
 ~~~
 
-**Constants.** None beyond the profile the sum runs over. The hysteresis
-threshold is a caller's parameter; no caller passes one yet.
+**Constants.** None beyond the profile the sum runs over for a route. For a
+ride's own barometric samples the hysteresis threshold is 3 m
+(`internal/activity/splits.go` `splitAscentHysteresisMetres`), the value
+that agrees with the head unit's own figure to within a few per cent over
+the operator's rides (#608); a route's provider profile needs none, and
+gets none.
 
 **Source.** This service's own rule.
 
@@ -162,11 +166,12 @@ through the package-level `measure.AscentMetres` and `DescentMetres`
 also call), run on the median-filtered profile (see
 Profiles above), which is the only profile this sum is meaningful on: raw
 satellite altitude noise summed over thousands of points inflates the total
-badly, per `ElevationGainMetres`'s own comment. `internal/activity/splits.go`
-`splitParts.add` runs the same positive-step sum on raw recorded samples for
-a ride split's ascent — the code carries no matching descent sum for splits,
-which disagrees with what this section otherwise describes as symmetric; a
-split's `AscentMetres` is the only figure `Split` reports.
+badly, per `ElevationGainMetres`'s own comment. `internal/activity/splits.go` counts a
+ride split's ascent with `measure.AscentWithHysteresisMetres` at 3 m over
+each unbroken run of the stretch's own samples that carried a height, the
+first opened by the sample the stretch began from where it carried one; a
+sample without a height breaks the run rather than bridging it, and a split
+reports no descent.
 
 **Calibration coupling.** `ridemodel.Predict` prices a route's raw-step
 ascent on the median-filtered profile (`internal/ridemodel/model.go`), while
@@ -186,11 +191,17 @@ it (Strava "Elevation" and "Elevation on Strava FAQs"); Intervals.icu uses
 in `measure.AscentWithHysteresisMetres` and `DescentWithHysteresisMetres`
 (`internal/measure/profile.go`), called by nobody yet.
 
-**Status.** Known deviation from hysteresis practice in what is served; the
-primitive exists and is tested. Switching a route's stored ascent onto it
-is a behaviour change to the summaries riders read and to the prediction's
-input, and waits on evidence from real rides of which definition tracks
-the device's own figure (see the calibration coupling above).
+**Status.** Settled by the ascent study (#608, `dev/ascentstudy`) over the
+operator's rides. A ride's own barometric samples need the 3 m walk: the
+raw sum over-reports the head unit by about three quarters, the walk lands
+within a few per cent. A route's stored profile needs no walk: it already
+reads about 5 % under the head unit for the same ground, and every
+threshold pushes it further under. Neither figure is the ground: a head
+unit reads 2–5 % under a surveyed climb (Menaspà 2016), so a route summary
+sits roughly 8–10 % under the truth and a ride's figure a few per cent
+under it. The prediction prices the route figure and the weekly fit measures
+against the head unit's, a consistent 5 % apart that the coefficient
+absorbs; nothing is refitted on that account.
 
 ## Recording gaps
 
