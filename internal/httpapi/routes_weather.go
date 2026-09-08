@@ -20,6 +20,10 @@ const (
 	// rather than passed through to be rejected remotely.
 	weatherPastAllowance   = 24 * time.Hour
 	weatherForecastHorizon = 16 * 24 * time.Hour
+
+	// cacheWeatherForecast lets a browser reuse one plan's forecast for a while;
+	// private because the endpoint is identity-gated, like cacheImmutableGated.
+	cacheWeatherForecast = "private, max-age=900"
 )
 
 // GetWeather answers the browser's request for a forecast at each point of a
@@ -99,6 +103,7 @@ func (h *Handler) GetWeather(writer http.ResponseWriter, request *http.Request) 
 		}
 		view.Points[i] = newWeatherPointView(&series[i], index)
 	}
+	writer.Header().Set("Cache-Control", cacheWeatherForecast)
 	h.writeJSON(writer, http.StatusOK, view)
 }
 

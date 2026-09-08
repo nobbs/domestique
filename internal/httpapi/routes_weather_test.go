@@ -55,6 +55,7 @@ func TestWeatherReturnsOneSampleFromEachPointsSeries(t *testing.T) {
 		"/v1/weather?point=50.11,8.68,2026-08-24T06:00:00Z&point=50.25,8.51,2026-08-24T07:05:00Z"))
 
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.Equal(t, cacheWeatherForecast, response.Header().Get("Cache-Control"))
 	assert.Equal(t, []float64{50.11, 50.25}, gotLatitudes)
 	assert.Equal(t, []float64{8.68, 8.51}, gotLongitudes)
 	assert.True(t, gotFrom.Equal(time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)), "from")
@@ -95,6 +96,7 @@ func TestWeatherRejectsNoPoints(t *testing.T) {
 	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/v1/weather"))
 
 	assert.Equal(t, http.StatusBadRequest, response.Code)
+	assert.Equal(t, cacheAPI, response.Header().Get("Cache-Control"))
 }
 
 func TestWeatherRejectsMoreThanFortyEightPoints(t *testing.T) {
@@ -156,6 +158,7 @@ func TestWeatherReturnsBadGatewayOnProviderFailure(t *testing.T) {
 
 	require.Equal(t, http.StatusBadGateway, response.Code)
 	assert.NotContains(t, response.Body.String(), "private things")
+	assert.Equal(t, cacheAPI, response.Header().Get("Cache-Control"))
 }
 
 func TestWeatherReturnsBadGatewayOnCoordinateCountMismatch(t *testing.T) {
