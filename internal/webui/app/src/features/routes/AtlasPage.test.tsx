@@ -8,12 +8,19 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
+import {
+  activitiesQuery,
+  routeGeometryQuery,
+  routesQuery,
+  statusQuery,
+  webUIConfigQuery,
+} from "../../api/queries";
 import type {
+  Activity,
   BoundingBox,
   Position,
   Route,
@@ -137,12 +144,15 @@ function renderPage(
     surfaceFor?: Record<string, RouteSurface>;
     basemaps?: WebUIConfig["basemaps"];
     themeChoice?: ThemeChoice;
+    /** The rider's own rides, which an open route reads its history off. */
+    activities?: Activity[];
   } = {},
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(routesQuery().queryKey, library);
+  client.setQueryData(activitiesQuery().queryKey, options.activities ?? []);
   client.setQueryData(webUIConfigQuery().queryKey, {
     basemaps: options.basemaps ?? [
       { name: "Streets", styleUrl: "https://tiles.example/style.json", darkCartography: false },
@@ -497,6 +507,46 @@ describe("AtlasPage", () => {
 
     expect(screen.getByRole("searchbox")).toHaveValue("rhine");
     expect(lastDrawing().pickedKey).toBe("veloplanner/1/2");
+  });
+
+  // The dock is where a route's own history is read, off the same activity list
+  // the ride pages hold. A route nobody has ridden gets no stop for it at all.
+  it("gives the open route's rides a stop on the dock", async () => {
+    renderPage(LIBRARY, {
+      at: "/?route=veloplanner%2F2%2F1",
+      activities: [
+        {
+          id: 8,
+          startedAt: "2026-08-26T08:00:00Z",
+          distanceMetres: 42_000,
+          movingSeconds: 5_400,
+          elapsedSeconds: 6_000,
+          ascentMetres: 600,
+          typeId: 40,
+          locationId: 0,
+          routeMatch: {
+            provider: "veloplanner",
+            sourceRouteId: 2,
+            stageOrder: 1,
+            routeCoverage: 1,
+            rideCoverage: 0.98,
+            direction: "forward",
+          },
+        },
+      ],
+    });
+
+    await userEvent.click(await screen.findByRole("tab", { name: /Rides/ }));
+    const history = screen.getByRole("list", { name: "Ride history" });
+    expect(screen.getByText("Ridden 1 time")).toBeInTheDocument();
+    expect(within(history).getByRole("link")).toHaveAttribute("href", "/activities/8");
+  });
+
+  it("gives a route nobody has ridden no rides stop", () => {
+    renderPage(LIBRARY, { at: "/?route=veloplanner%2F1%2F1", activities: [] });
+
+    expect(screen.queryByRole("tab", { name: /Rides/ })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Ride history" })).toBeNull();
   });
 
   // The library goes away under an opened route, and the window before its

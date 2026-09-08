@@ -23,7 +23,13 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
+import {
+  activitiesQuery,
+  routeGeometryQuery,
+  routesQuery,
+  statusQuery,
+  webUIConfigQuery,
+} from "../../api/queries";
 import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { Layout } from "../../components/Layout";
@@ -36,6 +42,7 @@ import { formatReadTime } from "../../lib/format";
 import { matchingRoutes } from "../../lib/library";
 import { useOverlayInsets } from "../../lib/overlayInsets";
 import { coordinateRange, rangeBounds } from "../../lib/profile";
+import { riddenOn } from "../../lib/rideHistory";
 import { useSeenRoutes } from "../../lib/seenRoutes";
 import { useStartTime } from "../../lib/startTime";
 import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
@@ -258,6 +265,14 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const openFailed = openRoute !== null && openGeometry.isError;
   const shownRoute = openFailed ? null : openRoute;
 
+  // The rides matched to the open route, off the query the activity pages share.
+  // Not asked for until one is open: the library map has no history to show.
+  const activities = useQuery({ ...activitiesQuery(), enabled: openRoute !== null });
+  const openRides = useMemo(
+    () => (shownRoute ? riddenOn(activities.data ?? [], shownRoute) : []),
+    [activities.data, shownRoute],
+  );
+
   // The deterministic trigger for "seen": the route's own panel is shown, however
   // it was opened. Never from rendering it in the list, and never a network call:
   // it writes only to this reader's own browser.
@@ -474,6 +489,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             onHighlightChange={scopeHighlight}
             measure={measure}
             onMeasureChange={setMeasure}
+            rides={openRides}
             open={dockOpen}
             onOpenChange={setDockOpen}
           />

@@ -263,3 +263,13 @@ export function formatMovingTimeUncertainty(
 
   return `±${Math.round(validation.maePercent)}% typical`;
 }
+
+/** A ride's average speed, to a tenth: the difference between 24.6 and 25.1 km/h
+ * is the whole reason two rides of one route are read side by side. */
+export function formatSpeed(kmh: number | null | undefined): string {
+  if (kmh === null || kmh === undefined || !Number.isFinite(kmh)) {
+    return "—";
+  }
+
+  return `${kmh.toFixed(1)} km/h`;
+}

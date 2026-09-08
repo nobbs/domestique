@@ -9,16 +9,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import { activitySplitsQuery, activityTrackQuery } from "../../api/queries";
-import type {
-  ActivitySeriesName,
-  ActivityTrackState,
-  ActivityWeatherSummary,
-} from "../../api/types";
+import { activitySplitsQuery, activityTrackQuery, routesQuery } from "../../api/queries";
+import type { Activity, ActivitySeriesName, ActivityTrackState } from "../../api/types";
+import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
-import { formatPrecipitation, formatTimestamp, formatWindSpeed } from "../../lib/format";
+import { formatTimestamp } from "../../lib/format";
 import { buildActivityProfile, type Profile } from "../../lib/profile";
+import { WHOLE_LAP_COVERAGE } from "../../lib/rideHistory";
+import { conditionsSentence } from "../../lib/weather";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
 import { RideConditions, stepStarts } from "./RideConditions";
@@ -93,6 +92,7 @@ export function ActivityPage() {
               {ride?.weather ? (
                 <p className="text-[var(--ink-2)] text-sm">{conditionsSentence(ride.weather)}</p>
               ) : null}
+              <MatchedRoute ride={ride} />
             </div>
             <RideFigures ride={ride} />
           </div>
@@ -159,23 +159,32 @@ export function ActivityPage() {
   );
 }
 
-/**
- * What the ride was ridden through, in one line: the range the temperature
- * moved over, the wind, and what fell if anything did. A dry ride says nothing
- * about rain rather than saying none fell — the absence is the reading.
- */
-function conditionsSentence(weather: ActivityWeatherSummary): string {
-  const low = Math.round(weather.temperatureMinCelsius);
-  const high = Math.round(weather.temperatureMaxCelsius);
-  const parts = [
-    low === high ? `${low}°` : `${low}–${high}°`,
-    `wind ${formatWindSpeed(weather.windSpeedKmh)}`,
-  ];
-  if (weather.precipitationMillimetres > 0) {
-    parts.push(`${formatPrecipitation(weather.precipitationMillimetres)} of rain`);
+/** The library route this ride was ridden on. A ride the listing has no route
+ * for names nothing, and a partial lap says how much of it it covered. */
+function MatchedRoute({ ride }: { ride: Activity | undefined }) {
+  const routes = useQuery(routesQuery());
+  const match = ride?.routeMatch;
+  const route = match ? routes.data?.find((held) => routeKey(held) === routeKey(match)) : undefined;
+  if (!match || !route) {
+    return null;
   }
 
-  return parts.join(", ");
+  return (
+    <p className="text-sm">
+      <Link
+        className="underline"
+        to={`/routes/${route.provider}/${route.sourceRouteId}/${route.stageOrder}`}
+      >
+        {route.title}
+      </Link>
+      {match.routeCoverage >= WHOLE_LAP_COVERAGE ? null : (
+        <span className="text-[var(--ink-2)]">
+          {" "}
+          · {Math.round(match.routeCoverage * 100)}% of the route
+        </span>
+      )}
+    </p>
+  );
 }
 
 /**
