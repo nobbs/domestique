@@ -200,9 +200,9 @@ func TestSnapIndexOverANonPositiveRadiusFindsNothing(t *testing.T) {
 	}
 }
 
-// The projected frame is the index's answer to "how far apart are these", and
-// callers read it through Offset whether or not anything was indexed. The zero
-// value scales longitude by nothing, which would put east and west together.
+// Callers read the frame through Offset whether or not anything was indexed,
+// and the zero-value projection scales longitude by nothing, putting east and
+// west together. Wherever a coordinate was given the frame is anchored on it.
 func TestSnapIndexKeepsAUsableFrameWhenItIndexedNothing(t *testing.T) {
 	line := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 1000)}
 	far := metresNorth(metresEast(snapOrigin(), 300), 400)
@@ -210,11 +210,19 @@ func TestSnapIndexKeepsAUsableFrameWhenItIndexedNothing(t *testing.T) {
 	for name, index := range map[string]*SnapIndex{
 		"a radius of nothing":      NewSnapIndex([][]Coordinate{line}, 0),
 		"no line long enough":      NewSnapIndex([][]Coordinate{{snapOrigin()}}, 25),
-		"no lines at all":          NewSnapIndex(nil, 25),
 		"a line and a stray point": NewSnapIndex([][]Coordinate{{far}, line}, 25),
 	} {
 		east, north := index.Offset(snapOrigin(), far)
 		assert.InDelta(t, 300, east, 2, name)
 		assert.InDelta(t, 400, north, 2, name)
 	}
+}
+
+// An index given no coordinate at all has nowhere to anchor. The frame is then
+// equatorial rather than collapsed, so a direction still has an east to it, and
+// nothing is indexed for that frame to misjudge.
+func TestSnapIndexFrameOverNoCoordinatesIsNotCollapsed(t *testing.T) {
+	east, _ := NewSnapIndex(nil, 25).Offset(snapOrigin(), metresEast(snapOrigin(), 300))
+
+	assert.Positive(t, east)
 }

@@ -33,9 +33,8 @@ type SnapHit struct {
 // that finds nothing rather than a nil to guard at every call.
 func NewSnapIndex(lines [][]Coordinate, radiusMetres float64) *SnapIndex {
 	index := &SnapIndex{radius: radiusMetres, projection: projectionFor(lines)}
-	// A radius of nothing asks for nothing. Indexing at one sizes every grid cell
-	// at zero, leaving the step count and the cell keys to float conversions the
-	// language does not define.
+	// A radius of nothing asks for nothing: at zero or below the grid's cells have
+	// no width, leaving the step count and the cell keys to undefined conversions.
 	if radiusMetres <= 0 {
 		index.grid = newSegmentGrid(nil, 1)
 
@@ -51,8 +50,9 @@ func NewSnapIndex(lines [][]Coordinate, radiusMetres float64) *SnapIndex {
 // projectionFor anchors the frame on the first line that contributes a segment:
 // a line too short to index is not where the geometry is, and anchoring on one
 // far from the rest would scale every east-west distance by the wrong latitude.
-// Anything at all beats the zero value, whose scale of zero would collapse east
-// and west together.
+// Any coordinate beats the zero value, whose scale of zero collapses east and
+// west together; with none given the frame is equatorial, and nothing is
+// indexed for it to misjudge.
 func projectionFor(lines [][]Coordinate) projection {
 	spare, hasSpare := Coordinate{}, false
 	for _, line := range lines {
@@ -136,18 +136,14 @@ func (i *SnapIndex) LineMetres(line int) float64 {
 	return length
 }
 
-// Offset returns the vector between two coordinates in projected metres, so a
-// caller can express a direction in the frame the hits are aligned against.
-//
-// It scales longitude at the latitude it was asked about rather than at the
-// index's own reference, which is correct wherever the pair sits and holds even
-// for an index that snapped to nothing. Over the span where a direction is
-// compared against a segment the two references agree to within a millionth.
+// Offset returns the vector between two coordinates in the index's own
+// projected metres, which is the frame a hit's alignment is measured in: a
+// direction compared against a segment must be scaled as that segment was.
 func (i *SnapIndex) Offset(from, to Coordinate) (east, north float64) {
-	local := newProjection(from.Longitude, from.Latitude)
-	toEast, toNorth := local.project(to.Longitude, to.Latitude)
+	fromEast, fromNorth := i.projection.project(from.Longitude, from.Latitude)
+	toEast, toNorth := i.projection.project(to.Longitude, to.Latitude)
 
-	return toEast, toNorth
+	return toEast - fromEast, toNorth - fromNorth
 }
 
 // Alignment scores how nearly the hit's segment runs along the given direction,
