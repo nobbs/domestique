@@ -63,19 +63,15 @@ const (
 // docs/specs/measurement.md §Gradient.
 //
 // The altimeter's resolution is taken as the smallest positive altitude step
-// between consecutive samples inside one recorded stretch — a pause's drift
-// is not a reading of it — rounded to a hundredth of a metre so a
-// floating-point 0.19999 reads as the 0.2 it is. A ride with no positive step
-// at all, dead flat or a single sample, takes minWindowMetres.
+// between consecutive samples whose clock advanced by no more than a gap —
+// the same steps the series itself is measured over, so a pause's drift and
+// a clock that did not move are no reading of it — rounded to a hundredth of
+// a metre so a floating-point 0.19999 reads as the 0.2 it is. A ride with no
+// positive step at all, dead flat or a single sample, takes minWindowMetres.
 func gradeWindowMetres(samples []Sample) float64 {
-	times := make([]time.Time, len(samples))
-	for index, sample := range samples {
-		times[index] = sample.At
-	}
-	bounds := Stretches(times, DefaultMaxGap)
 	quantum := math.Inf(1)
 	for index := 1; index < len(samples); index++ {
-		if bounds[index] != bounds[index-1] {
+		if held := samples[index].At.Sub(samples[index-1].At); held <= 0 || held > DefaultMaxGap {
 			continue
 		}
 		if step := samples[index].AltitudeMetres - samples[index-1].AltitudeMetres; step > 0 && step < quantum {

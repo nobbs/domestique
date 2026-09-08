@@ -113,8 +113,9 @@ points gives 0.2 / 0.002 = 100 m.
 bands and climbs (`internal/webui/app/src/lib/profile.ts`
 `GRADIENT_WINDOW_METRES`); for the estimated-power model W is derived per
 ride as `clamp(quantum / 0.002, 30 m, 300 m)`, where quantum is the smallest
-positive altitude step between consecutive samples inside one recorded
-stretch (`internal/measure/estimate.go` `gradeWindowMetres`,
+positive altitude step between consecutive samples whose clock advanced by
+no more than the recording gap, rounded to a hundredth of a metre so a
+floating-point 0.19999 reads as 0.2 (`internal/measure/estimate.go` `gradeWindowMetres`,
 `targetGradePrecision`, `minWindowMetres`, `maxWindowMetres`) — 100 m for a
 0.2 m barometric altimeter.
 

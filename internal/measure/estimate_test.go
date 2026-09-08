@@ -180,9 +180,9 @@ func TestEstimateSeriesIsNotInflatedByRecorderNoise(t *testing.T) {
 		"and noise the rider never rode moves the mean by less than a tenth")
 	// The derived window for this fixture is 100 m (see gradeWindowMetres),
 	// more than three times the old fixed 30 m, and the mean it produces sits
-	// well under a tenth of a per cent from the closed form rather than
-	// merely under a tenth.
-	assert.InDelta(t, quietMean, roughMean, 0.01*quietMean,
+	// within two tenths of a per cent of the closed form rather than merely
+	// within a tenth of it.
+	assert.InDelta(t, quietMean, roughMean, 0.002*quietMean,
 		"a wider derived window brings the noisy mean closer still")
 }
 
@@ -458,4 +458,18 @@ func TestEstimateSeriesQualityPairsOnlyWithinAStretch(t *testing.T) {
 	// Only samples 1 and 2 are an adjacent known pair; sample 4 has no known
 	// predecessor across the gap. One pair alone cannot correlate.
 	assert.Zero(t, quality.Autocorrelation1)
+}
+
+// A clock that did not advance is no step the series measures over, so an
+// altitude change across one is no reading of the altimeter's resolution.
+func TestEstimateSeriesIgnoresAnAltitudeStepAcrossANonAdvancingClockWhenDerivingTheWindow(t *testing.T) {
+	t.Parallel()
+	samples := noisy(flat(600, 7))
+	last := samples[len(samples)-1]
+	last.AltitudeMetres += 0.01
+	samples = append(samples, last)
+
+	_, quality, ok := measure.EstimateSeries(samples, 82)
+	require.True(t, ok)
+	assert.InDelta(t, 100, quality.WindowMetres, 1e-9)
 }
