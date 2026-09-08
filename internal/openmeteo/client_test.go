@@ -5,12 +5,27 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// singleCoordinateForecastBody is a minimally valid one-coordinate response,
+// used by the cache tests below where the window and coordinates asked for
+// are not what is under test.
+const singleCoordinateForecastBody = `{"hourly":{"time":["2026-08-24T07:00"],
+	"temperature_2m":[18.4],
+	"apparent_temperature":[17.1],
+	"precipitation":[0],
+	"precipitation_probability":[10],
+	"wind_speed_10m":[12.3],
+	"wind_direction_10m":[240],
+	"weather_code":[1],
+	"cloud_cover":[50]}}`
 
 func TestClientDecodesArrayResponseForSeveralCoordinates(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -835,4 +850,169 @@ func TestHistoryRefusesAnEmptyRequest(t *testing.T) {
 
 	_, err = client.History(t.Context(), []Coordinate{{}}, historyNow(), historyNow().Add(-time.Hour))
 	require.ErrorContains(t, err, "to must not be before from")
+}
+
+func TestForecastServesASecondCallWithinTheTTLFromCache(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, singleCoordinateForecastBody)
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	client, err := New(&Options{
+		BaseURL: server.URL, Timeout: time.Second, Transport: server.Client().Transport,
+		Now: func() time.Time { return now }, ForecastTTL: time.Minute,
+	})
+	require.NoError(t, err)
+
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 8, 0, 0, 0, time.UTC)
+	coords := []Coordinate{{Latitude: 50.11, Longitude: 8.68}}
+
+	_, err = client.Forecast(t.Context(), coords, from, to)
+	require.NoError(t, err)
+	_, err = client.Forecast(t.Context(), coords, from, to)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 1, requests.Load(), "the second call must be served from cache")
+}
+
+func TestForecastRefetchesAfterTheTTLExpires(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, singleCoordinateForecastBody)
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	client, err := New(&Options{
+		BaseURL: server.URL, Timeout: time.Second, Transport: server.Client().Transport,
+		Now: func() time.Time { return now }, ForecastTTL: time.Minute,
+	})
+	require.NoError(t, err)
+
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 8, 0, 0, 0, time.UTC)
+	coords := []Coordinate{{Latitude: 50.11, Longitude: 8.68}}
+
+	_, err = client.Forecast(t.Context(), coords, from, to)
+	require.NoError(t, err)
+
+	now = now.Add(time.Minute + time.Second)
+	_, err = client.Forecast(t.Context(), coords, from, to)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 2, requests.Load(), "a call after the TTL must reach the upstream again")
+}
+
+func TestForecastCollapsesConcurrentMissesIntoOneUpstreamRequest(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, singleCoordinateForecastBody)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 8, 0, 0, 0, time.UTC)
+	coords := []Coordinate{{Latitude: 50.11, Longitude: 8.68}}
+
+	const callers = 10
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			<-start
+			_, callErr := client.Forecast(t.Context(), coords, from, to)
+			assert.NoError(t, callErr)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	assert.EqualValues(t, 1, requests.Load(), "ten concurrent misses must collapse into one request")
+}
+
+func TestForecastDoesNotCacheAnUpstreamError(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			writer.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, singleCoordinateForecastBody)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 8, 0, 0, 0, time.UTC)
+	coords := []Coordinate{{Latitude: 50.11, Longitude: 8.68}}
+
+	_, err := client.Forecast(t.Context(), coords, from, to)
+	require.Error(t, err)
+
+	_, err = client.Forecast(t.Context(), coords, from, to)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 2, requests.Load(), "an errored answer must not be remembered")
+}
+
+func TestForecastCacheMissesADifferentKey(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, singleCoordinateForecastBody)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 8, 0, 0, 0, time.UTC)
+
+	_, err := client.Forecast(t.Context(), []Coordinate{{Latitude: 50.11, Longitude: 8.68}}, from, to)
+	require.NoError(t, err)
+	_, err = client.Forecast(t.Context(), []Coordinate{{Latitude: 51.0, Longitude: 9.0}}, from, to)
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 2, requests.Load(), "a different request must not be answered from another key's cache")
+}
+
+func TestForecastCacheBoundEvictsWhenFull(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writeResponse(t, writer, http.StatusOK, singleCoordinateForecastBody)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 24, 8, 0, 0, 0, time.UTC)
+
+	for i := range maxForecastCacheEntries + 1 {
+		_, err := client.Forecast(t.Context(), []Coordinate{{Latitude: float64(i), Longitude: 0}}, from, to)
+		require.NoError(t, err)
+	}
+
+	client.forecasts.mu.Lock()
+	count := len(client.forecasts.items)
+	client.forecasts.mu.Unlock()
+	assert.LessOrEqual(t, count, maxForecastCacheEntries, "the cache must stay within its bound")
+}
+
+func TestNewRejectsANegativeForecastTTL(t *testing.T) {
+	_, err := New(&Options{ForecastTTL: -time.Minute})
+	require.ErrorContains(t, err, "forecast ttl")
 }

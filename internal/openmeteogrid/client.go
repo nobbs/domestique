@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -24,22 +25,35 @@ const (
 	// validStampFormat has no zone suffix: the bucket's own filenames drop it,
 	// keeping only the two digits of the minute (always "00" in practice).
 	validStampFormat = "2006-01-02T1504"
+
+	// defaultLatestTTL: a new run lands roughly hourly, and the browser's own
+	// reader already trusts a manifest for this long.
+	defaultLatestTTL = 60 * time.Second
 )
 
 // Options configures an openmeteogrid client. There is no API key: the bucket
 // is public.
 type Options struct {
 	Transport http.RoundTripper
-	BaseURL   string
-	Timeout   time.Duration
+	// Now is the clock the manifest cache's expiry is judged against. Nil is
+	// time.Now.
+	Now     func() time.Time
+	BaseURL string
+	Timeout time.Duration
+	// LatestTTL bounds how long a Latest answer is shared across every
+	// caller. Zero is 60 seconds; negative is an error.
+	LatestTTL time.Duration
 }
 
 // Client relays Open-Meteo's spatial data. The host is hardcoded: BaseURL
 // exists to be overridden by a test, not by an operator, the same as
 // internal/openmeteo's.
 type Client struct {
-	client  *http.Client
-	baseURL *url.URL
+	client    *http.Client
+	baseURL   *url.URL
+	now       func() time.Time
+	manifest  *manifestCache
+	latestTTL time.Duration
 }
 
 // New creates an openmeteogrid client without contacting the upstream bucket.
@@ -66,21 +80,85 @@ func New(options *Options) (*Client, error) {
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
+	latestTTL := options.LatestTTL
+	if latestTTL == 0 {
+		latestTTL = defaultLatestTTL
+	}
+	if latestTTL < 0 {
+		return nil, errors.New("openmeteogrid: latest ttl must be positive")
+	}
 
 	return &Client{
-		client:  &http.Client{Timeout: timeout, Transport: transport},
-		baseURL: parsedBaseURL,
+		client:    &http.Client{Timeout: timeout, Transport: transport},
+		baseURL:   parsedBaseURL,
+		now:       now,
+		latestTTL: latestTTL,
+		manifest:  newManifestCache(),
 	}, nil
 }
 
 // Latest fetches the model's own capture manifest: its reference time and the
 // valid times it currently publishes. The caller decodes it; this package
-// only moves the bytes.
+// only moves the bytes. A 2xx answer is shared across every caller for
+// LatestTTL; a matching If-None-Match is answered 304 from that copy.
 func (c *Client) Latest(ctx context.Context, conditional http.Header) (*http.Response, error) {
+	if entry, ok := c.manifest.lookup(c.now()); ok {
+		return respondFromManifest(entry, conditional), nil
+	}
+
+	raw, err, _ := c.manifest.group.Do("latest", func() (any, error) {
+		// Another caller may have populated the cache while this one waited
+		// to enter the singleflight call.
+		if entry, ok := c.manifest.lookup(c.now()); ok {
+			return entry, nil
+		}
+
+		return c.fetchManifestEntry(ctx)
+	})
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the miss closure's own error is already an openmeteogrid error.
+	}
+	entry, ok := raw.(*manifestCacheEntry)
+	if !ok {
+		return nil, errors.New("openmeteogrid: manifest fetch returned an unexpected value")
+	}
+	if entry.cacheable {
+		c.manifest.store(entry, c.now().Add(c.latestTTL))
+	}
+
+	return respondFromManifest(entry, conditional), nil
+}
+
+// fetchManifestEntry buffers one unconditional upstream answer so every caller
+// sharing the miss, and every hit after it, is served from the same bytes.
+func (c *Client) fetchManifestEntry(ctx context.Context) (*manifestCacheEntry, error) {
 	endpoint := *c.baseURL
 	endpoint.Path = "/data_spatial/" + model + "/latest.json"
+	response, err := c.do(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	//nolint:errcheck // The response has already been read; a close failure changes nothing this method returns.
+	defer func() { _ = response.Body.Close() }()
 
-	return c.do(ctx, http.MethodGet, endpoint.String(), conditional)
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, maxManifestBodyBytes+1))
+	if readErr != nil {
+		return nil, fmt.Errorf("openmeteogrid: response could not be read: %w", readErr)
+	}
+	if len(body) > maxManifestBodyBytes {
+		return nil, errors.New("openmeteogrid: manifest larger than this client buffers")
+	}
+
+	return &manifestCacheEntry{
+		status:    response.StatusCode,
+		header:    forwardedManifestHeaders(response.Header),
+		body:      body,
+		cacheable: response.StatusCode >= http.StatusOK && response.StatusCode < http.StatusMultipleChoices,
+	}, nil
 }
 
 // Object fetches one .om file's bytes, or answers a HEAD, for the run named by
