@@ -16,6 +16,7 @@ import {
 } from "../api/queries";
 import type {
   Activity,
+  ActivityRouteMatch,
   BoundingBox,
   RiderProfile,
   Route,
@@ -54,6 +55,16 @@ export const route: Route = {
   pointCount: coordinates.length,
   movingSeconds: 6_420,
   validation: { biasPercent: -1.2, maePercent: 6.8, p90Percent: 14.1, evaluatedRides: 42 },
+};
+
+/** A whole, forward lap of the route above, which the ride fixtures vary from. */
+const routeMatch: ActivityRouteMatch = {
+  provider: route.provider,
+  sourceRouteId: route.sourceRouteId,
+  stageOrder: route.stageOrder,
+  routeCoverage: 1,
+  rideCoverage: 0.98,
+  direction: "forward",
 };
 
 /** The box every coordinate above fits inside, for the entry-page story's geometry. */
@@ -451,3 +462,57 @@ export function StubbedFetch({
  * one story differ and Chromatic reports it as an unstable test.
  */
 export const liveMap = { chromatic: { disableSnapshot: true } };
+
+/**
+ * Three laps of the route above: one whole and quickest, one whole and slower,
+ * one that skipped part of it and so competes for no best.
+ */
+export const riddenRides: Activity[] = [
+  {
+    id: 31,
+    startedAt: "2026-08-26T07:10:00Z",
+    distanceMetres: 42_500,
+    movingSeconds: 6_180,
+    elapsedSeconds: 6_900,
+    ascentMetres: 620,
+    typeId: 40,
+    locationId: 0,
+    routeMatch: { ...routeMatch, routeCoverage: 0.94, direction: "reverse" },
+    weather: {
+      temperatureMinCelsius: 12.4,
+      temperatureMaxCelsius: 19.8,
+      windSpeedKmh: 21,
+      precipitationMillimetres: 1.8,
+      weatherCode: 61,
+    },
+  },
+  {
+    id: 22,
+    startedAt: "2026-07-14T06:40:00Z",
+    distanceMetres: 42_500,
+    movingSeconds: 5_760,
+    elapsedSeconds: 6_300,
+    ascentMetres: 620,
+    typeId: 40,
+    locationId: 0,
+    routeMatch,
+    weather: {
+      temperatureMinCelsius: 18.1,
+      temperatureMaxCelsius: 27.5,
+      windSpeedKmh: 9,
+      precipitationMillimetres: 0,
+      weatherCode: 1,
+    },
+  },
+  {
+    id: 9,
+    startedAt: "2026-05-02T08:05:00Z",
+    distanceMetres: 42_500,
+    movingSeconds: 6_540,
+    elapsedSeconds: 7_200,
+    ascentMetres: 620,
+    typeId: 40,
+    locationId: 0,
+    routeMatch,
+  },
+];

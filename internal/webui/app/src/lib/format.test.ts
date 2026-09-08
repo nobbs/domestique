@@ -14,6 +14,7 @@ import {
   formatMovingTimeUncertainty,
   formatPrecipitation,
   formatReadTime,
+  formatSpeed,
   formatTemperature,
   formatTimestamp,
   formatWindSpeed,
@@ -300,5 +301,16 @@ describe("formatPrecipitation", () => {
 
   it("reports one decimal of millimetres", () => {
     expect(formatPrecipitation(0.4)).toBe("0.4 mm");
+  });
+});
+
+describe("formatSpeed", () => {
+  it("says nothing for a ride that moved for no time", () => {
+    expect(formatSpeed(null)).toBe("—");
+    expect(formatSpeed(Number.POSITIVE_INFINITY)).toBe("—");
+  });
+
+  it("reports one decimal of kilometres per hour", () => {
+    expect(formatSpeed(28.04)).toBe("28.0 km/h");
   });
 });

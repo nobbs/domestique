@@ -17,12 +17,14 @@ import {
   activitySeriesQuery,
   activitySplitsQuery,
   activityTrackQuery,
+  routesQuery,
   webUIConfigQuery,
 } from "../../api/queries";
 import type {
   Activity,
   ActivitySplit,
   ActivityTrack,
+  Route as LibraryRoute,
   Position,
   WebUIConfig,
 } from "../../api/types";
@@ -99,6 +101,37 @@ function trackWithLeadingGap(): ActivityTrack {
   };
 }
 
+const LIBRARY_ROUTE: LibraryRoute = {
+  provider: "veloplanner",
+  sourceRouteId: 12,
+  stageOrder: 2,
+  title: "Alpine loop — Descent",
+  sourceRouteName: "Alpine loop",
+  routeName: "Descent",
+  sourceRevision: "2026-08-17",
+  contentHash: "hash",
+  distanceMetres: 30_000,
+  ascentMetres: 300,
+  descentMetres: 300,
+  maxGradientPercent: 8,
+  pointCount: 900,
+};
+
+/** The same ride, recorded as a lap of the library route above. */
+function matchedRide(routeCoverage = 1): Activity {
+  return {
+    ...RIDE,
+    routeMatch: {
+      provider: LIBRARY_ROUTE.provider,
+      sourceRouteId: LIBRARY_ROUTE.sourceRouteId,
+      stageOrder: LIBRARY_ROUTE.stageOrder,
+      routeCoverage,
+      rideCoverage: 0.98,
+      direction: "forward",
+    },
+  };
+}
+
 function config(): WebUIConfig {
   return {
     basemaps: [],
@@ -114,12 +147,17 @@ function show(
   heartRate?: (number | null)[],
   ride: Activity = RIDE,
   splits: ActivitySplit[] = [],
+  library: LibraryRoute[] | null = [],
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
   client.setQueryData(activitiesQuery().queryKey, [ride]);
+  // Null leaves it unseeded, which is the only way to see whether the page asks.
+  if (library) {
+    client.setQueryData(routesQuery().queryKey, library);
+  }
   // The page's own guard: only a run of digits names a ride. Seeding under the
   // id the route actually carries is what keeps a test off the network, since
   // any key the page does not ask for leaves its query to fetch for real.
@@ -398,5 +436,29 @@ describe("one ride's page", () => {
 
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("track"))).toBe(false);
     expect(screen.getByText("No recorded track was stored for this ride.")).toBeInTheDocument();
+  });
+  it("names the route a ride was matched to and links back to it", () => {
+    show(track(), RIDE.id, undefined, matchedRide(), [], [LIBRARY_ROUTE]);
+
+    const link = screen.getByRole("link", { name: "Alpine loop — Descent" });
+    expect(link).toHaveAttribute("href", "/routes/veloplanner/12/2");
+    expect(screen.queryByText(/of the route/)).not.toBeInTheDocument();
+  });
+
+  it("says how much of the route a partial lap covered", () => {
+    show(track(), RIDE.id, undefined, matchedRide(0.94), [], [LIBRARY_ROUTE]);
+
+    expect(screen.getByText("· 94% of the route")).toBeInTheDocument();
+  });
+
+  it("names no route, and asks for no library, for a ride matched to none", () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL) => new Response(null, { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    show(track(), RIDE.id, undefined, RIDE, [], null);
+
+    expect(screen.queryByRole("link", { name: "Alpine loop — Descent" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/v1/routes"))).toBe(false);
   });
 });

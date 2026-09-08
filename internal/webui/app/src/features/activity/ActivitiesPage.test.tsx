@@ -6,10 +6,11 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
-import type { Activity, WebUIConfig } from "../../api/types";
+import { activitiesQuery, routesQuery, webUIConfigQuery } from "../../api/queries";
+import type { Activity, ActivityRouteMatch, Route, WebUIConfig } from "../../api/types";
 import { formatAscent, formatDistance, formatDuration, formatTimestamp } from "../../lib/format";
 import { ActivitiesPage } from "./ActivitiesPage";
 
@@ -50,11 +51,43 @@ function activity(id: number, startedAt: string, overrides: Partial<Activity> = 
 // Given oldest first, so a page that simply prints what it was handed fails.
 const ACTIVITIES = [activity(1, "2026-08-19T08:00:00Z"), activity(2, "2026-08-26T08:00:00Z")];
 
-function show(activities: Activity[] | null = ACTIVITIES) {
+const LIBRARY_ROUTE: Route = {
+  provider: "veloplanner",
+  sourceRouteId: 12,
+  stageOrder: 2,
+  title: "Alpine loop — Descent",
+  sourceRouteName: "Alpine loop",
+  routeName: "Descent",
+  sourceRevision: "2026-08-17",
+  contentHash: "hash",
+  distanceMetres: 30_000,
+  ascentMetres: 300,
+  descentMetres: 300,
+  maxGradientPercent: 8,
+  pointCount: 900,
+};
+
+/** A match onto the library route above, as a recorded ride carries one. */
+function matchedTo(route: Route): ActivityRouteMatch {
+  return {
+    provider: route.provider,
+    sourceRouteId: route.sourceRouteId,
+    stageOrder: route.stageOrder,
+    routeCoverage: 1,
+    rideCoverage: 0.98,
+    direction: "forward",
+  };
+}
+
+function show(activities: Activity[] | null = ACTIVITIES, library: Route[] | null = []) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
+  // Null leaves it unseeded, which is the only way to see whether the page asks.
+  if (library) {
+    client.setQueryData(routesQuery().queryKey, library);
+  }
   if (activities) {
     client.setQueryData(activitiesQuery().queryKey, activities);
   }
@@ -206,5 +239,41 @@ describe("the activity list", () => {
     show(null);
 
     expect(screen.getByRole("status", { name: "Loading activities" })).toBeInTheDocument();
+  });
+  it("offers no route filter, and asks for no library, while no ride is matched", () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL) => new Response(null, { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    show(ACTIVITIES, null);
+
+    expect(screen.queryByRole("combobox", { name: "Route" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/v1/routes"))).toBe(false);
+  });
+
+  it("narrows the weeks to the rides of one route, and back again", async () => {
+    show(
+      [
+        activity(1, "2026-08-19T08:00:00Z"),
+        activity(2, "2026-08-26T08:00:00Z", { routeMatch: matchedTo(LIBRARY_ROUTE) }),
+      ],
+      [LIBRARY_ROUTE],
+    );
+
+    const filter = screen.getByRole("combobox", { name: "Route" });
+    await userEvent.selectOptions(filter, "veloplanner/12/2");
+    const shown = screen
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"))
+      .filter((href) => href?.startsWith("/activities/"));
+    expect(shown).toEqual(["/activities/2"]);
+
+    await userEvent.selectOptions(filter, "");
+    expect(
+      screen
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"))
+        .filter((href) => href?.startsWith("/activities/")),
+    ).toHaveLength(2);
   });
 });

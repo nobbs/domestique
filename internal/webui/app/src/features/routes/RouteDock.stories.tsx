@@ -12,10 +12,12 @@ import { userEvent } from "storybook/test";
 import type { Highlight } from "../../lib/highlight";
 import type { MeasureKey } from "../../lib/measures";
 import type { DistanceWindow } from "../../lib/profile";
+import { riddenOn } from "../../lib/rideHistory";
 import {
   climbs,
   coordinates,
   profile,
+  riddenRides,
   rideStart,
   route,
   StoryProviders,
@@ -56,6 +58,7 @@ function Docked({ startOpen }: { startOpen: boolean }) {
           surface={surface}
           climbs={climbs}
           onSelectClimb={() => {}}
+          rides={riddenOn(riddenRides, route)}
           coordinates={coordinates}
           samples={weatherSamples}
           startAt={startAt}

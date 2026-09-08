@@ -3,15 +3,18 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { weatherQuery } from "../../api/queries";
+import { riddenOn } from "../../lib/rideHistory";
 import {
   climbs,
   coordinates,
   profile,
+  riddenRides,
   rideStart,
   route,
   surface,
@@ -19,23 +22,9 @@ import {
 } from "../../storybook/fixtures";
 import { RouteDock, type RouteDockProps } from "./RouteDock";
 
-function renderDock(overrides: Partial<RouteDockProps> = {}) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(weatherQuery(weatherSamples).queryKey, {
-    points: weatherSamples.map((sample, index) => ({
-      time: sample.arrivalAt.toISOString(),
-      temperatureCelsius: 14 + index,
-      apparentTemperatureCelsius: 12 + index,
-      precipitationMillimetres: 0,
-      precipitationProbabilityPercent: 5,
-      windSpeedKmh: 10,
-      windDirectionDegrees: 180,
-      weatherCode: 1,
-      cloudCoverPercent: 30,
-    })),
-  });
-
-  const props: RouteDockProps = {
+/** Every prop the dock needs, so a test names only the one it is about. */
+function dockProps(overrides: Partial<RouteDockProps> = {}): RouteDockProps {
+  return {
     title: route.title,
     profile,
     distanceMetres: route.distanceMetres,
@@ -56,14 +45,36 @@ function renderDock(overrides: Partial<RouteDockProps> = {}) {
     onHighlightChange: vi.fn(),
     measure: null,
     onMeasureChange: vi.fn(),
+    rides: [],
     open: true,
     onOpenChange: vi.fn(),
     ...overrides,
   };
+}
+
+function renderDock(overrides: Partial<RouteDockProps> = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(weatherQuery(weatherSamples).queryKey, {
+    points: weatherSamples.map((sample, index) => ({
+      time: sample.arrivalAt.toISOString(),
+      temperatureCelsius: 14 + index,
+      apparentTemperatureCelsius: 12 + index,
+      precipitationMillimetres: 0,
+      precipitationProbabilityPercent: 5,
+      windSpeedKmh: 10,
+      windDirectionDegrees: 180,
+      weatherCode: 1,
+      cloudCoverPercent: 30,
+    })),
+  });
+
+  const props = dockProps(overrides);
 
   return render(
     <QueryClientProvider client={client}>
-      <RouteDock {...props} />
+      <MemoryRouter>
+        <RouteDock {...props} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -157,6 +168,7 @@ describe("RouteDock", () => {
           surface={surface}
           climbs={climbs}
           onSelectClimb={vi.fn()}
+          rides={[]}
           coordinates={coordinates}
           samples={weatherSamples}
           startAt={null}
@@ -239,5 +251,66 @@ describe("RouteDock", () => {
 
     expect(screen.getByRole("button", { name: /^Hide \d+ climbs?$/ })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(climbs.length);
+  });
+
+  // The stop is the whole answer to "has this been ridden": a route with no
+  // rides behind it has no tab to press rather than a tab onto nothing.
+  it("offers a rides stop only for a route somebody has ridden", () => {
+    renderDock();
+
+    expect(screen.queryByRole("tab", { name: /Rides/ })).toBeNull();
+
+    cleanup();
+    renderDock({ rides: riddenOn(riddenRides, route) });
+    fireEvent.click(screen.getByRole("tab", { name: /Rides/ }));
+
+    expect(screen.getByText(`Ridden ${riddenRides.length} times`)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "Ride history" })).getAllByRole("link"),
+    ).toHaveLength(riddenRides.length);
+  });
+
+  it("reopens on the rides stop from the folded strip", async () => {
+    const user = userEvent.setup();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(weatherQuery(weatherSamples).queryKey, { points: [] });
+
+    function Controlled() {
+      const [open, setOpen] = useState(true);
+      return (
+        <RouteDock
+          {...dockProps({ open, onOpenChange: setOpen, rides: riddenOn(riddenRides, route) })}
+        />
+      );
+    }
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <Controlled />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Hide the route detail" }));
+    await user.click(screen.getByRole("button", { name: "Show the ride history" }));
+
+    expect(screen.getByRole("tab", { name: /Rides/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  // Opening the next route reuses this dock, and it may be one nobody has
+  // ridden: the rail would otherwise show a panel whose tab is gone.
+  it("falls back to the profile when the open route loses its rides", () => {
+    const { rerender } = renderDock({ rides: riddenOn(riddenRides, route) });
+    fireEvent.click(screen.getByRole("tab", { name: /Rides/ }));
+    expect(screen.getByRole("list", { name: "Ride history" })).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <RouteDock {...dockProps({ rides: [] })} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("list", { name: "Ride history" })).toBeNull();
+    expect(screen.getByRole("tab", { name: /Profile/ })).toHaveAttribute("aria-selected", "true");
   });
 });

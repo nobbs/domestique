@@ -26,6 +26,8 @@ import {
   IconSunHigh,
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
+import type { ActivityWeatherSummary } from "../api/types";
+import { formatPrecipitation, formatWindSpeed } from "./format";
 
 /**
  * Open-Meteo's WMO codes, as glyphs.
@@ -95,4 +97,23 @@ export function temperatureBand(celsius: number): 0 | 1 | 2 | 3 | 4 {
 /** The custom property a reading is painted from. */
 export function temperatureColour(celsius: number): string {
   return `var(--temp-${temperatureBand(celsius)})`;
+}
+
+/**
+ * What the ride was ridden through, in one line: the range the temperature
+ * moved over, the wind, and what fell if anything did. A dry ride says nothing
+ * about rain rather than saying none fell — the absence is the reading.
+ */
+export function conditionsSentence(weather: ActivityWeatherSummary): string {
+  const low = Math.round(weather.temperatureMinCelsius);
+  const high = Math.round(weather.temperatureMaxCelsius);
+  const parts = [
+    low === high ? `${low}°` : `${low}–${high}°`,
+    `wind ${formatWindSpeed(weather.windSpeedKmh)}`,
+  ];
+  if (weather.precipitationMillimetres > 0) {
+    parts.push(`${formatPrecipitation(weather.precipitationMillimetres)} of rain`);
+  }
+
+  return parts.join(", ");
 }

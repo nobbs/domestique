@@ -7,6 +7,7 @@ import { Tabs } from "@base-ui/react/tabs";
 import {
   IconArrowDownRight,
   IconArrowUpRight,
+  IconBike,
   IconCloud,
   IconInfoCircle,
   IconLayoutBottombarCollapse,
@@ -20,13 +21,20 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/pop
 import type { Climb } from "../../lib/climbs";
 import { forecastResolution } from "../../lib/forecastResolution";
 import { type ForecastSample, forecastLeadHours } from "../../lib/forecastSamples";
-import { formatAscent, formatClock, formatDistance, formatElevation } from "../../lib/format";
+import {
+  formatAscent,
+  formatClock,
+  formatCount,
+  formatDistance,
+  formatElevation,
+} from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import type { MeasureKey } from "../../lib/measures";
 import { groundSegments, steepnessEntries } from "../../lib/mix";
 import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import { gradientSharesBySign } from "../../lib/profile";
+import type { RiddenRide } from "../../lib/rideHistory";
 import type { SurfaceSummary } from "../../lib/surface";
 import { ClimbMarkers } from "./ClimbMarkers";
 import { ClimbsSidebar, ClimbsToggle } from "./ClimbsSidebar";
@@ -34,6 +42,7 @@ import { ConditionsChoices, ConditionsKey } from "./ConditionsPicker";
 import { ElevationProfile, profileReadout } from "./ElevationProfile";
 import { ForecastStrip } from "./ForecastStrip";
 import { GroundRibbon } from "./GroundRibbon";
+import { RouteHistory } from "./RouteHistory";
 
 const GUTTER = { paddingLeft: PADDING.left, paddingRight: PADDING.right };
 
@@ -190,6 +199,8 @@ export interface RouteDockProps {
   /** The forecast measure the map is washed in, and null for none. */
   measure: MeasureKey | null;
   onMeasureChange: (measure: MeasureKey | null) => void;
+  /** The rider's own rides of this route, newest first. Empty hides the stop. */
+  rides: RiddenRide[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -385,7 +396,17 @@ const RAIL_TAB =
   "flex w-14 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[active]:bg-[var(--base)] data-[active]:font-semibold data-[active]:text-[var(--ink)]";
 
 /** A stop on the rail, open or folded — matches the `Tabs.Tab` values below. */
-type Stop = "profile" | "forecast";
+type Stop = "profile" | "forecast" | "rides";
+
+/** What this route has been ridden, newest first. Reached only for a route with
+ * rides: the rail leaves the stop out entirely for one nobody has ridden. */
+function RidesStop({ rides }: Pick<RouteDockProps, "rides">) {
+  return (
+    <Panel gutter={false} line={`Ridden ${formatCount(rides.length, "time")}`}>
+      <RouteHistory rides={rides} />
+    </Panel>
+  );
+}
 
 const FOLDED_CONTROL =
   "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
@@ -411,6 +432,7 @@ export function RouteDock({
   onHighlightChange,
   measure,
   onMeasureChange,
+  rides,
   open,
   onOpenChange,
 }: RouteDockProps) {
@@ -418,6 +440,9 @@ export function RouteDock({
   const [climbsOpen, setClimbsOpen] = useState(true);
   // The stop shown while open, and the one Show reopens on — kept across folds.
   const [stop, setStop] = useState<Stop>("profile");
+  // A rail that lost the rides stop under it — the next route was ridden by
+  // nobody — falls back rather than showing a panel with no tab.
+  const shownStop = rides.length === 0 && stop === "rides" ? "profile" : stop;
 
   if (!open) {
     return (
@@ -450,6 +475,20 @@ export function RouteDock({
           <IconCloud size={15} stroke={2} aria-hidden="true" />
           Forecast
         </button>
+        {rides.length === 0 ? null : (
+          <button
+            type="button"
+            aria-label="Show the ride history"
+            onClick={() => {
+              setStop("rides");
+              onOpenChange(true);
+            }}
+            className={FOLDED_CONTROL}
+          >
+            <IconBike size={15} stroke={2} aria-hidden="true" />
+            Rides
+          </button>
+        )}
         {back === undefined ? null : (
           <span className="px-1 text-[10px] text-[var(--ink-2)]">back {formatClock(back)}</span>
         )}
@@ -463,7 +502,7 @@ export function RouteDock({
       className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
     >
       <Tabs.Root
-        value={stop}
+        value={shownStop}
         onValueChange={(value) => setStop(value as Stop)}
         orientation="vertical"
         className="flex gap-3"
@@ -478,6 +517,12 @@ export function RouteDock({
               <IconCloud size={15} stroke={2} aria-hidden="true" />
               Forecast
             </Tabs.Tab>
+            {rides.length === 0 ? null : (
+              <Tabs.Tab value="rides" className={RAIL_TAB}>
+                <IconBike size={15} stroke={2} aria-hidden="true" />
+                Rides
+              </Tabs.Tab>
+            )}
           </Tabs.List>
           <button
             type="button"
@@ -525,6 +570,11 @@ export function RouteDock({
               onMeasureChange={onMeasureChange}
             />
           </Tabs.Panel>
+          {rides.length === 0 ? null : (
+            <Tabs.Panel value="rides" className="min-w-0">
+              <RidesStop rides={rides} />
+            </Tabs.Panel>
+          )}
         </div>
       </Tabs.Root>
     </section>

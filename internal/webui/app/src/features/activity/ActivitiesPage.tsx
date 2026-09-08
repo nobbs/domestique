@@ -6,10 +6,11 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { webUIConfigQuery } from "../../api/queries";
-import type { Activity } from "../../api/types";
+import { routesQuery, webUIConfigQuery } from "../../api/queries";
+import type { Activity, Route } from "../../api/types";
+import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
@@ -28,6 +29,16 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEK_COLUMNS = "11rem repeat(7, minmax(0, 1fr))";
 /** The tallest bar, which the longest ride on the page gets; every other bar scales to it. */
 const BAR_REM = 6;
+
+/** The library routes the rider has ridden, in the library's own order: a filter
+ * onto a route with no rides behind it lands on an empty page. */
+function riddenRoutes(activities: Activity[], library: Route[]): Route[] {
+  const ridden = new Set(
+    activities.flatMap((ride) => (ride.routeMatch ? [routeKey(ride.routeMatch)] : [])),
+  );
+
+  return library.filter((route) => ridden.has(routeKey(route)));
+}
 
 // Only while the config is unavailable: once it answers, its zone is the one
 // used, whether or not it happens to match the browser's own.
@@ -150,7 +161,24 @@ export function ActivitiesPage() {
   const serviceZone = config.data?.timezone || null;
   const zone = serviceZone ?? browserZone();
   const { activities, isPending, isError } = useActivities();
-  const weeks = useMemo(() => weeksWithRides(activities, zone), [activities, zone]);
+  // The listing is only worth a request once some ride has a route to filter by.
+  const routes = useQuery({
+    ...routesQuery(),
+    enabled: activities.some((ride) => ride.routeMatch),
+  });
+  const [routeFilter, setRouteFilter] = useState("");
+  const ridden = useMemo(
+    () => riddenRoutes(activities, routes.data ?? []),
+    [activities, routes.data],
+  );
+  const shown = useMemo(
+    () =>
+      routeFilter === ""
+        ? activities
+        : activities.filter((ride) => ride.routeMatch && routeKey(ride.routeMatch) === routeFilter),
+    [activities, routeFilter],
+  );
+  const weeks = useMemo(() => weeksWithRides(shown, zone), [shown, zone]);
   // From the rides on the page: one with an unreadable start counts nowhere here.
   const longest = Math.max(
     ...weeks.flatMap((week) => week.rides.map((ride) => ride.distanceMetres)),
@@ -160,7 +188,26 @@ export function ActivitiesPage() {
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-        <h1 className="font-semibold text-2xl tracking-tight">Activities</h1>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="font-semibold text-2xl tracking-tight">Activities</h1>
+          {ridden.length > 0 ? (
+            <label className="flex items-center gap-2 text-[var(--ink-2)] text-xs">
+              Route
+              <select
+                className="rounded-lg bg-[var(--panel)] px-2 py-1 text-[var(--ink)] text-sm ring-1 ring-black/5"
+                value={routeFilter}
+                onChange={(event) => setRouteFilter(event.target.value)}
+              >
+                <option value="">Every ride</option>
+                {ridden.map((route) => (
+                  <option key={routeKey(route)} value={routeKey(route)}>
+                    {route.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
         {!config.isPending && serviceZone === null && (
           <p className="text-[var(--ink-2)] text-xs">Periods follow this browser's time zone</p>
         )}
