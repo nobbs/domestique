@@ -242,6 +242,8 @@ export const weatherQuery = (samples: ForecastSample[]) => {
 
         return forecast;
       },
+      // Matches the endpoint's own max-age, so a remount within it refetches nothing.
+      staleTime: 15 * 60 * 1000,
     },
   });
 };

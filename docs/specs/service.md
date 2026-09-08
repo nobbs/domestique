@@ -706,7 +706,9 @@ The read-only JSON surface is small:
   field names or its raw payload. A malformed point, more than 48 of them, or
   a window Open-Meteo could not answer is refused as `400` before any
   outbound call; a provider failure is `502`, carrying no upstream response
-  text.
+  text. A forecast may be reused by the caller's own browser for fifteen
+  minutes (`Cache-Control: private, max-age=900`); a refusal or failure
+  carries `no-store` like every other answer.
 
 The endpoints below that change state — the task runs, the schedule switches,
 the reprocess request, and the settings write — additionally require the
