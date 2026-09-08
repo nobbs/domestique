@@ -142,7 +142,7 @@ func (c *Client) fetchManifestEntry(ctx context.Context) (*manifestCacheEntry, e
 	if err != nil {
 		return nil, err
 	}
-	//nolint:errcheck // The response has already been read; a close failure changes nothing this method returns.
+	//nolint:errcheck // Closed once the body below is read; a close failure changes nothing this method returns.
 	defer func() { _ = response.Body.Close() }()
 
 	body, readErr := io.ReadAll(io.LimitReader(response.Body, maxManifestBodyBytes+1))

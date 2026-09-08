@@ -34,6 +34,23 @@ type manifestCache struct {
 	mu      sync.Mutex
 }
 
+// notModified applies RFC 9110's precedence: If-None-Match decides when sent,
+// If-Modified-Since only when it is not.
+func notModified(cached, conditional http.Header) bool {
+	if match := conditional.Get("If-None-Match"); match != "" {
+		etag := cached.Get("ETag")
+
+		return etag != "" && match == etag
+	}
+	since, err := http.ParseTime(conditional.Get("If-Modified-Since"))
+	if err != nil {
+		return false
+	}
+	lastModified, err := http.ParseTime(cached.Get("Last-Modified"))
+
+	return err == nil && !lastModified.After(since)
+}
+
 func newManifestCache() *manifestCache {
 	return &manifestCache{}
 }
@@ -71,13 +88,14 @@ func forwardedManifestHeaders(source http.Header) http.Header {
 }
 
 // respondFromManifest synthesises a fresh *http.Response per caller, so the
-// read-then-close contract holds for a hit; a matching If-None-Match is a 304.
+// read-then-close contract holds for a hit; a caller holding the copy gets 304.
 func respondFromManifest(entry *manifestCacheEntry, conditional http.Header) *http.Response {
-	if etag := entry.header.Get("ETag"); etag != "" && conditional.Get("If-None-Match") == etag {
+	if notModified(entry.header, conditional) {
 		header := make(http.Header, 2)
-		header.Set("ETag", etag)
-		if lastModified := entry.header.Get("Last-Modified"); lastModified != "" {
-			header.Set("Last-Modified", lastModified)
+		for _, name := range [...]string{"ETag", "Last-Modified"} {
+			if value := entry.header.Get(name); value != "" {
+				header.Set(name, value)
+			}
 		}
 
 		return &http.Response{StatusCode: http.StatusNotModified, Header: header, Body: http.NoBody}

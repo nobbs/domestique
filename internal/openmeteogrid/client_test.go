@@ -339,6 +339,40 @@ func TestLatestAnswersAMatchingIfNoneMatchWithA304FromCache(t *testing.T) {
 	assert.EqualValues(t, 1, requests.Load(), "a 304 answer must still come from the cached manifest")
 }
 
+func TestLatestAnswersIfModifiedSinceFromTheCachedLastModified(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Last-Modified", "Wed, 09 Sep 2026 00:00:00 GMT")
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{"reference_time":"2026-09-05T12:00:00Z"}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	first, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, first.Body.Close())
+
+	current, err := client.Latest(t.Context(), http.Header{"If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"}})
+	require.NoError(t, err)
+	assert.NoError(t, current.Body.Close())
+	assert.Equal(t, http.StatusNotModified, current.StatusCode)
+	assert.Equal(t, "Wed, 09 Sep 2026 00:00:00 GMT", current.Header.Get("Last-Modified"))
+
+	older, err := client.Latest(t.Context(), http.Header{"If-Modified-Since": {"Tue, 08 Sep 2026 00:00:00 GMT"}})
+	require.NoError(t, err)
+	assert.NoError(t, older.Body.Close())
+	assert.Equal(t, http.StatusOK, older.StatusCode)
+
+	// A sent If-None-Match decides on its own, even when the date would match.
+	mismatch, err := client.Latest(t.Context(), http.Header{
+		"If-None-Match": {`"other"`}, "If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"},
+	})
+	require.NoError(t, err)
+	assert.NoError(t, mismatch.Body.Close())
+	assert.Equal(t, http.StatusOK, mismatch.StatusCode)
+}
+
 func TestLatestAnswersAMismatchingIfNoneMatchWithTheCachedBody(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("ETag", `"abc123"`)
