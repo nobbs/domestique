@@ -65,6 +65,17 @@ describe("ClimbsSidebar times", () => {
     expect(screen.getByText("12:40 · 13:05")).toBeInTheDocument();
   });
 
+  // Seconds are stored as a real number, derived from two timestamps, so a
+  // time can land just short of the minute. Rounded within the minute it would
+  // read 0:60.
+  it("carries a rounded second into the minute rather than showing sixty", () => {
+    render(
+      <ClimbsSidebar climbs={[climb([[59.6, "2026-08-01T06:00:00Z"]])]} onSelect={() => {}} />,
+    );
+
+    expect(screen.getByText("1:00 · 1:00")).toBeInTheDocument();
+  });
+
   // Most climbs, for most riders, have never been ridden: an em dash would be
   // a figure-shaped thing where there is no figure.
   it("says nothing at all for a climb the rider has not ridden", () => {

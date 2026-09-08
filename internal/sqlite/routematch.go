@@ -132,14 +132,23 @@ func (s *Store) StoreActivityRouteMatch(
 func (s *Store) StoreActivityClimbAttempts(
 	ctx context.Context, targetID string, id int64, attempts []activity.ClimbAttempt,
 ) error {
-	if err := s.queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
+	// Whole, and so in one transaction: a delete followed by inserts that
+	// stopped part way would leave the ride holding some of one derivation's
+	// attempts and none of the rest, which is a set no derivation ever produced.
+	transaction, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return fmt.Errorf("starting the climb attempts write: %w", beginErr)
+	}
+	defer rollback(transaction)
+	queries := s.queries.WithTx(transaction)
+	if err := queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
 		TargetSlot: targetID, WorkoutID: id,
 	}); err != nil {
 		return fmt.Errorf("clearing an activity's climb attempts: %w", err)
 	}
 	for index := range attempts {
 		attempt := &attempts[index]
-		if err := s.queries.InsertActivityClimbAttempt(ctx, sqlcgen.InsertActivityClimbAttemptParams{
+		if err := queries.InsertActivityClimbAttempt(ctx, sqlcgen.InsertActivityClimbAttemptParams{
 			TargetSlot:          targetID,
 			WorkoutID:           id,
 			ClimbIndex:          int64(attempt.ClimbIndex),
@@ -150,6 +159,9 @@ func (s *Store) StoreActivityClimbAttempts(
 		}); err != nil {
 			return fmt.Errorf("storing an activity's climb attempt: %w", err)
 		}
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing the climb attempts write: %w", err)
 	}
 
 	return nil

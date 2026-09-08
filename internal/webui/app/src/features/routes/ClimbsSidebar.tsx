@@ -232,7 +232,9 @@ function climbTimes(climb: Climb): string | null {
  * row still takes longer than a minute, and none of them takes hours.
  */
 function formatClimbTime(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
+  // Rounded to the second before it is split, not after: a time of 59.6 s
+  // rounded within the minute would read 0:60, which is not a time.
+  const whole = Math.round(seconds);
 
-  return `${minutes}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }

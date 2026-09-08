@@ -571,3 +571,28 @@ func TestLibraryRoutesDigestFollowsTheHeightAlongARoute(t *testing.T) {
 	require.NoError(t, err, "LibraryRoutes() again")
 	assert.NotEqual(t, before, after, "a redrawn profile is a different library to match against")
 }
+
+// The set is replaced whole or not at all: a write that fails part way through
+// leaves the ride holding the attempts it already had, not a mixture of two
+// derivations. A climb index the table refuses is what stops this one.
+func TestStoreClimbAttemptsLeaveThePriorSetOnAFailedWrite(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
+		[]activity.ClimbAttempt{attemptOf(0, 780)}), "StoreActivityClimbAttempts()")
+
+	err := store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
+		[]activity.ClimbAttempt{attemptOf(1, 300), attemptOf(-1, 200)})
+	require.Error(t, err, "a climb index below zero is not an attempt")
+
+	attempts, readErr := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, readErr, "RouteClimbAttempts()")
+	require.Len(t, attempts, 1, "the prior set survived the refused write")
+	assert.Equal(t, 0, attempts[0].ClimbIndex)
+	assert.InDelta(t, 780.0, attempts[0].Seconds, 0.001)
+}
