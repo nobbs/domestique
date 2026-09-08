@@ -69,8 +69,9 @@ func TestEstimateSeriesWithWindRefusesAMismatchedHeadwindLength(t *testing.T) {
 	assert.False(t, ok)
 }
 
-// A tailwind faster than the rider costs less than still air, and the
-// aerodynamic force it adds is never negative: the sign test from
+// A tailwind faster than the rider costs less than still air: its
+// aerodynamic term is signed and pushes, and only the reported power is
+// clamped at nought. The sign test from
 // docs/references/power-estimation-handover.md §2.
 func TestEstimateSeriesWithWindTailwindFasterThanTheRiderCostsLessThanStillAir(t *testing.T) {
 	t.Parallel()
@@ -93,7 +94,7 @@ func TestEstimateSeriesWithWindTailwindFasterThanTheRiderCostsLessThanStillAir(t
 
 	assert.Less(t, tailwindMean, stillMean, "a push from behind costs less than still air")
 	for index, estimate := range withTailwind {
-		assert.GreaterOrEqual(t, estimate.Watts, 0.0, "sample %d: the clamp never reports a negative force", index)
+		assert.GreaterOrEqual(t, estimate.Watts, 0.0, "sample %d: the clamp never reports negative watts", index)
 	}
 	assert.InEpsilon(t, closedFormWithWind(speedMS, 0, mass, 100, -10), tailwindMean, 0.03)
 }
