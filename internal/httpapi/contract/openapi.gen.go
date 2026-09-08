@@ -552,7 +552,7 @@ type RiderSuggestions struct {
 	Stopping                      *StoppingSuggestion `json:"stopping,omitempty"`
 }
 
-// StoppingSuggestion How long the rider stood still per hour of moving over their own outdoor rides of the last ninety days, as a median and the quartiles either side of it. Measured over the caller's own targets alone and never pooled across riders, and absent until enough rides carry it.
+// StoppingSuggestion How long the rider stood still per hour of moving over their own outdoor rides under their own power in the last ninety days, as a median and the quartiles either side of it. An indoor ride stands still without stopping and a motor does not stop for a cafe, so neither is counted. Measured over the caller's own targets alone and never pooled across riders, and absent until enough rides carry it.
 type StoppingSuggestion struct {
 	MedianSecondsPerHour        float64 `json:"medianSecondsPerHour"`
 	LowerQuartileSecondsPerHour float64 `json:"lowerQuartileSecondsPerHour"`
