@@ -487,6 +487,42 @@ func (q *Queries) ListActivityTrack(ctx context.Context, arg ListActivityTrackPa
 	return items, nil
 }
 
+const listRecordedActivities = `-- name: ListRecordedActivities :many
+SELECT target_slot, workout_id, ascent_metres
+FROM activities
+WHERE records_state = 'stored'
+ORDER BY target_slot, workout_id
+`
+
+type ListRecordedActivitiesRow struct {
+	TargetSlot   string
+	WorkoutID    int64
+	AscentMetres float64
+}
+
+func (q *Queries) ListRecordedActivities(ctx context.Context) ([]ListRecordedActivitiesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRecordedActivities)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecordedActivitiesRow{}
+	for rows.Next() {
+		var i ListRecordedActivitiesRow
+		if err := rows.Scan(&i.TargetSlot, &i.WorkoutID, &i.AscentMetres); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markActivityRecordsStored = `-- name: MarkActivityRecordsStored :exec
 UPDATE activities SET records_state = 'stored', fit_checksum_failed = ?1
 WHERE target_slot = ?2 AND workout_id = ?3

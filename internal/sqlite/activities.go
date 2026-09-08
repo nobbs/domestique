@@ -406,3 +406,27 @@ func (s *Store) ActivityRides(
 
 	return rides, nil
 }
+
+// RecordedRide identifies one ride whose samples are stored, and the ascent
+// its device reported for it.
+type RecordedRide struct {
+	TargetID     string
+	WorkoutID    int64
+	AscentMetres float64
+}
+
+// RecordedRides is every target's ride whose samples are stored, oldest
+// target slot first then workout id, for an offline tool that walks every
+// ride's own track rather than one target's.
+func (s *Store) RecordedRides(ctx context.Context) ([]RecordedRide, error) {
+	rows, err := s.queries.ListRecordedActivities(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("reading recorded activities: %w", err)
+	}
+	rides := make([]RecordedRide, 0, len(rows))
+	for _, row := range rows {
+		rides = append(rides, RecordedRide{TargetID: row.TargetSlot, WorkoutID: row.WorkoutID, AscentMetres: row.AscentMetres})
+	}
+
+	return rides, nil
+}
