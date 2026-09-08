@@ -517,9 +517,11 @@ decoupling = (ratio_first - ratio_second) / ratio_first * 100
 Positive is the usual direction: the same watts cost more beats later on. A
 tenth more beats for the same power is a decoupling of 9.09%, not of 10%.
 
-**Constants.** A ride must run at least **one hour** for the two halves to be
-worth comparing. Absent below that, and absent for a ride carrying no measured
-power or no heart rate.
+**Constants.** The ride's recorded samples must span at least **one hour**,
+first to last, for the two halves to be worth comparing. The span is what is
+measured rather than the ride's own elapsed time, so a ride recorded once a
+second runs a second past the hour before it clears the bar. Absent below that,
+and absent for a ride carrying no measured power or no heart rate.
 
 **What it does not say.** The figure describes a *steady* aerobic ride. Over
 intervals the two halves are different efforts and the number is not drift.

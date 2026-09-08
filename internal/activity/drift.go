@@ -10,6 +10,10 @@ import (
 // DecouplingMinimumDuration is what a decoupling figure needs of a ride before
 // it means anything: Friel's ratio compares two halves of one aerobic effort,
 // and a shorter ride splits into halves too brief to have drifted.
+//
+// Measured across the recorded samples, first to last, so a ride recorded once
+// a second must run a second past the hour to clear it. The boundary is a
+// judgement either way and nothing turns on which side of it one second falls.
 const DecouplingMinimumDuration = time.Hour
 
 // HeatDriftBandLowerShare and HeatDriftBandUpperShare bound the endurance band
