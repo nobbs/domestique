@@ -278,8 +278,9 @@ func (r *report) addDrift(residualMetres, movingSeconds float64) {
 const loopEndsWithinMetres = 200
 
 // loopDrift is the altitude the barometer gained or lost between a ride's
-// first and last positioned samples, for a ride whose last position lies
-// within loopEndsWithinMetres of its first; not ok for any other ride.
+// first and last samples that carry a height, for a ride whose last positioned
+// sample lies within loopEndsWithinMetres of its first; not a loop for any
+// other ride, and an error only where the track could not be read.
 func loopDrift(
 	ctx context.Context, store *sqlite.Store, ride sqlite.RecordedRide,
 ) (residualMetres float64, loop bool, err error) {
@@ -287,7 +288,16 @@ func loopDrift(
 	if err != nil {
 		return 0, false, fmt.Errorf("reading a ride's track: %w", err)
 	}
-	// The first and last samples that carry a height: a positioned sample
+	if len(track) < 2 {
+		return 0, false, nil
+	}
+	apart := measure.HaversineMetres(
+		measure.Coordinate{Latitude: track[0].Latitude, Longitude: track[0].Longitude},
+		measure.Coordinate{Latitude: track[len(track)-1].Latitude, Longitude: track[len(track)-1].Longitude})
+	if apart > loopEndsWithinMetres {
+		return 0, false, nil
+	}
+	// The height comes from the samples that carry one: a positioned sample
 	// with no altitude says nothing about the barometer.
 	firstIndex := slices.IndexFunc(track, func(point activity.TrackPoint) bool { return point.HasAltitude })
 	if firstIndex < 0 {
@@ -300,15 +310,8 @@ func loopDrift(
 	if lastIndex == firstIndex {
 		return 0, false, nil
 	}
-	first, last := track[firstIndex], track[lastIndex]
-	apart := measure.HaversineMetres(
-		measure.Coordinate{Latitude: first.Latitude, Longitude: first.Longitude},
-		measure.Coordinate{Latitude: last.Latitude, Longitude: last.Longitude})
-	if apart > loopEndsWithinMetres {
-		return 0, false, nil
-	}
 
-	return last.AltitudeMetres - first.AltitudeMetres, true, nil
+	return track[lastIndex].AltitudeMetres - track[firstIndex].AltitudeMetres, true, nil
 }
 
 // candidateSummary is one candidate's statistics against the device ascent:
