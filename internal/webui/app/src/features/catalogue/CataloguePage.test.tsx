@@ -15,6 +15,7 @@ import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "
 import type { Route as LibraryRoute, RouteGeometry, Status, WebUIConfig } from "../../api/types";
 import { focusThumb } from "../../test/filterPanel";
 import { stubPendingFetch } from "../../test/network";
+import { IDLE_STATUS } from "../../test/status";
 import { CataloguePage } from "./CataloguePage";
 
 function libraryRoute(
@@ -45,9 +46,22 @@ const LIBRARY: LibraryRoute[] = [
   libraryRoute("Coast ride", { sourceRouteId: 3, distanceMetres: 20_000, ascentMetres: 100 }),
 ];
 
-const STATUS = {
-  sync: { phases: { source: { lastCompletedAt: "2026-08-29T07:00:00Z" } } },
-} as unknown as Status;
+const STATUS: Status = {
+  ...IDLE_STATUS,
+  sync: {
+    ...IDLE_STATUS.sync,
+    phases: {
+      source: {
+        lastCompletedAt: "2026-08-29T07:00:00Z",
+        lastResult: "succeeded",
+        sourceRoutes: 3,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+      },
+    },
+  },
+};
 
 const CONFIG: WebUIConfig = {
   basemaps: [],
