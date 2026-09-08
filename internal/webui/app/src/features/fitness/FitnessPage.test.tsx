@@ -140,9 +140,11 @@ describe("FitnessPage", () => {
 });
 
 /** One ride carrying whatever decoupling the test is about. */
+let nextRideID = 1;
+
 function ride(startedAt: string, decouplingPercent?: number): Activity {
   return {
-    id: Date.parse(startedAt),
+    id: nextRideID++,
     startedAt,
     distanceMetres: 40_000,
     movingSeconds: 5400,

@@ -16,6 +16,8 @@ const PADDING = { top: 12, right: 8, bottom: 20, left: 36 };
 
 /** One ride that carries a decoupling figure, at the moment it was ridden. */
 export interface DecouplingPoint {
+  /** The ride's own id: two rides can start at the same moment on two targets. */
+  id: number;
   at: number;
   percent: number;
 }
@@ -35,7 +37,7 @@ export function decouplingPoints(activities: Activity[], from: Date): Decoupling
         return [];
       }
 
-      return [{ at, percent }];
+      return [{ id: ride.id, at, percent }];
     })
     .sort((one, other) => one.at - other.at);
 }
@@ -80,11 +82,9 @@ export function DecouplingChart({ points }: { points: DecouplingPoint[] }) {
         stroke="var(--rule)"
         strokeWidth={1}
       />
-      {/* Two rides can start at the same moment on two targets, so the position
-          in the sorted series is what tells one dot from the other. */}
-      {points.map((one, index) => (
+      {points.map((one) => (
         <circle
-          key={`${one.at}-${index}`}
+          key={one.id}
           cx={x(one.at)}
           cy={y(one.percent)}
           r={3}
