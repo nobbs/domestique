@@ -478,9 +478,10 @@ func (r *report) String() string {
 
 	if r.routesEnabled {
 		fmt.Fprintln(&b)
-		fmt.Fprintln(&b, "matched routes vs device (relative error %, positive = route over-reports)")
+		fmt.Fprintln(&b, "matched routes vs device (relative error %, positive = route over-reports;")
+		fmt.Fprintln(&b, "  the two 'ride hyst3 vs' rows compare the ride's own figure with the route's, positive = ride above route)")
 		b.WriteString(r.routeReport.tableString())
-		fmt.Fprintf(&b, "  missing elevation: %d\n", r.skippedRouteMissingElevation)
+		fmt.Fprintf(&b, "  routes skipped for missing geometry or elevation: %d\n", r.skippedRouteMissingElevation)
 	}
 
 	fmt.Fprintln(&b)
@@ -531,8 +532,9 @@ func weatherSplitFor(
 
 // routeProfile is one library route's geometry, decoded once and cached by
 // key: distance and altitude are in the route's own stored (forward) order.
-// hasElevation is false for a route missing any point's elevation or whose
-// geometry could not be read, and its series are then unset.
+// hasElevation is false for a route with no stored geometry or with any point
+// lacking an elevation, and its series are then unset; a geometry that fails
+// to read or decode is an error instead.
 type routeProfile struct {
 	distanceMetres []float64
 	altitudeMetres []float64
