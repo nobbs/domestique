@@ -1152,12 +1152,19 @@ once covers it once.
 Which way round the route was ridden does not decide the match — a loop ridden
 anticlockwise is the same loop — but it is recorded beside it, because a route
 ridden the other way is not the same ride: its climbs are its descents, and
-anything comparing rides over one route must know which it is looking at. It is
-read by following how far along the route each position falls and totting up the
-advance around the route's length, so a loop joined part way round reads like
-one started at its beginning. A ride that advances less than half the route's
-length either way has no direction rather than the sign the noise came to, which
-is the honest answer for a route ridden out and back.
+anything comparing rides over one route must know which it is looking at.
+
+It is read by following how far along the route each position falls and totting
+up the advance. A route whose ends meet is measured around its length, so one
+joined part way round reads like one started at its beginning; a route that does
+not come back is measured as it runs, there being no wrap, and measuring one
+would read a ride of its whole length as having gone nowhere. Around a route
+that does come back, two positions in a row more than a quarter of it apart are
+not read at all: what lies between them could as well have gone either way, and
+wrapping them picks a direction rather than admitting it cannot tell. A ride
+that advances less than half the route's length either way has no direction
+rather than the sign the noise came to, which is the honest answer for a route
+ridden out and back.
 
 A ride matches at most one route, the one accounting for most of the ride. Where
 a library holds two routes over the same roads no ride can separate them, and
