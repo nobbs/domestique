@@ -83,7 +83,7 @@ ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 -- sample: a record the track would not serve must not shape an estimate.
 -- name: ListActivitySensorRecords :many
 SELECT record_index, recorded_at_unix, heart_rate_bpm, cadence_rpm, power_watts,
-  distance_metres, altitude_metres, latitude, longitude
+  distance_metres, altitude_metres, latitude, longitude, temperature_celsius
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND (heart_rate_bpm IS NOT NULL

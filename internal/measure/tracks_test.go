@@ -87,6 +87,17 @@ func paused(before, after int, gap time.Duration) []measure.Sample {
 	return samples
 }
 
+// withCadence copies a fixture with a known cadence set on every sample.
+func withCadence(samples []measure.Sample, rpm float64) []measure.Sample {
+	out := make([]measure.Sample, len(samples))
+	for index, sample := range samples {
+		sample.CadenceRPM, sample.HasCadence = rpm, true
+		out[index] = sample
+	}
+
+	return out
+}
+
 // stationary records n samples one second apart with no distance or altitude
 // change at all, as a rider stopped at the roadside would.
 func stationary(n int) []measure.Sample {

@@ -18,7 +18,10 @@ import (
 // rows are listed again rather than keeping the new columns null for good.
 //
 // 3: rows before it cannot hold the estimate's quality diagnostics.
-const derivationVersion = 3
+// 4: the estimate now follows a cadence gate and a per-sample air density, and
+// the heart-rate figures are now worked out from the capped series — both
+// change every figure a row before it holds.
+const derivationVersion = 4
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
@@ -78,9 +81,13 @@ func (s *Store) ActivityRideSamples(
 		// shaped by samples nobody is ever shown.
 		if row.Latitude.Valid && row.Longitude.Valid && row.AltitudeMetres.Valid && row.DistanceMetres.Valid {
 			samples.Track = append(samples.Track, measure.Sample{
-				At:             at,
-				DistanceMetres: row.DistanceMetres.Float64,
-				AltitudeMetres: row.AltitudeMetres.Float64,
+				At:                 at,
+				DistanceMetres:     row.DistanceMetres.Float64,
+				AltitudeMetres:     row.AltitudeMetres.Float64,
+				CadenceRPM:         row.CadenceRpm.Float64,
+				HasCadence:         row.CadenceRpm.Valid,
+				TemperatureCelsius: row.TemperatureCelsius.Float64,
+				HasTemperature:     row.TemperatureCelsius.Valid,
 			})
 			samples.TrackRecords = append(samples.TrackRecords, row.RecordIndex)
 		}

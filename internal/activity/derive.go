@@ -183,7 +183,8 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		if samplesErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
-		load := trainingload.Derive(samples.HeartRate, samples.Power, inputs)
+		heartRate := measure.CapHeartRate(samples.HeartRate, inputs.MaxHeartRateBPM)
+		load := trainingload.Derive(heartRate, samples.Power, inputs)
 		records, estimates, average, quality := samples.EstimatePower(inputs.TotalMassKG)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = average.Watts, average.Known
 		metrics := RideMetrics{Load: load, Averages: samples.Averages()}

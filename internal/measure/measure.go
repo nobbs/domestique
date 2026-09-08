@@ -6,11 +6,16 @@ package measure
 
 import "time"
 
-// Sample is one recorded moment along a track: when, how far along, how high.
+// Sample is one recorded moment along a track: when, how far along, how high,
+// and what the crank and thermometer read, where the ride carried them.
 type Sample struct {
-	At             time.Time
-	DistanceMetres float64
-	AltitudeMetres float64
+	At                 time.Time
+	DistanceMetres     float64
+	AltitudeMetres     float64
+	CadenceRPM         float64
+	TemperatureCelsius float64
+	HasCadence         bool
+	HasTemperature     bool
 }
 
 // Reading is one timestamped value of one sensor series.
