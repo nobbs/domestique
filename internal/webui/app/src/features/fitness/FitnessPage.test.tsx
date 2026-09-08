@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { Fitness, FitnessDay, Status } from "../../api/types";
+import type { Activity, Fitness, FitnessDay, Status } from "../../api/types";
 import { FitnessPage } from "./FitnessPage";
 
 function day(date: string, overrides: Partial<FitnessDay> = {}): FitnessDay {
@@ -46,14 +46,19 @@ const TIMELINE: Fitness = {
  * The page asks for a window measured from today, so its query key is not one a
  * test can seed. The answer is stubbed at the transport instead.
  */
-function show(fitness: Fitness = TIMELINE) {
+function show(fitness: Fitness = TIMELINE, activities: Activity[] = []) {
   // Routed by URL: the page's own chrome polls the status, and answering that
   // with a timeline is what makes the menu bar throw rather than the page fail.
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
-      const body = url.includes("/v1/activities/fitness") ? fitness : STATUS;
+      // Fitness first: the activities path is a prefix of it.
+      const body = url.includes("/v1/activities/fitness")
+        ? fitness
+        : url.includes("/v1/activities")
+          ? { activities }
+          : STATUS;
 
       return new Response(JSON.stringify(body), {
         status: 200,
@@ -86,6 +91,9 @@ function show(fitness: Fitness = TIMELINE) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // The ride ids are only ever needed to tell two rides apart within one test,
+  // so they start over rather than depending on what ran before.
+  nextRideID = 1;
 });
 
 describe("FitnessPage", () => {
@@ -131,5 +139,80 @@ describe("FitnessPage", () => {
 
     expect(await screen.findByText(/Nothing has been worked out yet/)).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Scale" })).not.toBeInTheDocument();
+  });
+});
+
+/** One ride carrying whatever decoupling the test is about. */
+let nextRideID = 1;
+
+function ride(startedAt: string, decouplingPercent?: number): Activity {
+  return {
+    id: nextRideID++,
+    startedAt,
+    distanceMetres: 40_000,
+    movingSeconds: 5400,
+    elapsedSeconds: 5700,
+    ascentMetres: 400,
+    typeId: 15,
+    locationId: 1,
+    ...(decouplingPercent === undefined ? {} : { metrics: { decouplingPercent } }),
+  };
+}
+
+describe("FitnessPage decoupling", () => {
+  it("draws the season's decoupling once a ride carries one", async () => {
+    const recently = new Date();
+    recently.setDate(recently.getDate() - 5);
+    show(TIMELINE, [ride(recently.toISOString(), 4.2), ride(recently.toISOString(), 7.9)]);
+
+    expect(await screen.findByRole("heading", { name: "Decoupling" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /Aerobic decoupling over 2 rides/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("says the rides were not read rather than drawing an empty season", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/v1/activities/fitness")) {
+          return new Response(JSON.stringify(TIMELINE), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (url.includes("/v1/activities")) {
+          return new Response("", { status: 503 });
+        }
+
+        return new Response(JSON.stringify(STATUS), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(statusQuery().queryKey, STATUS);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <FitnessPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The service did not say what has been ridden",
+    );
+  });
+
+  it("draws nothing where no ride in the window carries one", async () => {
+    const recently = new Date();
+    recently.setDate(recently.getDate() - 5);
+    show(TIMELINE, [ride(recently.toISOString())]);
+
+    await screen.findByRole("group", { name: "Scale" });
+    expect(screen.queryByRole("heading", { name: "Decoupling" })).toBeNull();
   });
 });

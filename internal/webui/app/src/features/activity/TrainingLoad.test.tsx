@@ -194,4 +194,27 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Recovery")).not.toBeInTheDocument();
     expect(screen.getByText("Speed")).toBeInTheDocument();
   });
+
+  it("shows the ride's decoupling and the heat drift beside it", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+    });
+
+    expect(screen.getByText("Decoupling")).toBeInTheDocument();
+    expect(screen.getByText("4.2")).toBeInTheDocument();
+    expect(screen.getByText("% of ratio lost over the second half")).toBeInTheDocument();
+    expect(screen.getByText("Heat drift")).toBeInTheDocument();
+    expect(screen.getByText("142")).toBeInTheDocument();
+    // The pair, not the beats alone: a heart rate without its temperature is
+    // not a reading of riding warm.
+    expect(screen.getByText("bpm in the endurance band at 29 °C")).toBeInTheDocument();
+  });
+
+  it("shows neither where the ride carries neither", () => {
+    show({ averageHeartRateBpm: 142.4 });
+
+    expect(screen.queryByText("Decoupling")).toBeNull();
+    expect(screen.queryByText("Heat drift")).toBeNull();
+  });
 });

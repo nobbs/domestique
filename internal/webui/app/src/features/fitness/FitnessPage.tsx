@@ -12,10 +12,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { fitnessQuery } from "../../api/queries";
+import { activitiesQuery, fitnessQuery } from "../../api/queries";
 import type { FitnessWeek } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
+import { DecouplingChart, decouplingPoints } from "./DecouplingChart";
 import { FitnessChart, type Scale } from "./FitnessChart";
 
 const SCALES: ReadonlyArray<{ value: Scale; label: string }> = [
@@ -75,6 +76,13 @@ export function FitnessPage() {
     return start.toISOString();
   }, [days]);
   const { data, isPending, isError } = useQuery(fitnessQuery({ from }));
+  // The season's decoupling is read off the rides the activities list already
+  // carries, rather than asking the service to fold it a second way.
+  const activities = useQuery(activitiesQuery());
+  const decoupling = useMemo(
+    () => decouplingPoints(activities.data ?? [], new Date(from)),
+    [activities.data, from],
+  );
   const widest = Math.max(
     ...(data?.weeks ?? []).map((week) =>
       week.zoneSeconds.reduce((sum, seconds) => sum + seconds, 0),
@@ -150,6 +158,24 @@ export function FitnessPage() {
                 <li>Form — the difference, fresh above zero</li>
               </ul>
             </div>
+            {activities.isError ? (
+              // An outage must not read as a season with nothing in it: the
+              // panel says the rides were not read rather than disappearing.
+              <p className="text-sm text-[var(--alert)]" role="alert">
+                The service did not say what has been ridden, so the season's decoupling is not
+                drawn.
+              </p>
+            ) : decoupling.length > 0 ? (
+              <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
+                <h2 className="font-semibold text-lg">Decoupling</h2>
+                <DecouplingChart points={decoupling} />
+                <p className="mt-2 text-[var(--ink-2)] text-xs">
+                  Per ride, the share of the first half's power-to-heart-rate ratio lost over the
+                  second. A falling cloud is aerobic fitness arriving. Measured power only, over
+                  rides of an hour or more, and only meaningful for a steady one.
+                </p>
+              </div>
+            ) : null}
             {data.weeks.length > 0 ? (
               <>
                 <h2 className="font-semibold text-lg">Time in zone, by week</h2>

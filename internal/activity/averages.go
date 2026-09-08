@@ -83,11 +83,13 @@ type RideMetrics struct {
 	Load               trainingload.Metrics
 	Averages           RideAverages
 	EstimateQuality    measure.Quality
+	Decoupling         Decoupling
+	HeatDrift          HeatDrift
 	HasEstimateQuality bool
 }
 
 // Derived reports whether anything at all came out, which is what decides
 // between storing a row and storing none.
 func (m *RideMetrics) Derived() bool {
-	return m.Load.Derived() || m.Averages.Any()
+	return m.Load.Derived() || m.Averages.Any() || m.Decoupling.Known || m.HeatDrift.Known
 }

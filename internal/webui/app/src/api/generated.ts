@@ -234,6 +234,21 @@ export interface EstimateQuality {
 }
 
 /**
+ * What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, or a rider who has entered no threshold power to place the band with.
+ */
+export interface HeatDrift {
+  /** The mean heart rate over the ride's samples inside the band. */
+  heartRateBpm: number;
+  /** The mean temperature over those same samples. */
+  temperatureCelsius: number;
+  /**
+   * How many samples the pair was read from.
+   * @minimum 1
+   */
+  samples: number;
+}
+
+/**
  * What this ride's recorded samples say about how hard it was: the load figures the rider's profile shapes, and the plain averages its sensors came to on their own. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, and a profile holds what the rider entered. Average speed is not here — it is distance over moving time, both of which the activity already carries, and is known even for a ride whose file was never readable.
  */
 export interface ActivityMetrics {
@@ -268,6 +283,9 @@ export interface ActivityMetrics {
   averageCadenceRpm?: number;
   /** The mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power. */
   averagePowerWatts?: number;
+  /** How much of the ride's power-to-heart-rate ratio was lost over its second half, as a percentage of its first. Positive is the usual direction: the same watts cost more beats later on. From measured power only, over a ride of at least an hour, and absent otherwise. It describes a steady aerobic ride; over intervals the two halves are different efforts and the figure says nothing about drift. See docs/specs/measurement.md §Decoupling and heat drift. */
+  decouplingPercent?: number;
+  heatDrift?: HeatDrift;
 }
 
 /**
