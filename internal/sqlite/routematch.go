@@ -78,7 +78,11 @@ func (s *Store) StoreActivityRouteMatch(
 		params.StageOrder = sql.NullInt64{Int64: int64(match.Key.StageOrder()), Valid: true}
 		params.RouteCoverage = sql.NullFloat64{Float64: match.RouteCoverage, Valid: true}
 		params.RideCoverage = sql.NullFloat64{Float64: match.RideCoverage, Valid: true}
-		params.Direction = sql.NullString{String: match.Direction.String(), Valid: true}
+		// A direction that could not be told is absent rather than a word meaning
+		// absence, which is what the column being nullable is for.
+		if match.Direction != activity.DirectionUnknown {
+			params.Direction = sql.NullString{String: match.Direction.String(), Valid: true}
+		}
 	}
 	if err := s.queries.UpsertActivityRouteMatch(ctx, params); err != nil {
 		return fmt.Errorf("storing an activity's route match: %w", err)

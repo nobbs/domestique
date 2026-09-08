@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -246,4 +247,11 @@ func TestStoreRoundTripsAMatchWithNoDirection(t *testing.T) {
 	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityRouteMatches()")
 	assert.Equal(t, activity.DirectionUnknown, matches[11].Direction)
+
+	var direction sql.NullString
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT direction FROM activity_route_match WHERE target_slot = ? AND workout_id = ?`,
+		"rider-a", 11,
+	).Scan(&direction), "reading the stored direction")
+	assert.False(t, direction.Valid, "a direction that could not be told is absent, not the word for it")
 }
