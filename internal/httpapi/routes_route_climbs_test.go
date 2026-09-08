@@ -146,3 +146,45 @@ func TestGetRouteClimbsReportsAnUnreadableStore(t *testing.T) {
 	code, _ := getRouteClimbs(t, handler, routeClimbsPath)
 	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
+
+// A route whose profile cannot be read costs the page the whole answer: without
+// the route's own geometry there is nothing to attach an attempt to.
+func TestGetRouteClimbsReportsAProfileItCannotRead(t *testing.T) {
+	state := climbState("rider-a")
+	state.stageProfileErr = errors.New("the geometry is unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getRouteClimbs(t, handler, routeClimbsPath)
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
+
+// A named target the caller may not read is answered not found, so an address
+// says nothing about whose it is.
+func TestGetRouteClimbsAreNotFoundForATargetTheCallerDoesNotOwn(t *testing.T) {
+	handler := activityHandler(t, climbState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, _ := getRouteClimbs(t, handler, routeClimbsPath+"?target=rider-b")
+	assert.Equal(t, http.StatusNotFound, code)
+}
+
+// A caller with no target of their own has ridden nothing, which is the route's
+// climbs with no attempts rather than a missing page.
+func TestGetRouteClimbsServeTheClimbsToACallerWithNoTarget(t *testing.T) {
+	handler := activityHandler(t, climbState("rider-a"), nonAdminSessions("rider-c"))
+
+	code, list := getRouteClimbs(t, handler, routeClimbsPath)
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Climbs, 1)
+	assert.Empty(t, list.Climbs[0].Attempts)
+}
+
+// A source route id that is not a number never reaches the handler: the
+// contract holds it at the door, as it does on every other address under a
+// route.
+func TestGetRouteClimbsRefuseAnAddressThatIsNoRoute(t *testing.T) {
+	handler := activityHandler(t, climbState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, _ := getRouteClimbs(t, handler,
+		"/v1/providers/veloplanner/sourceRoutes/notanumber/routes/1/climbs")
+	assert.Equal(t, http.StatusBadRequest, code)
+}

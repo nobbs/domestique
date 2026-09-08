@@ -478,3 +478,96 @@ func TestClearActivityRouteMatchesTakesTheClimbAttempts(t *testing.T) {
 	require.NoError(t, err, "RouteClimbAttempts()")
 	assert.Empty(t, attempts, "no match, no attempt at its climbs")
 }
+
+// climbingGeometry is a stage whose points carry height, which is what a climb
+// can be found on at all.
+func climbingGeometry() []route.Point {
+	points := []route.Point{}
+	for index := range 40 {
+		height := 100 + float64(index)
+		points = append(points, route.Point{
+			Longitude: 8.4 + float64(index)/1000, Latitude: 49.0, Elevation: &height,
+		})
+	}
+
+	return points
+}
+
+func TestStageProfileReadsTheLineAndTheHeightAlongIt(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t)
+	stage := storeTestStageWithGeometry(
+		t, 7, 1, "revision", "hash-a", "Alpine loop", "Descent", climbingGeometry())
+	require.NoError(t, store.StoreTrustedInventory(
+		t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
+
+	line, elevations, found, err := store.StageProfile(t.Context(), stage.Key())
+	require.NoError(t, err, "StageProfile()")
+	require.True(t, found)
+	require.Len(t, line, 40)
+	require.Len(t, elevations, 40)
+	assert.InDelta(t, 8.4, line[0].Longitude, 1e-9)
+	assert.InDelta(t, 100.0, elevations[0], 1e-9)
+	assert.InDelta(t, 139.0, elevations[39], 1e-9)
+}
+
+// A stage whose geometry carries no height has a line and no profile: a route
+// no climb can be found on, rather than one with none.
+func TestStageProfileHasNoHeightWhereTheGeometryCarriesNone(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t)
+	key := storeTestLibrary(t, store, 7, "hash-a")
+
+	line, elevations, found, err := store.StageProfile(t.Context(), key)
+	require.NoError(t, err, "StageProfile()")
+	require.True(t, found)
+	assert.Len(t, line, 2)
+	assert.Nil(t, elevations, "no height, no profile")
+}
+
+func TestStageProfileIsNotFoundForAStageTheLibraryLacks(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t)
+
+	_, _, found, err := store.StageProfile(
+		t.Context(), route.NewKey(route.ProviderVeloPlanner, 404, 1))
+	require.NoError(t, err, "StageProfile()")
+	assert.False(t, found)
+}
+
+func TestStageProfileReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t)
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, store.Close(), "Close()")
+
+	_, _, _, err := store.StageProfile(t.Context(), key)
+	require.ErrorContains(t, err, "reading stage geometry")
+}
+
+// The library digest covers the height along each route as well as its line, so
+// a route whose profile is redrawn owes its rides a fresh pass.
+func TestLibraryRoutesDigestFollowsTheHeightAlongARoute(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t)
+	stage := storeTestStageWithGeometry(
+		t, 7, 1, "revision", "hash-a", "Alpine loop", "Descent", climbingGeometry())
+	require.NoError(t, store.StoreTrustedInventory(
+		t.Context(), route.ProviderVeloPlanner, []route.Route{stage}), "StoreTrustedInventory()")
+	candidates, before, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes()")
+	require.Len(t, candidates, 1)
+	require.Len(t, candidates[0].Elevations, 40, "the candidate carries the height")
+
+	raised := climbingGeometry()
+	higher := 500.0
+	raised[10].Elevation = &higher
+	lifted := storeTestStageWithGeometry(
+		t, 7, 1, "revision", "hash-b", "Alpine loop", "Descent", raised)
+	require.NoError(t, store.StoreTrustedInventory(
+		t.Context(), route.ProviderVeloPlanner, []route.Route{lifted}), "StoreTrustedInventory()")
+
+	_, after, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes() again")
+	assert.NotEqual(t, before, after, "a redrawn profile is a different library to match against")
+}
