@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -150,6 +152,20 @@ func (h *Handler) GetRouteActivities(writer http.ResponseWriter, request *http.R
 
 		return
 	}
+	// A route this library does not hold is missing, as it is on every other
+	// address under it: without this an address for no route answers the same
+	// as a route nobody has ridden.
+	known, err := h.routeExists(request.Context(), provider, sourceRouteID, stageOrder)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !known {
+		h.notFound(writer)
+
+		return
+	}
 	requested := request.URL.Query().Get("target")
 	targetID, found, err := h.readableTarget(request.Context(), requested)
 	if err != nil {
@@ -184,6 +200,24 @@ func (h *Handler) GetRouteActivities(writer http.ResponseWriter, request *http.R
 		}
 	}
 	h.writeJSON(writer, http.StatusOK, view)
+}
+
+// routeExists reports whether the library holds the named route.
+func (h *Handler) routeExists(
+	ctx context.Context, provider route.Provider, sourceRouteID int64, stageOrder int,
+) (bool, error) {
+	known := false
+	if err := h.state.ForEachStageSummary(ctx, func(summary route.Summary) error {
+		if summary.Provider == provider && summary.SourceRouteID == sourceRouteID && summary.StageOrder == stageOrder {
+			known = true
+		}
+
+		return nil
+	}); err != nil {
+		return false, fmt.Errorf("reading the route inventory: %w", err)
+	}
+
+	return known, nil
 }
 
 // routeSurface reads the classification stored for this exact geometry, nil when

@@ -23,10 +23,22 @@ func testRouteKey() route.Key {
 
 const routeActivitiesPath = "/v1/providers/veloplanner/sourceRoutes/7/routes/1/activities"
 
+// libraryRoute is one route the library holds, so an address under it is a
+// route that exists rather than one this fixture never heard of.
+func libraryRoute(sourceRouteID int64) route.Summary {
+	return route.Summary{
+		Provider: route.ProviderVeloPlanner, SourceRouteID: sourceRouteID, StageOrder: 1,
+		RouteName: "Alpine loop", SourceRouteName: "Alpine loop", ContentHash: "hash",
+		DistanceMetres: 40000, PointCount: 2,
+	}
+}
+
 // riddenState is one rider's target holding two rides on the route, and another
-// rider's target holding one of its own on the same route.
+// rider's target holding one of its own on the same route. Route 9 is in the
+// library and has been ridden by nobody.
 func riddenState(subject string) *fakeState {
 	state := activityState(subject, time.Hour, 2*time.Hour)
+	state.summaries = []route.Summary{libraryRoute(7), libraryRoute(8), libraryRoute(9)}
 	state.routeMatches = map[string]map[int64]activities.RouteMatch{
 		subject: {
 			// Both shares clear the gate the matcher applies, so nothing here is a
@@ -77,10 +89,34 @@ func TestGetRouteActivitiesIsEmptyForARouteNobodyRode(t *testing.T) {
 	handler := activityHandler(t, riddenState("rider-a"), nonAdminSessions("rider-a"))
 
 	code, list := getRouteActivities(
-		t, handler, "/v1/providers/veloplanner/sourceRoutes/404/routes/1/activities")
+		t, handler, "/v1/providers/veloplanner/sourceRoutes/9/routes/1/activities")
 
 	require.Equal(t, http.StatusOK, code)
 	assert.Empty(t, list.Activities)
+}
+
+// An address for a route the library does not hold is missing, as it is on
+// every other address under a route. Answering it with an empty history would
+// tell a caller a mistyped route had simply never been ridden.
+func TestGetRouteActivitiesIsNotFoundForARouteTheLibraryLacks(t *testing.T) {
+	handler := activityHandler(t, riddenState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, _ := getRouteActivities(
+		t, handler, "/v1/providers/veloplanner/sourceRoutes/404/routes/1/activities")
+
+	assert.Equal(t, http.StatusNotFound, code)
+}
+
+// The inventory read is itself a stored read, and a route's history must not be
+// served at all when it fails.
+func TestGetRouteActivitiesReportsAnUnreadableInventory(t *testing.T) {
+	state := riddenState("rider-a")
+	state.summariesErr = errors.New("unavailable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getRouteActivities(t, handler, routeActivitiesPath)
+
+	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
 
 // Naming a target the caller may not read is not found rather than forbidden,

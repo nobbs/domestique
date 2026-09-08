@@ -4158,7 +4158,7 @@ export const getGetRouteActivitiesUrl = (
 };
 
 /**
- * The rides one target rode on this route, newest first. Scoped exactly as the activity list is: a caller reads only the target they own, and so reads their own history of a route and never another rider's.
+ * The rides one target rode on this route, newest first. Scoped exactly as the activity list is: a caller reads only the target they own, and so reads their own history of a route and never another rider's. A route the library does not hold is not found, as it is on every other address under a route; a route nobody has ridden is an empty list.
  */
 export const getRouteActivities = async (
   provider: string,

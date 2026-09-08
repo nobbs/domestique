@@ -2459,6 +2459,7 @@ type fakeState struct {
 	nicknames            map[string]string
 	nicknamesErr         error
 	sourceStageErr       error
+	summariesErr         error
 	lastRun              *phaseRun
 	lastSuccessAt        map[string]time.Time
 	targetStages         map[string][]storedStage
@@ -2871,6 +2872,9 @@ func (s *fakeState) ForEachTargetRun(
 }
 
 func (s *fakeState) ForEachStageSummary(_ context.Context, visit func(route.Summary) error) error {
+	if s.summariesErr != nil {
+		return s.summariesErr
+	}
 	for index := range s.summaries {
 		if err := visit(s.summaries[index]); err != nil {
 			return err
