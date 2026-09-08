@@ -21,7 +21,9 @@ import (
 // 4: the estimate now follows a cadence gate and a per-sample air density, and
 // the heart-rate figures are now worked out from the capped series — both
 // change every figure a row before it holds.
-const derivationVersion = 4
+// 5: the estimate's grade-and-speed window is now derived per ride from the
+// altimeter's own resolution instead of fixed at 30 m.
+const derivationVersion = 5
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those

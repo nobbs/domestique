@@ -63,7 +63,7 @@ func TestEstimateSeriesMatchesTheClosedFormOnASteadyClimb(t *testing.T) {
 // say they are taking something out.
 func TestEstimateSeriesClampsADescentToZeroRatherThanNegativeWatts(t *testing.T) {
 	t.Parallel()
-	estimates, _, ok := measure.EstimateSeries(ramp(300, 12, -0.08), 82)
+	estimates, quality, ok := measure.EstimateSeries(ramp(300, 12, -0.08), 82)
 	require.True(t, ok)
 
 	for index, estimate := range estimates {
@@ -72,6 +72,7 @@ func TestEstimateSeriesClampsADescentToZeroRatherThanNegativeWatts(t *testing.T)
 	mean, hasMean := measure.MeanEstimate(estimates)
 	require.True(t, hasMean)
 	assert.Zero(t, mean, "a steep enough descent costs nothing at all")
+	assert.Positive(t, quality.ClipBiasWatts, "and every sample of it is what the clamp added")
 }
 
 // The cadence gate is physics, checked before the numerical clamp ever runs:
@@ -177,6 +178,12 @@ func TestEstimateSeriesIsNotInflatedByRecorderNoise(t *testing.T) {
 		"the clean track is the closed form")
 	assert.InDelta(t, quietMean, roughMean, 0.1*quietMean,
 		"and noise the rider never rode moves the mean by less than a tenth")
+	// The derived window for this fixture is 100 m (see gradeWindowMetres),
+	// more than three times the old fixed 30 m, and the mean it produces sits
+	// well under a tenth of a per cent from the closed form rather than
+	// merely under a tenth.
+	assert.InDelta(t, quietMean, roughMean, 0.01*quietMean,
+		"a wider derived window brings the noisy mean closer still")
 }
 
 // The altitude either side of a pause is minutes of barometric drift apart, and
@@ -235,7 +242,10 @@ func TestEstimateSeriesReportsNoEstimateWhenEveryStepIsAGap(t *testing.T) {
 	estimates, quality, ok := measure.EstimateSeries(samples, 82)
 	assert.False(t, ok)
 	assert.False(t, estimates[1].Known)
-	assert.Equal(t, measure.Quality{}, quality)
+	// The window is still derived from the track even where every step is a
+	// gap and nothing else in Quality ends up non-zero: this flat two-sample
+	// track has no positive altitude step, so it takes the floor.
+	assert.Equal(t, measure.Quality{WindowMetres: 30}, quality)
 }
 
 // A GPS glitch that reports distance running backward is not a speed this
@@ -259,6 +269,96 @@ func TestEstimateSeriesNeedsAMassAndMoreThanOneSample(t *testing.T) {
 
 	_, _, ok = measure.EstimateSeries(ramp(1, 7.5, 0), 82)
 	assert.False(t, ok, "one sample is not a track")
+}
+
+// The window is derived per ride from the altimeter's own resolution:
+// window = clamp(quantum / 0.002, 30, 300). See docs/specs/measurement.md
+// §Gradient.
+func TestEstimateSeriesDerivesTheGradeWindowFromTheAltimetersResolution(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		samples []measure.Sample
+		want    float64
+	}{
+		"a barometer that steps in fifths of a metre gets 100 m": {
+			samples: noisy(flat(1200, 7.0)),
+			want:    100,
+		},
+		"a ramp rising 0.35 m a second gets 175 m": {
+			samples: ramp(10, 7, 0.05),
+			want:    175,
+		},
+		"metre-scale steps clamp to the 300 m ceiling": {
+			samples: ramp(10, 1, 1),
+			want:    300,
+		},
+		"two-centimetre steps clamp to the 30 m floor": {
+			samples: ramp(10, 1, 0.02),
+			want:    30,
+		},
+		"a flat ride with no positive step takes the floor": {
+			samples: flat(300, 7.5),
+			want:    30,
+		},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, quality, ok := measure.EstimateSeries(testCase.samples, 82)
+			require.True(t, ok)
+			assert.InDelta(t, testCase.want, quality.WindowMetres, 0.001)
+		})
+	}
+}
+
+// A step across a pause is drift, not a reading of the altimeter's own
+// resolution: the only positive altitude change in this fixture sits between
+// two flat stretches either side of a stop longer than DefaultMaxGap, so it
+// is ignored and the flat stretches leave the ride at the floor.
+func TestEstimateSeriesIgnoresAnAltitudeStepAcrossAPauseWhenDerivingTheWindow(t *testing.T) {
+	t.Parallel()
+	before := flat(120, 7.5)
+	after := flat(120, 7.5)
+	for index := range after {
+		after[index].At = before[len(before)-1].At.Add(time.Hour + time.Duration(index)*time.Second)
+		after[index].DistanceMetres += before[len(before)-1].DistanceMetres
+		after[index].AltitudeMetres += 40
+	}
+	samples := slices.Concat(before, after)
+
+	_, quality, ok := measure.EstimateSeries(samples, 82)
+	require.True(t, ok)
+	assert.InDelta(t, 30, quality.WindowMetres, 0.001)
+}
+
+// A stretch shorter than the derived window still takes the "measure it end
+// to end" branch even where the window is far larger than the old fixed
+// 30 m: a coarse, metre-stepping climb derives a 300 m window, and the short
+// stationary stretch recorded after a stop is measured whole rather than
+// walked outward sample by sample.
+func TestCentredWindowHandlesAShortStretchAtALargeDerivedWindow(t *testing.T) {
+	t.Parallel()
+	coarse := ramp(400, 1, 1)
+	last := coarse[len(coarse)-1]
+	short := make([]measure.Sample, 5)
+	for index := range short {
+		short[index] = measure.Sample{
+			At:             last.At.Add(time.Hour + time.Duration(index)*time.Second),
+			DistanceMetres: last.DistanceMetres,
+			AltitudeMetres: last.AltitudeMetres,
+		}
+	}
+	samples := slices.Concat(coarse, short)
+
+	estimates, quality, ok := measure.EstimateSeries(samples, 82)
+	require.True(t, ok)
+	require.InDelta(t, 300, quality.WindowMetres, 0.001)
+	// The very first sample after the pause has no step behind it to measure,
+	// same as after any other gap; only what follows it is checked here.
+	for index := len(coarse) + 1; index < len(samples); index++ {
+		require.True(t, estimates[index].Known, "sample %d", index)
+		assert.Zero(t, estimates[index].Watts, "sample %d: no distance covered in the short stretch", index)
+	}
 }
 
 func TestMeanEstimateIsAbsentWhenNothingWasEstimated(t *testing.T) {
@@ -298,19 +398,18 @@ func TestEstimateSeriesQualityOnASteadyClimbReadsAsTrustworthy(t *testing.T) {
 	assert.Less(t, quality.MeanAbsDeltaWattsPerSecond, 1.0)
 }
 
-// A slower ride's rolling resistance and drag are smaller relative to its
-// weight, so the same recorder noise that never dips below zero at 7 m/s
-// (see TestEstimateSeriesIsNotInflatedByRecorderNoise) pushes the windowed
-// grade estimate past the point a slower rider's momentum could explain. A
-// cadence known and positive throughout changes nothing about that bound: the
-// gate never fires.
-func TestEstimateSeriesQualityOnTheNoisyFixtureHasAPositiveClipBias(t *testing.T) {
+// At the fixed 30 m window this fixture used to demonstrate a slower rider's
+// smaller rolling resistance and drag letting recorder noise push the
+// windowed grade past what their momentum could explain. The window this
+// fixture derives is 100 m (see gradeWindowMetres), more than three times as
+// wide, and over it the same noise averages out to nothing: this is the
+// deviation docs/specs/measurement.md §Gradient Status named as resolved.
+func TestEstimateSeriesQualityOnTheNoisyFixtureHasNoClipBiasAtTheDerivedWindow(t *testing.T) {
 	t.Parallel()
 	_, quality, ok := measure.EstimateSeries(withCadence(noisy(flat(600, 3.0)), 80), 82)
 	require.True(t, ok)
 
-	assert.Greater(t, quality.ClipBiasWatts, 0.0)
-	assert.Less(t, quality.ClipBiasWatts, 20.0)
+	assert.Zero(t, quality.ClipBiasWatts)
 }
 
 // The Strava regression itself: the same noisy fixture, but with a cadence of
@@ -335,7 +434,9 @@ func TestEstimateSeriesQualityIsZeroWithFewerThanThreeKnownEstimates(t *testing.
 	_, quality, ok := measure.EstimateSeries(ramp(2, 7.5, 0), 82)
 	require.True(t, ok)
 
-	assert.Equal(t, measure.Quality{}, quality)
+	// A flat two-sample ramp has no positive altitude step either, so the
+	// window still reads as the floor.
+	assert.Equal(t, measure.Quality{WindowMetres: 30}, quality)
 }
 
 // A pause breaks the run of adjacent known estimates a pair needs: the sample
