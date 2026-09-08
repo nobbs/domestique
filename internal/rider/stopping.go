@@ -61,17 +61,22 @@ func MeasureStopping(rides []StoppingRide) Stopping {
 	}
 }
 
-// stoppedSecondsPerMovingHour is elapsed less moving, over moving. A device
-// that reported more moving than elapsed contradicts itself, so it is left out.
+// stoppedSecondsPerMovingHour is elapsed less moving, over moving. A device that
+// reported more moving than elapsed contradicts itself, and one whose summary
+// does not reduce to a finite rate is corrupt; both are left out.
 func (r StoppingRide) stoppedSecondsPerMovingHour() (float64, bool) {
 	stopped := r.ElapsedSeconds - r.MovingSeconds
 	if r.DistanceMetres < stoppingMinimumDistanceMetres ||
 		r.MovingSeconds < stoppingMinimumMovingSeconds ||
-		stopped < 0 || math.IsNaN(stopped) {
+		stopped < 0 {
+		return 0, false
+	}
+	rate := stopped * secondsPerHour / r.MovingSeconds
+	if math.IsNaN(rate) || math.IsInf(rate, 0) {
 		return 0, false
 	}
 
-	return stopped * secondsPerHour / r.MovingSeconds, true
+	return rate, true
 }
 
 // quantile interpolates between the two samples the fraction falls between,

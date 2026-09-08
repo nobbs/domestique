@@ -1,6 +1,7 @@
 package rider_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/nobbs/domestique/internal/rider"
@@ -71,8 +72,9 @@ func TestMeasureStoppingIsAbsentBelowTheMinimumRides(t *testing.T) {
 	assert.Equal(t, rider.Stopping{}, measured, "an absent habit carries no figures")
 }
 
-// An errand, a ride too brief to be one, and a device reporting more moving
-// than elapsed are each left out rather than read as a rate.
+// An errand, a ride too brief to be one, a device reporting more moving than
+// elapsed, and a summary that does not reduce to a finite rate are each left
+// out rather than read as one.
 func TestMeasureStoppingLeavesOutWhatIsNotRiding(t *testing.T) {
 	t.Parallel()
 	rides := []rider.StoppingRide{
@@ -80,6 +82,8 @@ func TestMeasureStoppingLeavesOutWhatIsNotRiding(t *testing.T) {
 		{DistanceMetres: 400, MovingSeconds: 3600, ElapsedSeconds: 7200},
 		{DistanceMetres: 20_000, MovingSeconds: 30, ElapsedSeconds: 3600},
 		{DistanceMetres: 20_000, MovingSeconds: 3600, ElapsedSeconds: 1800},
+		{DistanceMetres: 20_000, MovingSeconds: 3600, ElapsedSeconds: math.Inf(1)},
+		{DistanceMetres: 20_000, MovingSeconds: math.NaN(), ElapsedSeconds: 7200},
 	}
 
 	measured := rider.MeasureStopping(rides)
