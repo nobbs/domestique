@@ -91,6 +91,9 @@ function show(fitness: Fitness = TIMELINE, activities: Activity[] = []) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  // The ride ids are only ever needed to tell two rides apart within one test,
+  // so they start over rather than depending on what ran before.
+  nextRideID = 1;
 });
 
 describe("FitnessPage", () => {
