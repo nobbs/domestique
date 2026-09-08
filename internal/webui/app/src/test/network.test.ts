@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { refusingFetch } from "./network";
 
 describe("refusingFetch", () => {
@@ -15,5 +15,20 @@ describe("refusingFetch", () => {
       "https://tiles.example/style.json",
       "https://tiles.example/tile.pbf",
     ]);
+  });
+});
+
+describe("the suite's own fetch", () => {
+  // Installed by assignment rather than `vi.stubGlobal`, so a file that ends a
+  // test with `vi.unstubAllGlobals` gets the guard back, not the platform's own.
+  it("survives a test that unstubs every global", () => {
+    const guard = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("{}"))),
+    );
+    vi.unstubAllGlobals();
+
+    expect(globalThis.fetch).toBe(guard);
   });
 });

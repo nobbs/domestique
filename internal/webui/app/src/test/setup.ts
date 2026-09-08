@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeEach, expect, vi } from "vitest";
+import { afterEach, beforeEach, expect } from "vitest";
 import { refusingFetch } from "./network";
 
 /**
@@ -38,9 +38,12 @@ Element.prototype.scrollIntoView = () => {};
 /** Every request the suite's own `fetch` refused during the current test. */
 const requested: string[] = [];
 
+// Assigned rather than stubbed through Vitest: a file that ends its own test
+// with `vi.unstubAllGlobals` would otherwise put the platform's `fetch` back
+// for the unmount that follows, and a request made there would go out unseen.
 beforeEach(() => {
   requested.length = 0;
-  vi.stubGlobal("fetch", refusingFetch(requested));
+  globalThis.fetch = refusingFetch(requested);
 });
 
 afterEach(() => {
