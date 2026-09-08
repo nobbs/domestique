@@ -110,6 +110,39 @@ type Activity struct {
 	LocationID     int                     `json:"locationId"`
 	Metrics        *ActivityMetrics        `json:"metrics,omitempty"`
 	Weather        *ActivityWeatherSummary `json:"weather,omitempty"`
+	RouteMatch     *ActivityRouteMatch     `json:"routeMatch,omitempty"`
+}
+
+// ActivityRouteMatch The library route this ride was ridden on. Absent where the ride was ridden on none of them, or has not been matched yet; the two are not distinguished, because neither gives a route to show.
+type ActivityRouteMatch struct {
+	Provider      string `json:"provider"`
+	SourceRouteID int64  `json:"sourceRouteId"`
+	StageOrder    int    `json:"stageOrder"`
+	// RouteCoverage Share of the route's length this ride covered, 0 to 1.
+	RouteCoverage float64 `json:"routeCoverage"`
+	// RideCoverage Share of this ride's length that lay on the route, 0 to 1.
+	RideCoverage float64            `json:"rideCoverage"`
+	Direction    RouteRideDirection `json:"direction"`
+}
+
+// RouteRideDirection Which way round the route the ride went. Unknown where it could not be told, which a route ridden out and back never can: it advances as far one way as the other.
+type RouteRideDirection string
+
+const (
+	RouteRideDirectionForward RouteRideDirection = "forward"
+	RouteRideDirectionReverse RouteRideDirection = "reverse"
+	RouteRideDirectionUnknown RouteRideDirection = "unknown"
+)
+
+type RouteActivity struct {
+	ID            int64              `json:"id"`
+	RouteCoverage float64            `json:"routeCoverage"`
+	RideCoverage  float64            `json:"rideCoverage"`
+	Direction     RouteRideDirection `json:"direction"`
+}
+
+type RouteActivityList struct {
+	Activities []RouteActivity `json:"activities"`
 }
 
 type Fitness struct {

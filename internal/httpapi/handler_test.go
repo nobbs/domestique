@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -2458,6 +2459,7 @@ type fakeState struct {
 	nicknames            map[string]string
 	nicknamesErr         error
 	sourceStageErr       error
+	summariesErr         error
 	lastRun              *phaseRun
 	lastSuccessAt        map[string]time.Time
 	targetStages         map[string][]storedStage
@@ -2490,10 +2492,13 @@ type fakeState struct {
 	riderSuggestionErr   error
 	activityMetricsErr   error
 	activityWeatherErr   error
+	routeMatchErr        error
+	routeRidesErr        error
 	rideLoadsErr         error
 	rideLoads            map[string][]trainingload.RideLoad
 	activityMetrics      map[string]map[int64]activities.RideMetrics
 	activityWeather      map[string]map[int64][]activities.WeatherStep
+	routeMatches         map[string]map[int64]activities.RouteMatch
 	riderProfiles        map[string]rider.Profile
 	riderSuggestions     map[string]rider.Suggestions
 	riderSuggestionSince time.Time
@@ -2506,6 +2511,48 @@ type fakeState struct {
 
 // ActivityWeatherSummaries sums the steps the test gave this target the way
 // the store's own query does, so a test writes steps and reads a summary.
+func (s *fakeState) ActivityRouteMatches(
+	_ context.Context, targetID string,
+) (map[int64]activities.RouteMatch, error) {
+	if s.routeMatchErr != nil {
+		return nil, s.routeMatchErr
+	}
+
+	return s.routeMatches[targetID], nil
+}
+
+func (s *fakeState) RouteActivities(
+	_ context.Context, targetID string, key route.Key,
+) ([]activities.RouteRide, error) {
+	if s.routeRidesErr != nil {
+		return nil, s.routeRidesErr
+	}
+	started := map[int64]time.Time{}
+	for _, stored := range s.activities[targetID] {
+		started[stored.ID] = stored.StartedAt
+	}
+	rides := []activities.RouteRide{}
+	for id, match := range s.routeMatches[targetID] {
+		if match.Key == key {
+			rides = append(rides, activities.RouteRide{
+				ID: id, RouteCoverage: match.RouteCoverage, RideCoverage: match.RideCoverage,
+				Direction: match.Direction,
+			})
+		}
+	}
+	// Newest first, as the stored query orders them: the ride ids these fixtures
+	// hand out do not run with the clock.
+	slices.SortFunc(rides, func(a, b activities.RouteRide) int {
+		if when := started[b.ID].Compare(started[a.ID]); when != 0 {
+			return when
+		}
+
+		return cmp.Compare(b.ID, a.ID)
+	})
+
+	return rides, nil
+}
+
 func (s *fakeState) ActivityWeatherSummaries(
 	_ context.Context, targetID string,
 ) (map[int64]activities.WeatherSummary, error) {
@@ -2836,7 +2883,26 @@ func (s *fakeState) ForEachTargetRun(
 	return nil
 }
 
+func (s *fakeState) StageExists(
+	_ context.Context, provider route.Provider, sourceRouteID int64, stageOrder int,
+) (bool, error) {
+	if s.summariesErr != nil {
+		return false, s.summariesErr
+	}
+	for index := range s.summaries {
+		summary := &s.summaries[index]
+		if summary.Provider == provider && summary.SourceRouteID == sourceRouteID && summary.StageOrder == stageOrder {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (s *fakeState) ForEachStageSummary(_ context.Context, visit func(route.Summary) error) error {
+	if s.summariesErr != nil {
+		return s.summariesErr
+	}
 	for index := range s.summaries {
 		if err := visit(s.summaries[index]); err != nil {
 			return err

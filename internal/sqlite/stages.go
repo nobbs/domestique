@@ -32,6 +32,21 @@ func (s *Store) ForEachSourceStage(ctx context.Context, visit func(provider rout
 	return nil
 }
 
+// StageExists reports whether the trusted inventory holds one route, without
+// reading the inventory to find out.
+func (s *Store) StageExists(
+	ctx context.Context, provider route.Provider, routeID int64, stageOrder int,
+) (bool, error) {
+	held, err := s.queries.StageExists(ctx, sqlcgen.StageExistsParams{
+		Provider: string(provider), RouteID: routeID, StageOrder: int64(stageOrder),
+	})
+	if err != nil {
+		return false, fmt.Errorf("reading whether a route is held: %w", err)
+	}
+
+	return held, nil
+}
+
 // ForEachStageSummary visits trusted source stages with their display metadata
 // in stable order. A stage whose geometry has not yet been cached is still
 // visited, with zeroed geometry facts, so the inventory listing never hides a

@@ -104,6 +104,21 @@ func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
 	return view
 }
 
+// activityRouteMatch is the wire form of the route a ride was ridden on. A ride
+// matched to none carries none: the page has no route to show, and no way to
+// tell "ridden nowhere in the library" from "not matched yet" that it could act
+// on differently.
+func activityRouteMatch(match activities.RouteMatch) *openapi.ActivityRouteMatch {
+	return &openapi.ActivityRouteMatch{
+		Provider:      string(match.Key.Provider()),
+		SourceRouteID: match.Key.SourceRouteID(),
+		StageOrder:    match.Key.StageOrder(),
+		RouteCoverage: match.RouteCoverage,
+		RideCoverage:  match.RideCoverage,
+		Direction:     openapi.RouteRideDirection(match.Direction.String()),
+	}
+}
+
 // maximumActivities bounds one response. A rider who has ridden more than
 // this in the window sees the most recent of them.
 const maximumActivities = 5000
@@ -154,6 +169,12 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 			return
 		}
+		matches, matchErr := h.state.ActivityRouteMatches(request.Context(), targetID)
+		if matchErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
 		view.Activities = make([]openapi.Activity, 0, len(stored))
 		for _, recorded := range stored {
 			activity := openapi.Activity{
@@ -171,6 +192,9 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 			}
 			if summary, ok := summaries[recorded.ID]; ok {
 				activity.Weather = weatherSummary(summary)
+			}
+			if match, ok := matches[recorded.ID]; ok {
+				activity.RouteMatch = activityRouteMatch(match)
 			}
 			view.Activities = append(view.Activities, activity)
 		}

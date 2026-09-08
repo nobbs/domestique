@@ -284,6 +284,31 @@ export interface ActivityWeatherSummary {
   weatherCode: number;
 }
 
+/**
+ * Which way round the route the ride went. Unknown where it could not be told, which a route ridden out and back never can: it advances as far one way as the other.
+ */
+export type RouteRideDirection = (typeof RouteRideDirection)[keyof typeof RouteRideDirection];
+
+export const RouteRideDirection = {
+  forward: "forward",
+  reverse: "reverse",
+  unknown: "unknown",
+} as const;
+
+/**
+ * The library route this ride was ridden on. Absent where the ride was ridden on none of them, or has not been matched yet; the two are not distinguished, because neither gives a route to show.
+ */
+export interface ActivityRouteMatch {
+  provider: string;
+  sourceRouteId: number;
+  stageOrder: number;
+  /** Share of the route's length this ride covered, 0 to 1. */
+  routeCoverage: number;
+  /** Share of this ride's length that lay on the route, 0 to 1. */
+  rideCoverage: number;
+  direction: RouteRideDirection;
+}
+
 export interface Activity {
   id: number;
   startedAt: string;
@@ -295,6 +320,7 @@ export interface Activity {
   locationId: number;
   metrics?: ActivityMetrics;
   weather?: ActivityWeatherSummary;
+  routeMatch?: ActivityRouteMatch;
 }
 
 export interface ActivityList {
@@ -521,6 +547,17 @@ export interface GeoJSONFeature {
   bbox: number[];
   geometry: GeoJSONLineString;
   properties: GeoJSONProperties;
+}
+
+export interface RouteActivity {
+  id: number;
+  routeCoverage: number;
+  rideCoverage: number;
+  direction: RouteRideDirection;
+}
+
+export interface RouteActivityList {
+  activities: RouteActivity[];
 }
 
 /**
@@ -947,6 +984,13 @@ export type GetActivitySeriesParams = {
 export type GetActivitySplitsParams = {
   /**
    * The target to read. Omitted means the caller's own.
+   */
+  target?: string;
+};
+
+export type GetRouteActivitiesParams = {
+  /**
+   * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so the surface never confirms which targets exist.
    */
   target?: string;
 };
@@ -4039,6 +4083,270 @@ export function useGetRouteGeometry<
     provider,
     sourceRouteId,
     stageOrder,
+    options,
+  );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getRouteActivitiesResponse200 = {
+  data: RouteActivityList;
+  status: 200;
+};
+
+export type getRouteActivitiesResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getRouteActivitiesResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getRouteActivitiesResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getRouteActivitiesResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getRouteActivitiesResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getRouteActivitiesResponseSuccess = getRouteActivitiesResponse200 & {
+  headers: Headers;
+};
+export type getRouteActivitiesResponseError = (
+  | getRouteActivitiesResponse400
+  | getRouteActivitiesResponse401
+  | getRouteActivitiesResponse403
+  | getRouteActivitiesResponse404
+  | getRouteActivitiesResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetRouteActivitiesUrl = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteActivitiesParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/providers/${encodeURIComponent(String(provider))}/sourceRoutes/${encodeURIComponent(String(sourceRouteId))}/routes/${encodeURIComponent(String(stageOrder))}/activities?${stringifiedParams}`
+    : `/v1/providers/${encodeURIComponent(String(provider))}/sourceRoutes/${encodeURIComponent(String(sourceRouteId))}/routes/${encodeURIComponent(String(stageOrder))}/activities`;
+};
+
+/**
+ * The rides one target rode on this route, newest first. Scoped exactly as the activity list is: a caller reads only the target they own, and so reads their own history of a route and never another rider's. A route the library does not hold is not found, as it is on every other address under a route; a route nobody has ridden is an empty list.
+ */
+export const getRouteActivities = async (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteActivitiesParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getRouteActivitiesResponseSuccess> => {
+  return domestiqueRequest<getRouteActivitiesResponseSuccess>(
+    getGetRouteActivitiesUrl(provider, sourceRouteId, stageOrder, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetRouteActivitiesQueryKey = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteActivitiesParams,
+) => {
+  return [
+    `/v1/providers/${provider}/sourceRoutes/${sourceRouteId}/routes/${stageOrder}/activities`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetRouteActivitiesQueryOptions = <
+  TData = Awaited<ReturnType<typeof getRouteActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteActivitiesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteActivities>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetRouteActivitiesQueryKey(provider, sourceRouteId, stageOrder, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getRouteActivities>>> = ({ signal }) =>
+    getRouteActivities(provider, sourceRouteId, stageOrder, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled:
+      provider !== null &&
+      provider !== undefined &&
+      sourceRouteId !== null &&
+      sourceRouteId !== undefined &&
+      stageOrder !== null &&
+      stageOrder !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getRouteActivities>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetRouteActivitiesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getRouteActivities>>
+>;
+export type GetRouteActivitiesQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetRouteActivities<
+  TData = Awaited<ReturnType<typeof getRouteActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params: undefined | GetRouteActivitiesParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteActivities>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRouteActivities>>,
+          TError,
+          Awaited<ReturnType<typeof getRouteActivities>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetRouteActivities<
+  TData = Awaited<ReturnType<typeof getRouteActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteActivitiesParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getRouteActivities>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRouteActivities>>,
+          TError,
+          Awaited<ReturnType<typeof getRouteActivities>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetRouteActivities<
+  TData = Awaited<ReturnType<typeof getRouteActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteActivitiesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteActivities>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetRouteActivities<
+  TData = Awaited<ReturnType<typeof getRouteActivities>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteActivitiesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteActivities>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetRouteActivitiesQueryOptions(
+    provider,
+    sourceRouteId,
+    stageOrder,
+    params,
     options,
   );
 

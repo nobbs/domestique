@@ -371,6 +371,31 @@ func (q *Queries) PruneStageGeometry(ctx context.Context) error {
 	return err
 }
 
+const stageExists = `-- name: StageExists :one
+SELECT EXISTS(
+  SELECT 1 FROM source_stages
+  WHERE provider = ?1
+    AND route_id = ?2
+    AND stage_order = ?3
+)
+`
+
+type StageExistsParams struct {
+	Provider   string
+	RouteID    int64
+	StageOrder int64
+}
+
+// Whether the trusted inventory holds one route. Every address under a route is
+// answered against this, and a caller asking only whether it exists reads no
+// more than that.
+func (q *Queries) StageExists(ctx context.Context, arg StageExistsParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, stageExists, arg.Provider, arg.RouteID, arg.StageOrder)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const upsertStageGeometry = `-- name: UpsertStageGeometry :exec
 INSERT INTO stage_geometry (
   provider, route_id, stage_order, content_hash, route_name, stage_name,

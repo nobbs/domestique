@@ -124,3 +124,14 @@ DELETE FROM stage_reprocess WHERE provider = ?;
 
 -- name: ListStageReprocess :many
 SELECT provider, route_id, stage_order FROM stage_reprocess;
+
+-- name: StageExists :one
+-- Whether the trusted inventory holds one route. Every address under a route is
+-- answered against this, and a caller asking only whether it exists reads no
+-- more than that.
+SELECT EXISTS(
+  SELECT 1 FROM source_stages
+  WHERE provider = sqlc.arg(provider)
+    AND route_id = sqlc.arg(route_id)
+    AND stage_order = sqlc.arg(stage_order)
+);

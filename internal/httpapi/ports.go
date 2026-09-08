@@ -227,6 +227,11 @@ type ActivityState interface {
 	ActivityRideLoads(ctx context.Context, targetID string) ([]trainingload.RideLoad, error)
 	// ActivityWeatherSteps is one ride's own steps, in order.
 	ActivityWeatherSteps(ctx context.Context, targetID string, id int64) ([]activities.WeatherStep, error)
+	// ActivityRouteMatches is the library route each of one target's rides was
+	// ridden on, keyed by ride. A ride matched to none is absent from the map.
+	ActivityRouteMatches(ctx context.Context, targetID string) (map[int64]activities.RouteMatch, error)
+	// RouteActivities is the rides one target rode on one route, newest first.
+	RouteActivities(ctx context.Context, targetID string, key route.Key) ([]activities.RouteRide, error)
 }
 
 // TargetState is what is known locally about each self-service Wahoo target.
@@ -260,6 +265,9 @@ type TargetState interface {
 type StageState interface {
 	ForEachSourceStage(ctx context.Context, visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string) error) error
 	ForEachStageSummary(ctx context.Context, visit func(summary route.Summary) error) error
+	// StageExists answers whether the library holds one route, for an address
+	// under it that needs no more than that.
+	StageExists(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (bool, error)
 	StageGeometry(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (route.Summary, json.RawMessage, json.RawMessage, bool, error)
 	StageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	SurfaceCoverage(ctx context.Context) (classified, total int, err error)

@@ -268,3 +268,37 @@ func stageGeometryUpdatedAt(t *testing.T, store *Store, routeID int64, stageOrde
 
 	return updatedAt
 }
+
+// A route is held when the trusted inventory holds it, which is what every
+// address under a route is answered against.
+func TestStoreReportsWhetherARouteIsHeld(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	stage := storeTestStage(t, 7, 1, "revision", "content-hash")
+	require.NoError(t,
+		store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}),
+		"StoreTrustedInventory()")
+
+	held, err := store.StageExists(t.Context(), route.ProviderVeloPlanner, 7, 1)
+	require.NoError(t, err, "StageExists()")
+	assert.True(t, held)
+
+	for name, missing := range map[string]route.Key{
+		"another route":    route.NewKey(route.ProviderVeloPlanner, 8, 1),
+		"another stage":    route.NewKey(route.ProviderVeloPlanner, 7, 2),
+		"another provider": route.NewKey(route.ProviderKomoot, 7, 1),
+	} {
+		held, err := store.StageExists(t.Context(), missing.Provider(), missing.SourceRouteID(), missing.StageOrder())
+		require.NoError(t, err, name)
+		assert.False(t, held, name)
+	}
+}
+
+func TestStoreReportsAnUnreadableStageExistsCheck(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.StageExists(t.Context(), route.ProviderVeloPlanner, 7, 1)
+	require.ErrorContains(t, err, "reading whether a route is held")
+}
