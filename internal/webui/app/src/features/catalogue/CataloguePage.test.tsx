@@ -351,7 +351,9 @@ describe("CataloguePage", () => {
       "fetch",
       vi.fn(() => Promise.reject(new Error("the listener refused the connection"))),
     );
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
     client.setQueryData(statusQuery().queryKey, STATUS);
     client.setQueryData(webUIConfigQuery().queryKey, CONFIG);
 
