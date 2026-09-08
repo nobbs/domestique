@@ -206,9 +206,10 @@ threshold pushes it further under. Neither figure is the ground: a head
 unit reads 2–5 % under a surveyed climb in dry weather and far more in rain
 (Menaspà et al. 2016), so a route summary sits roughly 8–10 % under the
 truth and a ride's figure a few per cent under it; on the operator's rides
-rain made no visible difference to the head unit's figure. The prediction prices the route figure and the weekly fit measures
-against the head unit's, a consistent 5 % apart that the coefficient
-absorbs; nothing is refitted on that account.
+rain made no visible difference to the head unit's figure. The prediction
+prices the route figure and the weekly fit measures against the head
+unit's, a consistent 5 % apart that the coefficient absorbs; nothing is
+refitted on that account.
 
 ## Recording gaps
 
