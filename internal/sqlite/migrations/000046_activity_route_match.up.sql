@@ -37,7 +37,9 @@ CREATE TABLE activity_route_match (
           AND route_coverage IS NOT NULL AND ride_coverage IS NOT NULL)),
   FOREIGN KEY (target_slot, workout_id) REFERENCES activities(target_slot, workout_id) ON DELETE CASCADE
 );
--- The route page reads this the other way round, asking which rides a route has.
+-- The route page reads this the other way round, asking which rides one target
+-- rode on one route. The target leads, as it does on the activity indexes: a
+-- route's rides are only ever read within the target that owns them.
 CREATE INDEX activity_route_match_route_index
-  ON activity_route_match(provider, route_id, stage_order);
+  ON activity_route_match(target_slot, provider, route_id, stage_order);
 INSERT INTO schema_migrations (version, applied_at_unix) VALUES (46, CAST(strftime('%s', 'now') AS INTEGER));
