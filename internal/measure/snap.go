@@ -32,7 +32,7 @@ type SnapHit struct {
 // fewer than two coordinates contributes nothing; an empty set yields an index
 // that finds nothing rather than a nil to guard at every call.
 func NewSnapIndex(lines [][]Coordinate, radiusMetres float64) *SnapIndex {
-	index := &SnapIndex{radius: radiusMetres}
+	index := &SnapIndex{radius: radiusMetres, projection: projectionFor(lines)}
 	// A radius of nothing asks for nothing. Indexing at one sizes every grid cell
 	// at zero, leaving the step count and the cell keys to float conversions the
 	// language does not define.
@@ -41,21 +41,33 @@ func NewSnapIndex(lines [][]Coordinate, radiusMetres float64) *SnapIndex {
 
 		return index
 	}
-	// The reference comes from a line that contributes a segment. A line too
-	// short to index is not where the geometry is, and anchoring on one far from
-	// the rest would scale every east-west distance by the wrong latitude.
-	for _, line := range lines {
-		if len(line) >= 2 {
-			index.projection = newProjection(line[0].Longitude, line[0].Latitude)
-
-			break
-		}
-	}
 
 	index.segments = buildSnapSegments(index.projection, lines)
 	index.grid = newSegmentGrid(index.segments, radiusMetres)
 
 	return index
+}
+
+// projectionFor anchors the frame on the first line that contributes a segment:
+// a line too short to index is not where the geometry is, and anchoring on one
+// far from the rest would scale every east-west distance by the wrong latitude.
+// Anything at all beats the zero value, whose scale of zero would collapse east
+// and west together.
+func projectionFor(lines [][]Coordinate) projection {
+	spare, hasSpare := Coordinate{}, false
+	for _, line := range lines {
+		if len(line) >= 2 {
+			return newProjection(line[0].Longitude, line[0].Latitude)
+		}
+		if len(line) == 1 && !hasSpare {
+			spare, hasSpare = line[0], true
+		}
+	}
+	if hasSpare {
+		return newProjection(spare.Longitude, spare.Latitude)
+	}
+
+	return newProjection(0, 0)
 }
 
 // Near returns the indexed segments within the index's radius of the
@@ -124,14 +136,18 @@ func (i *SnapIndex) LineMetres(line int) float64 {
 	return length
 }
 
-// Offset returns the vector between two coordinates in the index's own
-// projected metres, so a caller can express a direction in the frame the hits
-// are aligned against.
+// Offset returns the vector between two coordinates in projected metres, so a
+// caller can express a direction in the frame the hits are aligned against.
+//
+// It scales longitude at the latitude it was asked about rather than at the
+// index's own reference, which is correct wherever the pair sits and holds even
+// for an index that snapped to nothing. Over the span where a direction is
+// compared against a segment the two references agree to within a millionth.
 func (i *SnapIndex) Offset(from, to Coordinate) (east, north float64) {
-	fromEast, fromNorth := i.projection.project(from.Longitude, from.Latitude)
-	toEast, toNorth := i.projection.project(to.Longitude, to.Latitude)
+	local := newProjection(from.Longitude, from.Latitude)
+	toEast, toNorth := local.project(to.Longitude, to.Latitude)
 
-	return toEast - fromEast, toNorth - fromNorth
+	return toEast, toNorth
 }
 
 // Alignment scores how nearly the hit's segment runs along the given direction,

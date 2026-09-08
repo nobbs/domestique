@@ -199,3 +199,22 @@ func TestSnapIndexOverANonPositiveRadiusFindsNothing(t *testing.T) {
 		assert.InDelta(t, 0, index.LineMetres(0), 1e-9, "radius %v", radius)
 	}
 }
+
+// The projected frame is the index's answer to "how far apart are these", and
+// callers read it through Offset whether or not anything was indexed. The zero
+// value scales longitude by nothing, which would put east and west together.
+func TestSnapIndexKeepsAUsableFrameWhenItIndexedNothing(t *testing.T) {
+	line := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 1000)}
+	far := metresNorth(metresEast(snapOrigin(), 300), 400)
+
+	for name, index := range map[string]*SnapIndex{
+		"a radius of nothing":      NewSnapIndex([][]Coordinate{line}, 0),
+		"no line long enough":      NewSnapIndex([][]Coordinate{{snapOrigin()}}, 25),
+		"no lines at all":          NewSnapIndex(nil, 25),
+		"a line and a stray point": NewSnapIndex([][]Coordinate{{far}, line}, 25),
+	} {
+		east, north := index.Offset(snapOrigin(), far)
+		assert.InDelta(t, 300, east, 2, name)
+		assert.InDelta(t, 400, north, 2, name)
+	}
+}
