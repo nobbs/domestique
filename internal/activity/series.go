@@ -82,17 +82,40 @@ func speedSeries(rows []SampleRow) (readings []Reading, present bool) {
 	readings = make([]Reading, len(rows))
 	for index := 1; index < len(rows); index++ {
 		previous, current := &rows[index-1], &rows[index]
-		if !previous.DistanceMetres.Known || !current.DistanceMetres.Known {
+		kmh, ok := DistanceSpeedKmh(
+			DistanceStep{At: previous.Time, Distance: previous.DistanceMetres.Value, Known: previous.DistanceMetres.Known},
+			DistanceStep{At: current.Time, Distance: current.DistanceMetres.Value, Known: current.DistanceMetres.Known},
+		)
+		if !ok {
 			continue
 		}
-		seconds := current.Time.Sub(previous.Time).Seconds()
-		metres := current.DistanceMetres.Value - previous.DistanceMetres.Value
-		if seconds <= 0 || metres < 0 {
-			continue
-		}
-		readings[index] = Reading{Value: metres / seconds * 3.6, Known: true}
+		readings[index] = Reading{Value: kmh, Known: true}
 		present = true
 	}
 
 	return readings, present
+}
+
+// DistanceStep is one distance reading and when it was taken, the shape
+// DistanceSpeedKmh derives an odometer-based speed from.
+type DistanceStep struct {
+	At       time.Time
+	Distance float64
+	Known    bool
+}
+
+// DistanceSpeedKmh is the km/h between two distance steps, the one rule every
+// odometer-derived speed follows: none where either step lacks a distance,
+// the clock did not advance, or the odometer went backwards over a reset.
+func DistanceSpeedKmh(previous, current DistanceStep) (kmh float64, ok bool) {
+	if !previous.Known || !current.Known {
+		return 0, false
+	}
+	seconds := current.At.Sub(previous.At).Seconds()
+	metres := current.Distance - previous.Distance
+	if seconds <= 0 || metres < 0 {
+		return 0, false
+	}
+
+	return metres / seconds * 3.6, true
 }

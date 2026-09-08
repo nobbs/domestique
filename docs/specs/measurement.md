@@ -421,6 +421,15 @@ zero recorded no pedalling to average in.
 wiring it is a behaviour change that lands with a revision of service.md
 §Recorded activities once a threshold is chosen.
 
+**Speed ceiling.** A recorded or derived speed reading above
+`measure.MaxPlausibleSpeedKmh` (120 km/h) is dropped outright rather than
+clamped or interpolated. Paved descents by strong riders peak around
+100–120 km/h; a single sample far past that is an odometer or clock hiccup,
+not a sprint. Applied where a ride's speed series is built
+(`internal/sqlite/metrics.go` `speedFromRows`), before the ride's maximum
+speed is worked out over what remains (`internal/activity/averages.go`
+`meanAndPeak`, called from `RideSamples.Averages`).
+
 ## Training load
 
 **Definition.** Everything `internal/trainingload` derives from one ride's

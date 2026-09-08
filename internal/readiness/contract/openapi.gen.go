@@ -263,6 +263,8 @@ type ActivityMetrics struct {
 	AverageCadenceRpm *float64 `json:"averageCadenceRpm,omitempty"`
 	// AveragePowerWatts The mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power.
 	AveragePowerWatts *float64 `json:"averagePowerWatts,omitempty"`
+	// MaxSpeedKmh The ride's highest recorded speed in km/h, from the device's own speed reading where recorded and otherwise from distance over time. Readings above a plausible ceiling are dropped. Absent for a ride with no speed series at all.
+	MaxSpeedKmh *float64 `json:"maxSpeedKmh,omitempty"`
 	// DecouplingPercent How much of the ride's power-to-heart-rate ratio was lost over its second half, as a percentage of its first. Positive is the usual direction: the same watts cost more beats later on. From measured power only, over a ride of at least an hour, and absent otherwise. It describes a steady aerobic ride; over intervals the two halves are different efforts and the figure says nothing about drift. See docs/specs/measurement.md §Decoupling and heat drift.
 	DecouplingPercent *float64   `json:"decouplingPercent,omitempty"`
 	HeatDrift         *HeatDrift `json:"heatDrift,omitempty"`

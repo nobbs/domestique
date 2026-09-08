@@ -20,7 +20,10 @@ type RideSamples struct {
 	Power     []trainingload.Sample
 	// Temperature is every sample that carried one, positioned or not, so a
 	// reading can be paired with the heart rate recorded at the same second.
-	Temperature  []trainingload.Sample
+	Temperature []trainingload.Sample
+	// Speed is km/h, already capped at measure.MaxPlausibleSpeedKmh by the
+	// reader that built it.
+	Speed        []trainingload.Sample
 	Track        []measure.Sample
 	TrackRecords []int64
 }

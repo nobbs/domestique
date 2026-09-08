@@ -4,12 +4,12 @@ INSERT INTO activity_metrics (
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
-  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -29,6 +29,7 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
   average_power_watts = excluded.average_power_watts,
+  max_speed_kmh = excluded.max_speed_kmh,
   decoupling_percent = excluded.decoupling_percent,
   heat_drift_heart_rate_bpm = excluded.heat_drift_heart_rate_bpm,
   heat_drift_temperature_celsius = excluded.heat_drift_temperature_celsius,
@@ -62,7 +63,7 @@ SELECT workout_id,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   input_max_heart_rate, input_threshold_heart_rate,
-  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s
 FROM activity_metrics
@@ -90,21 +91,22 @@ WHERE a.target_slot = sqlc.arg(target_slot)
     OR m.derivation_version <> sqlc.arg(derivation_version))
 ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 
--- Every record a derivation can do something with: one carrying a sensor, or
--- one carrying a whole track sample. A record that is neither is skipped here
--- rather than scanned and discarded in Go. The track test is latitude and
--- longitude together, which is what ListActivityTrack calls a positioned
--- sample: a record the track would not serve must not shape an estimate.
+-- Every record a derivation can do something with: one carrying a sensor, one
+-- carrying a distance or a device speed reading, or one carrying a whole track
+-- sample. A record that is none of these is skipped here rather than scanned
+-- and discarded in Go. The track test is latitude and longitude together,
+-- which is what ListActivityTrack calls a positioned sample: a record the
+-- track would not serve must not shape an estimate.
 -- name: ListActivitySensorRecords :many
 SELECT record_index, recorded_at_unix, heart_rate_bpm, cadence_rpm, power_watts,
-  distance_metres, altitude_metres, latitude, longitude, temperature_celsius
+  distance_metres, altitude_metres, latitude, longitude, temperature_celsius, speed_ms
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND (heart_rate_bpm IS NOT NULL
     OR cadence_rpm IS NOT NULL
     OR power_watts IS NOT NULL
-    OR (latitude IS NOT NULL AND longitude IS NOT NULL
-      AND altitude_metres IS NOT NULL AND distance_metres IS NOT NULL))
+    OR speed_ms IS NOT NULL
+    OR distance_metres IS NOT NULL)
 ORDER BY record_index;
 
 -- name: GetTargetOwner :one

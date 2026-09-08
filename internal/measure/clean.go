@@ -1,5 +1,11 @@
 package measure
 
+// MaxPlausibleSpeedKmh is the ceiling a recorded or derived speed reading may
+// not exceed: a bicycle on a paved descent tops out near this. A reading above
+// it is a clock or odometer hiccup, not a rider, and is dropped rather than
+// clamped or interpolated.
+const MaxPlausibleSpeedKmh = 120.0
+
 // CapHeartRate replaces readings above maxBPM with a line interpolated
 // between the plausible readings either side, the way Intervals.icu does: a
 // spike past the rider's maximum is a sensor fault, and the rate either side

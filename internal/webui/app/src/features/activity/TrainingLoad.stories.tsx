@@ -13,7 +13,13 @@ function ride(metrics: ActivityMetrics): Activity {
     ascentMetres: 640,
     typeId: 0,
     locationId: 0,
-    metrics: { averageHeartRateBpm: 141, maxHeartRateBpm: 176, averageCadenceRpm: 84, ...metrics },
+    metrics: {
+      averageHeartRateBpm: 141,
+      maxHeartRateBpm: 176,
+      averageCadenceRpm: 84,
+      maxSpeedKmh: 58.3,
+      ...metrics,
+    },
   };
 }
 

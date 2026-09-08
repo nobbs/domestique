@@ -632,16 +632,21 @@ The read-only JSON surface is small:
 
   Beside those, and worked out by the same task from the same stored samples,
   are the plain figures the ride's own sensors came to with no profile
-  involved: the mean of its heart-rate, cadence and measured power samples, and
-  the highest heart rate it reached. A cadence of nought is the rider not
-  pedalling rather than pedalling slowly and is left out of that mean, which is
-  what makes the figure the same one every other platform reports; a measured
-  power of nought is left in, freewheeling being part of what a ride averaged.
-  A sensor that read nought throughout recorded nothing, and has no mean at all. Each is present only where the ride carried
+  involved: the mean of its heart-rate, cadence and measured power samples, the
+  highest heart rate it reached, and the highest speed it reached. A cadence of
+  nought is the rider not pedalling rather than pedalling slowly and is left
+  out of that mean, which is what makes the figure the same one every other
+  platform reports; a measured power of nought is left in, freewheeling being
+  part of what a ride averaged. A sensor that read nought throughout recorded
+  nothing, and has no mean at all. Each is present only where the ride carried
   that sensor, and an estimate never feeds the average power — a bicycle with no
   meter has none. Average speed is not among them: it is the distance and moving
   time the activity already carries, divided, and is therefore known even for a
-  ride whose recorded file was never readable.
+  ride whose recorded file was never readable. The highest speed is worked out
+  from the device's own speed reading where any record carried one, and
+  otherwise from distance over time; a reading past a plausible ceiling is
+  dropped as a clock or odometer fault rather than counted as the ride's peak
+  (see [measurement.md](measurement.md)).
 
   Each activity also carries a one-line summary of the weather it was ridden
   through, where that was asked about: the range the temperature moved over, the

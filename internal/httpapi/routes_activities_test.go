@@ -83,6 +83,7 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 				HeartRateBPM: 142.5, MaxHeartRateBPM: 178, HasHeartRate: true,
 				CadenceRPM: 81.5, HasCadence: true,
 				PowerWatts: 196.25, HasPower: true,
+				MaxSpeedKmh: 54.2, HasSpeed: true,
 			},
 			HasEstimateQuality: true,
 			EstimateQuality: measure.Quality{
@@ -120,6 +121,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.InDelta(t, 81.5, *derived.Metrics.AverageCadenceRpm, 1e-9)
 	require.NotNil(t, derived.Metrics.AveragePowerWatts, "which the average power does not need")
 	assert.InDelta(t, 196.25, *derived.Metrics.AveragePowerWatts, 1e-9)
+	require.NotNil(t, derived.Metrics.MaxSpeedKmh)
+	assert.InDelta(t, 54.2, *derived.Metrics.MaxSpeedKmh, 1e-9)
 	assert.Nil(t, plain.Metrics, "and a ride with no row carries none at all")
 }
 
@@ -142,6 +145,7 @@ func TestGetActivitiesCarriesNoEstimateQualityWithoutAnEstimate(t *testing.T) {
 	require.NotNil(t, derived.Metrics)
 	assert.Nil(t, derived.Metrics.EstimatedPowerWatts)
 	assert.Nil(t, derived.Metrics.EstimateQuality)
+	assert.Nil(t, derived.Metrics.MaxSpeedKmh, "no speed series behind this ride")
 }
 
 // A ride derived before the diagnostics existed carries an estimate and no

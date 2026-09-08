@@ -59,6 +59,19 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("196")).toBeInTheDocument();
   });
 
+  it("shows the ride's maximum speed beside its average", () => {
+    show({ maxSpeedKmh: 54.2 });
+
+    expect(screen.getByText("Max speed")).toBeInTheDocument();
+    expect(screen.getByText("54.2")).toBeInTheDocument();
+  });
+
+  it("shows no maximum speed for a ride with no speed series", () => {
+    show({ averageHeartRateBpm: 142.4 });
+
+    expect(screen.queryByText("Max speed")).not.toBeInTheDocument();
+  });
+
   // Distance over moving time, so it is there for a ride whose recorded file
   // was never readable and which therefore has no derived metrics at all.
   it("works the average speed out from the ride's own totals", () => {
