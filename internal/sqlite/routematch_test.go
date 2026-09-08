@@ -55,7 +55,7 @@ func TestStoreRoundTripsARouteMatch(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
 	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
@@ -76,7 +76,7 @@ func TestStoreRecordsANoMatchWithoutServingOne(t *testing.T) {
 	storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, nil, "library-1", activityNow(),
+		t.Context(), "rider-a", 11, nil, nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
 	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
@@ -95,7 +95,7 @@ func TestStoreOwesAMatchForARideMeasuredAgainstAnotherLibrary(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, storeTestRecords(t, store, "rider-a", 11), "StoreActivityRecords()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
 	unchanged, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
@@ -129,7 +129,7 @@ func TestStoreDropsARouteMatchWhenTheSamplesAreReplaced(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, storeTestRecords(t, store, "rider-a", 11), "StoreActivityRecords()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
 	require.NoError(t, storeTestRecords(t, store, "rider-a", 11), "StoreActivityRecords() again")
@@ -150,10 +150,10 @@ func TestStoreServesARoutesRidesToTheTargetThatRodeThem(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, storeTestActivity(t, store, "rider-b", 12, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-b", 12, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-b", 12, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
 	rides, err := store.RouteActivities(t.Context(), "rider-a", key)
@@ -250,8 +250,9 @@ func TestStoreReportsAnUnreadableRouteMatchStore(t *testing.T) {
 	_, ridesErr := store.RouteActivities(t.Context(), "rider-a", route.NewKey(route.ProviderVeloPlanner, 7, 1))
 	require.ErrorContains(t, ridesErr, "reading a route's activities")
 
-	writeErr := store.StoreActivityRouteMatch(t.Context(), "rider-a", 11, nil, "library-1", activityNow())
-	require.ErrorContains(t, writeErr, "storing an activity's route match")
+	writeErr := store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, nil, nil, "library-1", activityNow())
+	require.ErrorContains(t, writeErr, "starting the route match write")
 }
 
 // storeTestRecords gives a ride the stored samples that make it matchable.
@@ -276,7 +277,7 @@ func TestStoreRoundTripsAMatchWithNoDirection(t *testing.T) {
 	match := matchOf(key)
 	match.Direction = activity.DirectionUnknown
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, match, "library-1", activityNow(),
+		t.Context(), "rider-a", 11, match, nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
 	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
@@ -403,11 +404,12 @@ func TestStoreRoundTripsClimbAttempts(t *testing.T) {
 	key := storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
-	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
-		[]activity.ClimbAttempt{attemptOf(0, 780), attemptOf(2, 420)}), "StoreActivityClimbAttempts()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780), attemptOf(2, 420)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
 
 	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
 	require.NoError(t, err, "RouteClimbAttempts()")
@@ -427,13 +429,15 @@ func TestStoreReplacesClimbAttemptsWhole(t *testing.T) {
 	key := storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
-	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
-		[]activity.ClimbAttempt{attemptOf(0, 780), attemptOf(1, 300)}), "StoreActivityClimbAttempts()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780), attemptOf(1, 300)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
 
-	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
-		[]activity.ClimbAttempt{attemptOf(0, 760)}), "StoreActivityClimbAttempts() again")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 760)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
 
 	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
 	require.NoError(t, err, "RouteClimbAttempts()")
@@ -448,10 +452,11 @@ func TestRouteClimbAttemptsAreScopedToOneTarget(t *testing.T) {
 	key := storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, storeTestActivity(t, store, "rider-b", 11, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-b", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-b", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
-	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-b", 11,
-		[]activity.ClimbAttempt{attemptOf(0, 780)}), "StoreActivityClimbAttempts()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-b", 11, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
 
 	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
 	require.NoError(t, err, "RouteClimbAttempts()")
@@ -466,10 +471,11 @@ func TestClearActivityRouteMatchesTakesTheClimbAttempts(t *testing.T) {
 	key := storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
-	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
-		[]activity.ClimbAttempt{attemptOf(0, 780)}), "StoreActivityClimbAttempts()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
 
 	_, err := store.ClearActivityRouteMatches(t.Context(), "rider-a")
 	require.NoError(t, err, "ClearActivityRouteMatches()")
@@ -581,13 +587,14 @@ func TestStoreClimbAttemptsLeaveThePriorSetOnAFailedWrite(t *testing.T) {
 	key := storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRouteMatch(
-		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
-	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
-		[]activity.ClimbAttempt{attemptOf(0, 780)}), "StoreActivityClimbAttempts()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
 
-	err := store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
-		[]activity.ClimbAttempt{attemptOf(1, 300), attemptOf(-1, 200)})
+	err := store.StoreActivityRouteMatch(t.Context(), "rider-a", 11, matchOf(key),
+		[]activity.ClimbAttempt{attemptOf(1, 300), attemptOf(-1, 200)}, "library-1", activityNow())
 	require.Error(t, err, "a climb index below zero is not an attempt")
 
 	attempts, readErr := store.RouteClimbAttempts(t.Context(), "rider-a", key)
@@ -595,4 +602,32 @@ func TestStoreClimbAttemptsLeaveThePriorSetOnAFailedWrite(t *testing.T) {
 	require.Len(t, attempts, 1, "the prior set survived the refused write")
 	assert.Equal(t, 0, attempts[0].ClimbIndex)
 	assert.InDelta(t, 780.0, attempts[0].Seconds, 0.001)
+}
+
+// A point at sea level and a point with no height at all are different ground
+// to find climbs on, so they must digest differently: without that a route that
+// gains a real nought where it had nothing would owe its rides no fresh pass.
+func TestLibraryRoutesDigestTellsNoHeightFromSeaLevel(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t)
+	absent := climbingGeometry()
+	absent[5].Elevation = nil
+	missing := storeTestStageWithGeometry(
+		t, 7, 1, "revision", "hash-a", "Alpine loop", "Descent", absent)
+	require.NoError(t, store.StoreTrustedInventory(
+		t.Context(), route.ProviderVeloPlanner, []route.Route{missing}), "StoreTrustedInventory()")
+	_, withoutHeight, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes()")
+
+	atSeaLevel := climbingGeometry()
+	sea := 0.0
+	atSeaLevel[5].Elevation = &sea
+	measured := storeTestStageWithGeometry(
+		t, 7, 1, "revision", "hash-b", "Alpine loop", "Descent", atSeaLevel)
+	require.NoError(t, store.StoreTrustedInventory(
+		t.Context(), route.ProviderVeloPlanner, []route.Route{measured}), "StoreTrustedInventory()")
+
+	_, withSeaLevel, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes() again")
+	assert.NotEqual(t, withoutHeight, withSeaLevel, "no height is not a height of nought")
 }

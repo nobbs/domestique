@@ -311,8 +311,9 @@ type ListRouteClimbAttemptsRow struct {
 	StartedAtUnix       int64
 }
 
-// Every attempt one target's rides made at one route's climbs, newest ride
-// first, so a reader sees the last attempt without ordering them again.
+// Every attempt one target's rides made at one route's climbs. The order is for
+// a stable read, not the order they are served in: the endpoint sorts a climb's
+// attempts by how long each took, quickest first.
 func (q *Queries) ListRouteClimbAttempts(ctx context.Context, arg ListRouteClimbAttemptsParams) ([]ListRouteClimbAttemptsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listRouteClimbAttempts,
 		arg.TargetSlot,

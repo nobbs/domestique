@@ -68,8 +68,9 @@ INSERT INTO activity_climb_attempt (
   target_slot, workout_id, climb_index, seconds, heart_rate_bpm, power_watts, estimated_power_watts
 ) VALUES (?, ?, ?, ?, ?, ?, ?);
 
--- Every attempt one target's rides made at one route's climbs, newest ride
--- first, so a reader sees the last attempt without ordering them again.
+-- Every attempt one target's rides made at one route's climbs. The order is for
+-- a stable read, not the order they are served in: the endpoint sorts a climb's
+-- attempts by how long each took, quickest first.
 -- name: ListRouteClimbAttempts :many
 SELECT c.workout_id, c.climb_index, c.seconds, c.heart_rate_bpm, c.power_watts,
   c.estimated_power_watts, a.started_at_unix

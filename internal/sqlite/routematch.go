@@ -65,6 +65,11 @@ func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, s
 			}
 			binary.LittleEndian.PutUint64(position[:], math.Float64bits(height))
 			_, _ = digest.Write(position[:])
+			// Whether there is a height, as well as what it is: without this a
+			// point at sea level and a point with no height at all digest the
+			// same, and a route that gains a real nought where it had nothing
+			// would owe its rides no fresh pass.
+			_, _ = digest.Write([]byte{boolByte(hasHeight)})
 			line = append(line, coordinate)
 			elevations = append(elevations, height)
 			everyPointHasHeight = everyPointHasHeight && hasHeight
@@ -102,7 +107,8 @@ func (s *Store) ActivitiesAwaitingRouteMatch(ctx context.Context, targetID, libr
 // it was ridden on none. A nil match is that second answer, and is stored just
 // as deliberately: it is what stops the ride being matched again next run.
 func (s *Store) StoreActivityRouteMatch(
-	ctx context.Context, targetID string, id int64, match *activity.RouteMatch, libraryHash string, now time.Time,
+	ctx context.Context, targetID string, id int64,
+	match *activity.RouteMatch, attempts []activity.ClimbAttempt, libraryHash string, now time.Time,
 ) error {
 	params := sqlcgen.UpsertActivityRouteMatchParams{
 		TargetSlot: targetID, WorkoutID: id, LibraryHash: libraryHash, MatchedAtUnix: now.Unix(),
@@ -119,28 +125,36 @@ func (s *Store) StoreActivityRouteMatch(
 			params.Direction = sql.NullString{String: match.Direction.String(), Valid: true}
 		}
 	}
-	if err := s.queries.UpsertActivityRouteMatch(ctx, params); err != nil {
+	// One transaction: an attempt names no route of its own and is read through
+	// the match, so a match stored without its attempts would serve the previous
+	// route's times under this one's climbs.
+	transaction, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return fmt.Errorf("starting the route match write: %w", beginErr)
+	}
+	defer rollback(transaction)
+	queries := s.queries.WithTx(transaction)
+	if err := queries.UpsertActivityRouteMatch(ctx, params); err != nil {
 		return fmt.Errorf("storing an activity's route match: %w", err)
+	}
+	if err := storeClimbAttempts(ctx, queries, targetID, id, attempts); err != nil {
+		return err
+	}
+	if err := transaction.Commit(); err != nil {
+		return fmt.Errorf("committing the route match write: %w", err)
 	}
 
 	return nil
 }
 
-// StoreActivityClimbAttempts replaces one ride's attempts at its route's
-// climbs. An empty set clears whatever was there, which is what a ride that has
-// come to match a different route -- or none -- leaves behind.
-func (s *Store) StoreActivityClimbAttempts(
-	ctx context.Context, targetID string, id int64, attempts []activity.ClimbAttempt,
+// storeClimbAttempts replaces one ride's attempts at its route's climbs, within
+// the transaction its match is written in. An empty set clears whatever was
+// there, which is what a ride that has come to match a different route -- or
+// none -- leaves behind.
+func storeClimbAttempts(
+	ctx context.Context, queries *sqlcgen.Queries,
+	targetID string, id int64, attempts []activity.ClimbAttempt,
 ) error {
-	// Whole, and so in one transaction: a delete followed by inserts that
-	// stopped part way would leave the ride holding some of one derivation's
-	// attempts and none of the rest, which is a set no derivation ever produced.
-	transaction, beginErr := s.database.BeginTx(ctx, nil)
-	if beginErr != nil {
-		return fmt.Errorf("starting the climb attempts write: %w", beginErr)
-	}
-	defer rollback(transaction)
-	queries := s.queries.WithTx(transaction)
 	if err := queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
 		TargetSlot: targetID, WorkoutID: id,
 	}); err != nil {
@@ -159,9 +173,6 @@ func (s *Store) StoreActivityClimbAttempts(
 		}); err != nil {
 			return fmt.Errorf("storing an activity's climb attempt: %w", err)
 		}
-	}
-	if err := transaction.Commit(); err != nil {
-		return fmt.Errorf("committing the climb attempts write: %w", err)
 	}
 
 	return nil
@@ -307,4 +318,13 @@ func (s *Store) RouteActivities(
 	}
 
 	return rides, nil
+}
+
+// boolByte is a flag as one byte of a digest.
+func boolByte(set bool) byte {
+	if set {
+		return 1
+	}
+
+	return 0
 }

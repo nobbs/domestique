@@ -224,7 +224,8 @@ func seedRouteMatch(
 ) {
 	t.Helper()
 	match := &activity.RouteMatch{Key: key, RouteCoverage: routeCoverage, RideCoverage: rideCoverage, Direction: direction}
-	require.NoError(t, store.StoreActivityRouteMatch(t.Context(), targetID, workoutID, match, "library-hash", time.Now()),
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), targetID, workoutID, match, nil, "library-hash", time.Now()),
 		"StoreActivityRouteMatch()")
 }
 

@@ -86,9 +86,15 @@ func (s *fakeDeriveStore) ActivitySeries(
 	return s.series[id], s.seriesErr
 }
 
-func (s *fakeDeriveStore) StoreActivityClimbAttempts(
-	_ context.Context, _ string, id int64, attempts []activity.ClimbAttempt,
+// The match and its attempts arrive together, as one write, because an attempt
+// is read through the match it belongs to.
+func (s *fakeDeriveStore) StoreActivityRouteMatch(
+	_ context.Context, _ string, id int64,
+	match *activity.RouteMatch, attempts []activity.ClimbAttempt, _ string, _ time.Time,
 ) error {
+	if s.matchErr != nil {
+		return s.matchErr
+	}
 	if s.climbAttemptErr != nil {
 		return s.climbAttemptErr
 	}
@@ -96,16 +102,6 @@ func (s *fakeDeriveStore) StoreActivityClimbAttempts(
 		s.climbAttempts = map[int64][]activity.ClimbAttempt{}
 	}
 	s.climbAttempts[id] = attempts
-
-	return nil
-}
-
-func (s *fakeDeriveStore) StoreActivityRouteMatch(
-	_ context.Context, _ string, id int64, match *activity.RouteMatch, _ string, _ time.Time,
-) error {
-	if s.matchErr != nil {
-		return s.matchErr
-	}
 	if s.matches == nil {
 		s.matches = map[int64]*activity.RouteMatch{}
 	}
