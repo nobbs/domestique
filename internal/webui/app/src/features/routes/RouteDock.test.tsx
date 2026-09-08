@@ -53,7 +53,9 @@ function dockProps(overrides: Partial<RouteDockProps> = {}): RouteDockProps {
 }
 
 function renderDock(overrides: Partial<RouteDockProps> = {}) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+  });
   client.setQueryData(weatherQuery(weatherSamples).queryKey, {
     points: weatherSamples.map((sample, index) => ({
       time: sample.arrivalAt.toISOString(),
@@ -154,7 +156,9 @@ describe("RouteDock", () => {
 
   it("folds to a strip with only the two stop buttons, reopening on the chosen stop", async () => {
     const user = userEvent.setup();
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
     client.setQueryData(weatherQuery(weatherSamples).queryKey, { points: [] });
 
     function Controlled() {
@@ -272,7 +276,9 @@ describe("RouteDock", () => {
 
   it("reopens on the rides stop from the folded strip", async () => {
     const user = userEvent.setup();
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
     client.setQueryData(weatherQuery(weatherSamples).queryKey, { points: [] });
 
     function Controlled() {

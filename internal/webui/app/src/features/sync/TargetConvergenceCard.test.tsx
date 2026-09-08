@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Status, TargetStatus, WebUIConfig } from "../../api/types";
+import { stubPendingFetch } from "../../test/network";
 import { TargetConvergenceCard } from "./TargetConvergenceCard";
 
 afterEach(() => {
@@ -458,7 +459,9 @@ describe("TargetConvergenceCard", () => {
       },
     });
     client.setQueryData(statusQuery().queryKey, status(true, []));
-    // webUIConfigQuery is deliberately left unseeded and unfetched.
+    // webUIConfigQuery is deliberately left unseeded, and its request left
+    // unanswered, which is what a still-loading identity is.
+    stubPendingFetch();
 
     render(
       <QueryClientProvider client={client}>

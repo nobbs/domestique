@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, expect, vi } from "vitest";
+import { refusingFetch } from "./network";
 
 /**
  * A `matchMedia` for jsdom, which has none.
@@ -33,6 +34,21 @@ beforeEach(() => {
  * geometry this environment does not have; doing nothing is the right answer.
  */
 Element.prototype.scrollIntoView = () => {};
+
+/** Every request the suite's own `fetch` refused during the current test. */
+const requested: string[] = [];
+
+beforeEach(() => {
+  requested.length = 0;
+  vi.stubGlobal("fetch", refusingFetch(requested));
+});
+
+afterEach(() => {
+  const made = [...requested];
+  requested.length = 0;
+
+  expect(made).toEqual([]);
+});
 
 // Testing Library only registers its own cleanup when Vitest globals are on.
 // This suite imports its helpers explicitly, so unmount between tests here or

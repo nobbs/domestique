@@ -9,9 +9,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activitiesQuery, routesQuery, webUIConfigQuery } from "../../api/queries";
+import { activitiesQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, ActivityRouteMatch, Route, WebUIConfig } from "../../api/types";
 import { formatAscent, formatDistance, formatDuration, formatTimestamp } from "../../lib/format";
+import { IDLE_STATUS } from "../../test/status";
 import { ActivitiesPage } from "./ActivitiesPage";
 
 /** The day a week's label starts with, in the platform's own locale. */
@@ -84,6 +85,7 @@ function show(activities: Activity[] | null = ACTIVITIES, library: Route[] | nul
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
+  client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
   // Null leaves it unseeded, which is the only way to see whether the page asks.
   if (library) {
     client.setQueryData(routesQuery().queryKey, library);

@@ -190,7 +190,9 @@ function show(
     props.withSurfaceSummary && props.surface ? summariseSurface(coordinates, props.surface) : null;
   // The position tooltip reads the forecast for its wind line, so the overlay
   // now needs a client in scope even where a test offers no samples at all.
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+  });
   const samples = props.withForecast ? samplesAlong(coordinates) : [];
   if (props.withForecast) {
     // The wind blows from due east onto a road running due east, which is the

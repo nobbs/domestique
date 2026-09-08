@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { webUIConfigQuery } from "../api/queries";
 import type { WebUIConfig } from "../api/types";
+import { stubPendingFetch } from "../test/network";
 import type {
   useEffectiveAdmin as UseEffectiveAdmin,
   useViewAsRider as UseViewAsRider,
@@ -50,6 +51,8 @@ function wrapWith(value?: WebUIConfig) {
   });
   if (value) {
     client.setQueryData(webUIConfigQuery().queryKey, value);
+  } else {
+    stubPendingFetch();
   }
 
   return ({ children }: { children: ReactNode }) => (

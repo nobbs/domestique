@@ -13,6 +13,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, Status, WebUIConfig } from "../../api/types";
+import { IDLE_STATUS } from "../../test/status";
 import { VolumePage } from "./VolumePage";
 
 const NOW = new Date(2026, 8, 5, 12); // Saturday 5 September 2026
@@ -55,6 +56,7 @@ function show(activities: Activity[] | null = ACTIVITIES) {
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
+  client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
   if (activities) {
     client.setQueryData(activitiesQuery().queryKey, activities);
   }

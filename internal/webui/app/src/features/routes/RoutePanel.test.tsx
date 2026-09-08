@@ -25,17 +25,23 @@ function route(overrides: Partial<Route> = {}): Route {
   };
 }
 
-function renderPanel(overrides: Partial<RoutePanelProps> = {}, admin?: boolean) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  if (admin !== undefined) {
-    const config: WebUIConfig = {
-      basemaps: [],
-      sourceBaseUrls: {},
-      timezone: "Europe/Berlin",
-      identity: { display: "rider@example.test", admin },
-    };
-    client.setQueryData(webUIConfigQuery().queryKey, config);
-  }
+function seededClient(admin: boolean): QueryClient {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+  });
+  const config: WebUIConfig = {
+    basemaps: [],
+    sourceBaseUrls: {},
+    timezone: "Europe/Berlin",
+    identity: { display: "rider@example.test", admin },
+  };
+  client.setQueryData(webUIConfigQuery().queryKey, config);
+
+  return client;
+}
+
+function renderPanel(overrides: Partial<RoutePanelProps> = {}, admin = false) {
+  const client = seededClient(admin);
   const props: RoutePanelProps = {
     route: route(),
     highestMetres: null,
@@ -163,9 +169,8 @@ describe("RoutePanel", () => {
     });
     expect(screen.getByText("5 min")).toBeInTheDocument();
 
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     rerender(
-      <QueryClientProvider client={client}>
+      <QueryClientProvider client={seededClient(false)}>
         <RoutePanel
           route={route({ movingSeconds: 6420 })}
           highestMetres={null}
