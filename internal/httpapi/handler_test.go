@@ -2656,7 +2656,9 @@ func (s *fakeState) RiderSuggestions(
 		held := s.riderSuggestions[targetID]
 		keepHigher(&suggestions.MaxHeartRateBPM, held.MaxHeartRateBPM)
 		keepHigher(&suggestions.FunctionalThresholdPowerWatts, held.FunctionalThresholdPowerWatts)
-		if held.Stopping.Set {
+		// One habit is read across every target at once, so the fake keeps the
+		// first rather than letting the order of targetIDs decide.
+		if held.Stopping.Set && !suggestions.Stopping.Set {
 			suggestions.Stopping = held.Stopping
 		}
 	}
