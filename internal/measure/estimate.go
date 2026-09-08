@@ -14,17 +14,31 @@ import (
 // configurable: a rider cannot measure their own Crr or CdA, and a number they
 // would have to guess is worse than one this model states plainly.
 //
-// CdA is a rider on the hoods, Crr is a good clincher on tarmac, and the air is
-// taken at sea level and fifteen degrees. Wind is ignored entirely — the model
-// has no idea which way the rider was pointing relative to it.
+// CdA is a rider on the hoods, Crr is a good clincher on tarmac. Air density is
+// worked out per sample from altitude and temperature (see airDensity below)
+// rather than fixed. Wind is ignored entirely — the model has no idea which way
+// the rider was pointing relative to it.
 const (
 	gravity           = 9.80665 // m/s²
 	rollingResistance = 0.005
-	dragArea          = 0.32  // m², CdA
-	airDensity        = 1.225 // kg/m³
+	dragArea          = 0.32 // m², CdA
 	// Drivetrain loss is not modelled. It is a couple of per cent on a figure
 	// already labelled an estimate, and one more constant to defend.
 )
+
+// defaultTemperatureCelsius is what a sample with no thermometer is assumed to
+// have been ridden at — the value the model's air density was fixed at before
+// it followed altitude and temperature.
+const defaultTemperatureCelsius = 15
+
+// airDensity is the density of air at altitudeMetres and temperatureCelsius,
+// via the international barometric formula for pressure and the ideal gas law.
+// See docs/references/power-estimation-handover.md §2.
+func airDensity(altitudeMetres, temperatureCelsius float64) float64 {
+	pressure := 101325 * math.Pow(1-2.25577e-5*altitudeMetres, 5.25588)
+
+	return pressure / (287.058 * (temperatureCelsius + 273.15))
+}
 
 // windowMetres is the distance both the grade and the speed are measured over.
 // Sample to sample, altitude is barometric noise as much as hill and distance
@@ -97,17 +111,30 @@ func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality,
 		if span <= 0 || run < 0 {
 			continue
 		}
-		clamped, clipBias := watts(run/span, slope(samples[low], samples[high]), totalMassKG)
-		estimates[index] = Estimate{Watts: clamped, Known: true}
-		known = true
-		clipBiasSum += clipBias
-		clipCount++
+		// Physics, not the numerical clamp below: no pedalling reads no power,
+		// checked before the clamp has any say and excluded from its own bias
+		// diagnostic — the clamp never had a chance to fire on this sample.
+		if samples[index].HasCadence && samples[index].CadenceRPM == 0 {
+			estimates[index] = Estimate{Watts: 0, Known: true}
+			known = true
+		} else {
+			temperature := float64(defaultTemperatureCelsius)
+			if samples[high].HasTemperature {
+				temperature = samples[high].TemperatureCelsius
+			}
+			density := airDensity(samples[high].AltitudeMetres, temperature)
+			clamped, clipBias := watts(run/span, slope(samples[low], samples[high]), totalMassKG, density)
+			estimates[index] = Estimate{Watts: clamped, Known: true}
+			known = true
+			clipBiasSum += clipBias
+			clipCount++
+		}
 		if estimates[index-1].Known {
-			delta := clamped - estimates[index-1].Watts
+			delta := estimates[index].Watts - estimates[index-1].Watts
 			deltaSum += math.Abs(delta) / step.Seconds()
 			deltaCount++
 			series = append(series, estimates[index-1].Watts)
-			shifted = append(shifted, clamped)
+			shifted = append(shifted, estimates[index].Watts)
 		}
 	}
 
@@ -162,9 +189,9 @@ func correlation(a, b []float64) float64 {
 // a rider freewheeling down a hill is putting nothing in, and the model has no
 // way to say they are taking something out — alongside how much the clamp
 // added, zero where it did not fire.
-func watts(speed, grade, totalMassKG float64) (clamped, clipBias float64) {
+func watts(speed, grade, totalMassKG, density float64) (clamped, clipBias float64) {
 	weight := totalMassKG * gravity
-	force := weight*grade + weight*rollingResistance + 0.5*airDensity*dragArea*speed*speed
+	force := weight*grade + weight*rollingResistance + 0.5*density*dragArea*speed*speed
 	unclamped := force * speed
 	if unclamped > 0 {
 		return unclamped, 0

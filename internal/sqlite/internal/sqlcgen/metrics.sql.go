@@ -268,7 +268,7 @@ func (q *Queries) ListActivityRideLoads(ctx context.Context, targetSlot string) 
 
 const listActivitySensorRecords = `-- name: ListActivitySensorRecords :many
 SELECT record_index, recorded_at_unix, heart_rate_bpm, cadence_rpm, power_watts,
-  distance_metres, altitude_metres, latitude, longitude
+  distance_metres, altitude_metres, latitude, longitude, temperature_celsius
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
   AND (heart_rate_bpm IS NOT NULL
@@ -285,15 +285,16 @@ type ListActivitySensorRecordsParams struct {
 }
 
 type ListActivitySensorRecordsRow struct {
-	RecordIndex    int64
-	RecordedAtUnix int64
-	HeartRateBpm   sql.NullFloat64
-	CadenceRpm     sql.NullFloat64
-	PowerWatts     sql.NullFloat64
-	DistanceMetres sql.NullFloat64
-	AltitudeMetres sql.NullFloat64
-	Latitude       sql.NullFloat64
-	Longitude      sql.NullFloat64
+	RecordIndex        int64
+	RecordedAtUnix     int64
+	HeartRateBpm       sql.NullFloat64
+	CadenceRpm         sql.NullFloat64
+	PowerWatts         sql.NullFloat64
+	DistanceMetres     sql.NullFloat64
+	AltitudeMetres     sql.NullFloat64
+	Latitude           sql.NullFloat64
+	Longitude          sql.NullFloat64
+	TemperatureCelsius sql.NullFloat64
 }
 
 // Every record a derivation can do something with: one carrying a sensor, or
@@ -320,6 +321,7 @@ func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivit
 			&i.AltitudeMetres,
 			&i.Latitude,
 			&i.Longitude,
+			&i.TemperatureCelsius,
 		); err != nil {
 			return nil, err
 		}

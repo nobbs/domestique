@@ -228,6 +228,7 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 			{
 				Time: activityNow(), HeartRateBPM: 140, HasHeartRate: true, PowerWatts: 200, HasPower: true,
 				CadenceRPM: 88, HasCadence: true,
+				TemperatureCelsius: 18, HasTemperatureCelsius: true,
 				Latitude: 49, Longitude: 8, HasPosition: true,
 				AltitudeMetres: 100, HasAltitude: true, DistanceMetres: 0, HasDistance: true,
 			},
@@ -260,6 +261,14 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 	assert.InDelta(t, 140.0, samples.HeartRate[0].Value, 1e-9)
 	assert.Equal(t, activityNow(), samples.HeartRate[0].At)
 	assert.Equal(t, []int64{0, 1}, samples.TrackRecords, "each naming the record it came from")
+	// The track sample carries the cadence and temperature the record held,
+	// and marks them absent where the column was never set.
+	assert.True(t, samples.Track[0].HasCadence)
+	assert.InDelta(t, 88.0, samples.Track[0].CadenceRPM, 1e-9)
+	assert.True(t, samples.Track[0].HasTemperature)
+	assert.InDelta(t, 18.0, samples.Track[0].TemperatureCelsius, 1e-9)
+	assert.False(t, samples.Track[1].HasCadence, "the second record carried neither")
+	assert.False(t, samples.Track[1].HasTemperature)
 }
 
 // The series is written beside the samples it describes and read back on the

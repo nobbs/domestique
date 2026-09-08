@@ -395,6 +395,60 @@ func TestDeriveWritesNoMetricsWhenTheEstimateCannotBeStored(t *testing.T) {
 	assert.Empty(t, store.written, "no row claims this ride was derived")
 }
 
+// A heart-rate reading above the profile's own maximum is a sensor fault: it
+// is interpolated across before any load is derived, exactly what
+// measure.CapHeartRate itself would produce on the same series.
+func TestDeriveCapsHeartRateAboveTheProfilesMaximumBeforeDerivingLoad(t *testing.T) {
+	t.Parallel()
+	spiked := heartRateRide(600, 150)
+	spiked[300].Value = 250 // far past any plausible maximum
+	store := &fakeDeriveStore{
+		owner:   "rider-a",
+		profile: fullProfile(), // MaxHeartRateBPM 190, RestingHeartRateBPM 48
+		owed:    []int64{7},
+		rides:   map[int64]activity.RideSamples{7: {HeartRate: spiked}},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+
+	capped := measure.CapHeartRate(spiked, 190)
+	wantTRIMP, ok := trainingload.TRIMP(capped, 190, 48)
+	require.True(t, ok)
+	assert.InDelta(t, wantTRIMP, store.written[7].Load.TRIMP, 1e-9)
+
+	uncappedTRIMP, ok := trainingload.TRIMP(spiked, 190, 48)
+	require.True(t, ok)
+	assert.NotEqual(t, uncappedTRIMP, store.written[7].Load.TRIMP,
+		"the spike was interpolated across before load was derived, not left standing")
+}
+
+// A profile with no maximum has nothing to cap against, so CapHeartRate is a
+// no-op and the load is worked out from the series exactly as recorded.
+func TestDeriveLeavesHeartRateAloneWithoutAProfileMaximum(t *testing.T) {
+	t.Parallel()
+	spiked := heartRateRide(600, 150)
+	spiked[300].Value = 250
+	store := &fakeDeriveStore{
+		owner: "rider-a",
+		profile: rider.Profile{
+			ThresholdHeartRateBPM: rider.Set(170), RestingHeartRateBPM: rider.Set(48),
+		},
+		owed:  []int64{7},
+		rides: map[int64]activity.RideSamples{7: {HeartRate: spiked}},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+
+	wantTSS, ok := trainingload.HeartRateTSS(spiked, 170, 48)
+	require.True(t, ok)
+	assert.InDelta(t, wantTSS, store.written[7].Load.HeartRateTSS, 1e-9,
+		"a profile with no maximum leaves the series uncapped")
+}
+
 func TestNewDeriverNeedsAStore(t *testing.T) {
 	t.Parallel()
 	_, err := activity.NewDeriver(nil, nil, nil, nil)

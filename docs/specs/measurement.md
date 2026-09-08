@@ -239,16 +239,27 @@ recorded speed over a recorded grade, for rides with no power meter.
 **Formula.** In symbols:
 
 ~~~text
-P = v · (m·g·grade + m·g·Crr + ½·ρ·CdA·v²),  clamped at 0
+P = 0                                              where cadence is known and zero
+P = v · (m·g·grade + m·g·Crr + ½·ρ·CdA·v²),  clamped at 0,   otherwise
+
+p = 101325 · (1 - 2.25577e-5 · h)^5.25588          (h in metres)
+ρ = p / (287.058 · (T + 273.15))                   (T in °C)
 ~~~
 
 v is speed in m/s, grade is the dimensionless rise over run from the
 Gradient section above (measured over the 30 m window), m is total system
-mass in kg.
+mass in kg. The cadence rule is checked first and is physics, not the zero
+clamp below it: a sample the rider was not pedalling through has no power to
+estimate, whatever the track says about grade and speed at that moment. It
+contributes nothing to the clamp's own bias diagnostic below, since the clamp
+never had a chance to fire on it. ρ is evaluated at the window's high sample's
+altitude and its temperature where the sample carries one.
 
-**Constants.** g = 9.80665 m/s², Crr = 0.005, CdA = 0.32 m², ρ = 1.225 kg/m³
-(`internal/measure/estimate.go` `gravity`, `rollingResistance`,
-`dragArea`, `airDensity`).
+**Constants.** g = 9.80665 m/s², Crr = 0.005, CdA = 0.32 m²
+(`internal/measure/estimate.go` `gravity`, `rollingResistance`, `dragArea`).
+A sample with no temperature reading is evaluated at 15 °C, the value the
+model's density used to be fixed at
+(`internal/measure/estimate.go` `defaultTemperatureCelsius`).
 
 **Source.** Martin et al. 1998. The source model also carries three terms
 this service omits, each at the source's own value: drivetrain efficiency
@@ -259,9 +270,11 @@ than squaring `v` alone, so a tailwind faster than the rider still drags
 correctly instead of reading as a spurious push
 (`internal/measure/estimate.go`'s own comment already states drivetrain
 loss is left out as "a couple of per cent on a figure already labelled an
-estimate"). The handover document treats air density as a function of
-altitude and temperature rather than the fixed sea-level, fifteen-degree
-constant this service uses.
+estimate"). Air density follows the handover document's own formula
+(§2) rather than the fixed sea-level, fifteen-degree constant this service
+used to use; the cadence gate is the handover's own §5 rule, kept distinct
+from the zero clamp for the same reason the handover gives: conflating them
+hides how much of the estimate the clamp is inventing.
 
 **Quality diagnostics.** The handover document
 ([power-estimation-handover.md](../references/power-estimation-handover.md)
@@ -349,16 +362,21 @@ maximum heart rate and maxWatts is a caller's threshold, neither chosen yet.
 **Source.** Intervals.icu forum, "Heartrate spikes now automatically fixed"
 (January 2020 announcement), for the heart-rate interpolation approach.
 
-**Applied by.** `measure.CapHeartRate` and `measure.ClampPower`, called by
-nobody yet. The one rule this service does apply today sits in
-`internal/activity/averages.go` `meanAndPeak`: a cadence reading of zero is
-left out of a ride's average cadence, while a heart-rate or power reading of
-zero is kept in its average, because a bicycle freewheeling or a rider
-resting is still riding, but a cadence sensor reading zero recorded no
-pedalling to average in.
+**Applied by.** `measure.CapHeartRate` and `measure.ClampPower`.
+`activity:derive` (`internal/activity/derive.go` `deriveMetrics`) calls
+`measure.CapHeartRate` with the rider profile's maximum heart rate before any
+load is derived from the series; `ClampPower` is still called by nobody —
+no implausibility threshold has been chosen. The one rule this service
+otherwise applies sits in `internal/activity/averages.go` `meanAndPeak`: a
+cadence reading of zero is left out of a ride's average cadence, while a
+heart-rate or power reading of zero is kept in its average, because a bicycle
+freewheeling or a rider resting is still riding, but a cadence sensor reading
+zero recorded no pedalling to average in.
 
-**Status.** Implemented and tested, unwired; wiring is a behaviour change
-that lands with a revision of service.md §Recorded activities.
+**Status.** `CapHeartRate` is implemented, tested and wired into
+`activity:derive`. `ClampPower` remains implemented and tested but unwired;
+wiring it is a behaviour change that lands with a revision of service.md
+§Recorded activities once a threshold is chosen.
 
 ## Training load
 

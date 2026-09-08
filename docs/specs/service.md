@@ -620,8 +620,10 @@ The read-only JSON surface is small:
   power TSS; an estimate worked out from the track never feeds those. Each part
   is absent on its own rather than sent as a zero, a ride nothing was worked out
   for carries none of it, and the zones are cut from the threshold rate where
-  the profile has one and from the maximum otherwise. What computes them, and
-  when, is [`activity:derive`](task-layer.md).
+  the profile has one and from the maximum otherwise. A heart-rate reading
+  above the profile's own maximum is a sensor fault rather than a rider: it is
+  interpolated across before any of this is worked out. What computes them,
+  and when, is [`activity:derive`](task-layer.md).
 
   Beside those, and worked out by the same task from the same stored samples,
   are the plain figures the ride's own sensors came to with no profile
@@ -647,7 +649,10 @@ The read-only JSON surface is small:
   mass, also carries `estimatedPowerWatts`: its average **estimated** power. It is worked out from the
   recorded track by a physics model — gravity against the grade, rolling
   resistance and drag at fixed road-bike constants, never below zero and never
-  accounting for wind. Both the grade and the speed are measured over the same
+  accounting for wind. The air's density follows the sample's own altitude and
+  temperature rather than a fixed figure, and a sample the rider was not
+  pedalling through — its cadence known and zero — reads no power at all,
+  checked before the zero clamp ever runs. Both the grade and the speed are measured over the same
   window of distance rather than between one sample and the next: at one sample
   a second the step is barometric noise and GPS jitter as much as it is riding,
   and the clamp at zero would keep the half of that noise which reads positive
