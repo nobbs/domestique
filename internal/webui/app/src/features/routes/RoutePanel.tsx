@@ -179,7 +179,7 @@ export function RoutePanel({
   const [allowance, chooseAllowance] = useStoppingAllowance();
   const doorToDoor = arrivalWindow(movingSeconds, allowance, stopping ?? CORPUS_SPREAD);
   // Where a habit runs past the slider's end, accepting it lands on the end, so
-  // that is what the offer is measured against and withdrawn at.
+  // that is what the offer applies, is withdrawn at, and says it will do.
   const offered = stopping
     ? Math.min(stopping.medianSecondsPerHour, MAX_ALLOWANCE_SECONDS_PER_HOUR)
     : null;
@@ -469,7 +469,9 @@ export function RoutePanel({
                     onClick={() => chooseAllowance(offered)}
                   >
                     Your rides stop {formatAllowance(stopping.medianSecondsPerHour)} per moving hour
-                    — use that
+                    {offered < stopping.medianSecondsPerHour
+                      ? ` — use the ${formatAllowance(offered)} this allows`
+                      : " — use that"}
                   </Button>
                 ) : null}
               </div>

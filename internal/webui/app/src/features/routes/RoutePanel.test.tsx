@@ -159,6 +159,7 @@ describe("RoutePanel", () => {
 
     expect(screen.getByText("your 37 rides", { exact: false })).toBeInTheDocument();
     const offer = screen.getByRole("button", { name: /Your rides stop 10.0 min per moving hour/ });
+    expect(offer).toHaveAccessibleName("Your rides stop 10.0 min per moving hour — use that");
 
     await user.click(offer);
 
@@ -183,9 +184,15 @@ describe("RoutePanel", () => {
       },
     });
 
-    await user.click(screen.getByRole("button", { name: /Your rides stop 30.0 min/ }));
+    const offer = screen.getByRole("button", { name: /Your rides stop 30.0 min/ });
+    // The button names both figures rather than promising the one it cannot set.
+    expect(offer).toHaveAccessibleName(
+      "Your rides stop 30.0 min per moving hour — use the 15.0 min this allows",
+    );
 
-    expect(screen.queryByRole("button", { name: /use that/ })).toBeNull();
+    await user.click(offer);
+
+    expect(screen.queryByRole("button", { name: /Your rides stop/ })).toBeNull();
     expect(
       screen.getByText("15.0 min stopped per moving hour", { exact: false }),
     ).toBeInTheDocument();
