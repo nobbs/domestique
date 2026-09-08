@@ -111,21 +111,27 @@ points gives 0.2 / 0.002 = 100 m.
 **Constants.** W = 100 m for a route's steepest gradient
 (`internal/route/route.go` `gradientWindowMetres`) and for the browser's
 bands and climbs (`internal/webui/app/src/lib/profile.ts`
-`GRADIENT_WINDOW_METRES`); W = 30 m for the estimated-power model
-(`internal/measure/estimate.go` `windowMetres`).
+`GRADIENT_WINDOW_METRES`); for the estimated-power model W is derived per
+ride as `clamp(quantum / 0.002, 30 m, 300 m)`, where quantum is the smallest
+positive altitude step between consecutive samples whose clock advanced by
+no more than the recording gap, rounded to a hundredth of a metre so a
+floating-point 0.19999 reads as 0.2 (`internal/measure/estimate.go` `gradeWindowMetres`,
+`targetGradePrecision`, `minWindowMetres`, `maxWindowMetres`) — 100 m for a
+0.2 m barometric altimeter.
 
 **Source.** The 100 m floor is derived above from the handover document's
 own reasoning. This service's own rule for choosing to apply that floor to
-`gradientWindowMetres` and `GRADIENT_WINDOW_METRES`.
+`gradientWindowMetres` and `GRADIENT_WINDOW_METRES`, and for deriving the
+estimated-power model's window from each ride's own altimeter instead.
 
 **Applied by.** `route.Route.MaxGradientPercent` through
 `measure.Profile.MaxGradientPercent` at `gradientWindowMetres`
 (`internal/measure/profile.go`).
 
-**Status.** 100 m meets the derived floor and is validated. 30 m is a known
-deviation: it sits below the floor, so 0.2 m of altimeter noise over 30 m of
-travel is 0.2/30 = 0.67% of grade, which the power-estimate model turns into
-roughly 40 W at 95 kg and 7 m/s. This is to be revisited.
+**Status.** 100 m meets the derived floor and is validated for routes and
+the browser. The estimated-power model's known deviation is resolved: its
+window is no longer fixed below the floor but derived from each ride's own
+altimeter resolution, landing at 100 m for a typical 0.2 m barometer.
 
 ## Ascent and descent
 
@@ -247,13 +253,14 @@ p = 101325 · (1 - 2.25577e-5 · h)^5.25588          (h in metres)
 ~~~
 
 v is speed in m/s, grade is the dimensionless rise over run from the
-Gradient section above (measured over the 30 m window), m is total system
-mass in kg. The cadence rule is checked first and is physics, not the zero
-clamp below it: a sample the rider was not pedalling through has no power to
-estimate, whatever the track says about grade and speed at that moment. It
-contributes nothing to the clamp's own bias diagnostic below, since the clamp
-never had a chance to fire on it. ρ is evaluated at the window's high sample's
-altitude and its temperature where the sample carries one.
+Gradient section above (measured over the window §Gradient derives), m is
+total system mass in kg. The cadence rule is checked first and is physics,
+not the zero clamp below it: a sample the rider was not pedalling through
+has no power to estimate, whatever the track says about grade and speed at
+that moment. It contributes nothing to the clamp's own bias diagnostic
+below, since the clamp never had a chance to fire on it. ρ is evaluated at
+the window's high sample's altitude and its temperature where the sample
+carries one.
 
 **Constants.** g = 9.80665 m/s², Crr = 0.005, CdA = 0.32 m²
 (`internal/measure/estimate.go` `gravity`, `rollingResistance`, `dragArea`).

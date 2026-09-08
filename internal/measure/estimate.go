@@ -40,15 +40,51 @@ func airDensity(altitudeMetres, temperatureCelsius float64) float64 {
 	return pressure / (287.058 * (temperatureCelsius + 273.15))
 }
 
-// windowMetres is the distance both the grade and the speed are measured over.
-// Sample to sample, altitude is barometric noise as much as hill and distance
-// is GPS jitter as much as travel; thirty metres is short enough to follow a
-// real ramp and long enough not to invent one.
+// The window both the grade and the speed are measured over is derived per
+// ride, not fixed: a coarser altimeter needs more distance to tell a real
+// ramp from its own quantisation noise. targetGradePrecision is a fifth of a
+// per cent of grade, the handover's own target (§3); minWindowMetres is what
+// the model used before this derivation and the floor a coarse-enough
+// altimeter cannot go under; maxWindowMetres is the handover's own choice of
+// a practical ceiling.
 //
 // Measuring speed over the same window is what keeps the zero clamp in watts
 // honest. Fed raw one-second deltas the clamp fires on half the noise and keeps
 // the other half, which on a real ride inflated the mean fourfold.
-const windowMetres = 30
+const (
+	targetGradePrecision = 0.002
+	minWindowMetres      = 30
+	maxWindowMetres      = 300
+)
+
+// gradeWindowMetres is the distance the grade and speed are measured over for
+// one ride: window ≥ resolution / precision, with 0.2 m of barometric
+// resolution and a target precision of 0.002 giving 100 m. See
+// docs/specs/measurement.md §Gradient.
+//
+// The altimeter's resolution is taken as the smallest positive altitude step
+// between consecutive samples whose clock advanced by no more than a gap —
+// the same steps the series itself is measured over, so a pause's drift and
+// a clock that did not move are no reading of it — rounded to a hundredth of
+// a metre so a floating-point 0.19999 reads as the 0.2 it is. A ride with no
+// positive step at all, dead flat or a single sample, takes minWindowMetres.
+func gradeWindowMetres(samples []Sample) float64 {
+	quantum := math.Inf(1)
+	for index := 1; index < len(samples); index++ {
+		if held := samples[index].At.Sub(samples[index-1].At); held <= 0 || held > DefaultMaxGap {
+			continue
+		}
+		if step := samples[index].AltitudeMetres - samples[index-1].AltitudeMetres; step > 0 && step < quantum {
+			quantum = step
+		}
+	}
+	if math.IsInf(quantum, 1) {
+		return minWindowMetres
+	}
+	quantum = math.Round(quantum*100) / 100
+
+	return min(max(quantum/targetGradePrecision, minWindowMetres), maxWindowMetres)
+}
 
 // Estimate is one sample's estimated power. Absent where the track gave the
 // model nothing to work from — the first sample of a ride or of a stretch after
@@ -72,6 +108,11 @@ type Quality struct {
 	// ClipBiasWatts is the mean amount the zero clamp added: clamped watts
 	// minus the unclamped force·speed it would otherwise have reported.
 	ClipBiasWatts float64
+	// WindowMetres is the distance the grade and speed were measured over,
+	// derived from the altimeter's resolution (see gradeWindowMetres). Not
+	// stored or served yet; it sits beside the diagnostics so a test and a
+	// later column can read it.
+	WindowMetres float64
 }
 
 // EstimateSeries works out the power at each sample, aligned one for one with
@@ -92,6 +133,7 @@ func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality,
 		times[index] = sample.At
 	}
 	bounds := Stretches(times, DefaultMaxGap)
+	windowMetres := gradeWindowMetres(samples)
 	known := false
 	var (
 		deltaSum, deltaCount   float64
@@ -105,7 +147,7 @@ func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality,
 		if step <= 0 || step > DefaultMaxGap {
 			continue
 		}
-		low, high := centredWindow(samples, index, bounds)
+		low, high := centredWindow(samples, index, bounds, windowMetres)
 		span := samples[high].At.Sub(samples[low].At).Seconds()
 		run := samples[high].DistanceMetres - samples[low].DistanceMetres
 		if span <= 0 || run < 0 {
@@ -138,7 +180,7 @@ func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality,
 		}
 	}
 
-	quality := Quality{ClipBiasWatts: safeMean(clipBiasSum, clipCount)}
+	quality := Quality{ClipBiasWatts: safeMean(clipBiasSum, clipCount), WindowMetres: windowMetres}
 	if deltaCount > 0 {
 		quality.MeanAbsDeltaWattsPerSecond = deltaSum / deltaCount
 	}
@@ -203,7 +245,7 @@ func watts(speed, grade, totalMassKG, density float64) (clamped, clipBias float6
 // centredWindow is the span of samples around one sample that covers
 // windowMetres of distance, or as much of it as that stretch of recording
 // holds. Both bounds are inclusive.
-func centredWindow(samples []Sample, index int, bounds []Stretch) (low, high int) {
+func centredWindow(samples []Sample, index int, bounds []Stretch, windowMetres float64) (low, high int) {
 	within := bounds[index]
 	// A stretch shorter than the window has one answer for every sample in it,
 	// so it is measured end to end rather than walked outward from each. A long
