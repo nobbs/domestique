@@ -34,7 +34,7 @@ type ActivityState interface {
 	SetRiderProfile(ctx context.Context, subject string, profile rider.Profile) error
 	StoreActivity(ctx context.Context, targetID string, listing activity.Listing,
 		summary activity.Summary, now time.Time) error
-	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit activity.FIT) error
+	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit activity.FIT, recordsVersion int) error
 }
 
 // SlotState is the state a seeded Wahoo slot is left in. Between them the three
@@ -225,7 +225,7 @@ func seedActivities(ctx context.Context, state State, slot Slot, rides []Ride, n
 		}
 		// The samples after the ride itself: the row is what a later read finds
 		// the ride by, and it must not name samples that are not there yet.
-		if err := state.StoreActivityRecords(ctx, slot.ID, ride.Listing.ID, ride.FIT); err != nil {
+		if err := state.StoreActivityRecords(ctx, slot.ID, ride.Listing.ID, ride.FIT, activity.RecordsVersion); err != nil {
 			return fmt.Errorf("demo: storing the samples of ride %d for %s: %w", ride.Listing.ID, slot.ID, err)
 		}
 	}

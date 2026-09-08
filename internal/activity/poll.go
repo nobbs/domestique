@@ -30,6 +30,12 @@ const RecordsBudgetPerPoll = 2 * time.Minute
 // budget: a clock that never advances still cannot leave one run looping.
 const MaxRecordsPerPoll = 200
 
+// RecordsVersion is the record schema fromRecord decodes under. Bump it
+// whenever Record gains a field a stored ride's samples must be re-read to
+// carry; a poll re-reads every stored ride below this version, at the same
+// pace its first download took.
+const RecordsVersion = 1
+
 // Listing is one recorded activity as the rider's account lists it.
 type Listing struct {
 	Starts time.Time
@@ -190,9 +196,11 @@ type listingStore interface {
 // half grows past what one reader can hold.
 type recordStore interface {
 	// ActivitiesAwaitingRecords are the stored activities whose samples are still
-	// absent, newest first so a fresh ride never waits behind a backfill.
-	ActivitiesAwaitingRecords(ctx context.Context, targetID string, limit int) ([]PendingActivity, error)
-	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit FIT) error
+	// absent, newest first, followed by the stored activities whose samples
+	// predate recordsVersion, also newest first, so a fresh ride never waits
+	// behind a backfill and a schema re-read never outpaces the first download.
+	ActivitiesAwaitingRecords(ctx context.Context, targetID string, recordsVersion, limit int) ([]PendingActivity, error)
+	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit FIT, recordsVersion int) error
 	MarkActivityUnreadable(ctx context.Context, targetID string, id int64) error
 }
 
@@ -375,10 +383,11 @@ func deferred(skips []Skip, now time.Time) []int64 {
 }
 
 // fillRecords downloads and decodes the FIT file of each stored activity whose
-// samples are still absent, newest first, until RecordsBudgetPerPoll is spent or
+// samples are still absent, then of each stored activity whose samples predate
+// RecordsVersion, both newest first, until RecordsBudgetPerPoll is spent or
 // MaxRecordsPerPoll are done. It reports how many it stored and marked unreadable.
 func (p *Poller) fillRecords(ctx context.Context, targetID string) (stored, unreadable int, failure Failure) {
-	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, MaxRecordsPerPoll)
+	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, RecordsVersion, MaxRecordsPerPoll)
 	if err != nil {
 		return 0, 0, FailureState
 	}
@@ -418,7 +427,7 @@ func (p *Poller) fill(ctx context.Context, targetID string, pending PendingActiv
 
 		return 0, 1, FailureNone
 	}
-	if storeErr := p.store.StoreActivityRecords(ctx, targetID, pending.ID, decoded); storeErr != nil {
+	if storeErr := p.store.StoreActivityRecords(ctx, targetID, pending.ID, decoded, RecordsVersion); storeErr != nil {
 		return 0, 0, FailureState
 	}
 

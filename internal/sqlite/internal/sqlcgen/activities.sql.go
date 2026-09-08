@@ -133,14 +133,17 @@ func (q *Queries) InsertActivityListing(ctx context.Context, arg InsertActivityL
 const listActivitiesAwaitingRecords = `-- name: ListActivitiesAwaitingRecords :many
 SELECT workout_id, raw_summary_json
 FROM activities
-WHERE target_slot = ?1 AND records_state = 'pending'
-ORDER BY started_at_unix DESC, workout_id DESC
-LIMIT ?2
+WHERE target_slot = ?1
+  AND (records_state = 'pending'
+    OR (records_state = 'stored' AND records_version < ?2))
+ORDER BY records_state <> 'pending', started_at_unix DESC, workout_id DESC
+LIMIT ?3
 `
 
 type ListActivitiesAwaitingRecordsParams struct {
-	TargetSlot string
-	RowLimit   int64
+	TargetSlot     string
+	RecordsVersion int64
+	RowLimit       int64
 }
 
 type ListActivitiesAwaitingRecordsRow struct {
@@ -149,7 +152,7 @@ type ListActivitiesAwaitingRecordsRow struct {
 }
 
 func (q *Queries) ListActivitiesAwaitingRecords(ctx context.Context, arg ListActivitiesAwaitingRecordsParams) ([]ListActivitiesAwaitingRecordsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingRecords, arg.TargetSlot, arg.RowLimit)
+	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingRecords, arg.TargetSlot, arg.RecordsVersion, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +372,8 @@ func (q *Queries) ListActivityRides(ctx context.Context, arg ListActivityRidesPa
 
 const listActivitySeries = `-- name: ListActivitySeries :many
 SELECT recorded_at_unix, distance_metres, altitude_metres,
-  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius
+  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
   AND latitude IS NOT NULL AND longitude IS NOT NULL
@@ -389,6 +393,11 @@ type ListActivitySeriesRow struct {
 	CadenceRpm         sql.NullFloat64
 	PowerWatts         sql.NullFloat64
 	TemperatureCelsius sql.NullFloat64
+	SpeedMs            sql.NullFloat64
+	GradePercent       sql.NullFloat64
+	CaloriesKcal       sql.NullFloat64
+	AscentMetres       sql.NullFloat64
+	DescentMetres      sql.NullFloat64
 }
 
 func (q *Queries) ListActivitySeries(ctx context.Context, arg ListActivitySeriesParams) ([]ListActivitySeriesRow, error) {
@@ -408,6 +417,11 @@ func (q *Queries) ListActivitySeries(ctx context.Context, arg ListActivitySeries
 			&i.CadenceRpm,
 			&i.PowerWatts,
 			&i.TemperatureCelsius,
+			&i.SpeedMs,
+			&i.GradePercent,
+			&i.CaloriesKcal,
+			&i.AscentMetres,
+			&i.DescentMetres,
 		); err != nil {
 			return nil, err
 		}
@@ -550,18 +564,25 @@ func (q *Queries) ListRecordedActivities(ctx context.Context) ([]ListRecordedAct
 }
 
 const markActivityRecordsStored = `-- name: MarkActivityRecordsStored :exec
-UPDATE activities SET records_state = 'stored', fit_checksum_failed = ?1
-WHERE target_slot = ?2 AND workout_id = ?3
+UPDATE activities SET records_state = 'stored', fit_checksum_failed = ?1,
+  records_version = ?2
+WHERE target_slot = ?3 AND workout_id = ?4
 `
 
 type MarkActivityRecordsStoredParams struct {
 	FitChecksumFailed int64
+	RecordsVersion    int64
 	TargetSlot        string
 	WorkoutID         int64
 }
 
 func (q *Queries) MarkActivityRecordsStored(ctx context.Context, arg MarkActivityRecordsStoredParams) error {
-	_, err := q.db.ExecContext(ctx, markActivityRecordsStored, arg.FitChecksumFailed, arg.TargetSlot, arg.WorkoutID)
+	_, err := q.db.ExecContext(ctx, markActivityRecordsStored,
+		arg.FitChecksumFailed,
+		arg.RecordsVersion,
+		arg.TargetSlot,
+		arg.WorkoutID,
+	)
 	return err
 }
 

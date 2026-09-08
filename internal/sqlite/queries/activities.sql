@@ -45,15 +45,18 @@ DELETE FROM activity_skips WHERE target_slot = ? AND workout_id = ?;
 -- name: ListActivitiesAwaitingRecords :many
 SELECT workout_id, raw_summary_json
 FROM activities
-WHERE target_slot = sqlc.arg(target_slot) AND records_state = 'pending'
-ORDER BY started_at_unix DESC, workout_id DESC
+WHERE target_slot = sqlc.arg(target_slot)
+  AND (records_state = 'pending'
+    OR (records_state = 'stored' AND records_version < sqlc.arg(records_version)))
+ORDER BY records_state <> 'pending', started_at_unix DESC, workout_id DESC
 LIMIT sqlc.arg(row_limit);
 
 -- name: DeleteActivityRecords :exec
 DELETE FROM activity_records WHERE target_slot = ? AND workout_id = ?;
 
 -- name: MarkActivityRecordsStored :exec
-UPDATE activities SET records_state = 'stored', fit_checksum_failed = sqlc.arg(fit_checksum_failed)
+UPDATE activities SET records_state = 'stored', fit_checksum_failed = sqlc.arg(fit_checksum_failed),
+  records_version = sqlc.arg(records_version)
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id);
 
 -- name: MarkActivityRecordsUnreadable :exec
@@ -108,7 +111,8 @@ ORDER BY record_index;
 
 -- name: ListActivitySeries :many
 SELECT recorded_at_unix, distance_metres, altitude_metres,
-  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius
+  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND latitude IS NOT NULL AND longitude IS NOT NULL

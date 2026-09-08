@@ -523,6 +523,64 @@ func TestPollFillsRecordsUpToItsCap(t *testing.T) {
 	assert.Len(t, store.pending, 3)
 }
 
+// A stored ride whose records predate the current schema is re-read after
+// every pending ride, within the same cap, and comes out with the new fields
+// and the current version; a ride already at the current version is left
+// alone.
+func TestPollRefillsStaleStoredRidesAfterPendingOnesAndSkipsCurrentOnes(t *testing.T) {
+	store := newFakeStore()
+	store.pending = []PendingActivity{pendingActivity(1)}
+	store.stale = []PendingActivity{pendingActivity(2), pendingActivity(3)}
+	store.recordVersions[2] = RecordsVersion - 1
+	store.recordVersions[3] = RecordsVersion
+	source := newFakeSource(t)
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	require.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, 2, result.RecordsStored, "the pending ride and the one stale ride, not the current one")
+	assert.Equal(t, []string{"ride-1", "ride-2"}, source.downloaded, "pending before stale, the current one never read")
+	assert.Equal(t, RecordsVersion, store.recordVersions[2], "the stale ride's version was bumped")
+	assert.NotContains(t, store.records, int64(3), "a ride at the current version was re-downloaded")
+}
+
+// The re-read group shares the same ceiling as the pending one: it does not
+// let a poll fill more activities than a first download ever could.
+func TestPollCapsTheStaleGroupWithinTheSameLimit(t *testing.T) {
+	store := newFakeStore()
+	for id := range int64(MaxRecordsPerPoll + 3) {
+		store.stale = append(store.stale, pendingActivity(id+1))
+		store.recordVersions[id+1] = RecordsVersion - 1
+	}
+	source := newFakeSource(t)
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	require.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, MaxRecordsPerPoll, result.RecordsStored)
+	assert.Equal(t, MaxRecordsPerPoll, store.recordLimit)
+}
+
+// A ride whose file has gone missing since it was first read is marked
+// unreadable exactly as a first download would be, and keeps whatever records
+// it already holds rather than losing them to the re-read that found nothing.
+func TestPollMarksAVanishedStaleRideUnreadableWithoutDroppingItsRecords(t *testing.T) {
+	store := newFakeStore()
+	store.stale = []PendingActivity{pendingActivity(1)}
+	store.recordVersions[1] = RecordsVersion - 1
+	store.records[1] = FIT{Records: []Record{{PowerWatts: 200, HasPower: true}}}
+	source := newFakeSource(t)
+	source.downloadErr = fmt.Errorf("wrapped: %w", ErrNoActivityFile)
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, 1, result.RecordsUnreadable)
+	assert.Equal(t, []int64{1}, store.unreadable)
+	require.Len(t, store.records[1].Records, 1, "the records the ride already had must survive")
+	assert.InDelta(t, 200.0, store.records[1].Records[0].PowerWatts, 0)
+}
+
 // A run stops filling once its wall-clock budget is spent, well short of the
 // ceiling; what it did not reach stays pending for the next poll.
 func TestPollStopsFillingRecordsWhenTheBudgetIsSpent(t *testing.T) {
@@ -1014,29 +1072,33 @@ type storedActivity struct {
 }
 
 type fakeStore struct {
-	authorizationErr         error
-	storeErr                 error
-	knownErr                 error
-	refreshTokenErr          error
-	replaceErr               error
-	markErr                  error
-	skipsErr                 error
-	skipErr                  error
-	listingsErr              error
-	replaceListingsErr       error
-	pendingErr               error
-	recordsErr               error
-	unreadableErr            error
-	records                  map[int64]FIT
-	readAt                   time.Time
-	authorization            string
-	refreshToken             string
-	known                    []int64
-	listings                 []Listing
-	skips                    []Skip
-	stored                   []storedActivity
-	skipped                  []recordedSkip
-	pending                  []PendingActivity
+	authorizationErr   error
+	storeErr           error
+	knownErr           error
+	refreshTokenErr    error
+	replaceErr         error
+	markErr            error
+	skipsErr           error
+	skipErr            error
+	listingsErr        error
+	replaceListingsErr error
+	pendingErr         error
+	recordsErr         error
+	unreadableErr      error
+	records            map[int64]FIT
+	readAt             time.Time
+	authorization      string
+	refreshToken       string
+	known              []int64
+	listings           []Listing
+	skips              []Skip
+	stored             []storedActivity
+	skipped            []recordedSkip
+	pending            []PendingActivity
+	// stale is the fake's second ActivitiesAwaitingRecords group: rides already
+	// stored whose recordVersions entry a test set below the current one.
+	stale                    []PendingActivity
+	recordVersions           map[int64]int
 	unreadable               []int64
 	recordLimit              int
 	markedForReauthorization bool
@@ -1044,7 +1106,8 @@ type fakeStore struct {
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		authorization: authorizedState, refreshToken: "refresh-token", records: map[int64]FIT{},
+		authorization: authorizedState, refreshToken: "refresh-token",
+		records: map[int64]FIT{}, recordVersions: map[int64]int{},
 	}
 }
 
@@ -1168,21 +1231,34 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 	return buffer
 }
 
-func (s *fakeStore) ActivitiesAwaitingRecords(_ context.Context, _ string, limit int) ([]PendingActivity, error) {
+// ActivitiesAwaitingRecords mirrors the real query's two groups: everything
+// still pending, then the stale rides whose recordVersions entry is below
+// recordsVersion, both in the order a test set them.
+func (s *fakeStore) ActivitiesAwaitingRecords(
+	_ context.Context, _ string, recordsVersion, limit int,
+) ([]PendingActivity, error) {
 	s.recordLimit = limit
 	if s.pendingErr != nil {
 		return nil, s.pendingErr
 	}
 
+	due := slices.Clone(s.pending)
+	for _, ride := range s.stale {
+		if s.recordVersions[ride.ID] < recordsVersion {
+			due = append(due, ride)
+		}
+	}
+
 	// Cloned: the real store hands back rows, not a view a later write shifts.
-	return slices.Clone(s.pending[:min(len(s.pending), limit)]), nil
+	return slices.Clone(due[:min(len(due), limit)]), nil
 }
 
-func (s *fakeStore) StoreActivityRecords(_ context.Context, _ string, id int64, fit FIT) error {
+func (s *fakeStore) StoreActivityRecords(_ context.Context, _ string, id int64, fit FIT, recordsVersion int) error {
 	if s.recordsErr != nil {
 		return s.recordsErr
 	}
 	s.records[id] = fit
+	s.recordVersions[id] = recordsVersion
 	s.settled(id)
 
 	return nil
@@ -1200,6 +1276,7 @@ func (s *fakeStore) MarkActivityUnreadable(_ context.Context, _ string, id int64
 
 func (s *fakeStore) settled(id int64) {
 	s.pending = slices.DeleteFunc(s.pending, func(activity PendingActivity) bool { return activity.ID == id })
+	s.stale = slices.DeleteFunc(s.stale, func(activity PendingActivity) bool { return activity.ID == id })
 }
 
 // This service records cycling: a run the same account holds is listed and

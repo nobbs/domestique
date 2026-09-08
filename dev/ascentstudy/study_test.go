@@ -159,7 +159,7 @@ func seedTrackRideWithSummary(
 			Latitude: 0, Longitude: 0, HasPosition: true,
 		}
 	}
-	require.NoError(t, store.StoreActivityRecords(t.Context(), targetID, workoutID, activity.FIT{Records: records}),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), targetID, workoutID, activity.FIT{Records: records}, activity.RecordsVersion),
 		"StoreActivityRecords()")
 }
 

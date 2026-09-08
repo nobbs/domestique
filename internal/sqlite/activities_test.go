@@ -300,7 +300,7 @@ func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	require.Len(t, pending, 1)
 	assert.Equal(t, int64(1), pending[0].ID)
@@ -312,7 +312,7 @@ func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
 			{Time: activityNow(), PowerWatts: 240, HasPower: true},
 			{Time: activityNow().Add(time.Second)},
 		},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
 	var index int64
 	var power, cadence sql.NullFloat64
@@ -332,7 +332,7 @@ func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
 	assert.Equal(t, "stored", state)
 	assert.Equal(t, 1, checksumFailed)
 
-	pending, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	pending, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords() again")
 	assert.Empty(t, pending, "a settled activity must no longer be awaiting records")
 }
@@ -346,10 +346,10 @@ func TestStoreActivityRecordsReplacesWhatWasThere(t *testing.T) {
 
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}, {Time: activityNow().Add(time.Second)}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}},
-	}), "StoreActivityRecords() again")
+	}, activity.RecordsVersion), "StoreActivityRecords() again")
 
 	var rows int
 	require.NoError(t, store.database.QueryRowContext(t.Context(),
@@ -367,9 +367,9 @@ func TestActivityRecordsCascadeAndStayWithTheirTarget(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-b", 1, 200), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-b", 10)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-b", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	require.Len(t, pending, 1, "another rider's activity was settled")
 
@@ -413,10 +413,59 @@ func TestActivitiesAwaitingRecordsIsNewestFirstAndLimited(t *testing.T) {
 			activity.Summary{Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
 	}
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 2)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 2)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	require.Len(t, pending, 2)
 	assert.Equal(t, []int64{1, 3}, []int64{pending[0].ID, pending[1].ID}, "newest first")
+}
+
+// The listing puts every pending ride ahead of every stale stored one, newest
+// first within each group, and a ride already at the current version is left
+// out of the stale group entirely. The limit crosses freely from one group
+// into the other.
+func TestActivitiesAwaitingRecordsListsPendingThenStaleStoredNewestFirst(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	for index, starts := range []time.Time{activityNow(), activityNow().Add(-time.Hour)} {
+		require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+			activity.Listing{ID: int64(index + 1), TypeID: 15, LocationID: 1, Starts: starts},
+			activity.Summary{Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
+	}
+	for index, starts := range []time.Time{activityNow().Add(-2 * time.Hour), activityNow().Add(-3 * time.Hour)} {
+		id := int64(index + 3)
+		require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+			activity.Listing{ID: id, TypeID: 15, LocationID: 1, Starts: starts},
+			activity.Summary{Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
+		require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", id, activity.FIT{
+			Records: []activity.Record{{Time: activityNow()}},
+		}, 0), "StoreActivityRecords()")
+	}
+	// A fifth ride, already re-read, must not come back a second time.
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: 5, TypeID: 15, LocationID: 1, Starts: activityNow().Add(-4 * time.Hour)},
+		activity.Summary{Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 5, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	due, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
+	require.NoError(t, err, "ActivitiesAwaitingRecords()")
+	assert.Equal(t, []int64{1, 2, 3, 4}, idsOf(due), "pending newest first, then stale newest first")
+
+	limited, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 3)
+	require.NoError(t, err, "ActivitiesAwaitingRecords() limited")
+	assert.Equal(t, []int64{1, 2, 3}, idsOf(limited), "the limit crosses from pending into the stale group")
+}
+
+func idsOf(pending []activity.PendingActivity) []int64 {
+	ids := make([]int64, len(pending))
+	for i, p := range pending {
+		ids[i] = p.ID
+	}
+
+	return ids
 }
 
 // An undecodable file is recorded as such so no later poll downloads it again.
@@ -428,7 +477,7 @@ func TestMarkActivityUnreadableTakesItOutOfThePendingSet(t *testing.T) {
 
 	require.NoError(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "MarkActivityUnreadable()")
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	assert.Empty(t, pending)
 
@@ -443,9 +492,9 @@ func TestActivityRecordWritesReportAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 10)
+	_, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
 	require.ErrorContains(t, err, "reading activities awaiting records")
-	require.Error(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{}))
+	require.Error(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{}, activity.RecordsVersion))
 	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "marking an activity unreadable")
 }
 
@@ -462,15 +511,15 @@ func TestActivityRecordWritesRefuseInvalidInputs(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
-	_, err := store.ActivitiesAwaitingRecords(t.Context(), "", 10)
+	_, err := store.ActivitiesAwaitingRecords(t.Context(), "", activity.RecordsVersion, 10)
 	require.ErrorContains(t, err, "target and a positive limit")
-	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", 0)
+	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 0)
 	require.ErrorContains(t, err, "target and a positive limit")
-	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", -1)
+	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, -1)
 	require.ErrorContains(t, err, "target and a positive limit")
 
-	require.ErrorContains(t, store.StoreActivityRecords(t.Context(), "", 1, activity.FIT{}), "target and an activity id")
-	require.ErrorContains(t, store.StoreActivityRecords(t.Context(), "rider-a", 0, activity.FIT{}), "target and an activity id")
+	require.ErrorContains(t, store.StoreActivityRecords(t.Context(), "", 1, activity.FIT{}, activity.RecordsVersion), "target and an activity id")
+	require.ErrorContains(t, store.StoreActivityRecords(t.Context(), "rider-a", 0, activity.FIT{}, activity.RecordsVersion), "target and an activity id")
 
 	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "", 1), "target and an activity id")
 	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 0), "target and an activity id")
@@ -611,7 +660,7 @@ func TestRecordedRidesReadsEveryTargetsStoredRide(t *testing.T) {
 		activity.Summary{AscentMetres: 300, Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
 	require.NoError(t, store.StoreActivity(t.Context(), "rider-b",
 		activity.Listing{ID: 2, TypeID: 61, LocationID: 1, Starts: activityNow()},
@@ -619,7 +668,7 @@ func TestRecordedRidesReadsEveryTargetsStoredRide(t *testing.T) {
 		"StoreActivity() an indoor ride")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 2, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
 	// Awaiting records: left out, since it has no samples to walk.
 	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
@@ -657,7 +706,7 @@ func TestActivityTrackReadsBackPositionedSamples(t *testing.T) {
 			{Time: activityNow().Add(time.Second)},
 			{Time: activityNow().Add(2 * time.Second), Latitude: 49.1, Longitude: 8.5, HasPosition: true},
 		},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
 	track, err := store.ActivityTrack(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityTrack()")
@@ -693,7 +742,7 @@ func TestActivitySeriesIsIndexedWithTheTrack(t *testing.T) {
 				CadenceRPM: 84, HasCadence: true, DistanceMetres: 20, HasDistance: true,
 			},
 		},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
 	track, err := store.ActivityTrack(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityTrack()")
@@ -709,6 +758,40 @@ func TestActivitySeriesIsIndexedWithTheTrack(t *testing.T) {
 	other, err := store.ActivitySeries(t.Context(), "rider-b", 1)
 	require.NoError(t, err, "ActivitySeries() for another target")
 	assert.Empty(t, other, "another target's activity id must read as no samples")
+}
+
+// The device's own speed, grade and cumulative calories, ascent and descent
+// round-trip through storage like every other sensor: present where a record
+// carried them, null where it did not.
+func TestActivitySeriesCarriesSpeedGradeCaloriesAscentAndDescent(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{
+				Time: activityNow(), Latitude: 49.0, Longitude: 8.4, HasPosition: true,
+				SpeedMS: 8.5, HasSpeed: true, GradePercent: 3.2, HasGrade: true,
+				CaloriesKcal: 320, HasCalories: true, AscentMetres: 120, HasAscent: true,
+				DescentMetres: 45, HasDescent: true,
+			},
+			{Time: activityNow().Add(time.Second), Latitude: 49.1, Longitude: 8.5, HasPosition: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	rows, err := store.ActivitySeries(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivitySeries()")
+	require.Len(t, rows, 2)
+	assert.Equal(t, activity.Reading{Value: 8.5, Known: true}, rows[0].SpeedMS)
+	assert.Equal(t, activity.Reading{Value: 3.2, Known: true}, rows[0].GradePercent)
+	assert.Equal(t, activity.Reading{Value: 320, Known: true}, rows[0].CaloriesKcal)
+	assert.Equal(t, activity.Reading{Value: 120, Known: true}, rows[0].AscentMetres)
+	assert.Equal(t, activity.Reading{Value: 45, Known: true}, rows[0].DescentMetres)
+	assert.False(t, rows[1].SpeedMS.Known, "a record without the field must read back null")
+	assert.False(t, rows[1].GradePercent.Known)
+	assert.False(t, rows[1].CaloriesKcal.Known)
+	assert.False(t, rows[1].AscentMetres.Known)
+	assert.False(t, rows[1].DescentMetres.Known)
 }
 
 func TestActivitySeriesReportsAnUnreadableStore(t *testing.T) {
@@ -734,7 +817,7 @@ func TestActivityRecordsStateTellsPendingFromStored(t *testing.T) {
 
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 	state, found, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRecordsState()")
 	require.True(t, found)

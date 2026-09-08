@@ -264,7 +264,7 @@ func storeTestRecords(t *testing.T, store *Store, targetID string, id int64) err
 			{Time: activityNow(), Latitude: 49.0, Longitude: 8.4, HasPosition: true},
 			{Time: activityNow().Add(time.Second), Latitude: 49.2, Longitude: 8.5, HasPosition: true},
 		},
-	})
+	}, activity.RecordsVersion)
 }
 
 // A ride whose direction could not be told stores that, rather than a direction

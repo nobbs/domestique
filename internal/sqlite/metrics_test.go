@@ -138,7 +138,7 @@ func TestActivitiesAwaitingDerivationFindsTheStaleAndTheUnderived(t *testing.T) 
 	for _, id := range []int64{1, 2, 3} {
 		require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", id, activity.FIT{
 			Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
-		}), "StoreActivityRecords()")
+		}, activity.RecordsVersion), "StoreActivityRecords()")
 	}
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
 		"StoreActivityMetrics()")
@@ -162,7 +162,7 @@ func TestActivitiesAwaitingDerivationRelistsARowAnEarlierDerivationWrote(t *test
 	store := metricsStore(t, 1)
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
 		"StoreActivityMetrics()")
 	// Exactly what migration 043 leaves behind for every row written before it.
@@ -184,7 +184,7 @@ func TestActivitiesAwaitingDerivationRelistsARowVersion2Wrote(t *testing.T) {
 	store := metricsStore(t, 1)
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
 		"StoreActivityMetrics()")
 	_, err := store.database.ExecContext(t.Context(),
@@ -241,7 +241,7 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 			// No sensor and no position: in no series at all.
 			{Time: activityNow().Add(2 * time.Second)},
 		},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
 	// A latitude without a longitude, which the FIT decoder cannot produce but a
 	// hand-edited database can. The track endpoint would never serve such a
@@ -288,7 +288,7 @@ func TestStoreEstimatedPowerWritesTheSeriesAndClearsItAgain(t *testing.T) {
 				AltitudeMetres: 101, HasAltitude: true,
 			},
 		},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 
 	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
 		[]int64{0, 1}, []measure.Estimate{{}, {Watts: 214, Known: true}}),
@@ -325,7 +325,7 @@ func TestActivitiesAwaitingDerivationNoticesAMassChange(t *testing.T) {
 	store := metricsStore(t, 1)
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
-	}), "StoreActivityRecords()")
+	}, activity.RecordsVersion), "StoreActivityRecords()")
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
 		"StoreActivityMetrics()")
 
