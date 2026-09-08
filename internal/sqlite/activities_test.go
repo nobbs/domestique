@@ -753,3 +753,36 @@ func TestActivityRecordsStateTellsPendingFromStored(t *testing.T) {
 	_, _, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
 	require.ErrorContains(t, err, "reading an activity records state")
 }
+
+// ActivityCaloriesAccum decodes only the one field it names out of the stored
+// raw summary, and reports absent for a ride that never gave one at all.
+func TestActivityCaloriesAccumReadsTheOneFieldItNames(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: 1, TypeID: 15, LocationID: 1, Starts: activityNow()},
+		activity.Summary{AscentMetres: 100, Raw: []byte(`{"calories_accum":"1773.0","other_field":"ignored"}`)},
+		activityNow()), "StoreActivity()")
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: 2, TypeID: 15, LocationID: 1, Starts: activityNow()},
+		activity.Summary{AscentMetres: 100, Raw: []byte(`{}`)}, activityNow()), "StoreActivity() no calories")
+
+	kcal, ok, err := store.ActivityCaloriesAccum(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityCaloriesAccum()")
+	require.True(t, ok)
+	assert.InDelta(t, 1773, kcal, 1e-9)
+
+	_, ok, err = store.ActivityCaloriesAccum(t.Context(), "rider-a", 2)
+	require.NoError(t, err, "ActivityCaloriesAccum() no calories")
+	assert.False(t, ok)
+
+	_, ok, err = store.ActivityCaloriesAccum(t.Context(), "rider-a", 3)
+	require.NoError(t, err, "ActivityCaloriesAccum() unknown ride")
+	assert.False(t, ok)
+
+	require.NoError(t, store.Close(), "Close()")
+	_, _, err = store.ActivityCaloriesAccum(t.Context(), "rider-a", 1)
+	require.ErrorContains(t, err, "reading an activity's raw summary")
+}

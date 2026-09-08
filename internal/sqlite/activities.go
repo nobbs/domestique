@@ -1,10 +1,14 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
@@ -423,6 +427,39 @@ type RecordedRide struct {
 	AscentMetres   float64
 	DistanceMetres float64
 	MovingSeconds  float64
+}
+
+// ActivityCaloriesAccum is the kilocalories a ride's device reported in its
+// stored summary, and whether the summary carried one at all. Decodes only
+// that one field of raw_summary_json; nothing else in it is this store's
+// concern to interpret.
+func (s *Store) ActivityCaloriesAccum(ctx context.Context, targetID string, id int64) (kcal float64, ok bool, err error) {
+	raw, err := s.queries.GetActivityRawSummary(ctx, sqlcgen.GetActivityRawSummaryParams{TargetSlot: targetID, WorkoutID: id})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("reading an activity's raw summary: %w", err)
+	}
+	// Wahoo writes the accumulators as strings; json.Number reads either.
+	var summary struct {
+		//nolint:tagliatelle // Wahoo's API uses snake_case.
+		CaloriesAccum *json.Number `json:"calories_accum"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if unmarshalErr := decoder.Decode(&summary); unmarshalErr != nil {
+		return 0, false, fmt.Errorf("decoding an activity's raw summary: %w", unmarshalErr)
+	}
+	if summary.CaloriesAccum == nil {
+		return 0, false, nil
+	}
+	kcal, parseErr := strconv.ParseFloat(strings.Trim(summary.CaloriesAccum.String(), `"`), 64)
+	if parseErr != nil {
+		return 0, false, fmt.Errorf("decoding an activity's calories: %w", parseErr)
+	}
+
+	return kcal, true, nil
 }
 
 // RecordedRides is every target's ride whose samples are stored, ordered by

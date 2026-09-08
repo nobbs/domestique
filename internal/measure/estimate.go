@@ -124,6 +124,28 @@ type Quality struct {
 //
 // See docs/specs/measurement.md §Estimated power.
 func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality, bool) {
+	return estimateSeries(samples, totalMassKG, nil)
+}
+
+// EstimateSeriesWithWind is EstimateSeries with the aerodynamic term's speed
+// replaced by the rider's speed plus the wind along their heading:
+// headwindMS[i] is that headwind component at sample i, positive into the
+// wind, negative for a tailwind. A nil headwindMS is no wind at all, the same
+// as EstimateSeries; a non-nil one whose length does not match samples is
+// refused rather than read against the wrong sample.
+//
+// See docs/references/power-estimation-handover.md §2.
+func EstimateSeriesWithWind(samples []Sample, totalMassKG float64, headwindMS []float64) ([]Estimate, Quality, bool) {
+	if headwindMS != nil && len(headwindMS) != len(samples) {
+		return nil, Quality{}, false
+	}
+
+	return estimateSeries(samples, totalMassKG, headwindMS)
+}
+
+// estimateSeries is EstimateSeries and EstimateSeriesWithWind's shared body;
+// headwindMS is nil for the wind-free case.
+func estimateSeries(samples []Sample, totalMassKG float64, headwindMS []float64) ([]Estimate, Quality, bool) {
 	if totalMassKG <= 0 || len(samples) < 2 {
 		return nil, Quality{}, false
 	}
@@ -165,7 +187,13 @@ func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality,
 				temperature = samples[high].TemperatureCelsius
 			}
 			density := airDensity(samples[high].AltitudeMetres, temperature)
-			clamped, clipBias := watts(run/span, slope(samples[low], samples[high]), totalMassKG, density)
+			// The wind, like density, is taken at the window's high sample
+			// rather than averaged across it.
+			var headwind float64
+			if headwindMS != nil {
+				headwind = headwindMS[high]
+			}
+			clamped, clipBias := watts(run/span, slope(samples[low], samples[high]), totalMassKG, density, headwind)
 			estimates[index] = Estimate{Watts: clamped, Known: true}
 			known = true
 			clipBiasSum += clipBias
@@ -231,9 +259,15 @@ func correlation(a, b []float64) float64 {
 // a rider freewheeling down a hill is putting nothing in, and the model has no
 // way to say they are taking something out — alongside how much the clamp
 // added, zero where it did not fire.
-func watts(speed, grade, totalMassKG, density float64) (clamped, clipBias float64) {
+//
+// The aerodynamic term uses |v+w|·(v+w), not (v+w)², so a tailwind faster than
+// the rider pushes rather than spuriously drags (handover §2); the mechanical
+// power is still force·v, since the wind moves air past the rider, not the
+// bicycle down the road.
+func watts(speed, grade, totalMassKG, density, headwindMS float64) (clamped, clipBias float64) {
 	weight := totalMassKG * gravity
-	force := weight*grade + weight*rollingResistance + 0.5*density*dragArea*speed*speed
+	airspeed := speed + headwindMS
+	force := weight*grade + weight*rollingResistance + 0.5*density*dragArea*math.Abs(airspeed)*airspeed
 	unclamped := force * speed
 	if unclamped > 0 {
 		return unclamped, 0
