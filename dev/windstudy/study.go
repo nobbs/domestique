@@ -129,7 +129,11 @@ type report struct {
 	skippedNoHeartRate   int
 	skippedNoWeather     int
 	skippedNoCalories    int
-	meterRides           int
+	// skippedHRFitUnqualified counts rides with heart rate whose blocks were
+	// too few to fit a wind from; the skip counters count the studied corpus
+	// only, never a ride with a meter, which is reported on its own.
+	skippedHRFitUnqualified int
+	meterRides              int
 }
 
 func newReport() *report {
@@ -172,8 +176,9 @@ func (r *report) String() string {
 		b.WriteString(r.metrics[name].String())
 		fmt.Fprintln(&b)
 	}
-	fmt.Fprintf(&b, "rides: total=%d skipped_no_track=%d skipped_has_power_meter=%d skipped_no_heart_rate=%d skipped_no_weather=%d skipped_no_calories=%d\n",
-		r.totalRides, r.skippedNoTrack, r.skippedHasPowerMeter, r.skippedNoHeartRate, r.skippedNoWeather, r.skippedNoCalories)
+	fmt.Fprintf(&b, "rides: total=%d skipped_no_track=%d skipped_has_power_meter=%d skipped_no_heart_rate=%d skipped_hrfit_unqualified=%d skipped_no_weather=%d skipped_no_calories=%d\n",
+		r.totalRides, r.skippedNoTrack, r.skippedHasPowerMeter, r.skippedNoHeartRate, r.skippedHRFitUnqualified,
+		r.skippedNoWeather, r.skippedNoCalories)
 
 	fmt.Fprintln(&b)
 	if len(r.speedDiffMS) == 0 {
@@ -633,11 +638,13 @@ func study(
 		}
 		hasWeather := len(weatherSteps) > 0
 		if !hasWeather {
-			result.skippedNoWeather++
+			if !hasMeter {
+				result.skippedNoWeather++
+			}
 		}
 
 		hasHeartRate := len(samples.HeartRate) > 0
-		if !hasHeartRate {
+		if !hasHeartRate && !hasMeter {
 			result.skippedNoHeartRate++
 		}
 
@@ -645,7 +652,7 @@ func study(
 		if caloriesErr != nil {
 			return nil, fmt.Errorf("reading a ride's calories: %w", caloriesErr)
 		}
-		if !hasCalories {
+		if !hasCalories && !hasMeter {
 			result.skippedNoCalories++
 		}
 
@@ -669,6 +676,9 @@ func study(
 
 		if hasHeartRate {
 			bestSpeed, bestDirection, _, fitOK := fitWindFromHeartRate(samples.Track, headings, mass, blocks, speedsMS, directionStepDeg)
+			if !fitOK && !hasMeter {
+				result.skippedHRFitUnqualified++
+			}
 			if fitOK {
 				headwind := make([]float64, len(samples.Track))
 				for index, heading := range headings {
