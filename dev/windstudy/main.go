@@ -15,6 +15,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -101,8 +102,8 @@ func parseNonNegativeSpeeds(list string) ([]float64, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parsing speed %q: %w", trimmed, err)
 		}
-		if value < 0 {
-			return nil, fmt.Errorf("speed %q must not be negative", trimmed)
+		if value < 0 || math.IsInf(value, 0) || math.IsNaN(value) {
+			return nil, fmt.Errorf("speed %q must be a finite number of metres per second, not below nought", trimmed)
 		}
 		values = append(values, value)
 	}
