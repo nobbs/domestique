@@ -24,6 +24,16 @@ type Activity struct {
 	FitChecksumFailed     int64
 }
 
+type ActivityClimbAttempt struct {
+	TargetSlot          string
+	WorkoutID           int64
+	ClimbIndex          int64
+	Seconds             float64
+	HeartRateBpm        sql.NullFloat64
+	PowerWatts          sql.NullFloat64
+	EstimatedPowerWatts sql.NullFloat64
+}
+
 type ActivityListing struct {
 	TargetSlot            string
 	WorkoutID             int64

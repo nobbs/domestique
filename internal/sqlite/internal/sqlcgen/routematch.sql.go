@@ -10,6 +10,32 @@ import (
 	"database/sql"
 )
 
+const clearActivityClimbAttempts = `-- name: ClearActivityClimbAttempts :execrows
+DELETE FROM activity_climb_attempt WHERE target_slot = ?
+`
+
+func (q *Queries) ClearActivityClimbAttempts(ctx context.Context, targetSlot string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearActivityClimbAttempts, targetSlot)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteActivityClimbAttempts = `-- name: DeleteActivityClimbAttempts :exec
+DELETE FROM activity_climb_attempt WHERE target_slot = ? AND workout_id = ?
+`
+
+type DeleteActivityClimbAttemptsParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) DeleteActivityClimbAttempts(ctx context.Context, arg DeleteActivityClimbAttemptsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteActivityClimbAttempts, arg.TargetSlot, arg.WorkoutID)
+	return err
+}
+
 const deleteActivityRouteMatch = `-- name: DeleteActivityRouteMatch :exec
 DELETE FROM activity_route_match
 WHERE target_slot = ?1 AND workout_id = ?2
@@ -35,6 +61,35 @@ func (q *Queries) DeleteActivityRouteMatchesForTarget(ctx context.Context, targe
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const insertActivityClimbAttempt = `-- name: InsertActivityClimbAttempt :exec
+INSERT INTO activity_climb_attempt (
+  target_slot, workout_id, climb_index, seconds, heart_rate_bpm, power_watts, estimated_power_watts
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+`
+
+type InsertActivityClimbAttemptParams struct {
+	TargetSlot          string
+	WorkoutID           int64
+	ClimbIndex          int64
+	Seconds             float64
+	HeartRateBpm        sql.NullFloat64
+	PowerWatts          sql.NullFloat64
+	EstimatedPowerWatts sql.NullFloat64
+}
+
+func (q *Queries) InsertActivityClimbAttempt(ctx context.Context, arg InsertActivityClimbAttemptParams) error {
+	_, err := q.db.ExecContext(ctx, insertActivityClimbAttempt,
+		arg.TargetSlot,
+		arg.WorkoutID,
+		arg.ClimbIndex,
+		arg.Seconds,
+		arg.HeartRateBpm,
+		arg.PowerWatts,
+		arg.EstimatedPowerWatts,
+	)
+	return err
 }
 
 const listActivitiesAwaitingRouteMatch = `-- name: ListActivitiesAwaitingRouteMatch :many
@@ -214,6 +269,73 @@ func (q *Queries) ListRouteActivities(ctx context.Context, arg ListRouteActiviti
 			&i.RouteCoverage,
 			&i.RideCoverage,
 			&i.Direction,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRouteClimbAttempts = `-- name: ListRouteClimbAttempts :many
+SELECT c.workout_id, c.climb_index, c.seconds, c.heart_rate_bpm, c.power_watts,
+  c.estimated_power_watts, a.started_at_unix
+FROM activity_climb_attempt AS c
+JOIN activities AS a ON a.target_slot = c.target_slot AND a.workout_id = c.workout_id
+JOIN activity_route_match AS m ON m.target_slot = c.target_slot AND m.workout_id = c.workout_id
+WHERE c.target_slot = ?1 AND m.provider = ?2
+  AND m.route_id = ?3 AND m.stage_order = ?4
+ORDER BY a.started_at_unix DESC, c.climb_index
+`
+
+type ListRouteClimbAttemptsParams struct {
+	TargetSlot string
+	Provider   sql.NullString
+	RouteID    sql.NullInt64
+	StageOrder sql.NullInt64
+}
+
+type ListRouteClimbAttemptsRow struct {
+	WorkoutID           int64
+	ClimbIndex          int64
+	Seconds             float64
+	HeartRateBpm        sql.NullFloat64
+	PowerWatts          sql.NullFloat64
+	EstimatedPowerWatts sql.NullFloat64
+	StartedAtUnix       int64
+}
+
+// Every attempt one target's rides made at one route's climbs. The order is for
+// a stable read, not the order they are served in: the endpoint sorts a climb's
+// attempts by how long each took, quickest first.
+func (q *Queries) ListRouteClimbAttempts(ctx context.Context, arg ListRouteClimbAttemptsParams) ([]ListRouteClimbAttemptsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRouteClimbAttempts,
+		arg.TargetSlot,
+		arg.Provider,
+		arg.RouteID,
+		arg.StageOrder,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRouteClimbAttemptsRow{}
+	for rows.Next() {
+		var i ListRouteClimbAttemptsRow
+		if err := rows.Scan(
+			&i.WorkoutID,
+			&i.ClimbIndex,
+			&i.Seconds,
+			&i.HeartRateBpm,
+			&i.PowerWatts,
+			&i.EstimatedPowerWatts,
+			&i.StartedAtUnix,
 		); err != nil {
 			return nil, err
 		}

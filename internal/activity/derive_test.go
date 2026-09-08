@@ -19,6 +19,10 @@ import (
 // fakeDeriveStore is stored state as a derivation sees it, and a record of what
 // it was asked to write.
 type fakeDeriveStore struct {
+	series           map[int64][]activity.SampleRow
+	seriesErr        error
+	climbAttempts    map[int64][]activity.ClimbAttempt
+	climbAttemptErr  error
 	ownerErr         error
 	profileErr       error
 	owedErr          error
@@ -74,12 +78,30 @@ func (s *fakeDeriveStore) ActivityTrack(_ context.Context, _ string, id int64) (
 	return s.tracks[id], s.trackErr
 }
 
+// ActivitySeries answers with whatever the test seeded for the ride, which for
+// most of them is nothing: a ride with no series still matches a route.
+func (s *fakeDeriveStore) ActivitySeries(
+	_ context.Context, _ string, id int64,
+) ([]activity.SampleRow, error) {
+	return s.series[id], s.seriesErr
+}
+
+// The match and its attempts arrive together, as one write, because an attempt
+// is read through the match it belongs to.
 func (s *fakeDeriveStore) StoreActivityRouteMatch(
-	_ context.Context, _ string, id int64, match *activity.RouteMatch, _ string, _ time.Time,
+	_ context.Context, _ string, id int64,
+	match *activity.RouteMatch, attempts []activity.ClimbAttempt, _ string, _ time.Time,
 ) error {
 	if s.matchErr != nil {
 		return s.matchErr
 	}
+	if s.climbAttemptErr != nil {
+		return s.climbAttemptErr
+	}
+	if s.climbAttempts == nil {
+		s.climbAttempts = map[int64][]activity.ClimbAttempt{}
+	}
+	s.climbAttempts[id] = attempts
 	if s.matches == nil {
 		s.matches = map[int64]*activity.RouteMatch{}
 	}
@@ -845,4 +867,103 @@ func TestDeriveKeepsEachPassesCountWhicheverIsReported(t *testing.T) {
 	assert.Equal(t, 1, result.Derived, "the metrics pass")
 	assert.Equal(t, 1, result.Matched, "the route match pass")
 	assert.Equal(t, 1, result.WeatherRead, "the weather pass")
+}
+
+// climbingRoute is a straight route rising steadily enough to hold one climb,
+// so a ride down it can be timed.
+func climbingRoute() (line []measure.Coordinate, elevations []float64) {
+	for index := range 200 {
+		metres := float64(index) * 20
+		line = append(line, measure.Coordinate{Latitude: 0, Longitude: metres / 111_320})
+		height := 100.0
+		if metres > 1000 {
+			height += min(metres-1000, 600) * 0.06
+		}
+		elevations = append(elevations, height)
+	}
+
+	return line, elevations
+}
+
+// climbingLibraryStore is one library route with height, and a ride down it.
+func climbingLibraryStore() *fakeDeriveStore {
+	line, elevations := climbingRoute()
+	track := []activity.TrackPoint{}
+	series := []activity.SampleRow{}
+	at := time.Date(2026, 7, 4, 7, 0, 0, 0, time.UTC)
+	for _, point := range line {
+		track = append(track, activity.TrackPoint{
+			Time: at, Latitude: point.Latitude, Longitude: point.Longitude,
+		})
+		series = append(series, activity.SampleRow{
+			Time: at, HeartRateBPM: activity.Reading{Value: 158, Known: true},
+		})
+		at = at.Add(4 * time.Second)
+	}
+
+	return &fakeDeriveStore{
+		owner: "rider-a",
+		library: []activity.RouteCandidate{{
+			Key: route.NewKey(route.ProviderVeloPlanner, 4, 1), Geometry: line, Elevations: elevations,
+		}},
+		libraryHash: "library-1",
+		owedMatches: []int64{11},
+		tracks:      map[int64][]activity.TrackPoint{11: track},
+		series:      map[int64][]activity.SampleRow{11: series},
+	}
+}
+
+func TestDeriveTimesAMatchedRideOverTheRoutesClimbs(t *testing.T) {
+	t.Parallel()
+	store := climbingLibraryStore()
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, 1, result.Matched)
+	require.Len(t, store.climbAttempts[11], 1, "the route's one climb, ridden")
+	assert.Equal(t, 0, store.climbAttempts[11][0].ClimbIndex)
+	assert.Positive(t, store.climbAttempts[11][0].Seconds)
+	assert.True(t, store.climbAttempts[11][0].HasHeartRate)
+}
+
+// A route whose stored geometry carries no height has no climbs to be timed
+// over, which costs the ride its attempts and not its match.
+func TestDeriveTimesNothingOverARouteWithNoHeight(t *testing.T) {
+	t.Parallel()
+	store := climbingLibraryStore()
+	store.library[0].Elevations = nil
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, 1, result.Matched)
+	require.NotNil(t, store.matches[11], "the ride still matched the route")
+	assert.Empty(t, store.climbAttempts[11])
+}
+
+func TestDeriveReportsASeriesItCannotRead(t *testing.T) {
+	t.Parallel()
+	store := climbingLibraryStore()
+	store.seriesErr = errors.New("the samples are unreadable")
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, activity.Failed, result.Outcome)
+}
+
+func TestDeriveReportsAStoreThatCannotKeepClimbAttempts(t *testing.T) {
+	t.Parallel()
+	store := climbingLibraryStore()
+	store.climbAttemptErr = errors.New("the attempts cannot be stored")
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, activity.Failed, result.Outcome)
 }

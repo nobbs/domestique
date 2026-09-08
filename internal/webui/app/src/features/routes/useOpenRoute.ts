@@ -7,7 +7,6 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import type { Position, RouteGeometry } from "../../api/types";
 import type { Climb } from "../../lib/climbs";
-import { findClimbs } from "../../lib/climbs";
 import { forecastSamples } from "../../lib/forecastSamples";
 import type { Highlight } from "../../lib/highlight";
 import { highlightSpans, nextSpan, sameHighlight } from "../../lib/highlight";
@@ -30,11 +29,15 @@ import { summariseSurface } from "../../lib/surface";
  * @param geometry The same fetch the library map draws from, read for the
  *   surface classification and the predicted cumulative seconds.
  * @param startAt The reader's chosen start time, null while none is picked.
+ * @param climbs The route's sustained climbs as the service found them, empty
+ *   until they arrive. Held by the caller rather than worked out here: the
+ *   service finds them, and this browser no longer draws the same rule twice.
  */
 export function useOpenRoute(
   coordinates: Position[],
   geometry: UseQueryResult<RouteGeometry>,
   startAt: Date | null,
+  climbs: Climb[],
 ) {
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
@@ -103,9 +106,6 @@ export function useOpenRoute(
 
   // How steep the route is each way, from the same stored coordinates.
   const gradients = useMemo(() => gradientSummary(coordinates), [coordinates]);
-
-  // The route's sustained climbs, from the same stored coordinates.
-  const climbs = useMemo(() => findClimbs(coordinates), [coordinates]);
 
   // A climb picked from the list opens the same shared window the chart's own
   // drag-to-zoom gesture opens, widened the same way a short drag is: a

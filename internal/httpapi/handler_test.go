@@ -20,6 +20,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
@@ -2505,6 +2506,11 @@ type fakeState struct {
 	riderSuggestions     map[string]rider.Suggestions
 	riderSuggestionSince time.Time
 	riderSuggestionTypes []int
+	stageProfiles        map[route.Key]fakeStageProfile
+	stageProfileErr      error
+	climbAttempts        map[route.Key][]activities.StoredClimbAttempt
+	climbAttemptsFor     string
+	climbAttemptErr      error
 	powerCurves          map[string]rider.PowerCurve
 	powerCurveFor        []string
 	powerCurveWindow     [2]time.Time
@@ -2664,6 +2670,31 @@ func (s *fakeState) PowerCurve(
 	}
 
 	return curve, nil
+}
+
+// StageProfile answers with the line and heights the test seeded for a stage.
+func (s *fakeState) StageProfile(
+	_ context.Context, key route.Key,
+) (line []measure.Coordinate, elevations []float64, found bool, err error) {
+	if s.stageProfileErr != nil {
+		return nil, nil, false, s.stageProfileErr
+	}
+	profile, known := s.stageProfiles[key]
+
+	return profile.line, profile.elevations, known, nil
+}
+
+// RouteClimbAttempts answers with the attempts the test seeded for one target
+// on one route.
+func (s *fakeState) RouteClimbAttempts(
+	_ context.Context, targetID string, key route.Key,
+) ([]activities.StoredClimbAttempt, error) {
+	if s.climbAttemptErr != nil {
+		return nil, s.climbAttemptErr
+	}
+	s.climbAttemptsFor = targetID
+
+	return s.climbAttempts[key], nil
 }
 
 // RiderSuggestions records which targets and which cutoff it was asked over, so
@@ -3444,4 +3475,10 @@ func (t *fakeTasks) Run(name, argument string) bool {
 	t.started = append(t.started, attempt)
 
 	return true
+}
+
+// fakeStageProfile is one stage's stored line and the height along it.
+type fakeStageProfile struct {
+	line       []measure.Coordinate
+	elevations []float64
 }

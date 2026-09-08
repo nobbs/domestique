@@ -26,6 +26,7 @@ import { useSearchParams } from "react-router";
 import {
   activitiesQuery,
   riderProfileQuery,
+  routeClimbsQuery,
   routeGeometryQuery,
   routesQuery,
   statusQuery,
@@ -269,6 +270,16 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // The rides matched to the open route, off the query the activity pages share.
   // Not asked for until one is open: the library map has no history to show.
   const activities = useQuery({ ...activitiesQuery(), enabled: shownRoute !== null });
+  // The rider's own attempts at the open route's climbs. Asked for on the same
+  // terms as the rides: the library map has no climb of anyone's to time.
+  const routeClimbs = useQuery({
+    ...routeClimbsQuery(
+      shownRoute?.provider ?? "",
+      shownRoute?.sourceRouteId ?? 0,
+      shownRoute?.stageOrder ?? 0,
+    ),
+    enabled: shownRoute !== null,
+  });
   // The rider's own stopping habit, which the panel's door-to-door window uses
   // in place of the seeded corpus. Asked for on the same terms as the rides.
   const riderProfile = useQuery({ ...riderProfileQuery(), enabled: shownRoute !== null });
@@ -315,7 +326,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     surface,
     surfaceSummary,
     scopeHighlight,
-  } = useOpenRoute(openCoordinates, openGeometry, startAt);
+  } = useOpenRoute(openCoordinates, openGeometry, startAt, routeClimbs.data?.climbs ?? []);
   /*
    * What the reader has put away, and it sticks across routes: someone who
    * folded the dock did so to see more map, not to see more of one route's map.

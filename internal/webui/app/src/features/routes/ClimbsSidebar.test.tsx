@@ -3,8 +3,10 @@
  * in half.
  */
 
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { rowsToShow } from "./ClimbsSidebar";
+import type { Climb } from "../../lib/climbs";
+import { ClimbsSidebar, rowsToShow } from "./ClimbsSidebar";
 
 describe("rowsToShow", () => {
   it("subtracts the list's own top margin, not just the header's height", () => {
@@ -29,5 +31,57 @@ describe("rowsToShow", () => {
 
   it("holds off until the section has actually been measured", () => {
     expect(rowsToShow(true, 0, 0)).toBeNull();
+  });
+});
+
+function climb(attempts: [number, string][]): Climb {
+  return {
+    startMetres: 1000,
+    endMetres: 1600,
+    distanceMetres: 600,
+    ascentMetres: 36,
+    averageGradePercent: 6,
+    maxGradePercent: 8,
+    attempts: attempts.map(([seconds, riddenAt], index) => ({
+      activityId: index + 1,
+      riddenAt,
+      seconds,
+      vamMetresPerHour: (36 / seconds) * 3600,
+    })),
+  };
+}
+
+describe("ClimbsSidebar times", () => {
+  it("reads out the rider's quickest and most recent time over a climb", () => {
+    // Served quickest first; the most recent is the later date, not the later
+    // place in the list.
+    const ridden = climb([
+      [760, "2026-08-01T06:00:00Z"],
+      [785, "2026-09-01T06:00:00Z"],
+    ]);
+
+    render(<ClimbsSidebar climbs={[ridden]} onSelect={() => {}} />);
+
+    expect(screen.getByText("12:40 · 13:05")).toBeInTheDocument();
+  });
+
+  // Seconds are stored as a real number, derived from two timestamps, so a
+  // time can land just short of the minute. Rounded within the minute it would
+  // read 0:60.
+  it("carries a rounded second into the minute rather than showing sixty", () => {
+    render(
+      <ClimbsSidebar climbs={[climb([[59.6, "2026-08-01T06:00:00Z"]])]} onSelect={() => {}} />,
+    );
+
+    expect(screen.getByText("1:00 · 1:00")).toBeInTheDocument();
+  });
+
+  // Most climbs, for most riders, have never been ridden: an em dash would be
+  // a figure-shaped thing where there is no figure.
+  it("says nothing at all for a climb the rider has not ridden", () => {
+    render(<ClimbsSidebar climbs={[climb([])]} onSelect={() => {}} />);
+
+    // A time, not the separator: the column's own header carries one of those.
+    expect(screen.queryByText(/\d+:\d\d/)).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activitiesQuery,
   riderProfileQuery,
+  routeClimbsQuery,
   routeGeometryQuery,
   routesQuery,
   statusQuery,
@@ -25,6 +26,7 @@ import type {
   BoundingBox,
   Position,
   Route,
+  RouteClimb,
   RouteGeometry,
   RouteSurface,
   StoppingSuggestion,
@@ -150,6 +152,8 @@ function renderPage(
     activities?: Activity[];
     /** The rider's own stopping habit, which the open panel's window uses. */
     stopping?: StoppingSuggestion;
+    /** The open route's climbs and the rider's attempts at them. */
+    climbs?: RouteClimb[];
   } = {},
 ) {
   const client = new QueryClient({
@@ -193,6 +197,13 @@ function renderPage(
         : {},
       surface: { classified: 0, total: 0, incomplete: 0, enrichmentFailures: 0 },
     },
+  });
+  // The open route's climbs, seeded so no test reaches the service for them.
+  (options.geometryFor ?? library).forEach((entry) => {
+    client.setQueryData(
+      routeClimbsQuery(entry.provider, entry.sourceRouteId, entry.stageOrder).queryKey,
+      { climbs: options.climbs ?? [] },
+    );
   });
   (options.geometryFor ?? library).forEach((entry, index) => {
     client.setQueryData(

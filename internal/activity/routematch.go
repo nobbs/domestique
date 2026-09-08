@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -56,7 +57,11 @@ const (
 // RouteCandidate is one library route a ride may be attributed to.
 type RouteCandidate struct {
 	Geometry []measure.Coordinate
-	Key      route.Key
+	// Elevations is the height at each of those coordinates, or nil for a route
+	// whose stored geometry carries none. It is what the route's climbs are
+	// found from; a route without it is one no ride can be timed over.
+	Elevations []float64
+	Key        route.Key
 }
 
 // Direction is which way round its route a ride went. It does not decide a
@@ -306,11 +311,50 @@ type RouteRide struct {
 	Direction     Direction
 }
 
+// climbAttempts times one ride over the climbs of the route it was matched to.
+// A route whose stored geometry carries no height has no climbs to be timed
+// over, which is not a failure: it is a route this service cannot yet say
+// anything about, and the ride keeps its match either way.
+func (d *Deriver) climbAttempts(
+	ctx context.Context, targetID string, id int64,
+	candidates []RouteCandidate, match *RouteMatch, track []TrackPoint,
+) ([]ClimbAttempt, error) {
+	candidate := candidateFor(candidates, match.Key)
+	if candidate == nil || len(candidate.Elevations) == 0 {
+		return nil, nil
+	}
+	climbs := RouteClimbs(candidate.Geometry, candidate.Elevations)
+	if len(climbs) == 0 {
+		return nil, nil
+	}
+	series, err := d.store.ActivitySeries(ctx, targetID, id)
+	if err != nil {
+		return nil, fmt.Errorf("reading a ride's samples: %w", err)
+	}
+
+	return ClimbAttempts(climbs, candidate.Geometry, track, series, match.Direction), nil
+}
+
+// candidateFor is the library route a match names, or nil where the library has
+// moved on since the match was made.
+func candidateFor(candidates []RouteCandidate, key route.Key) *RouteCandidate {
+	for index := range candidates {
+		if candidates[index].Key == key {
+			return &candidates[index]
+		}
+	}
+
+	return nil
+}
+
 // RouteMatchStore is what attributing rides to routes needs of stored state.
 // The library is read whole because a match is decided against all of it at
 // once, and no upstream is involved: a match follows the geometry already
 // stored, so it is worked out again on a library edit rather than on a poll.
 type RouteMatchStore interface {
+	// ActivitySeries is the non-positional part of one ride's positioned
+	// samples, indexed 1:1 with what ActivityTrack returns for the same ride.
+	ActivitySeries(ctx context.Context, targetID string, id int64) ([]SampleRow, error)
 	// LibraryRoutes returns every route a ride may be attributed to, and a hash
 	// over the geometry of the library as a whole. A match stored against a
 	// different hash was measured against a library that has since changed.
@@ -323,11 +367,17 @@ type RouteMatchStore interface {
 	// ridden.
 	ClearActivityRouteMatches(ctx context.Context, targetID string) (int, error)
 	ActivityTrack(ctx context.Context, targetID string, id int64) ([]TrackPoint, error)
-	// StoreActivityRouteMatch records which route a ride was ridden on. A nil
-	// match records that it was ridden on none, which is what stops the ride
-	// being matched again against the same library.
+	// StoreActivityRouteMatch records which route a ride was ridden on and its
+	// attempts at that route's climbs, together. A nil match records that it was
+	// ridden on none, which is what stops the ride being matched again against
+	// the same library; an empty set of attempts clears whatever was there.
+	//
+	// The two are one write because an attempt names no route of its own: it is
+	// read through the match, so a new match stored beside another match's
+	// attempts would serve one route's times under another's climbs.
 	StoreActivityRouteMatch(
-		ctx context.Context, targetID string, id int64, match *RouteMatch, libraryHash string, now time.Time,
+		ctx context.Context, targetID string, id int64,
+		match *RouteMatch, attempts []ClimbAttempt, libraryHash string, now time.Time,
 	) error
 }
 
@@ -374,10 +424,17 @@ func (d *Deriver) matchRoutes(ctx context.Context, targetID string) Result {
 			return Result{Outcome: Failed, Failure: FailureState, Matched: matched}
 		}
 		var stored *RouteMatch
+		var attempts []ClimbAttempt
 		if match, found := matcher.Match(trackCoordinates(track)); found {
 			stored = &match
+			attempts, err = d.climbAttempts(ctx, targetID, id, candidates, &match, track)
+			if err != nil {
+				return Result{Outcome: Failed, Failure: FailureState, Matched: matched}
+			}
 		}
-		if storeErr := d.store.StoreActivityRouteMatch(ctx, targetID, id, stored, libraryHash, d.now()); storeErr != nil {
+		if storeErr := d.store.StoreActivityRouteMatch(
+			ctx, targetID, id, stored, attempts, libraryHash, d.now(),
+		); storeErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Matched: matched}
 		}
 		matched++

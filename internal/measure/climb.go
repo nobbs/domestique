@@ -24,8 +24,8 @@ type climbRun struct {
 // shorter than the window absorbed into the run before it, and a climb reported where a
 // climbing run is at least a window long. Empty for a profile of no length.
 //
-// The browser's findClimbs (internal/webui/app/src/lib/climbs.ts) applies the same rule; the
-// two are held together by a shared table of vectors in climbs.test.ts and climb_test.go.
+// The one implementation of the rule: the browser draws the climbs a route
+// serves rather than finding them again for itself.
 //
 // See docs/specs/measurement.md §Sustained climbs.
 func Climbs(p Profile, windowMetres, minGradientPercent float64) []Climb {

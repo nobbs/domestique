@@ -578,6 +578,41 @@ export interface GeoJSONFeature {
   properties: GeoJSONProperties;
 }
 
+/**
+ * One ride over one climb. Only a ride that reached both ends of it the way the route stores it is here: a ride that turned back, or ran the route the other way round, made no attempt at it.
+ */
+export interface RouteClimbAttempt {
+  activityId: number;
+  riddenAt: string;
+  seconds: number;
+  /** The climb's own ascent over the time this attempt took, which is what makes two attempts at one climb comparable. */
+  vamMetresPerHour: number;
+  /** The mean over the samples inside the climb. */
+  heartRateBpm?: number;
+  /** The mean measured power inside the climb. Never fed by an estimate. */
+  powerWatts?: number;
+  /** The mean estimated power inside the climb, for a bicycle carrying no meter. Never ranked or summed with the measured figure above. */
+  estimatedPowerWatts?: number;
+}
+
+/**
+ * One sustained climb of the route, found again from the route's stored geometry rather than kept beside the attempts at it. See docs/specs/measurement.md §Sustained climbs.
+ */
+export interface RouteClimb {
+  startMetres: number;
+  endMetres: number;
+  distanceMetres: number;
+  ascentMetres: number;
+  averageGradePercent: number;
+  maxGradePercent: number;
+  /** The caller's own attempts at this climb, quickest first. */
+  attempts: RouteClimbAttempt[];
+}
+
+export interface RouteClimbList {
+  climbs: RouteClimb[];
+}
+
 export interface RouteActivity {
   id: number;
   routeCoverage: number;
@@ -1031,6 +1066,13 @@ export type GetActivitySeriesParams = {
 export type GetActivitySplitsParams = {
   /**
    * The target to read. Omitted means the caller's own.
+   */
+  target?: string;
+};
+
+export type GetRouteClimbsParams = {
+  /**
+   * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so an address says nothing about whose it is.
    */
   target?: string;
 };
@@ -4130,6 +4172,266 @@ export function useGetRouteGeometry<
     provider,
     sourceRouteId,
     stageOrder,
+    options,
+  );
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getRouteClimbsResponse200 = {
+  data: RouteClimbList;
+  status: 200;
+};
+
+export type getRouteClimbsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getRouteClimbsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getRouteClimbsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getRouteClimbsResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getRouteClimbsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getRouteClimbsResponseSuccess = getRouteClimbsResponse200 & {
+  headers: Headers;
+};
+export type getRouteClimbsResponseError = (
+  | getRouteClimbsResponse400
+  | getRouteClimbsResponse401
+  | getRouteClimbsResponse403
+  | getRouteClimbsResponse404
+  | getRouteClimbsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetRouteClimbsUrl = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteClimbsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/providers/${encodeURIComponent(String(provider))}/sourceRoutes/${encodeURIComponent(String(sourceRouteId))}/routes/${encodeURIComponent(String(stageOrder))}/climbs?${stringifiedParams}`
+    : `/v1/providers/${encodeURIComponent(String(provider))}/sourceRoutes/${encodeURIComponent(String(sourceRouteId))}/routes/${encodeURIComponent(String(stageOrder))}/climbs`;
+};
+
+/**
+ * The route's sustained climbs in the order they are ridden, each with the caller's own attempts at it, quickest first. Scoped exactly as the activity list is: a caller reads only the target they own, and so reads their own attempts and never another rider's. A route the library does not hold is not found; a route with no climbs, or one nobody has ridden, is an empty list rather than a missing page.
+ */
+export const getRouteClimbs = async (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteClimbsParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getRouteClimbsResponseSuccess> => {
+  return domestiqueRequest<getRouteClimbsResponseSuccess>(
+    getGetRouteClimbsUrl(provider, sourceRouteId, stageOrder, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetRouteClimbsQueryKey = (
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteClimbsParams,
+) => {
+  return [
+    `/v1/providers/${provider}/sourceRoutes/${sourceRouteId}/routes/${stageOrder}/climbs`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetRouteClimbsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getRouteClimbs>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteClimbsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteClimbs>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getGetRouteClimbsQueryKey(provider, sourceRouteId, stageOrder, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getRouteClimbs>>> = ({ signal }) =>
+    getRouteClimbs(provider, sourceRouteId, stageOrder, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled:
+      provider !== null &&
+      provider !== undefined &&
+      sourceRouteId !== null &&
+      sourceRouteId !== undefined &&
+      stageOrder !== null &&
+      stageOrder !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getRouteClimbs>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetRouteClimbsQueryResult = NonNullable<Awaited<ReturnType<typeof getRouteClimbs>>>;
+export type GetRouteClimbsQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetRouteClimbs<
+  TData = Awaited<ReturnType<typeof getRouteClimbs>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params: undefined | GetRouteClimbsParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteClimbs>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRouteClimbs>>,
+          TError,
+          Awaited<ReturnType<typeof getRouteClimbs>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetRouteClimbs<
+  TData = Awaited<ReturnType<typeof getRouteClimbs>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteClimbsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteClimbs>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRouteClimbs>>,
+          TError,
+          Awaited<ReturnType<typeof getRouteClimbs>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetRouteClimbs<
+  TData = Awaited<ReturnType<typeof getRouteClimbs>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteClimbsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteClimbs>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetRouteClimbs<
+  TData = Awaited<ReturnType<typeof getRouteClimbs>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+  params?: GetRouteClimbsParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getRouteClimbs>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetRouteClimbsQueryOptions(
+    provider,
+    sourceRouteId,
+    stageOrder,
+    params,
     options,
   );
 

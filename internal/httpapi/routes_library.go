@@ -1,10 +1,14 @@
 package httpapi
 
 import (
+	"cmp"
 	"net/http"
+	"slices"
 	"strconv"
 
+	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -137,6 +141,105 @@ func (h *Handler) ReprocessRoute(writer http.ResponseWriter, request *http.Reque
 	// to every target. Asking for only one would leave the request half met.
 	h.tasks.Run(TaskSyncSource, "")
 	h.writeJSON(writer, http.StatusAccepted, openapi.Accepted{Status: "accepted"})
+}
+
+// GetRouteClimbs serves the route's sustained climbs in ride order, each with
+// the caller's own attempts at it, quickest first. Scoped exactly as the
+// activity list is: a caller reads their own attempts and never another
+// rider's. A route with no climbs, or none the caller has ridden, is an empty
+// list rather than a missing page.
+func (h *Handler) GetRouteClimbs(writer http.ResponseWriter, request *http.Request) {
+	provider, sourceRouteID, stageOrder, ok := routeKey(request)
+	if !ok {
+		h.notFound(writer)
+
+		return
+	}
+	ctx := request.Context()
+	key := route.NewKey(provider, sourceRouteID, stageOrder)
+	line, elevations, known, err := h.state.StageProfile(ctx, key)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !known {
+		h.notFound(writer)
+
+		return
+	}
+	requested := request.URL.Query().Get("target")
+	targetID, found, err := h.readableTarget(ctx, requested)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !found && requested != "" {
+		h.notFound(writer)
+
+		return
+	}
+	climbs := activities.RouteClimbs(line, elevations)
+	view := openapi.RouteClimbList{Climbs: make([]openapi.RouteClimb, 0, len(climbs))}
+	attempts := map[int][]activities.StoredClimbAttempt{}
+	if found && len(climbs) > 0 {
+		stored, attemptsErr := h.state.RouteClimbAttempts(ctx, targetID, key)
+		if attemptsErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
+		for _, attempt := range stored {
+			attempts[attempt.ClimbIndex] = append(attempts[attempt.ClimbIndex], attempt)
+		}
+	}
+	for index := range climbs {
+		view.Climbs = append(view.Climbs, routeClimb(&climbs[index], attempts[index]))
+	}
+	h.writeJSON(writer, http.StatusOK, view)
+}
+
+// routeClimb is the wire form of one climb and the attempts at it, quickest
+// first. An attempt at a climb that has since been redrawn shorter is not
+// dropped here: the pass that stores attempts runs again whenever the route's
+// geometry changes, so what is read is always against the climbs now served.
+func routeClimb(climb *measure.Climb, attempts []activities.StoredClimbAttempt) openapi.RouteClimb {
+	view := openapi.RouteClimb{
+		StartMetres:         climb.StartMetres,
+		EndMetres:           climb.EndMetres,
+		DistanceMetres:      climb.DistanceMetres,
+		AscentMetres:        climb.AscentMetres,
+		AverageGradePercent: climb.AverageGradePercent,
+		MaxGradePercent:     climb.MaxGradePercent,
+		Attempts:            make([]openapi.RouteClimbAttempt, 0, len(attempts)),
+	}
+	slices.SortFunc(attempts, func(one, other activities.StoredClimbAttempt) int {
+		return cmp.Compare(one.Seconds, other.Seconds)
+	})
+	for index := range attempts {
+		attempt := &attempts[index]
+		one := openapi.RouteClimbAttempt{
+			ActivityID: attempt.WorkoutID,
+			RiddenAt:   attempt.RiddenAt,
+			Seconds:    attempt.Seconds,
+			// The climb's own ascent over this attempt's time, which is what
+			// makes two attempts at one climb comparable.
+			VamMetresPerHour: climb.AscentMetres / attempt.Seconds * 3600,
+		}
+		if attempt.HasHeartRate {
+			one.HeartRateBpm = &attempt.HeartRateBPM
+		}
+		if attempt.HasPower {
+			one.PowerWatts = &attempt.PowerWatts
+		}
+		if attempt.HasEstimatedPower {
+			one.EstimatedPowerWatts = &attempt.EstimatedPowerWatts
+		}
+		view.Attempts = append(view.Attempts, one)
+	}
+
+	return view
 }
 
 // GetRouteActivities serves the rides one target rode on one route, newest
