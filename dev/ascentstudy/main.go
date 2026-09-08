@@ -69,8 +69,10 @@ func run(
 	}
 
 	ctx := context.Background()
-	// A placeholder key: this tool only reads, and the development snapshot's
-	// stored credentials are already undecryptable.
+	// A placeholder key: this tool writes no encrypted column, and the
+	// development snapshot's stored credentials are already undecryptable.
+	// Opening still migrates the file and sets its journal mode, so point it at
+	// a copy of a snapshot, never at the deployed state.
 	// sqlite.Open takes an absolute path; the task's example passes a relative one.
 	databasePath, err := filepath.Abs(database)
 	if err != nil {

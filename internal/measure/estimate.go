@@ -130,7 +130,9 @@ func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality,
 // EstimateSeriesWithWind is EstimateSeries with the aerodynamic term's speed
 // replaced by the rider's speed plus the wind along their heading:
 // headwindMS[i] is that headwind component at sample i, positive into the
-// wind, negative for a tailwind. A nil headwindMS is no wind at all, the same
+// wind, negative for a tailwind. Like the air's density, the wind an
+// estimate uses is the one at the high end of the window its speed and grade
+// are measured over, not headwindMS at the estimate's own index. A nil headwindMS is no wind at all, the same
 // as EstimateSeries; a non-nil one whose length does not match samples is
 // refused rather than read against the wrong sample.
 //

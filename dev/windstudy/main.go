@@ -62,8 +62,10 @@ func run(database string, minSamples int, block time.Duration, speedsList string
 	}
 
 	ctx := context.Background()
-	// A placeholder key: this tool only reads, and the development snapshot's
-	// stored credentials are already undecryptable.
+	// A placeholder key: this tool writes no encrypted column, and the
+	// development snapshot's stored credentials are already undecryptable.
+	// Opening still migrates the file and sets its journal mode, so point it at
+	// a copy of a snapshot, never at the deployed state.
 	databasePath, err := filepath.Abs(database)
 	if err != nil {
 		return fmt.Errorf("resolving the database path: %w", err)
