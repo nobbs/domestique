@@ -278,13 +278,23 @@ const loopEndsWithinMetres = 200
 // within loopEndsWithinMetres of its first; not ok for any other ride.
 func loopDrift(ctx context.Context, store *sqlite.Store, ride sqlite.RecordedRide) (float64, bool) {
 	track, err := store.ActivityTrack(ctx, ride.TargetID, ride.WorkoutID)
-	if err != nil || len(track) < 2 {
+	if err != nil {
 		return 0, false
 	}
-	first, last := track[0], track[len(track)-1]
-	if !first.HasAltitude || !last.HasAltitude {
+	// The first and last samples that carry a height: a positioned sample
+	// with no altitude says nothing about the barometer.
+	firstIndex := slices.IndexFunc(track, func(point activity.TrackPoint) bool { return point.HasAltitude })
+	if firstIndex < 0 {
 		return 0, false
 	}
+	lastIndex := len(track) - 1
+	for lastIndex > firstIndex && !track[lastIndex].HasAltitude {
+		lastIndex--
+	}
+	if lastIndex == firstIndex {
+		return 0, false
+	}
+	first, last := track[firstIndex], track[lastIndex]
 	apart := measure.HaversineMetres(
 		measure.Coordinate{Latitude: first.Latitude, Longitude: first.Longitude},
 		measure.Coordinate{Latitude: last.Latitude, Longitude: last.Longitude})
@@ -393,9 +403,14 @@ func (r *report) String() string {
 		}
 	}
 
-	median, q1, q3 := r.driftSummary()
 	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "drift: median %.1f m/h (%.1f, %.1f)\n", median, q1, q3)
+	if len(r.driftPerHourMetres) == 0 {
+		fmt.Fprintln(&b, "drift: no ride returned to its start")
+	} else {
+		median, q1, q3 := r.driftSummary()
+		fmt.Fprintf(&b, "drift: median %.1f m/h (%.1f, %.1f) over %d rides that returned to their start\n",
+			median, q1, q3, len(r.driftPerHourMetres))
+	}
 
 	return b.String()
 }

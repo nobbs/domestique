@@ -170,7 +170,7 @@ func seedWeather(t *testing.T, store *sqlite.Store, targetID string, workoutID i
 		At: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Step: time.Hour,
 		PrecipitationMillimetres: precipitationMillimetres,
 	}
-	require.NoError(t, store.StoreActivityWeather(t.Context(), targetID, workoutID, []activity.WeatherStep{step}, time.Now()),
+	require.NoError(t, store.StoreActivityWeather(t.Context(), targetID, workoutID, []activity.WeatherStep{step}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)),
 		"StoreActivityWeather()")
 }
 
