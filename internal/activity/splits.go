@@ -84,7 +84,7 @@ func (p *splitParts) add(previous, current *SampleRow) {
 		p.movingSeconds += seconds
 	}
 	// The stretch's altitude series, opened by the sample the stretch began
-	// from, for the hysteresis walk close runs over it.
+	// from; close runs the hysteresis walk over it.
 	if len(p.altitudes) == 0 && previous.AltitudeMetres.Known {
 		p.altitudes = append(p.altitudes, previous.AltitudeMetres.Value)
 	}
