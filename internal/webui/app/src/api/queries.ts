@@ -242,8 +242,10 @@ export const weatherQuery = (samples: ForecastSample[]) => {
 
         return forecast;
       },
-      // Matches the endpoint's own max-age, so a remount within it refetches nothing.
+      // Both match the endpoint's own max-age: stale alone still refetches once
+      // the unobserved query has been collected after gcTime.
       staleTime: 15 * 60 * 1000,
+      gcTime: 15 * 60 * 1000,
     },
   });
 };
