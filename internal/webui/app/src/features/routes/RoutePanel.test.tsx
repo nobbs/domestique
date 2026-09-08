@@ -168,6 +168,29 @@ describe("RoutePanel", () => {
     ).toBeInTheDocument();
   });
 
+  // A habit past the slider's end lands on the end, so the offer is withdrawn
+  // there rather than staying up for a figure the slider cannot reach.
+  it("withdraws the offer at the slider's end for a habit that runs past it", async () => {
+    localStorage.clear();
+    const user = userEvent.setup();
+    renderPanel({
+      route: route({ movingSeconds: 3600 }),
+      stopping: {
+        medianSecondsPerHour: 1800,
+        lowerQuartileSecondsPerHour: 900,
+        upperQuartileSecondsPerHour: 2700,
+        rides: 8,
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: /Your rides stop 30.0 min/ }));
+
+    expect(screen.queryByRole("button", { name: /use that/ })).toBeNull();
+    expect(
+      screen.getByText("15.0 min stopped per moving hour", { exact: false }),
+    ).toBeInTheDocument();
+  });
+
   // Nothing to accept once the allowance already sits on the measured median.
   it("withdraws the offer once the rider is on their own median", () => {
     localStorage.clear();

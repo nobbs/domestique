@@ -178,6 +178,11 @@ export function RoutePanel({
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
   const [allowance, chooseAllowance] = useStoppingAllowance();
   const doorToDoor = arrivalWindow(movingSeconds, allowance, stopping ?? CORPUS_SPREAD);
+  // Where a habit runs past the slider's end, accepting it lands on the end, so
+  // that is what the offer is measured against and withdrawn at.
+  const offered = stopping
+    ? Math.min(stopping.medianSecondsPerHour, MAX_ALLOWANCE_SECONDS_PER_HOUR)
+    : null;
   const effectiveAdmin = useEffectiveAdmin();
 
   return (
@@ -457,11 +462,11 @@ export function RoutePanel({
                   {formatAllowance(allowance)} stopped per moving hour · spread from{" "}
                   {stopping ? `your ${stopping.rides} rides` : `${CORPUS_RIDES} current-bike rides`}
                 </p>
-                {stopping && Math.round(allowance) !== Math.round(stopping.medianSecondsPerHour) ? (
+                {stopping && offered !== null && Math.round(allowance) !== Math.round(offered) ? (
                   <Button
                     variant="ghost"
                     className="h-auto justify-start p-0 text-[11px]"
-                    onClick={() => chooseAllowance(stopping.medianSecondsPerHour)}
+                    onClick={() => chooseAllowance(offered)}
                   >
                     Your rides stop {formatAllowance(stopping.medianSecondsPerHour)} per moving hour
                     — use that
