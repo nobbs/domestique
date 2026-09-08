@@ -49,12 +49,9 @@ func NewSnapIndex(lines [][]Coordinate, radiusMetres float64) *SnapIndex {
 	return index
 }
 
-// projectionFor anchors the frame on the first line that contributes a segment:
-// a line too short to index is not where the geometry is, and anchoring on one
-// far from the rest would scale every east-west distance by the wrong latitude.
-// Any coordinate beats the zero value, whose scale of zero collapses east and
-// west together; with none given the frame is equatorial, and nothing is
-// indexed for it to misjudge.
+// projectionFor anchors the frame on the first line long enough to index, then
+// on any coordinate given: anchoring away from the geometry, or not at all,
+// scales east-west distance by the wrong latitude.
 func projectionFor(lines [][]Coordinate) projection {
 	spare, hasSpare := Coordinate{}, false
 	for _, line := range lines {
