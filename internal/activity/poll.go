@@ -253,8 +253,9 @@ type Result struct {
 	// Matched counts the rides a derivation attributed to a library route or
 	// recorded as being on none of them.
 	Matched int
-	// WeatherRead counts the rides a derivation asked a provider about,
-	// including those a failed pass managed before it stopped.
+	// WeatherRead counts the rides a derivation settled the weather of,
+	// including those a failed pass managed before it stopped. A ride with
+	// nowhere to ask about is settled without a request being spent on it.
 	WeatherRead int
 }
 
