@@ -87,9 +87,9 @@ type ActivityRouteMatch struct {
 	StageOrder    sql.NullInt64
 	RouteCoverage sql.NullFloat64
 	RideCoverage  sql.NullFloat64
+	Direction     sql.NullString
 	LibraryHash   string
 	MatchedAtUnix int64
-	Direction     sql.NullString
 }
 
 type ActivitySkip struct {

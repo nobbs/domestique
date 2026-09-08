@@ -17,14 +17,22 @@ CREATE TABLE activity_route_match (
   stage_order     INTEGER,
   route_coverage  REAL,
   ride_coverage   REAL,
+  -- Which way round its route a ride went. It does not decide the match -- a
+  -- loop ridden anticlockwise is the same loop -- but a route ridden the other
+  -- way is not the same ride: its climbs are its descents, so anything pooling
+  -- rides over a route reads this before comparing them. Absent for a ride
+  -- whose direction could not be told, which an out-and-back never can: it
+  -- advances as far one way as the other.
+  direction       TEXT,
   library_hash    TEXT    NOT NULL,
   matched_at_unix INTEGER NOT NULL,
   PRIMARY KEY (target_slot, workout_id),
   -- A match is all of its parts or none of them, so a row naming a route always
-  -- carries the coverage that justified naming it. Direction stands apart: a
-  -- ride can be on a route with no telling which way round it went.
+  -- carries the coverage that justified naming it, and a row naming none says
+  -- nothing about direction either. Direction stands apart only in the other
+  -- direction: a ride can be on a route with no telling which way round it went.
   CHECK ((provider IS NULL AND route_id IS NULL AND stage_order IS NULL
-          AND route_coverage IS NULL AND ride_coverage IS NULL)
+          AND route_coverage IS NULL AND ride_coverage IS NULL AND direction IS NULL)
       OR (provider IS NOT NULL AND route_id IS NOT NULL AND stage_order IS NOT NULL
           AND route_coverage IS NOT NULL AND ride_coverage IS NOT NULL)),
   FOREIGN KEY (target_slot, workout_id) REFERENCES activities(target_slot, workout_id) ON DELETE CASCADE

@@ -326,3 +326,20 @@ func TestStoreRefusesCoverageWithoutARoute(t *testing.T) {
 
 	require.ErrorContains(t, err, "CHECK constraint failed")
 }
+
+// A ride recorded as being on no route went no way round it. Without this the
+// column could carry a direction for a ride the service says rode nothing.
+func TestStoreRefusesADirectionOnANoMatch(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+
+	_, err := store.database.ExecContext(t.Context(),
+		`INSERT INTO activity_route_match
+		   (target_slot, workout_id, provider, route_id, stage_order,
+		    route_coverage, ride_coverage, direction, library_hash, matched_at_unix)
+		 VALUES (?, ?, NULL, NULL, NULL, NULL, NULL, 'forward', 'library-1', 0)`,
+		"rider-a", 11)
+
+	require.ErrorContains(t, err, "CHECK constraint failed")
+}

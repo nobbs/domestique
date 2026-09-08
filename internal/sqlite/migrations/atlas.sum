@@ -1,4 +1,4 @@
-h1:ivUY+h0oJcVaHD6T487VcVlBltts0l4ajw7TQiXMApY=
+h1:OQvu1mIpBU/pE5zo0JKKiJ1Ysnerejov5acuQHFZfMc=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -38,6 +38,4 @@ h1:ivUY+h0oJcVaHD6T487VcVlBltts0l4ajw7TQiXMApY=
 000045_estimate_quality.down.sql h1:W4eX26Cid4KABcfkuCvv6Ytrz9Hnd/DX4F3ArjyRosU=
 000045_estimate_quality.up.sql h1:w0ogD4Ivenqm5ez3CqjzuRPaEH9Vq1eLNeoyOodcnXQ=
 000046_activity_route_match.down.sql h1:kXNFpoeH9NryGKKOOHUtl5HgUfkk+4L53clmT+iz8f8=
-000046_activity_route_match.up.sql h1:/KKJMsjaUuIFeVA1sc1nvIf7Kby87js2g61vmaCi3oU=
-000047_activity_route_direction.down.sql h1:oYOWD+qdyN9QvyDp4mNir7RdOiKMnpwUr/OHfSuAZ1c=
-000047_activity_route_direction.up.sql h1:pliLTcBoZl4FFuzSgL08QiPwYG84Jvfro7dgJtXA7o0=
+000046_activity_route_match.up.sql h1:qd3gQOq1K2LO5ZMjsrIA02w6VSYk5RZvRrXMLYK+6UQ=
