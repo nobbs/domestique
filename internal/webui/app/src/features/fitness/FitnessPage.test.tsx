@@ -216,3 +216,29 @@ describe("FitnessPage decoupling", () => {
     expect(screen.queryByRole("heading", { name: "Decoupling" })).toBeNull();
   });
 });
+
+describe("FitnessPage power curve", () => {
+  it("draws the curve and reads each duration out beside it", async () => {
+    show({
+      ...TIMELINE,
+      powerCurve: [
+        { seconds: 5, watts: 912 },
+        { seconds: 1200, watts: 268.4 },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "Power duration" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /Best mean power over 5 s, 20 min/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("5 s — 912 W")).toBeInTheDocument();
+    expect(screen.getByText("20 min — 268 W")).toBeInTheDocument();
+  });
+
+  it("draws nothing where no ride in the window carried a meter", async () => {
+    show(TIMELINE);
+
+    await screen.findByRole("group", { name: "Scale" });
+    expect(screen.queryByRole("heading", { name: "Power duration" })).toBeNull();
+  });
+});

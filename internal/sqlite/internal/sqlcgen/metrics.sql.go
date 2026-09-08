@@ -8,6 +8,7 @@ package sqlcgen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const clearActivityMetrics = `-- name: ClearActivityMetrics :execrows
@@ -135,7 +136,8 @@ SELECT workout_id,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   input_max_heart_rate, input_threshold_heart_rate,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
-  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples
+  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
+  best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s
 FROM activity_metrics
 WHERE target_slot = ?
 ORDER BY workout_id
@@ -167,6 +169,12 @@ type ListActivityMetricsRow struct {
 	HeatDriftHeartRateBpm       sql.NullFloat64
 	HeatDriftTemperatureCelsius sql.NullFloat64
 	HeatDriftSamples            sql.NullInt64
+	BestPower5s                 sql.NullFloat64
+	BestPower30s                sql.NullFloat64
+	BestPower60s                sql.NullFloat64
+	BestPower300s               sql.NullFloat64
+	BestPower1200s              sql.NullFloat64
+	BestPower3600s              sql.NullFloat64
 }
 
 func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([]ListActivityMetricsRow, error) {
@@ -204,6 +212,12 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 			&i.HeatDriftHeartRateBpm,
 			&i.HeatDriftTemperatureCelsius,
 			&i.HeatDriftSamples,
+			&i.BestPower5s,
+			&i.BestPower30s,
+			&i.BestPower60s,
+			&i.BestPower300s,
+			&i.BestPower1200s,
+			&i.BestPower3600s,
 		); err != nil {
 			return nil, err
 		}
@@ -345,6 +359,77 @@ func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivit
 	return items, nil
 }
 
+const listPowerBests = `-- name: ListPowerBests :many
+SELECT m.best_power_5s, m.best_power_30s, m.best_power_60s,
+  m.best_power_300s, m.best_power_1200s, m.best_power_3600s
+FROM activity_metrics AS m
+JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
+WHERE a.started_at_unix >= ?1 AND a.started_at_unix < ?2
+  AND m.target_slot IN (/*SLICE:target_slots*/?)
+`
+
+type ListPowerBestsParams struct {
+	FromUnix    int64
+	ToUnix      int64
+	TargetSlots []string
+}
+
+type ListPowerBestsRow struct {
+	BestPower5s    sql.NullFloat64
+	BestPower30s   sql.NullFloat64
+	BestPower60s   sql.NullFloat64
+	BestPower300s  sql.NullFloat64
+	BestPower1200s sql.NullFloat64
+	BestPower3600s sql.NullFloat64
+}
+
+// Every stored per-ride best in the half-open window, over the rider's own
+// targets, so the curve covers exactly the rides the timeline beside it does. The
+// fold to a curve is done in Go: an aggregate here would leave sqlc with no
+// type to scan into, and a rider's ninety days is a hundred rows of six floats.
+// The scalar bound before the slice, as ListActivitySensorSamples does.
+func (q *Queries) ListPowerBests(ctx context.Context, arg ListPowerBestsParams) ([]ListPowerBestsRow, error) {
+	query := listPowerBests
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.FromUnix)
+	queryParams = append(queryParams, arg.ToUnix)
+	if len(arg.TargetSlots) > 0 {
+		for _, v := range arg.TargetSlots {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", strings.Repeat(",?", len(arg.TargetSlots))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPowerBestsRow{}
+	for rows.Next() {
+		var i ListPowerBestsRow
+		if err := rows.Scan(
+			&i.BestPower5s,
+			&i.BestPower30s,
+			&i.BestPower60s,
+			&i.BestPower300s,
+			&i.BestPower1200s,
+			&i.BestPower3600s,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertActivityMetrics = `-- name: UpsertActivityMetrics :exec
 INSERT INTO activity_metrics (
   target_slot, workout_id,
@@ -353,9 +438,10 @@ INSERT INTO activity_metrics (
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
+  best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -379,6 +465,12 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   heat_drift_heart_rate_bpm = excluded.heat_drift_heart_rate_bpm,
   heat_drift_temperature_celsius = excluded.heat_drift_temperature_celsius,
   heat_drift_samples = excluded.heat_drift_samples,
+  best_power_5s = excluded.best_power_5s,
+  best_power_30s = excluded.best_power_30s,
+  best_power_60s = excluded.best_power_60s,
+  best_power_300s = excluded.best_power_300s,
+  best_power_1200s = excluded.best_power_1200s,
+  best_power_3600s = excluded.best_power_3600s,
   input_max_heart_rate = excluded.input_max_heart_rate,
   input_resting_heart_rate = excluded.input_resting_heart_rate,
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
@@ -413,6 +505,12 @@ type UpsertActivityMetricsParams struct {
 	HeatDriftHeartRateBpm       sql.NullFloat64
 	HeatDriftTemperatureCelsius sql.NullFloat64
 	HeatDriftSamples            sql.NullInt64
+	BestPower5s                 sql.NullFloat64
+	BestPower30s                sql.NullFloat64
+	BestPower60s                sql.NullFloat64
+	BestPower300s               sql.NullFloat64
+	BestPower1200s              sql.NullFloat64
+	BestPower3600s              sql.NullFloat64
 	InputMaxHeartRate           float64
 	InputRestingHeartRate       float64
 	InputThresholdHeartRate     float64
@@ -448,6 +546,12 @@ func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityM
 		arg.HeatDriftHeartRateBpm,
 		arg.HeatDriftTemperatureCelsius,
 		arg.HeatDriftSamples,
+		arg.BestPower5s,
+		arg.BestPower30s,
+		arg.BestPower60s,
+		arg.BestPower300s,
+		arg.BestPower1200s,
+		arg.BestPower3600s,
 		arg.InputMaxHeartRate,
 		arg.InputRestingHeartRate,
 		arg.InputThresholdHeartRate,

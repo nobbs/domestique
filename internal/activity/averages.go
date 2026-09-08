@@ -2,6 +2,7 @@ package activity
 
 import (
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -85,11 +86,13 @@ type RideMetrics struct {
 	EstimateQuality    measure.Quality
 	Decoupling         Decoupling
 	HeatDrift          HeatDrift
+	PowerBests         rider.PowerCurve
 	HasEstimateQuality bool
 }
 
 // Derived reports whether anything at all came out, which is what decides
 // between storing a row and storing none.
 func (m *RideMetrics) Derived() bool {
-	return m.Load.Derived() || m.Averages.Any() || m.Decoupling.Known || m.HeatDrift.Known
+	return m.Load.Derived() || m.Averages.Any() || m.Decoupling.Known ||
+		m.HeatDrift.Known || m.PowerBests.Any()
 }

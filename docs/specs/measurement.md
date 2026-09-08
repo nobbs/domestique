@@ -553,6 +553,40 @@ the reader.
 covered by unit tests over synthetic streams with a known drift; no ride's
 figure has been checked against another platform's.
 
+## Power-duration curve
+
+The best mean power a rider held at each of a fixed set of durations, over a
+window of their own rides. **Measured power only** — an estimate from the track
+is a different kind of number, and a curve is the figure a rider compares
+against other riders' meters.
+
+**Constants.** Six durations, shortest first: **5 s, 30 s, 1 min, 5 min, 20 min
+and 1 hour**. The 20-minute point is the same window the threshold-power
+suggestion is taken over, deliberately: the two are 95% of the same best twenty
+minutes and must not drift apart.
+
+**How it is built.** Each ride's best over each duration is worked out once, in
+the derivation pass, by the same rolling window §Rolling mean defines and stored
+beside the ride's other derived figures. The curve served for a window is the
+maximum of those stored bests across the rides in it, so a read folds stored
+numbers rather than rescanning every sensor sample the rider has recorded.
+
+A ride shorter than a duration holds no best for it, which is what leaves the
+long end of a curve empty until a long ride arrives. A duration no ride reached
+carries no point rather than a nought.
+
+**The threshold suggestion is not read off the curve**, though both are 95% of
+the same best twenty minutes. A derivation runs only for a rider who has entered
+something, so the curve is empty for a rider with no profile at all — who is
+exactly the rider a threshold is suggested to. The two can differ only while a
+ride's samples are stored and its derivation is still owed.
+
+**Applied by.** `internal/activity/powercurve.go` (`PowerBests`),
+`internal/sqlite/metrics.go` (`PowerCurve`).
+
+**Status.** Unvalidated against another platform's curve. The per-ride bests are
+covered by unit tests over synthetic streams with known bests.
+
 ## References
 
 1. Sinnott, R. W. (1984) "Virtues of the Haversine", Sky and Telescope

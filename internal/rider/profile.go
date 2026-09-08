@@ -83,3 +83,46 @@ type Suggestions struct {
 func ThresholdPower(bestTwentyMinuteWatts float64) float64 {
 	return bestTwentyMinuteWatts * thresholdPowerShare
 }
+
+// PowerCurvePoints is how many durations the power-duration curve is read at.
+const PowerCurvePoints = 6
+
+// PowerCurveDurations are those durations, shortest first: a neuromuscular
+// sprint, a standing start, a minute, a hard five, the threshold window the FTP
+// suggestion is taken from, and an hour. Returned rather than held, so no
+// caller can reorder the set a stored row is keyed by.
+func PowerCurveDurations() [PowerCurvePoints]time.Duration {
+	return [PowerCurvePoints]time.Duration{
+		5 * time.Second,
+		30 * time.Second,
+		time.Minute,
+		5 * time.Minute,
+		ThresholdPowerWindow,
+		time.Hour,
+	}
+}
+
+// ThresholdPowerPoint is where ThresholdPowerWindow sits in the curve. The
+// suggestion is worked out from the samples rather than read off the curve, for
+// the reason measurement.md gives; this pins both to the one window constant so
+// they cannot come to describe different twenty minutes.
+const ThresholdPowerPoint = 4
+
+// PowerCurve is the best mean power held over each of those durations, over
+// whatever rides it was folded from. A duration no ride was long enough for is
+// absent rather than nought.
+type PowerCurve struct {
+	Watts [PowerCurvePoints]float64
+	Held  [PowerCurvePoints]bool
+}
+
+// Any reports whether the curve holds a single point.
+func (c *PowerCurve) Any() bool {
+	for _, held := range c.Held {
+		if held {
+			return true
+		}
+	}
+
+	return false
+}

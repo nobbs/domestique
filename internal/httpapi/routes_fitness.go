@@ -5,6 +5,7 @@ import (
 	"time"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -69,7 +70,35 @@ func (h *Handler) GetFitness(writer http.ResponseWriter, request *http.Request) 
 			ZoneSeconds: week.Zones[:],
 		})
 	}
+	// The curve is the rider's own over the window, folded from what each ride
+	// was derived to hold. A read that fails costs the page its curve, not its
+	// timeline: the two answer different questions from different rows.
+	if curve, curveErr := h.state.PowerCurve(
+		request.Context(), []string{targetID}, from, to,
+	); curveErr == nil {
+		view.PowerCurve = powerCurvePoints(curve)
+	}
 	h.writeJSON(writer, http.StatusOK, view)
+}
+
+// powerCurvePoints is the wire form of a folded curve: one point per duration
+// the rides actually reached, shortest first, and nil for a window whose rides
+// carried no meter at all.
+func powerCurvePoints(curve rider.PowerCurve) []openapi.PowerCurvePoint {
+	if !curve.Any() {
+		return nil
+	}
+	points := make([]openapi.PowerCurvePoint, 0, rider.PowerCurvePoints)
+	for point, window := range rider.PowerCurveDurations() {
+		if curve.Held[point] {
+			points = append(points, openapi.PowerCurvePoint{
+				Seconds: int(window.Seconds()),
+				Watts:   curve.Watts[point],
+			})
+		}
+	}
+
+	return points
 }
 
 // overlaps reports whether a period shares any moment with the half-open window

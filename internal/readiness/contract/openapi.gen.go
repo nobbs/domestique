@@ -148,6 +148,14 @@ type RouteActivityList struct {
 type Fitness struct {
 	Days  []FitnessDay  `json:"days"`
 	Weeks []FitnessWeek `json:"weeks"`
+	// PowerCurve The power-duration curve over the window: the best mean power the rider held at each of a fixed set of durations, shortest first. Folded from what each ride was derived to hold, so a ride awaiting derivation is not in it yet. Measured power only -- an estimate from the track never enters the curve. Absent where no ride in the window carried a meter; a duration no ride was long enough for carries no point rather than a nought.
+	PowerCurve []PowerCurvePoint `json:"powerCurve,omitempty"`
+}
+
+type PowerCurvePoint struct {
+	// Seconds The duration this point is the best mean power over.
+	Seconds int     `json:"seconds"`
+	Watts   float64 `json:"watts"`
 }
 
 // FitnessDay One day of the timeline. Fitness is the long average of daily load, fatigue the short one, and form their difference: fresh above zero, buried below it. A day nobody rode carries no load and still decays both averages, which is what makes rest visible.

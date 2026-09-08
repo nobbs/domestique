@@ -65,6 +65,12 @@ type ActivityMetric struct {
 	HeatDriftHeartRateBpm       sql.NullFloat64
 	HeatDriftTemperatureCelsius sql.NullFloat64
 	HeatDriftSamples            sql.NullInt64
+	BestPower5s                 sql.NullFloat64
+	BestPower30s                sql.NullFloat64
+	BestPower60s                sql.NullFloat64
+	BestPower300s               sql.NullFloat64
+	BestPower1200s              sql.NullFloat64
+	BestPower3600s              sql.NullFloat64
 }
 
 type ActivityRecord struct {

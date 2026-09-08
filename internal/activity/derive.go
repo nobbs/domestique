@@ -209,6 +209,7 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 			Averages:   samples.Averages(),
 			Decoupling: samples.Decoupling(heartRate),
 			HeatDrift:  samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts),
+			PowerBests: samples.PowerBests(),
 		}
 		if load.HasEstimatedPower {
 			metrics.EstimateQuality, metrics.HasEstimateQuality = quality, true
