@@ -68,8 +68,10 @@ func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, s
 			// Whether there is a height, as well as what it is: without this a
 			// point at sea level and a point with no height at all digest the
 			// same, and a route that gains a real nought where it had nothing
-			// would owe its rides no fresh pass.
-			_, _ = digest.Write([]byte{boolByte(hasHeight)})
+			// would owe its rides no fresh pass. Written through the same buffer
+			// the positions use, this loop running over every point of every route.
+			position[0] = boolByte(hasHeight)
+			_, _ = digest.Write(position[:1])
 			line = append(line, coordinate)
 			elevations = append(elevations, height)
 			everyPointHasHeight = everyPointHasHeight && hasHeight
