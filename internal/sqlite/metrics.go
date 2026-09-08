@@ -9,6 +9,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
@@ -24,7 +25,8 @@ import (
 // 5: the estimate's grade-and-speed window is now derived per ride from the
 // altimeter's own resolution instead of fixed at 30 m.
 // 6: rows before it cannot hold a ride's decoupling or its heat-drift reading.
-const derivationVersion = 6
+// 7: rows before it cannot hold the ride's power-duration bests.
+const derivationVersion = 7
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
@@ -178,6 +180,7 @@ func (s *Store) StoreActivityMetrics(
 	}
 	// A quality without an estimate is not one: the columns go together.
 	hasQuality := metrics.HasEstimatedPower && stored.HasEstimateQuality
+	bests := stored.PowerBests
 	if err := s.queries.UpsertActivityMetrics(ctx, sqlcgen.UpsertActivityMetricsParams{
 		TargetSlot: targetID, WorkoutID: id,
 		Zone1Seconds: zones[0], Zone2Seconds: zones[1], Zone3Seconds: zones[2],
@@ -201,6 +204,12 @@ func (s *Store) StoreActivityMetrics(
 		HeatDriftTemperatureCelsius: nullFloat(
 			stored.HeatDrift.TemperatureCelsius, stored.HeatDrift.Known),
 		HeatDriftSamples:        nullInt(int64(stored.HeatDrift.Samples), stored.HeatDrift.Known),
+		BestPower5s:             nullFloat(bests.Watts[0], bests.Held[0]),
+		BestPower30s:            nullFloat(bests.Watts[1], bests.Held[1]),
+		BestPower60s:            nullFloat(bests.Watts[2], bests.Held[2]),
+		BestPower300s:           nullFloat(bests.Watts[3], bests.Held[3]),
+		BestPower1200s:          nullFloat(bests.Watts[4], bests.Held[4]),
+		BestPower3600s:          nullFloat(bests.Watts[5], bests.Held[5]),
 		InputMaxHeartRate:       metrics.Inputs.MaxHeartRateBPM,
 		InputRestingHeartRate:   metrics.Inputs.RestingHeartRateBPM,
 		InputThresholdHeartRate: metrics.Inputs.ThresholdHeartRateBPM,
@@ -284,6 +293,10 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				Known: row.HeatDriftHeartRateBpm.Valid && row.HeatDriftTemperatureCelsius.Valid &&
 					row.HeatDriftSamples.Valid,
 			},
+			PowerBests: powerCurveOf(&[...]sql.NullFloat64{
+				row.BestPower5s, row.BestPower30s, row.BestPower60s,
+				row.BestPower300s, row.BestPower1200s, row.BestPower3600s,
+			}),
 		}
 	}
 
@@ -350,4 +363,49 @@ func (s *Store) ActivityRideLoads(ctx context.Context, targetID string) ([]train
 // than nought where the figure was never worked out.
 func nullInt(value int64, valid bool) sql.NullInt64 {
 	return sql.NullInt64{Int64: value, Valid: valid}
+}
+
+// PowerCurve folds the rider's own stored per-ride bests into one curve: the
+// best each duration ever reached over the rides since the cutoff. Read over
+// the caller's own targets, never pooled across riders.
+func (s *Store) PowerCurve(
+	ctx context.Context, targetIDs []string, since time.Time,
+) (rider.PowerCurve, error) {
+	// sqlc expands the slice into the IN list, and an empty one is not SQL.
+	if len(targetIDs) == 0 {
+		return rider.PowerCurve{}, nil
+	}
+	rows, err := s.queries.ListPowerBests(ctx, sqlcgen.ListPowerBestsParams{
+		SinceUnix:   since.Unix(),
+		TargetSlots: targetIDs,
+	})
+	if err != nil {
+		return rider.PowerCurve{}, fmt.Errorf("reading the stored power bests: %w", err)
+	}
+	curve := rider.PowerCurve{}
+	for index := range rows {
+		row := &rows[index]
+		ride := powerCurveOf(&[...]sql.NullFloat64{
+			row.BestPower5s, row.BestPower30s, row.BestPower60s,
+			row.BestPower300s, row.BestPower1200s, row.BestPower3600s,
+		})
+		for point, held := range ride.Held {
+			if held && (!curve.Held[point] || ride.Watts[point] > curve.Watts[point]) {
+				curve.Watts[point], curve.Held[point] = ride.Watts[point], true
+			}
+		}
+	}
+
+	return curve, nil
+}
+
+// powerCurveOf reads one row's stored bests, in the order the durations are
+// declared in. A duration the ride was never long enough for stays absent.
+func powerCurveOf(columns *[rider.PowerCurvePoints]sql.NullFloat64) rider.PowerCurve {
+	curve := rider.PowerCurve{}
+	for point, column := range columns {
+		curve.Watts[point], curve.Held[point] = column.Float64, column.Valid
+	}
+
+	return curve
 }

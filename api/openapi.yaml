@@ -1743,6 +1743,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FitnessWeek'
+        powerCurve:
+          type: array
+          description: >-
+            The power-duration curve over the window: the best mean power the
+            rider held at each of a fixed set of durations, shortest first.
+            Folded from what each ride was derived to hold, so a ride awaiting
+            derivation is not in it yet. Measured power only -- an estimate from
+            the track never enters the curve. Absent where no ride in the window
+            carried a meter; a duration no ride was long enough for carries no
+            point rather than a nought.
+          items:
+            $ref: '#/components/schemas/PowerCurvePoint'
+    PowerCurvePoint:
+      type: object
+      additionalProperties: false
+      required:
+        - seconds
+        - watts
+      properties:
+        seconds:
+          type: integer
+          minimum: 1
+          description: The duration this point is the best mean power over.
+        watts:
+          type: number
+          format: double
     FitnessDay:
       type: object
       additionalProperties: false

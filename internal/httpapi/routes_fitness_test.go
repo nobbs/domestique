@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -195,4 +196,54 @@ func TestGetFitnessReportsAnUnreadableStore(t *testing.T) {
 
 	code, _ := getFitness(t, handler, "/v1/activities/fitness")
 	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
+
+// The curve is served beside the timeline, shortest duration first, carrying
+// only the durations the window's rides actually reached.
+func TestGetFitnessCarriesTheWindowsPowerCurve(t *testing.T) {
+	state := fitnessState(
+		trainingload.RideLoad{At: activityClock().Add(-24 * time.Hour), TSS: 60, TRIMP: 40},
+	)
+	curve := rider.PowerCurve{}
+	curve.Watts[0], curve.Held[0] = 900, true
+	curve.Watts[rider.ThresholdPowerPoint], curve.Held[rider.ThresholdPowerPoint] = 268, true
+	state.powerCurves = map[string]rider.PowerCurve{"rider-a": curve}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, view.PowerCurve, 2, "only the durations the rides reached")
+	assert.Equal(t, 5, view.PowerCurve[0].Seconds)
+	assert.InDelta(t, 900.0, view.PowerCurve[0].Watts, 1e-9)
+	assert.Equal(t, 1200, view.PowerCurve[1].Seconds, "the threshold window")
+	assert.InDelta(t, 268.0, view.PowerCurve[1].Watts, 1e-9)
+	assert.Equal(t, []string{"rider-a"}, state.powerCurveFor, "the caller's own target alone")
+}
+
+// A window whose rides carried no meter has no curve at all, rather than a
+// curve of noughts.
+func TestGetFitnessOmitsAPowerCurveNoRideCarried(t *testing.T) {
+	state := fitnessState(
+		trainingload.RideLoad{At: activityClock().Add(-24 * time.Hour), TSS: 60, TRIMP: 40},
+	)
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, view.PowerCurve)
+	assert.NotEmpty(t, view.Days, "the timeline is still served")
+}
+
+// A curve that cannot be read costs the page its curve, not its timeline.
+func TestGetFitnessServesTheTimelineWhenTheCurveCannotBeRead(t *testing.T) {
+	state := fitnessState(
+		trainingload.RideLoad{At: activityClock().Add(-24 * time.Hour), TSS: 60, TRIMP: 40},
+	)
+	state.powerCurveErr = errors.New("the state is unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, view.PowerCurve)
+	assert.NotEmpty(t, view.Days)
 }

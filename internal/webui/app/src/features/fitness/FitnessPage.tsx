@@ -18,6 +18,7 @@ import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { DecouplingChart, decouplingPoints } from "./DecouplingChart";
 import { FitnessChart, type Scale } from "./FitnessChart";
+import { formatCurveDuration, PowerCurveChart } from "./PowerCurveChart";
 
 const SCALES: ReadonlyArray<{ value: Scale; label: string }> = [
   { value: "tss", label: "Stress score" },
@@ -173,6 +174,23 @@ export function FitnessPage() {
                   Per ride, the share of the first half's power-to-heart-rate ratio lost over the
                   second. A falling cloud is aerobic fitness arriving. Measured power only, over
                   rides of an hour or more, and only meaningful for a steady one.
+                </p>
+              </div>
+            ) : null}
+            {data.powerCurve && data.powerCurve.length > 0 ? (
+              <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
+                <h2 className="font-semibold text-lg">Power duration</h2>
+                <PowerCurveChart points={data.powerCurve} />
+                <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[var(--ink-2)] text-xs">
+                  {data.powerCurve.map((point) => (
+                    <li key={point.seconds}>
+                      {formatCurveDuration(point.seconds)} — {Math.round(point.watts)} W
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-[var(--ink-2)] text-xs">
+                  The best each duration reached over this window, from measured power alone. A
+                  duration no ride was long enough for carries no point.
                 </p>
               </div>
             ) : null}

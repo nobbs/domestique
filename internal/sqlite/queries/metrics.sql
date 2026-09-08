@@ -6,9 +6,10 @@ INSERT INTO activity_metrics (
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
+  best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -32,6 +33,12 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   heat_drift_heart_rate_bpm = excluded.heat_drift_heart_rate_bpm,
   heat_drift_temperature_celsius = excluded.heat_drift_temperature_celsius,
   heat_drift_samples = excluded.heat_drift_samples,
+  best_power_5s = excluded.best_power_5s,
+  best_power_30s = excluded.best_power_30s,
+  best_power_60s = excluded.best_power_60s,
+  best_power_300s = excluded.best_power_300s,
+  best_power_1200s = excluded.best_power_1200s,
+  best_power_3600s = excluded.best_power_3600s,
   input_max_heart_rate = excluded.input_max_heart_rate,
   input_resting_heart_rate = excluded.input_resting_heart_rate,
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
@@ -56,7 +63,8 @@ SELECT workout_id,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   input_max_heart_rate, input_threshold_heart_rate,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
-  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples
+  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
+  best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s
 FROM activity_metrics
 WHERE target_slot = ?
 ORDER BY workout_id;
@@ -116,3 +124,15 @@ FROM activity_metrics AS m
 JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
 WHERE m.target_slot = ?
 ORDER BY a.started_at_unix;
+
+-- Every stored per-ride best in the window, over the rider's own targets. The
+-- fold to a curve is done in Go: an aggregate here would leave sqlc with no
+-- type to scan into, and a rider's ninety days is a hundred rows of six floats.
+-- The scalar bound before the slice, as ListActivitySensorSamples does.
+-- name: ListPowerBests :many
+SELECT m.best_power_5s, m.best_power_30s, m.best_power_60s,
+  m.best_power_300s, m.best_power_1200s, m.best_power_3600s
+FROM activity_metrics AS m
+JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
+WHERE a.started_at_unix >= sqlc.arg(since_unix)
+  AND m.target_slot IN (sqlc.slice(target_slots));

@@ -6,6 +6,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -510,4 +511,77 @@ func TestActivityMetricsReadNoDriftFromAHalfWrittenReading(t *testing.T) {
 	read, err := store.ActivityMetrics(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityMetrics()")
 	assert.False(t, read[1].HeatDrift.Known, "a reading with no count is not a reading")
+}
+
+// curveOf is a stored ride's bests: the same watts at every duration named.
+func curveOf(points map[int]float64) rider.PowerCurve {
+	curve := rider.PowerCurve{}
+	for point, value := range points {
+		curve.Watts[point], curve.Held[point] = value, true
+	}
+
+	return curve
+}
+
+func TestPowerCurveFoldsTheBestOfEveryStoredRide(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1, 2)
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs()}, PowerBests: curveOf(map[int]float64{0: 900, 4: 250}),
+	}), "StoreActivityMetrics()")
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 2, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs()}, PowerBests: curveOf(map[int]float64{0: 820, 4: 268}),
+	}), "StoreActivityMetrics()")
+
+	curve, err := store.PowerCurve(t.Context(), []string{"rider-a"}, time.Time{})
+	require.NoError(t, err, "PowerCurve()")
+	assert.InDelta(t, 900.0, curve.Watts[0], 0.001, "the better sprint")
+	assert.InDelta(t, 268.0, curve.Watts[rider.ThresholdPowerPoint], 0.001, "the better twenty")
+	assert.False(t, curve.Held[5], "an hour neither ride was long enough for")
+}
+
+// A curve is the caller's own: another target's rides never enter it.
+func TestPowerCurveNeverPoolsAcrossRiders(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs()}, PowerBests: curveOf(map[int]float64{0: 900}),
+	}), "StoreActivityMetrics()")
+
+	curve, err := store.PowerCurve(t.Context(), []string{"rider-b"}, time.Time{})
+	require.NoError(t, err, "PowerCurve()")
+	assert.False(t, curve.Any(), "another rider's rides are not this rider's curve")
+}
+
+func TestPowerCurveIsEmptyForACallerWithNoTarget(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+
+	curve, err := store.PowerCurve(t.Context(), nil, time.Time{})
+	require.NoError(t, err, "PowerCurve()")
+	assert.False(t, curve.Any(), "no target, nothing to fold")
+}
+
+func TestPowerCurveReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.PowerCurve(t.Context(), []string{"rider-a"}, time.Time{})
+	require.ErrorContains(t, err, "reading the stored power bests")
+}
+
+func TestActivityMetricsRoundTripTheStoredBests(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs()}, PowerBests: curveOf(map[int]float64{1: 640, 3: 310}),
+	}), "StoreActivityMetrics()")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	assert.InDelta(t, 640.0, read[1].PowerBests.Watts[1], 0.001)
+	assert.InDelta(t, 310.0, read[1].PowerBests.Watts[3], 0.001)
+	assert.False(t, read[1].PowerBests.Held[0], "a duration the ride never reached stays absent")
 }

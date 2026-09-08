@@ -120,6 +120,13 @@ func (s *Store) riderStopping(
 // held within one ride, so each ride's series is closed before the next opens.
 // The rows arrive grouped by target and ride, which is what makes one pass
 // enough.
+//
+// The threshold suggestion is worked out here rather than read off the stored
+// curve, though both are 95% of the same best twenty minutes. A derivation runs
+// only for a rider who has entered something, so a curve is empty for the rider
+// with no profile at all — who is exactly the rider a threshold is suggested
+// to. The two can differ only while a ride's samples are stored and its
+// derivation is still owed.
 func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Suggestions {
 	suggestions := rider.Suggestions{}
 	var heartRate, power sensorSeries

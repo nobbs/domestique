@@ -374,9 +374,20 @@ export interface FitnessWeek {
   zoneSeconds: number[];
 }
 
+export interface PowerCurvePoint {
+  /**
+   * The duration this point is the best mean power over.
+   * @minimum 1
+   */
+  seconds: number;
+  watts: number;
+}
+
 export interface Fitness {
   days: FitnessDay[];
   weeks: FitnessWeek[];
+  /** The power-duration curve over the window: the best mean power the rider held at each of a fixed set of durations, shortest first. Folded from what each ride was derived to hold, so a ride awaiting derivation is not in it yet. Measured power only -- an estimate from the track never enters the curve. Absent where no ride in the window carried a meter; a duration no ride was long enough for carries no point rather than a nought. */
+  powerCurve?: PowerCurvePoint[];
 }
 
 export interface ActivityTrackLineString {
