@@ -343,3 +343,27 @@ func TestStoreRefusesADirectionOnANoMatch(t *testing.T) {
 
 	require.ErrorContains(t, err, "CHECK constraint failed")
 }
+
+// Coverage is a share of a length, and nothing covers more of a route than all
+// of it. A writer that computed one wrongly is refused rather than served.
+func TestStoreRefusesCoverageBeyondAWholeRoute(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+
+	for name, coverage := range map[string][2]float64{
+		"more route than there is": {1.5, 0.95},
+		"more ride than there is":  {0.95, 1.5},
+		"a negative share":         {-0.1, 0.95},
+	} {
+		_, err := store.database.ExecContext(t.Context(),
+			`INSERT OR REPLACE INTO activity_route_match
+			   (target_slot, workout_id, provider, route_id, stage_order,
+			    route_coverage, ride_coverage, direction, library_hash, matched_at_unix)
+			 VALUES (?, ?, 'veloplanner', 7, 1, ?, ?, NULL, 'library-1', 0)`,
+			"rider-a", 11, coverage[0], coverage[1])
+
+		require.ErrorContains(t, err, "CHECK constraint failed", name)
+	}
+}

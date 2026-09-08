@@ -198,16 +198,20 @@ func (m *RouteMatcher) Match(track []measure.Coordinate) (RouteMatch, bool) {
 }
 
 // directionOf reports which way round its route a ride went, by following how
-// far along the route each position fell and totting up the advance. Differences
-// are taken around the route's length, so a loop joined part way round reads the
-// same as one started at its beginning, and a stretch spent off the route breaks
-// the run rather than counting as a leap along it.
+// far along the route each position fell and totting up the advance. A stretch
+// spent off the route breaks the run rather than counting as a leap along it.
+//
+// A route whose ends meet is measured around its length, so one joined part way
+// round reads like one started at its beginning. An open route has no such
+// wrap, and measuring one would read a ride of its whole length, recorded
+// sparsely enough, as having gone nowhere.
 func directionOf(track, geometry []measure.Coordinate) Direction {
 	index := measure.NewSnapIndex([][]measure.Coordinate{geometry}, corridorMetres)
 	length := index.LineMetres(0)
 	if length == 0 {
 		return DirectionUnknown
 	}
+	closed := measure.HaversineMetres(geometry[0], geometry[len(geometry)-1]) <= corridorMetres
 
 	advance, previous, following := 0.0, 0.0, false
 	for _, sample := range track {
@@ -218,7 +222,11 @@ func directionOf(track, geometry []measure.Coordinate) Direction {
 			continue
 		}
 		if following {
-			advance += math.Remainder(hit.AlongMetres-previous, length)
+			step := hit.AlongMetres - previous
+			if closed {
+				step = math.Remainder(step, length)
+			}
+			advance += step
 		}
 		previous, following = hit.AlongMetres, true
 	}

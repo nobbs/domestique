@@ -35,6 +35,9 @@ CREATE TABLE activity_route_match (
           AND route_coverage IS NULL AND ride_coverage IS NULL AND direction IS NULL)
       OR (provider IS NOT NULL AND route_id IS NOT NULL AND stage_order IS NOT NULL
           AND route_coverage IS NOT NULL AND ride_coverage IS NOT NULL)),
+  -- Both are shares of a length, which nothing can be more than all of.
+  CHECK (route_coverage IS NULL OR route_coverage BETWEEN 0 AND 1),
+  CHECK (ride_coverage IS NULL OR ride_coverage BETWEEN 0 AND 1),
   FOREIGN KEY (target_slot, workout_id) REFERENCES activities(target_slot, workout_id) ON DELETE CASCADE
 );
 -- The route page reads this the other way round, asking which rides one target

@@ -304,3 +304,27 @@ func TestDirectionNamesRoundTrip(t *testing.T) {
 	}
 	assert.Equal(t, DirectionUnknown, ParseDirection("sideways"))
 }
+
+// An open route has no wrap: a ride of its whole length recorded sparsely was
+// read as having gone nowhere while every delta was taken around the route.
+func TestMatchRouteReadsASparselyRecordedOpenRoute(t *testing.T) {
+	open := line([2]float64{0, 0}, [2]float64{3000, 0})
+	sparse := []measure.Coordinate{open[0], open[len(open)-1]}
+
+	match, found := MatchRoute(sparse, []RouteCandidate{candidate(1, open)})
+
+	require.True(t, found)
+	assert.Equal(t, DirectionForward, match.Direction)
+}
+
+func TestMatchRouteReadsAnOpenRouteRiddenEachWay(t *testing.T) {
+	open := line([2]float64{0, 0}, [2]float64{3000, 0}, [2]float64{3000, 2000})
+
+	forward, found := MatchRoute(open, []RouteCandidate{candidate(1, open)})
+	require.True(t, found)
+	assert.Equal(t, DirectionForward, forward.Direction)
+
+	backward, found := MatchRoute(reversed(open), []RouteCandidate{candidate(1, open)})
+	require.True(t, found)
+	assert.Equal(t, DirectionReverse, backward.Direction)
+}
