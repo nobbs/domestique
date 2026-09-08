@@ -136,6 +136,9 @@ export default defineConfig({
           setupFiles: ["./src/test/setup.ts"],
           css: false,
           restoreMocks: true,
+          // The slowest test here is ~1 s on an idle machine, so the 5 s
+          // default only fires when this run shares a machine with another.
+          testTimeout: 15_000,
         },
       },
       {

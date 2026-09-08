@@ -715,10 +715,6 @@ describe("AtlasPage", () => {
   // Opening it by pressing "Open route" is the same trigger as opening it by
   // address, so it must leave the same mark behind. The search query outlives
   // the round trip, so it is not retyped on the way back.
-  //
-  // Four round trips through the page put it at ~120 ms alone, and a lighter
-  // library or a shorter query saves 20 ms of that; the timeout is headroom for
-  // a loaded machine rather than a fixture worth shrinking.
   it("stops marking a route new once it is opened by hand", async () => {
     stubStorage();
     renderPage();
@@ -730,7 +726,7 @@ describe("AtlasPage", () => {
     );
 
     expect(screen.queryByText("New")).toBeNull();
-  }, 15_000);
+  });
 });
 
 describe("AtlasPage startup location", () => {
