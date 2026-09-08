@@ -146,6 +146,20 @@ sensor value — what `internal/trainingload/zones.go` calls `Sample`.
 because `api/openapi.yaml` does not use the word. Revisit if both ever meet
 in one package.
 
+## 21. The Wahoo adapter keeps its own ascent sum
+
+`internal/wahoo/metrics.go` `calculateMetrics` sums a route's distance,
+ascent and descent with its own loop, counting every step whose both ends
+carry an elevation, while `route.Route.ElevationGainMetres` and
+`ElevationLossMetres` answer zero for any route without a complete profile.
+The two agree on every complete route, and the study behind #608 found the
+route definition needs no change, so the loop is not a second definition.
+
+**Proposed:** nothing. A route with a gap in its elevation can reach the
+encoder, since the normaliser returns it unchanged, and the ascent the
+adapter sends for such a course is the better of the two answers a device
+could display. The loop stays, on purpose; this entry is the record of why.
+
 ## Suggested order
 
 1. Item 16's comments, which touch no contract and need no compiler.
