@@ -547,7 +547,10 @@ The read-only JSON surface is small:
   scoped exactly as the track is, and answers `404` on the same terms.
 - `GET /v1/activities/{activityId}/splits` returns that activity cut into
   kilometres, in the order they were ridden: for each, how far it covered, the
-  moving seconds it took, what it climbed, and — only where its samples carried
+  moving seconds it took, what it climbed — counted with the three-metre
+  hysteresis the rider's own head unit agrees with, over that stretch's own
+  samples, so a flat kilometre's barometric wobble reads as nought rather than
+  as climbing — and — only where its samples carried
   the sensor — its mean heart rate and its mean **measured** power. An estimate
   worked out from the track never feeds that last figure, exactly as it never
   feeds the ride's own average.

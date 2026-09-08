@@ -1,8 +1,18 @@
 package activity
 
+import "github.com/nobbs/domestique/internal/measure"
+
+// splitAscentHysteresisMetres is the rise a climb must reach before a stretch
+// counts it, and the fall that ends one: the walk a head unit does over the
+// same barometric samples, to within a few per cent on the rider's own rides
+// (docs/specs/measurement.md, Ascent and descent).
+const splitAscentHysteresisMetres = 3
+
 // Split is one fixed stretch of a ride, as a splits table reads it. Every
 // figure is of that stretch alone. A ride's last split is whatever was left
-// over, which is what DistanceMetres says.
+// over, which is what DistanceMetres says. Its ascent is counted with
+// hysteresis over the stretch's own samples, so a climb that straddles two
+// stretches is counted in each from where that stretch found it.
 type Split struct {
 	DistanceMetres float64
 	MovingSeconds  float64
@@ -59,8 +69,8 @@ func Splits(rows []SampleRow, everyMetres float64) []Split {
 
 // splitParts accumulates one stretch as the samples over it arrive.
 type splitParts struct {
+	altitudes     []float64
 	movingSeconds float64
-	ascentMetres  float64
 	heartRate     mean
 	power         mean
 }
@@ -73,11 +83,13 @@ func (p *splitParts) add(previous, current *SampleRow) {
 	if seconds > 0 && current.DistanceMetres.Value > previous.DistanceMetres.Value {
 		p.movingSeconds += seconds
 	}
-	if current.AltitudeMetres.Known && previous.AltitudeMetres.Known {
-		// Raw positive steps, unsmoothed, exactly as a route's own gain is cut.
-		if climb := current.AltitudeMetres.Value - previous.AltitudeMetres.Value; climb > 0 {
-			p.ascentMetres += climb
-		}
+	// The stretch's altitude series, opened by the sample the stretch began
+	// from, for the hysteresis walk close runs over it.
+	if len(p.altitudes) == 0 && previous.AltitudeMetres.Known {
+		p.altitudes = append(p.altitudes, previous.AltitudeMetres.Value)
+	}
+	if current.AltitudeMetres.Known {
+		p.altitudes = append(p.altitudes, current.AltitudeMetres.Value)
 	}
 	p.heartRate.add(current.HeartRateBPM)
 	p.power.add(current.PowerWatts)
@@ -87,7 +99,7 @@ func (p splitParts) close(distanceMetres float64) Split {
 	return Split{
 		DistanceMetres: distanceMetres,
 		MovingSeconds:  p.movingSeconds,
-		AscentMetres:   p.ascentMetres,
+		AscentMetres:   measure.AscentWithHysteresisMetres(p.altitudes, splitAscentHysteresisMetres),
 		HeartRateBPM:   p.heartRate.reading(),
 		PowerWatts:     p.power.reading(),
 	}

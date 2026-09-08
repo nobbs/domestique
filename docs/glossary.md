@@ -121,7 +121,10 @@ the wire. `cumulativeSeconds` is the same quantity accumulated per coordinate.
 There is no separate "ride time" or "elapsed time"; those are the same thing
 under other names.
 
-**ascent** — total metres climbed over a route, shown as "Ascent".
+**ascent** — total metres climbed, shown as "Ascent". Over a route it is the
+positive steps of the stored profile; over a ride's own samples it is counted
+with a three-metre hysteresis, which is what the rider's head unit agrees
+with. Neither is the ground: both sit a few per cent under a surveyed climb.
 
 **descent** — total metres lost over a route, `descentMetres` on the wire. The
 route panel pairs it with ascent in one "Ascent" figure rather than giving it
