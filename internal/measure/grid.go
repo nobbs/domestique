@@ -1,9 +1,9 @@
-package surface
+package measure
 
 import "math"
 
-// segmentGrid indexes way segments by locality so each stage point compares
-// itself against nearby candidates rather than every way in the area. A uniform
+// segmentGrid indexes segments by locality so each query point compares
+// itself against nearby candidates rather than every line in the area. A uniform
 // grid rather than a tree: the data is uniformly dense at the only scale that
 // matters, and a grid is a fraction of the code.
 type segmentGrid struct {
@@ -21,7 +21,7 @@ type cell struct {
 // twice the radius and each segment is sampled at the radius, which guarantees
 // near() finds every segment within the radius while searching only the immediate
 // ring: a candidate registers at most radius+radius/2 away, inside one cell width.
-func newSegmentGrid(segments []segment, radiusMetres float64) *segmentGrid {
+func newSegmentGrid(segments []snapSegment, radiusMetres float64) *segmentGrid {
 	grid := &segmentGrid{
 		cells:    make(map[cell][]int, len(segments)),
 		cellSize: radiusMetres * 2,
@@ -33,7 +33,7 @@ func newSegmentGrid(segments []segment, radiusMetres float64) *segmentGrid {
 	return grid
 }
 
-func (g *segmentGrid) insert(index int, target segment, sampleStepMetres float64) {
+func (g *segmentGrid) insert(index int, target snapSegment, sampleStepMetres float64) {
 	runEast := target.endEast - target.startEast
 	runNorth := target.endNorth - target.startNorth
 	length := math.Hypot(runEast, runNorth)

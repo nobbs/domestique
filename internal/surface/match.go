@@ -26,16 +26,10 @@ const (
 	minimumRunPoints = 3
 )
 
-// Coordinate is one point of candidate way geometry. Ways carry no elevation,
-// which is why this is deliberately not a route.Point.
-type Coordinate struct {
-	Longitude float64
-	Latitude  float64
-}
-
-// Way is one candidate OpenStreetMap way, already classified.
+// Way is one candidate OpenStreetMap way, already classified. Its line carries
+// no elevation, which is why it is deliberately not route.Point geometry.
 type Way struct {
-	Line []Coordinate
+	Line []measure.Coordinate
 	ID   int64
 	Kind Kind
 }
@@ -58,29 +52,18 @@ func Match(points []route.Point, ways []Way) []Kind {
 		return kinds
 	}
 
-	projection := newProjection(points[0].Longitude, points[0].Latitude)
-	segments := buildSegments(projection, ways)
-	if len(segments) == 0 {
-		return kinds
-	}
-	index := newSegmentGrid(segments, snapRadiusMetres)
+	index := measure.NewSnapIndex(wayLines(ways), snapRadiusMetres)
 
 	previousWay := int64(-1)
 	for pointIndex := range points {
-		east, north := projection.project(points[pointIndex].Longitude, points[pointIndex].Latitude)
-		headingEast, headingNorth := heading(projection, points, pointIndex)
+		headingEast, headingNorth := heading(index, points, pointIndex)
 
 		bestCost := math.Inf(1)
 		bestWay := int64(-1)
 		bestKind := KindUnknown
-		for _, segmentIndex := range index.near(east, north) {
-			candidate := segments[segmentIndex]
-			distance := candidate.distanceTo(east, north)
-			if distance > snapRadiusMetres {
-				continue
-			}
-			way := &ways[candidate.wayIndex]
-			cost := distance + candidate.headingPenalty(headingEast, headingNorth)
+		for _, hit := range index.Near(points[pointIndex].Coordinate()) {
+			way := &ways[hit.Line]
+			cost := hit.DistanceMetres + headingWeightMetres*(1-hit.Alignment(headingEast, headingNorth))
 			if previousWay >= 0 && way.ID != previousWay {
 				cost += switchPenaltyMetres
 			}
@@ -95,6 +78,17 @@ func Match(points []route.Point, ways []Way) []Kind {
 	}
 
 	return despeckle(kinds)
+}
+
+// wayLines is the candidate ways' geometry alone, in their order, so a hit
+// addresses the way it came from.
+func wayLines(ways []Way) [][]measure.Coordinate {
+	lines := make([][]measure.Coordinate, 0, len(ways))
+	for index := range ways {
+		lines = append(lines, ways[index].Line)
+	}
+
+	return lines
 }
 
 // Compress folds per-point classes into contiguous ranges. A route changes
@@ -194,98 +188,15 @@ func dominantNeighbour(kinds []Kind, run Range) (Kind, bool) {
 	}
 }
 
-// projection converts geographic coordinates to local metres about a reference
-// point, equirectangular. The grid index needs square cells, and the error over
-// the span where candidates compete is far below the tolerances involved.
-// Lengths reported to callers still use haversine.
-type projection struct {
-	referenceLongitude float64
-	referenceLatitude  float64
-	longitudeScale     float64
-}
-
-func newProjection(longitude, latitude float64) projection {
-	return projection{
-		referenceLongitude: longitude,
-		referenceLatitude:  latitude,
-		longitudeScale:     math.Cos(latitude * math.Pi / 180),
-	}
-}
-
-func (p projection) project(longitude, latitude float64) (east, north float64) {
-	metresPerDegree := measure.EarthRadiusMetres * math.Pi / 180
-
-	return (longitude - p.referenceLongitude) * metresPerDegree * p.longitudeScale,
-		(latitude - p.referenceLatitude) * metresPerDegree
-}
-
-// segment is one straight piece of one candidate way, in projected metres.
-type segment struct {
-	startEast  float64
-	startNorth float64
-	endEast    float64
-	endNorth   float64
-	wayIndex   int
-}
-
-func buildSegments(projection projection, ways []Way) []segment {
-	segments := make([]segment, 0, len(ways))
-	for wayIndex := range ways {
-		line := ways[wayIndex].Line
-		for pointIndex := 1; pointIndex < len(line); pointIndex++ {
-			startEast, startNorth := projection.project(line[pointIndex-1].Longitude, line[pointIndex-1].Latitude)
-			endEast, endNorth := projection.project(line[pointIndex].Longitude, line[pointIndex].Latitude)
-			segments = append(segments, segment{
-				startEast:  startEast,
-				startNorth: startNorth,
-				endEast:    endEast,
-				endNorth:   endNorth,
-				wayIndex:   wayIndex,
-			})
-		}
-	}
-
-	return segments
-}
-
-// distanceTo returns the perpendicular distance from a projected point to the
-// segment, clamped to its ends.
-func (s segment) distanceTo(east, north float64) float64 {
-	runEast, runNorth := s.endEast-s.startEast, s.endNorth-s.startNorth
-	lengthSquared := runEast*runEast + runNorth*runNorth
-	if lengthSquared == 0 {
-		return math.Hypot(east-s.startEast, north-s.startNorth)
-	}
-	ratio := ((east-s.startEast)*runEast + (north-s.startNorth)*runNorth) / lengthSquared
-	ratio = math.Max(0, math.Min(1, ratio))
-
-	return math.Hypot(east-(s.startEast+ratio*runEast), north-(s.startNorth+ratio*runNorth))
-}
-
-// headingPenalty scores how far the segment's bearing is from the route's, as a
-// distance. Undirected: a way is equally right whichever end was entered.
-func (s segment) headingPenalty(headingEast, headingNorth float64) float64 {
-	runEast, runNorth := s.endEast-s.startEast, s.endNorth-s.startNorth
-	runLength := math.Hypot(runEast, runNorth)
-	headingLength := math.Hypot(headingEast, headingNorth)
-	if runLength == 0 || headingLength == 0 {
-		return 0
-	}
-	alignment := math.Abs(runEast*headingEast+runNorth*headingNorth) / (runLength * headingLength)
-
-	return headingWeightMetres * (1 - math.Min(1, alignment))
-}
-
-// heading returns the route's local direction at one point, taken across the
-// neighbouring points so a closely spaced pair does not decide it.
-func heading(projection projection, points []route.Point, index int) (east, north float64) {
-	before := max(index-1, 0)
-	after := min(index+1, len(points)-1)
+// heading returns the route's local direction at one point in the index's own
+// projected frame, taken across the neighbouring points so a closely spaced
+// pair does not decide it.
+func heading(index *measure.SnapIndex, points []route.Point, at int) (east, north float64) {
+	before := max(at-1, 0)
+	after := min(at+1, len(points)-1)
 	if before == after {
 		return 0, 0
 	}
-	beforeEast, beforeNorth := projection.project(points[before].Longitude, points[before].Latitude)
-	afterEast, afterNorth := projection.project(points[after].Longitude, points[after].Latitude)
 
-	return afterEast - beforeEast, afterNorth - beforeNorth
+	return index.Offset(points[before].Coordinate(), points[after].Coordinate())
 }

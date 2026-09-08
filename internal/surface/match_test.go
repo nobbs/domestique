@@ -283,10 +283,10 @@ func assertEveryPointIs(t *testing.T, points []route.Point, kinds []Kind, want K
 
 // offset returns the coordinate the given number of metres east and north of the
 // test origin.
-func offset(eastMetres, northMetres float64) Coordinate {
+func offset(eastMetres, northMetres float64) measure.Coordinate {
 	metresPerDegree := measure.EarthRadiusMetres * math.Pi / 180
 
-	return Coordinate{
+	return measure.Coordinate{
 		Longitude: originLongitude + eastMetres/(metresPerDegree*math.Cos(originLatitude*math.Pi/180)),
 		Latitude:  originLatitude + northMetres/metresPerDegree,
 	}
@@ -294,7 +294,7 @@ func offset(eastMetres, northMetres float64) Coordinate {
 
 // metreWay builds a way through the given east/north metre offsets.
 func metreWay(id int64, kind Kind, coordinates ...[2]float64) Way {
-	line := make([]Coordinate, 0, len(coordinates))
+	line := make([]measure.Coordinate, 0, len(coordinates))
 	for _, coordinate := range coordinates {
 		line = append(line, offset(coordinate[0], coordinate[1]))
 	}

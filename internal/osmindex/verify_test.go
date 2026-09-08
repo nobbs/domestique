@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/surface"
 )
@@ -215,7 +216,7 @@ func decodePrototypeCell(blob []byte, key cellKey) []surface.Way {
 		points, size := binary.Uvarint(blob[offset:])
 		offset += size
 
-		line := make([]surface.Coordinate, 0, points)
+		line := make([]measure.Coordinate, 0, points)
 		currentY, currentX := baseY, baseX
 		for range points {
 			deltaY, ySize := binary.Varint(blob[offset:])
@@ -224,7 +225,7 @@ func decodePrototypeCell(blob []byte, key cellKey) []surface.Way {
 			offset += xSize
 			currentY += deltaY
 			currentX += deltaX
-			line = append(line, surface.Coordinate{
+			line = append(line, measure.Coordinate{
 				Latitude:  float64(currentY) / coordinateScale,
 				Longitude: float64(currentX) / coordinateScale,
 			})

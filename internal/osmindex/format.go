@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/surface"
 )
 
@@ -129,7 +130,7 @@ func decodeCell(blob []byte, key cellKey) ([]surface.Way, error) {
 			return nil, errShortRecord
 		}
 
-		line := make([]surface.Coordinate, 0, count)
+		line := make([]measure.Coordinate, 0, count)
 		currentX, currentY := baseX, baseY
 		for range count {
 			deltaX, xSize := binary.Varint(blob[offset:])
@@ -145,7 +146,7 @@ func decodeCell(blob []byte, key cellKey) ([]surface.Way, error) {
 
 			currentX += deltaX
 			currentY += deltaY
-			line = append(line, surface.Coordinate{
+			line = append(line, measure.Coordinate{
 				Longitude: float64(currentX) / coordinateScale,
 				Latitude:  float64(currentY) / coordinateScale,
 			})
