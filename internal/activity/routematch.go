@@ -45,6 +45,12 @@ const (
 	// route ridden out and back nets nothing however far it went, and is left
 	// without one rather than given whichever sign the noise came to.
 	minimumDirectionShare = 0.5
+
+	// maximumDirectionStepShare is how far around a closed route two positions
+	// in a row may be and still say which way the ride went between them. A
+	// wrapped step beyond this could as well have gone the other way about, and
+	// wrapping picks a sign rather than admitting it cannot tell.
+	maximumDirectionStepShare = 0.25
 )
 
 // RouteCandidate is one library route a ride may be attributed to.
@@ -226,7 +232,10 @@ func directionOf(track, geometry []measure.Coordinate) Direction {
 			if closed {
 				step = math.Remainder(step, length)
 			}
-			advance += step
+			// An open route cannot wrap, so any step along it is the step taken.
+			if !closed || math.Abs(step) <= maximumDirectionStepShare*length {
+				advance += step
+			}
 		}
 		previous, following = hit.AlongMetres, true
 	}

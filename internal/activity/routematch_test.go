@@ -328,3 +328,24 @@ func TestMatchRouteReadsAnOpenRouteRiddenEachWay(t *testing.T) {
 	require.True(t, found)
 	assert.Equal(t, DirectionReverse, backward.Direction)
 }
+
+// Three positions a loop apart in sixths: the ride went forward past the start
+// and round again. Wrapping each step put it more than half a loop back, which
+// read as a ride in the other direction rather than as one it cannot follow.
+func TestDirectionRefusesStepsTooFarRoundALoopToRead(t *testing.T) {
+	whole := loop()
+	sparse := []measure.Coordinate{
+		whole[0], whole[len(whole)*60/100], whole[len(whole)*20/100],
+	}
+
+	assert.Equal(t, DirectionUnknown, directionOf(sparse, whole))
+}
+
+// Densely recorded, the same loop reads as what it is. The guard must not cost
+// a real ride its direction.
+func TestDirectionReadsADenselyRecordedLoop(t *testing.T) {
+	whole := loop()
+
+	assert.Equal(t, DirectionForward, directionOf(whole, whole))
+	assert.Equal(t, DirectionReverse, directionOf(reversed(whole), whole))
+}
