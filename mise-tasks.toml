@@ -374,6 +374,17 @@ run = "./dev/demo.sh"
 description = "Compare candidate ascent definitions against the device's own figure"
 run = "go run ./dev/ascentstudy"
 
+# Answers #587: for every recorded ride with a track and no power meter, how
+# three treatments of wind (none, injected forecast, fitted from heart rate)
+# compare on the handover's own diagnostics. Same offline-only shape as
+# ascent-study: never built into the image, never in quick or check, and
+# needs the operator's own snapshot of real rides. `-database` and `-mass`
+# have no default: `mise run wind-study -- -database .local/dev/state.db
+# -mass 90`.
+[wind-study]
+description = "Compare candidate wind treatments against the estimate's own diagnostics"
+run = "go run ./dev/windstudy"
+
 # The only thing that installs node_modules. It declares the lockfile as its
 # source and the state file pnpm writes beside the installed tree as its output,
 # so it reinstalls when a dependency changes or the tree is gone, and costs a few

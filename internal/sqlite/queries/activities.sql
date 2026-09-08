@@ -72,6 +72,11 @@ FROM activities
 WHERE records_state = 'stored'
 ORDER BY target_slot, workout_id;
 
+-- name: GetActivityRawSummary :one
+SELECT raw_summary_json
+FROM activities
+WHERE target_slot = ? AND workout_id = ?;
+
 -- name: ListActivityListings :many
 SELECT workout_id, started_at_unix, workout_type_id, workout_type_location_id, read_at_unix
 FROM activity_listings

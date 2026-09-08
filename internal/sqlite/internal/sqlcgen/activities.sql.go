@@ -64,6 +64,24 @@ func (q *Queries) DeleteActivitySkip(ctx context.Context, arg DeleteActivitySkip
 	return err
 }
 
+const getActivityRawSummary = `-- name: GetActivityRawSummary :one
+SELECT raw_summary_json
+FROM activities
+WHERE target_slot = ? AND workout_id = ?
+`
+
+type GetActivityRawSummaryParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) GetActivityRawSummary(ctx context.Context, arg GetActivityRawSummaryParams) ([]byte, error) {
+	row := q.db.QueryRowContext(ctx, getActivityRawSummary, arg.TargetSlot, arg.WorkoutID)
+	var raw_summary_json []byte
+	err := row.Scan(&raw_summary_json)
+	return raw_summary_json, err
+}
+
 const getActivityRecordsState = `-- name: GetActivityRecordsState :one
 SELECT records_state FROM activities WHERE target_slot = ? AND workout_id = ?
 `
