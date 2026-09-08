@@ -40,9 +40,11 @@ func matchStore(t *testing.T, targets ...string) *Store {
 	return store
 }
 
+// matchOf is a match as the matcher would have produced one: both shares clear
+// the gate it applies, so no case here stores a row that could not exist.
 func matchOf(key route.Key) *activity.RouteMatch {
 	return &activity.RouteMatch{
-		Key: key, RouteCoverage: 0.93, RideCoverage: 0.81, Direction: activity.DirectionReverse,
+		Key: key, RouteCoverage: 0.97, RideCoverage: 0.94, Direction: activity.DirectionReverse,
 	}
 }
 
@@ -60,8 +62,8 @@ func TestStoreRoundTripsARouteMatch(t *testing.T) {
 	require.NoError(t, err, "ActivityRouteMatches()")
 	require.Contains(t, matches, int64(11))
 	assert.Equal(t, key, matches[11].Key)
-	assert.InDelta(t, 0.93, matches[11].RouteCoverage, 1e-9)
-	assert.InDelta(t, 0.81, matches[11].RideCoverage, 1e-9)
+	assert.InDelta(t, 0.97, matches[11].RouteCoverage, 1e-9)
+	assert.InDelta(t, 0.94, matches[11].RideCoverage, 1e-9)
 	assert.Equal(t, activity.DirectionReverse, matches[11].Direction,
 		"which way round the ride went is stored with it")
 }
@@ -158,7 +160,7 @@ func TestStoreServesARoutesRidesToTheTargetThatRodeThem(t *testing.T) {
 	require.NoError(t, err, "RouteActivities()")
 	require.Len(t, rides, 1, "one rider's rides are not another's")
 	assert.Equal(t, int64(11), rides[0].ID)
-	assert.InDelta(t, 0.93, rides[0].RouteCoverage, 1e-9)
+	assert.InDelta(t, 0.97, rides[0].RouteCoverage, 1e-9)
 	assert.Equal(t, activity.DirectionReverse, rides[0].Direction)
 }
 
