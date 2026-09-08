@@ -42,7 +42,7 @@ func TestLatestFetchesTheModelsOwnManifest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	response, err := newTestClient(t, server).Latest(t.Context())
+	response, err := newTestClient(t, server).Latest(t.Context(), nil)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, response.Body.Close()) }()
 	assert.Equal(t, http.StatusOK, response.StatusCode)
@@ -61,7 +61,7 @@ func TestObjectBuildsTheKeyFromTheRunHourAndTheValidStamp(t *testing.T) {
 	// the bucket's own directories are always "HH00Z", never the exact minute.
 	reference := time.Date(2026, 9, 5, 12, 30, 0, 0, time.UTC)
 	valid := time.Date(2026, 9, 5, 15, 0, 0, 0, time.UTC)
-	response, err := newTestClient(t, server).Object(t.Context(), reference, valid, http.MethodGet, "")
+	response, err := newTestClient(t, server).Object(t.Context(), reference, valid, http.MethodGet, nil)
 	require.NoError(t, err)
 	assert.NoError(t, response.Body.Close())
 }
@@ -79,7 +79,7 @@ func TestObjectForwardsTheRangeHeaderAndTheMethod(t *testing.T) {
 	reference := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
 	valid := time.Date(2026, 9, 5, 15, 0, 0, 0, time.UTC)
 	response, err := newTestClient(t, server).Object(
-		t.Context(), reference, valid, http.MethodHead, "bytes=0-99",
+		t.Context(), reference, valid, http.MethodHead, http.Header{"Range": {"bytes=0-99"}},
 	)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, response.Body.Close()) }()
@@ -87,6 +87,54 @@ func TestObjectForwardsTheRangeHeaderAndTheMethod(t *testing.T) {
 	assert.Equal(t, "bytes=0-99", gotRange)
 	assert.Equal(t, http.StatusPartialContent, response.StatusCode)
 	assert.Equal(t, "bytes 0-99/200", response.Header.Get("Content-Range"))
+}
+
+func TestObjectForwardsConditionalHeadersAndNothingElse(t *testing.T) {
+	var gotHeader http.Header
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotHeader = request.Header.Clone()
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	reference := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	valid := time.Date(2026, 9, 5, 15, 0, 0, 0, time.UTC)
+	response, err := newTestClient(t, server).Object(t.Context(), reference, valid, http.MethodGet, http.Header{
+		"Range":             {"bytes=0-99"},
+		"If-None-Match":     {`"abc123"`},
+		"If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"},
+		"If-Range":          {`"abc123"`},
+		"Cookie":            {"session=secret"},
+		"Authorization":     {"Bearer secret"},
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, response.Body.Close()) }()
+	assert.Equal(t, "bytes=0-99", gotHeader.Get("Range"))
+	assert.Equal(t, `"abc123"`, gotHeader.Get("If-None-Match"))
+	assert.Equal(t, "Wed, 09 Sep 2026 00:00:00 GMT", gotHeader.Get("If-Modified-Since"))
+	assert.Equal(t, `"abc123"`, gotHeader.Get("If-Range"))
+	assert.Empty(t, gotHeader.Get("Cookie"))
+	assert.Empty(t, gotHeader.Get("Authorization"))
+}
+
+func TestLatestForwardsConditionalHeadersAndNothingElse(t *testing.T) {
+	var gotHeader http.Header
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotHeader = request.Header.Clone()
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	response, err := newTestClient(t, server).Latest(t.Context(), http.Header{
+		"If-None-Match":     {`"abc123"`},
+		"If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"},
+		"Cookie":            {"session=secret"},
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, response.Body.Close()) }()
+	assert.Equal(t, `"abc123"`, gotHeader.Get("If-None-Match"))
+	assert.Equal(t, "Wed, 09 Sep 2026 00:00:00 GMT", gotHeader.Get("If-Modified-Since"))
+	assert.Empty(t, gotHeader.Get("Cookie"))
 }
 
 func TestRequestsAskTheUpstreamNotToCompressTheBody(t *testing.T) {
@@ -97,7 +145,7 @@ func TestRequestsAskTheUpstreamNotToCompressTheBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	response, err := newTestClient(t, server).Latest(t.Context())
+	response, err := newTestClient(t, server).Latest(t.Context(), nil)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, response.Body.Close()) }()
 	// net/http transparently gzips and decompresses otherwise, desyncing the
@@ -111,7 +159,7 @@ func TestObjectRefusesAnyMethodButGetOrHead(t *testing.T) {
 	require.NoError(t, err)
 
 	//nolint:bodyclose // The method check refuses before any request is made; the response is always nil here.
-	response, err := client.Object(t.Context(), time.Now(), time.Now(), http.MethodPost, "")
+	response, err := client.Object(t.Context(), time.Now(), time.Now(), http.MethodPost, nil)
 	require.Error(t, err)
 	require.Nil(t, response)
 }
@@ -122,7 +170,7 @@ func TestUpstreamStatusPassesThroughRatherThanBecomingAnError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	response, err := newTestClient(t, server).Latest(t.Context())
+	response, err := newTestClient(t, server).Latest(t.Context(), nil)
 	require.NoError(t, err, "a non-2xx upstream status is the caller's to relay, not this package's to fail on")
 	defer func() { assert.NoError(t, response.Body.Close()) }()
 	assert.Equal(t, http.StatusNotFound, response.StatusCode)
@@ -133,7 +181,7 @@ func TestARequestThatCannotReachTheUpstreamIsAnError(t *testing.T) {
 	require.NoError(t, err)
 
 	//nolint:bodyclose // A transport failure never returns a response to close.
-	response, err := client.Latest(t.Context())
+	response, err := client.Latest(t.Context(), nil)
 	require.Error(t, err)
 	require.Nil(t, response)
 	// The client never sees this detail — httpapi maps every such error to a
@@ -148,7 +196,7 @@ func TestACancelledContextIsAnError(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	//nolint:bodyclose // A cancelled context never returns a response to close.
-	response, err := newTestClient(t, server).Latest(ctx)
+	response, err := newTestClient(t, server).Latest(ctx, nil)
 	require.Error(t, err)
 	require.Nil(t, response)
 }

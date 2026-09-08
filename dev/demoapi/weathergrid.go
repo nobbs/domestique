@@ -18,11 +18,13 @@ import (
 // its bytes verbatim instead.
 type syntheticWeatherGrid struct{}
 
-func (syntheticWeatherGrid) Latest(context.Context) (*http.Response, error) {
+func (syntheticWeatherGrid) Latest(context.Context, http.Header) (*http.Response, error) {
 	return unavailableWeatherGridResponse(), nil
 }
 
-func (syntheticWeatherGrid) Object(context.Context, time.Time, time.Time, string, string) (*http.Response, error) {
+func (syntheticWeatherGrid) Object(
+	context.Context, time.Time, time.Time, string, http.Header,
+) (*http.Response, error) {
 	return unavailableWeatherGridResponse(), nil
 }
 

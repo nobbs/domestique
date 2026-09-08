@@ -16,7 +16,7 @@ const maximumWeatherGridBytes = 8 << 20
 // browser's reader learns the current run and valid times without reaching
 // Open-Meteo directly.
 func (h *Handler) GetWeatherGridLatest(writer http.ResponseWriter, request *http.Request) {
-	response, err := h.weatherGrid.Latest(request.Context())
+	response, err := h.weatherGrid.Latest(request.Context(), request.Header)
 	if err != nil {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider could not be reached")
 
@@ -24,7 +24,7 @@ func (h *Handler) GetWeatherGridLatest(writer http.ResponseWriter, request *http
 	}
 	//nolint:errcheck // A response body that will not close cannot change the result.
 	defer func() { _ = response.Body.Close() }()
-	h.relayWeatherGrid(writer, request, response)
+	h.relayWeatherGrid(writer, request, response, cacheWeatherGridLatest)
 }
 
 // GetWeatherGridObject relays one .om file's bytes, or answers a HEAD, for
@@ -40,7 +40,7 @@ func (h *Handler) GetWeatherGridObject(writer http.ResponseWriter, request *http
 	}
 
 	response, err := h.weatherGrid.Object(
-		request.Context(), referenceTime, validTime, request.Method, request.Header.Get("Range"),
+		request.Context(), referenceTime, validTime, request.Method, request.Header,
 	)
 	if err != nil {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider could not be reached")
@@ -49,12 +49,12 @@ func (h *Handler) GetWeatherGridObject(writer http.ResponseWriter, request *http
 	}
 	//nolint:errcheck // A response body that will not close cannot change the result.
 	defer func() { _ = response.Body.Close() }()
-	h.relayWeatherGrid(writer, request, response)
+	h.relayWeatherGrid(writer, request, response, cacheWeatherGridObject)
 }
 
 // relayWeatherGrid writes the upstream's status and named headers, then its
-// body unless the request was HEAD — matching how GET /healthz already
-// answers HEAD without a body.
+// body unless the request was HEAD or the upstream answered 304 — matching
+// how GET /healthz already answers HEAD without a body.
 //
 // A HEAD's Content-Length names bytes nobody asks for next, so it is relayed
 // as-is; a GET's is a promise this relay then has to keep. Refusing before
@@ -62,7 +62,9 @@ func (h *Handler) GetWeatherGridObject(writer http.ResponseWriter, request *http
 // too-large upstream from handing a client a Content-Length that the body
 // underneath it does not actually reach — a malformed response a client can
 // hang or error on rather than a clean failure.
-func (h *Handler) relayWeatherGrid(writer http.ResponseWriter, request *http.Request, response *http.Response) {
+func (h *Handler) relayWeatherGrid(
+	writer http.ResponseWriter, request *http.Request, response *http.Response, cacheControl string,
+) {
 	// An unsatisfiable Range is the caller's own request, mirrored back as
 	// theirs — not a sign the provider is unreachable.
 	if response.StatusCode == http.StatusRequestedRangeNotSatisfiable {
@@ -70,13 +72,16 @@ func (h *Handler) relayWeatherGrid(writer http.ResponseWriter, request *http.Req
 
 		return
 	}
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+	if response.StatusCode != http.StatusNotModified &&
+		(response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider could not be reached")
 
 		return
 	}
-	if request.Method != http.MethodHead &&
-		response.ContentLength >= 0 && response.ContentLength > maximumWeatherGridBytes {
+	// A HEAD's or a 304's Content-Length names bytes that never follow, so
+	// neither is bounded nor copied.
+	bodiless := request.Method == http.MethodHead || response.StatusCode == http.StatusNotModified
+	if !bodiless && response.ContentLength >= 0 && response.ContentLength > maximumWeatherGridBytes {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable",
 			"the weather provider returned a response larger than this relay allows")
 
@@ -87,15 +92,21 @@ func (h *Handler) relayWeatherGrid(writer http.ResponseWriter, request *http.Req
 	// Nothing else of the upstream response is trusted: no cookie, no
 	// redirect, nothing naming the provider by name.
 	header := writer.Header()
-	for _, name := range []string{
-		"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified",
-	} {
+	forwarded := []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"}
+	if response.StatusCode == http.StatusNotModified {
+		// A 304 describes no representation, only which one the cache holds.
+		forwarded = []string{"ETag", "Last-Modified"}
+	}
+	for _, name := range forwarded {
 		if value := response.Header.Get(name); value != "" {
 			header.Set(name, value)
 		}
 	}
+	// Overrides the blanket no-store serve() set: only a success or 304 reaches
+	// here, both cacheable; an error response above keeps no-store.
+	header.Set("Cache-Control", cacheControl)
 	writer.WriteHeader(response.StatusCode)
-	if request.Method == http.MethodHead {
+	if bodiless {
 		return
 	}
 	// Bounded by the length just checked when the upstream reported one, so a

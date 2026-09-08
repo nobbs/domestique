@@ -388,9 +388,12 @@ func (f WeatherFunc) Forecast(ctx context.Context, latitudes, longitudes []float
 // caller closes the returned response's body.
 type WeatherGrid interface {
 	// Latest returns the model's own capture manifest.
-	Latest(ctx context.Context) (*http.Response, error)
+	Latest(ctx context.Context, conditional http.Header) (*http.Response, error)
 	// Object returns one .om file's bytes, or answers a HEAD, for the run
-	// named by referenceTime and the hour named by validTime. rangeHeader is
-	// forwarded verbatim when non-empty. method must be GET or HEAD.
-	Object(ctx context.Context, referenceTime, validTime time.Time, method, rangeHeader string) (*http.Response, error)
+	// named by referenceTime and the hour named by validTime. conditional is
+	// forwarded to the adapter, which decides which of its entries apply.
+	// method must be GET or HEAD.
+	Object(
+		ctx context.Context, referenceTime, validTime time.Time, method string, conditional http.Header,
+	) (*http.Response, error)
 }

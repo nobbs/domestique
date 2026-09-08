@@ -76,21 +76,18 @@ func New(options *Options) (*Client, error) {
 // Latest fetches the model's own capture manifest: its reference time and the
 // valid times it currently publishes. The caller decodes it; this package
 // only moves the bytes.
-func (c *Client) Latest(ctx context.Context) (*http.Response, error) {
+func (c *Client) Latest(ctx context.Context, conditional http.Header) (*http.Response, error) {
 	endpoint := *c.baseURL
 	endpoint.Path = "/data_spatial/" + model + "/latest.json"
 
-	return c.do(ctx, http.MethodGet, endpoint.String(), "")
+	return c.do(ctx, http.MethodGet, endpoint.String(), conditional)
 }
 
 // Object fetches one .om file's bytes, or answers a HEAD, for the run named by
-// referenceTime and the hour named by validTime. rangeHeader is forwarded
-// verbatim when non-empty — the caller's own reader decides which bytes of
-// the file it needs and asks for them by byte range, this package has no say
-// in that. The caller closes the returned response's body, the same contract
-// http.Client.Do itself has.
+// referenceTime and the hour named by validTime. The caller closes the
+// returned response's body, the same contract http.Client.Do itself has.
 func (c *Client) Object(
-	ctx context.Context, referenceTime, validTime time.Time, method, rangeHeader string,
+	ctx context.Context, referenceTime, validTime time.Time, method string, conditional http.Header,
 ) (*http.Response, error) {
 	if method != http.MethodGet && method != http.MethodHead {
 		return nil, errors.New("openmeteogrid: method must be GET or HEAD")
@@ -105,16 +102,20 @@ func (c *Client) Object(
 	endpoint := *c.baseURL
 	endpoint.Path = "/data_spatial/" + model + "/" + dir + "/" + validTime.UTC().Format(validStampFormat) + ".om"
 
-	return c.do(ctx, method, endpoint.String(), rangeHeader)
+	return c.do(ctx, method, endpoint.String(), conditional)
 }
 
-func (c *Client) do(ctx context.Context, method, endpoint, rangeHeader string) (*http.Response, error) {
+func (c *Client) do(ctx context.Context, method, endpoint string, conditional http.Header) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("openmeteogrid: creating request: %w", err)
 	}
-	if rangeHeader != "" {
-		request.Header.Set("Range", rangeHeader)
+	// The only entries of a caller's conditional header this package forwards
+	// upstream; everything else is dropped.
+	for _, name := range [...]string{"Range", "If-None-Match", "If-Modified-Since", "If-Range"} {
+		if value := conditional.Get(name); value != "" {
+			request.Header.Set(name, value)
+		}
 	}
 	// net/http adds Accept-Encoding: gzip and transparently decompresses
 	// otherwise, desyncing the relayed ETag/Content-Length from the body this

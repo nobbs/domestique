@@ -2376,23 +2376,25 @@ func (f *fakeWeather) Forecast(
 // whether a call reached it and with what arguments; LatestFunc and
 // ObjectFunc let a test control the response or force an error.
 type fakeWeatherGrid struct {
-	LatestFunc func(ctx context.Context) (*http.Response, error)
-	ObjectFunc func(ctx context.Context, referenceTime, validTime time.Time, method, rangeHeader string) (*http.Response, error)
+	LatestFunc func(ctx context.Context, conditional http.Header) (*http.Response, error)
+	ObjectFunc func(
+		ctx context.Context, referenceTime, validTime time.Time, method string, conditional http.Header,
+	) (*http.Response, error)
 }
 
-func (f *fakeWeatherGrid) Latest(ctx context.Context) (*http.Response, error) {
+func (f *fakeWeatherGrid) Latest(ctx context.Context, conditional http.Header) (*http.Response, error) {
 	if f.LatestFunc != nil {
-		return f.LatestFunc(ctx)
+		return f.LatestFunc(ctx, conditional)
 	}
 
 	return fakeWeatherGridResponse(http.StatusOK, nil), nil
 }
 
 func (f *fakeWeatherGrid) Object(
-	ctx context.Context, referenceTime, validTime time.Time, method, rangeHeader string,
+	ctx context.Context, referenceTime, validTime time.Time, method string, conditional http.Header,
 ) (*http.Response, error) {
 	if f.ObjectFunc != nil {
-		return f.ObjectFunc(ctx, referenceTime, validTime, method, rangeHeader)
+		return f.ObjectFunc(ctx, referenceTime, validTime, method, conditional)
 	}
 
 	return fakeWeatherGridResponse(http.StatusOK, nil), nil
