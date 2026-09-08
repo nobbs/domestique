@@ -17,6 +17,7 @@ function climb(startMetres: number, endMetres: number): Climb {
     ascentMetres: 100,
     averageGradePercent: 8,
     maxGradePercent: 12,
+    attempts: [],
   };
 }
 

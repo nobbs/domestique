@@ -38,7 +38,6 @@ import { Layout } from "../../components/Layout";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
-import { climbTimes } from "../../lib/climbAttempts";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
 import { formatReadTime } from "../../lib/format";
@@ -327,11 +326,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     surface,
     surfaceSummary,
     scopeHighlight,
-  } = useOpenRoute(openCoordinates, openGeometry, startAt);
-  const riddenClimbs = useMemo(
-    () => climbTimes(climbs, routeClimbs.data?.climbs ?? []),
-    [climbs, routeClimbs.data],
-  );
+  } = useOpenRoute(openCoordinates, openGeometry, startAt, routeClimbs.data?.climbs ?? []);
   /*
    * What the reader has put away, and it sticks across routes: someone who
    * folded the dock did so to see more map, not to see more of one route's map.
@@ -495,7 +490,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             ascentMetres={shownRoute.ascentMetres}
             surface={surfaceSummary}
             climbs={climbs}
-            climbTimes={riddenClimbs}
             onSelectClimb={selectClimb}
             coordinates={openCoordinates}
             samples={samples}

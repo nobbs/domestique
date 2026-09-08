@@ -35,6 +35,7 @@ const MARKED: Climb[] = [
     ascentMetres: 898,
     averageGradePercent: 12,
     maxGradePercent: 18,
+    attempts: [],
   },
   {
     startMetres: 20_200,
@@ -43,6 +44,7 @@ const MARKED: Climb[] = [
     ascentMetres: 894,
     averageGradePercent: 9.3,
     maxGradePercent: 11,
+    attempts: [],
   },
   {
     startMetres: 40_700,
@@ -51,6 +53,7 @@ const MARKED: Climb[] = [
     ascentMetres: 884,
     averageGradePercent: 11,
     maxGradePercent: 19,
+    attempts: [],
   },
 ];
 

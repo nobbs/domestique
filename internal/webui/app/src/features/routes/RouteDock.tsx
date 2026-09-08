@@ -18,7 +18,6 @@ import { useState } from "react";
 import type { Position } from "../../api/types";
 import { StartTimePicker } from "../../components/StartTimePicker";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
-import type { ClimbTimes } from "../../lib/climbAttempts";
 import type { Climb } from "../../lib/climbs";
 import { forecastResolution } from "../../lib/forecastResolution";
 import { type ForecastSample, forecastLeadHours } from "../../lib/forecastSamples";
@@ -182,8 +181,6 @@ export interface RouteDockProps {
   ascentMetres: number;
   surface: SurfaceSummary | null;
   climbs: Climb[];
-  /** The rider's own times over each climb, by its index in `climbs`. */
-  climbTimes?: Map<number, ClimbTimes> | undefined;
   /** Opens the shared map/chart window on one climb, as the brackets do. */
   onSelectClimb: (climb: Climb) => void;
   /** The route's own geometry, which the strip's wind reading and the steepness table are measured against. */
@@ -215,7 +212,6 @@ function ProfileStop({
   ascentMetres,
   surface,
   climbs,
-  climbTimes,
   onSelectClimb,
   coordinates,
   activeMetres,
@@ -234,7 +230,6 @@ function ProfileStop({
   | "ascentMetres"
   | "surface"
   | "climbs"
-  | "climbTimes"
   | "onSelectClimb"
   | "coordinates"
   | "activeMetres"
@@ -322,9 +317,7 @@ function ProfileStop({
           </div>
         </Panel>
       </div>
-      {climbsOpen ? (
-        <ClimbsSidebar climbs={climbs} times={climbTimes} onSelect={onSelectClimb} fixedHeight />
-      ) : null}
+      {climbsOpen ? <ClimbsSidebar climbs={climbs} onSelect={onSelectClimb} fixedHeight /> : null}
     </div>
   );
 }

@@ -6,9 +6,9 @@ import (
 	"github.com/nobbs/domestique/internal/measure"
 )
 
-// The climb detector's own two constants, the same pair the browser's
-// findClimbs applies: a gradient measured back over a hundred metres, and three
-// percent to count as climbing rather than merely uphill.
+// The climb detector's own two constants: a gradient measured back over a
+// hundred metres, and three percent to count as climbing rather than merely
+// uphill. See docs/specs/measurement.md §Sustained climbs.
 const (
 	ClimbWindowMetres       = 100
 	ClimbMinGradientPercent = 3

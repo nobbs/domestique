@@ -5,7 +5,6 @@
 
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ClimbTimes } from "../../lib/climbAttempts";
 import type { Climb } from "../../lib/climbs";
 import { ClimbsSidebar, rowsToShow } from "./ClimbsSidebar";
 
@@ -35,24 +34,33 @@ describe("rowsToShow", () => {
   });
 });
 
-function climb(startMetres: number): Climb {
+function climb(attempts: [number, string][]): Climb {
   return {
-    startMetres,
-    endMetres: startMetres + 600,
+    startMetres: 1000,
+    endMetres: 1600,
     distanceMetres: 600,
     ascentMetres: 36,
     averageGradePercent: 6,
     maxGradePercent: 8,
+    attempts: attempts.map(([seconds, riddenAt], index) => ({
+      activityId: index + 1,
+      riddenAt,
+      seconds,
+      vamMetresPerHour: (36 / seconds) * 3600,
+    })),
   };
 }
 
 describe("ClimbsSidebar times", () => {
   it("reads out the rider's quickest and most recent time over a climb", () => {
-    const times = new Map<number, ClimbTimes>([
-      [0, { bestSeconds: 760, lastSeconds: 785, attempts: [] }],
+    // Served quickest first; the most recent is the later date, not the later
+    // place in the list.
+    const ridden = climb([
+      [760, "2026-08-01T06:00:00Z"],
+      [785, "2026-09-01T06:00:00Z"],
     ]);
 
-    render(<ClimbsSidebar climbs={[climb(1000)]} times={times} onSelect={() => {}} />);
+    render(<ClimbsSidebar climbs={[ridden]} onSelect={() => {}} />);
 
     expect(screen.getByText("12:40 · 13:05")).toBeInTheDocument();
   });
@@ -60,7 +68,7 @@ describe("ClimbsSidebar times", () => {
   // Most climbs, for most riders, have never been ridden: an em dash would be
   // a figure-shaped thing where there is no figure.
   it("says nothing at all for a climb the rider has not ridden", () => {
-    render(<ClimbsSidebar climbs={[climb(1000)]} times={new Map()} onSelect={() => {}} />);
+    render(<ClimbsSidebar climbs={[climb([])]} onSelect={() => {}} />);
 
     // A time, not the separator: the column's own header carries one of those.
     expect(screen.queryByText(/\d+:\d\d/)).toBeNull();

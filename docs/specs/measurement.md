@@ -364,21 +364,21 @@ averageGrade = (endElevation - startElevation) / climbLength · 100
 maxGrade    = the steepest 100 m window found inside the climb
 ~~~
 
-**Constants.** 3% is `GRADIENT_BANDS[0].limit`, the first gradient band's
-limit (`internal/webui/app/src/lib/profile.ts`); the 100 m window is the
-same `GRADIENT_WINDOW_METRES` as Gradient above
-(`internal/webui/app/src/lib/climbs.ts` `CLIMB_GRADIENT_PERCENT`,
-`MIN_CLIMB_METRES`).
+**Constants.** 3% is the first gradient band's limit, as Gradient above
+defines it, and the 100 m window is that section's `GRADIENT_WINDOW_METRES`.
+Both are named in `internal/activity/climbattempt.go`
+(`ClimbMinGradientPercent`, `ClimbWindowMetres`), which is where the rule is
+applied from.
 
 **Source.** This service's own rule.
 
-**Applied by.** `findClimbs` in the browser
-(`internal/webui/app/src/lib/climbs.ts`) and `measure.Climbs` in Go, the
-same rule.
+**Applied by.** `measure.Climbs`, once. The browser drew the same rule for
+itself until the service began timing rides over these climbs; two
+implementations of one rule can only come to disagree, and a climb the two put
+in different places is a rider's time shown against the wrong hill. The browser
+now draws the climbs the route serves.
 
-**Status.** Both implementations exist and are pinned to each other by a
-shared table of vectors in `climbs.test.ts` and `climb_test.go`; nothing
-serves the Go result yet.
+**Status.** Validated against the vectors in `climb_test.go`.
 
 ## Sensor cleaning
 

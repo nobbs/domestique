@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// These vectors are mirrored in internal/webui/app/src/lib/climbs.test.ts; a
-// change here changes both.
+// These vectors are the only thing pinning the rule, the browser having stopped
+// finding climbs for itself: a change here changes what every reader is shown.
 
 // climbFineSpacingMetres is one ten-thousandth of a degree of latitude, in metres.
 const climbFineSpacingMetres = 11.119
 
 // climbRamp builds a profile whose segments run at the given gradients, in percent, on
-// points spaced climbFineSpacingMetres apart — the same construction climbs.test.ts uses,
+// points spaced climbFineSpacingMetres apart — the construction the profile tests use,
 // so a run of ten segments covers about the hundred-metre window a climb is measured over.
 func climbRamp(t *testing.T, percents []float64) measure.Profile {
 	t.Helper()

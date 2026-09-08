@@ -23,7 +23,6 @@
  */
 
 import { IconStairs } from "@tabler/icons-react";
-import type { ClimbTimes } from "../../lib/climbAttempts";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import { useElementHeight } from "../../lib/useElementHeight";
@@ -106,16 +105,9 @@ function climbCount(climbs: Climb[]): string | null {
 export function ClimbsSidebar({
   climbs,
   onSelect,
-  times,
   fixedHeight = false,
 }: {
   climbs: Climb[];
-  /**
-   * The signed-in rider's quickest and most recent time over each climb, keyed
-   * by its index in `climbs`. Undefined where nothing has been read, which is
-   * every caller that does not ask the service for them.
-   */
-  times?: Map<number, ClimbTimes> | undefined;
   /** Opens the shared map/chart window on one climb, as the brackets do. */
   onSelect: (climb: Climb) => void;
   /**
@@ -201,11 +193,7 @@ export function ClimbsSidebar({
                * where there is no figure.
                */}
               <span className="text-right text-[11px] text-[var(--ink-2)] tabular-nums">
-                {times?.get(index) === undefined
-                  ? null
-                  : `${formatClimbTime(times.get(index)?.bestSeconds ?? 0)} · ${formatClimbTime(
-                      times.get(index)?.lastSeconds ?? 0,
-                    )}`}
+                {climbTimes(climb)}
               </span>
               <span className="truncate text-right text-[11px] text-[var(--ink-2)] tabular-nums">
                 {/* No "from": the column is called Starts. */}
@@ -217,6 +205,26 @@ export function ClimbsSidebar({
       </ol>
     </section>
   );
+}
+
+/**
+ * The rider's quickest time over a climb and their most recent, or nothing at
+ * all for a climb they have not ridden — which is most of them for most
+ * riders. An em dash would be a figure-shaped thing where there is no figure.
+ *
+ * The attempts arrive quickest first, so the best is the head; the last is
+ * whichever was ridden most recently, which that order says nothing about.
+ */
+function climbTimes(climb: Climb): string | null {
+  const best = climb.attempts[0];
+  if (best === undefined) {
+    return null;
+  }
+  const last = climb.attempts.reduce((latest, one) =>
+    Date.parse(one.riddenAt) > Date.parse(latest.riddenAt) ? one : latest,
+  );
+
+  return `${formatClimbTime(best.seconds)} · ${formatClimbTime(last.seconds)}`;
 }
 
 /**
