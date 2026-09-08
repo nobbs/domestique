@@ -14,11 +14,24 @@ const (
 	ClimbMinGradientPercent = 3
 )
 
-// climbCoverageToleranceMetres is how much of a climb's ends a ride may be
-// missing and still be said to have ridden it. One window: a ride that joined
-// the road a few paces up the climb rode the climb, and one that stopped a
-// kilometre short did not.
-const climbCoverageToleranceMetres = ClimbWindowMetres
+// climbCoverageShare is how much of a climb's ends a ride may be missing and
+// still be said to have ridden it, as a share of the climb's own length, and
+// climbCoverageCapMetres is the most that share may come to.
+//
+// A share rather than a fixed distance because the shortest climb reported is
+// itself one window long: a hundred metres allowed off each end of it would
+// admit a ride that merely crossed it. Capped, so a mountain pass does not
+// allow a kilometre.
+const (
+	climbCoverageShare     = 0.1
+	climbCoverageCapMetres = ClimbWindowMetres
+)
+
+// coverageToleranceMetres is how far into one climb a ride may join, and how
+// far from its end a ride may stop, and still have ridden it.
+func coverageToleranceMetres(climb *measure.Climb) float64 {
+	return min(climb.DistanceMetres*climbCoverageShare, climbCoverageCapMetres)
+}
 
 // ClimbAttempt is one ride over one of its route's sustained climbs: how long
 // it took, and what the rider's sensors said while it lasted. What the climb
@@ -110,7 +123,8 @@ func alongRoute(line []measure.Coordinate, track []TrackPoint) []measure.SnapHit
 		if found {
 			hits[point] = hit
 		} else {
-			// Marked as off the route by a distance no corridor admits.
+			// Placed before the route begins, which no climb's ground reaches,
+			// so the sample takes part in none of them.
 			hits[point] = measure.SnapHit{AlongMetres: -1}
 		}
 	}
@@ -148,8 +162,9 @@ func attemptOver(
 	if first < 0 || last <= first {
 		return ClimbAttempt{}, false
 	}
-	if along[first].AlongMetres > climb.StartMetres+climbCoverageToleranceMetres ||
-		along[last].AlongMetres < climb.EndMetres-climbCoverageToleranceMetres {
+	tolerance := coverageToleranceMetres(climb)
+	if along[first].AlongMetres > climb.StartMetres+tolerance ||
+		along[last].AlongMetres < climb.EndMetres-tolerance {
 		return ClimbAttempt{}, false
 	}
 	seconds := track[last].Time.Sub(track[first].Time).Seconds()

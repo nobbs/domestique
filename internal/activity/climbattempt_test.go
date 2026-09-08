@@ -217,3 +217,48 @@ func TestClimbAttemptsRecordOnlyTheClimbTheRideCovered(t *testing.T) {
 	assert.Equal(t, 0, attempts[0].ClimbIndex, "the first climb, which it did ride")
 	assert.Positive(t, attempts[0].Seconds)
 }
+
+// shortClimbRoute holds the shortest climb the detector reports: one window
+// long, which is where a fixed hundred-metre tolerance would have admitted a
+// ride that merely crossed it.
+func shortClimbRoute() (line []measure.Coordinate, elevations []float64) {
+	const step, metresPerDegree = 10.0, 111_320.0
+	altitude := 100.0
+	for metres := 0.0; metres <= 800; metres += step {
+		line = append(line, measure.Coordinate{Latitude: 0, Longitude: metres / metresPerDegree})
+		if metres > 300 && metres <= 420 {
+			altitude += step * 8 / 100
+		}
+		elevations = append(elevations, altitude)
+	}
+
+	return line, elevations
+}
+
+func TestClimbAttemptsHoldAShortClimbToItsOwnLength(t *testing.T) {
+	t.Parallel()
+	line, elevations := shortClimbRoute()
+	climbs := activity.RouteClimbs(line, elevations)
+	require.Len(t, climbs, 1, "the route holds one short climb")
+	require.Less(t, climbs[0].DistanceMetres, 200.0, "and it is shorter than a fixed tolerance")
+
+	// Stops half way up: less than a tenth short, and it would have counted.
+	half := climbs[0].StartMetres + climbs[0].DistanceMetres/2
+	track := []activity.TrackPoint{}
+	series := []activity.SampleRow{}
+	at := rideStart()
+	for index := range line {
+		if float64(index)*10 > half {
+			break
+		}
+		track = append(track, activity.TrackPoint{
+			Time: at, Latitude: line[index].Latitude, Longitude: line[index].Longitude,
+		})
+		series = append(series, activity.SampleRow{Time: at})
+		at = at.Add(2 * time.Second)
+	}
+
+	attempts := activity.ClimbAttempts(climbs, line, track, series, activity.DirectionForward)
+
+	assert.Empty(t, attempts, "half of a short climb is not an attempt at it")
+}

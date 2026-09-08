@@ -157,7 +157,7 @@ type RouteClimb struct {
 	Attempts []RouteClimbAttempt `json:"attempts"`
 }
 
-// RouteClimbAttempt One ride over one climb. Only a ride that rode the whole climb the way the route stores it is here: a ride that turned back, or ran the route the other way round, made no attempt at it.
+// RouteClimbAttempt One ride over one climb. Only a ride that reached both ends of it the way the route stores it is here: a ride that turned back, or ran the route the other way round, made no attempt at it.
 type RouteClimbAttempt struct {
 	ActivityID int64     `json:"activityId"`
 	RiddenAt   time.Time `json:"riddenAt"`

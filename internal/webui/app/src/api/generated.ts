@@ -579,7 +579,7 @@ export interface GeoJSONFeature {
 }
 
 /**
- * One ride over one climb. Only a ride that rode the whole climb the way the route stores it is here: a ride that turned back, or ran the route the other way round, made no attempt at it.
+ * One ride over one climb. Only a ride that reached both ends of it the way the route stores it is here: a ride that turned back, or ran the route the other way round, made no attempt at it.
  */
 export interface RouteClimbAttempt {
   activityId: number;

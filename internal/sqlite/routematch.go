@@ -259,12 +259,24 @@ func (s *Store) RouteClimbAttempts(
 // ClearActivityRouteMatches removes every match one target holds and reports
 // how many went. A library holding no route leaves nothing for a match to name.
 func (s *Store) ClearActivityRouteMatches(ctx context.Context, targetID string) (int, error) {
-	if _, err := s.queries.ClearActivityClimbAttempts(ctx, targetID); err != nil {
+	// One transaction, for the reason the write is one: an attempt is read
+	// through its match, so attempts cleared while the matches they belong to
+	// survive would leave the target's rides matched to routes with no times.
+	transaction, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return 0, fmt.Errorf("starting the route match clear: %w", beginErr)
+	}
+	defer rollback(transaction)
+	queries := s.queries.WithTx(transaction)
+	if _, err := queries.ClearActivityClimbAttempts(ctx, targetID); err != nil {
 		return 0, fmt.Errorf("clearing activity climb attempts: %w", err)
 	}
-	removed, err := s.queries.DeleteActivityRouteMatchesForTarget(ctx, targetID)
+	removed, err := queries.DeleteActivityRouteMatchesForTarget(ctx, targetID)
 	if err != nil {
 		return 0, fmt.Errorf("clearing activity route matches: %w", err)
+	}
+	if err := transaction.Commit(); err != nil {
+		return 0, fmt.Errorf("committing the route match clear: %w", err)
 	}
 
 	return int(removed), nil

@@ -1204,9 +1204,11 @@ about the climb itself is copied beside the attempt: where a climb runs and how
 much it rises belongs to the route, is found again whenever it is read, and a
 copy could only ever come to disagree with it.
 
-A ride is timed over a climb only where it rode the whole of it the way the
-route stores it. A ride that turned back part way up made no attempt at that
-climb, and one that ran the route the other way round made none at any of them:
+A ride is timed over a climb only where it reached both ends of it, the way the
+route stores it, within a tenth of the climb's own length or a hundred metres,
+whichever is the smaller: a share rather than a fixed distance because the
+shortest climb reported is itself only a hundred metres long. A ride that
+turned back part way up made no attempt at that climb, and one that ran the route the other way round made none at any of them:
 those climbs were its descents. Where a ride passes one climb twice, the first
 pass is the attempt. Because the climbs follow the route's height, the library
 digest a match is measured against now covers the height along each route as
