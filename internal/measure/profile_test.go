@@ -389,3 +389,33 @@ func TestAscentAndDescentMetresOverABareAltitudeSeries(t *testing.T) {
 	assert.Zero(t, measure.AscentMetres(nil))
 	assert.Zero(t, measure.DescentMetres([]float64{3}))
 }
+
+func TestAscentWithHysteresisCountsOnlyRisesThatReachTheThreshold(t *testing.T) {
+	t.Parallel()
+	// Two real climbs of 5 m with a 0.4 m wobble between them that the plain
+	// sum would count and a 2 m threshold ignores.
+	altitudes := []float64{100, 101, 103, 105, 104.8, 105.2, 104.8, 105.2, 107, 110, 108}
+
+	assert.InDelta(t, 10.6, measure.AscentMetres(altitudes), 1e-9, "the plain sum counts the wobble")
+	assert.InDelta(t, 10, measure.AscentWithHysteresisMetres(altitudes, 2), 1e-9)
+	assert.InDelta(t, 2, measure.DescentWithHysteresisMetres(altitudes, 2), 1e-9)
+}
+
+func TestAscentWithHysteresisFollowsAReferenceThatDropsWithEveryNewLow(t *testing.T) {
+	t.Parallel()
+	// A slow descent of half-metre steps then a 3 m climb from its foot: the
+	// climb is measured from the lowest point, not from the start.
+	altitudes := []float64{100, 99.5, 99, 98.5, 98, 99, 100, 101}
+
+	assert.InDelta(t, 3, measure.AscentWithHysteresisMetres(altitudes, 2), 1e-9)
+	assert.Zero(t, measure.DescentWithHysteresisMetres(altitudes, 2.5), "no single fall reached the threshold")
+}
+
+func TestAscentWithHysteresisIsThePlainSumWithoutAThreshold(t *testing.T) {
+	t.Parallel()
+	altitudes := []float64{10, 12, 11, 15}
+
+	assert.InDelta(t, measure.AscentMetres(altitudes), measure.AscentWithHysteresisMetres(altitudes, 0), 1e-9)
+	assert.InDelta(t, measure.DescentMetres(altitudes), measure.DescentWithHysteresisMetres(altitudes, -1), 1e-9)
+	assert.Zero(t, measure.AscentWithHysteresisMetres(nil, 2))
+}
