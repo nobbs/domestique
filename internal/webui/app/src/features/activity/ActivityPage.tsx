@@ -162,8 +162,9 @@ export function ActivityPage() {
 /** The library route this ride was ridden on. A ride the listing has no route
  * for names nothing, and a partial lap says how much of it it covered. */
 function MatchedRoute({ ride }: { ride: Activity | undefined }) {
-  const routes = useQuery(routesQuery());
   const match = ride?.routeMatch;
+  // The listing is only worth a request once there is a route to name in it.
+  const routes = useQuery({ ...routesQuery(), enabled: match !== undefined });
   const route = match ? routes.data?.find((held) => routeKey(held) === routeKey(match)) : undefined;
   if (!match || !route) {
     return null;

@@ -147,14 +147,17 @@ function show(
   heartRate?: (number | null)[],
   ride: Activity = RIDE,
   splits: ActivitySplit[] = [],
-  library: LibraryRoute[] = [],
+  library: LibraryRoute[] | null = [],
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
   client.setQueryData(activitiesQuery().queryKey, [ride]);
-  client.setQueryData(routesQuery().queryKey, library);
+  // Null leaves it unseeded, which is the only way to see whether the page asks.
+  if (library) {
+    client.setQueryData(routesQuery().queryKey, library);
+  }
   // The page's own guard: only a run of digits names a ride. Seeding under the
   // id the route actually carries is what keeps a test off the network, since
   // any key the page does not ask for leaves its query to fetch for real.
@@ -448,9 +451,14 @@ describe("one ride's page", () => {
     expect(screen.getByText("· 94% of the route")).toBeInTheDocument();
   });
 
-  it("names no route for a ride matched to none", () => {
-    show(track(), RIDE.id, undefined, RIDE, [], [LIBRARY_ROUTE]);
+  it("names no route, and asks for no library, for a ride matched to none", () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL) => new Response(null, { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    show(track(), RIDE.id, undefined, RIDE, [], null);
 
     expect(screen.queryByRole("link", { name: "Alpine loop — Descent" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/v1/routes"))).toBe(false);
   });
 });

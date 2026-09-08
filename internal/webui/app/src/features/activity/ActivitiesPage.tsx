@@ -161,7 +161,11 @@ export function ActivitiesPage() {
   const serviceZone = config.data?.timezone || null;
   const zone = serviceZone ?? browserZone();
   const { activities, isPending, isError } = useActivities();
-  const routes = useQuery(routesQuery());
+  // The listing is only worth a request once some ride has a route to filter by.
+  const routes = useQuery({
+    ...routesQuery(),
+    enabled: activities.some((ride) => ride.routeMatch),
+  });
   const [routeFilter, setRouteFilter] = useState("");
   const ridden = useMemo(
     () => riddenRoutes(activities, routes.data ?? []),

@@ -267,7 +267,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
 
   // The rides matched to the open route, off the query the activity pages share.
   // Not asked for until one is open: the library map has no history to show.
-  const activities = useQuery({ ...activitiesQuery(), enabled: openRoute !== null });
+  const activities = useQuery({ ...activitiesQuery(), enabled: shownRoute !== null });
   const openRides = useMemo(
     () => (shownRoute ? riddenOn(activities.data ?? [], shownRoute) : []),
     [activities.data, shownRoute],

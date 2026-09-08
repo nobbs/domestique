@@ -79,12 +79,15 @@ function matchedTo(route: Route): ActivityRouteMatch {
   };
 }
 
-function show(activities: Activity[] | null = ACTIVITIES, library: Route[] = []) {
+function show(activities: Activity[] | null = ACTIVITIES, library: Route[] | null = []) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
-  client.setQueryData(routesQuery().queryKey, library);
+  // Null leaves it unseeded, which is the only way to see whether the page asks.
+  if (library) {
+    client.setQueryData(routesQuery().queryKey, library);
+  }
   if (activities) {
     client.setQueryData(activitiesQuery().queryKey, activities);
   }
@@ -237,10 +240,15 @@ describe("the activity list", () => {
 
     expect(screen.getByRole("status", { name: "Loading activities" })).toBeInTheDocument();
   });
-  it("offers no route filter while no ride has been matched to one", () => {
-    show(ACTIVITIES, [LIBRARY_ROUTE]);
+  it("offers no route filter, and asks for no library, while no ride is matched", () => {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL) => new Response(null, { status: 500 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    show(ACTIVITIES, null);
 
     expect(screen.queryByRole("combobox", { name: "Route" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/v1/routes"))).toBe(false);
   });
 
   it("narrows the weeks to the rides of one route, and back again", async () => {
