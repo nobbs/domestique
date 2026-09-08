@@ -2527,6 +2527,10 @@ func (s *fakeState) RouteActivities(
 	if s.routeRidesErr != nil {
 		return nil, s.routeRidesErr
 	}
+	started := map[int64]time.Time{}
+	for _, stored := range s.activities[targetID] {
+		started[stored.ID] = stored.StartedAt
+	}
 	rides := []activities.RouteRide{}
 	for id, match := range s.routeMatches[targetID] {
 		if match.Key == key {
@@ -2536,7 +2540,15 @@ func (s *fakeState) RouteActivities(
 			})
 		}
 	}
-	slices.SortFunc(rides, func(a, b activities.RouteRide) int { return cmp.Compare(b.ID, a.ID) })
+	// Newest first, as the stored query orders them: the ride ids these fixtures
+	// hand out do not run with the clock.
+	slices.SortFunc(rides, func(a, b activities.RouteRide) int {
+		if when := started[b.ID].Compare(started[a.ID]); when != 0 {
+			return when
+		}
+
+		return cmp.Compare(b.ID, a.ID)
+	})
 
 	return rides, nil
 }

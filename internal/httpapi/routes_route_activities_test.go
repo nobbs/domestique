@@ -227,3 +227,22 @@ func TestGetRouteActivitiesIsEmptyForACallerWithNoTarget(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	assert.Empty(t, list.Activities)
 }
+
+// A route's history reads newest first, as the ride list does. The ids these
+// fixtures hand out run the other way, so ordering by them would pass while
+// serving the history backwards.
+func TestGetRouteActivitiesServesTheNewestRideFirst(t *testing.T) {
+	state := riddenState("rider-a")
+	// Ride 1 is an hour old and ride 2 two hours old; both were ridden here.
+	state.routeMatches["rider-a"][2] = activities.RouteMatch{
+		Key: testRouteKey(), RouteCoverage: 0.96, RideCoverage: 0.94,
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getRouteActivities(t, handler, routeActivitiesPath)
+
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+	assert.Equal(t, int64(1), list.Activities[0].ID, "the ride an hour old")
+	assert.Equal(t, int64(2), list.Activities[1].ID, "then the one two hours old")
+}
