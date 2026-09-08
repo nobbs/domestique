@@ -29,11 +29,13 @@ func riddenState(subject string) *fakeState {
 	state := activityState(subject, time.Hour, 2*time.Hour)
 	state.routeMatches = map[string]map[int64]activities.RouteMatch{
 		subject: {
+			// Both shares clear the gate the matcher applies, so nothing here is a
+			// state the service could not have stored.
 			1: {
-				Key: testRouteKey(), RouteCoverage: 0.98, RideCoverage: 0.91,
+				Key: testRouteKey(), RouteCoverage: 0.98, RideCoverage: 0.95,
 				Direction: activities.DirectionReverse,
 			},
-			2: {Key: route.NewKey(route.ProviderVeloPlanner, 8, 1), RouteCoverage: 0.8, RideCoverage: 0.8},
+			2: {Key: route.NewKey(route.ProviderVeloPlanner, 8, 1), RouteCoverage: 0.94, RideCoverage: 0.93},
 		},
 		"rider-b": {99: {
 			Key: testRouteKey(), RouteCoverage: 1, RideCoverage: 1, Direction: activities.DirectionForward,
@@ -64,7 +66,7 @@ func TestGetRouteActivitiesServesOnlyTheCallersOwnRides(t *testing.T) {
 	require.Len(t, list.Activities, 1, "another rider's ride on this route is not this rider's history")
 	assert.Equal(t, int64(1), list.Activities[0].ID)
 	assert.InDelta(t, 0.98, list.Activities[0].RouteCoverage, 1e-9)
-	assert.InDelta(t, 0.91, list.Activities[0].RideCoverage, 1e-9)
+	assert.InDelta(t, 0.95, list.Activities[0].RideCoverage, 1e-9)
 	assert.Equal(t, openapi.RouteRideDirectionReverse, list.Activities[0].Direction,
 		"a route's history says which way round each ride went")
 }
