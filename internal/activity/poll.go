@@ -250,6 +250,13 @@ type Result struct {
 	// because there was nothing left to work them out from — including those a
 	// failed one managed before it stopped.
 	Derived int
+	// Matched counts the rides a derivation attributed to a library route or
+	// recorded as being on none of them.
+	Matched int
+	// WeatherRead counts the rides a derivation settled the weather of,
+	// including those a failed pass managed before it stopped. A ride with
+	// nowhere to ask about is settled without a request being spent on it.
+	WeatherRead int
 }
 
 // Poller reads one target's recorded activities into the store. It adds and

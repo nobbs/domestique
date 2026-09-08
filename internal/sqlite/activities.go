@@ -321,6 +321,13 @@ func (s *Store) StoreActivityRecords(ctx context.Context, targetID string, id in
 	}); deleteErr != nil {
 		return fmt.Errorf("clearing prior activity records: %w", deleteErr)
 	}
+	// The route match describes the samples being replaced, so it goes with
+	// them: the next derivation works it out again from the new track.
+	if matchErr := queries.DeleteActivityRouteMatch(ctx, sqlcgen.DeleteActivityRouteMatchParams{
+		TargetSlot: targetID, WorkoutID: id,
+	}); matchErr != nil {
+		return fmt.Errorf("clearing a prior route match: %w", matchErr)
+	}
 	insert, prepareErr := transaction.PrepareContext(ctx, insertActivityRecordSQL)
 	if prepareErr != nil {
 		return fmt.Errorf("preparing the activity sample insert: %w", prepareErr)

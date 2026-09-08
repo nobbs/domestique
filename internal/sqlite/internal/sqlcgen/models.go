@@ -79,6 +79,19 @@ type ActivityRecord struct {
 	EstimatedPowerWatts sql.NullFloat64
 }
 
+type ActivityRouteMatch struct {
+	TargetSlot    string
+	WorkoutID     int64
+	Provider      sql.NullString
+	RouteID       sql.NullInt64
+	StageOrder    sql.NullInt64
+	RouteCoverage sql.NullFloat64
+	RideCoverage  sql.NullFloat64
+	Direction     sql.NullString
+	LibraryHash   string
+	MatchedAtUnix int64
+}
+
 type ActivitySkip struct {
 	TargetSlot      string
 	WorkoutID       int64

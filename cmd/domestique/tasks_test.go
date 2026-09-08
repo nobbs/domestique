@@ -804,7 +804,8 @@ func TestActivityResultCarriesEveryOutcomeAcross(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			result := activityResult(activity.Result{Outcome: test.outcome, Failure: test.failure, Skipped: test.skipped})
+			outcome := activity.Result{Outcome: test.outcome, Failure: test.failure, Skipped: test.skipped}
+			result := activityResult(&outcome)
 			assert.Equal(t, test.want, result.Outcome, "outcome")
 			assert.Equal(t, test.detail, result.Detail, "detail")
 		})
