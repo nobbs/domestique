@@ -158,7 +158,13 @@ that agrees with the head unit's own figure to within a few per cent over
 the operator's rides (#608); a route's provider profile needs none, and
 gets none.
 
-**Source.** This service's own rule.
+**Source.** This service's own rule for the sums; the hysteresis walk is
+the accumulation-threshold altimeter of US patent 5,058,427 and what every
+head unit approximates. That the figure depends on the scale it is measured
+at, and never converges, is Rapaport 2011; that a barometric device
+over-reports and a GPS device under-reports a surveyed climb, and that a
+device's figure is not the ground, is Sánchez and Villena 2020 and Menaspà
+et al. 2016.
 
 **Applied by.** `route.Route.ElevationGainMetres` and `ElevationLossMetres`
 through the package-level `measure.AscentMetres` and `DescentMetres`
@@ -197,11 +203,13 @@ raw sum over-reports the head unit by about three quarters, the walk lands
 within a few per cent. A route's stored profile needs no walk: it already
 reads about 5 % under the head unit for the same ground, and every
 threshold pushes it further under. Neither figure is the ground: a head
-unit reads 2–5 % under a surveyed climb (Menaspà 2016), so a route summary
-sits roughly 8–10 % under the truth and a ride's figure a few per cent
-under it. The prediction prices the route figure and the weekly fit measures
-against the head unit's, a consistent 5 % apart that the coefficient
-absorbs; nothing is refitted on that account.
+unit reads 2–5 % under a surveyed climb in dry weather and far more in rain
+(Menaspà et al. 2016), so a route summary sits roughly 8–10 % under the
+truth and a ride's figure a few per cent under it; on the operator's rides
+rain made no visible difference to the head unit's figure. The prediction
+prices the route figure and the weekly fit measures against the head
+unit's, a consistent 5 % apart that the coefficient absorbs; nothing is
+refitted on that account.
 
 ## Recording gaps
 
@@ -519,3 +527,16 @@ pages show today.
 12. Intervals.icu forum "Estimating load for rides without power meters"
     <https://forum.intervals.icu/t/estimating-load-for-rides-without-power-meters/20863>,
     accessed 2026-09-07.
+13. Rapaport, D. C. (2011) "Evaluating cumulative ascent: Mountain biking
+    meets Mandelbrot", arXiv:1011.4778 [physics.data-an],
+    <https://arxiv.org/abs/1011.4778>.
+14. Menaspà, P., Haakonssen, E., Sharma, A., Clark, B. (2016) "Accuracy in
+    measurement of elevation gain in road cycling", Journal of Science and
+    Cycling 5(1):10–12, CC BY 3.0; reproduced as
+    [menaspa-2016-elevation-gain-road-cycling.pdf](../references/menaspa-2016-elevation-gain-road-cycling.pdf).
+15. Sánchez, R., Villena, M. (2020) "Comparative evaluation of wearable
+    devices for measuring elevation gain in mountain physical activities",
+    Proceedings of the Institution of Mechanical Engineers, Part P: Journal
+    of Sports Engineering and Technology, doi:10.1177/1754337120918975.
+16. US patent 5,058,427 (1991) "Accumulating altimeter with ascent/descent
+    accumulation thresholds", <https://patents.justia.com/patent/5058427>.
