@@ -143,9 +143,16 @@ sum of negative ones (descent), unsmoothed.
 ~~~text
 ascent  = Σ max(elevation[i] - elevation[i-1], 0)
 descent = Σ max(elevation[i-1] - elevation[i], 0)
+
+with hysteresis T: a climb opens once the series has risen T above its
+lowest point since the last climb closed, and closes once it has fallen T
+below its peak; ascent = Σ (peak - trough) over the climbs so closed, the
+last one closed by the end of the series. Descent is the same walk over
+the falls.
 ~~~
 
-**Constants.** None beyond the profile the sum runs over.
+**Constants.** None beyond the profile the sum runs over. The hysteresis
+threshold is a caller's parameter; no caller passes one yet.
 
 **Source.** This service's own rule.
 
@@ -161,19 +168,30 @@ a ride split's ascent — the code carries no matching descent sum for splits,
 which disagrees with what this section otherwise describes as symmetric; a
 split's `AscentMetres` is the only figure `Split` reports.
 
-**Calibration coupling.** `internal/ridemodel`'s `seconds_per_ascent_m`
-coefficient was fitted against `route.Route.ElevationGainMetres`'s
-definition (`internal/ridemodel/model.go`); changing that definition forces
-a refit.
+**Calibration coupling.** `ridemodel.Predict` prices a route's raw-step
+ascent on the median-filtered profile (`internal/ridemodel/model.go`), and
+the two fits of `seconds_per_ascent_m` do not agree on what ascent that
+coefficient is fitted against: the offline fitter (`dev/fitter`
+`distanceAndAscent`) prices a ride's own track by the same route definition,
+while the weekly in-service calibration (`internal/ridemodel/calibrate.go`,
+fed by `activities.ascent_metres`) fits against the ascent Wahoo's device
+reported for the ride, which the device counted with its own threshold.
+Changing the route definition therefore moves the prediction's input
+towards or away from what the in-service fit already measures against;
+which way is a question for the rider's own rides, not for this document.
 
-**Other platforms' step two.** Strava and Intervals.icu both apply a
-hysteresis threshold after summing steps, which this service does not:
-Strava uses 2 m with barometric data and 10 m without it (Strava
-"Elevation" and "Elevation on Strava FAQs"); Intervals.icu uses 1.2 m
-(Intervals.icu forum "Elevation gain off?"). These are candidates for a
-second step, not something this service does today.
+**Other platforms.** Strava and Intervals.icu both count ascent with a
+hysteresis threshold: Strava uses 2 m with barometric data and 10 m without
+it (Strava "Elevation" and "Elevation on Strava FAQs"); Intervals.icu uses
+1.2 m (Intervals.icu forum "Elevation gain off?"). This service's walk is
+in `measure.AscentWithHysteresisMetres` and `DescentWithHysteresisMetres`
+(`internal/measure/profile.go`), called by nobody yet.
 
-**Status.** Known deviation from hysteresis practice.
+**Status.** Known deviation from hysteresis practice in what is served; the
+primitive exists and is tested. Switching a route's stored ascent onto it
+is a behaviour change to the summaries riders read and to the prediction's
+input, and waits on evidence from real rides of which definition tracks
+the device's own figure (see the calibration coupling above).
 
 ## Recording gaps
 

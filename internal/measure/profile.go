@@ -114,6 +114,65 @@ func DescentMetres(altitudeMetres []float64) float64 {
 	return loss
 }
 
+// AscentWithHysteresisMetres sums the climbs of an altitude series that a
+// head unit, and the platforms that read one, would count: a climb opens once
+// the series has risen thresholdMetres above its lowest point since the last
+// climb closed, and closes once it has fallen thresholdMetres below its peak,
+// counting the whole rise from that trough to that peak. A wobble smaller
+// than the threshold inside a climb adds nothing and ends nothing. A
+// threshold that is not positive is the plain sum.
+//
+// See docs/specs/measurement.md §Ascent and descent.
+func AscentWithHysteresisMetres(altitudeMetres []float64, thresholdMetres float64) float64 {
+	return sumWithHysteresis(altitudeMetres, thresholdMetres, 1)
+}
+
+// DescentWithHysteresisMetres is AscentWithHysteresisMetres over the falls, as
+// a positive figure.
+//
+// See docs/specs/measurement.md §Ascent and descent.
+func DescentWithHysteresisMetres(altitudeMetres []float64, thresholdMetres float64) float64 {
+	return sumWithHysteresis(altitudeMetres, thresholdMetres, -1)
+}
+
+// sumWithHysteresis walks the series in one direction, sign being +1 for the
+// climbs and -1 for the falls, opening a climb from its trough and closing it
+// at its peak.
+func sumWithHysteresis(altitudeMetres []float64, thresholdMetres, sign float64) float64 {
+	if len(altitudeMetres) == 0 {
+		return 0
+	}
+	if thresholdMetres <= 0 {
+		if sign > 0 {
+			return AscentMetres(altitudeMetres)
+		}
+
+		return DescentMetres(altitudeMetres)
+	}
+	total := 0.0
+	trough, peak := altitudeMetres[0]*sign, altitudeMetres[0]*sign
+	climbing := false
+	for _, raw := range altitudeMetres[1:] {
+		altitude := raw * sign
+		switch {
+		case climbing && altitude > peak:
+			peak = altitude
+		case climbing && peak-altitude >= thresholdMetres:
+			total += peak - trough
+			climbing, trough = false, altitude
+		case !climbing && altitude < trough:
+			trough = altitude
+		case !climbing && altitude-trough >= thresholdMetres:
+			climbing, peak = true, altitude
+		}
+	}
+	if climbing {
+		total += peak - trough
+	}
+
+	return total
+}
+
 // GradientsPercent measures each point's signed gradient back over the
 // shortest span of at least windowMetres the profile holds before it, and
 // reports that span. Index 0 is zero over a zero span.
