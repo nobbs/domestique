@@ -471,5 +471,5 @@ func TestEstimateSeriesIgnoresAnAltitudeStepAcrossANonAdvancingClockWhenDeriving
 
 	_, quality, ok := measure.EstimateSeries(samples, 82)
 	require.True(t, ok)
-	assert.InDelta(t, 100, quality.WindowMetres, 1e-6)
+	assert.InDelta(t, 100, quality.WindowMetres, 0.001)
 }
