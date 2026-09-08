@@ -336,19 +336,21 @@ func TestStillFilteredAltitudesDropsStandstillSamplesAndKeepsTheRest(t *testing.
 	assert.Equal(t, []float64{100, 101, 105}, got)
 }
 
-// A step with non-positive elapsed time — a repeated or reordered
-// timestamp — is dropped outright: speed cannot be judged for it.
-func TestStillFilteredAltitudesDropsANonPositiveTimeStep(t *testing.T) {
+// A clock that did not advance or an odometer that went backwards is a
+// glitch, not a standstill: the sample is kept rather than judged for speed.
+func TestStillFilteredAltitudesKeepsAGlitchedStepAsItIs(t *testing.T) {
 	t.Parallel()
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	track := []measure.Sample{
 		{At: start, DistanceMetres: 0, AltitudeMetres: 100},
-		{At: start, DistanceMetres: 10, AltitudeMetres: 110}, // dt=0
+		{At: start, DistanceMetres: 10, AltitudeMetres: 110},                     // dt=0
+		{At: start.Add(time.Second), DistanceMetres: 5, AltitudeMetres: 111},     // odometer reset
+		{At: start.Add(2 * time.Second), DistanceMetres: 5, AltitudeMetres: 112}, // a standstill
 	}
 
 	got := stillFilteredAltitudes(track, 1.0)
 
-	assert.Equal(t, []float64{100}, got)
+	assert.Equal(t, []float64{100, 110, 111}, got)
 }
 
 // The distance-grid candidate resamples the odometer to a fixed spacing

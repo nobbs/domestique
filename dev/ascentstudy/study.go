@@ -184,11 +184,15 @@ func stillFilteredAltitudes(track []measure.Sample, minSpeedMS float64) []float6
 	kept := []float64{track[0].AltitudeMetres}
 	for index := 1; index < len(track); index++ {
 		dtSeconds := track[index].At.Sub(track[index-1].At).Seconds()
-		if dtSeconds <= 0 {
+		run := track[index].DistanceMetres - track[index-1].DistanceMetres
+		// A clock or an odometer that went backwards is a glitch, not a
+		// standstill: the sample is kept as it is.
+		if dtSeconds <= 0 || run < 0 {
+			kept = append(kept, track[index].AltitudeMetres)
+
 			continue
 		}
-		speed := (track[index].DistanceMetres - track[index-1].DistanceMetres) / dtSeconds
-		if speed < minSpeedMS {
+		if run/dtSeconds < minSpeedMS {
 			continue
 		}
 		kept = append(kept, track[index].AltitudeMetres)
@@ -276,33 +280,35 @@ const loopEndsWithinMetres = 200
 // loopDrift is the altitude the barometer gained or lost between a ride's
 // first and last positioned samples, for a ride whose last position lies
 // within loopEndsWithinMetres of its first; not ok for any other ride.
-func loopDrift(ctx context.Context, store *sqlite.Store, ride sqlite.RecordedRide) (float64, bool) {
+func loopDrift(
+	ctx context.Context, store *sqlite.Store, ride sqlite.RecordedRide,
+) (residualMetres float64, loop bool, err error) {
 	track, err := store.ActivityTrack(ctx, ride.TargetID, ride.WorkoutID)
 	if err != nil {
-		return 0, false
+		return 0, false, fmt.Errorf("reading a ride's track: %w", err)
 	}
 	// The first and last samples that carry a height: a positioned sample
 	// with no altitude says nothing about the barometer.
 	firstIndex := slices.IndexFunc(track, func(point activity.TrackPoint) bool { return point.HasAltitude })
 	if firstIndex < 0 {
-		return 0, false
+		return 0, false, nil
 	}
 	lastIndex := len(track) - 1
 	for lastIndex > firstIndex && !track[lastIndex].HasAltitude {
 		lastIndex--
 	}
 	if lastIndex == firstIndex {
-		return 0, false
+		return 0, false, nil
 	}
 	first, last := track[firstIndex], track[lastIndex]
 	apart := measure.HaversineMetres(
 		measure.Coordinate{Latitude: first.Latitude, Longitude: first.Longitude},
 		measure.Coordinate{Latitude: last.Latitude, Longitude: last.Longitude})
 	if apart > loopEndsWithinMetres {
-		return 0, false
+		return 0, false, nil
 	}
 
-	return last.AltitudeMetres - first.AltitudeMetres, true
+	return last.AltitudeMetres - first.AltitudeMetres, true, nil
 }
 
 // candidateSummary is one candidate's statistics against the device ascent:
@@ -549,7 +555,11 @@ func study(
 		}
 
 		if ride.MovingSeconds > 0 {
-			if residual, ok := loopDrift(ctx, store, ride); ok {
+			residual, ok, err := loopDrift(ctx, store, ride)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
 				result.addDrift(residual, ride.MovingSeconds)
 			}
 		}
