@@ -29,7 +29,7 @@ import { useElementHeight } from "../../lib/useElementHeight";
 
 /**
  * The row's columns: ordinal, length, average gradient, steepest gradient,
- * ascent, and where it starts.
+ * ascent, the rider's own times, and where it starts.
  *
  * Fixed tracks rather than a flex row, so a figure sits under the figure above
  * it. Laid out by content, each row starts its second fact wherever its first
