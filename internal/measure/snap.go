@@ -17,6 +17,8 @@ type SnapIndex struct {
 // SnapHit is one indexed segment lying within the index's radius of a query
 // coordinate. Line addresses the polyline it belongs to, as given.
 type SnapHit struct {
+	// DistanceMetres is how far the queried coordinate lay from this segment, in
+	// the index's projected frame rather than along the sphere.
 	DistanceMetres float64
 	// AlongMetres is how far along its polyline the nearest point of this
 	// segment lies, measured from the line's start in the index's own projected
@@ -162,8 +164,8 @@ func (h SnapHit) Alignment(east, north float64) float64 {
 
 // projection converts geographic coordinates to local metres about a reference
 // point, equirectangular. The grid index needs square cells, and the error over
-// the span where candidates compete is far below the tolerances involved.
-// Lengths reported to callers still use haversine.
+// the span where candidates compete is far below the tolerances involved. Every
+// length this index reports is in that frame; geodesic length is HaversineMetres.
 type projection struct {
 	referenceLongitude float64
 	referenceLatitude  float64
