@@ -107,6 +107,69 @@ func (q *Queries) ListActivitySensorSamples(ctx context.Context, arg ListActivit
 	return items, nil
 }
 
+const listRiderStoppingRides = `-- name: ListRiderStoppingRides :many
+SELECT moving_seconds, elapsed_seconds, distance_metres
+FROM activities
+WHERE started_at_unix >= ?1
+  AND target_slot IN (/*SLICE:target_slots*/?)
+  AND workout_type_id IN (/*SLICE:workout_type_ids*/?)
+`
+
+type ListRiderStoppingRidesParams struct {
+	SinceUnix      int64
+	TargetSlots    []string
+	WorkoutTypeIds []int64
+}
+
+type ListRiderStoppingRidesRow struct {
+	MovingSeconds  float64
+	ElapsedSeconds float64
+	DistanceMetres float64
+}
+
+// The scalar bound before the slices, as ListActivitySensorSamples does.
+func (q *Queries) ListRiderStoppingRides(ctx context.Context, arg ListRiderStoppingRidesParams) ([]ListRiderStoppingRidesRow, error) {
+	query := listRiderStoppingRides
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.SinceUnix)
+	if len(arg.TargetSlots) > 0 {
+		for _, v := range arg.TargetSlots {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", strings.Repeat(",?", len(arg.TargetSlots))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", "NULL", 1)
+	}
+	if len(arg.WorkoutTypeIds) > 0 {
+		for _, v := range arg.WorkoutTypeIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:workout_type_ids*/?", strings.Repeat(",?", len(arg.WorkoutTypeIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:workout_type_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRiderStoppingRidesRow{}
+	for rows.Next() {
+		var i ListRiderStoppingRidesRow
+		if err := rows.Scan(&i.MovingSeconds, &i.ElapsedSeconds, &i.DistanceMetres); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertRiderProfile = `-- name: UpsertRiderProfile :exec
 INSERT INTO rider_profiles (
   subject, max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,

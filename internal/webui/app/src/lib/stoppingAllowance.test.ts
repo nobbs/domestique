@@ -46,6 +46,39 @@ describe("arrivalWindow", () => {
     expect(arrivalWindow(undefined, DEFAULT_ALLOWANCE_SECONDS_PER_HOUR)).toBeNull();
     expect(arrivalWindow(0, DEFAULT_ALLOWANCE_SECONDS_PER_HOUR)).toBeNull();
   });
+
+  it("draws the rider's own quartiles where their rides measured them", () => {
+    const window = arrivalWindow(3600, 300, {
+      medianSecondsPerHour: 300,
+      lowerQuartileSecondsPerHour: 180,
+      upperQuartileSecondsPerHour: 900,
+    });
+
+    expect(window?.earliestSeconds).toBeCloseTo(3780, 6);
+    expect(window?.latestSeconds).toBeCloseTo(4500, 6);
+  });
+
+  it("keeps the measured shape when the rider moves the allowance off their median", () => {
+    const spread = {
+      medianSecondsPerHour: 300,
+      lowerQuartileSecondsPerHour: 180,
+      upperQuartileSecondsPerHour: 900,
+    };
+    const window = arrivalWindow(3600, 600, spread);
+
+    expect(window?.earliestSeconds).toBeCloseTo(3960, 6);
+    expect(window?.latestSeconds).toBeCloseTo(5400, 6);
+  });
+
+  it("collapses onto the moving time for a rider whose rides never stop", () => {
+    const window = arrivalWindow(3600, 266, {
+      medianSecondsPerHour: 0,
+      lowerQuartileSecondsPerHour: 0,
+      upperQuartileSecondsPerHour: 0,
+    });
+
+    expect(window).toEqual({ earliestSeconds: 3600, latestSeconds: 3600 });
+  });
 });
 
 describe("formatAllowance", () => {

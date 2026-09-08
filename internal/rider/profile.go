@@ -73,6 +73,9 @@ const SuggestionWindow = 90 * 24 * time.Hour
 type Suggestions struct {
 	MaxHeartRateBPM               Value
 	FunctionalThresholdPowerWatts Value
+	// Stopping is the rider's own stopping habit, which is a distribution
+	// rather than a best effort and so is not a Value.
+	Stopping Stopping
 }
 
 // ThresholdPower scales a best twenty-minute average to the hour power it

@@ -36,6 +36,7 @@ import (
 	"github.com/nobbs/domestique/internal/surface"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/task"
+	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/nobbs/domestique/internal/webui"
 )
 
@@ -254,6 +255,7 @@ func run(ctx context.Context) error {
 			Alerts:           alertMatrix{decisions: alerts, declarations: tasks.Declarations()},
 			Tasks:            taskSurface{ctx: runCtx, manager: tasks, switches: switches},
 			WebhookTokens:    webhookTokens{settings: runtimeSettings},
+			StoppingTypes:    wahoo.OutdoorHumanPoweredWorkoutTypes(),
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			Sessions:         sessions,

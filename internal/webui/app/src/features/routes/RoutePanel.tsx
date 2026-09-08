@@ -38,7 +38,8 @@ import {
   IconTrendingUp,
   IconX,
 } from "@tabler/icons-react";
-import type { Route } from "../../api/types";
+import type { Route, StoppingSuggestion } from "../../api/types";
+import { Button } from "../../components/Button";
 import { Slider } from "../../components/Slider";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import {
@@ -63,6 +64,7 @@ import type { BandShare, GradientSummary } from "../../lib/profile";
 import {
   arrivalWindow,
   CORPUS_RIDES,
+  CORPUS_SPREAD,
   formatAllowance,
   MAX_ALLOWANCE_SECONDS_PER_HOUR,
   useStoppingAllowance,
@@ -146,6 +148,12 @@ export interface RoutePanelProps {
   onClose: () => void;
   /** Each configured source's web application, keyed by provider. */
   sourceBaseUrls: Record<string, string>;
+  /**
+   * The rider's own stopping habit, where their rides measure one. It replaces
+   * the corpus's spread and is offered as the allowance; undefined leaves both
+   * seeded.
+   */
+  stopping?: StoppingSuggestion | undefined;
 }
 
 export function RoutePanel({
@@ -165,10 +173,11 @@ export function RoutePanel({
   libraryCount,
   onClose,
   sourceBaseUrls,
+  stopping,
 }: RoutePanelProps) {
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
   const [allowance, chooseAllowance] = useStoppingAllowance();
-  const doorToDoor = arrivalWindow(movingSeconds, allowance);
+  const doorToDoor = arrivalWindow(movingSeconds, allowance, stopping ?? CORPUS_SPREAD);
   const effectiveAdmin = useEffectiveAdmin();
 
   return (
@@ -445,9 +454,19 @@ export function RoutePanel({
                   }
                 />
                 <p className="text-[11px] text-[var(--ink-2)]">
-                  {formatAllowance(allowance)} stopped per moving hour · default and spread from{" "}
-                  {CORPUS_RIDES} current-bike rides
+                  {formatAllowance(allowance)} stopped per moving hour · spread from{" "}
+                  {stopping ? `your ${stopping.rides} rides` : `${CORPUS_RIDES} current-bike rides`}
                 </p>
+                {stopping && Math.round(allowance) !== Math.round(stopping.medianSecondsPerHour) ? (
+                  <Button
+                    variant="ghost"
+                    className="h-auto justify-start p-0 text-[11px]"
+                    onClick={() => chooseAllowance(stopping.medianSecondsPerHour)}
+                  >
+                    Your rides stop {formatAllowance(stopping.medianSecondsPerHour)} per moving hour
+                    — use that
+                  </Button>
+                ) : null}
               </div>
             )}
             {/*

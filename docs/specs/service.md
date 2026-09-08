@@ -684,12 +684,19 @@ The read-only JSON surface is small:
   empty profile rather than a `404`.
 
   Beside the stored parameters it carries what the caller's own rides of the
-  last ninety days suggest two of them could be: the highest heart rate held
-  over a rolling minute, and the best twenty-minute average power taken at 95%.
-  Both are read over the caller's own targets and are display only — nothing
-  uses one until the rider has saved it as their own value. A parameter no ride
-  carried a sensor for is absent rather than zero, and a rider with no target
-  yet is answered with no suggestions.
+  last ninety days suggest some of them could be: the highest heart rate held
+  over a rolling minute, the best twenty-minute average power taken at 95%, and
+  the rider's own stopping habit. All are read over the caller's own targets and
+  are display only — nothing uses one until the rider has saved it as their own
+  value. A parameter no ride carried a sensor for is absent rather than zero,
+  and a rider with no target yet is answered with no suggestions.
+
+  The stopping habit is the median and quartiles of stopped seconds per moving
+  hour — elapsed time less moving time, over moving time — across the caller's
+  own outdoor human-powered rides in that window, counting only rides of at
+  least a kilometre and a minute of moving. It is measured over the caller's own
+  targets alone and never pooled across riders, and it is absent below five such
+  rides, which leaves a new rider the seeded figures.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
   values, so the page can show a ride's weather without reaching Open-Meteo
   itself. Each `point` is `latitude,longitude,time`: decimal-degree latitude
@@ -1203,14 +1210,19 @@ calibration that found no change.
 What the service predicts and stores is the moving time; stopping is the rider's
 own habit, so the browser turns that figure into a door-to-door window from one
 allowance in seconds of stopping per moving hour, kept in that browser alone. No
-endpoint accepts an allowance and nothing per-route is stored for it. The seed
-values are the operator's measured stopping on the current-bike corpus of 242
-rides — a median of 266 s per moving hour, with quartiles at 114 and 493 s/h —
-and the window runs from the moving time plus the lower quartile's stopping to
-the moving time plus the upper's, each quartile first scaled by the chosen
-allowance's ratio to that median, so the window keeps its measured shape
-wherever the rider puts it. The six-year corpus stops more (278 s/h) and is not used. A
-route nothing has predicted shows no window rather than an error.
+endpoint accepts an allowance and nothing per-route is stored for it. The window
+runs from the moving time plus the lower quartile's stopping to the moving time
+plus the upper's, each quartile first scaled by the chosen allowance's ratio to
+the median it came with, so the window keeps its measured shape wherever the
+rider puts it.
+
+The median and quartiles are the rider's own where their rides measure them —
+the stopping habit `GET /v1/settings/rider` serves — and the page offers that
+median as the allowance, which is the rider's to take or leave. Where they do
+not, the seed values are the operator's measured stopping on the current-bike
+corpus of 242 rides: a median of 266 s per moving hour, with quartiles at 114
+and 493 s/h. The six-year corpus stops more (278 s/h) and is not used. A route
+nothing has predicted shows no window rather than an error.
 
 ## Sync lifecycle and safety
 

@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSetRiderProfile } from "../../api/generated";
 import { riderProfileQuery } from "../../api/queries";
-import type { RiderParameters, RiderProfile as RiderProfileView } from "../../api/types";
+import type { RiderParameters } from "../../api/types";
 import { Button } from "../../components/Button";
 import { Skeleton } from "../../components/ui/skeleton";
 
@@ -28,8 +28,12 @@ interface Parameter {
   label: string;
   unit: string;
   description: string;
-  /** Absent where the parameter has no suggestion to offer. */
-  suggested?: keyof RiderProfileView["suggestions"];
+  /**
+   * Absent where the parameter has no suggestion to offer. Only the suggestions
+   * that are one number: this page shows a figure beside a field, and the
+   * stopping habit is a distribution the route panel draws instead.
+   */
+  suggested?: "maxHeartRateBpm" | "functionalThresholdPowerWatts";
 }
 
 const PARAMETERS: Parameter[] = [

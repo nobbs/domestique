@@ -29,3 +29,11 @@ WHERE a.started_at_unix >= sqlc.arg(since_unix)
   AND r.target_slot IN (sqlc.slice(target_slots))
   AND (r.heart_rate_bpm IS NOT NULL OR r.power_watts IS NOT NULL)
 ORDER BY r.target_slot, r.workout_id, r.record_index;
+
+-- name: ListRiderStoppingRides :many
+SELECT moving_seconds, elapsed_seconds, distance_metres
+FROM activities
+-- The scalar bound before the slices, as ListActivitySensorSamples does.
+WHERE started_at_unix >= sqlc.arg(since_unix)
+  AND target_slot IN (sqlc.slice(target_slots))
+  AND workout_type_id IN (sqlc.slice(workout_type_ids));

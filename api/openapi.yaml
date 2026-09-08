@@ -2649,8 +2649,8 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        What the rider's rides of the last ninety days say two of these numbers
-        could be, offered beside the fields and stored nowhere. A parameter no
+        What the rider's rides of the last ninety days say some of these numbers
+        could be, offered beside the controls and stored nowhere. A parameter no
         ride carried a sensor for is absent rather than zero.
       properties:
         maxHeartRateBpm:
@@ -2659,6 +2659,35 @@ components:
         functionalThresholdPowerWatts:
           type: number
           description: The best twenty-minute average power, taken at 95%.
+        stopping:
+          $ref: '#/components/schemas/StoppingSuggestion'
+    StoppingSuggestion:
+      type: object
+      additionalProperties: false
+      required:
+        - medianSecondsPerHour
+        - lowerQuartileSecondsPerHour
+        - upperQuartileSecondsPerHour
+        - rides
+      description: >-
+        How long the rider stood still per hour of moving over their own
+        outdoor rides of the last ninety days, as a median and the quartiles
+        either side of it. Measured over the caller's own targets alone and
+        never pooled across riders, and absent until enough rides carry it.
+      properties:
+        medianSecondsPerHour:
+          type: number
+          minimum: 0
+        lowerQuartileSecondsPerHour:
+          type: number
+          minimum: 0
+        upperQuartileSecondsPerHour:
+          type: number
+          minimum: 0
+        rides:
+          type: integer
+          minimum: 1
+          description: How many of the rider's rides the figures were read from.
     TimezoneUpdate:
       type: object
       additionalProperties: false

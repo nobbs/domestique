@@ -127,6 +127,10 @@ type Options struct {
 	// tileOrigins below, and for the same reason: a missing value degrades the
 	// header rather than failing every unrelated caller's construction.
 	Auth0Domain string
+
+	// StoppingTypes are the provider workout types a rider's own stopping habit
+	// is read from: the rides that stop for something. Empty offers no habit.
+	StoppingTypes []int
 }
 
 // RideModelValidation is the frozen coefficient profile's measured
@@ -177,6 +181,7 @@ type Handler struct {
 	buildImageDigest    string
 	browserOrigin       string
 	authOrigin          string
+	stoppingTypes       []int
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -232,6 +237,7 @@ func New(
 		alerts:              options.Alerts,
 		tasks:               options.Tasks,
 		webhookTokens:       options.WebhookTokens,
+		stoppingTypes:       options.StoppingTypes,
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,

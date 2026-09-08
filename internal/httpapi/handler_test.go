@@ -2502,6 +2502,7 @@ type fakeState struct {
 	riderProfiles        map[string]rider.Profile
 	riderSuggestions     map[string]rider.Suggestions
 	riderSuggestionSince time.Time
+	riderSuggestionTypes []int
 	riderSuggestionFor   []string
 	enrichmentFailed     int
 	surfaceMetres        float64
@@ -2640,9 +2641,10 @@ func (s *fakeState) SetRiderProfile(_ context.Context, subject string, profile r
 // RiderSuggestions records which targets and which cutoff it was asked over, so
 // a test can assert the scope the handler read rather than only the answer.
 func (s *fakeState) RiderSuggestions(
-	_ context.Context, targetIDs []string, since time.Time,
+	_ context.Context, targetIDs []string, workoutTypeIDs []int, since time.Time,
 ) (rider.Suggestions, error) {
 	s.riderSuggestionFor, s.riderSuggestionSince = targetIDs, since
+	s.riderSuggestionTypes = workoutTypeIDs
 	if s.riderSuggestionErr != nil {
 		return rider.Suggestions{}, s.riderSuggestionErr
 	}
@@ -2654,6 +2656,9 @@ func (s *fakeState) RiderSuggestions(
 		held := s.riderSuggestions[targetID]
 		keepHigher(&suggestions.MaxHeartRateBPM, held.MaxHeartRateBPM)
 		keepHigher(&suggestions.FunctionalThresholdPowerWatts, held.FunctionalThresholdPowerWatts)
+		if held.Stopping.Set {
+			suggestions.Stopping = held.Stopping
+		}
 	}
 
 	return suggestions, nil

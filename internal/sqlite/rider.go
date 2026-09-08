@@ -59,11 +59,17 @@ func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rid
 // so a rider with a second connected account is offered their better effort.
 // Rides that carry no such sensor yield no suggestion, which is what lets the
 // page offer one field a figure and not the next.
-func (s *Store) RiderSuggestions(ctx context.Context, targetIDs []string, since time.Time) (rider.Suggestions, error) {
+func (s *Store) RiderSuggestions(
+	ctx context.Context, targetIDs []string, workoutTypeIDs []int, since time.Time,
+) (rider.Suggestions, error) {
 	// sqlc expands the slice into the IN list, and an empty one would expand to
 	// `IN ()`, which is not SQL. A caller with no target has nothing to read anyway.
 	if len(targetIDs) == 0 {
 		return rider.Suggestions{}, nil
+	}
+	stopping, err := s.riderStopping(ctx, targetIDs, workoutTypeIDs, since)
+	if err != nil {
+		return rider.Suggestions{}, err
 	}
 	rows, err := s.queries.ListActivitySensorSamples(ctx, sqlcgen.ListActivitySensorSamplesParams{
 		SinceUnix:   since.Unix(),
@@ -72,8 +78,42 @@ func (s *Store) RiderSuggestions(ctx context.Context, targetIDs []string, since 
 	if err != nil {
 		return rider.Suggestions{}, fmt.Errorf("reading the recorded samples: %w", err)
 	}
+	suggestions := accumulateSuggestions(rows)
+	suggestions.Stopping = stopping
 
-	return accumulateSuggestions(rows), nil
+	return suggestions, nil
+}
+
+// riderStopping reads the habit off the summaries of the rider's own rides of
+// an eligible type. No eligible type is no corpus rather than every type.
+func (s *Store) riderStopping(
+	ctx context.Context, targetIDs []string, workoutTypeIDs []int, since time.Time,
+) (rider.Stopping, error) {
+	if len(workoutTypeIDs) == 0 {
+		return rider.Stopping{}, nil
+	}
+	types := make([]int64, len(workoutTypeIDs))
+	for index, id := range workoutTypeIDs {
+		types[index] = int64(id)
+	}
+	rows, err := s.queries.ListRiderStoppingRides(ctx, sqlcgen.ListRiderStoppingRidesParams{
+		SinceUnix:      since.Unix(),
+		TargetSlots:    targetIDs,
+		WorkoutTypeIds: types,
+	})
+	if err != nil {
+		return rider.Stopping{}, fmt.Errorf("reading the recorded ride summaries: %w", err)
+	}
+	rides := make([]rider.StoppingRide, 0, len(rows))
+	for _, row := range rows {
+		rides = append(rides, rider.StoppingRide{
+			DistanceMetres: row.DistanceMetres,
+			MovingSeconds:  row.MovingSeconds,
+			ElapsedSeconds: row.ElapsedSeconds,
+		})
+	}
+
+	return rider.MeasureStopping(rides), nil
 }
 
 // accumulateSuggestions folds the samples in a ride at a time: a best effort is

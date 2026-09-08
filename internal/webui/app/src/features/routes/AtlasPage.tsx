@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
   activitiesQuery,
+  riderProfileQuery,
   routeGeometryQuery,
   routesQuery,
   statusQuery,
@@ -268,6 +269,9 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // The rides matched to the open route, off the query the activity pages share.
   // Not asked for until one is open: the library map has no history to show.
   const activities = useQuery({ ...activitiesQuery(), enabled: shownRoute !== null });
+  // The rider's own stopping habit, which the panel's door-to-door window uses
+  // in place of the seeded corpus. Asked for on the same terms as the rides.
+  const riderProfile = useQuery({ ...riderProfileQuery(), enabled: shownRoute !== null });
   const openRides = useMemo(
     () => (shownRoute ? riddenOn(activities.data ?? [], shownRoute) : []),
     [activities.data, shownRoute],
@@ -562,6 +566,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           libraryCount={library.length}
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
+          stopping={riderProfile.data?.suggestions.stopping}
         />
       ) : library.length > 0 ? (
         <SearchPanel

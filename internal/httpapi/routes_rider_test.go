@@ -234,3 +234,35 @@ func TestRiderProfileReportsAnUnreadableStore(t *testing.T) {
 func TestRiderSuggestionWindowIsNinetyDays(t *testing.T) {
 	assert.Equal(t, 90*24*time.Hour, rider.SuggestionWindow)
 }
+
+// The habit is served as an object or not at all, and the eligible types the
+// service is configured with are what the store is asked over.
+func TestGetRiderProfileServesTheCallersOwnStoppingHabit(t *testing.T) {
+	state := riderState()
+	state.riderSuggestions["rider-a"] = rider.Suggestions{
+		Stopping: rider.Stopping{
+			MedianSecondsPerHour:        300,
+			LowerQuartileSecondsPerHour: 200,
+			UpperQuartileSecondsPerHour: 400,
+			Rides:                       9,
+			Set:                         true,
+		},
+	}
+	handler := riderHandler(t, state, "rider-a")
+	handler.stoppingTypes = []int{15, 16}
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	require.NotNil(t, view.Suggestions.Stopping, "a measured habit is served")
+	assert.InDelta(t, 300.0, view.Suggestions.Stopping.MedianSecondsPerHour, 0.001)
+	assert.InDelta(t, 200.0, view.Suggestions.Stopping.LowerQuartileSecondsPerHour, 0.001)
+	assert.InDelta(t, 400.0, view.Suggestions.Stopping.UpperQuartileSecondsPerHour, 0.001)
+	assert.Equal(t, 9, view.Suggestions.Stopping.Rides)
+	assert.Equal(t, []int{15, 16}, state.riderSuggestionTypes, "the configured eligible types")
+}
+
+func TestGetRiderProfileOmitsAStoppingHabitTheRidesDoNotCarry(t *testing.T) {
+	handler := riderHandler(t, riderState(), "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	assert.Nil(t, view.Suggestions.Stopping, "too few rides offer nothing rather than zeroes")
+}

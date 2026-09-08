@@ -196,7 +196,9 @@ type RiderProfileState interface {
 	SetRiderProfile(ctx context.Context, subject string, profile rider.Profile) error
 	// RiderSuggestions reports what the given targets' rides since a cutoff
 	// suggest, leaving absent whatever no ride carried a sensor for.
-	RiderSuggestions(ctx context.Context, targetIDs []string, since time.Time) (rider.Suggestions, error)
+	RiderSuggestions(
+		ctx context.Context, targetIDs []string, workoutTypeIDs []int, since time.Time,
+	) (rider.Suggestions, error)
 }
 
 // ActivityState is what a poll recorded about each target's rides. The
