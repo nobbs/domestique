@@ -758,3 +758,12 @@ func TestRunRefusesABadStillSpeed(t *testing.T) {
 	t.Parallel()
 	require.Error(t, run("unused.db", "2", "10,20", 0, 60, true, 0.95, 0.90, true))
 }
+
+func TestReportRecordSkipsAFigureWithNoDenominator(t *testing.T) {
+	t.Parallel()
+	r := newReportWithOrder([]string{"x"})
+	r.record("x", 10, 0)
+	r.record("x", 10, 20)
+
+	assert.Len(t, r.errorsPercent["x"], 1, "a flat route is no denominator")
+}

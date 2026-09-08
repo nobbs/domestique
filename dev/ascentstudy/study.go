@@ -286,6 +286,11 @@ func newReportWithOrder(order []string) *report {
 }
 
 func (r *report) record(name string, candidateAscent, deviceAscent float64) {
+	// A figure of nought is no denominator: a flat route says nothing about
+	// the ride's relative error, and an infinity would poison the quartiles.
+	if deviceAscent <= 0 {
+		return
+	}
 	r.errorsPercent[name] = append(r.errorsPercent[name], (candidateAscent/deviceAscent-1)*100)
 }
 
@@ -416,10 +421,14 @@ func percentileOf(sorted []float64, fraction float64) float64 {
 // and every split's smaller table.
 func (r *report) tableString() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "  %-14s %6s %10s %10s %10s %10s\n", "candidate", "rides", "median", "q1", "q3", "mean|err|")
+	width := 14
+	for _, name := range r.order {
+		width = max(width, len(name))
+	}
+	fmt.Fprintf(&b, "  %-*s %6s %10s %10s %10s %10s\n", width, "candidate", "rides", "median", "q1", "q3", "mean|err|")
 	for _, name := range r.order {
 		s := r.summarize(name)
-		fmt.Fprintf(&b, "  %-14s %6d %9.1f%% %9.1f%% %9.1f%% %9.1f%%\n",
+		fmt.Fprintf(&b, "  %-*s %6d %9.1f%% %9.1f%% %9.1f%% %9.1f%%\n", width,
 			s.name, s.rides, s.medianPercent, s.q1Percent, s.q3Percent, s.meanAbsPercent)
 	}
 
@@ -444,9 +453,13 @@ func (r *report) String() string {
 		fmt.Fprintf(&b, "  %-5s %d\n", label, r.quantumCounts[label])
 	}
 	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "rides: total=%d skipped_zero_device_ascent=%d skipped_short_or_unpositioned_track=%d skipped_route_non_monotonic=%d skipped_route_below_coverage=%d skipped_route_unmatched=%d\n",
-		r.totalRides, r.skippedZeroAscent, r.skippedMinSamples, r.skippedNonMonotonic,
-		r.skippedRouteBelowCoverage, r.skippedRouteUnmatched)
+	fmt.Fprintf(&b, "rides: total=%d skipped_zero_device_ascent=%d skipped_short_or_unpositioned_track=%d skipped_route_non_monotonic=%d",
+		r.totalRides, r.skippedZeroAscent, r.skippedMinSamples, r.skippedNonMonotonic)
+	if r.routesEnabled {
+		fmt.Fprintf(&b, " skipped_route_below_coverage=%d skipped_route_unmatched=%d",
+			r.skippedRouteBelowCoverage, r.skippedRouteUnmatched)
+	}
+	fmt.Fprintln(&b)
 
 	if r.splitsEnabled {
 		fmt.Fprintln(&b)
@@ -574,10 +587,11 @@ func loadRouteProfile(
 // route's ascents, and left as stored for a forward or unknown direction — an
 // out-and-back ascends as much either way.
 func orientedAltitudes(altitudeMetres []float64, direction activity.Direction) []float64 {
-	oriented := append([]float64(nil), altitudeMetres...)
-	if direction == activity.DirectionReverse {
-		slices.Reverse(oriented)
+	if direction != activity.DirectionReverse {
+		return altitudeMetres
 	}
+	oriented := append([]float64(nil), altitudeMetres...)
+	slices.Reverse(oriented)
 
 	return oriented
 }
@@ -687,28 +701,30 @@ func study(
 
 		device := ride.AscentMetres
 
-		matches, cached := routeMatchCache[ride.TargetID]
-		if !cached {
-			matches, err = store.ActivityRouteMatches(ctx, ride.TargetID)
-			if err != nil {
-				return nil, fmt.Errorf("reading a target's route matches: %w", err)
+		if routesEnabled {
+			matches, cached := routeMatchCache[ride.TargetID]
+			if !cached {
+				matches, err = store.ActivityRouteMatches(ctx, ride.TargetID)
+				if err != nil {
+					return nil, fmt.Errorf("reading a target's route matches: %w", err)
+				}
+				routeMatchCache[ride.TargetID] = matches
 			}
-			routeMatchCache[ride.TargetID] = matches
-		}
-		switch match, found := matches[ride.WorkoutID]; {
-		case !found:
-			result.skippedRouteUnmatched++
-		case match.RouteCoverage < routeCoverageMin || match.RideCoverage < rideCoverageMin:
-			result.skippedRouteBelowCoverage++
-		case routesEnabled:
-			profile, profileErr := loadRouteProfile(ctx, store, routeProfileCache, match.Key)
-			if profileErr != nil {
-				return nil, profileErr
-			}
-			if !profile.hasElevation {
-				result.skippedRouteMissingElevation++
-			} else {
-				scoreRouteMatch(result.routeReport, profile, match.Direction, thresholdsMetres, altitudeMetres, device)
+			switch match, found := matches[ride.WorkoutID]; {
+			case !found:
+				result.skippedRouteUnmatched++
+			case match.RouteCoverage < routeCoverageMin || match.RideCoverage < rideCoverageMin:
+				result.skippedRouteBelowCoverage++
+			default:
+				profile, profileErr := loadRouteProfile(ctx, store, routeProfileCache, match.Key)
+				if profileErr != nil {
+					return nil, profileErr
+				}
+				if !profile.hasElevation {
+					result.skippedRouteMissingElevation++
+				} else {
+					scoreRouteMatch(result.routeReport, profile, match.Direction, thresholdsMetres, altitudeMetres, device)
+				}
 			}
 		}
 
