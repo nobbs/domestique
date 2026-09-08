@@ -30,7 +30,9 @@ func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, s
 	for _, row := range rows {
 		// The rows arrive in key order, so the digest is stable for a library
 		// whatever order the rides are matched in.
-		digest.Write(fmt.Appendf(nil, "%s\x00%d\x00%d\x00%s\n",
+		// hash.Hash.Write never returns an error — the interface carries one only
+		// because it embeds io.Writer.
+		_, _ = digest.Write(fmt.Appendf(nil, "%s\x00%d\x00%d\x00%s\n",
 			row.Provider, row.RouteID, row.StageOrder, row.ContentHash))
 		points, decodeErr := decodeCoordinates(row.Coordinates)
 		if decodeErr != nil {

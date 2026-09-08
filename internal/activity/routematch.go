@@ -16,11 +16,12 @@ const (
 	// consumer GPS on a planned line, through tree cover and beside buildings.
 	corridorMetres = 40.0
 
-	// maximumCoverageRatio bounds the route length one metre of riding may be
-	// credited with. A route that doubles back along its own road lies wholly
-	// inside the corridor of a ride that only went out, and would otherwise be
-	// recorded as ridden whole; a recorded track is if anything longer than the
-	// line it followed, so riding that did happen stays well under this.
+	// maximumCoverageRatio is the route length one metre of riding may be
+	// credited with: 15 per cent more than itself, and no further. A route that
+	// doubles back along its own road lies wholly inside the corridor of a ride
+	// that only went out, and would otherwise be recorded as ridden whole; a
+	// recorded track is if anything longer than the line it followed, so riding
+	// that did happen stays well under this.
 	maximumCoverageRatio = 1.15
 
 	// minimumRouteCoverage is the share of a route the ride must have covered,

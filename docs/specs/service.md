@@ -1146,8 +1146,8 @@ merely followed for most of its length, and the margin below the whole is what a
 closure detour and a commute either side of the route cost. Neither share alone
 settles a route that doubles back along its own road, whose return leg lies
 under a ride that only went out, so the route length credited may not exceed the
-ride's own length beside that route by more than a sixth: riding a road once
-covers it once.
+ride's own length beside that route by more than 15 per cent: riding a road
+once covers it once.
 
 Which way round the route was ridden does not decide the match — a loop ridden
 anticlockwise is the same loop — but it is recorded beside it, because a route
