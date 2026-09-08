@@ -9,8 +9,9 @@ import (
 // quartiles over one or two rides describe those rides, not a habit.
 const StoppingMinimumRides = 5
 
-// The floors below which a recorded activity is not riding, matching the ones
-// the ride model calibrates over.
+// The floors below which a recorded activity is not riding: a paused start or a
+// trip to the shops measures the errand, not the habit. This package's own
+// judgement, which the ride model happens to share rather than supply.
 const (
 	stoppingMinimumDistanceMetres = 1000
 	stoppingMinimumMovingSeconds  = 60
