@@ -197,3 +197,28 @@ func TestHeatDriftPairsSensorsBySecondRecorded(t *testing.T) {
 	require.True(t, drift.Known, "HeatDrift()")
 	assert.Equal(t, seconds/2, drift.Samples, "only the seconds a temperature was recorded at")
 }
+
+// A strap that gave out at the halfway mark leaves the second half with no
+// ratio, and half a comparison is not a decoupling.
+func TestDecouplingIsAbsentWhereAHalfCarriesNoHeartRate(t *testing.T) {
+	t.Parallel()
+	const seconds = 90 * 60
+	samples := activity.RideSamples{
+		Power:     series(seconds, flat(200)),
+		HeartRate: series(seconds, flat(140))[:seconds/2],
+	}
+
+	assert.False(t, samples.Decoupling().Known, "no ratio for the second half")
+}
+
+// A strap reporting nought throughout is not a heart rate to divide by.
+func TestDecouplingIsAbsentWhereTheHeartRateReadsNought(t *testing.T) {
+	t.Parallel()
+	const seconds = 90 * 60
+	samples := activity.RideSamples{
+		Power:     series(seconds, flat(200)),
+		HeartRate: series(seconds, flat(0)),
+	}
+
+	assert.False(t, samples.Decoupling().Known, "nought beats is not a ratio")
+}

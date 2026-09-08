@@ -611,3 +611,51 @@ func TestGetActivityTrackReportsAnUnreadableStore(t *testing.T) {
 	code, _ = getTrack(t, handler, "/v1/activities/1/track")
 	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
+
+// The two drift readings are served as the ride carries them: decoupling as a
+// bare percentage, the heat-drift reading as the pair it only means anything as.
+func TestGetActivitiesCarriesTheDriftReadingsOfEachRide(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:       trainingload.Metrics{Inputs: trainingload.Inputs{ThresholdHeartRateBPM: 170}},
+			Decoupling: activities.Decoupling{Percent: 4.25, Known: true},
+			HeatDrift: activities.HeatDrift{
+				HeartRateBPM: 141.5, TemperatureCelsius: 29.5, Samples: 1800, Known: true,
+			},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+
+	derived, plain := list.Activities[0], list.Activities[1]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.DecouplingPercent)
+	assert.InDelta(t, 4.25, *derived.Metrics.DecouplingPercent, 1e-9)
+	require.NotNil(t, derived.Metrics.HeatDrift, "the pair, or nothing")
+	assert.InDelta(t, 141.5, derived.Metrics.HeatDrift.HeartRateBpm, 1e-9)
+	assert.InDelta(t, 29.5, derived.Metrics.HeatDrift.TemperatureCelsius, 1e-9)
+	assert.Equal(t, 1800, derived.Metrics.HeatDrift.Samples)
+	assert.Nil(t, plain.Metrics, "a ride nothing was derived for carries no metrics at all")
+}
+
+// A ride the derivation found neither reading for sends neither, rather than
+// sending a decoupling of nought and a reading at nought degrees.
+func TestGetActivitiesOmitTheDriftReadingsARideDidNotYield(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{TRIMP: 42.5, HasTRIMP: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.NotNil(t, list.Activities[0].Metrics)
+	assert.Nil(t, list.Activities[0].Metrics.DecouplingPercent)
+	assert.Nil(t, list.Activities[0].Metrics.HeatDrift)
+}
