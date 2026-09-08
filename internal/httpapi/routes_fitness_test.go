@@ -201,6 +201,8 @@ func TestGetFitnessReportsAnUnreadableStore(t *testing.T) {
 // The curve is served beside the timeline, shortest duration first, carrying
 // only the durations the window's rides actually reached.
 func TestGetFitnessCarriesTheWindowsPowerCurve(t *testing.T) {
+	from := activityClock().Add(-48 * time.Hour)
+	to := activityClock()
 	state := fitnessState(
 		trainingload.RideLoad{At: activityClock().Add(-24 * time.Hour), TSS: 60, TRIMP: 40},
 	)
@@ -210,7 +212,8 @@ func TestGetFitnessCarriesTheWindowsPowerCurve(t *testing.T) {
 	state.powerCurves = map[string]rider.PowerCurve{"rider-a": curve}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
 
-	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	code, view := getFitness(t, handler, "/v1/activities/fitness?from="+
+		from.Format(time.RFC3339)+"&to="+to.Format(time.RFC3339))
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, view.PowerCurve, 2, "only the durations the rides reached")
 	assert.Equal(t, 5, view.PowerCurve[0].Seconds)
@@ -218,6 +221,9 @@ func TestGetFitnessCarriesTheWindowsPowerCurve(t *testing.T) {
 	assert.Equal(t, 1200, view.PowerCurve[1].Seconds, "the threshold window")
 	assert.InDelta(t, 268.0, view.PowerCurve[1].Watts, 1e-9)
 	assert.Equal(t, []string{"rider-a"}, state.powerCurveFor, "the caller's own target alone")
+	// The same window the timeline is cut to, so the two describe one period.
+	assert.Equal(t, from, state.powerCurveWindow[0])
+	assert.Equal(t, to, state.powerCurveWindow[1])
 }
 
 // A window whose rides carried no meter has no curve at all, rather than a

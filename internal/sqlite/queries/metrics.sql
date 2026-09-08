@@ -125,7 +125,8 @@ JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.worko
 WHERE m.target_slot = ?
 ORDER BY a.started_at_unix;
 
--- Every stored per-ride best in the window, over the rider's own targets. The
+-- Every stored per-ride best in the half-open window, over the rider's own
+-- targets, so the curve covers exactly the rides the timeline beside it does. The
 -- fold to a curve is done in Go: an aggregate here would leave sqlc with no
 -- type to scan into, and a rider's ninety days is a hundred rows of six floats.
 -- The scalar bound before the slice, as ListActivitySensorSamples does.
@@ -134,5 +135,5 @@ SELECT m.best_power_5s, m.best_power_30s, m.best_power_60s,
   m.best_power_300s, m.best_power_1200s, m.best_power_3600s
 FROM activity_metrics AS m
 JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
-WHERE a.started_at_unix >= sqlc.arg(since_unix)
+WHERE a.started_at_unix >= sqlc.arg(from_unix) AND a.started_at_unix < sqlc.arg(to_unix)
   AND m.target_slot IN (sqlc.slice(target_slots));

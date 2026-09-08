@@ -366,17 +366,18 @@ func nullInt(value int64, valid bool) sql.NullInt64 {
 }
 
 // PowerCurve folds the rider's own stored per-ride bests into one curve: the
-// best each duration ever reached over the rides since the cutoff. Read over
-// the caller's own targets, never pooled across riders.
+// best each duration reached over the rides ridden in the half-open window.
+// Read over the caller's own targets, never pooled across riders.
 func (s *Store) PowerCurve(
-	ctx context.Context, targetIDs []string, since time.Time,
+	ctx context.Context, targetIDs []string, from, to time.Time,
 ) (rider.PowerCurve, error) {
 	// sqlc expands the slice into the IN list, and an empty one is not SQL.
 	if len(targetIDs) == 0 {
 		return rider.PowerCurve{}, nil
 	}
 	rows, err := s.queries.ListPowerBests(ctx, sqlcgen.ListPowerBestsParams{
-		SinceUnix:   since.Unix(),
+		FromUnix:    from.Unix(),
+		ToUnix:      to.Unix(),
 		TargetSlots: targetIDs,
 	})
 	if err != nil {

@@ -533,7 +533,7 @@ func TestPowerCurveFoldsTheBestOfEveryStoredRide(t *testing.T) {
 		Load: trainingload.Metrics{Inputs: testInputs()}, PowerBests: curveOf(map[int]float64{0: 820, 4: 268}),
 	}), "StoreActivityMetrics()")
 
-	curve, err := store.PowerCurve(t.Context(), []string{"rider-a"}, time.Time{})
+	curve, err := store.PowerCurve(t.Context(), []string{"rider-a"}, time.Time{}, farFuture())
 	require.NoError(t, err, "PowerCurve()")
 	assert.InDelta(t, 900.0, curve.Watts[0], 0.001, "the better sprint")
 	assert.InDelta(t, 268.0, curve.Watts[rider.ThresholdPowerPoint], 0.001, "the better twenty")
@@ -549,7 +549,7 @@ func TestPowerCurveNeverPoolsAcrossRiders(t *testing.T) {
 		Load: trainingload.Metrics{Inputs: testInputs()}, PowerBests: curveOf(map[int]float64{0: 900}),
 	}), "StoreActivityMetrics()")
 
-	curve, err := store.PowerCurve(t.Context(), []string{"rider-b"}, time.Time{})
+	curve, err := store.PowerCurve(t.Context(), []string{"rider-b"}, time.Time{}, farFuture())
 	require.NoError(t, err, "PowerCurve()")
 	assert.False(t, curve.Any(), "another rider's rides are not this rider's curve")
 }
@@ -558,7 +558,7 @@ func TestPowerCurveIsEmptyForACallerWithNoTarget(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t)
 
-	curve, err := store.PowerCurve(t.Context(), nil, time.Time{})
+	curve, err := store.PowerCurve(t.Context(), nil, time.Time{}, farFuture())
 	require.NoError(t, err, "PowerCurve()")
 	assert.False(t, curve.Any(), "no target, nothing to fold")
 }
@@ -568,7 +568,7 @@ func TestPowerCurveReportsAnUnreadableStore(t *testing.T) {
 	store := metricsStore(t, 1)
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.PowerCurve(t.Context(), []string{"rider-a"}, time.Time{})
+	_, err := store.PowerCurve(t.Context(), []string{"rider-a"}, time.Time{}, farFuture())
 	require.ErrorContains(t, err, "reading the stored power bests")
 }
 
@@ -584,4 +584,22 @@ func TestActivityMetricsRoundTripTheStoredBests(t *testing.T) {
 	assert.InDelta(t, 640.0, read[1].PowerBests.Watts[1], 0.001)
 	assert.InDelta(t, 310.0, read[1].PowerBests.Watts[3], 0.001)
 	assert.False(t, read[1].PowerBests.Held[0], "a duration the ride never reached stays absent")
+}
+
+// farFuture is a window end past every stored ride, for a test about something
+// other than the window.
+func farFuture() time.Time { return activityNow().Add(24 * time.Hour) }
+
+// The curve covers exactly the rides the timeline beside it does, so a window
+// that closes before a ride leaves that ride's bests out of it.
+func TestPowerCurveLeavesOutARideAfterTheWindowCloses(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs()}, PowerBests: curveOf(map[int]float64{0: 900}),
+	}), "StoreActivityMetrics()")
+
+	curve, err := store.PowerCurve(t.Context(), []string{"rider-a"}, time.Time{}, activityNow())
+	require.NoError(t, err, "PowerCurve()")
+	assert.False(t, curve.Any(), "the window is half open, so a ride at its end is outside it")
 }

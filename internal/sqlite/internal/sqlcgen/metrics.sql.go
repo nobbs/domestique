@@ -364,12 +364,13 @@ SELECT m.best_power_5s, m.best_power_30s, m.best_power_60s,
   m.best_power_300s, m.best_power_1200s, m.best_power_3600s
 FROM activity_metrics AS m
 JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
-WHERE a.started_at_unix >= ?1
+WHERE a.started_at_unix >= ?1 AND a.started_at_unix < ?2
   AND m.target_slot IN (/*SLICE:target_slots*/?)
 `
 
 type ListPowerBestsParams struct {
-	SinceUnix   int64
+	FromUnix    int64
+	ToUnix      int64
 	TargetSlots []string
 }
 
@@ -382,14 +383,16 @@ type ListPowerBestsRow struct {
 	BestPower3600s sql.NullFloat64
 }
 
-// Every stored per-ride best in the window, over the rider's own targets. The
+// Every stored per-ride best in the half-open window, over the rider's own
+// targets, so the curve covers exactly the rides the timeline beside it does. The
 // fold to a curve is done in Go: an aggregate here would leave sqlc with no
 // type to scan into, and a rider's ninety days is a hundred rows of six floats.
 // The scalar bound before the slice, as ListActivitySensorSamples does.
 func (q *Queries) ListPowerBests(ctx context.Context, arg ListPowerBestsParams) ([]ListPowerBestsRow, error) {
 	query := listPowerBests
 	var queryParams []interface{}
-	queryParams = append(queryParams, arg.SinceUnix)
+	queryParams = append(queryParams, arg.FromUnix)
+	queryParams = append(queryParams, arg.ToUnix)
 	if len(arg.TargetSlots) > 0 {
 		for _, v := range arg.TargetSlots {
 			queryParams = append(queryParams, v)

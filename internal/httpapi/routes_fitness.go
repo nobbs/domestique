@@ -73,7 +73,9 @@ func (h *Handler) GetFitness(writer http.ResponseWriter, request *http.Request) 
 	// The curve is the rider's own over the window, folded from what each ride
 	// was derived to hold. A read that fails costs the page its curve, not its
 	// timeline: the two answer different questions from different rows.
-	if curve, curveErr := h.state.PowerCurve(request.Context(), []string{targetID}, from); curveErr == nil {
+	if curve, curveErr := h.state.PowerCurve(
+		request.Context(), []string{targetID}, from, to,
+	); curveErr == nil {
 		view.PowerCurve = powerCurvePoints(curve)
 	}
 	h.writeJSON(writer, http.StatusOK, view)

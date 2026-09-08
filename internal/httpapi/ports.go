@@ -200,9 +200,9 @@ type RiderProfileState interface {
 		ctx context.Context, targetIDs []string, workoutTypeIDs []int, since time.Time,
 	) (rider.Suggestions, error)
 	// PowerCurve folds the stored per-ride bests of the given targets since a
-	// cutoff into one curve, leaving absent whatever no ride was long enough
-	// for. A rider's own figure, like the suggestions beside it.
-	PowerCurve(ctx context.Context, targetIDs []string, since time.Time) (rider.PowerCurve, error)
+	// half-open window into one curve, leaving absent whatever no ride was long
+	// enough for. A rider's own figure, like the suggestions beside it.
+	PowerCurve(ctx context.Context, targetIDs []string, from, to time.Time) (rider.PowerCurve, error)
 }
 
 // ActivityState is what a poll recorded about each target's rides. The

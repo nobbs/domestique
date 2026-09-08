@@ -2505,6 +2505,7 @@ type fakeState struct {
 	riderSuggestionTypes []int
 	powerCurves          map[string]rider.PowerCurve
 	powerCurveFor        []string
+	powerCurveWindow     [2]time.Time
 	powerCurveErr        error
 	riderSuggestionFor   []string
 	enrichmentFailed     int
@@ -2644,9 +2645,9 @@ func (s *fakeState) SetRiderProfile(_ context.Context, subject string, profile r
 // PowerCurve is the curve the test seeded for each target, folded the way the
 // store folds it: the best each duration reached across every target asked for.
 func (s *fakeState) PowerCurve(
-	_ context.Context, targetIDs []string, _ time.Time,
+	_ context.Context, targetIDs []string, from, to time.Time,
 ) (rider.PowerCurve, error) {
-	s.powerCurveFor = targetIDs
+	s.powerCurveFor, s.powerCurveWindow = targetIDs, [2]time.Time{from, to}
 	if s.powerCurveErr != nil {
 		return rider.PowerCurve{}, s.powerCurveErr
 	}
