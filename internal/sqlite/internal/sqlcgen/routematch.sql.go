@@ -25,6 +25,18 @@ func (q *Queries) DeleteActivityRouteMatch(ctx context.Context, arg DeleteActivi
 	return err
 }
 
+const deleteActivityRouteMatchesForTarget = `-- name: DeleteActivityRouteMatchesForTarget :execrows
+DELETE FROM activity_route_match WHERE target_slot = ?1
+`
+
+func (q *Queries) DeleteActivityRouteMatchesForTarget(ctx context.Context, targetSlot string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteActivityRouteMatchesForTarget, targetSlot)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const listActivitiesAwaitingRouteMatch = `-- name: ListActivitiesAwaitingRouteMatch :many
 SELECT a.workout_id
 FROM activities AS a

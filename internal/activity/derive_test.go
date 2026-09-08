@@ -28,6 +28,7 @@ type fakeDeriveStore struct {
 	estimateErr      error
 	libraryErr       error
 	owedMatchesErr   error
+	clearMatchesErr  error
 	trackErr         error
 	matchErr         error
 	rides            map[int64]activity.RideSamples
@@ -48,6 +49,15 @@ type fakeDeriveStore struct {
 	owedInputs       trainingload.Inputs
 	cleared          int
 	clearedRows      int
+	clearedMatches   int
+}
+
+func (s *fakeDeriveStore) ClearActivityRouteMatches(context.Context, string) (int, error) {
+	if s.clearMatchesErr != nil {
+		return 0, s.clearMatchesErr
+	}
+
+	return s.clearedMatches, nil
 }
 
 func (s *fakeDeriveStore) LibraryRoutes(context.Context) ([]activity.RouteCandidate, string, error) {
@@ -725,9 +735,37 @@ func TestDeriveMatchesNothingAgainstAnEmptyLibrary(t *testing.T) {
 	deriver, err := activity.NewDeriver(store, nil, nil, nil)
 	require.NoError(t, err, "NewDeriver()")
 
-	deriver.Derive(t.Context(), "rider-a")
+	result := deriver.Derive(t.Context(), "rider-a")
 
 	assert.Empty(t, store.matches)
+	assert.Equal(t, activity.NotReady, result.Outcome, "the rides wait for a route")
+}
+
+// A library emptied after the fact is another matter: its matches name routes
+// that are gone, and leaving them would have a ride point at a route no page
+// can show.
+func TestDeriveClearsTheMatchesAnEmptiedLibraryLeftBehind(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{owner: "rider-a", clearedMatches: 9}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, activity.Polled, result.Outcome)
+	assert.Equal(t, 9, result.Matched, "the matches that named a route now gone")
+}
+
+func TestDeriveReportsAStoreThatCannotClearMatches(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{owner: "rider-a", clearMatchesErr: errors.New("unavailable")}
+	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, activity.Failed, result.Outcome)
+	assert.Equal(t, activity.FailureState, result.Failure)
 }
 
 // The passes are independent: a rider with no profile still rode somewhere.

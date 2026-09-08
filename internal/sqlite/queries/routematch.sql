@@ -56,3 +56,6 @@ ORDER BY a.started_at_unix DESC, m.workout_id DESC;
 SELECT provider, route_id, stage_order, coordinates
 FROM stage_geometry
 ORDER BY provider, route_id, stage_order;
+
+-- name: DeleteActivityRouteMatchesForTarget :execrows
+DELETE FROM activity_route_match WHERE target_slot = sqlc.arg(target_slot);

@@ -110,7 +110,35 @@ type RouteMatch struct {
 	Direction Direction
 }
 
-// MatchRoute attributes one recorded track to at most one library route: the
+// RouteMatcher attributes rides to one fixed library. The index over that
+// library costs some forty times what asking it about one ride does, so a pass
+// over many rides builds it once and asks it repeatedly.
+type RouteMatcher struct {
+	index      *measure.SnapIndex
+	candidates []RouteCandidate
+}
+
+// NewRouteMatcher indexes a library to attribute rides to.
+func NewRouteMatcher(candidates []RouteCandidate) *RouteMatcher {
+	lines := make([][]measure.Coordinate, 0, len(candidates))
+	for _, candidate := range candidates {
+		lines = append(lines, candidate.Geometry)
+	}
+
+	return &RouteMatcher{
+		index:      measure.NewSnapIndex(lines, corridorMetres),
+		candidates: candidates,
+	}
+}
+
+// MatchRoute attributes one track to one library, indexing it for the one
+// question. A caller with more than one ride to ask about builds a RouteMatcher
+// instead and keeps the index.
+func MatchRoute(track []measure.Coordinate, candidates []RouteCandidate) (RouteMatch, bool) {
+	return NewRouteMatcher(candidates).Match(track)
+}
+
+// Match attributes one recorded track to at most one library route: the
 // route the ride was, rather than any route it merely met. The two must account
 // for each other — the ride covering the route, and the route the ride — so a
 // day out that takes in a short stage on its way is not a ride of that stage,
@@ -125,16 +153,13 @@ type RouteMatch struct {
 // A library holding two routes over the same roads will have both clear the
 // gate, and the ride cannot tell them apart; the order below settles which is
 // recorded, and records the same one every time.
-func MatchRoute(track []measure.Coordinate, candidates []RouteCandidate) (RouteMatch, bool) {
+func (m *RouteMatcher) Match(track []measure.Coordinate) (RouteMatch, bool) {
+	candidates := m.candidates
 	if len(track) < 2 || len(candidates) == 0 {
 		return RouteMatch{}, false
 	}
 
-	lines := make([][]measure.Coordinate, 0, len(candidates))
-	for _, candidate := range candidates {
-		lines = append(lines, candidate.Geometry)
-	}
-	onRoute, rideMetres := coveredMetres(track, measure.NewSnapIndex(lines, corridorMetres), len(candidates))
+	onRoute, rideMetres := coveredMetres(track, m.index, len(candidates))
 	if rideMetres == 0 {
 		return RouteMatch{}, false
 	}
@@ -276,6 +301,10 @@ type RouteMatchStore interface {
 	// ActivitiesAwaitingRouteMatch lists the rides owed a match against this
 	// library: those never matched, and those matched against another.
 	ActivitiesAwaitingRouteMatch(ctx context.Context, targetID, libraryHash string) ([]int64, error)
+	// ClearActivityRouteMatches removes every match one target holds and reports
+	// how many went, for a library that no longer holds any route to have
+	// ridden.
+	ClearActivityRouteMatches(ctx context.Context, targetID string) (int, error)
 	ActivityTrack(ctx context.Context, targetID string, id int64) ([]TrackPoint, error)
 	// StoreActivityRouteMatch records which route a ride was ridden on. A nil
 	// match records that it was ridden on none, which is what stops the ride
@@ -296,14 +325,28 @@ func (d *Deriver) matchRoutes(ctx context.Context, targetID string) Result {
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
+	// A library with nothing in it is not a failure: there is no route to have
+	// ridden yet, and rides that have never been matched wait for one rather
+	// than being recorded as having ridden none of nothing. A library emptied
+	// after the fact is a different thing — its matches name routes that are
+	// gone — so those go.
 	if len(candidates) == 0 {
-		return Result{Outcome: NotReady}
+		removed, clearErr := d.store.ClearActivityRouteMatches(ctx, targetID)
+		if clearErr != nil {
+			return Result{Outcome: Failed, Failure: FailureState}
+		}
+		if removed == 0 {
+			return Result{Outcome: NotReady}
+		}
+
+		return Result{Outcome: Polled, Matched: removed}
 	}
 	ids, err := d.store.ActivitiesAwaitingRouteMatch(ctx, targetID, libraryHash)
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
 
+	matcher := NewRouteMatcher(candidates)
 	matched := 0
 	for _, id := range ids {
 		// A read or write that fails part way keeps what it already stored: the
@@ -314,7 +357,7 @@ func (d *Deriver) matchRoutes(ctx context.Context, targetID string) Result {
 			return Result{Outcome: Failed, Failure: FailureState, Matched: matched}
 		}
 		var stored *RouteMatch
-		if match, found := MatchRoute(trackCoordinates(track), candidates); found {
+		if match, found := matcher.Match(trackCoordinates(track)); found {
 			stored = &match
 		}
 		if storeErr := d.store.StoreActivityRouteMatch(ctx, targetID, id, stored, libraryHash, d.now()); storeErr != nil {

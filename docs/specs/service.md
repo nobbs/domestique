@@ -1166,9 +1166,10 @@ identity, so the same library always yields the same answer.
 
 What is stored is that route, the share of each the two had in common and the
 direction, or an explicit no-match, which every stored ride carries one of once
-the library holds a route at all: against an empty library nothing is recorded,
-there being no route to have ridden yet, and the rides wait for one rather than
-being answered about a library nobody could have ridden. A match is measured
+the library holds a route at all: against a library that has never held one
+nothing is recorded, there being no route to have ridden yet, and the rides wait
+for one. A library emptied after the fact is the other case, its matches naming
+routes that are gone, and those are removed. A match is measured
 against where the library's routes run, so a route added, removed or moved has
 every ride matched again by the next derivation, while renaming one leaves every
 match alone; a ride whose samples are replaced loses its match with them.

@@ -66,7 +66,7 @@ func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, s
 }
 
 // ActivitiesAwaitingRouteMatch lists the rides whose track could be attributed
-// to a route and has not been against this library: those never matched, and
+// to a route and has not been matched against this library: those never matched, and
 // those matched against a library that has since changed.
 func (s *Store) ActivitiesAwaitingRouteMatch(ctx context.Context, targetID, libraryHash string) ([]int64, error) {
 	ids, err := s.queries.ListActivitiesAwaitingRouteMatch(ctx, sqlcgen.ListActivitiesAwaitingRouteMatchParams{
@@ -105,6 +105,17 @@ func (s *Store) StoreActivityRouteMatch(
 	}
 
 	return nil
+}
+
+// ClearActivityRouteMatches removes every match one target holds and reports
+// how many went. A library holding no route leaves nothing for a match to name.
+func (s *Store) ClearActivityRouteMatches(ctx context.Context, targetID string) (int, error) {
+	removed, err := s.queries.DeleteActivityRouteMatchesForTarget(ctx, targetID)
+	if err != nil {
+		return 0, fmt.Errorf("clearing activity route matches: %w", err)
+	}
+
+	return int(removed), nil
 }
 
 // ActivityRouteMatches returns the route each of one target's rides was ridden
