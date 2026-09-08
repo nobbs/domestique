@@ -478,8 +478,8 @@ func (r *report) String() string {
 
 	if r.routesEnabled {
 		fmt.Fprintln(&b)
-		fmt.Fprintln(&b, "matched routes vs device (relative error %, positive = route over-reports;")
-		fmt.Fprintln(&b, "  the two 'ride hyst3 vs' rows compare the ride's own figure with the route's, positive = ride above route)")
+		fmt.Fprintln(&b, "matched routes vs device (relative error %, positive = route over-reports)")
+		fmt.Fprintln(&b, "  the two 'ride hyst3 vs' rows compare the ride's own figure with the route's (positive = ride above route)")
 		b.WriteString(r.routeReport.tableString())
 		fmt.Fprintf(&b, "  routes skipped for missing geometry or elevation: %d\n", r.skippedRouteMissingElevation)
 	}

@@ -59,11 +59,13 @@ func run(
 	if speedErr := validateStillSpeed(stillSpeedMS); speedErr != nil {
 		return speedErr
 	}
-	if coverageErr := validateCoverage(routeCoverageMin, "route-coverage"); coverageErr != nil {
-		return coverageErr
-	}
-	if coverageErr := validateCoverage(rideCoverageMin, "ride-coverage"); coverageErr != nil {
-		return coverageErr
+	if routesEnabled {
+		if coverageErr := validateCoverage(routeCoverageMin, "route-coverage"); coverageErr != nil {
+			return coverageErr
+		}
+		if coverageErr := validateCoverage(rideCoverageMin, "ride-coverage"); coverageErr != nil {
+			return coverageErr
+		}
 	}
 
 	ctx := context.Background()
