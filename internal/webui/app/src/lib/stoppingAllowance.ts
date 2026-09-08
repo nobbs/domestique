@@ -39,7 +39,7 @@ export const CORPUS_SPREAD: StoppingSpread = {
 
 const STORAGE_KEY = "domestique.stopping-allowance";
 
-/** Door to door: the same ride, stopping as little and as much as the corpus does. */
+/** Door to door: the same ride, stopping as little and as much as the spread it was drawn from does. */
 export interface ArrivalWindow {
   earliestSeconds: number;
   latestSeconds: number;
