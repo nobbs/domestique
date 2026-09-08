@@ -4,11 +4,13 @@ import (
 	"context"
 	"math"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -174,6 +176,58 @@ func seedWeather(t *testing.T, store *sqlite.Store, targetID string, workoutID i
 		"StoreActivityWeather()")
 }
 
+// routeOrigin is the arbitrary point every route fixture here is laid out
+// around, mirroring internal/activity/routematch_test.go's own pointAt.
+func routeOrigin() measure.Coordinate { return measure.Coordinate{Latitude: 49.9, Longitude: 8.2} }
+
+// routePointAt is the point eastMetres east of routeOrigin, at elevationMetres,
+// so a fixture reads as the profile it is rather than as raw degrees.
+func routePointAt(eastMetres, elevationMetres float64) route.Point {
+	metresPerDegree := measure.EarthRadiusMetres * math.Pi / 180
+	origin := routeOrigin()
+	longitude := origin.Longitude + eastMetres/(metresPerDegree*math.Cos(origin.Latitude*math.Pi/180))
+	elevation := elevationMetres
+
+	return route.Point{Longitude: longitude, Latitude: origin.Latitude, Elevation: &elevation}
+}
+
+// routePointAtNoElevation is routePointAt without an elevation, for a route
+// fixture the study must skip rather than price.
+func routePointAtNoElevation(eastMetres float64) route.Point {
+	origin := routeOrigin()
+	metresPerDegree := measure.EarthRadiusMetres * math.Pi / 180
+
+	return route.Point{
+		Longitude: origin.Longitude + eastMetres/(metresPerDegree*math.Cos(origin.Latitude*math.Pi/180)),
+		Latitude:  origin.Latitude,
+	}
+}
+
+// seedLibraryRoute stores one single-stage library route with the given
+// geometry, as the sync pipeline's own trusted-inventory write would, and
+// returns its key.
+func seedLibraryRoute(t *testing.T, store *sqlite.Store, routeID int64, geometry []route.Point) route.Key {
+	t.Helper()
+	stage, err := route.NewRoute(route.ProviderVeloPlanner, routeID, 1, "revision", "Route", "", geometry, "hash")
+	require.NoError(t, err, "NewRoute()")
+	require.NoError(t, store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}),
+		"StoreTrustedInventory()")
+
+	return stage.Key()
+}
+
+// seedRouteMatch records one ride as ridden on one library route, the way the
+// route matcher's own StoreActivityRouteMatch call would.
+func seedRouteMatch(
+	t *testing.T, store *sqlite.Store, targetID string, workoutID int64, key route.Key,
+	routeCoverage, rideCoverage float64, direction activity.Direction,
+) {
+	t.Helper()
+	match := &activity.RouteMatch{Key: key, RouteCoverage: routeCoverage, RideCoverage: rideCoverage, Direction: direction}
+	require.NoError(t, store.StoreActivityRouteMatch(t.Context(), targetID, workoutID, match, "library-hash", time.Now()),
+		"StoreActivityRouteMatch()")
+}
+
 func openStudyTestStore(t *testing.T) *sqlite.Store {
 	t.Helper()
 	var key [32]byte
@@ -187,8 +241,10 @@ func openStudyTestStore(t *testing.T) *sqlite.Store {
 
 // defaultGrids and defaultThresholds mirror ascentstudy's own flag defaults,
 // so a test run stays comparable to a real one over the same flags.
-func defaultGrids() []float64      { return []float64{10, 20, 50} }
-func defaultThresholds() []float64 { return []float64{1.2, 2, 3} }
+func defaultGrids() []float64       { return []float64{10, 20, 50} }
+func defaultThresholds() []float64  { return []float64{1.2, 2, 3} }
+func defaultRouteCoverage() float64 { return 0.95 }
+func defaultRideCoverage() float64  { return 0.90 }
 
 // The study pools every candidate's relative error against the device ascent,
 // skips a ride with too few samples without touching any candidate's numbers,
@@ -209,7 +265,7 @@ func TestStudyScoresCandidatesAgainstTheDeviceAscentAndSkipsShortRides(t *testin
 	shortDistances := syntheticDistances(len(shortAltitudes))
 	seedTrackRide(t, store, "rider-a", 2, shortDistances, shortAltitudes, 50)
 
-	result, err := study(t.Context(), store, thresholds, grids, 1.0, 60, true)
+	result, err := study(t.Context(), store, thresholds, grids, 1.0, 60, true, defaultRouteCoverage(), defaultRideCoverage(), true)
 	require.NoError(t, err, "study()")
 
 	assert.Equal(t, 2, result.totalRides)
@@ -291,7 +347,7 @@ func TestStudySkipsNonMonotonicOdometerForRouteAndGridCandidatesOnly(t *testing.
 
 	seedTrackRide(t, store, "rider-a", 1, distances, altitudes, 50)
 
-	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false)
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, defaultRouteCoverage(), defaultRideCoverage(), false)
 	require.NoError(t, err, "study()")
 
 	assert.Equal(t, 1, result.skippedNonMonotonic)
@@ -310,7 +366,7 @@ func TestStudySkipsAZeroDeviceAscent(t *testing.T) {
 	altitudes := syntheticAltitudes()
 	seedTrackRide(t, store, "rider-a", 1, syntheticDistances(len(altitudes)), altitudes, 0)
 
-	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false)
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, defaultRouteCoverage(), defaultRideCoverage(), false)
 	require.NoError(t, err, "study()")
 
 	assert.Equal(t, 1, result.skippedZeroAscent)
@@ -369,7 +425,7 @@ func TestStudyGridCandidateResamplesTheOdometerBeforeHysteresis(t *testing.T) {
 	const deviceAscent = 16.0 // = grid10+hyst3's own hand-traced figure
 	seedTrackRide(t, store, "rider-a", 1, distances, altitudes, deviceAscent)
 
-	result, err := study(t.Context(), store, []float64{3}, []float64{10, 20}, 1.0, len(altitudes), false)
+	result, err := study(t.Context(), store, []float64{3}, []float64{10, 20}, 1.0, len(altitudes), false, defaultRouteCoverage(), defaultRideCoverage(), false)
 	require.NoError(t, err, "study()")
 
 	// grid10 keeps every original sample: hysteresis at 3 m closes the climb
@@ -405,7 +461,7 @@ func TestStudySplitsRidesByWeatherAndByMeanMovingSpeed(t *testing.T) {
 	seedTrackRideWithSummary(t, store, "rider-a", 3, distances, altitudes, 80, 1600, 200) // 8 m/s: >= 7
 	// no weather seeded for ride 3
 
-	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, true)
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, true, defaultRouteCoverage(), defaultRideCoverage(), false)
 	require.NoError(t, err, "study()")
 
 	ridesIn := func(splits []namedReport, label string) int {
@@ -435,7 +491,7 @@ func TestStudyOmitsSplitBlockWhenDisabled(t *testing.T) {
 	altitudes := syntheticAltitudes()
 	seedTrackRide(t, store, "rider-a", 1, syntheticDistances(len(altitudes)), altitudes, 80)
 
-	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false)
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, defaultRouteCoverage(), defaultRideCoverage(), false)
 	require.NoError(t, err, "study()")
 
 	assert.NotContains(t, result.String(), "split:")
@@ -471,7 +527,7 @@ func TestStudyDriftIsTheHeightARideThatReturnsToItsStartGainedOrLost(t *testing.
 	seedTrackRideWithSummary(t, store, "rider-a", 2,
 		syntheticDistances(len(openAltitudes)), openAltitudes, 80, 2000, 3600)
 
-	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false)
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, defaultRouteCoverage(), defaultRideCoverage(), false)
 	require.NoError(t, err, "study()")
 
 	require.Len(t, result.driftPerHourMetres, 2)
@@ -479,6 +535,150 @@ func TestStudyDriftIsTheHeightARideThatReturnsToItsStartGainedOrLost(t *testing.
 	assert.InDelta(t, openAltitudes[len(openAltitudes)-1]-openAltitudes[0], result.driftPerHourMetres[1], 1e-6,
 		"the climb's whole rise reads as drift over its one hour")
 }
+
+// routeFixtureGeometry is a 5-point library route with enough elevation
+// change to exercise ascent, hysteresis and the 25 m/100 m route normaliser.
+func routeFixtureGeometry() []route.Point {
+	return []route.Point{
+		routePointAt(0, 100),
+		routePointAt(300, 150),
+		routePointAt(600, 130),
+		routePointAt(900, 170),
+		routePointAt(1200, 120),
+	}
+}
+
+func routeFixtureAltitudes() []float64 { return []float64{100, 150, 130, 170, 120} }
+
+// A ride matched to a library route at full coverage scores every
+// matched-route candidate against the device ascent, independently derived
+// here from the same measure package functions study.go calls.
+func TestStudyMatchedRouteAtFullCoverageScoresRouteColumnsAgainstDevice(t *testing.T) {
+	t.Parallel()
+	store := openStudyTestStore(t)
+	geometry := routeFixtureGeometry()
+	key := seedLibraryRoute(t, store, 7, geometry)
+
+	rideAltitudes := syntheticAltitudes()
+	const deviceAscent = 80.0
+	seedTrackRide(t, store, "rider-a", 1, syntheticDistances(len(rideAltitudes)), rideAltitudes, deviceAscent)
+	seedRouteMatch(t, store, "rider-a", 1, key, 0.97, 0.94, activity.DirectionForward)
+
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, 0.95, 0.90, true)
+	require.NoError(t, err, "study()")
+
+	require.Zero(t, result.skippedRouteUnmatched)
+	require.Zero(t, result.skippedRouteBelowCoverage)
+	require.Zero(t, result.skippedRouteMissingElevation)
+
+	routeAltitudes := routeFixtureAltitudes()
+	relativeErrorPercent := func(candidate, denominator float64) float64 { return (candidate/denominator - 1) * 100 }
+
+	profileSummary := result.routeReport.summarize(routeProfileName())
+	require.Equal(t, 1, profileSummary.rides)
+	assert.InDelta(t, relativeErrorPercent(measure.AscentMetres(routeAltitudes), deviceAscent), profileSummary.medianPercent, 1e-9)
+
+	hystSummary := result.routeReport.summarize(routeProfileHystName(2))
+	require.Equal(t, 1, hystSummary.rides)
+	assert.InDelta(t,
+		relativeErrorPercent(measure.AscentWithHysteresisMetres(routeAltitudes, 2), deviceAscent), hystSummary.medianPercent, 1e-9)
+
+	rideHyst3 := measure.AscentWithHysteresisMetres(rideAltitudes, 3)
+	routeProfileAscent := measure.AscentMetres(routeAltitudes)
+	routeProfileHyst2 := measure.AscentWithHysteresisMetres(routeAltitudes, 2)
+
+	crossHyst2Summary := result.routeReport.summarize(crossRideHyst3VsRouteProfileHyst2)
+	require.Equal(t, 1, crossHyst2Summary.rides)
+	assert.InDelta(t, relativeErrorPercent(rideHyst3, routeProfileHyst2), crossHyst2Summary.medianPercent, 1e-9)
+
+	crossSummary := result.routeReport.summarize(crossRideHyst3VsRouteProfile)
+	require.Equal(t, 1, crossSummary.rides)
+	assert.InDelta(t, relativeErrorPercent(rideHyst3, routeProfileAscent), crossSummary.medianPercent, 1e-9)
+}
+
+// A ride matched the other way round its route scores the route's altitude
+// series reversed: its descents were the ride's ascents.
+func TestStudyMatchedRouteReversedDirectionUsesReversedAltitudeSeries(t *testing.T) {
+	t.Parallel()
+	store := openStudyTestStore(t)
+	geometry := routeFixtureGeometry()
+	key := seedLibraryRoute(t, store, 7, geometry)
+
+	rideAltitudes := syntheticAltitudes()
+	const deviceAscent = 80.0
+	seedTrackRide(t, store, "rider-a", 1, syntheticDistances(len(rideAltitudes)), rideAltitudes, deviceAscent)
+	seedRouteMatch(t, store, "rider-a", 1, key, 0.97, 0.94, activity.DirectionReverse)
+
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, 0.95, 0.90, true)
+	require.NoError(t, err, "study()")
+
+	reversedAltitudes := append([]float64(nil), routeFixtureAltitudes()...)
+	slices.Reverse(reversedAltitudes)
+	// The fixture's own forward and reversed ascent differ, so a match against
+	// the forward figure here would catch a reversal that never happened.
+	require.NotEqual(t, measure.AscentMetres(routeFixtureAltitudes()), measure.AscentMetres(reversedAltitudes))
+
+	summary := result.routeReport.summarize(routeProfileName())
+	require.Equal(t, 1, summary.rides)
+	assert.InDelta(t, (measure.AscentMetres(reversedAltitudes)/deviceAscent-1)*100, summary.medianPercent, 1e-9)
+}
+
+// A match whose coverage falls below either configured minimum is counted as
+// below coverage and contributes to no matched-route candidate.
+func TestStudyRouteMatchBelowCoverageIsCountedAndExcluded(t *testing.T) {
+	t.Parallel()
+	store := openStudyTestStore(t)
+	key := seedLibraryRoute(t, store, 7, routeFixtureGeometry())
+
+	altitudes := syntheticAltitudes()
+	seedTrackRide(t, store, "rider-a", 1, syntheticDistances(len(altitudes)), altitudes, 80)
+	seedRouteMatch(t, store, "rider-a", 1, key, 0.80, 0.94, activity.DirectionForward) // below the 0.95 route-coverage floor
+
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, 0.95, 0.90, true)
+	require.NoError(t, err, "study()")
+
+	assert.Equal(t, 1, result.skippedRouteBelowCoverage)
+	assert.Zero(t, result.skippedRouteUnmatched)
+	assert.Zero(t, result.routeReport.summarize(routeProfileName()).rides)
+}
+
+// A ride with no stored route match at all is counted as unmatched and
+// contributes to no matched-route candidate.
+func TestStudyUnmatchedRideIsCountedAndExcluded(t *testing.T) {
+	t.Parallel()
+	store := openStudyTestStore(t)
+	altitudes := syntheticAltitudes()
+	seedTrackRide(t, store, "rider-a", 1, syntheticDistances(len(altitudes)), altitudes, 80)
+
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, 0.95, 0.90, true)
+	require.NoError(t, err, "study()")
+
+	assert.Equal(t, 1, result.skippedRouteUnmatched)
+	assert.Zero(t, result.skippedRouteBelowCoverage)
+	assert.Zero(t, result.routeReport.summarize(routeProfileName()).rides)
+}
+
+// A route whose geometry is missing an elevation at any point is counted and
+// excluded rather than priced as a confident zero.
+func TestStudyRouteMissingElevationIsCountedAndExcluded(t *testing.T) {
+	t.Parallel()
+	store := openStudyTestStore(t)
+	geometry := []route.Point{routePointAtNoElevation(0), routePointAtNoElevation(300)}
+	key := seedLibraryRoute(t, store, 7, geometry)
+
+	altitudes := syntheticAltitudes()
+	seedTrackRide(t, store, "rider-a", 1, syntheticDistances(len(altitudes)), altitudes, 80)
+	seedRouteMatch(t, store, "rider-a", 1, key, 0.97, 0.94, activity.DirectionForward)
+
+	result, err := study(t.Context(), store, []float64{2}, []float64{20}, 1.0, 60, false, 0.95, 0.90, true)
+	require.NoError(t, err, "study()")
+
+	assert.Equal(t, 1, result.skippedRouteMissingElevation)
+	assert.Zero(t, result.skippedRouteUnmatched)
+	assert.Zero(t, result.skippedRouteBelowCoverage)
+	assert.Zero(t, result.routeReport.summarize(routeProfileName()).rides)
+}
+
 func buildGoldenReport(
 	t *testing.T, thresholds, grids, altitudes, routeAltitudes []float64, deviceAscent float64,
 ) string {
@@ -490,6 +690,12 @@ func buildGoldenReport(
 	expected.totalRides = 2
 	expected.skippedMinSamples = 1
 	expected.quantumCounts["1"] = 1
+	// Neither ride has a stored route match: the only ride that reaches the
+	// route-match check (the other is skipped for too few samples first) is
+	// counted as unmatched.
+	expected.skippedRouteUnmatched = 1
+	expected.routesEnabled = true
+	expected.routeReport = newReportWithOrder(routeCandidateOrder(thresholds))
 
 	expected.record(candidateRaw, measure.AscentMetres(altitudes), deviceAscent)
 	expected.record(candidateRoute, measure.AscentMetres(routeAltitudes), deviceAscent)
@@ -540,15 +746,24 @@ func assertNoIdentifyingDigits(t *testing.T, printed string) {
 
 func TestRunRefusesAMinSamplesThatIsNotPositive(t *testing.T) {
 	t.Parallel()
-	require.Error(t, run("unused.db", "2", "10,20", 1.0, 0, true))
+	require.Error(t, run("unused.db", "2", "10,20", 1.0, 0, true, 0.95, 0.90, true))
 }
 
 func TestRunRefusesABadGridList(t *testing.T) {
 	t.Parallel()
-	require.Error(t, run("unused.db", "2", "bogus", 1.0, 60, true))
+	require.Error(t, run("unused.db", "2", "bogus", 1.0, 60, true, 0.95, 0.90, true))
 }
 
 func TestRunRefusesABadStillSpeed(t *testing.T) {
 	t.Parallel()
-	require.Error(t, run("unused.db", "2", "10,20", 0, 60, true))
+	require.Error(t, run("unused.db", "2", "10,20", 0, 60, true, 0.95, 0.90, true))
+}
+
+func TestReportRecordSkipsAFigureWithNoDenominator(t *testing.T) {
+	t.Parallel()
+	r := newReportWithOrder([]string{"x"})
+	r.record("x", 10, 0)
+	r.record("x", 10, 20)
+
+	assert.Len(t, r.errorsPercent["x"], 1, "a flat route is no denominator")
 }
