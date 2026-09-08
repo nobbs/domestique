@@ -70,6 +70,10 @@ const (
 	// one: minutely_30 and everything below minutely_15 are accepted without
 	// complaint and answered with no block at all.
 	quarterHourStep = 15 * time.Minute
+
+	// defaultForecastTTL: the provider refreshes a forecast about hourly, so a
+	// quarter-hour-old answer shared across riders is never visibly stale.
+	defaultForecastTTL = 15 * time.Minute
 )
 
 // Options configures an Open-Meteo client. There is no API key: the free
@@ -90,6 +94,10 @@ type Options struct {
 	// an operator, exactly as BaseURL is.
 	ArchiveBaseURL string
 	Timeout        time.Duration
+	// ForecastTTL bounds how long a Forecast answer is shared across every
+	// caller asking the same upstream request (same coordinates, window,
+	// parameters and zone). Zero is 15 minutes; negative is an error.
+	ForecastTTL time.Duration
 }
 
 // Coordinate is one point Forecast asks about.
@@ -125,6 +133,7 @@ type Client struct {
 	zone       func() string
 	now        func() time.Time
 	fallback   *time.Location
+	forecasts  *forecastCache
 }
 
 // New creates an Open-Meteo client without contacting the upstream service.
@@ -177,6 +186,14 @@ func New(options *Options) (*Client, error) {
 		now = time.Now
 	}
 
+	forecastTTL := options.ForecastTTL
+	if forecastTTL == 0 {
+		forecastTTL = defaultForecastTTL
+	}
+	if forecastTTL < 0 {
+		return nil, errors.New("openmeteo: forecast ttl must be positive")
+	}
+
 	return &Client{
 		client: &http.Client{
 			Timeout:   timeout,
@@ -187,6 +204,7 @@ func New(options *Options) (*Client, error) {
 		zone:       zone,
 		now:        now,
 		fallback:   fallback,
+		forecasts:  newForecastCache(now, forecastTTL),
 	}, nil
 }
 
@@ -236,7 +254,11 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 		"end_hour":   {ceilStep(to.In(location), time.Hour).Format(hourFormat)},
 	}.Encode()
 
-	return c.fetch(ctx, &endpoint, location, len(at), true, time.Hour)
+	// The composed URL already encodes coordinates, window, parameters and
+	// zone, so it is the exact upstream request and the natural cache key.
+	return c.forecasts.get(ctx, endpoint.String(), func(ctx context.Context) ([]Series, error) {
+		return c.fetch(ctx, &endpoint, location, len(at), true, time.Hour)
+	})
 }
 
 // History returns one series per coordinate for a window that has

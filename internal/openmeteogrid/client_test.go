@@ -1,9 +1,13 @@
 package openmeteogrid
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -117,26 +121,6 @@ func TestObjectForwardsConditionalHeadersAndNothingElse(t *testing.T) {
 	assert.Empty(t, gotHeader.Get("Authorization"))
 }
 
-func TestLatestForwardsConditionalHeadersAndNothingElse(t *testing.T) {
-	var gotHeader http.Header
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		gotHeader = request.Header.Clone()
-		writer.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	response, err := newTestClient(t, server).Latest(t.Context(), http.Header{
-		"If-None-Match":     {`"abc123"`},
-		"If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"},
-		"Cookie":            {"session=secret"},
-	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, response.Body.Close()) }()
-	assert.Equal(t, `"abc123"`, gotHeader.Get("If-None-Match"))
-	assert.Equal(t, "Wed, 09 Sep 2026 00:00:00 GMT", gotHeader.Get("If-Modified-Since"))
-	assert.Empty(t, gotHeader.Get("Cookie"))
-}
-
 func TestRequestsAskTheUpstreamNotToCompressTheBody(t *testing.T) {
 	var gotAcceptEncoding string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -211,4 +195,307 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 	require.NoError(t, err)
 
 	return client
+}
+
+func TestLatestServesASecondCallWithinTheTTLFromCache(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.Header().Set("ETag", `"abc"`)
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{"reference_time":"2026-09-05T12:00:00Z"}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	client, err := New(&Options{
+		BaseURL: server.URL, Timeout: time.Second, Transport: server.Client().Transport,
+		Now: func() time.Time { return now }, LatestTTL: time.Minute,
+	})
+	require.NoError(t, err)
+
+	response, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, response.Body.Close())
+
+	response, err = client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, response.Body.Close())
+
+	assert.EqualValues(t, 1, requests.Load(), "the second call must be served from cache")
+}
+
+func TestLatestRefetchesAfterTheTTLExpires(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	now := time.Date(2026, 9, 5, 12, 0, 0, 0, time.UTC)
+	client, err := New(&Options{
+		BaseURL: server.URL, Timeout: time.Second, Transport: server.Client().Transport,
+		Now: func() time.Time { return now }, LatestTTL: time.Minute,
+	})
+	require.NoError(t, err)
+
+	response, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, response.Body.Close())
+
+	now = now.Add(time.Minute + time.Second)
+	response, err = client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, response.Body.Close())
+
+	assert.EqualValues(t, 2, requests.Load(), "a call after the TTL must reach the upstream again")
+}
+
+func TestLatestCollapsesConcurrentMissesIntoOneUpstreamRequest(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	const callers = 10
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(callers)
+	for range callers {
+		go func() {
+			defer wg.Done()
+			<-start
+			response, callErr := client.Latest(t.Context(), nil)
+			if assert.NoError(t, callErr) {
+				assert.NoError(t, response.Body.Close())
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	assert.EqualValues(t, 1, requests.Load(), "ten concurrent misses must collapse into one request")
+}
+
+func TestLatestOutlivesALeaderThatGivesUp(t *testing.T) {
+	var requests atomic.Int32
+	arrived := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		arrived <- struct{}{}
+		<-release
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	ctx, cancel := context.WithCancel(t.Context())
+	leaderErr := make(chan error, 1)
+	go func() {
+		//nolint:bodyclose // The leader is cancelled before any response exists to close.
+		_, err := client.Latest(ctx, nil)
+		leaderErr <- err
+	}()
+	<-arrived
+	cancel()
+	require.ErrorIs(t, <-leaderErr, context.Canceled)
+
+	close(release)
+	follower, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, follower.Body.Close())
+	assert.Equal(t, http.StatusOK, follower.StatusCode)
+	assert.EqualValues(t, 1, requests.Load(), "the follower must be served by the leader's fetch")
+}
+
+func TestLatestDoesNotCacheA5xx(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	response, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, response.Body.Close())
+	assert.Equal(t, http.StatusInternalServerError, response.StatusCode)
+
+	response, err = client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, response.Body.Close())
+
+	assert.EqualValues(t, 2, requests.Load(), "an errored answer must not be remembered")
+}
+
+func TestLatestAnswersAMatchingIfNoneMatchWithA304FromCache(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.Header().Set("ETag", `"abc123"`)
+		writer.Header().Set("Last-Modified", "Wed, 09 Sep 2026 00:00:00 GMT")
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{"reference_time":"2026-09-05T12:00:00Z"}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	first, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, first.Body.Close())
+
+	matching, err := client.Latest(t.Context(), http.Header{"If-None-Match": {`"abc123"`}})
+	require.NoError(t, err)
+	body, readErr := io.ReadAll(matching.Body)
+	require.NoError(t, readErr)
+	assert.NoError(t, matching.Body.Close())
+	assert.Equal(t, http.StatusNotModified, matching.StatusCode)
+	assert.Empty(t, body)
+	assert.Equal(t, `"abc123"`, matching.Header.Get("ETag"))
+
+	assert.EqualValues(t, 1, requests.Load(), "a 304 answer must still come from the cached manifest")
+}
+
+func TestLatestAnswersIfModifiedSinceFromTheCachedLastModified(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Last-Modified", "Wed, 09 Sep 2026 00:00:00 GMT")
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{"reference_time":"2026-09-05T12:00:00Z"}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	first, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, first.Body.Close())
+
+	current, err := client.Latest(t.Context(), http.Header{"If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"}})
+	require.NoError(t, err)
+	assert.NoError(t, current.Body.Close())
+	assert.Equal(t, http.StatusNotModified, current.StatusCode)
+	assert.Equal(t, "Wed, 09 Sep 2026 00:00:00 GMT", current.Header.Get("Last-Modified"))
+
+	older, err := client.Latest(t.Context(), http.Header{"If-Modified-Since": {"Tue, 08 Sep 2026 00:00:00 GMT"}})
+	require.NoError(t, err)
+	assert.NoError(t, older.Body.Close())
+	assert.Equal(t, http.StatusOK, older.StatusCode)
+
+	// A sent If-None-Match decides on its own, even when the date would match.
+	mismatch, err := client.Latest(t.Context(), http.Header{
+		"If-None-Match": {`"other"`}, "If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"},
+	})
+	require.NoError(t, err)
+	assert.NoError(t, mismatch.Body.Close())
+	assert.Equal(t, http.StatusOK, mismatch.StatusCode)
+}
+
+func TestLatestAnswersAMismatchingIfNoneMatchWithTheCachedBody(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("ETag", `"abc123"`)
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{"reference_time":"2026-09-05T12:00:00Z"}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	first, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, first.Body.Close())
+
+	mismatch, err := client.Latest(t.Context(), http.Header{"If-None-Match": {`"other"`}})
+	require.NoError(t, err)
+	body, readErr := io.ReadAll(mismatch.Body)
+	require.NoError(t, readErr)
+	assert.NoError(t, mismatch.Body.Close())
+	assert.Equal(t, http.StatusOK, mismatch.StatusCode)
+	assert.JSONEq(t, `{"reference_time":"2026-09-05T12:00:00Z"}`, string(body))
+}
+
+func TestLatestCachedResponseBodyIsReadableAndClosableAcrossTwoSeparateHits(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{"reference_time":"2026-09-05T12:00:00Z"}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	first, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	firstBody, err := io.ReadAll(first.Body)
+	require.NoError(t, err)
+	assert.NoError(t, first.Body.Close())
+
+	second, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	secondBody, err := io.ReadAll(second.Body)
+	require.NoError(t, err)
+	assert.NoError(t, second.Body.Close())
+
+	assert.Equal(t, string(firstBody), string(secondBody))
+	assert.JSONEq(t, `{"reference_time":"2026-09-05T12:00:00Z"}`, string(secondBody))
+}
+
+func TestLatestFetchesUnconditionallyOnAMissAndKeepsNoUpstreamLength(t *testing.T) {
+	var gotIfNoneMatch string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotIfNoneMatch = request.Header.Get("If-None-Match")
+		writer.Header().Set("ETag", `"abc"`)
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{"reference_time":"2026-09-05T12:00:00Z"}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	response, err := newTestClient(t, server).Latest(t.Context(), http.Header{"If-None-Match": {`"abc"`}})
+	require.NoError(t, err)
+	body, readErr := io.ReadAll(response.Body)
+	require.NoError(t, readErr)
+	assert.NoError(t, response.Body.Close())
+
+	// A follower sharing this miss may carry no validator, so the miss itself
+	// never asks upstream for a 304; the caller's own is answered from the copy.
+	assert.Empty(t, gotIfNoneMatch)
+	assert.Equal(t, http.StatusNotModified, response.StatusCode)
+	assert.Empty(t, body)
+}
+
+func TestLatestRefusesAManifestLargerThanItBuffers(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write(bytes.Repeat([]byte("x"), maxManifestBodyBytes+1))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	//nolint:bodyclose // An oversized manifest is refused; no response is returned to close.
+	response, err := newTestClient(t, server).Latest(t.Context(), nil)
+	require.Error(t, err)
+	assert.Nil(t, response)
+}
+
+func TestNewRejectsANegativeLatestTTL(t *testing.T) {
+	_, err := New(&Options{LatestTTL: -time.Second})
+	require.ErrorContains(t, err, "latest ttl")
 }

@@ -268,7 +268,9 @@ service's own `/v1/weather-grid/*` routes rather than fetched by the browser
 from Open-Meteo's bucket. The browser's own reader still decodes those bytes
 with a WebAssembly module, so the policy grants `'wasm-unsafe-eval'` — fixed,
 not following an operator's configuration, because it names no origin at all,
-only what the page's own bundle may run.
+only what the page's own bundle may run. The manifest those routes relay may
+be answered from a copy fetched within the last minute, shared across every
+rider.
 
 The reader's pick is remembered in the browser's own storage, under one key
 holding the chosen basemap's name and nothing else. It is never sent anywhere:
@@ -708,7 +710,10 @@ The read-only JSON surface is small:
   outbound call; a provider failure is `502`, carrying no upstream response
   text. A forecast may be reused by the caller's own browser for fifteen
   minutes (`Cache-Control: private, max-age=900`); a refusal or failure
-  carries `no-store` like every other answer.
+  carries `no-store` like every other answer. The service itself may answer
+  from a forecast it fetched for the exact same request within the last
+  fifteen minutes, shared across every rider, so an answer can be up to that
+  old.
 
 The endpoints below that change state — the task runs, the schedule switches,
 the reprocess request, and the settings write — additionally require the
