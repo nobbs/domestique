@@ -253,7 +253,8 @@ func (s *Store) ActivitySeries(ctx context.Context, targetID string, id int64) (
 		return nil, fmt.Errorf("reading an activity series: %w", err)
 	}
 	samples := make([]activity.SampleRow, 0, len(rows))
-	for _, row := range rows {
+	for i := range rows {
+		row := &rows[i]
 		samples = append(samples, activity.SampleRow{
 			Time:               time.Unix(row.RecordedAtUnix, 0).UTC(),
 			DistanceMetres:     reading(row.DistanceMetres),
@@ -262,6 +263,11 @@ func (s *Store) ActivitySeries(ctx context.Context, targetID string, id int64) (
 			CadenceRPM:         reading(row.CadenceRpm),
 			PowerWatts:         reading(row.PowerWatts),
 			TemperatureCelsius: reading(row.TemperatureCelsius),
+			SpeedMS:            reading(row.SpeedMs),
+			GradePercent:       reading(row.GradePercent),
+			CaloriesKcal:       reading(row.CaloriesKcal),
+			AscentMetres:       reading(row.AscentMetres),
+			DescentMetres:      reading(row.DescentMetres),
 		})
 	}
 
@@ -274,16 +280,18 @@ func reading(column sql.NullFloat64) activity.Reading {
 }
 
 // ActivitiesAwaitingRecords are one target's stored activities whose FIT
-// samples are still absent, newest first, at most limit of them.
+// samples are still absent, newest first, followed by the activities whose
+// samples predate recordsVersion, also newest first, at most limit of them.
 func (s *Store) ActivitiesAwaitingRecords(
-	ctx context.Context, targetID string, limit int,
+	ctx context.Context, targetID string, recordsVersion, limit int,
 ) ([]activity.PendingActivity, error) {
 	if targetID == "" || limit <= 0 {
 		return nil, errors.New("a target and a positive limit are required")
 	}
 	rows, err := s.queries.ListActivitiesAwaitingRecords(ctx, sqlcgen.ListActivitiesAwaitingRecordsParams{
-		TargetSlot: targetID,
-		RowLimit:   int64(limit),
+		TargetSlot:     targetID,
+		RecordsVersion: int64(recordsVersion),
+		RowLimit:       int64(limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading activities awaiting records: %w", err)
@@ -305,12 +313,16 @@ func (s *Store) ActivitiesAwaitingRecords(
 const insertActivityRecordSQL = `INSERT INTO activity_records (
   target_slot, workout_id, record_index, recorded_at_unix,
   distance_metres, latitude, longitude, altitude_metres,
-  cadence_rpm, heart_rate_bpm, power_watts, temperature_celsius
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  cadence_rpm, heart_rate_bpm, power_watts, temperature_celsius,
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-// StoreActivityRecords replaces one activity's samples and marks it stored, in
-// one transaction so a partial rewrite is never left behind as complete.
-func (s *Store) StoreActivityRecords(ctx context.Context, targetID string, id int64, fit activity.FIT) error {
+// StoreActivityRecords replaces one activity's samples and marks it stored at
+// recordsVersion, in one transaction so a partial rewrite is never left behind
+// as complete.
+func (s *Store) StoreActivityRecords(
+	ctx context.Context, targetID string, id int64, fit activity.FIT, recordsVersion int,
+) error {
 	if targetID == "" || id <= 0 {
 		return errors.New("a target and an activity id are required")
 	}
@@ -337,7 +349,8 @@ func (s *Store) StoreActivityRecords(ctx context.Context, targetID string, id in
 		return fmt.Errorf("preparing the activity sample insert: %w", prepareErr)
 	}
 	defer closeStatement(insert)
-	for index, record := range fit.Records {
+	for index := range fit.Records {
+		record := &fit.Records[index]
 		if _, execErr := insert.ExecContext(ctx,
 			targetID, id, int64(index), record.Time.Unix(),
 			nullFloat(record.DistanceMetres, record.HasDistance),
@@ -348,12 +361,18 @@ func (s *Store) StoreActivityRecords(ctx context.Context, targetID string, id in
 			nullFloat(record.HeartRateBPM, record.HasHeartRate),
 			nullFloat(record.PowerWatts, record.HasPower),
 			nullFloat(record.TemperatureCelsius, record.HasTemperatureCelsius),
+			nullFloat(record.SpeedMS, record.HasSpeed),
+			nullFloat(record.GradePercent, record.HasGrade),
+			nullFloat(record.CaloriesKcal, record.HasCalories),
+			nullFloat(record.AscentMetres, record.HasAscent),
+			nullFloat(record.DescentMetres, record.HasDescent),
 		); execErr != nil {
 			return fmt.Errorf("recording an activity sample: %w", execErr)
 		}
 	}
 	if markErr := queries.MarkActivityRecordsStored(ctx, sqlcgen.MarkActivityRecordsStoredParams{
 		TargetSlot: targetID, WorkoutID: id, FitChecksumFailed: boolInteger(fit.ChecksumFailed),
+		RecordsVersion: int64(recordsVersion),
 	}); markErr != nil {
 		return fmt.Errorf("marking an activity's records stored: %w", markErr)
 	}

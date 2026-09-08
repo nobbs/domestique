@@ -287,6 +287,16 @@ that sees it rather than behind whatever history is still backfilling, and a run
 holds the exclusive `activities` resource for that budget plus the one fill that
 was under way when it ran out.
 
+After the rides still awaiting their first samples, a poll re-reads the stored
+rides whose samples predate the current record schema, also newest first,
+under the same budget and ceiling: a schema re-read never crowds out a ride
+that has never been read at all, and proceeds at the pace the first download
+took. The re-read replaces a ride's samples whole, exactly as a first download
+does, and leaves its derived rows for `activity:derive` to settle again. A ride
+whose file has since gone missing or been withdrawn is marked unreadable
+exactly as a first download would be, keeping whatever samples it already has
+rather than losing them to a re-read that found nothing.
+
 `activity:derive` works out what each stored ride says about how hard it was,
 from the samples already stored and the rider's own profile
 ([the profile](service.md)). Every training figure it produces reads no position

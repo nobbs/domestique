@@ -102,9 +102,9 @@ func (p *Poller) recordActivity(
 }
 
 // fillOne fills the samples of the notified activity alone, and only while they
-// are still absent: one already filled is nothing to do rather than a re-read.
+// are absent or predate RecordsVersion: one already current is nothing to do.
 func (p *Poller) fillOne(ctx context.Context, targetID string, id int64) (stored, unreadable int, failure Failure) {
-	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, MaxRecordsPerPoll)
+	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, RecordsVersion, MaxRecordsPerPoll)
 	if err != nil {
 		return 0, 0, FailureState
 	}

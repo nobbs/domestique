@@ -80,7 +80,7 @@ func TestActivitiesAwaitingWeatherSkipsWhatWasAlreadyAsked(t *testing.T) {
 	for _, id := range []int64{1, 2, 3} {
 		require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", id, activity.FIT{
 			Records: []activity.Record{{Time: activityNow()}},
-		}), "StoreActivityRecords()")
+		}, activity.RecordsVersion), "StoreActivityRecords()")
 	}
 	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 1,
 		[]activity.WeatherStep{weatherStep(activityNow(), 18, true)}, activityNow()),
@@ -114,7 +114,7 @@ func TestActivitiesAwaitingWeatherHonoursTheLimit(t *testing.T) {
 	for _, id := range []int64{1, 2, 3} {
 		require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", id, activity.FIT{
 			Records: []activity.Record{{Time: activityNow()}},
-		}), "StoreActivityRecords()")
+		}, activity.RecordsVersion), "StoreActivityRecords()")
 	}
 
 	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", 2)

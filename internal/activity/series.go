@@ -6,8 +6,9 @@ import "time"
 // spelled as the served surface names it.
 type SeriesName string
 
-// The series a ride's samples can answer. Speed is the one derived rather than
-// recorded: no sample carries it, and it comes from distance against time.
+// The series a ride's samples can answer. Speed is served as derived rather
+// than recorded, from distance against time, even on a device that stores its
+// own speed reading: this series is one figure, not two disagreeing ones.
 const (
 	SeriesHeartRate   SeriesName = "heartRate"
 	SeriesCadence     SeriesName = "cadence"
@@ -35,6 +36,14 @@ type SampleRow struct {
 	CadenceRPM         Reading
 	PowerWatts         Reading
 	TemperatureCelsius Reading
+	// SpeedMS, GradePercent, CaloriesKcal, AscentMetres and DescentMetres are
+	// the device's own readings, kept alongside without feeding any served
+	// figure: the estimate and the derived speed series stay their own numbers.
+	SpeedMS       Reading
+	GradePercent  Reading
+	CaloriesKcal  Reading
+	AscentMetres  Reading
+	DescentMetres Reading
 }
 
 // Series reads one named series off a ride's samples, one reading per row in

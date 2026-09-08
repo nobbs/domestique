@@ -309,7 +309,7 @@ func seedWindRide(
 		activity.Listing{ID: workoutID, TypeID: 15, LocationID: 1, Starts: windTestTime(0)},
 		activity.Summary{AscentMetres: 1, Raw: []byte(raw)}, windTestTime(0)), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), targetID, workoutID,
-		activity.FIT{Records: seedWindRideRecords(n, speedMS, heartRate, power)}), "StoreActivityRecords()")
+		activity.FIT{Records: seedWindRideRecords(n, speedMS, heartRate, power)}, activity.RecordsVersion), "StoreActivityRecords()")
 }
 
 func seedWindWeather(t *testing.T, store *sqlite.Store, targetID string, workoutID int64, windSpeedKMH, windDirectionDeg float64, seconds int) {

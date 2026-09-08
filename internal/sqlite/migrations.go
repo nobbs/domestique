@@ -19,7 +19,7 @@ const (
 	// baselineSchemaVersion never advances; currentSchemaVersion advances with
 	// each additive migration after the legacy cutover.
 	baselineSchemaVersion = 27
-	currentSchemaVersion  = 49
+	currentSchemaVersion  = 50
 	migrationsTable       = "domestique_migrations"
 )
 

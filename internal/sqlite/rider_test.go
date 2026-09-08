@@ -92,9 +92,9 @@ func TestRiderSuggestionsReadTheBestEffortAcrossTheCallersRides(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 2, 100), "StoreActivity()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 200)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 200), activity.RecordsVersion),
 		"StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 2, steady(1500, 170, 240)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 2, steady(1500, 170, 240), activity.RecordsVersion),
 		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
@@ -110,7 +110,7 @@ func TestRiderSuggestionsOmitASensorTheRidesDoNotCarry(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 0)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 0), activity.RecordsVersion),
 		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
@@ -125,7 +125,7 @@ func TestRiderSuggestionsIgnoreARideShorterThanTheWindow(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(300, 150, 200)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(300, 150, 200), activity.RecordsVersion),
 		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
@@ -141,7 +141,7 @@ func TestRiderSuggestionsReadOnlyRidesSinceTheCutoff(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 190, 400)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 190, 400), activity.RecordsVersion),
 		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(time.Hour))
@@ -158,9 +158,9 @@ func TestRiderSuggestionsTakeTheBestAcrossEveryTargetAsked(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 	require.NoError(t, storeTestActivity(t, store, "rider-b", 1, 100), "StoreActivity()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 240)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 240), activity.RecordsVersion),
 		"StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 1, steady(1500, 170, 200)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 1, steady(1500, 170, 200), activity.RecordsVersion),
 		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(
@@ -187,7 +187,7 @@ func TestRiderSuggestionsReadOnlyTheTargetsAsked(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-b", 1, 100), "StoreActivity()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 1, steady(1500, 190, 400)),
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 1, steady(1500, 190, 400), activity.RecordsVersion),
 		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))

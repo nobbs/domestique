@@ -11,6 +11,8 @@ import (
 	"github.com/muktihari/fit/profile/basetype"
 	"github.com/muktihari/fit/profile/filedef"
 	"github.com/muktihari/fit/profile/mesgdef"
+	"github.com/muktihari/fit/profile/typedef"
+	"github.com/muktihari/fit/proto"
 )
 
 // FIT is the activity data Domestique retains from one FIT file.
@@ -37,6 +39,11 @@ type Record struct {
 	AltitudeMetres        float64
 	TemperatureCelsius    float64
 	DistanceMetres        float64
+	SpeedMS               float64
+	GradePercent          float64
+	CaloriesKcal          float64
+	AscentMetres          float64
+	DescentMetres         float64
 	HasCadence            bool
 	HasTemperatureCelsius bool
 	HasDistance           bool
@@ -44,6 +51,11 @@ type Record struct {
 	HasAltitude           bool
 	HasHeartRate          bool
 	HasPosition           bool
+	HasSpeed              bool
+	HasGrade              bool
+	HasCalories           bool
+	HasAscent             bool
+	HasDescent            bool
 }
 
 // DecodeFIT decodes an activity FIT file. A bad checksum is retained as a
@@ -83,9 +95,10 @@ func decode(raw []byte, opts ...decoder.Option) (FIT, error) {
 }
 
 func fromActivity(activity *filedef.Activity) FIT {
+	wahooFields := wahooDeveloperFieldNames(activity)
 	records := make([]Record, len(activity.Records))
 	for i, record := range activity.Records {
-		records[i] = fromRecord(record)
+		records[i] = fromRecord(record, wahooFields)
 	}
 
 	decoded := FIT{Records: records, RecordingDevice: activity.FileId.Manufacturer.String()}
@@ -110,7 +123,7 @@ func fromActivity(activity *filedef.Activity) FIT {
 	return decoded
 }
 
-func fromRecord(record *mesgdef.Record) Record {
+func fromRecord(record *mesgdef.Record, wahooFields map[devFieldKey]string) Record {
 	decoded := Record{Time: record.Timestamp}
 	if record.PositionLat != basetype.Sint32Invalid && record.PositionLong != basetype.Sint32Invalid {
 		decoded.HasPosition = true
@@ -141,6 +154,19 @@ func fromRecord(record *mesgdef.Record) Record {
 		decoded.HasHeartRate = true
 		decoded.HeartRateBPM = float64(record.HeartRate)
 	}
+	if speed, ok := speedMS(record); ok {
+		decoded.HasSpeed = true
+		decoded.SpeedMS = speed
+	}
+	if record.Grade != basetype.Sint16Invalid {
+		decoded.HasGrade = true
+		decoded.GradePercent = record.GradeScaled()
+	}
+	if record.Calories != basetype.Uint16Invalid {
+		decoded.HasCalories = true
+		decoded.CaloriesKcal = float64(record.Calories)
+	}
+	applyWahooDeveloperFields(record, wahooFields, &decoded)
 
 	return decoded
 }
@@ -154,4 +180,98 @@ func altitude(record *mesgdef.Record) (float64, bool) {
 	}
 
 	return 0, false
+}
+
+// speedMS falls back to the legacy Speed field when a device left the
+// enhanced one, which every modern export fills, unset.
+func speedMS(record *mesgdef.Record) (float64, bool) {
+	if record.EnhancedSpeed != basetype.Uint32Invalid {
+		return record.EnhancedSpeedScaled(), true
+	}
+	if record.Speed != basetype.Uint16Invalid {
+		return record.SpeedScaled(), true
+	}
+
+	return 0, false
+}
+
+// devFieldKey identifies one developer field definition the way a FIT file
+// itself scopes it: by which developer declared it and which number they gave
+// it, neither of which is stable across files.
+type devFieldKey struct {
+	dataIndex byte
+	fieldNum  byte
+}
+
+// wahooDeveloperFieldNames maps each developer field Wahoo's own
+// developer_data_id declares to the name its field_description gives it, so
+// records can be matched by name rather than by a number Wahoo could reassign.
+func wahooDeveloperFieldNames(activity *filedef.Activity) map[devFieldKey]string {
+	wahooIndexes := make(map[byte]bool, len(activity.DeveloperDataIds))
+	for _, id := range activity.DeveloperDataIds {
+		if id.ManufacturerId == typedef.ManufacturerWahooFitness {
+			wahooIndexes[id.DeveloperDataIndex] = true
+		}
+	}
+
+	names := make(map[devFieldKey]string, len(activity.FieldDescriptions))
+	for _, description := range activity.FieldDescriptions {
+		if !wahooIndexes[description.DeveloperDataIndex] || len(description.FieldName) == 0 {
+			continue
+		}
+		key := devFieldKey{description.DeveloperDataIndex, description.FieldDefinitionNumber}
+		names[key] = description.FieldName[0]
+	}
+
+	return names
+}
+
+// applyWahooDeveloperFields fills the cumulative ascent and descent Wahoo
+// devices report as developer fields rather than through the FIT profile.
+func applyWahooDeveloperFields(record *mesgdef.Record, wahooFields map[devFieldKey]string, decoded *Record) {
+	for _, field := range record.DeveloperFields {
+		name, known := wahooFields[devFieldKey{field.DeveloperDataIndex, field.Num}]
+		if !known {
+			continue
+		}
+		value, ok := developerFieldFloat64(field.Value)
+		if !ok {
+			continue
+		}
+		switch name {
+		case "ascent":
+			decoded.HasAscent, decoded.AscentMetres = true, value
+		case "descent":
+			decoded.HasDescent, decoded.DescentMetres = true, value
+		}
+	}
+}
+
+// developerFieldFloat64 reads a developer field's value as float64 regardless
+// of the integer or float base type the file declared it with.
+func developerFieldFloat64(value proto.Value) (float64, bool) {
+	switch v := value.Any().(type) {
+	case int8:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case float32:
+		return float64(v), true
+	case float64:
+		return v, true
+	default:
+		return 0, false
+	}
 }

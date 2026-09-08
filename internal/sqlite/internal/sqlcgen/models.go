@@ -22,6 +22,7 @@ type Activity struct {
 	UpdatedAtUnix         int64
 	RecordsState          string
 	FitChecksumFailed     int64
+	RecordsVersion        int64
 }
 
 type ActivityClimbAttempt struct {
@@ -97,6 +98,11 @@ type ActivityRecord struct {
 	PowerWatts          sql.NullFloat64
 	TemperatureCelsius  sql.NullFloat64
 	EstimatedPowerWatts sql.NullFloat64
+	SpeedMs             sql.NullFloat64
+	GradePercent        sql.NullFloat64
+	CaloriesKcal        sql.NullFloat64
+	AscentMetres        sql.NullFloat64
+	DescentMetres       sql.NullFloat64
 }
 
 type ActivityRouteMatch struct {
