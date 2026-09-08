@@ -75,11 +75,13 @@ func TestSnapIndexAlignmentSeparatesAParallelLineFromASquareOne(t *testing.T) {
 	assert.InDelta(t, 0, alignments[1], 0.01)
 }
 
-// A direction with no length cannot disagree with anything, and a caller that
-// weights alignment must not be charged a penalty for the ends of a track.
-func TestSnapIndexAlignmentIsWholeForADirectionOfNoLength(t *testing.T) {
-	assert.InDelta(t, 1, SnapHit{runEast: 1, runNorth: 0}.Alignment(0, 0), 0.0001)
-	assert.InDelta(t, 1, SnapHit{}.Alignment(1, 0), 0.0001)
+// Neither a direction of nowhere nor a segment between two identical
+// coordinates can disagree with anything, and a caller that weights alignment
+// must not be charged a penalty for either.
+func TestSnapIndexAlignmentIsWholeWhenEitherSideHasNoLength(t *testing.T) {
+	assert.InDelta(t, 1, SnapHit{runEast: 1, runNorth: 0}.Alignment(0, 0), 0.0001,
+		"a direction of no length")
+	assert.InDelta(t, 1, SnapHit{}.Alignment(1, 0), 0.0001, "a segment of no length")
 }
 
 func TestSnapIndexOverNoLinesFindsNothingRatherThanPanicking(t *testing.T) {

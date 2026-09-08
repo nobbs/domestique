@@ -147,8 +147,9 @@ func (i *SnapIndex) Offset(from, to Coordinate) (east, north float64) {
 
 // Alignment scores how nearly the hit's segment runs along the given direction,
 // 1 for parallel and 0 for square to it. Undirected: a line is equally aligned
-// whichever end it was entered from. A zero-length direction scores 1, having
-// nothing to disagree with.
+// whichever end it was entered from. Either side having no length scores 1 —
+// a direction of nowhere, or a segment between two identical coordinates —
+// there being nothing for them to disagree about.
 func (h SnapHit) Alignment(east, north float64) float64 {
 	runLength := math.Hypot(h.runEast, h.runNorth)
 	directionLength := math.Hypot(east, north)
