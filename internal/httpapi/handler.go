@@ -52,6 +52,11 @@ const (
 	// on the session that asked for it, and a stored copy served on to a caller
 	// without one would hand out an answer the gate exists to withhold.
 	cacheImmutableGated = "private, max-age=31536000, immutable"
+	// cacheWeatherGridObject: private for the same identity-gate reason as
+	// above, a week rather than a year.
+	cacheWeatherGridObject = "private, max-age=604800, immutable"
+	// cacheWeatherGridLatest matches the browser reader's own 60s manifest TTL.
+	cacheWeatherGridLatest = "private, max-age=60"
 )
 
 // The shapes a build stamp may have before this package will serve it: only a

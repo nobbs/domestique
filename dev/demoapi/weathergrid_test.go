@@ -16,12 +16,12 @@ func TestSyntheticWeatherGridAnswersUnavailableAsBadGateway(t *testing.T) {
 
 	grid := syntheticWeatherGrid{}
 
-	latest, err := grid.Latest(t.Context())
+	latest, err := grid.Latest(t.Context(), nil)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, latest.Body.Close()) }()
 	assert.Equal(t, http.StatusBadGateway, latest.StatusCode)
 
-	object, err := grid.Object(t.Context(), time.Now(), time.Now(), http.MethodGet, "")
+	object, err := grid.Object(t.Context(), time.Now(), time.Now(), http.MethodGet, nil)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, object.Body.Close()) }()
 	assert.Equal(t, http.StatusBadGateway, object.StatusCode)
