@@ -345,7 +345,9 @@ func activityPollTask(
 		Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 			if invocation.Argument != "" {
-				return activityResult(poller.Poll(ctx, invocation.Argument))
+				polled := poller.Poll(ctx, invocation.Argument)
+
+				return activityResult(&polled)
 			}
 
 			return pollEveryTarget(ctx, poller, targetIDs())
@@ -377,7 +379,9 @@ func activityDeriveTask(
 		Backoff: task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
 			if invocation.Argument != "" {
-				return activityResult(deriver.Derive(ctx, invocation.Argument))
+				derived := deriver.Derive(ctx, invocation.Argument)
+
+				return activityResult(&derived)
 			}
 
 			return deriveEveryTarget(ctx, deriver, targetIDs())
@@ -401,7 +405,9 @@ func activityRecordTask(poller activityPoller) task.Definition {
 				return task.Result{Outcome: task.Failed, Detail: detailActivityArgument}
 			}
 
-			return activityResult(poller.Record(ctx, targetID, workoutID))
+			recorded := poller.Record(ctx, targetID, workoutID)
+
+			return activityResult(&recorded)
 		}),
 	}
 }
@@ -427,7 +433,8 @@ func parseActivityRecordArgument(argument string) (targetID string, workoutID in
 func pollEveryTarget(ctx context.Context, poller activityPoller, targetIDs []string) task.Result {
 	aggregate := task.Result{Outcome: task.NotReady}
 	for _, targetID := range targetIDs {
-		result := activityResult(poller.Poll(ctx, targetID))
+		polled := poller.Poll(ctx, targetID)
+		result := activityResult(&polled)
 		// At equal severity only a result with a detail displaces the aggregate,
 		// so one slot's skip is not hidden behind another's clean success.
 		if severity(result.Outcome) > severity(aggregate.Outcome) ||
@@ -444,7 +451,8 @@ func pollEveryTarget(ctx context.Context, poller activityPoller, targetIDs []str
 func deriveEveryTarget(ctx context.Context, deriver activityDeriver, targetIDs []string) task.Result {
 	aggregate := task.Result{Outcome: task.NotReady}
 	for _, targetID := range targetIDs {
-		result := activityResult(deriver.Derive(ctx, targetID))
+		derived := deriver.Derive(ctx, targetID)
+		result := activityResult(&derived)
 		if severity(result.Outcome) > severity(aggregate.Outcome) {
 			aggregate = result
 		}
@@ -469,7 +477,7 @@ func severity(outcome task.Outcome) int {
 }
 
 // activityResult carries a poll's outcome into the task layer's vocabulary.
-func activityResult(result activity.Result) task.Result {
+func activityResult(result *activity.Result) task.Result {
 	switch result.Outcome {
 	case activity.Polled:
 		if result.Skipped > 0 {

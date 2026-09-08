@@ -56,7 +56,7 @@ func (d *Deriver) readWeather(ctx context.Context, targetID string) Result {
 	for _, ride := range pending {
 		outcome := d.readOneRidesWeather(ctx, targetID, ride)
 		if outcome.Outcome == Failed {
-			outcome.Derived = read
+			outcome.WeatherRead = read
 
 			return outcome
 		}
@@ -66,7 +66,7 @@ func (d *Deriver) readWeather(ctx context.Context, targetID string) Result {
 		return Result{Outcome: Unchanged}
 	}
 
-	return Result{Outcome: Polled, Derived: read}
+	return Result{Outcome: Polled, WeatherRead: read}
 }
 
 // readOneRidesWeather asks about one ride and records the answer.

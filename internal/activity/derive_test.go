@@ -786,3 +786,25 @@ func TestDeriveCountsBothWhatItDerivedAndWhatItMatched(t *testing.T) {
 	assert.Equal(t, 1, result.Derived)
 	assert.Equal(t, 1, result.Matched)
 }
+
+// The passes share a result but not a counter: whichever of them is reported,
+// each says what it settled. Before this, a run reported for its weather told
+// the caller nothing had been derived or matched.
+func TestDeriveKeepsEachPassesCountWhicheverIsReported(t *testing.T) {
+	t.Parallel()
+	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: squareTrack()})
+	store.profile = fullProfile()
+	store.owed = []int64{7}
+	store.rides = map[int64]activity.RideSamples{7: {HeartRate: heartRateRide(600, 150)}}
+	weather := &fakeWeatherStore{
+		pending: []activity.PendingWeather{{ID: 8, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
+	}
+	deriver, err := activity.NewDeriver(store, weather, &fakeWeatherSource{}, weatherNow)
+	require.NoError(t, err, "NewDeriver()")
+
+	result := deriver.Derive(t.Context(), "rider-a")
+
+	assert.Equal(t, 1, result.Derived, "the metrics pass")
+	assert.Equal(t, 1, result.Matched, "the route match pass")
+	assert.Equal(t, 1, result.WeatherRead, "the weather pass")
+}

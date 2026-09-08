@@ -253,6 +253,9 @@ type Result struct {
 	// Matched counts the rides a derivation attributed to a library route or
 	// recorded as being on none of them.
 	Matched int
+	// WeatherRead counts the rides a derivation asked a provider about,
+	// including those a failed pass managed before it stopped.
+	WeatherRead int
 }
 
 // Poller reads one target's recorded activities into the store. It adds and

@@ -122,10 +122,11 @@ func (d *Deriver) Derive(ctx context.Context, targetID string) Result {
 			worst = pass
 		}
 	}
-	// However the run is reported, what each pass settled is counted, so a
-	// derivation that matched rides does not read as having done nothing
-	// because the profile it works from has not changed.
+	// Each pass keeps its own count whichever of them is reported, so a run that
+	// matched rides does not read as having done nothing because the profile it
+	// works from has not changed.
 	worst.Derived = metrics.Derived
+	worst.WeatherRead = weather.WeatherRead
 	worst.Matched = matches.Matched
 
 	return worst
