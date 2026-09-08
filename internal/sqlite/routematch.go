@@ -65,9 +65,9 @@ func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, s
 	return candidates, hex.EncodeToString(digest.Sum(nil)), nil
 }
 
-// ActivitiesAwaitingRouteMatch lists the rides whose track could be attributed
-// to a route and has not been matched against this library: those never matched, and
-// those matched against a library that has since changed.
+// ActivitiesAwaitingRouteMatch lists the rides owed a match against this
+// library: those never matched, and those matched against a library that has
+// since changed. A ride whose samples are not stored has no track to match.
 func (s *Store) ActivitiesAwaitingRouteMatch(ctx context.Context, targetID, libraryHash string) ([]int64, error) {
 	ids, err := s.queries.ListActivitiesAwaitingRouteMatch(ctx, sqlcgen.ListActivitiesAwaitingRouteMatchParams{
 		TargetSlot: targetID, LibraryHash: libraryHash,
