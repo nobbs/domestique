@@ -100,6 +100,16 @@ func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
 	if averages.HasPower {
 		view.AveragePowerWatts = &averages.PowerWatts
 	}
+	if stored.Decoupling.Known {
+		view.DecouplingPercent = &stored.Decoupling.Percent
+	}
+	if stored.HeatDrift.Known {
+		view.HeatDrift = &openapi.HeatDrift{
+			HeartRateBpm:       stored.HeatDrift.HeartRateBPM,
+			TemperatureCelsius: stored.HeatDrift.TemperatureCelsius,
+			Samples:            stored.HeatDrift.Samples,
+		}
+	}
 
 	return view
 }

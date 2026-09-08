@@ -494,6 +494,59 @@ Coggan, in Allen and Coggan 2010.
 **Status.** Validated: these are the figures a rider's own training-load
 pages show today.
 
+## Decoupling and heat drift
+
+Two readings taken over a ride's own sensors, both from **measured power
+only**. An estimated power carries a per-ride bias (see §Estimated power), and
+either figure fed by one would compare a ride against a differently biased
+version of itself.
+
+**Aerobic decoupling.** The ride is split in half by elapsed time. Each half's
+power-to-heart-rate ratio is its mean measured power over its mean heart rate,
+and decoupling is how much of the first half's ratio the second half lost, as a
+percentage:
+
+~~~text
+decoupling = (ratio_first - ratio_second) / ratio_first * 100
+~~~
+
+Positive is the usual direction: the same watts cost more beats later on. A
+tenth more beats for the same power is a decoupling of 9.09%, not of 10%.
+
+**Constants.** A ride must run at least **one hour** for the two halves to be
+worth comparing. Absent below that, and absent for a ride carrying no measured
+power or no heart rate.
+
+**What it does not say.** The figure describes a *steady* aerobic ride. Over
+intervals the two halves are different efforts and the number is not drift.
+This service does not test a ride for steadiness, so the reader is told the
+scale rather than sold the interpretation.
+
+**Heat drift.** Per ride, the mean heart rate over the samples whose measured
+power falls inside the rider's endurance band, paired with the mean temperature
+over those same samples. The pair is a point; the drift is the points over a
+season, which is why both halves are stored and neither is a trend on its own.
+
+**Constants.** The band is **55% to 75% of the rider's threshold power**, which
+is where heart rate answers temperature rather than the effort. At least **300
+samples** must fall inside it, so a ride that merely passed through the band is
+not a reading of it. Absent without a threshold power to place the band, without
+measured power, without a thermometer, or below that sample count.
+
+Heart rate and temperature are paired by the second each was recorded at, which
+is the resolution the records are stored at and so the only basis on which two
+sensors are known to describe the same moment.
+
+**Source.** Decoupling is Friel's Pw:Hr [17]. Heat drift has no single source:
+it is the plain pairing this service stores, and the interpretation is left to
+the reader.
+
+**Applied by.** `internal/activity/drift.go` (`Decoupling`, `HeatDrift`).
+
+**Status.** Unvalidated against an independent implementation. The formulas are
+covered by unit tests over synthetic streams with a known drift; no ride's
+figure has been checked against another platform's.
+
 ## References
 
 1. Sinnott, R. W. (1984) "Virtues of the Haversine", Sky and Telescope
@@ -540,3 +593,6 @@ pages show today.
     of Sports Engineering and Technology, doi:10.1177/1754337120918975.
 16. US patent 5,058,427 (1991) "Accumulating altimeter with ascent/descent
     accumulation thresholds", <https://patents.justia.com/patent/5058427>.
+17. Friel, J. "Aerobic Endurance Testing", josephfriel.com,
+    <https://josephfriel.com/aerobic-endurance-testing/>; the Pw:Hr
+    decoupling ratio as used by TrainingPeaks.

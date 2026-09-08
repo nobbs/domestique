@@ -15,9 +15,12 @@ import (
 // TrackRecords names which record each of them came from, so an estimate can be
 // written back beside the sample it describes.
 type RideSamples struct {
-	HeartRate    []trainingload.Sample
-	Cadence      []trainingload.Sample
-	Power        []trainingload.Sample
+	HeartRate []trainingload.Sample
+	Cadence   []trainingload.Sample
+	Power     []trainingload.Sample
+	// Temperature is every sample that carried one, positioned or not, so a
+	// reading can be paired with the heart rate recorded at the same second.
+	Temperature  []trainingload.Sample
 	Track        []measure.Sample
 	TrackRecords []int64
 }
@@ -201,7 +204,12 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		load := trainingload.Derive(heartRate, samples.Power, inputs)
 		records, estimates, average, quality := samples.EstimatePower(inputs.TotalMassKG)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = average.Watts, average.Known
-		metrics := RideMetrics{Load: load, Averages: samples.Averages()}
+		metrics := RideMetrics{
+			Load:       load,
+			Averages:   samples.Averages(),
+			Decoupling: samples.Decoupling(),
+			HeatDrift:  samples.HeatDrift(inputs.FunctionalThresholdPowerWatts),
+		}
 		if load.HasEstimatedPower {
 			metrics.EstimateQuality, metrics.HasEstimateQuality = quality, true
 		}

@@ -61,6 +61,10 @@ type ActivityMetric struct {
 	EstimateAutocorrelation     sql.NullFloat64
 	EstimateDeltaWattsPerSecond sql.NullFloat64
 	EstimateClipBiasWatts       sql.NullFloat64
+	DecouplingPercent           sql.NullFloat64
+	HeatDriftHeartRateBpm       sql.NullFloat64
+	HeatDriftTemperatureCelsius sql.NullFloat64
+	HeatDriftSamples            sql.NullInt64
 }
 
 type ActivityRecord struct {

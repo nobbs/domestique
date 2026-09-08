@@ -5,9 +5,10 @@ INSERT INTO activity_metrics (
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -27,6 +28,10 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
   average_power_watts = excluded.average_power_watts,
+  decoupling_percent = excluded.decoupling_percent,
+  heat_drift_heart_rate_bpm = excluded.heat_drift_heart_rate_bpm,
+  heat_drift_temperature_celsius = excluded.heat_drift_temperature_celsius,
+  heat_drift_samples = excluded.heat_drift_samples,
   input_max_heart_rate = excluded.input_max_heart_rate,
   input_resting_heart_rate = excluded.input_resting_heart_rate,
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
@@ -50,7 +55,8 @@ SELECT workout_id,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   input_max_heart_rate, input_threshold_heart_rate,
-  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples
 FROM activity_metrics
 WHERE target_slot = ?
 ORDER BY workout_id;

@@ -134,7 +134,8 @@ SELECT workout_id,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   input_max_heart_rate, input_threshold_heart_rate,
-  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples
 FROM activity_metrics
 WHERE target_slot = ?
 ORDER BY workout_id
@@ -162,6 +163,10 @@ type ListActivityMetricsRow struct {
 	MaxHeartRateBpm             sql.NullFloat64
 	AverageCadenceRpm           sql.NullFloat64
 	AveragePowerWatts           sql.NullFloat64
+	DecouplingPercent           sql.NullFloat64
+	HeatDriftHeartRateBpm       sql.NullFloat64
+	HeatDriftTemperatureCelsius sql.NullFloat64
+	HeatDriftSamples            sql.NullInt64
 }
 
 func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([]ListActivityMetricsRow, error) {
@@ -195,6 +200,10 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 			&i.MaxHeartRateBpm,
 			&i.AverageCadenceRpm,
 			&i.AveragePowerWatts,
+			&i.DecouplingPercent,
+			&i.HeatDriftHeartRateBpm,
+			&i.HeatDriftTemperatureCelsius,
+			&i.HeatDriftSamples,
 		); err != nil {
 			return nil, err
 		}
@@ -343,9 +352,10 @@ INSERT INTO activity_metrics (
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -365,6 +375,10 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
   average_power_watts = excluded.average_power_watts,
+  decoupling_percent = excluded.decoupling_percent,
+  heat_drift_heart_rate_bpm = excluded.heat_drift_heart_rate_bpm,
+  heat_drift_temperature_celsius = excluded.heat_drift_temperature_celsius,
+  heat_drift_samples = excluded.heat_drift_samples,
   input_max_heart_rate = excluded.input_max_heart_rate,
   input_resting_heart_rate = excluded.input_resting_heart_rate,
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
@@ -395,6 +409,10 @@ type UpsertActivityMetricsParams struct {
 	MaxHeartRateBpm             sql.NullFloat64
 	AverageCadenceRpm           sql.NullFloat64
 	AveragePowerWatts           sql.NullFloat64
+	DecouplingPercent           sql.NullFloat64
+	HeatDriftHeartRateBpm       sql.NullFloat64
+	HeatDriftTemperatureCelsius sql.NullFloat64
+	HeatDriftSamples            sql.NullInt64
 	InputMaxHeartRate           float64
 	InputRestingHeartRate       float64
 	InputThresholdHeartRate     float64
@@ -426,6 +444,10 @@ func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityM
 		arg.MaxHeartRateBpm,
 		arg.AverageCadenceRpm,
 		arg.AveragePowerWatts,
+		arg.DecouplingPercent,
+		arg.HeatDriftHeartRateBpm,
+		arg.HeatDriftTemperatureCelsius,
+		arg.HeatDriftSamples,
 		arg.InputMaxHeartRate,
 		arg.InputRestingHeartRate,
 		arg.InputThresholdHeartRate,

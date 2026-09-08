@@ -23,7 +23,8 @@ import (
 // change every figure a row before it holds.
 // 5: the estimate's grade-and-speed window is now derived per ride from the
 // altimeter's own resolution instead of fixed at 30 m.
-const derivationVersion = 5
+// 6: rows before it cannot hold a ride's decoupling or its heat-drift reading.
+const derivationVersion = 6
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
@@ -75,6 +76,10 @@ func (s *Store) ActivityRideSamples(
 		}
 		if row.PowerWatts.Valid {
 			samples.Power = append(samples.Power, trainingload.Sample{At: at, Value: row.PowerWatts.Float64})
+		}
+		if row.TemperatureCelsius.Valid {
+			samples.Temperature = append(samples.Temperature,
+				trainingload.Sample{At: at, Value: row.TemperatureCelsius.Float64})
 		}
 		// A whole positioned sample — latitude and longitude both, as the track
 		// endpoint defines one — plus an altitude and a distance. Without all of
@@ -186,11 +191,16 @@ func (s *Store) StoreActivityMetrics(
 		EstimateAutocorrelation: nullFloat(stored.EstimateQuality.Autocorrelation1, hasQuality),
 		EstimateDeltaWattsPerSecond: nullFloat(
 			stored.EstimateQuality.MeanAbsDeltaWattsPerSecond, hasQuality),
-		EstimateClipBiasWatts:   nullFloat(stored.EstimateQuality.ClipBiasWatts, hasQuality),
-		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
-		MaxHeartRateBpm:         nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
-		AverageCadenceRpm:       nullFloat(averages.CadenceRPM, averages.HasCadence),
-		AveragePowerWatts:       nullFloat(averages.PowerWatts, averages.HasPower),
+		EstimateClipBiasWatts: nullFloat(stored.EstimateQuality.ClipBiasWatts, hasQuality),
+		AverageHeartRateBpm:   nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
+		MaxHeartRateBpm:       nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
+		AverageCadenceRpm:     nullFloat(averages.CadenceRPM, averages.HasCadence),
+		AveragePowerWatts:     nullFloat(averages.PowerWatts, averages.HasPower),
+		DecouplingPercent:     nullFloat(stored.Decoupling.Percent, stored.Decoupling.Known),
+		HeatDriftHeartRateBpm: nullFloat(stored.HeatDrift.HeartRateBPM, stored.HeatDrift.Known),
+		HeatDriftTemperatureCelsius: nullFloat(
+			stored.HeatDrift.TemperatureCelsius, stored.HeatDrift.Known),
+		HeatDriftSamples:        nullInt(int64(stored.HeatDrift.Samples), stored.HeatDrift.Known),
 		InputMaxHeartRate:       metrics.Inputs.MaxHeartRateBPM,
 		InputRestingHeartRate:   metrics.Inputs.RestingHeartRateBPM,
 		InputThresholdHeartRate: metrics.Inputs.ThresholdHeartRateBPM,
@@ -260,6 +270,18 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 			// a quality without an estimate is not one either.
 			HasEstimateQuality: row.EstimatedPowerWatts.Valid && row.EstimateAutocorrelation.Valid &&
 				row.EstimateDeltaWattsPerSecond.Valid && row.EstimateClipBiasWatts.Valid,
+			Decoupling: activity.Decoupling{
+				Percent: row.DecouplingPercent.Float64,
+				Known:   row.DecouplingPercent.Valid,
+			},
+			HeatDrift: activity.HeatDrift{
+				HeartRateBPM:       row.HeatDriftHeartRateBpm.Float64,
+				TemperatureCelsius: row.HeatDriftTemperatureCelsius.Float64,
+				Samples:            int(row.HeatDriftSamples.Int64),
+				// A reading is the pair: a heart rate with no temperature beside
+				// it is not a point on a season's drift.
+				Known: row.HeatDriftHeartRateBpm.Valid && row.HeatDriftTemperatureCelsius.Valid,
+			},
 		}
 	}
 
@@ -320,4 +342,10 @@ func (s *Store) ActivityRideLoads(ctx context.Context, targetID string) ([]train
 	}
 
 	return loads, nil
+}
+
+// nullInt renders a count the way a nullable column wants it: absent rather
+// than nought where the figure was never worked out.
+func nullInt(value int64, valid bool) sql.NullInt64 {
+	return sql.NullInt64{Int64: value, Valid: valid}
 }

@@ -450,3 +450,41 @@ func TestActivityMetricsReadsNoQualityForAnEstimateDerivedBeforeItExisted(t *tes
 	assert.True(t, read[1].Load.HasEstimatedPower)
 	assert.False(t, read[1].HasEstimateQuality, "an estimate alone is not a quality")
 }
+
+func TestActivityMetricsRoundTripTheDriftReadings(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load:       trainingload.Metrics{Inputs: testInputs()},
+		Decoupling: activity.Decoupling{Percent: 4.25, Known: true},
+		HeatDrift: activity.HeatDrift{
+			HeartRateBPM: 141.5, TemperatureCelsius: 29.5, Samples: 1800, Known: true,
+		},
+	}), "StoreActivityMetrics()")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	require.True(t, read[1].Decoupling.Known)
+	assert.InDelta(t, 4.25, read[1].Decoupling.Percent, 0.001)
+	require.True(t, read[1].HeatDrift.Known)
+	assert.InDelta(t, 141.5, read[1].HeatDrift.HeartRateBPM, 0.001)
+	assert.InDelta(t, 29.5, read[1].HeatDrift.TemperatureCelsius, 0.001)
+	assert.Equal(t, 1800, read[1].HeatDrift.Samples)
+}
+
+// A ride the derivation found neither reading for stores neither, and reads
+// back as absent rather than as nought.
+func TestActivityMetricsReadNoDriftForARideThatYieldedNone(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
+		Load: trainingload.Metrics{Inputs: testInputs(), TRIMP: 42, HasTRIMP: true},
+	}), "StoreActivityMetrics()")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	assert.False(t, read[1].Decoupling.Known, "no decoupling is not a decoupling of nought")
+	assert.False(t, read[1].HeatDrift.Known, "and no reading is not a reading at nought degrees")
+}

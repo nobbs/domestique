@@ -165,6 +165,24 @@ function figuresFor(ride: Activity, metrics: ActivityMetrics | undefined): Scale
     { label: "TSS", scale: "power", value: metrics?.powerTss },
     { label: "hrTSS", scale: "heart rate", value: metrics?.heartRateTss },
     { label: "TRIMP", scale: "Banister", value: metrics?.trimp },
+    // Positive is the usual direction, and the scale says so: the reader is
+    // told what the number measures rather than sold what it means.
+    {
+      label: "Decoupling",
+      scale: "% of ratio lost over the second half",
+      value: metrics?.decouplingPercent,
+      decimals: 1,
+    },
+    // The pair is one figure and its condition: the beats, at the degrees they
+    // were held at. One ride is a point, not a trend.
+    {
+      label: "Heat drift",
+      scale:
+        metrics?.heatDrift === undefined
+          ? ""
+          : `bpm in the endurance band at ${Math.round(metrics.heatDrift.temperatureCelsius)} °C`,
+      value: metrics?.heatDrift?.heartRateBpm,
+    },
   ].filter((figure) => figure.value !== undefined);
 }
 
