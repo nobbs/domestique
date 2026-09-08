@@ -255,7 +255,7 @@ func buildGoldenReport(
 		b += fmt.Sprintf("  %-5s %d\n", label, result.quantumCounts[label])
 	}
 	b += "\n"
-	b += fmt.Sprintf("rides: total=%d skipped_zero_device_ascent=%d skipped_min_samples=%d skipped_route_non_monotonic=%d\n",
+	b += fmt.Sprintf("rides: total=%d skipped_zero_device_ascent=%d skipped_short_or_unpositioned_track=%d skipped_route_non_monotonic=%d\n",
 		result.totalRides, result.skippedZeroAscent, result.skippedMinSamples, result.skippedNonMonotonic)
 
 	return b
@@ -276,4 +276,15 @@ func TestParseThresholdsRejectsAThresholdThatIsNotAPositiveDistance(t *testing.T
 		_, err := parseThresholds(list)
 		require.Error(t, err, "parseThresholds(%q)", list)
 	}
+}
+
+func TestParseThresholdsRejectsAThresholdListedTwice(t *testing.T) {
+	t.Parallel()
+	_, err := parseThresholds("2,3,2")
+	require.Error(t, err)
+}
+
+func TestRunRefusesAMinSamplesThatIsNotPositive(t *testing.T) {
+	t.Parallel()
+	require.Error(t, run("unused.db", "2", 0))
 }

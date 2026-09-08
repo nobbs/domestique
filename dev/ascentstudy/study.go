@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,9 @@ func parseThresholds(list string) ([]float64, error) {
 		}
 		if value <= 0 || math.IsInf(value, 0) || math.IsNaN(value) {
 			return nil, fmt.Errorf("threshold %q is not a positive number of metres", trimmed)
+		}
+		if slices.Contains(thresholds, value) {
+			return nil, fmt.Errorf("threshold %q is listed twice", trimmed)
 		}
 		thresholds = append(thresholds, value)
 	}
@@ -193,7 +197,7 @@ func (r *report) String() string {
 		fmt.Fprintf(&b, "  %-5s %d\n", label, r.quantumCounts[label])
 	}
 	fmt.Fprintln(&b)
-	fmt.Fprintf(&b, "rides: total=%d skipped_zero_device_ascent=%d skipped_min_samples=%d skipped_route_non_monotonic=%d\n",
+	fmt.Fprintf(&b, "rides: total=%d skipped_zero_device_ascent=%d skipped_short_or_unpositioned_track=%d skipped_route_non_monotonic=%d\n",
 		r.totalRides, r.skippedZeroAscent, r.skippedMinSamples, r.skippedNonMonotonic)
 
 	return b.String()
@@ -219,6 +223,9 @@ func study(ctx context.Context, store *sqlite.Store, thresholdsMetres []float64,
 		if err != nil {
 			return nil, fmt.Errorf("reading a ride's samples: %w", err)
 		}
+		// A track is the positioned samples: a trainer ride has none, and no
+		// altitude of its own to compare, so it lands here rather than being
+		// studied as a flat ride.
 		if len(samples.Track) < minSamples {
 			result.skippedMinSamples++
 			continue

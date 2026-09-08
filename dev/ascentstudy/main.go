@@ -22,7 +22,7 @@ import (
 func main() {
 	database := flag.String("database", "", "state database to read recorded rides from")
 	thresholds := flag.String("thresholds", "1.2,2,3", "comma-separated hysteresis thresholds in metres")
-	minSamples := flag.Int("min-samples", 60, "rides with fewer track samples are skipped and counted")
+	minSamples := flag.Int("min-samples", 60, "rides with fewer positioned track samples are skipped and counted")
 	flag.Parse()
 
 	if err := run(*database, *thresholds, *minSamples); err != nil {
@@ -32,6 +32,9 @@ func main() {
 }
 
 func run(database, thresholdList string, minSamples int) error {
+	if minSamples <= 0 {
+		return errors.New("-min-samples must be a positive number of samples")
+	}
 	if database == "" {
 		return errors.New("-database is required")
 	}
