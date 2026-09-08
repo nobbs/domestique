@@ -299,6 +299,8 @@ func TestWeatherGridObjectRelaysAnUpstreamNotModified(t *testing.T) {
 			gotIfNoneMatch = conditional.Get("If-None-Match")
 			recorder := httptest.NewRecorder()
 			recorder.Header().Set("ETag", `"abc123"`)
+			recorder.Header().Set("Content-Length", "1024")
+			recorder.Header().Set("Content-Range", "bytes 0-1023/4096")
 			recorder.WriteHeader(http.StatusNotModified)
 			result := recorder.Result()
 			// A 304 may still name the full object's length; nothing follows it.
@@ -318,6 +320,8 @@ func TestWeatherGridObjectRelaysAnUpstreamNotModified(t *testing.T) {
 	assert.Equal(t, `"abc123"`, gotIfNoneMatch)
 	assert.Empty(t, response.Body.String())
 	assert.Equal(t, `"abc123"`, response.Header().Get("ETag"))
+	assert.Empty(t, response.Header().Get("Content-Length"))
+	assert.Empty(t, response.Header().Get("Content-Range"))
 	assert.Equal(t, cacheWeatherGridObject, response.Header().Get("Cache-Control"))
 }
 

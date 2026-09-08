@@ -92,9 +92,12 @@ func (h *Handler) relayWeatherGrid(
 	// Nothing else of the upstream response is trusted: no cookie, no
 	// redirect, nothing naming the provider by name.
 	header := writer.Header()
-	for _, name := range []string{
-		"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified",
-	} {
+	forwarded := []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified"}
+	if response.StatusCode == http.StatusNotModified {
+		// A 304 describes no representation, only which one the cache holds.
+		forwarded = []string{"ETag", "Last-Modified"}
+	}
+	for _, name := range forwarded {
 		if value := response.Header.Get(name); value != "" {
 			header.Set(name, value)
 		}
