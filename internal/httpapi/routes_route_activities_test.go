@@ -43,10 +43,10 @@ func riddenState(subject string) *fakeState {
 	return state
 }
 
-func getRouteActivities(t *testing.T, handler *Handler, target string) (int, openapi.RouteActivityList) {
+func getRouteActivities(t *testing.T, handler *Handler, path string) (int, openapi.RouteActivityList) {
 	t.Helper()
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, target))
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
 	var list openapi.RouteActivityList
 	if response.Code == http.StatusOK {
 		require.NoError(t, json.Unmarshal(response.Body.Bytes(), &list), "decoding the route activity list")

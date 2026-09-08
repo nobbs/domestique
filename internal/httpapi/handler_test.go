@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -2534,7 +2535,7 @@ func (s *fakeState) RouteActivities(
 			})
 		}
 	}
-	slices.SortFunc(rides, func(a, b activities.RouteRide) int { return int(b.ID - a.ID) })
+	slices.SortFunc(rides, func(a, b activities.RouteRide) int { return cmp.Compare(b.ID, a.ID) })
 
 	return rides, nil
 }
