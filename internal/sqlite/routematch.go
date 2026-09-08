@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
@@ -15,10 +17,11 @@ import (
 )
 
 // LibraryRoutes returns every route a ride may be attributed to, along with a
-// hash over the library's geometry as a whole. A match stored against a
-// different hash was measured against a library that has since changed, and is
+// hash over the positions of the library as a whole. A match stored against a
+// different hash was measured against ground that has since changed, and is
 // worked out again; a route whose line moved is therefore re-matched without
-// the rides having to notice which route it was.
+// the rides having to notice which route it was. Renaming one, or a revision
+// carrying the same line, leaves every stored match alone.
 func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, string, error) {
 	rows, err := s.queries.ListLibraryStageGeometry(ctx)
 	if err != nil {
@@ -26,21 +29,32 @@ func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, s
 	}
 
 	digest := sha256.New()
+	var position [8]byte
 	candidates := make([]activity.RouteCandidate, 0, len(rows))
 	for _, row := range rows {
 		// The rows arrive in key order, so the digest is stable for a library
-		// whatever order the rides are matched in.
+		// whatever order the rides are matched in. The stage's content hash is
+		// deliberately not what is digested: it covers the title and the source
+		// revision too, so a rename would owe every ride a fresh match.
 		// hash.Hash.Write never returns an error — the interface carries one only
 		// because it embeds io.Writer.
-		_, _ = digest.Write(fmt.Appendf(nil, "%s\x00%d\x00%d\x00%s\n",
-			row.Provider, row.RouteID, row.StageOrder, row.ContentHash))
+		_, _ = digest.Write(fmt.Appendf(nil, "%s\x00%d\x00%d\n",
+			row.Provider, row.RouteID, row.StageOrder))
 		points, decodeErr := decodeCoordinates(row.Coordinates)
 		if decodeErr != nil {
 			return nil, "", fmt.Errorf("reading the library geometry: %w", decodeErr)
 		}
 		line := make([]measure.Coordinate, 0, len(points))
 		for _, point := range points {
-			line = append(line, point.Coordinate())
+			coordinate := point.Coordinate()
+			// What a match is measured against is the ground the route covers, so
+			// that and nothing else decides when one is owed again. Altitude is
+			// left out with the rest: no match has ever read it.
+			binary.LittleEndian.PutUint64(position[:], math.Float64bits(coordinate.Longitude))
+			_, _ = digest.Write(position[:])
+			binary.LittleEndian.PutUint64(position[:], math.Float64bits(coordinate.Latitude))
+			_, _ = digest.Write(position[:])
+			line = append(line, coordinate)
 		}
 		candidates = append(candidates, activity.RouteCandidate{
 			Key:      route.NewKey(route.Provider(row.Provider), row.RouteID, int(row.StageOrder)),

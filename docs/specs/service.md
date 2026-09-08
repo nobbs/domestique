@@ -1165,10 +1165,13 @@ the one recorded is settled by the coverage figures and then by the route's
 identity, so the same library always yields the same answer.
 
 What is stored is that route, the share of each the two had in common and the
-direction, or an explicit no-match, which every stored ride carries one of. A match is measured
-against the library's geometry as a whole, so a route edited, added or removed
-has every ride matched again by the next derivation; a ride whose samples are
-replaced loses its match with them.
+direction, or an explicit no-match, which every stored ride carries one of once
+the library holds a route at all: against an empty library nothing is recorded,
+there being no route to have ridden yet, and the rides wait for one rather than
+being answered about a library nobody could have ridden. A match is measured
+against where the library's routes run, so a route added, removed or moved has
+every ride matched again by the next derivation, while renaming one leaves every
+match alone; a ride whose samples are replaced loses its match with them.
 
 These summaries are also what the ride model is calibrated from. Once a week the
 service refits the coefficient pair over every target's stored rides pooled

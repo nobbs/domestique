@@ -174,11 +174,11 @@ func TestStoreServesNoRidesForARouteNobodyRode(t *testing.T) {
 	assert.Empty(t, rides)
 }
 
-// The hash covers the library's geometry, so an edit to any route's line
-// changes it and every stored match is owed working out again.
+// The hash covers where the library's routes run, so moving a line owes every
+// stored match a fresh reading — and nothing else does.
 func TestStoreLibraryHashFollowsTheGeometryItCovers(t *testing.T) {
 	t.Parallel()
-	store := matchStore(t, "rider-a", "rider-b")
+	store := matchStore(t, "rider-a")
 	storeTestLibrary(t, store, 7, "hash-a")
 
 	routes, first, err := store.LibraryRoutes(t.Context())
@@ -187,15 +187,48 @@ func TestStoreLibraryHashFollowsTheGeometryItCovers(t *testing.T) {
 	assert.Equal(t, route.NewKey(route.ProviderVeloPlanner, 7, 1), routes[0].Key)
 	assert.Len(t, routes[0].Geometry, 2, "the stored line is what a ride is matched against")
 
-	storeTestLibrary(t, store, 7, "hash-b")
+	moved := []route.Point{
+		{Longitude: 8.4, Latitude: 49.0},
+		{Longitude: 8.6, Latitude: 49.3},
+	}
+	// A real geometry edit changes the stage's content hash too, that hash
+	// covering the line among other things; what this pins is that the digest
+	// followed the line, which the rename case shows it did not follow the hash.
+	stage := storeTestStageWithGeometry(t, 7, 1, "revision", "hash-moved", "Alpine loop", "Descent", moved)
+	require.NoError(t,
+		store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{stage}),
+		"StoreTrustedInventory()")
 	_, edited, err := store.LibraryRoutes(t.Context())
 	require.NoError(t, err, "LibraryRoutes()")
-	assert.NotEqual(t, first, edited)
+	assert.NotEqual(t, first, edited, "a route whose line moved")
 
 	storeTestLibrary(t, store, 8, "hash-c")
 	_, added, err := store.LibraryRoutes(t.Context())
 	require.NoError(t, err, "LibraryRoutes()")
 	assert.NotEqual(t, edited, added, "a route joining the library changes it too")
+}
+
+// Renaming a route, or a revision carrying the same line, is not a reason to
+// match every ride again: the stage's own content hash covers its title and
+// revision, which is why the digest does not read it.
+func TestStoreLibraryHashIgnoresARenameAndARevision(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	storeTestLibrary(t, store, 7, "hash-a")
+
+	_, before, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes()")
+
+	renamed := storeTestStageWithGeometry(
+		t, 7, 1, "a-later-revision", "a-different-content-hash", "Renamed loop", "Renamed stage", libraryGeometry(),
+	)
+	require.NoError(t,
+		store.StoreTrustedInventory(t.Context(), route.ProviderVeloPlanner, []route.Route{renamed}),
+		"StoreTrustedInventory()")
+
+	_, after, err := store.LibraryRoutes(t.Context())
+	require.NoError(t, err, "LibraryRoutes()")
+	assert.Equal(t, before, after, "the ground the route covers has not moved")
 }
 
 func TestStoreReportsAnUnreadableRouteMatchStore(t *testing.T) {
