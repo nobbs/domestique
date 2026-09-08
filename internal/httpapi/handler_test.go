@@ -2883,6 +2883,22 @@ func (s *fakeState) ForEachTargetRun(
 	return nil
 }
 
+func (s *fakeState) StageExists(
+	_ context.Context, provider route.Provider, sourceRouteID int64, stageOrder int,
+) (bool, error) {
+	if s.summariesErr != nil {
+		return false, s.summariesErr
+	}
+	for index := range s.summaries {
+		summary := &s.summaries[index]
+		if summary.Provider == provider && summary.SourceRouteID == sourceRouteID && summary.StageOrder == stageOrder {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (s *fakeState) ForEachStageSummary(_ context.Context, visit func(route.Summary) error) error {
 	if s.summariesErr != nil {
 		return s.summariesErr
