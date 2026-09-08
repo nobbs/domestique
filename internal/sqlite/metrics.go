@@ -376,8 +376,8 @@ func (s *Store) PowerCurve(
 		return rider.PowerCurve{}, nil
 	}
 	rows, err := s.queries.ListPowerBests(ctx, sqlcgen.ListPowerBestsParams{
-		FromUnix:    from.Unix(),
-		ToUnix:      to.Unix(),
+		FromUnix:    from.Truncate(time.Second).Unix(),
+		ToUnix:      to.Truncate(time.Second).Unix(),
 		TargetSlots: targetIDs,
 	})
 	if err != nil {
