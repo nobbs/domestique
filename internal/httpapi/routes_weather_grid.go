@@ -72,16 +72,16 @@ func (h *Handler) relayWeatherGrid(
 
 		return
 	}
-	// 304 carries no body to bound or copy, so it skips the length check below
-	// along with every 2xx.
 	if response.StatusCode != http.StatusNotModified &&
 		(response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices) {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the weather provider could not be reached")
 
 		return
 	}
-	if request.Method != http.MethodHead &&
-		response.ContentLength >= 0 && response.ContentLength > maximumWeatherGridBytes {
+	// A HEAD's or a 304's Content-Length names bytes that never follow, so
+	// neither is bounded nor copied.
+	bodiless := request.Method == http.MethodHead || response.StatusCode == http.StatusNotModified
+	if !bodiless && response.ContentLength >= 0 && response.ContentLength > maximumWeatherGridBytes {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable",
 			"the weather provider returned a response larger than this relay allows")
 
@@ -103,7 +103,7 @@ func (h *Handler) relayWeatherGrid(
 	// here, both cacheable; an error response above keeps no-store.
 	header.Set("Cache-Control", cacheControl)
 	writer.WriteHeader(response.StatusCode)
-	if request.Method == http.MethodHead || response.StatusCode == http.StatusNotModified {
+	if bodiless {
 		return
 	}
 	// Bounded by the length just checked when the upstream reported one, so a

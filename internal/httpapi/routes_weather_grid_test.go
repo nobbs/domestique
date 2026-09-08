@@ -300,8 +300,11 @@ func TestWeatherGridObjectRelaysAnUpstreamNotModified(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			recorder.Header().Set("ETag", `"abc123"`)
 			recorder.WriteHeader(http.StatusNotModified)
+			result := recorder.Result()
+			// A 304 may still name the full object's length; nothing follows it.
+			result.ContentLength = maximumWeatherGridBytes + 1
 
-			return recorder.Result(), nil
+			return result, nil
 		},
 	})
 
