@@ -390,6 +390,18 @@ run = "go run ./dev/ridemodel"
 description = "Benchmark and recalibrate the ETA model against the ride corpus"
 run = "go run ./dev/fitter"
 
+# Answers #608's second bullet: for every recorded ride in a state database, how
+# each candidate ascent definition over the ride's own samples compares with
+# the ascent the device reported. Never built into the image and always
+# outside quick and check, for the same reason fitter is: it needs the
+# operator's own snapshot of real rides, and its own unit suite runs entirely
+# on in-module synthetic fixtures. The database path is required and has no
+# default: `mise run ascent-study -- -database .local/dev/state.db`. Its
+# report is aggregate numbers only and is safe to paste into an issue.
+[ascent-study]
+description = "Compare candidate ascent definitions against the device's own figure"
+run = "go run ./dev/ascentstudy"
+
 # The only thing that installs node_modules. It declares the lockfile as its
 # source and the state file pnpm writes beside the installed tree as its output,
 # so it reinstalls when a dependency changes or the tree is gone, and costs a few

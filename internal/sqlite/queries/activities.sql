@@ -66,6 +66,12 @@ WHERE started_at_unix >= sqlc.arg(since_unix)
   AND workout_type_id IN (sqlc.slice(workout_type_ids))
 ORDER BY started_at_unix;
 
+-- name: ListRecordedActivities :many
+SELECT target_slot, workout_id, ascent_metres
+FROM activities
+WHERE records_state = 'stored'
+ORDER BY target_slot, workout_id;
+
 -- name: ListActivityListings :many
 SELECT workout_id, started_at_unix, workout_type_id, workout_type_location_id, read_at_unix
 FROM activity_listings

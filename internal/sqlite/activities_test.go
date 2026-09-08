@@ -598,6 +598,49 @@ func TestActivityRidesReportsAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "reading activities for calibration")
 }
 
+// RecordedRides pools every target's rides once their samples are stored,
+// regardless of workout type, and leaves out a ride still awaiting records.
+func TestRecordedRidesReadsEveryTargetsStoredRide(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: 1, TypeID: 15, LocationID: 1, Starts: activityNow()},
+		activity.Summary{AscentMetres: 300, Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}), "StoreActivityRecords()")
+
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-b",
+		activity.Listing{ID: 2, TypeID: 61, LocationID: 1, Starts: activityNow()},
+		activity.Summary{AscentMetres: 50, Raw: []byte(`{}`)}, activityNow()), "StoreActivity() an indoor ride")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-b", 2, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}), "StoreActivityRecords()")
+
+	// Awaiting records: left out, since it has no samples to walk.
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{ID: 3, TypeID: 15, LocationID: 1, Starts: activityNow()},
+		activity.Summary{AscentMetres: 900, Raw: []byte(`{}`)}, activityNow()), "StoreActivity() pending")
+
+	rides, err := store.RecordedRides(t.Context())
+	require.NoError(t, err, "RecordedRides()")
+	require.Len(t, rides, 2, "an indoor ride counts and a pending one does not")
+	assert.Equal(t, RecordedRide{TargetID: "rider-a", WorkoutID: 1, AscentMetres: 300}, rides[0])
+	assert.Equal(t, RecordedRide{TargetID: "rider-b", WorkoutID: 2, AscentMetres: 50}, rides[1])
+}
+
+func TestRecordedRidesReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.RecordedRides(t.Context())
+	require.ErrorContains(t, err, "reading recorded activities")
+}
+
 // The track reads back the samples that carried a position, in record order,
 // and belongs to the target whose account recorded it.
 func TestActivityTrackReadsBackPositionedSamples(t *testing.T) {
