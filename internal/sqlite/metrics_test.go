@@ -33,6 +33,7 @@ func derivedMetrics(inputs trainingload.Inputs) activity.RideMetrics {
 			HeartRateBPM: 142.5, MaxHeartRateBPM: 178, HasHeartRate: true,
 			CadenceRPM: 81.5, HasCadence: true,
 			PowerWatts: 196.25, HasPower: true,
+			MaxSpeedKmh: 47.3, HasSpeed: true,
 		},
 		HasEstimateQuality: true,
 		EstimateQuality: measure.Quality{
@@ -210,6 +211,24 @@ func TestActivitiesAwaitingDerivationRelistsARowVersion2Wrote(t *testing.T) {
 	assert.Empty(t, settled, "and the refilled row is owed nothing further")
 }
 
+// The same relisting, a version later still: a row version 7 wrote cannot
+// hold the ride's maximum speed, exactly what migration 051 leaves behind.
+func TestActivitiesAwaitingDerivationRelistsARowVersion7Wrote(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+		"StoreActivityMetrics()")
+	_, err := store.database.ExecContext(t.Context(), `UPDATE activity_metrics SET derivation_version = 7`)
+	require.NoError(t, err, "ageing the stored row to version 7")
+
+	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	require.NoError(t, listErr, "ActivitiesAwaitingDerivation()")
+	assert.Equal(t, []int64{1}, owed, "the row predates the maximum speed this derivation produces")
+}
+
 // A ride still waiting for its FIT has nothing to derive from, so it waits for
 // the download rather than being derived into an empty row.
 func TestActivitiesAwaitingDerivationSkipsARideWithNoStoredRecords(t *testing.T) {
@@ -270,6 +289,78 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 	assert.InDelta(t, 18.0, samples.Track[0].TemperatureCelsius, 1e-9)
 	assert.False(t, samples.Track[1].HasCadence, "the second record carried neither")
 	assert.False(t, samples.Track[1].HasTemperature)
+}
+
+// A device that records its own speed is trusted over the odometer: the
+// series is built from speed_ms per row, converted to km/h.
+func TestActivityRideSamplesReadsSpeedFromTheDeviceWhereRecorded(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), SpeedMS: 8, HasSpeed: true, DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), SpeedMS: 20, HasSpeed: true, DistanceMetres: 1000, HasDistance: true},
+			// A record with no device reading of its own is left out, not read
+			// as a stop: the ride is on the device's series, not the odometer's.
+			{Time: activityNow().Add(2 * time.Second), HeartRateBPM: 140, HasHeartRate: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 2, "the device's own reading, not the odometer's")
+	assert.InDelta(t, 28.8, samples.Speed[0].Value, 1e-9)
+	assert.InDelta(t, 72.0, samples.Speed[1].Value, 1e-9)
+}
+
+// A ride with no device speed reading falls back to the odometer: distance
+// over time between consecutive records, the same rule speedSeries applies.
+func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), DistanceMetres: 10, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 1, "the first record has no interval behind it")
+	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9)
+}
+
+// A single implausible spike — a clock or odometer hiccup, not a rider — is
+// dropped, and the rest of the series stands.
+func TestActivityRideSamplesDropsASpeedReadingAboveTheCeiling(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), SpeedMS: 10, HasSpeed: true},
+			{Time: activityNow().Add(time.Second), SpeedMS: 400, HasSpeed: true},
+			{Time: activityNow().Add(2 * time.Second), SpeedMS: 12, HasSpeed: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 2, "the implausible spike, and only it, is dropped")
+	averages := samples.Averages()
+	assert.True(t, averages.HasSpeed)
+	assert.InDelta(t, 43.2, averages.MaxSpeedKmh, 1e-9, "the peak of what remains")
+}
+
+// A ride with no readable records has no speed series at all.
+func TestActivityRideSamplesHasNoSpeedWithoutRecords(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	assert.Empty(t, samples.Speed)
+	assert.False(t, samples.Averages().HasSpeed)
 }
 
 // The series is written beside the samples it describes and read back on the

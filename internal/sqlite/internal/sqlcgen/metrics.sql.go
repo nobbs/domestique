@@ -135,7 +135,7 @@ SELECT workout_id,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
   input_max_heart_rate, input_threshold_heart_rate,
-  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s
 FROM activity_metrics
@@ -165,6 +165,7 @@ type ListActivityMetricsRow struct {
 	MaxHeartRateBpm             sql.NullFloat64
 	AverageCadenceRpm           sql.NullFloat64
 	AveragePowerWatts           sql.NullFloat64
+	MaxSpeedKmh                 sql.NullFloat64
 	DecouplingPercent           sql.NullFloat64
 	HeatDriftHeartRateBpm       sql.NullFloat64
 	HeatDriftTemperatureCelsius sql.NullFloat64
@@ -208,6 +209,7 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 			&i.MaxHeartRateBpm,
 			&i.AverageCadenceRpm,
 			&i.AveragePowerWatts,
+			&i.MaxSpeedKmh,
 			&i.DecouplingPercent,
 			&i.HeatDriftHeartRateBpm,
 			&i.HeatDriftTemperatureCelsius,
@@ -291,14 +293,14 @@ func (q *Queries) ListActivityRideLoads(ctx context.Context, targetSlot string) 
 
 const listActivitySensorRecords = `-- name: ListActivitySensorRecords :many
 SELECT record_index, recorded_at_unix, heart_rate_bpm, cadence_rpm, power_watts,
-  distance_metres, altitude_metres, latitude, longitude, temperature_celsius
+  distance_metres, altitude_metres, latitude, longitude, temperature_celsius, speed_ms
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
   AND (heart_rate_bpm IS NOT NULL
     OR cadence_rpm IS NOT NULL
     OR power_watts IS NOT NULL
-    OR (latitude IS NOT NULL AND longitude IS NOT NULL
-      AND altitude_metres IS NOT NULL AND distance_metres IS NOT NULL))
+    OR speed_ms IS NOT NULL
+    OR distance_metres IS NOT NULL)
 ORDER BY record_index
 `
 
@@ -318,13 +320,15 @@ type ListActivitySensorRecordsRow struct {
 	Latitude           sql.NullFloat64
 	Longitude          sql.NullFloat64
 	TemperatureCelsius sql.NullFloat64
+	SpeedMs            sql.NullFloat64
 }
 
-// Every record a derivation can do something with: one carrying a sensor, or
-// one carrying a whole track sample. A record that is neither is skipped here
-// rather than scanned and discarded in Go. The track test is latitude and
-// longitude together, which is what ListActivityTrack calls a positioned
-// sample: a record the track would not serve must not shape an estimate.
+// Every record a derivation can do something with: one carrying a sensor, one
+// carrying a distance or a device speed reading, or one carrying a whole track
+// sample. A record that is none of these is skipped here rather than scanned
+// and discarded in Go. The track test is latitude and longitude together,
+// which is what ListActivityTrack calls a positioned sample: a record the
+// track would not serve must not shape an estimate.
 func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivitySensorRecordsParams) ([]ListActivitySensorRecordsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listActivitySensorRecords, arg.TargetSlot, arg.WorkoutID)
 	if err != nil {
@@ -345,6 +349,7 @@ func (q *Queries) ListActivitySensorRecords(ctx context.Context, arg ListActivit
 			&i.Latitude,
 			&i.Longitude,
 			&i.TemperatureCelsius,
+			&i.SpeedMs,
 		); err != nil {
 			return nil, err
 		}
@@ -436,12 +441,12 @@ INSERT INTO activity_metrics (
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
   estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
-  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts,
+  average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -461,6 +466,7 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
   average_power_watts = excluded.average_power_watts,
+  max_speed_kmh = excluded.max_speed_kmh,
   decoupling_percent = excluded.decoupling_percent,
   heat_drift_heart_rate_bpm = excluded.heat_drift_heart_rate_bpm,
   heat_drift_temperature_celsius = excluded.heat_drift_temperature_celsius,
@@ -501,6 +507,7 @@ type UpsertActivityMetricsParams struct {
 	MaxHeartRateBpm             sql.NullFloat64
 	AverageCadenceRpm           sql.NullFloat64
 	AveragePowerWatts           sql.NullFloat64
+	MaxSpeedKmh                 sql.NullFloat64
 	DecouplingPercent           sql.NullFloat64
 	HeatDriftHeartRateBpm       sql.NullFloat64
 	HeatDriftTemperatureCelsius sql.NullFloat64
@@ -542,6 +549,7 @@ func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityM
 		arg.MaxHeartRateBpm,
 		arg.AverageCadenceRpm,
 		arg.AveragePowerWatts,
+		arg.MaxSpeedKmh,
 		arg.DecouplingPercent,
 		arg.HeatDriftHeartRateBpm,
 		arg.HeatDriftTemperatureCelsius,

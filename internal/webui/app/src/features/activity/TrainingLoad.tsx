@@ -131,6 +131,7 @@ function averageSpeedKmh(ride: Activity): number | undefined {
 function figuresFor(ride: Activity, metrics: ActivityMetrics | undefined): Scale[] {
   return [
     { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride), decimals: 1 },
+    { label: "Max speed", scale: "km/h", value: metrics?.maxSpeedKmh, decimals: 1 },
     { label: "Heart rate", scale: "bpm average", value: metrics?.averageHeartRateBpm },
     { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
     { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },

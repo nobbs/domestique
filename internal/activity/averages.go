@@ -21,14 +21,16 @@ type RideAverages struct {
 	MaxHeartRateBPM float64
 	CadenceRPM      float64
 	PowerWatts      float64
+	MaxSpeedKmh     float64
 	HasHeartRate    bool
 	HasCadence      bool
 	HasPower        bool
+	HasSpeed        bool
 }
 
 // Any reports whether the ride yielded a single one of these figures.
 func (a *RideAverages) Any() bool {
-	return a.HasHeartRate || a.HasCadence || a.HasPower
+	return a.HasHeartRate || a.HasCadence || a.HasPower || a.HasSpeed
 }
 
 // Averages works the ride's plain sensor figures out from its stored samples.
@@ -37,6 +39,7 @@ func (s *RideSamples) Averages() RideAverages {
 	averages.HeartRateBPM, averages.MaxHeartRateBPM, averages.HasHeartRate = meanAndPeak(s.HeartRate, countZero)
 	averages.CadenceRPM, _, averages.HasCadence = meanAndPeak(s.Cadence, skipZero)
 	averages.PowerWatts, _, averages.HasPower = meanAndPeak(s.Power, countZero)
+	_, averages.MaxSpeedKmh, averages.HasSpeed = meanAndPeak(s.Speed, countZero)
 
 	return averages
 }

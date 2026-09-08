@@ -82,6 +82,7 @@ type ActivityMetric struct {
 	BestPower300s               sql.NullFloat64
 	BestPower1200s              sql.NullFloat64
 	BestPower3600s              sql.NullFloat64
+	MaxSpeedKmh                 sql.NullFloat64
 }
 
 type ActivityRecord struct {

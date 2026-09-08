@@ -2146,6 +2146,14 @@ components:
           description: >-
             The mean of the ride's measured power samples. Never fed by an
             estimate: a bicycle with no meter has no average power.
+        maxSpeedKmh:
+          type: number
+          format: double
+          description: >-
+            The ride's highest recorded speed in km/h, from the device's own
+            speed reading where recorded and otherwise from distance over
+            time. Readings above a plausible ceiling are dropped. Absent for a
+            ride with no speed series at all.
         decouplingPercent:
           type: number
           format: double

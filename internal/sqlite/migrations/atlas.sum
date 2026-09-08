@@ -1,4 +1,4 @@
-h1:79yB1FMFoh4/cdlTdetXuc1Vs/De32HqqFuC//PTs44=
+h1:JbWm/zdhtXgT0bOguVzLapsOpoojYo4EIOGPZ8Cv3ZY=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -47,3 +47,5 @@ h1:79yB1FMFoh4/cdlTdetXuc1Vs/De32HqqFuC//PTs44=
 000049_climb_attempts.up.sql h1:RfgU30XNmw9aksqGjg+UB+5k+Ep9XbM95d90lDhhLrw=
 000050_activity_record_series.down.sql h1:5vQEKeVhi6UEKw9VHFZ0q8r/zRKeM+cAHs9J+/V217A=
 000050_activity_record_series.up.sql h1:KPneKmiUTJTWoG5Uk+RKvP1VW91dM/aK5ZoFZlFMEJU=
+000051_activity_max_speed.down.sql h1:Z1d/wZuxNzrVEuVXoJhe4BhOIg8T7w45TV6s1DA0ZzE=
+000051_activity_max_speed.up.sql h1:fsrh8HtSDKjDmF4ybAuMxpkjyEd4cUnsq5ggfulumV0=

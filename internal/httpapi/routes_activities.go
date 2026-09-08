@@ -100,6 +100,9 @@ func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
 	if averages.HasPower {
 		view.AveragePowerWatts = &averages.PowerWatts
 	}
+	if averages.HasSpeed {
+		view.MaxSpeedKmh = &averages.MaxSpeedKmh
+	}
 	if stored.Decoupling.Known {
 		view.DecouplingPercent = &stored.Decoupling.Percent
 	}
