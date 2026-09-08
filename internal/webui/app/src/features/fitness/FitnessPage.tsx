@@ -158,7 +158,14 @@ export function FitnessPage() {
                 <li>Form — the difference, fresh above zero</li>
               </ul>
             </div>
-            {decoupling.length > 0 ? (
+            {activities.isError ? (
+              // An outage must not read as a season with nothing in it: the
+              // panel says the rides were not read rather than disappearing.
+              <p className="text-sm text-[var(--alert)]" role="alert">
+                The service did not say what has been ridden, so the season's decoupling is not
+                drawn.
+              </p>
+            ) : decoupling.length > 0 ? (
               <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
                 <h2 className="font-semibold text-lg">Decoupling</h2>
                 <DecouplingChart points={decoupling} />

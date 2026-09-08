@@ -168,6 +168,42 @@ describe("FitnessPage decoupling", () => {
     ).toBeInTheDocument();
   });
 
+  it("says the rides were not read rather than drawing an empty season", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/v1/activities/fitness")) {
+          return new Response(JSON.stringify(TIMELINE), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (url.includes("/v1/activities")) {
+          return new Response("", { status: 503 });
+        }
+
+        return new Response(JSON.stringify(STATUS), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(statusQuery().queryKey, STATUS);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <FitnessPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The service did not say what has been ridden",
+    );
+  });
+
   it("draws nothing where no ride in the window carries one", async () => {
     const recently = new Date();
     recently.setDate(recently.getDate() - 5);
