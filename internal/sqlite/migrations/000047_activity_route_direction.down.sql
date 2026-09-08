@@ -14,6 +14,13 @@ CREATE TABLE activity_route_match_pre_direction (
   library_hash    TEXT    NOT NULL,
   matched_at_unix INTEGER NOT NULL,
   PRIMARY KEY (target_slot, workout_id),
+  -- A match is all of its parts or none of them, so a row naming a route always
+  -- carries the coverage that justified naming it. Direction stands apart: a
+  -- ride can be on a route with no telling which way round it went.
+  CHECK ((provider IS NULL AND route_id IS NULL AND stage_order IS NULL
+          AND route_coverage IS NULL AND ride_coverage IS NULL)
+      OR (provider IS NOT NULL AND route_id IS NOT NULL AND stage_order IS NOT NULL
+          AND route_coverage IS NOT NULL AND ride_coverage IS NOT NULL)),
   FOREIGN KEY (target_slot, workout_id) REFERENCES activities(target_slot, workout_id) ON DELETE CASCADE
 );
 INSERT INTO activity_route_match_pre_direction

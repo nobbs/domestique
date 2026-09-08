@@ -255,3 +255,39 @@ func TestStoreRoundTripsAMatchWithNoDirection(t *testing.T) {
 	).Scan(&direction), "reading the stored direction")
 	assert.False(t, direction.Valid, "a direction that could not be told is absent, not the word for it")
 }
+
+// The read paths take a named route's coverage as given. That holds because the
+// table refuses a row that names a route without it, rather than because every
+// writer remembers to.
+func TestStoreRefusesAMatchNamingARouteWithoutItsCoverage(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+
+	_, err := store.database.ExecContext(t.Context(),
+		`INSERT INTO activity_route_match
+		   (target_slot, workout_id, provider, route_id, stage_order,
+		    route_coverage, ride_coverage, library_hash, matched_at_unix)
+		 VALUES (?, ?, 'veloplanner', 7, 1, NULL, NULL, 'library-1', 0)`,
+		"rider-a", 11)
+
+	require.ErrorContains(t, err, "CHECK constraint failed")
+}
+
+// The other half of the same rule: a row that names no route carries no
+// coverage either, so "unmatched" cannot be confused with "matched nothing well".
+func TestStoreRefusesCoverageWithoutARoute(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+
+	_, err := store.database.ExecContext(t.Context(),
+		`INSERT INTO activity_route_match
+		   (target_slot, workout_id, provider, route_id, stage_order,
+		    route_coverage, ride_coverage, library_hash, matched_at_unix)
+		 VALUES (?, ?, NULL, NULL, NULL, 0.9, 0.9, 'library-1', 0)`,
+		"rider-a", 11)
+
+	require.ErrorContains(t, err, "CHECK constraint failed")
+}

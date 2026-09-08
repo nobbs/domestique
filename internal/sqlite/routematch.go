@@ -94,6 +94,9 @@ func (s *Store) StoreActivityRouteMatch(
 // ActivityRouteMatches returns the route each of one target's rides was ridden
 // on, by ride. A ride that matched nothing is absent rather than present and
 // empty, so a caller reads the map the same way it reads the metrics one.
+//
+// A row naming a route carries its coverage, which the table enforces rather
+// than each writer remembering, so the figures are read as given.
 func (s *Store) ActivityRouteMatches(ctx context.Context, targetID string) (map[int64]activity.RouteMatch, error) {
 	rows, err := s.queries.ListActivityRouteMatches(ctx, targetID)
 	if err != nil {
