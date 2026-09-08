@@ -38,6 +38,9 @@ CREATE TABLE activity_route_match (
   -- Both are shares of a length, which nothing can be more than all of.
   CHECK (route_coverage IS NULL OR route_coverage BETWEEN 0 AND 1),
   CHECK (ride_coverage IS NULL OR ride_coverage BETWEEN 0 AND 1),
+  -- A direction is one of two, or absent. There is no word here for absence:
+  -- that is what the column being empty says.
+  CHECK (direction IS NULL OR direction IN ('forward', 'reverse')),
   FOREIGN KEY (target_slot, workout_id) REFERENCES activities(target_slot, workout_id) ON DELETE CASCADE
 );
 -- The route page reads this the other way round, asking which rides one target

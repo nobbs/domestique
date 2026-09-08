@@ -367,3 +367,23 @@ func TestStoreRefusesCoverageBeyondAWholeRoute(t *testing.T) {
 		require.ErrorContains(t, err, "CHECK constraint failed", name)
 	}
 }
+
+// A direction is one of two, or absent. A word meaning absence would say the
+// same as the column being empty, leaving two ways to record one thing.
+func TestStoreRefusesADirectionItDoesNotKnow(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+
+	for _, direction := range []string{"unknown", "sideways", ""} {
+		_, err := store.database.ExecContext(t.Context(),
+			`INSERT OR REPLACE INTO activity_route_match
+			   (target_slot, workout_id, provider, route_id, stage_order,
+			    route_coverage, ride_coverage, direction, library_hash, matched_at_unix)
+			 VALUES (?, ?, 'veloplanner', 7, 1, 0.97, 0.94, ?, 'library-1', 0)`,
+			"rider-a", 11, direction)
+
+		require.ErrorContains(t, err, "CHECK constraint failed", direction)
+	}
+}
