@@ -168,8 +168,10 @@ Profiles above), which is the only profile this sum is meaningful on: raw
 satellite altitude noise summed over thousands of points inflates the total
 badly, per `ElevationGainMetres`'s own comment. `internal/activity/splits.go` counts a
 ride split's ascent with `measure.AscentWithHysteresisMetres` at 3 m over
-that stretch's own samples, opened by the sample the stretch began from;
-a split reports no descent.
+each unbroken run of the stretch's own samples that carried a height, the
+first opened by the sample the stretch began from where it carried one; a
+sample without a height breaks the run rather than bridging it, and a split
+reports no descent.
 
 **Calibration coupling.** `ridemodel.Predict` prices a route's raw-step
 ascent on the median-filtered profile (`internal/ridemodel/model.go`), while
