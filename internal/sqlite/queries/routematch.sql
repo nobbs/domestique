@@ -50,8 +50,9 @@ WHERE m.target_slot = sqlc.arg(target_slot)
 ORDER BY a.started_at_unix DESC, m.workout_id DESC;
 
 -- name: ListLibraryStageGeometry :many
--- Every route a ride may be matched to, with the hash that says whether its
--- line has moved since a match was worked out against it.
-SELECT provider, route_id, stage_order, content_hash, coordinates
+-- Every route a ride may be matched to, with the line it is matched against.
+-- The stage's content hash is deliberately not read: it covers the title and
+-- the source revision too, and a rename owes no ride a fresh match.
+SELECT provider, route_id, stage_order, coordinates
 FROM stage_geometry
 ORDER BY provider, route_id, stage_order;

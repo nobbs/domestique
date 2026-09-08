@@ -114,7 +114,7 @@ func (q *Queries) ListActivityRouteMatches(ctx context.Context, targetSlot strin
 }
 
 const listLibraryStageGeometry = `-- name: ListLibraryStageGeometry :many
-SELECT provider, route_id, stage_order, content_hash, coordinates
+SELECT provider, route_id, stage_order, coordinates
 FROM stage_geometry
 ORDER BY provider, route_id, stage_order
 `
@@ -123,12 +123,12 @@ type ListLibraryStageGeometryRow struct {
 	Provider    string
 	RouteID     int64
 	StageOrder  int64
-	ContentHash string
 	Coordinates []byte
 }
 
-// Every route a ride may be matched to, with the hash that says whether its
-// line has moved since a match was worked out against it.
+// Every route a ride may be matched to, with the line it is matched against.
+// The stage's content hash is deliberately not read: it covers the title and
+// the source revision too, and a rename owes no ride a fresh match.
 func (q *Queries) ListLibraryStageGeometry(ctx context.Context) ([]ListLibraryStageGeometryRow, error) {
 	rows, err := q.db.QueryContext(ctx, listLibraryStageGeometry)
 	if err != nil {
@@ -142,7 +142,6 @@ func (q *Queries) ListLibraryStageGeometry(ctx context.Context) ([]ListLibrarySt
 			&i.Provider,
 			&i.RouteID,
 			&i.StageOrder,
-			&i.ContentHash,
 			&i.Coordinates,
 		); err != nil {
 			return nil, err
