@@ -566,6 +566,48 @@ paths:
           $ref: '#/components/responses/NotFound'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/climbs:
+    get:
+      tags:
+        - browser-api
+      operationId: getRouteClimbs
+      description: >-
+        The route's sustained climbs in the order they are ridden, each with the
+        caller's own attempts at it, quickest first. Scoped exactly as the
+        activity list is: a caller reads only the target they own, and so reads
+        their own attempts and never another rider's. A route the library does
+        not hold is not found; a route with no climbs, or one nobody has ridden,
+        is an empty list rather than a missing page.
+      parameters:
+        - $ref: '#/components/parameters/Provider'
+        - $ref: '#/components/parameters/SourceRouteId'
+        - $ref: '#/components/parameters/StageOrder'
+        - name: target
+          in: query
+          description: >-
+            The target to read. Omitted means the caller's own. A target the
+            caller does not own is answered not found rather than forbidden,
+            so an address says nothing about whose it is.
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The route's climbs and the caller's attempts at them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteClimbList'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/activities:
     get:
       tags:
@@ -1718,6 +1760,98 @@ components:
           format: double
         direction:
           $ref: '#/components/schemas/RouteRideDirection'
+    RouteClimbList:
+      type: object
+      additionalProperties: false
+      required:
+        - climbs
+      properties:
+        climbs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RouteClimb'
+    RouteClimb:
+      type: object
+      additionalProperties: false
+      description: >-
+        One sustained climb of the route, found again from the route's stored
+        geometry rather than kept beside the attempts at it. See
+        docs/specs/measurement.md §Sustained climbs.
+      required:
+        - startMetres
+        - endMetres
+        - distanceMetres
+        - ascentMetres
+        - averageGradePercent
+        - maxGradePercent
+        - attempts
+      properties:
+        startMetres:
+          type: number
+          format: double
+        endMetres:
+          type: number
+          format: double
+        distanceMetres:
+          type: number
+          format: double
+        ascentMetres:
+          type: number
+          format: double
+        averageGradePercent:
+          type: number
+          format: double
+        maxGradePercent:
+          type: number
+          format: double
+        attempts:
+          type: array
+          description: The caller's own attempts at this climb, quickest first.
+          items:
+            $ref: '#/components/schemas/RouteClimbAttempt'
+    RouteClimbAttempt:
+      type: object
+      additionalProperties: false
+      description: >-
+        One ride over one climb. Only a ride that rode the whole climb the way
+        the route stores it is here: a ride that turned back, or ran the route
+        the other way round, made no attempt at it.
+      required:
+        - activityId
+        - riddenAt
+        - seconds
+        - vamMetresPerHour
+      properties:
+        activityId:
+          type: integer
+          format: int64
+        riddenAt:
+          type: string
+          format: date-time
+        seconds:
+          type: number
+          format: double
+        vamMetresPerHour:
+          type: number
+          format: double
+          description: >-
+            The climb's own ascent over the time this attempt took, which is
+            what makes two attempts at one climb comparable.
+        heartRateBpm:
+          type: number
+          format: double
+          description: The mean over the samples inside the climb.
+        powerWatts:
+          type: number
+          format: double
+          description: >-
+            The mean measured power inside the climb. Never fed by an estimate.
+        estimatedPowerWatts:
+          type: number
+          format: double
+          description: >-
+            The mean estimated power inside the climb, for a bicycle carrying no
+            meter. Never ranked or summed with the measured figure above.
     RouteActivityList:
       type: object
       additionalProperties: false

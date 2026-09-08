@@ -11,6 +11,7 @@ import {
   getGetActivityTrackQueryOptions,
   getGetFitnessQueryOptions,
   getGetRiderProfileQueryOptions,
+  getGetRouteClimbsQueryOptions,
   getGetRouteGeometryQueryOptions,
   getGetRouteQueryOptions,
   getGetRoutesQueryOptions,
@@ -36,6 +37,7 @@ import {
   type GeoJSONFeature,
   type RiderProfile,
   type Route,
+  type RouteClimbList,
   type RouteGeometry,
   routeGeometry,
   type Settings,
@@ -157,6 +159,19 @@ export const routeGeometryQuery = (provider: string, sourceRouteId: number, stag
   getGetRouteGeometryQueryOptions<RouteGeometry>(provider, sourceRouteId, stageOrder, {
     query: {
       select: (response) => routeGeometry(payload<GeoJSONFeature>(response) as GeoJSONFeature),
+      staleTime: 5 * 60 * 1000,
+    },
+  });
+
+/**
+ * The route's climbs and the caller's own attempts at each. Read per route, on
+ * whatever page shows them, for the reason the geometry is: it is the caller's
+ * own history and never another rider's.
+ */
+export const routeClimbsQuery = (provider: string, sourceRouteId: number, stageOrder: number) =>
+  getGetRouteClimbsQueryOptions(provider, sourceRouteId, stageOrder, undefined, {
+    query: {
+      select: (response) => payload<RouteClimbList>(response),
       staleTime: 5 * 60 * 1000,
     },
   });

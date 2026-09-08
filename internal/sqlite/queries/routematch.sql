@@ -59,3 +59,26 @@ ORDER BY provider, route_id, stage_order;
 
 -- name: DeleteActivityRouteMatchesForTarget :execrows
 DELETE FROM activity_route_match WHERE target_slot = sqlc.arg(target_slot);
+
+-- name: DeleteActivityClimbAttempts :exec
+DELETE FROM activity_climb_attempt WHERE target_slot = ? AND workout_id = ?;
+
+-- name: InsertActivityClimbAttempt :exec
+INSERT INTO activity_climb_attempt (
+  target_slot, workout_id, climb_index, seconds, heart_rate_bpm, power_watts, estimated_power_watts
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- Every attempt one target's rides made at one route's climbs, newest ride
+-- first, so a reader sees the last attempt without ordering them again.
+-- name: ListRouteClimbAttempts :many
+SELECT c.workout_id, c.climb_index, c.seconds, c.heart_rate_bpm, c.power_watts,
+  c.estimated_power_watts, a.started_at_unix
+FROM activity_climb_attempt AS c
+JOIN activities AS a ON a.target_slot = c.target_slot AND a.workout_id = c.workout_id
+JOIN activity_route_match AS m ON m.target_slot = c.target_slot AND m.workout_id = c.workout_id
+WHERE c.target_slot = sqlc.arg(target_slot) AND m.provider = sqlc.arg(provider)
+  AND m.route_id = sqlc.arg(route_id) AND m.stage_order = sqlc.arg(stage_order)
+ORDER BY a.started_at_unix DESC, c.climb_index;
+
+-- name: ClearActivityClimbAttempts :execrows
+DELETE FROM activity_climb_attempt WHERE target_slot = ?;

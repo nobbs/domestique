@@ -26,6 +26,7 @@ import { useSearchParams } from "react-router";
 import {
   activitiesQuery,
   riderProfileQuery,
+  routeClimbsQuery,
   routeGeometryQuery,
   routesQuery,
   statusQuery,
@@ -37,6 +38,7 @@ import { Layout } from "../../components/Layout";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
+import { climbTimes } from "../../lib/climbAttempts";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
 import { formatReadTime } from "../../lib/format";
@@ -269,6 +271,16 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // The rides matched to the open route, off the query the activity pages share.
   // Not asked for until one is open: the library map has no history to show.
   const activities = useQuery({ ...activitiesQuery(), enabled: shownRoute !== null });
+  // The rider's own attempts at the open route's climbs. Asked for on the same
+  // terms as the rides: the library map has no climb of anyone's to time.
+  const routeClimbs = useQuery({
+    ...routeClimbsQuery(
+      shownRoute?.provider ?? "",
+      shownRoute?.sourceRouteId ?? 0,
+      shownRoute?.stageOrder ?? 0,
+    ),
+    enabled: shownRoute !== null,
+  });
   // The rider's own stopping habit, which the panel's door-to-door window uses
   // in place of the seeded corpus. Asked for on the same terms as the rides.
   const riderProfile = useQuery({ ...riderProfileQuery(), enabled: shownRoute !== null });
@@ -316,6 +328,10 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     surfaceSummary,
     scopeHighlight,
   } = useOpenRoute(openCoordinates, openGeometry, startAt);
+  const riddenClimbs = useMemo(
+    () => climbTimes(climbs, routeClimbs.data?.climbs ?? []),
+    [climbs, routeClimbs.data],
+  );
   /*
    * What the reader has put away, and it sticks across routes: someone who
    * folded the dock did so to see more map, not to see more of one route's map.
@@ -479,6 +495,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             ascentMetres={shownRoute.ascentMetres}
             surface={surfaceSummary}
             climbs={climbs}
+            climbTimes={riddenClimbs}
             onSelectClimb={selectClimb}
             coordinates={openCoordinates}
             samples={samples}

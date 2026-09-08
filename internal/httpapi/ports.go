@@ -7,6 +7,7 @@ import (
 	"time"
 
 	activities "github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
@@ -275,6 +276,15 @@ type StageState interface {
 	// under it that needs no more than that.
 	StageExists(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (bool, error)
 	StageGeometry(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (route.Summary, json.RawMessage, json.RawMessage, bool, error)
+	// StageProfile is one stage's stored line and the height along it, for
+	// finding the climbs on it. The elevations are nil where the geometry
+	// carries no height.
+	StageProfile(ctx context.Context, key route.Key) (
+		line []measure.Coordinate, elevations []float64, found bool, err error)
+	// RouteClimbAttempts is every attempt one target's rides made at one of
+	// this stage's climbs.
+	RouteClimbAttempts(ctx context.Context, targetID string, key route.Key) (
+		[]activities.StoredClimbAttempt, error)
 	StageSurface(ctx context.Context, provider route.Provider, routeID int64, stageOrder int, contentHash string) (json.RawMessage, float64, bool, error)
 	SurfaceCoverage(ctx context.Context) (classified, total int, err error)
 	RequestStageReprocess(ctx context.Context, provider route.Provider, routeID int64, stageOrder int) (found bool, err error)

@@ -141,6 +141,37 @@ type RouteActivity struct {
 	Direction     RouteRideDirection `json:"direction"`
 }
 
+type RouteClimbList struct {
+	Climbs []RouteClimb `json:"climbs"`
+}
+
+// RouteClimb One sustained climb of the route, found again from the route's stored geometry rather than kept beside the attempts at it. See docs/specs/measurement.md §Sustained climbs.
+type RouteClimb struct {
+	StartMetres         float64 `json:"startMetres"`
+	EndMetres           float64 `json:"endMetres"`
+	DistanceMetres      float64 `json:"distanceMetres"`
+	AscentMetres        float64 `json:"ascentMetres"`
+	AverageGradePercent float64 `json:"averageGradePercent"`
+	MaxGradePercent     float64 `json:"maxGradePercent"`
+	// Attempts The caller's own attempts at this climb, quickest first.
+	Attempts []RouteClimbAttempt `json:"attempts"`
+}
+
+// RouteClimbAttempt One ride over one climb. Only a ride that rode the whole climb the way the route stores it is here: a ride that turned back, or ran the route the other way round, made no attempt at it.
+type RouteClimbAttempt struct {
+	ActivityID int64     `json:"activityId"`
+	RiddenAt   time.Time `json:"riddenAt"`
+	Seconds    float64   `json:"seconds"`
+	// VamMetresPerHour The climb's own ascent over the time this attempt took, which is what makes two attempts at one climb comparable.
+	VamMetresPerHour float64 `json:"vamMetresPerHour"`
+	// HeartRateBpm The mean over the samples inside the climb.
+	HeartRateBpm *float64 `json:"heartRateBpm,omitempty"`
+	// PowerWatts The mean measured power inside the climb. Never fed by an estimate.
+	PowerWatts *float64 `json:"powerWatts,omitempty"`
+	// EstimatedPowerWatts The mean estimated power inside the climb, for a bicycle carrying no meter. Never ranked or summed with the measured figure above.
+	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
+}
+
 type RouteActivityList struct {
 	Activities []RouteActivity `json:"activities"`
 }

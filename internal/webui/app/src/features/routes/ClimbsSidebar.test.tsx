@@ -3,8 +3,11 @@
  * in half.
  */
 
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { rowsToShow } from "./ClimbsSidebar";
+import type { ClimbTimes } from "../../lib/climbAttempts";
+import type { Climb } from "../../lib/climbs";
+import { ClimbsSidebar, rowsToShow } from "./ClimbsSidebar";
 
 describe("rowsToShow", () => {
   it("subtracts the list's own top margin, not just the header's height", () => {
@@ -29,5 +32,37 @@ describe("rowsToShow", () => {
 
   it("holds off until the section has actually been measured", () => {
     expect(rowsToShow(true, 0, 0)).toBeNull();
+  });
+});
+
+function climb(startMetres: number): Climb {
+  return {
+    startMetres,
+    endMetres: startMetres + 600,
+    distanceMetres: 600,
+    ascentMetres: 36,
+    averageGradePercent: 6,
+    maxGradePercent: 8,
+  };
+}
+
+describe("ClimbsSidebar times", () => {
+  it("reads out the rider's quickest and most recent time over a climb", () => {
+    const times = new Map<number, ClimbTimes>([
+      [0, { bestSeconds: 760, lastSeconds: 785, attempts: [] }],
+    ]);
+
+    render(<ClimbsSidebar climbs={[climb(1000)]} times={times} onSelect={() => {}} />);
+
+    expect(screen.getByText("12:40 · 13:05")).toBeInTheDocument();
+  });
+
+  // Most climbs, for most riders, have never been ridden: an em dash would be
+  // a figure-shaped thing where there is no figure.
+  it("says nothing at all for a climb the rider has not ridden", () => {
+    render(<ClimbsSidebar climbs={[climb(1000)]} times={new Map()} onSelect={() => {}} />);
+
+    // A time, not the separator: the column's own header carries one of those.
+    expect(screen.queryByText(/\d+:\d\d/)).toBeNull();
   });
 });

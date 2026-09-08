@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -45,21 +46,39 @@ func (s *Store) LibraryRoutes(ctx context.Context) ([]activity.RouteCandidate, s
 			return nil, "", fmt.Errorf("reading the library geometry: %w", decodeErr)
 		}
 		line := make([]measure.Coordinate, 0, len(points))
+		elevations := make([]float64, 0, len(points))
+		everyPointHasHeight := true
 		for _, point := range points {
 			coordinate := point.Coordinate()
-			// What a match is measured against is the ground the route covers, so
-			// that and nothing else decides when one is owed again. Altitude is
-			// left out with the rest: no match has ever read it.
+			// The ground the route covers and the height along it, because both
+			// decide what this pass produces: the positions decide which route a
+			// ride was on, and the heights decide where its climbs are. A route
+			// whose profile is redrawn owes its rides a fresh pass just as one
+			// whose line moved does.
 			binary.LittleEndian.PutUint64(position[:], math.Float64bits(coordinate.Longitude))
 			_, _ = digest.Write(position[:])
 			binary.LittleEndian.PutUint64(position[:], math.Float64bits(coordinate.Latitude))
 			_, _ = digest.Write(position[:])
+			height, hasHeight := 0.0, point.Elevation != nil
+			if hasHeight {
+				height = *point.Elevation
+			}
+			binary.LittleEndian.PutUint64(position[:], math.Float64bits(height))
+			_, _ = digest.Write(position[:])
 			line = append(line, coordinate)
+			elevations = append(elevations, height)
+			everyPointHasHeight = everyPointHasHeight && hasHeight
 		}
-		candidates = append(candidates, activity.RouteCandidate{
+		candidate := activity.RouteCandidate{
 			Key:      route.NewKey(route.Provider(row.Provider), row.RouteID, int(row.StageOrder)),
 			Geometry: line,
-		})
+		}
+		// All of them or none: a profile with gaps in it would put climbs where
+		// the gaps are rather than where the hills are.
+		if everyPointHasHeight {
+			candidate.Elevations = elevations
+		}
+		candidates = append(candidates, candidate)
 	}
 
 	return candidates, hex.EncodeToString(digest.Sum(nil)), nil
@@ -107,9 +126,117 @@ func (s *Store) StoreActivityRouteMatch(
 	return nil
 }
 
+// StoreActivityClimbAttempts replaces one ride's attempts at its route's
+// climbs. An empty set clears whatever was there, which is what a ride that has
+// come to match a different route -- or none -- leaves behind.
+func (s *Store) StoreActivityClimbAttempts(
+	ctx context.Context, targetID string, id int64, attempts []activity.ClimbAttempt,
+) error {
+	if err := s.queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
+		TargetSlot: targetID, WorkoutID: id,
+	}); err != nil {
+		return fmt.Errorf("clearing an activity's climb attempts: %w", err)
+	}
+	for index := range attempts {
+		attempt := &attempts[index]
+		if err := s.queries.InsertActivityClimbAttempt(ctx, sqlcgen.InsertActivityClimbAttemptParams{
+			TargetSlot:          targetID,
+			WorkoutID:           id,
+			ClimbIndex:          int64(attempt.ClimbIndex),
+			Seconds:             attempt.Seconds,
+			HeartRateBpm:        nullFloat(attempt.HeartRateBPM, attempt.HasHeartRate),
+			PowerWatts:          nullFloat(attempt.PowerWatts, attempt.HasPower),
+			EstimatedPowerWatts: nullFloat(attempt.EstimatedPowerWatts, attempt.HasEstimatedPower),
+		}); err != nil {
+			return fmt.Errorf("storing an activity's climb attempt: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// StageProfile is one stage's stored line and the height along it, for finding
+// its climbs. found is false for a stage the library does not hold; the
+// elevations are nil for one whose geometry carries no height at all, which is
+// a route no climb can be found on rather than one with none.
+func (s *Store) StageProfile(
+	ctx context.Context, key route.Key,
+) (line []measure.Coordinate, elevations []float64, found bool, err error) {
+	row, err := s.queries.GetStageGeometry(ctx, sqlcgen.GetStageGeometryParams{
+		Provider: string(key.Provider()), RouteID: key.SourceRouteID(), StageOrder: int64(key.StageOrder()),
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil, false, nil
+	}
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("reading stage geometry: %w", err)
+	}
+	points, decodeErr := decodeCoordinates(row.Coordinates)
+	if decodeErr != nil {
+		return nil, nil, false, fmt.Errorf("reading stage geometry: %w", decodeErr)
+	}
+	line = make([]measure.Coordinate, 0, len(points))
+	heights := make([]float64, 0, len(points))
+	everyPointHasHeight := true
+	for _, point := range points {
+		line = append(line, point.Coordinate())
+		if point.Elevation == nil {
+			everyPointHasHeight = false
+
+			continue
+		}
+		heights = append(heights, *point.Elevation)
+	}
+	if everyPointHasHeight {
+		elevations = heights
+	}
+
+	return line, elevations, true, nil
+}
+
+// RouteClimbAttempts is every attempt one target's rides made at one route's
+// climbs, newest ride first.
+func (s *Store) RouteClimbAttempts(
+	ctx context.Context, targetID string, key route.Key,
+) ([]activity.StoredClimbAttempt, error) {
+	rows, err := s.queries.ListRouteClimbAttempts(ctx, sqlcgen.ListRouteClimbAttemptsParams{
+		TargetSlot: targetID,
+		Provider:   sql.NullString{String: string(key.Provider()), Valid: true},
+		RouteID:    sql.NullInt64{Int64: key.SourceRouteID(), Valid: true},
+		StageOrder: sql.NullInt64{Int64: int64(key.StageOrder()), Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading a route's climb attempts: %w", err)
+	}
+	attempts := make([]activity.StoredClimbAttempt, 0, len(rows))
+	for index := range rows {
+		row := &rows[index]
+		attempt := activity.ClimbAttempt{
+			ClimbIndex:          int(row.ClimbIndex),
+			Seconds:             row.Seconds,
+			HeartRateBPM:        row.HeartRateBpm.Float64,
+			PowerWatts:          row.PowerWatts.Float64,
+			EstimatedPowerWatts: row.EstimatedPowerWatts.Float64,
+			HasHeartRate:        row.HeartRateBpm.Valid,
+			HasPower:            row.PowerWatts.Valid,
+			HasEstimatedPower:   row.EstimatedPowerWatts.Valid,
+		}
+		attempts = append(attempts, activity.StoredClimbAttempt{
+			RiddenAt:     time.Unix(row.StartedAtUnix, 0).UTC(),
+			ClimbAttempt: attempt,
+			WorkoutID:    row.WorkoutID,
+		})
+	}
+
+	return attempts, nil
+}
+
 // ClearActivityRouteMatches removes every match one target holds and reports
 // how many went. A library holding no route leaves nothing for a match to name.
 func (s *Store) ClearActivityRouteMatches(ctx context.Context, targetID string) (int, error) {
+	if _, err := s.queries.ClearActivityClimbAttempts(ctx, targetID); err != nil {
+		return 0, fmt.Errorf("clearing activity climb attempts: %w", err)
+	}
 	removed, err := s.queries.DeleteActivityRouteMatchesForTarget(ctx, targetID)
 	if err != nil {
 		return 0, fmt.Errorf("clearing activity route matches: %w", err)

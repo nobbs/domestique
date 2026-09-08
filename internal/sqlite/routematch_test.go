@@ -387,3 +387,94 @@ func TestStoreRefusesADirectionItDoesNotKnow(t *testing.T) {
 		require.ErrorContains(t, err, "CHECK constraint failed", direction)
 	}
 }
+
+// attemptOf is one ride's attempt at one climb, as the derivation would produce.
+func attemptOf(climbIndex int, seconds float64) activity.ClimbAttempt {
+	return activity.ClimbAttempt{
+		ClimbIndex: climbIndex, Seconds: seconds,
+		HeartRateBPM: 162, HasHeartRate: true,
+		PowerWatts: 268, HasPower: true,
+	}
+}
+
+func TestStoreRoundTripsClimbAttempts(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
+		[]activity.ClimbAttempt{attemptOf(0, 780), attemptOf(2, 420)}), "StoreActivityClimbAttempts()")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	require.Len(t, attempts, 2)
+	assert.Equal(t, int64(11), attempts[0].WorkoutID)
+	assert.Equal(t, 0, attempts[0].ClimbIndex)
+	assert.InDelta(t, 780.0, attempts[0].Seconds, 0.001)
+	assert.Equal(t, 2, attempts[1].ClimbIndex)
+	assert.True(t, attempts[0].HasPower)
+}
+
+// A ride derived again replaces its attempts whole, so a climb the route no
+// longer holds leaves no row behind.
+func TestStoreReplacesClimbAttemptsWhole(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
+		[]activity.ClimbAttempt{attemptOf(0, 780), attemptOf(1, 300)}), "StoreActivityClimbAttempts()")
+
+	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
+		[]activity.ClimbAttempt{attemptOf(0, 760)}), "StoreActivityClimbAttempts() again")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	require.Len(t, attempts, 1, "the climb that went took its attempt with it")
+	assert.InDelta(t, 760.0, attempts[0].Seconds, 0.001)
+}
+
+// Attempts belong to the target whose ride made them, and are read only within it.
+func TestRouteClimbAttemptsAreScopedToOneTarget(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-b", 11, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-b", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-b", 11,
+		[]activity.ClimbAttempt{attemptOf(0, 780)}), "StoreActivityClimbAttempts()")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	assert.Empty(t, attempts, "another rider's attempts are not this rider's")
+}
+
+// Clearing a target's matches takes its attempts with them: an attempt names a
+// climb of a route the match is what attributed the ride to.
+func TestClearActivityRouteMatchesTakesTheClimbAttempts(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	require.NoError(t, store.StoreActivityClimbAttempts(t.Context(), "rider-a", 11,
+		[]activity.ClimbAttempt{attemptOf(0, 780)}), "StoreActivityClimbAttempts()")
+
+	_, err := store.ClearActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ClearActivityRouteMatches()")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	assert.Empty(t, attempts, "no match, no attempt at its climbs")
+}

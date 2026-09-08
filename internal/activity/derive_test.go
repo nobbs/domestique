@@ -19,6 +19,10 @@ import (
 // fakeDeriveStore is stored state as a derivation sees it, and a record of what
 // it was asked to write.
 type fakeDeriveStore struct {
+	series           map[int64][]activity.SampleRow
+	seriesErr        error
+	climbAttempts    map[int64][]activity.ClimbAttempt
+	climbAttemptErr  error
 	ownerErr         error
 	profileErr       error
 	owedErr          error
@@ -72,6 +76,28 @@ func (s *fakeDeriveStore) ActivitiesAwaitingRouteMatch(_ context.Context, _, lib
 
 func (s *fakeDeriveStore) ActivityTrack(_ context.Context, _ string, id int64) ([]activity.TrackPoint, error) {
 	return s.tracks[id], s.trackErr
+}
+
+// ActivitySeries answers with whatever the test seeded for the ride, which for
+// most of them is nothing: a ride with no series still matches a route.
+func (s *fakeDeriveStore) ActivitySeries(
+	_ context.Context, _ string, id int64,
+) ([]activity.SampleRow, error) {
+	return s.series[id], s.seriesErr
+}
+
+func (s *fakeDeriveStore) StoreActivityClimbAttempts(
+	_ context.Context, _ string, id int64, attempts []activity.ClimbAttempt,
+) error {
+	if s.climbAttemptErr != nil {
+		return s.climbAttemptErr
+	}
+	if s.climbAttempts == nil {
+		s.climbAttempts = map[int64][]activity.ClimbAttempt{}
+	}
+	s.climbAttempts[id] = attempts
+
+	return nil
 }
 
 func (s *fakeDeriveStore) StoreActivityRouteMatch(

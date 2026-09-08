@@ -23,6 +23,7 @@
  */
 
 import { IconStairs } from "@tabler/icons-react";
+import type { ClimbTimes } from "../../lib/climbAttempts";
 import type { Climb } from "../../lib/climbs";
 import { formatAscent, formatDistance, formatGradient } from "../../lib/format";
 import { useElementHeight } from "../../lib/useElementHeight";
@@ -39,8 +40,12 @@ import { useElementHeight } from "../../lib/useElementHeight";
  * The two gradients are why there is a header. One percentage in a row needs
  * no explaining; two adjacent ones are a riddle, and the answer — which is the
  * average and which the wall — is the whole reason for carrying both.
+ *
+ * The times column is fixed and sits before the last one rather than after it:
+ * `Starts` is the flexible track and already truncates, so the rider's own
+ * times cost width from the one column built to give it up.
  */
-const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem minmax(0,1fr)";
+const ROW_COLUMNS = "0.75rem 3.5rem 2.5rem 2.5rem 3.5rem 4.5rem minmax(0,1fr)";
 const ROW_HEIGHT = 28;
 /** The list's own `mt-1`, which `clientHeight` on the header above it does not include. */
 const LIST_GAP = 4;
@@ -101,9 +106,16 @@ function climbCount(climbs: Climb[]): string | null {
 export function ClimbsSidebar({
   climbs,
   onSelect,
+  times,
   fixedHeight = false,
 }: {
   climbs: Climb[];
+  /**
+   * The signed-in rider's quickest and most recent time over each climb, keyed
+   * by its index in `climbs`. Undefined where nothing has been read, which is
+   * every caller that does not ask the service for them.
+   */
+  times?: Map<number, ClimbTimes> | undefined;
   /** Opens the shared map/chart window on one climb, as the brackets do. */
   onSelect: (climb: Climb) => void;
   /**
@@ -143,6 +155,7 @@ export function ClimbsSidebar({
           <span className="text-right">Avg</span>
           <span className="text-right">Max</span>
           <span className="text-right">Ascent</span>
+          <span className="text-right">Best · last</span>
           <span className="text-right">Starts</span>
         </div>
       </div>
@@ -181,6 +194,19 @@ export function ClimbsSidebar({
               <span className="text-right text-xs text-[var(--ink-2)] tabular-nums">
                 {formatAscent(climb.ascentMetres)}
               </span>
+              {/*
+               * The rider's own quickest and most recent time over this climb.
+               * Empty for a climb they have not ridden, which is most of them
+               * for most riders: an em dash would be a figure-shaped thing
+               * where there is no figure.
+               */}
+              <span className="text-right text-[11px] text-[var(--ink-2)] tabular-nums">
+                {times?.get(index) === undefined
+                  ? null
+                  : `${formatClimbTime(times.get(index)?.bestSeconds ?? 0)} · ${formatClimbTime(
+                      times.get(index)?.lastSeconds ?? 0,
+                    )}`}
+              </span>
               <span className="truncate text-right text-[11px] text-[var(--ink-2)] tabular-nums">
                 {/* No "from": the column is called Starts. */}
                 {formatDistance(climb.startMetres)}
@@ -191,4 +217,14 @@ export function ClimbsSidebar({
       </ol>
     </section>
   );
+}
+
+/**
+ * A climb time, which is minutes and seconds: the shortest climb worth its own
+ * row still takes longer than a minute, and none of them takes hours.
+ */
+function formatClimbTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+
+  return `${minutes}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 }

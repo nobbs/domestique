@@ -1194,6 +1194,30 @@ match and its direction are served on the activity, and a route serves the rides
 one target rode on it with the direction of each, both scoped to the owning
 subject exactly as the activities themselves are.
 
+The same pass times each matched ride over its route's sustained climbs. The
+climbs are the route's own, found from its stored geometry by the definition in
+[measurement.md](measurement.md#sustained-climbs); what is stored per ride is
+one row per climb it rode, carrying how long it took and the mean heart rate,
+measured power and estimated power over the samples inside the climb. Measured
+and estimated power sit apart and are never summed or ranked together. Nothing
+about the climb itself is copied beside the attempt: where a climb runs and how
+much it rises belongs to the route, is found again whenever it is read, and a
+copy could only ever come to disagree with it.
+
+A ride is timed over a climb only where it rode the whole of it the way the
+route stores it. A ride that turned back part way up made no attempt at that
+climb, and one that ran the route the other way round made none at any of them:
+those climbs were its descents. Where a ride passes one climb twice, the first
+pass is the attempt. Because the climbs follow the route's height, the library
+digest a match is measured against now covers the height along each route as
+well as its line: a route whose profile is redrawn owes its rides a fresh pass
+exactly as one whose line moved does.
+
+A route serves its climbs in the order they are ridden, each with the caller's
+own attempts at it, quickest first, scoped to the owning subject exactly as the
+rides are. A route with no climbs, or one the caller has never ridden, is an
+empty list rather than a missing page.
+
 These summaries are also what the ride model is calibrated from. Once a week the
 service refits the coefficient pair over every target's stored rides pooled
 together — each ride's moving time against its distance and ascent — by a robust
