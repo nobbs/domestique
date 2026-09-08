@@ -11,9 +11,11 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
-import type { Route as LibraryRoute, RouteGeometry, Status } from "../../api/types";
+import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
+import type { Route as LibraryRoute, RouteGeometry, Status, WebUIConfig } from "../../api/types";
 import { focusThumb } from "../../test/filterPanel";
+import { stubPendingFetch } from "../../test/network";
+import { IDLE_STATUS } from "../../test/status";
 import { CataloguePage } from "./CataloguePage";
 
 function libraryRoute(
@@ -44,9 +46,29 @@ const LIBRARY: LibraryRoute[] = [
   libraryRoute("Coast ride", { sourceRouteId: 3, distanceMetres: 20_000, ascentMetres: 100 }),
 ];
 
-const STATUS = {
-  sync: { phases: { source: { lastCompletedAt: "2026-08-29T07:00:00Z" } } },
-} as unknown as Status;
+const STATUS: Status = {
+  ...IDLE_STATUS,
+  sync: {
+    ...IDLE_STATUS.sync,
+    phases: {
+      source: {
+        lastCompletedAt: "2026-08-29T07:00:00Z",
+        lastResult: "succeeded",
+        sourceRoutes: 3,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+      },
+    },
+  },
+};
+
+const CONFIG: WebUIConfig = {
+  basemaps: [],
+  sourceBaseUrls: {},
+  timezone: "Europe/Berlin",
+  identity: { display: "rider@example.test", admin: false },
+};
 
 /** Reports the address the page is on, so a link can be followed and read back. */
 function Address() {
@@ -81,11 +103,17 @@ function show(
     nothingToDivide = false,
   }: { geometry?: boolean; nothingToDivide?: boolean } = {},
 ) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+  });
   client.setQueryData(routesQuery().queryKey, library);
   client.setQueryData(statusQuery().queryKey, STATUS);
+  client.setQueryData(webUIConfigQuery().queryKey, CONFIG);
   // Seeded rather than fetched: the glyphs and the surface filter both read
   // this, under the same keys the atlas caches it with.
+  if (!geometry) {
+    stubPendingFetch();
+  }
   if (geometry) {
     library.forEach((route, index) => {
       const seeded = geometryFor(index);
@@ -337,8 +365,11 @@ describe("CataloguePage", () => {
       "fetch",
       vi.fn(() => Promise.reject(new Error("the listener refused the connection"))),
     );
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
     client.setQueryData(statusQuery().queryKey, STATUS);
+    client.setQueryData(webUIConfigQuery().queryKey, CONFIG);
 
     render(
       <QueryClientProvider client={client}>

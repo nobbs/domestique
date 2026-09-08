@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import { statusQuery, webUIConfigQuery } from "../../api/queries";
+import { riderProfileQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Status, TargetStatus, WebUIConfig } from "../../api/types";
 import { SettingsPage } from "./SettingsPage";
 
@@ -48,6 +48,9 @@ function renderPage(statusValue: Status, configValue: WebUIConfig = config()) {
   });
   client.setQueryData(statusQuery().queryKey, statusValue);
   client.setQueryData(webUIConfigQuery().queryKey, configValue);
+  // The profile card sits on this page and reads its own query; these tests are
+  // about the target above it, so it gets an empty profile rather than a fetch.
+  client.setQueryData(riderProfileQuery().queryKey, { profile: {}, suggestions: {} });
 
   return render(
     <QueryClientProvider client={client}>

@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, expect } from "vitest";
+import { refusingFetch } from "./network";
 
 /**
  * A `matchMedia` for jsdom, which has none.
@@ -34,7 +35,26 @@ beforeEach(() => {
  */
 Element.prototype.scrollIntoView = () => {};
 
+/** Every request the suite's own `fetch` refused during the current test. */
+const requested: string[] = [];
+
+// Assigned rather than stubbed through Vitest: a file that ends its own test
+// with `vi.unstubAllGlobals` would otherwise put the platform's `fetch` back
+// for the unmount that follows, and a request made there would go out unseen.
+beforeEach(() => {
+  requested.length = 0;
+  globalThis.fetch = refusingFetch(requested);
+});
+
 // Testing Library only registers its own cleanup when Vitest globals are on.
 // This suite imports its helpers explicitly, so unmount between tests here or
-// each render leaks into the next one's queries.
-afterEach(cleanup);
+// each render leaks into the next one's queries. The unmount goes ahead of the
+// assertion in the same hook rather than in one beside it, so a request made
+// while tearing a page down is one this counts rather than one it races.
+afterEach(() => {
+  cleanup();
+  const made = [...requested];
+  requested.length = 0;
+
+  expect(made).toEqual([]);
+});

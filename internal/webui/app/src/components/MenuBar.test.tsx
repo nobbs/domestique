@@ -2,8 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
-import { webUIConfigQuery } from "../api/queries";
+import { statusQuery, webUIConfigQuery } from "../api/queries";
 import type { WebUIConfig } from "../api/types";
+import { IDLE_STATUS } from "../test/status";
 import { MenuBar } from "./MenuBar";
 
 function config(admin: boolean): WebUIConfig {
@@ -20,6 +21,7 @@ function renderBar(admin: boolean) {
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config(admin));
+  client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
 
   return render(
     <QueryClientProvider client={client}>
