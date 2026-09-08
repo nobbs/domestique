@@ -162,3 +162,24 @@ func TestSnapIndexLineMetresIsZeroForALineItDoesNotHold(t *testing.T) {
 
 	assert.InDelta(t, 0, index.LineMetres(7), 1e-9)
 }
+
+// A line too short to contribute a segment is not where the indexed geometry
+// is. Anchoring the projection on one scales east-west distance by the wrong
+// latitude, so the line here runs north and the query sits east of it, which is
+// the offset that distortion falls on.
+func TestSnapIndexAnchorsOnALineItActuallyIndexes(t *testing.T) {
+	stray := []Coordinate{{Latitude: 0, Longitude: 0}}
+	northward := []Coordinate{snapOrigin(), metresNorth(snapOrigin(), 1000)}
+
+	withStray := NewSnapIndex([][]Coordinate{stray, northward}, 25)
+	alone := NewSnapIndex([][]Coordinate{northward}, 25)
+
+	query := metresEast(metresNorth(snapOrigin(), 500), 10)
+	strayed, found := withStray.NearestMetres(query)
+	require.True(t, found)
+	clean, found := alone.NearestMetres(query)
+	require.True(t, found)
+
+	assert.InDelta(t, clean, strayed, 0.01, "a stray point must not move the reading")
+	assert.InDelta(t, 10, strayed, 0.5)
+}

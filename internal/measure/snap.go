@@ -33,8 +33,11 @@ type SnapHit struct {
 // that finds nothing rather than a nil to guard at every call.
 func NewSnapIndex(lines [][]Coordinate, radiusMetres float64) *SnapIndex {
 	index := &SnapIndex{radius: radiusMetres}
+	// The reference comes from a line that contributes a segment. A line too
+	// short to index is not where the geometry is, and anchoring on one far from
+	// the rest would scale every east-west distance by the wrong latitude.
 	for _, line := range lines {
-		if len(line) > 0 {
+		if len(line) >= 2 {
 			index.projection = newProjection(line[0].Longitude, line[0].Latitude)
 
 			break
