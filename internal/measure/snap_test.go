@@ -183,3 +183,19 @@ func TestSnapIndexAnchorsOnALineItActuallyIndexes(t *testing.T) {
 	assert.InDelta(t, clean, strayed, 0.01, "a stray point must not move the reading")
 	assert.InDelta(t, 10, strayed, 0.5)
 }
+
+// A radius of nothing has no answer to give, and says so rather than indexing
+// at a cell size of zero, where the step count and the cell keys both come from
+// out-of-range float conversions the language does not define.
+func TestSnapIndexOverANonPositiveRadiusFindsNothing(t *testing.T) {
+	line := []Coordinate{snapOrigin(), metresEast(snapOrigin(), 1000)}
+
+	for _, radius := range []float64{0, -25} {
+		index := NewSnapIndex([][]Coordinate{line}, radius)
+
+		_, found := index.NearestMetres(metresEast(snapOrigin(), 500))
+		assert.False(t, found, "radius %v", radius)
+		assert.Empty(t, index.Near(snapOrigin()), "radius %v", radius)
+		assert.InDelta(t, 0, index.LineMetres(0), 1e-9, "radius %v", radius)
+	}
+}

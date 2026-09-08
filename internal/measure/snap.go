@@ -33,6 +33,14 @@ type SnapHit struct {
 // that finds nothing rather than a nil to guard at every call.
 func NewSnapIndex(lines [][]Coordinate, radiusMetres float64) *SnapIndex {
 	index := &SnapIndex{radius: radiusMetres}
+	// A radius of nothing asks for nothing. Indexing at one sizes every grid cell
+	// at zero, leaving the step count and the cell keys to float conversions the
+	// language does not define.
+	if radiusMetres <= 0 {
+		index.grid = newSegmentGrid(nil, 1)
+
+		return index
+	}
 	// The reference comes from a line that contributes a segment. A line too
 	// short to index is not where the geometry is, and anchoring on one far from
 	// the rest would scale every east-west distance by the wrong latitude.
