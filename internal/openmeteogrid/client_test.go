@@ -117,6 +117,26 @@ func TestObjectForwardsConditionalHeadersAndNothingElse(t *testing.T) {
 	assert.Empty(t, gotHeader.Get("Authorization"))
 }
 
+func TestLatestForwardsConditionalHeadersAndNothingElse(t *testing.T) {
+	var gotHeader http.Header
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		gotHeader = request.Header.Clone()
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	response, err := newTestClient(t, server).Latest(t.Context(), http.Header{
+		"If-None-Match":     {`"abc123"`},
+		"If-Modified-Since": {"Wed, 09 Sep 2026 00:00:00 GMT"},
+		"Cookie":            {"session=secret"},
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, response.Body.Close()) }()
+	assert.Equal(t, `"abc123"`, gotHeader.Get("If-None-Match"))
+	assert.Equal(t, "Wed, 09 Sep 2026 00:00:00 GMT", gotHeader.Get("If-Modified-Since"))
+	assert.Empty(t, gotHeader.Get("Cookie"))
+}
+
 func TestRequestsAskTheUpstreamNotToCompressTheBody(t *testing.T) {
 	var gotAcceptEncoding string
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {

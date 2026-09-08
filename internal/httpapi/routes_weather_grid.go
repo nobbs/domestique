@@ -53,8 +53,8 @@ func (h *Handler) GetWeatherGridObject(writer http.ResponseWriter, request *http
 }
 
 // relayWeatherGrid writes the upstream's status and named headers, then its
-// body unless the request was HEAD — matching how GET /healthz already
-// answers HEAD without a body.
+// body unless the request was HEAD or the upstream answered 304 — matching
+// how GET /healthz already answers HEAD without a body.
 //
 // A HEAD's Content-Length names bytes nobody asks for next, so it is relayed
 // as-is; a GET's is a promise this relay then has to keep. Refusing before
