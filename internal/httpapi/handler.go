@@ -237,7 +237,7 @@ func New(
 		alerts:              options.Alerts,
 		tasks:               options.Tasks,
 		webhookTokens:       options.WebhookTokens,
-		stoppingTypes:       options.StoppingTypes,
+		stoppingTypes:       slices.Clone(options.StoppingTypes),
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,
