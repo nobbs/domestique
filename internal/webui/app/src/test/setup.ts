@@ -46,14 +46,15 @@ beforeEach(() => {
   globalThis.fetch = refusingFetch(requested);
 });
 
+// Testing Library only registers its own cleanup when Vitest globals are on.
+// This suite imports its helpers explicitly, so unmount between tests here or
+// each render leaks into the next one's queries. The unmount goes ahead of the
+// assertion in the same hook rather than in one beside it, so a request made
+// while tearing a page down is one this counts rather than one it races.
 afterEach(() => {
+  cleanup();
   const made = [...requested];
   requested.length = 0;
 
   expect(made).toEqual([]);
 });
-
-// Testing Library only registers its own cleanup when Vitest globals are on.
-// This suite imports its helpers explicitly, so unmount between tests here or
-// each render leaks into the next one's queries.
-afterEach(cleanup);
