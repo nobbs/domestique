@@ -258,6 +258,37 @@ func TestClientAbortsOnCancelledContext(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestForecastOutlivesALeaderThatGivesUp(t *testing.T) {
+	var requests atomic.Int32
+	arrived := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		arrived <- struct{}{}
+		<-release
+		writeResponse(t, writer, http.StatusOK, `{"hourly":{"time":[]}}`)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	from := time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC)
+	at := []Coordinate{{Latitude: 50.11, Longitude: 8.68}}
+	ctx, cancel := context.WithCancel(t.Context())
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, err := client.Forecast(ctx, at, from, from)
+		leaderErr <- err
+	}()
+	<-arrived
+	cancel()
+	require.ErrorIs(t, <-leaderErr, context.Canceled)
+
+	close(release)
+	_, err := client.Forecast(t.Context(), at, from, from)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, requests.Load(), "the follower must be served by the leader's fetch")
+}
+
 func TestClientAbortsOnExceededTimeout(t *testing.T) {
 	blockUntilDone := make(chan struct{})
 	server := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {

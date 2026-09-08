@@ -1,7 +1,9 @@
 package openmeteo
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -35,19 +37,22 @@ func newForecastCache(now func() time.Time, ttl time.Duration) *forecastCache {
 }
 
 // get answers key from the cache, or calls miss on a cache miss. Concurrent
-// misses for the same key share one call to miss.
-func (c *forecastCache) get(key string, miss func() ([]Series, error)) ([]Series, error) {
+// misses for the same key share one call to miss, which runs detached from
+// any one caller's cancellation so a leader giving up cannot fail the rest.
+func (c *forecastCache) get(
+	ctx context.Context, key string, miss func(context.Context) ([]Series, error),
+) ([]Series, error) {
 	if series, ok := c.lookup(key); ok {
 		return series, nil
 	}
 
-	result, err, _ := c.group.Do(key, func() (any, error) {
+	results := c.group.DoChan(key, func() (any, error) {
 		// Another caller may have populated the cache while this one waited
 		// to enter the singleflight call.
 		if series, ok := c.lookup(key); ok {
 			return series, nil
 		}
-		series, missErr := miss()
+		series, missErr := miss(context.WithoutCancel(ctx))
 		if missErr != nil {
 			return nil, missErr
 		}
@@ -55,10 +60,16 @@ func (c *forecastCache) get(key string, miss func() ([]Series, error)) ([]Series
 
 		return series, nil
 	})
-	if err != nil {
-		return nil, err //nolint:wrapcheck // the miss closure's own error is already an openmeteo error.
+	var result singleflight.Result
+	select {
+	case result = <-results:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("openmeteo: forecast request abandoned: %w", ctx.Err())
 	}
-	series, ok := result.([]Series)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+	series, ok := result.Val.([]Series)
 	if !ok {
 		return nil, errors.New("openmeteo: forecast cache returned an unexpected value")
 	}

@@ -256,7 +256,7 @@ func (c *Client) Forecast(ctx context.Context, at []Coordinate, from, to time.Ti
 
 	// The composed URL already encodes coordinates, window, parameters and
 	// zone, so it is the exact upstream request and the natural cache key.
-	return c.forecasts.get(endpoint.String(), func() ([]Series, error) {
+	return c.forecasts.get(ctx, endpoint.String(), func(ctx context.Context) ([]Series, error) {
 		return c.fetch(ctx, &endpoint, location, len(at), true, time.Hour)
 	})
 }

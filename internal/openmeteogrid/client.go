@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -110,19 +112,25 @@ func (c *Client) Latest(ctx context.Context, conditional http.Header) (*http.Res
 		return respondFromManifest(entry, conditional), nil
 	}
 
-	raw, err, _ := c.manifest.group.Do("latest", func() (any, error) {
-		// Another caller may have populated the cache while this one waited
-		// to enter the singleflight call.
+	// The shared fetch runs detached from any one caller's cancellation, so a
+	// leader giving up cannot fail the followers; the client timeout bounds it.
+	results := c.manifest.group.DoChan("latest", func() (any, error) {
 		if entry, ok := c.manifest.lookup(c.now()); ok {
 			return entry, nil
 		}
 
-		return c.fetchManifestEntry(ctx)
+		return c.fetchManifestEntry(context.WithoutCancel(ctx))
 	})
-	if err != nil {
-		return nil, err //nolint:wrapcheck // the miss closure's own error is already an openmeteogrid error.
+	var result singleflight.Result
+	select {
+	case result = <-results:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("openmeteogrid: manifest request abandoned: %w", ctx.Err())
 	}
-	entry, ok := raw.(*manifestCacheEntry)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+	entry, ok := result.Val.(*manifestCacheEntry)
 	if !ok {
 		return nil, errors.New("openmeteogrid: manifest fetch returned an unexpected value")
 	}

@@ -287,6 +287,40 @@ func TestLatestCollapsesConcurrentMissesIntoOneUpstreamRequest(t *testing.T) {
 	assert.EqualValues(t, 1, requests.Load(), "ten concurrent misses must collapse into one request")
 }
 
+func TestLatestOutlivesALeaderThatGivesUp(t *testing.T) {
+	var requests atomic.Int32
+	arrived := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		arrived <- struct{}{}
+		<-release
+		writer.WriteHeader(http.StatusOK)
+		_, err := writer.Write([]byte(`{}`))
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	ctx, cancel := context.WithCancel(t.Context())
+	leaderErr := make(chan error, 1)
+	go func() {
+		//nolint:bodyclose // The leader is cancelled before any response exists to close.
+		_, err := client.Latest(ctx, nil)
+		leaderErr <- err
+	}()
+	<-arrived
+	cancel()
+	require.ErrorIs(t, <-leaderErr, context.Canceled)
+
+	close(release)
+	follower, err := client.Latest(t.Context(), nil)
+	require.NoError(t, err)
+	assert.NoError(t, follower.Body.Close())
+	assert.Equal(t, http.StatusOK, follower.StatusCode)
+	assert.EqualValues(t, 1, requests.Load(), "the follower must be served by the leader's fetch")
+}
+
 func TestLatestDoesNotCacheA5xx(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
