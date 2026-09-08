@@ -501,6 +501,10 @@ only**. An estimated power carries a per-ride bias (see §Estimated power), and
 either figure fed by one would compare a ride against a differently biased
 version of itself.
 
+Both read the **cleaned** heart-rate series (§Sensor cleaning), not the ride's
+raw one. A spike above the rider's maximum falls in one half, and read raw it
+would be drift that never happened.
+
 **Aerobic decoupling.** The ride is split in half by elapsed time. Each half's
 power-to-heart-rate ratio is its mean measured power over its mean heart rate,
 and decoupling is how much of the first half's ratio the second half lost, as a

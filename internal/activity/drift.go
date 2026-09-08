@@ -46,9 +46,11 @@ type HeatDrift struct {
 }
 
 // Decoupling works the ride's aerobic decoupling out from its measured power
-// and heart rate.
-func (s *RideSamples) Decoupling() Decoupling {
-	if len(s.Power) == 0 || len(s.HeartRate) == 0 {
+// and the cleaned heart rate the caller passes in. The cleaned series and not
+// this ride's own: a spike above the rider's maximum lands in one half and
+// would be read as drift.
+func (s *RideSamples) Decoupling(heartRate []trainingload.Sample) Decoupling {
+	if len(s.Power) == 0 || len(heartRate) == 0 {
 		return Decoupling{}
 	}
 	start, end := s.Power[0].At, s.Power[len(s.Power)-1].At
@@ -56,8 +58,8 @@ func (s *RideSamples) Decoupling() Decoupling {
 		return Decoupling{}
 	}
 	middle := start.Add(end.Sub(start) / 2)
-	first, firstOK := ratioOver(s.Power, s.HeartRate, start, middle)
-	second, secondOK := ratioOver(s.Power, s.HeartRate, middle, end.Add(time.Nanosecond))
+	first, firstOK := ratioOver(s.Power, heartRate, start, middle)
+	second, secondOK := ratioOver(s.Power, heartRate, middle, end.Add(time.Nanosecond))
 	if !firstOK || !secondOK || first == 0 {
 		return Decoupling{}
 	}
@@ -98,17 +100,20 @@ func meanBetween(samples []trainingload.Sample, from, to time.Time) (float64, bo
 }
 
 // HeatDrift reads the ride's endurance-band heart rate and the temperature it
-// was held at. Measured power places the band: an estimate carries a per-ride
-// bias, which would put the same effort in different bands on different rides
-// and make a season of these points incomparable.
-func (s *RideSamples) HeatDrift(thresholdPowerWatts float64) HeatDrift {
+// was held at, over the cleaned heart rate the caller passes in. Measured power
+// places the band: an estimate carries a per-ride bias, which would put the
+// same effort in different bands on different rides and make a season of these
+// points incomparable.
+func (s *RideSamples) HeatDrift(
+	cleanedHeartRate []trainingload.Sample, thresholdPowerWatts float64,
+) HeatDrift {
 	if thresholdPowerWatts <= 0 || len(s.Power) == 0 ||
-		len(s.HeartRate) == 0 || len(s.Temperature) == 0 {
+		len(cleanedHeartRate) == 0 || len(s.Temperature) == 0 {
 		return HeatDrift{}
 	}
 	lower := thresholdPowerWatts * HeatDriftBandLowerShare
 	upper := thresholdPowerWatts * HeatDriftBandUpperShare
-	heartRate := byTime(s.HeartRate)
+	heartRate := byTime(cleanedHeartRate)
 	temperature := byTime(s.Temperature)
 	totalHeartRate, totalTemperature, counted := 0.0, 0.0, 0
 	for index := range s.Power {

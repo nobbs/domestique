@@ -207,8 +207,8 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		metrics := RideMetrics{
 			Load:       load,
 			Averages:   samples.Averages(),
-			Decoupling: samples.Decoupling(),
-			HeatDrift:  samples.HeatDrift(inputs.FunctionalThresholdPowerWatts),
+			Decoupling: samples.Decoupling(heartRate),
+			HeatDrift:  samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts),
 		}
 		if load.HasEstimatedPower {
 			metrics.EstimateQuality, metrics.HasEstimateQuality = quality, true
