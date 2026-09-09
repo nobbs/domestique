@@ -14,9 +14,9 @@ import (
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
-// derivationVersion is which derivation wrote a stored row. Bumped whenever a
-// derivation starts producing a figure the rows before it cannot hold, so those
-// rows are listed again rather than keeping the new columns null for good.
+// derivationVersion is which derivation wrote a stored row. Bumped whenever the
+// rows before it have gone stale: a figure they cannot hold, or a method or an
+// input that changed under them. Those rows are listed again.
 //
 // 3: rows before it cannot hold the estimate's quality diagnostics.
 // 4: the estimate now follows a cadence gate and a per-sample air density, and
@@ -27,7 +27,9 @@ import (
 // 6: rows before it cannot hold a ride's decoupling or its heat-drift reading.
 // 7: rows before it cannot hold the ride's power-duration bests.
 // 8: rows before it cannot hold the ride's maximum speed.
-const derivationVersion = 8
+// 9: rows before it were worked out over samples the version 2 re-read has
+// since replaced, at a time when a re-read left the metrics row in place.
+const derivationVersion = 9
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those

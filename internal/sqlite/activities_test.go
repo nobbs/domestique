@@ -1055,3 +1055,39 @@ func TestActivitySessionsRejectsACorruptZoneTable(t *testing.T) {
 	_, err = store.ActivitySessions(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "zone table")
 }
+
+// A re-read replaces what a derivation was worked out from, so the row goes
+// with the samples and the next derivation lists the ride again.
+func TestStoreActivityRecordsClearsTheDerivedRow(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	fit := activity.FIT{Records: []activity.Record{{Time: activityNow(), PowerWatts: 240, HasPower: true}}}
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, fit, activity.RecordsVersion),
+		"StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+		"StoreActivityMetrics()")
+
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, fit, activity.RecordsVersion+1),
+		"StoreActivityRecords() again")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	assert.NotContains(t, read, int64(1))
+	awaiting, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
+	assert.Equal(t, []int64{1}, awaiting)
+}
+
+func TestStoreActivityRecordsReportsAMetricsRowItCannotClear(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	_, err := store.database.ExecContext(t.Context(), "DROP TABLE activity_metrics")
+	require.NoError(t, err)
+
+	err = store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{}, activity.RecordsVersion)
+	require.ErrorContains(t, err, "clearing prior activity metrics")
+}
