@@ -1079,3 +1079,15 @@ func TestStoreActivityRecordsClearsTheDerivedRow(t *testing.T) {
 	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
 	assert.Equal(t, []int64{1}, awaiting)
 }
+
+func TestStoreActivityRecordsReportsAMetricsRowItCannotClear(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	_, err := store.database.ExecContext(t.Context(), "DROP TABLE activity_metrics")
+	require.NoError(t, err)
+
+	err = store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{}, activity.RecordsVersion)
+	require.ErrorContains(t, err, "clearing prior activity metrics")
+}
