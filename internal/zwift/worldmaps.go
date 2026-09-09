@@ -93,7 +93,7 @@ func (m *WorldMaps) Image(
 	if cached {
 		return held.data, held.contentType, held.etag, true, nil
 	}
-	fetched, err := m.fetch(ctx, world)
+	fetched, err := m.fetch(ctx, &world)
 	if err != nil {
 		return nil, "", "", false, err
 	}
@@ -107,7 +107,7 @@ func (m *WorldMaps) Image(
 // fetch reads one world's image from the CDN. Two callers racing on the same
 // world both fetch; the second simply overwrites an identical entry, which is
 // cheaper than holding the lock across a network read.
-func (m *WorldMaps) fetch(ctx context.Context, world World) (worldImage, error) {
+func (m *WorldMaps) fetch(ctx context.Context, world *World) (worldImage, error) {
 	request, err := http.NewRequestWithContext(
 		ctx, http.MethodGet, m.baseURL+mapImagePath+world.ImageFile, http.NoBody,
 	)

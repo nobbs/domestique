@@ -45,7 +45,29 @@ func TestEveryWorldIsBoxedNorthWestToSouthEast(t *testing.T) {
 		assert.Greaterf(t, world.North, world.South, "world %d spans north to south", id)
 		assert.Lessf(t, world.West, world.East, "world %d spans west to east", id)
 		assert.NotEmptyf(t, world.ImageFile, "world %d names its artwork", id)
+		assert.GreaterOrEqualf(t, world.ImageQuarterTurns, 0, "world %d turns forward", id)
+		assert.Lessf(t, world.ImageQuarterTurns, 4, "world %d turns less than a full circle", id)
 	}
+}
+
+// The worlds whose published artwork is drawn a quarter turn from the frame
+// their bounds are quoted in, measured by which turn puts a recorded ride on
+// the artwork's own roads. A turn appearing or disappearing here moves every
+// ride in that world, so the set is pinned rather than merely range-checked.
+func TestTheNewerWorldsCarryAQuarterTurn(t *testing.T) {
+	t.Parallel()
+
+	turned := map[int64]int{}
+
+	for id := int64(1); id <= 13; id++ {
+		world, found := zwift.WorldByID(id)
+		if !found || world.ImageQuarterTurns == 0 {
+			continue
+		}
+		turned[id] = world.ImageQuarterTurns
+	}
+
+	assert.Equal(t, map[int64]int{9: 3, 10: 3, 11: 3, 13: 3}, turned)
 }
 
 func TestWorldOfReadsTheStoredSummary(t *testing.T) {

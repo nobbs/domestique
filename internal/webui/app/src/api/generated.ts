@@ -495,6 +495,12 @@ export interface ActivityTrackWorld {
   bounds: ActivityTrackWorldBounds;
   /** Where this service serves the world's map artwork from, on its own origin. */
   mapUrl: string;
+  /**
+   * How many quarter turns clockwise a reader has to turn the artwork by before `bounds` describes it. Zwift draws the newer worlds' minimaps a quarter turn from the frame their coordinates are quoted in, so artwork placed in that box untouched lands nowhere near the roads a ride in it was recorded on.
+   * @minimum 0
+   * @maximum 3
+   */
+  imageQuarterTurns: number;
 }
 
 export interface ActivityTrackProperties {

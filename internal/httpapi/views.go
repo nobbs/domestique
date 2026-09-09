@@ -141,6 +141,9 @@ type activityWorldView struct {
 	MapURL string                  `json:"mapUrl"`
 	Bounds activityWorldBoundsView `json:"bounds"`
 	ID     int64                   `json:"id"`
+	// ImageQuarterTurns is how many quarter turns clockwise the reader has to
+	// turn the artwork by before the bounds above describe it.
+	ImageQuarterTurns int `json:"imageQuarterTurns"`
 }
 
 // activityWorldBoundsView is a world's corners, in degrees.

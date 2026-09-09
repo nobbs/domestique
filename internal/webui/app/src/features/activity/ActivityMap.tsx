@@ -35,6 +35,32 @@ const BLANK_STYLE: MapStyle = { version: 8, sources: {}, layers: [] };
 
 const WORLD_ARTWORK_SOURCE_ID = "zwift-world-artwork";
 
+/** The corners of an image source, in the order it wants them. */
+type Corner = [number, number];
+type ImageCorners = [Corner, Corner, Corner, Corner];
+
+/**
+ * Where a world's artwork's four corners go: top-left, top-right, bottom-right,
+ * bottom-left of the *image*. Each quarter turn clockwise shifts that list by
+ * one rather than touching a pixel — MapLibre draws whatever quadrilateral the
+ * corners describe.
+ */
+function artworkCorners(world: ActivityTrackWorld): ImageCorners {
+  const { north, west, south, east } = world.bounds;
+  let corners: ImageCorners = [
+    [west, north],
+    [east, north],
+    [east, south],
+    [west, south],
+  ];
+  for (let turn = 0; turn < world.imageQuarterTurns; turn += 1) {
+    const [first, ...rest] = corners;
+    corners = [...rest, first];
+  }
+
+  return corners;
+}
+
 export interface ActivityMapProps {
   coordinates: Position[];
   /** The whole track's box; overridden by `windowBounds` while zoomed. */
@@ -133,12 +159,7 @@ export function ActivityMap({
             id={WORLD_ARTWORK_SOURCE_ID}
             type="image"
             url={world.mapUrl}
-            coordinates={[
-              [world.bounds.west, world.bounds.north],
-              [world.bounds.east, world.bounds.north],
-              [world.bounds.east, world.bounds.south],
-              [world.bounds.west, world.bounds.south],
-            ]}
+            coordinates={artworkCorners(world)}
           >
             <Layer id={`${WORLD_ARTWORK_SOURCE_ID}-layer`} type="raster" />
           </Source>

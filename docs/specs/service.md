@@ -542,10 +542,13 @@ The read-only JSON surface is small:
   An indoor ride Zwift recorded in a virtual world this service knows the
   bounds of is the one `indoor` ride served a line. It keeps `state: indoor` —
   it was ridden over no ground — and carries, beside the line, `properties.world`:
-  the world's id and name, the corners its coordinates fall between, and
-  `mapUrl`, the route below that serves that world's map artwork. The line is
-  drawn over that artwork and never over a basemap. An indoor ride in no world
-  this service names carries neither, exactly as before.
+  the world's id and name, the corners its coordinates fall between, `mapUrl`,
+  the route below that serves that world's map artwork, and
+  `imageQuarterTurns`, how many quarter turns clockwise a reader turns that
+  artwork by before those corners describe it — Zwift draws the newer worlds'
+  minimaps a quarter turn from the frame their coordinates are quoted in. The
+  line is drawn over that artwork and never over a basemap. An indoor ride in
+  no world this service names carries neither, exactly as before.
 - `GET /v1/zwift/worlds/{worldId}/map` returns one Zwift world's published map
   artwork, relayed from Zwift's CDN through this origin: the CDN sends no CORS
   header, so a browser cannot read it directly, and relaying also keeps which
@@ -555,7 +558,9 @@ The read-only JSON surface is small:
   cached privately for a day and revalidated by an `ETag` over the bytes. A
   world this service's table does not name is `404`. The bounds and image names
   are a small table kept in this repository, copied from the `zwift-data`
-  package, not a runtime dependency.
+  package, not a runtime dependency; the quarter turns beside them are this
+  service's own, measured by which turn puts a recorded ride on the artwork's
+  own roads.
 - `GET /v1/activities/{activityId}/series/{series}` returns one named series of
   that activity's samples — `heartRate`, `cadence`, `power`, `temperature`,
   `speed` or `targetPower` — indexed 1:1 with the coordinates the track

@@ -433,6 +433,9 @@ type ZwiftWorld struct {
 	West  float64
 	South float64
 	East  float64
+	// ImageQuarterTurns is how many quarter turns clockwise the browser has to
+	// turn the artwork by before the corners above describe it.
+	ImageQuarterTurns int
 }
 
 // ZwiftWorldOf reads a stored Zwift summary and reports the world it names, if
