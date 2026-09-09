@@ -22,7 +22,7 @@ func TestKnownActivityIDsIsEmptyForATargetWithNoActivities(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Empty(t, ids)
 }
@@ -38,7 +38,7 @@ func TestStoreActivityKeepsEachTargetsActivitiesApart(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 	require.NoError(t, storeTestActivity(t, store, "rider-b", 2, 200), "StoreActivity()")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Equal(t, []int64{1}, ids)
 }
@@ -53,7 +53,7 @@ func TestStoreActivityOverwritesAPriorSummary(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 250), "StoreActivity() again")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Equal(t, []int64{1}, ids, "the second read added a row instead of replacing one")
 
@@ -80,7 +80,7 @@ func TestKnownActivityIDsReportsAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	_, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.ErrorContains(t, err, "reading stored activity ids")
 }
 
@@ -120,7 +120,7 @@ func TestASkippedActivityIsNotAStoredOne(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 404", activityNow()), "RecordActivitySkip()")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Empty(t, ids, "a skip was reported as a known activity")
 	stored, err := store.ActivitiesBetween(t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
@@ -1203,6 +1203,23 @@ func TestDeleteTrainerCopyLeavesAnOutdoorRideInTheWindow(t *testing.T) {
 	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow(), time.Minute, wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "DeleteTrainerCopy()")
 	assert.Zero(t, removed)
+}
+
+// Each poll compares its listing against its own provider's ids alone, so an
+// id another provider happens to hold reaches the upsert and fails there.
+func TestKnownActivityIDsAreScopedToOneProvider(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 7, activityNow()), "StoreActivity() zwift")
+
+	wahooIDs, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{1}, wahooIDs)
+	zwiftIDs, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderZwift)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{7}, zwiftIDs)
 }
 
 // A ride outside the window is another ride, not another recording of this one.

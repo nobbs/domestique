@@ -1,5 +1,5 @@
 -- name: ListActivityIDs :many
-SELECT workout_id FROM activities WHERE target_slot = ? ORDER BY workout_id;
+SELECT workout_id FROM activities WHERE target_slot = ? AND provider = ? ORDER BY workout_id;
 
 -- name: ActivityExists :one
 SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ?);

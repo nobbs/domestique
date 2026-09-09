@@ -28,10 +28,10 @@ func (s *Store) ActivityStored(ctx context.Context, targetID string, id int64) (
 	return stored, nil
 }
 
-// KnownActivityIDs are the Wahoo workout IDs already stored for one target,
-// which is what a poll compares the account's listing against.
-func (s *Store) KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error) {
-	ids, err := s.queries.ListActivityIDs(ctx, targetID)
+// KnownActivityIDs are one provider's activity ids already stored for one
+// target, which is what that provider's poll compares its listing against.
+func (s *Store) KnownActivityIDs(ctx context.Context, targetID, provider string) ([]int64, error) {
+	ids, err := s.queries.ListActivityIDs(ctx, sqlcgen.ListActivityIDsParams{TargetSlot: targetID, Provider: provider})
 	if err != nil {
 		return nil, fmt.Errorf("reading stored activity ids: %w", err)
 	}

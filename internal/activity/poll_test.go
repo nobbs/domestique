@@ -1145,7 +1145,7 @@ func (s *fakeStore) MarkNeedsReauthorization(_ context.Context, _ string) error 
 	return s.markErr
 }
 
-func (s *fakeStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, error) {
+func (s *fakeStore) KnownActivityIDs(_ context.Context, _, _ string) ([]int64, error) {
 	return s.known, s.knownErr
 }
 

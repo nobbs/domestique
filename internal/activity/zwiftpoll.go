@@ -46,7 +46,7 @@ type ZwiftStore interface {
 	// RiderZwiftCredentials are the rider's own Zwift email and password, each
 	// empty when it has not been entered.
 	RiderZwiftCredentials(ctx context.Context, subject string) (email, password []byte, err error)
-	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
+	KnownActivityIDs(ctx context.Context, targetID, provider string) ([]int64, error)
 	StoreActivity(ctx context.Context, targetID string, listing Listing, summary Summary, now time.Time) error
 	// DeleteTrainerCopy removes the Wahoo activities of an indoor type that
 	// started within window of at, and reports how many went.
@@ -129,7 +129,7 @@ func (p *ZwiftPoller) Poll(ctx context.Context, targetID string) Result {
 // storeNew stores every listed ride the target does not hold, page by page from
 // the newest, stopping at the first page that held nothing new.
 func (p *ZwiftPoller) storeNew(ctx context.Context, targetID string, reader ZwiftReader) (stored int, failure Failure) {
-	ids, err := p.store.KnownActivityIDs(ctx, targetID)
+	ids, err := p.store.KnownActivityIDs(ctx, targetID, ProviderZwift)
 	if err != nil {
 		return 0, FailureState
 	}

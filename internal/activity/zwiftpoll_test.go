@@ -108,7 +108,7 @@ func (s *fakeZwiftStore) RiderZwiftCredentials(_ context.Context, _ string) (ema
 	return []byte(s.email), []byte(s.password), nil
 }
 
-func (s *fakeZwiftStore) KnownActivityIDs(_ context.Context, _ string) ([]int64, error) {
+func (s *fakeZwiftStore) KnownActivityIDs(_ context.Context, _, _ string) ([]int64, error) {
 	return slices.Clone(s.known), nil
 }
 

@@ -201,7 +201,7 @@ type Store interface {
 // it has yet to store, kept apart so neither half grows past what one reader
 // can hold.
 type listingStore interface {
-	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
+	KnownActivityIDs(ctx context.Context, targetID, provider string) ([]int64, error)
 	// IndoorRideStarts are the start times of the target's stored Zwift rides,
 	// which is what tells a Wahoo listing that is the head unit's copy of one.
 	IndoorRideStarts(ctx context.Context, targetID string) ([]time.Time, error)
@@ -545,7 +545,7 @@ func (p *Poller) pending(
 		listings = fresh
 	}
 
-	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
+	known, knownErr := p.store.KnownActivityIDs(ctx, targetID, ProviderWahoo)
 	if knownErr != nil {
 		return nil, requests, FailureState
 	}

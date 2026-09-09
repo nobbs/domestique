@@ -322,11 +322,16 @@ func (q *Queries) ListActivitiesBetween(ctx context.Context, arg ListActivitiesB
 }
 
 const listActivityIDs = `-- name: ListActivityIDs :many
-SELECT workout_id FROM activities WHERE target_slot = ? ORDER BY workout_id
+SELECT workout_id FROM activities WHERE target_slot = ? AND provider = ? ORDER BY workout_id
 `
 
-func (q *Queries) ListActivityIDs(ctx context.Context, targetSlot string) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listActivityIDs, targetSlot)
+type ListActivityIDsParams struct {
+	TargetSlot string
+	Provider   string
+}
+
+func (q *Queries) ListActivityIDs(ctx context.Context, arg ListActivityIDsParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityIDs, arg.TargetSlot, arg.Provider)
 	if err != nil {
 		return nil, err
 	}
