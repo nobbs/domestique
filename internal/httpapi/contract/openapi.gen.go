@@ -121,10 +121,16 @@ type Activity struct {
 	TypeID       int      `json:"typeId"`
 	LocationID   int      `json:"locationId"`
 	// Provider Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
-	Provider   Activity_Provider       `json:"provider"`
-	Metrics    *ActivityMetrics        `json:"metrics,omitempty"`
-	Weather    *ActivityWeatherSummary `json:"weather,omitempty"`
-	RouteMatch *ActivityRouteMatch     `json:"routeMatch,omitempty"`
+	Provider Activity_Provider `json:"provider"`
+	// WorkoutName The structured workout's name, from a Zwift ride's own single-activity response. Absent for a free ride and for every other provider.
+	WorkoutName *string `json:"workoutName,omitempty"`
+	// WorkoutHash The structured workout's stable hash, alongside workoutName.
+	WorkoutHash *int64 `json:"workoutHash,omitempty"`
+	// WorkoutCompletion How much of the structured workout this ride completed, 0 to 1, alongside workoutName. 1 for a free ride that carries one.
+	WorkoutCompletion *float64                `json:"workoutCompletion,omitempty"`
+	Metrics           *ActivityMetrics        `json:"metrics,omitempty"`
+	Weather           *ActivityWeatherSummary `json:"weather,omitempty"`
+	RouteMatch        *ActivityRouteMatch     `json:"routeMatch,omitempty"`
 }
 
 // ActivityRouteMatch The library route this ride was ridden on. Absent where the ride was ridden on none of them, or has not been matched yet; the two are not distinguished, because neither gives a route to show.
@@ -844,11 +850,12 @@ const (
 	ActivitySeriesNamePower       ActivitySeriesName = "power"
 	ActivitySeriesNameTemperature ActivitySeriesName = "temperature"
 	ActivitySeriesNameSpeed       ActivitySeriesName = "speed"
+	ActivitySeriesNameTargetPower ActivitySeriesName = "targetPower"
 )
 
 type ActivitySeries struct {
 	Series ActivitySeriesName `json:"series"`
-	// Values The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius and kilometres per hour respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one.
+	// Values The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius, kilometres per hour and watts respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one.
 	Values []*float64 `json:"values"`
 }
 

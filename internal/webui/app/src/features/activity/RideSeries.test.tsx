@@ -20,6 +20,7 @@ function allOff(): Record<RideSeriesKey, SeriesState> {
     speed: "off",
     temperature: "off",
     power: "off",
+    targetPower: "off",
     estimatedPower: "off",
   };
 }
@@ -39,7 +40,7 @@ describe("the ride's series chips", () => {
     const onToggle = vi.fn();
     render(<SeriesChips states={allOff()} drawn={[]} activeIndex={null} onToggle={onToggle} />);
 
-    expect(screen.getAllByRole("button")).toHaveLength(6);
+    expect(screen.getAllByRole("button")).toHaveLength(7);
     await userEvent.click(screen.getByRole("button", { name: /Heart rate/ }));
 
     expect(onToggle).toHaveBeenCalledWith("heartRate");

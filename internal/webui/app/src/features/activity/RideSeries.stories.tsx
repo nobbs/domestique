@@ -8,6 +8,7 @@ const OFF: Record<RideSeriesKey, SeriesState> = {
   speed: "off",
   temperature: "off",
   power: "off",
+  targetPower: "off",
   estimatedPower: "off",
 };
 

@@ -62,11 +62,11 @@ func TestDecodeFITReadsActivityRecordsAndSession(t *testing.T) {
 	assert.True(t, decoded.Records[0].HasHeartRate)
 	assert.InDelta(t, 150.0, decoded.Records[0].HeartRateBPM, 0)
 
-	preferredAltitude := fromRecord(mesgdef.NewRecord(nil).SetAltitudeScaled(100).SetEnhancedAltitudeScaled(100.4), nil)
+	preferredAltitude := fromRecord(mesgdef.NewRecord(nil).SetAltitudeScaled(100).SetEnhancedAltitudeScaled(100.4), nil, nil)
 	assert.InDelta(t, 100.4, preferredAltitude.AltitudeMetres, 0.1)
-	plainAltitude := fromRecord(mesgdef.NewRecord(nil).SetAltitudeScaled(100), nil)
+	plainAltitude := fromRecord(mesgdef.NewRecord(nil).SetAltitudeScaled(100), nil, nil)
 	assert.InDelta(t, 100, plainAltitude.AltitudeMetres, 0.1)
-	assert.False(t, fromRecord(mesgdef.NewRecord(nil), nil).HasAltitude)
+	assert.False(t, fromRecord(mesgdef.NewRecord(nil), nil, nil).HasAltitude)
 }
 
 // TestDecodeFITReadsSessionAndZoneMessages exercises every session field this
@@ -311,7 +311,7 @@ func TestDeveloperFieldFloat64ReadsEveryNumericBaseType(t *testing.T) {
 }
 
 func TestDecodeFITFallsBackToPlainSpeedWhenEnhancedIsAbsent(t *testing.T) {
-	record := fromRecord(mesgdef.NewRecord(nil).SetSpeedScaled(3.3), nil)
+	record := fromRecord(mesgdef.NewRecord(nil).SetSpeedScaled(3.3), nil, nil)
 	assert.True(t, record.HasSpeed)
 	assert.InDelta(t, 3.3, record.SpeedMS, 0.001)
 }
@@ -354,6 +354,92 @@ func TestDecodeFITIgnoresAnUnrelatedDeveloperField(t *testing.T) {
 	require.Len(t, decoded.Records, 1)
 	assert.False(t, decoded.Records[0].HasAscent)
 	assert.False(t, decoded.Records[0].HasDescent)
+}
+
+// zwiftFieldDescription names one developer field the way Zwift's structured
+// workout FITs do: under a developer_data_id whose manufacturer is unset, so
+// the lookup must resolve by declared name alone.
+func zwiftFieldDescription(dataIndex, fieldNum uint8, name string) *mesgdef.FieldDescription {
+	return mesgdef.NewFieldDescription(nil).
+		SetDeveloperDataIndex(dataIndex).
+		SetFieldDefinitionNumber(fieldNum).
+		SetFieldName([]string{name}).
+		SetFitBaseTypeId(basetype.Uint16)
+}
+
+// TestDecodeFITReadsTargetPowerByNameRegardlessOfManufacturer covers a
+// structured workout's per-record prescribed power, declared under a
+// developer_data_id with no manufacturer, alongside an unrelated CORE field.
+func TestDecodeFITReadsTargetPowerByNameRegardlessOfManufacturer(t *testing.T) {
+	activity := &filedef.Activity{}
+	activity.FileId.SetType(typedef.FileActivity)
+	activity.DeveloperDataIds = append(activity.DeveloperDataIds,
+		mesgdef.NewDeveloperDataId(nil).SetDeveloperDataIndex(0))
+	activity.FieldDescriptions = append(activity.FieldDescriptions,
+		zwiftFieldDescription(0, 6, "target_power"), zwiftFieldDescription(0, 7, "skin_temperature"))
+	activity.Records = append(activity.Records,
+		mesgdef.NewRecord(nil).
+			SetTimestamp(time.Date(2026, time.August, 1, 6, 0, 0, 0, time.UTC)).
+			SetDeveloperFields(proto.DeveloperField{Num: 6, DeveloperDataIndex: 0, Value: proto.Uint16(180)}),
+		mesgdef.NewRecord(nil).
+			SetTimestamp(time.Date(2026, time.August, 1, 6, 0, 1, 0, time.UTC)))
+
+	decoded, err := DecodeFIT(encodeDeveloperFields(t, activity))
+	require.NoError(t, err)
+	require.Len(t, decoded.Records, 2)
+	assert.True(t, decoded.Records[0].HasTargetPower)
+	assert.InDelta(t, 180, decoded.Records[0].TargetPowerWatts, 0)
+	assert.False(t, decoded.Records[1].HasTargetPower, "a record without the developer field")
+}
+
+// TestDecodeFITTreatsInvalidTargetPowerAsAbsentNotZero covers a free ride,
+// whose target_power developer field carries the FIT invalid sentinel rather
+// than a real reading, against one that genuinely carries a zero.
+func TestDecodeFITTreatsInvalidTargetPowerAsAbsentNotZero(t *testing.T) {
+	activity := &filedef.Activity{}
+	activity.FileId.SetType(typedef.FileActivity)
+	activity.DeveloperDataIds = append(activity.DeveloperDataIds,
+		mesgdef.NewDeveloperDataId(nil).SetDeveloperDataIndex(0))
+	activity.FieldDescriptions = append(activity.FieldDescriptions,
+		zwiftFieldDescription(0, 6, "target_power"))
+	activity.Records = append(activity.Records,
+		mesgdef.NewRecord(nil).
+			SetTimestamp(time.Date(2026, time.August, 1, 6, 0, 0, 0, time.UTC)).
+			SetDeveloperFields(proto.DeveloperField{Num: 6, DeveloperDataIndex: 0, Value: proto.Uint16(basetype.Uint16Invalid)}),
+		mesgdef.NewRecord(nil).
+			SetTimestamp(time.Date(2026, time.August, 1, 6, 0, 1, 0, time.UTC)).
+			SetDeveloperFields(proto.DeveloperField{Num: 6, DeveloperDataIndex: 0, Value: proto.Uint16(0)}))
+
+	decoded, err := DecodeFIT(encodeDeveloperFields(t, activity))
+	require.NoError(t, err)
+	require.Len(t, decoded.Records, 2)
+	assert.False(t, decoded.Records[0].HasTargetPower, "the FIT invalid sentinel must not read as a real zero")
+	assert.True(t, decoded.Records[1].HasTargetPower)
+	assert.InDelta(t, 0, decoded.Records[1].TargetPowerWatts, 0)
+}
+
+// A field_description with no declared name at all -- distinct from one
+// declaring a name this package does not act on -- is skipped rather than
+// indexed under an empty name.
+func TestDeveloperFieldNamesSkipsADescriptionWithNoName(t *testing.T) {
+	activity := &filedef.Activity{}
+	activity.FieldDescriptions = append(activity.FieldDescriptions,
+		mesgdef.NewFieldDescription(nil).SetDeveloperDataIndex(0).SetFieldDefinitionNumber(6))
+
+	names := developerFieldNames(activity)
+	assert.Empty(t, names)
+}
+
+// A target_power field whose value is not numeric at all -- rather than the
+// FIT invalid sentinel of its declared base type -- is left absent too.
+func TestApplyNamedDeveloperFieldsSkipsANonNumericValue(t *testing.T) {
+	decoded := &Record{}
+	record := mesgdef.NewRecord(nil).
+		SetDeveloperFields(proto.DeveloperField{Num: 6, DeveloperDataIndex: 0, Value: proto.String("not a number")})
+
+	applyNamedDeveloperFields(record, map[devFieldKey]string{{0, 6}: "target_power"}, decoded)
+
+	assert.False(t, decoded.HasTargetPower)
 }
 
 func TestDecodeFITRecoversAReadableChecksumFailure(t *testing.T) {

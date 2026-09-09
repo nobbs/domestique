@@ -55,6 +55,7 @@
   --series-estimated-power: #6a6191;
   --series-temperature: #b9670c;
   --series-speed: #236fc7;
+  --series-target-power: #a3238e;
   --surface-asphalt: #556b82;
   --surface-paving: #7d3ab7;
   --surface-compacted: #009c89;
@@ -126,6 +127,7 @@
   --series-estimated-power: #a8a0cd;
   --series-temperature: #e9a55b;
   --series-speed: #70adfb;
+  --series-target-power: #e29be0;
   --surface-asphalt: #8da8c3;
   --surface-paving: #b77ff2;
   --surface-compacted: #59ceba;
@@ -197,6 +199,7 @@
     --series-estimated-power: #a8a0cd;
     --series-temperature: #e9a55b;
     --series-speed: #70adfb;
+    --series-target-power: #e29be0;
     --surface-asphalt: #8da8c3;
     --surface-paving: #b77ff2;
     --surface-compacted: #59ceba;

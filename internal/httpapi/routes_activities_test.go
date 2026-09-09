@@ -947,6 +947,30 @@ func TestGetActivitiesCarriesDescentAndCaloriesOnlyWhenKnown(t *testing.T) {
 	assert.Nil(t, withoutSession.CaloriesKcal)
 }
 
+// A Zwift ride's structured workout is served alongside it; a ride with none
+// carries no workout fields at all.
+func TestGetActivitiesCarriesTheWorkoutOnlyWhenPresent(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activities["rider-a"][0].HasWorkout = true
+	state.activities["rider-a"][0].WorkoutName = "Sweet Spot Progression"
+	state.activities["rider-a"][0].WorkoutHash = 998877
+	state.activities["rider-a"][0].WorkoutCompletion = 0.87
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	withWorkout, withoutWorkout := list.Activities[0], list.Activities[1]
+	require.NotNil(t, withWorkout.WorkoutName)
+	assert.Equal(t, "Sweet Spot Progression", *withWorkout.WorkoutName)
+	require.NotNil(t, withWorkout.WorkoutHash)
+	assert.Equal(t, int64(998877), *withWorkout.WorkoutHash)
+	require.NotNil(t, withWorkout.WorkoutCompletion)
+	assert.InDelta(t, 0.87, *withWorkout.WorkoutCompletion, 1e-9)
+	assert.Nil(t, withoutWorkout.WorkoutName, "a free ride carries no workout")
+	assert.Nil(t, withoutWorkout.WorkoutHash)
+	assert.Nil(t, withoutWorkout.WorkoutCompletion)
+}
+
 // A store that cannot read sessions fails the whole list, the same as one
 // that cannot read metrics.
 func TestGetActivitiesReportsAnUnreadableSessionsStore(t *testing.T) {

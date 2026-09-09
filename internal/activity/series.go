@@ -15,6 +15,7 @@ const (
 	SeriesPower       SeriesName = "power"
 	SeriesTemperature SeriesName = "temperature"
 	SeriesSpeed       SeriesName = "speed"
+	SeriesTargetPower SeriesName = "targetPower"
 )
 
 // Reading is one sample of a series. Known is false where that sample recorded
@@ -45,6 +46,9 @@ type SampleRow struct {
 	CaloriesKcal  Reading
 	AscentMetres  Reading
 	DescentMetres Reading
+	// TargetPowerWatts is the power a structured workout prescribed for this
+	// record, decoded from a Zwift FIT's own developer field.
+	TargetPowerWatts Reading
 }
 
 // Series reads one named series off a ride's samples, one reading per row in
@@ -65,6 +69,8 @@ func Series(rows []SampleRow, name SeriesName) (readings []Reading, present bool
 			readings[index] = rows[index].PowerWatts
 		case SeriesTemperature:
 			readings[index] = rows[index].TemperatureCelsius
+		case SeriesTargetPower:
+			readings[index] = rows[index].TargetPowerWatts
 		case SeriesSpeed:
 		}
 		present = present || readings[index].Known

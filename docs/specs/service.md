@@ -465,8 +465,11 @@ The read-only JSON surface is small:
 - `GET /v1/activities` returns one target's recorded activities, newest first:
   each one's workout id, start time, distance, moving and elapsed time, ascent,
   Wahoo's workout type and location ids, and which upstream — `wahoo` or
-  `zwift` — this service read it from, never the verbatim summary document.
-  The optional `from` and `to` bound the start time as a
+  `zwift` — this service read it from, never the verbatim summary document. A
+  Zwift ride carries, where its structured workout is known: its name, stable
+  hash and how much of it the ride completed, 0 to 1; all three are absent
+  together for a free ride and for every other provider. The optional `from`
+  and `to` bound the start time as a
   half-open window with no default lower bound and no maximum span — `to`
   defaults to now, and `from` after `to` is refused; at most 5000 activities
   are served in one response. A caller reads
@@ -552,13 +555,15 @@ The read-only JSON surface is small:
   are a small table kept in this repository, copied from the `zwift-data`
   package, not a runtime dependency.
 - `GET /v1/activities/{activityId}/series/{series}` returns one named series of
-  that activity's samples — `heartRate`, `cadence`, `power`, `temperature` or
-  `speed` — indexed 1:1 with the coordinates the track endpoint serves, `null`
-  where that sample recorded nothing. Every one but `speed` is read from the
-  samples as recorded; `speed` is worked out from the distance covered between
-  one sample and the next, in kilometres per hour, and has none at the first
-  sample or across a pair whose clock did not advance. A reading of nought is a
-  reading — a stopped rider's cadence — and never stands in for an absent one.
+  that activity's samples — `heartRate`, `cadence`, `power`, `temperature`,
+  `speed` or `targetPower` — indexed 1:1 with the coordinates the track
+  endpoint serves, `null` where that sample recorded nothing. Every one but
+  `speed` is read from the samples as recorded; `speed` is worked out from the
+  distance covered between one sample and the next, in kilometres per hour, and
+  has none at the first sample or across a pair whose clock did not advance. A
+  reading of nought is a reading — a stopped rider's cadence — and never stands
+  in for an absent one. `targetPower` is the power a structured workout
+  prescribed for that record, carried by almost no ride.
 
   One request names one series and receives that series alone: a ride can hold
   twenty thousand samples, and nothing of this is bundled into the track
@@ -1207,6 +1212,12 @@ with the rider's own credentials, held against their subject alone
 not failed, and a refused sign-in asks them for their password again rather than
 marking a grant for renewal.
 
+A newly stored Zwift ride is also read for its structured workout's name,
+stable hash and how much of it the ride completed, from the account's
+single-activity response; a free ride carries none of the three. That read's
+own refusal is logged and skipped rather than failing the poll, since the
+ride's listing is already stored by the time it is asked about.
+
 A summary Wahoo rejects for that one activity alone — unauthorised, not found,
 or not a summary at all — is skipped rather than allowed to stop the poll: the
 activity is recorded as unreadable and the poll carries on to the next. A
@@ -1220,9 +1231,9 @@ that skipped something reports so, distinctly from one that did not.
 Each stored activity's FIT file is then fetched from Wahoo's CDN — outside the
 API request budget and without credentials — and decoded into per-sample rows:
 position, altitude, distance, speed, grade, cadence, heart rate, power,
-temperature, cumulative calories, and the device's own cumulative ascent and
-descent, with a sensor the ride did not carry left absent rather than recorded
-as zero. The file's own session message and the zone tables beside it are kept
+temperature, cumulative calories, the device's own cumulative ascent and
+descent, and the power a structured workout prescribed for that record, with a
+sensor the ride did not carry left absent rather than recorded as zero. The file's own session message and the zone tables beside it are kept
 alongside those rows rather than in their place; a re-read refreshes them the
 same way it refreshes the samples. One poll fills in a bounded number of
 activities, newest first and under a wall-clock budget

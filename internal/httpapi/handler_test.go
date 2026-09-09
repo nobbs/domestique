@@ -2548,7 +2548,8 @@ func (s *fakeState) RouteActivities(
 		return nil, s.routeRidesErr
 	}
 	started := map[int64]time.Time{}
-	for _, stored := range s.activities[targetID] {
+	for i := range s.activities[targetID] {
+		stored := &s.activities[targetID][i]
 		started[stored.ID] = stored.StartedAt
 	}
 	rides := []activities.RouteRide{}
@@ -2809,7 +2810,8 @@ func (s *fakeState) ActivitiesBetween(
 		return nil, s.activitiesErr
 	}
 	stored := []activities.Stored{}
-	for _, recorded := range s.activities[targetID] {
+	for i := range s.activities[targetID] {
+		recorded := s.activities[targetID][i]
 		if !recorded.StartedAt.Before(from) && recorded.StartedAt.Before(to) {
 			stored = append(stored, recorded)
 		}

@@ -26,7 +26,8 @@ WHERE activities.provider = excluded.provider;
 
 -- name: ListActivitiesBetween :many
 SELECT workout_id, workout_type_id, workout_type_location_id, started_at_unix,
-  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, provider
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, provider,
+  workout_name, workout_hash, workout_completion
 FROM activities
 WHERE target_slot = sqlc.arg(target_slot) AND started_at_unix >= sqlc.arg(from_unix) AND started_at_unix < sqlc.arg(to_unix)
 ORDER BY started_at_unix DESC
@@ -122,7 +123,7 @@ ORDER BY record_index;
 -- name: ListActivitySeries :many
 SELECT recorded_at_unix, distance_metres, altitude_metres,
   heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
-  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres, target_power_watts
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND latitude IS NOT NULL AND longitude IS NOT NULL
@@ -193,6 +194,13 @@ SELECT workout_id, max_speed_kmh, average_speed_kmh, distance_metres,
 FROM activity_session
 WHERE target_slot = ?
 ORDER BY workout_id;
+
+-- name: SetActivityWorkout :exec
+UPDATE activities SET
+  workout_name = sqlc.narg(workout_name),
+  workout_hash = sqlc.narg(workout_hash),
+  workout_completion = sqlc.narg(workout_completion)
+WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id);
 
 -- name: ApplyActivitySessionTotals :exec
 UPDATE activities SET

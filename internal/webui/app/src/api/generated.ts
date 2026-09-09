@@ -370,6 +370,12 @@ export interface Activity {
   locationId: number;
   /** Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift. */
   provider: ActivityProvider;
+  /** The structured workout's name, from a Zwift ride's own single-activity response. Absent for a free ride and for every other provider. */
+  workoutName?: string;
+  /** The structured workout's stable hash, alongside workoutName. */
+  workoutHash?: number;
+  /** How much of the structured workout this ride completed, 0 to 1, alongside workoutName. 1 for a free ride that carries one. */
+  workoutCompletion?: number;
   metrics?: ActivityMetrics;
   weather?: ActivityWeatherSummary;
   routeMatch?: ActivityRouteMatch;
@@ -520,11 +526,12 @@ export const ActivitySeriesName = {
   power: "power",
   temperature: "temperature",
   speed: "speed",
+  targetPower: "targetPower",
 } as const;
 
 export interface ActivitySeries {
   series: ActivitySeriesName;
-  /** The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius and kilometres per hour respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one. */
+  /** The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius, kilometres per hour and watts respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one. */
   values: (number | null)[];
 }
 

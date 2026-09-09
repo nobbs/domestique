@@ -165,6 +165,68 @@ func TestClientListActivitiesFallsBackToRFC3339Timestamps(t *testing.T) {
 	assert.True(t, activities[0].StartDate.Equal(time.Date(2026, 9, 8, 18, 4, 39, 0, time.UTC)), "start date")
 }
 
+// The single-activity response also carries third-party fields the listing
+// already withholds; this asserts Activity() never decodes them into anything
+// that could leak, by proving the handler's own raw body carries one that the
+// client's response does not need to reject -- only pull the three fields.
+func TestClientReadsOneActivitysWorkoutAndIgnoresThirdPartyFields(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		assert.Equal(t, "/api/activities/12345", request.URL.Path)
+		assert.Equal(t, "Bearer access-token", request.Header.Get("Authorization"), "authorization")
+		assert.Equal(t, "application/json", request.Header.Get("Accept"), "accept header")
+		writer.Write([]byte(`{"name":"Sweet Spot Progression","workoutHash":998877,` + //nolint:errcheck,gosec // test server
+			`"percentageCompleted":0.87,"profileFtp":250,"profileMaxHeartRate":180,` +
+			`"socialInteractions":[{"profile":{"firstName":"Someone Else"}}],` +
+			`"activityRideOns":[{"profileId":99}],"profile":{"firstName":"The Rider"},` +
+			`"clubAttributions":[{"id":1}],"notableMoments":[{"type":"pr"}]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	detail, err := client.Activity(t.Context(), Session{AccessToken: "access-token"}, 12345)
+	require.NoError(t, err)
+	assert.Equal(t, "Sweet Spot Progression", detail.Name)
+	assert.Equal(t, int64(998877), detail.WorkoutHash)
+	assert.InDelta(t, 0.87, detail.PercentageCompleted, 1e-9)
+}
+
+func TestClientActivityRequiresASessionAndAPositiveID(t *testing.T) {
+	server := httptest.NewTLSServer(http.NotFoundHandler())
+	defer server.Close()
+	client := newTestClient(t, server)
+
+	_, err := client.Activity(t.Context(), Session{}, 1)
+	require.ErrorContains(t, err, "session and activity id are required")
+
+	_, err = client.Activity(t.Context(), Session{AccessToken: "access-token"}, 0)
+	require.ErrorContains(t, err, "session and activity id are required")
+}
+
+func TestClientActivityClassifiesRefusalsByStatus(t *testing.T) {
+	cases := map[string]struct {
+		target error
+		status int
+	}{
+		"unauthorized": {ErrUnauthorized, http.StatusUnauthorized},
+		"forbidden":    {ErrUnauthorized, http.StatusForbidden},
+		"not found":    {ErrActivityRefused, http.StatusNotFound},
+		"gone":         {ErrActivityRefused, http.StatusGone},
+		"server error": {ErrRejected, http.StatusInternalServerError},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.WriteHeader(tc.status)
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server)
+			_, err := client.Activity(t.Context(), Session{AccessToken: "access-token"}, 1)
+			require.ErrorIs(t, err, tc.target)
+		})
+	}
+}
+
 func TestActivityFITURLBuildsTheS3ObjectLocation(t *testing.T) {
 	activity := Activity{FITBucket: "prod-zwift-fit", FITKey: "prod/12345/token"}
 	fitURL, ok := activity.FITURL()

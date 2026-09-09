@@ -18,12 +18,17 @@ type fakeZwiftSource struct {
 	signInErr    error
 	listErr      error
 	downloadErr  error
+	workoutErr   error
 	signedInWith [2]string
 	fit          []byte
 	pages        [][]Listing
 	// unrecordable is how many entries a page held that narrowing dropped.
 	unrecordable map[int]int
 	downloaded   []int64
+	// workouts maps an activity id to the workout its single-activity response
+	// would carry; an id absent from it is a free ride, which carries none.
+	workouts      map[int64]Workout
+	workoutsAsked []int64
 }
 
 func (s *fakeZwiftSource) SignIn(_ context.Context, email, password []byte) (ZwiftReader, error) {
@@ -56,6 +61,16 @@ func (s *fakeZwiftSource) DownloadActivityFIT(_ context.Context, summary Summary
 	return s.fit, nil
 }
 
+func (s *fakeZwiftSource) ActivityWorkout(_ context.Context, id int64) (Workout, bool, error) {
+	s.workoutsAsked = append(s.workoutsAsked, id)
+	if s.workoutErr != nil {
+		return Workout{}, false, s.workoutErr
+	}
+	workout, found := s.workouts[id]
+
+	return workout, found, nil
+}
+
 func (s *fakeZwiftSource) IsUnauthorized(err error) bool { return errors.Is(err, errUnauthorized) }
 
 func (s *fakeZwiftSource) IsUnreadable(err error) bool { return errors.Is(err, errUnreadable) }
@@ -77,6 +92,7 @@ type fakeZwiftStore struct {
 	pendingErr     error
 	storeErr       error
 	deleteErr      error
+	workoutSetErr  error
 	records        map[int64]FIT
 	password       string
 	owner          string
@@ -86,7 +102,17 @@ type fakeZwiftStore struct {
 	deleted        []time.Time
 	stored         []storedActivity
 	known          []int64
+	workoutsStored []storedWorkout
 	deleteCount    int
+}
+
+// storedWorkout is one SetActivityWorkout call the fake recorded.
+type storedWorkout struct {
+	name       string
+	hash       int64
+	completion float64
+	id         int64
+	present    bool
 }
 
 func newFakeZwiftStore() *fakeZwiftStore {
@@ -167,6 +193,18 @@ func (s *fakeZwiftStore) MarkActivityUnreadable(_ context.Context, _ string, id 
 	return nil
 }
 
+func (s *fakeZwiftStore) SetActivityWorkout(
+	_ context.Context, _ string, id int64, name string, hash int64, completion float64, present bool,
+) error {
+	if s.workoutSetErr != nil {
+		return s.workoutSetErr
+	}
+	s.workoutsStored = append(s.workoutsStored,
+		storedWorkout{id: id, name: name, hash: hash, completion: completion, present: present})
+
+	return nil
+}
+
 // settled drops a ride from what is still awaiting its records, as storing or
 // marking it does in the real store.
 func (s *fakeZwiftStore) settled(id int64) {
@@ -230,6 +268,84 @@ func TestZwiftPollStoresAndFillsNewRides(t *testing.T) {
 	assert.Equal(t, [2]string{"rider@example.test", "hunter2"}, source.signedInWith, "credentials")
 	assert.Len(t, store.records, 2, "the samples of both rides")
 	assert.Equal(t, ProviderZwift, store.stored[0].listing.Provider, "the stored provider")
+}
+
+// A new ride's structured workout is stored beside it, read once its listing
+// is stored.
+func TestZwiftPollStoresTheWorkoutBesideANewRide(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{
+		fit:      testFIT(t),
+		pages:    [][]Listing{{zwiftListing(1, at(0))}},
+		workouts: map[int64]Workout{1: {Name: "Sweet Spot Progression", Hash: 998877, Completion: 0.87}},
+	}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	require.Len(t, store.workoutsStored, 1)
+	assert.Equal(t, storedWorkout{
+		id: 1, name: "Sweet Spot Progression", hash: 998877, completion: 0.87, present: true,
+	}, store.workoutsStored[0])
+}
+
+// A store that cannot record the workout fails the poll like any other write
+// failure, even though the ride itself is already stored.
+func TestZwiftPollFailsWhenTheStoreCannotRecordTheWorkout(t *testing.T) {
+	store := newFakeZwiftStore()
+	store.workoutSetErr = errors.New("unreadable")
+	source := &fakeZwiftSource{
+		fit: testFIT(t), pages: [][]Listing{{zwiftListing(1, at(0))}},
+		workouts: map[int64]Workout{1: {Name: "Sweet Spot Progression"}},
+	}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.Equal(t, FailureState, result.Failure)
+}
+
+// A ride with no structured workout -- a free ride -- stores nothing for it.
+func TestZwiftPollStoresNothingForAFreeRide(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{fit: testFIT(t), pages: [][]Listing{{zwiftListing(1, at(0))}}}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	assert.Equal(t, []int64{1}, source.workoutsAsked, "the free ride's workout was still asked about")
+	assert.Empty(t, store.workoutsStored, "nothing was stored for a ride with no workout")
+}
+
+// A refused workout read is logged and skipped, never failing the poll: the
+// ride's listing is already stored by the time it is asked about.
+func TestZwiftPollLeavesTheRideStoredWhenItsWorkoutReadIsRefused(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{
+		fit: testFIT(t), pages: [][]Listing{{zwiftListing(1, at(0))}},
+		workoutErr: fmt.Errorf("refused: %w", errUnreadable),
+	}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome, "the ride's own storage still succeeded")
+	assert.Len(t, store.stored, 1, "the ride stayed stored")
+	assert.Empty(t, store.workoutsStored, "nothing was stored for a refused workout read")
+}
+
+// A workout read that fails for a reason belonging to the connection or the
+// grant, rather than to that one activity, fails the poll like any other.
+func TestZwiftPollFailsOnAWorkoutReadThatIsNotTheActivitysOwnFault(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{
+		fit: testFIT(t), pages: [][]Listing{{zwiftListing(1, at(0))}},
+		workoutErr: errors.New("upstream failed"),
+	}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.Equal(t, FailureUpstream, result.Failure)
 }
 
 // A second poll over the same account has nothing to add and nothing to fill.

@@ -24,6 +24,9 @@ type Activity struct {
 	FitChecksumFailed     int64
 	RecordsVersion        int64
 	Provider              string
+	WorkoutName           sql.NullString
+	WorkoutHash           sql.NullInt64
+	WorkoutCompletion     sql.NullFloat64
 }
 
 type ActivityClimbAttempt struct {
@@ -105,6 +108,7 @@ type ActivityRecord struct {
 	CaloriesKcal        sql.NullFloat64
 	AscentMetres        sql.NullFloat64
 	DescentMetres       sql.NullFloat64
+	TargetPowerWatts    sql.NullFloat64
 }
 
 type ActivityRouteMatch struct {

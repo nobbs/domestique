@@ -780,6 +780,7 @@ func TestActivitySeriesCarriesSpeedGradeCaloriesAscentAndDescent(t *testing.T) {
 				SpeedMS: 8.5, HasSpeed: true, GradePercent: 3.2, HasGrade: true,
 				CaloriesKcal: 320, HasCalories: true, AscentMetres: 120, HasAscent: true,
 				DescentMetres: 45, HasDescent: true,
+				TargetPowerWatts: 200, HasTargetPower: true,
 			},
 			{Time: activityNow().Add(time.Second), Latitude: 49.1, Longitude: 8.5, HasPosition: true},
 		},
@@ -793,11 +794,13 @@ func TestActivitySeriesCarriesSpeedGradeCaloriesAscentAndDescent(t *testing.T) {
 	assert.Equal(t, activity.Reading{Value: 320, Known: true}, rows[0].CaloriesKcal)
 	assert.Equal(t, activity.Reading{Value: 120, Known: true}, rows[0].AscentMetres)
 	assert.Equal(t, activity.Reading{Value: 45, Known: true}, rows[0].DescentMetres)
+	assert.Equal(t, activity.Reading{Value: 200, Known: true}, rows[0].TargetPowerWatts)
 	assert.False(t, rows[1].SpeedMS.Known, "a record without the field must read back null")
 	assert.False(t, rows[1].GradePercent.Known)
 	assert.False(t, rows[1].CaloriesKcal.Known)
 	assert.False(t, rows[1].AscentMetres.Known)
 	assert.False(t, rows[1].DescentMetres.Known)
+	assert.False(t, rows[1].TargetPowerWatts.Known)
 }
 
 func TestActivitySeriesReportsAnUnreadableStore(t *testing.T) {
@@ -1304,6 +1307,43 @@ func TestActivitiesAwaitingRecordsIsScopedToOneProvider(t *testing.T) {
 	require.NoError(t, err, "ActivitiesAwaitingRecords() for Zwift")
 	require.Len(t, zwiftPending, 1)
 	assert.Equal(t, int64(7), zwiftPending[0].ID)
+}
+
+func TestSetActivityWorkoutRecordsAndClearsTheWorkout(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 7, activityNow()), "StoreActivity()")
+
+	require.NoError(t, store.SetActivityWorkout(t.Context(), "rider-a", 7, "Sweet Spot", 12345, 1.0, true),
+		"SetActivityWorkout()")
+	stored, err := store.ActivitiesBetween(t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	require.Len(t, stored, 1)
+	assert.True(t, stored[0].HasWorkout)
+	assert.Equal(t, "Sweet Spot", stored[0].WorkoutName)
+	assert.Equal(t, int64(12345), stored[0].WorkoutHash)
+	assert.InDelta(t, 1.0, stored[0].WorkoutCompletion, 1e-9)
+
+	require.NoError(t, store.SetActivityWorkout(t.Context(), "rider-a", 7, "", 0, 0, false), "SetActivityWorkout() clearing it")
+	stored, err = store.ActivitiesBetween(t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	require.Len(t, stored, 1)
+	assert.False(t, stored[0].HasWorkout, "a free ride carries no workout")
+}
+
+func TestSetActivityWorkoutRefusesWhatItCannotAddress(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	err := store.SetActivityWorkout(t.Context(), "", 1, "name", 1, 1, true)
+	require.ErrorContains(t, err, "a target and an activity id are required")
+}
+
+func TestSetActivityWorkoutReportsAnUnreadableStore(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	err := store.SetActivityWorkout(t.Context(), "rider-a", 1, "name", 1, 1, true)
+	require.ErrorContains(t, err, "recording an activity's workout")
 }
 
 func countRows(t *testing.T, store *Store, query string) int {

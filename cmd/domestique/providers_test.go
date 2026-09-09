@@ -332,6 +332,72 @@ func TestZwiftProviderListsCyclingAsIndoorVirtualRides(t *testing.T) {
 		"the stored document is this service's own, never Zwift's body")
 }
 
+// ActivityWorkout reads back a ride's structured workout, and reports a free
+// ride -- whose response carries no name -- as not found.
+func TestZwiftReaderActivityWorkoutReadsOrReportsAFreeRide(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/auth/realms/zwift/tokens/access/codes":
+			writeTestJSON(t, writer, map[string]any{
+				"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600,
+			})
+		case "/api/profiles/me":
+			writeTestJSON(t, writer, map[string]any{"id": 4711})
+		case "/api/activities/1":
+			writeTestJSON(t, writer, map[string]any{
+				"name": "Sweet Spot Progression", "workoutHash": 998877, "percentageCompleted": 0.87,
+			})
+		case "/api/activities/2":
+			writeTestJSON(t, writer, map[string]any{"workoutHash": 1, "percentageCompleted": 1.0})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	reader, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
+	require.NoError(t, err, "SignIn()")
+
+	workout, found, err := reader.ActivityWorkout(t.Context(), 1)
+	require.NoError(t, err, "ActivityWorkout()")
+	assert.True(t, found)
+	assert.Equal(t, "Sweet Spot Progression", workout.Name)
+	assert.Equal(t, int64(998877), workout.Hash)
+	assert.InDelta(t, 0.87, workout.Completion, 1e-9)
+
+	_, found, err = reader.ActivityWorkout(t.Context(), 2)
+	require.NoError(t, err, "ActivityWorkout() for a free ride")
+	assert.False(t, found, "a response with no name is a free ride")
+}
+
+// A refused workout read reaches the caller wrapped, so it can still be
+// classified as one activity's own refusal rather than an account problem.
+func TestZwiftReaderActivityWorkoutReportsARefusal(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/auth/realms/zwift/tokens/access/codes":
+			writeTestJSON(t, writer, map[string]any{
+				"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600,
+			})
+		case "/api/profiles/me":
+			writeTestJSON(t, writer, map[string]any{"id": 4711})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	reader, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
+	require.NoError(t, err, "SignIn()")
+
+	_, _, err = reader.ActivityWorkout(t.Context(), 1)
+	require.ErrorContains(t, err, "reading a Zwift activity's workout")
+}
+
 func TestZwiftProviderReportsARefusedSignIn(t *testing.T) {
 	t.Parallel()
 

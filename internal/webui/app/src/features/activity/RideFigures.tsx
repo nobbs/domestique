@@ -73,13 +73,21 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-5" aria-label="Ride figures">
       {ride.provider === "zwift" ? (
-        <div className="col-span-2">
+        <div className="col-span-2 flex flex-col gap-1">
           <dt className="sr-only">Recorded on</dt>
           <dd>
             <Badge variant="secondary" className="w-fit">
               Zwift
             </Badge>
           </dd>
+          {ride.workoutName !== undefined ? (
+            <dd className="text-[var(--ink-2)] text-sm">
+              Workout: {ride.workoutName}
+              {ride.workoutCompletion !== undefined
+                ? `, ${(ride.workoutCompletion * 100).toFixed(0)} % completed`
+                : ""}
+            </dd>
+          ) : null}
         </div>
       ) : null}
       {figures.map((figure) => (

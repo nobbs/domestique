@@ -251,7 +251,8 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 			return
 		}
 		view.Activities = make([]openapi.Activity, 0, len(stored))
-		for _, recorded := range stored {
+		for index := range stored {
+			recorded := &stored[index]
 			activity := openapi.Activity{
 				ID:             recorded.ID,
 				StartedAt:      wireTime(recorded.StartedAt),
@@ -262,6 +263,11 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				TypeID:         recorded.TypeID,
 				LocationID:     recorded.LocationID,
 				Provider:       openapi.Activity_Provider(recorded.Provider),
+			}
+			if recorded.HasWorkout {
+				activity.WorkoutName = new(recorded.WorkoutName)
+				activity.WorkoutHash = new(recorded.WorkoutHash)
+				activity.WorkoutCompletion = new(recorded.WorkoutCompletion)
 			}
 			metrics, hasMetrics := derived[recorded.ID]
 			session, hasSession := sessions[recorded.ID]

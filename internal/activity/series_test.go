@@ -62,12 +62,14 @@ func TestSeriesReadsEveryRecordedName(t *testing.T) {
 		CadenceRPM:         Reading{Value: 88, Known: true},
 		PowerWatts:         Reading{Value: 210, Known: true},
 		TemperatureCelsius: Reading{Value: 21, Known: true},
+		TargetPowerWatts:   Reading{Value: 200, Known: true},
 	})
 	for name, expected := range map[SeriesName]float64{
 		SeriesHeartRate:   140,
 		SeriesCadence:     88,
 		SeriesPower:       210,
 		SeriesTemperature: 21,
+		SeriesTargetPower: 200,
 	} {
 		series, present := Series(sample, name)
 		require.True(t, present, string(name))
