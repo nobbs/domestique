@@ -2661,7 +2661,11 @@ func (s *fakeState) RiderCredentials(
 		return nil, s.riderCredentialsErr
 	}
 
-	return s.riderCredentials[subject], nil
+	if stored, ok := s.riderCredentials[subject]; ok {
+		return stored, nil
+	}
+
+	return map[rider.CredentialName]rider.Credential{}, nil
 }
 
 // SetRiderCredentials writes only the names it is given, an unset credential
