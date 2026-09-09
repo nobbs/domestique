@@ -122,11 +122,11 @@ type Activity struct {
 	LocationID   int      `json:"locationId"`
 	// Provider Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
 	Provider Activity_Provider `json:"provider"`
-	// WorkoutName The structured workout's name, from a Zwift ride's own single-activity response. Absent for a free ride and for every other provider.
+	// WorkoutName The ride's name as Zwift lists it, from its own single-activity response: a structured workout's name, or a free ride's route. Absent for every other provider.
 	WorkoutName *string `json:"workoutName,omitempty"`
-	// WorkoutHash The structured workout's stable hash, alongside workoutName.
+	// WorkoutHash Zwift's stable hash of what the ride was, alongside workoutName.
 	WorkoutHash *int64 `json:"workoutHash,omitempty"`
-	// WorkoutCompletion How much of the structured workout this ride completed, 0 to 1, alongside workoutName. 1 for a free ride that carries one.
+	// WorkoutCompletion How much of the ride's workout was completed, 0 to 1, alongside workoutName; 1 for a free ride, which has nothing to fall short of.
 	WorkoutCompletion *float64                `json:"workoutCompletion,omitempty"`
 	Metrics           *ActivityMetrics        `json:"metrics,omitempty"`
 	Weather           *ActivityWeatherSummary `json:"weather,omitempty"`

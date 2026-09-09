@@ -81,8 +81,8 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
             </Badge>
           </dd>
           {ride.workoutName !== undefined ? (
-            // Zwift names every ride, a free one after its route; only a
-            // workout can fall short, so completion is stated when it did.
+            // The name is what Zwift lists the ride under, a route for a free
+            // ride; only a workout can fall short, so completion shows when it did.
             <dd className="text-[var(--ink-2)] text-sm">
               {ride.workoutName}
               {ride.workoutCompletion !== undefined && ride.workoutCompletion < 1

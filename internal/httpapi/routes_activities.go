@@ -265,9 +265,8 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				Provider:       openapi.Activity_Provider(recorded.Provider),
 			}
 			if recorded.HasWorkout {
-				activity.WorkoutName = new(recorded.WorkoutName)
-				activity.WorkoutHash = new(recorded.WorkoutHash)
-				activity.WorkoutCompletion = new(recorded.WorkoutCompletion)
+				name, hash, completion := recorded.WorkoutName, recorded.WorkoutHash, recorded.WorkoutCompletion
+				activity.WorkoutName, activity.WorkoutHash, activity.WorkoutCompletion = &name, &hash, &completion
 			}
 			metrics, hasMetrics := derived[recorded.ID]
 			session, hasSession := sessions[recorded.ID]

@@ -466,10 +466,11 @@ The read-only JSON surface is small:
   each one's workout id, start time, distance, moving and elapsed time, ascent,
   Wahoo's workout type and location ids, and which upstream — `wahoo` or
   `zwift` — this service read it from, never the verbatim summary document. A
-  Zwift ride carries, where its structured workout is known: its name, stable
-  hash and how much of it the ride completed, 0 to 1; all three are absent
-  together for a free ride and for every other provider. The optional `from`
-  and `to` bound the start time as a
+  Zwift ride also carries the name Zwift lists it under — a structured
+  workout's name, or a free ride's route — with Zwift's stable hash of it and
+  how much of it was completed, 0 to 1, which only a workout can fall short
+  of; all three are absent for every other provider. The optional `from` and
+  `to` bound the start time as a
   half-open window with no default lower bound and no maximum span — `to`
   defaults to now, and `from` after `to` is refused; at most 5000 activities
   are served in one response. A caller reads
@@ -1212,9 +1213,9 @@ with the rider's own credentials, held against their subject alone
 not failed, and a refused sign-in asks them for their password again rather than
 marking a grant for renewal.
 
-A newly stored Zwift ride is also read for its structured workout's name,
-stable hash and how much of it the ride completed, from the account's
-single-activity response; a free ride carries none of the three. That read's
+A newly stored Zwift ride is also read for the name Zwift lists it under, the
+stable hash of what it was and how much of it was completed, from the account's
+single-activity response, and nothing else that response carries. That read's
 own refusal is logged and skipped rather than failing the poll, since the
 ride's listing is already stored by the time it is asked about.
 

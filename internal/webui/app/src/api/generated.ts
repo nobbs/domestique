@@ -370,11 +370,11 @@ export interface Activity {
   locationId: number;
   /** Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift. */
   provider: ActivityProvider;
-  /** The structured workout's name, from a Zwift ride's own single-activity response. Absent for a free ride and for every other provider. */
+  /** The ride's name as Zwift lists it, from its own single-activity response: a structured workout's name, or a free ride's route. Absent for every other provider. */
   workoutName?: string;
-  /** The structured workout's stable hash, alongside workoutName. */
+  /** Zwift's stable hash of what the ride was, alongside workoutName. */
   workoutHash?: number;
-  /** How much of the structured workout this ride completed, 0 to 1, alongside workoutName. 1 for a free ride that carries one. */
+  /** How much of the ride's workout was completed, 0 to 1, alongside workoutName; 1 for a free ride, which has nothing to fall short of. */
   workoutCompletion?: number;
   metrics?: ActivityMetrics;
   weather?: ActivityWeatherSummary;

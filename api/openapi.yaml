@@ -1802,20 +1802,20 @@ components:
         workoutName:
           type: string
           description: >-
-            The structured workout's name, from a Zwift ride's own
-            single-activity response. Absent for a free ride and for every
-            other provider.
+            The ride's name as Zwift lists it, from its own single-activity
+            response: a structured workout's name, or a free ride's route.
+            Absent for every other provider.
         workoutHash:
           type: integer
           format: int64
           description: >-
-            The structured workout's stable hash, alongside workoutName.
+            Zwift's stable hash of what the ride was, alongside workoutName.
         workoutCompletion:
           type: number
           format: double
           description: >-
-            How much of the structured workout this ride completed, 0 to 1,
-            alongside workoutName. 1 for a free ride that carries one.
+            How much of the ride's workout was completed, 0 to 1, alongside
+            workoutName; 1 for a free ride, which has nothing to fall short of.
         metrics:
           $ref: '#/components/schemas/ActivityMetrics'
         weather:
