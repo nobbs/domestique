@@ -147,7 +147,7 @@ let nextRideID = 1;
 
 function ride(startedAt: string, decouplingPercent?: number): Activity {
   return {
-    id: nextRideID++,
+    id: String(nextRideID++),
     startedAt,
     distanceMetres: 40_000,
     movingSeconds: 5400,

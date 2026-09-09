@@ -5,7 +5,7 @@ import { TrainingLoad } from "./TrainingLoad";
 
 function ride(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>): Activity {
   return {
-    id: 1,
+    id: "1",
     startedAt: "2026-09-01T06:00:00Z",
     distanceMetres: 36000,
     movingSeconds: 3600,

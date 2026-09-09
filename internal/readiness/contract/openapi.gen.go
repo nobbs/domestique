@@ -108,7 +108,8 @@ const (
 )
 
 type Activity struct {
-	ID             int64     `json:"id"`
+	// ID An activity id exceeds the 2^53 range a JSON number survives exactly in a browser, so it is carried as a string on the wire.
+	ID             string    `json:"id"`
 	StartedAt      time.Time `json:"startedAt"`
 	DistanceMetres float64   `json:"distanceMetres"`
 	MovingSeconds  float64   `json:"movingSeconds"`

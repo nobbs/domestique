@@ -373,8 +373,8 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
-            format: int64
+            type: string
+            pattern: '^[0-9]+$'
         - name: target
           in: query
           description: >-
@@ -419,8 +419,8 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
-            format: int64
+            type: string
+            pattern: '^[0-9]+$'
         - name: series
           in: path
           required: true
@@ -470,8 +470,8 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
-            format: int64
+            type: string
+            pattern: '^[0-9]+$'
         - name: target
           in: query
           description: >-
@@ -1757,8 +1757,11 @@ components:
         - provider
       properties:
         id:
-          type: integer
-          format: int64
+          type: string
+          pattern: '^[0-9]+$'
+          description: >-
+            An activity id exceeds the 2^53 range a JSON number survives
+            exactly in a browser, so it is carried as a string on the wire.
         startedAt:
           type: string
           format: date-time

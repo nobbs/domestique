@@ -37,7 +37,7 @@ function config(): WebUIConfig {
 
 function activity(id: number, startedAt: string, overrides: Partial<Activity> = {}): Activity {
   return {
-    id,
+    id: String(id),
     startedAt,
     distanceMetres: 30_000,
     movingSeconds: 3_600,

@@ -356,7 +356,11 @@ export interface ActivityRouteMatch {
 }
 
 export interface Activity {
-  id: number;
+  /**
+   * An activity id exceeds the 2^53 range a JSON number survives exactly in a browser, so it is carried as a string on the wire.
+   * @pattern ^[0-9]+$
+   */
+  id: string;
   startedAt: string;
   distanceMetres: number;
   movingSeconds: number;
@@ -3028,7 +3032,7 @@ export type getActivityTrackResponseError = (
   headers: Headers;
 };
 
-export const getGetActivityTrackUrl = (activityId: number, params?: GetActivityTrackParams) => {
+export const getGetActivityTrackUrl = (activityId: string, params?: GetActivityTrackParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3048,7 +3052,7 @@ export const getGetActivityTrackUrl = (activityId: number, params?: GetActivityT
  * One activity's recorded track, as a GeoJSON Feature. A caller reads only an activity of the target they own; an admin may name any target. An activity with fewer than two positioned samples has a null geometry and no box, and `properties.state` says why: its samples are not stored yet, too few of them carried a position, or its file did not decode. An activity of another target, and one this service has no summary for, are both answered not found.
  */
 export const getActivityTrack = async (
-  activityId: number,
+  activityId: string,
   params?: GetActivityTrackParams,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<getActivityTrackResponseSuccess> => {
@@ -3062,7 +3066,7 @@ export const getActivityTrack = async (
 };
 
 export const getGetActivityTrackQueryKey = (
-  activityId: number,
+  activityId: string,
   params?: GetActivityTrackParams,
 ) => {
   return [`/v1/activities/${activityId}/track`, ...(params ? [params] : [])] as const;
@@ -3078,7 +3082,7 @@ export const getGetActivityTrackQueryOptions = <
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivityTrackParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>>;
@@ -3121,7 +3125,7 @@ export function useGetActivityTrack<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params: undefined | GetActivityTrackParams,
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>> &
@@ -3147,7 +3151,7 @@ export function useGetActivityTrack<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivityTrackParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>> &
@@ -3173,7 +3177,7 @@ export function useGetActivityTrack<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivityTrackParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>>;
@@ -3192,7 +3196,7 @@ export function useGetActivityTrack<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivityTrackParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivityTrack>>, TError, TData>>;
@@ -3253,7 +3257,7 @@ export type getActivitySeriesResponseError = (
 };
 
 export const getGetActivitySeriesUrl = (
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params?: GetActivitySeriesParams,
 ) => {
@@ -3276,7 +3280,7 @@ export const getGetActivitySeriesUrl = (
  * One named series of an activity's recorded samples, indexed 1:1 with the coordinates that activity's track is served as. One request names one series and receives that series alone; nothing of this is bundled into the track response or into any listing. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. A series no sample of the ride recorded is answered not found, so a bicycle with no meter is told apart from a meter that dropped out; a `speed` no pair of samples could yield — a ride that recorded no distance — answers the same way rather than as a column of nulls.
  */
 export const getActivitySeries = async (
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params?: GetActivitySeriesParams,
   options?: Parameters<typeof domestiqueRequest>[1],
@@ -3291,7 +3295,7 @@ export const getActivitySeries = async (
 };
 
 export const getGetActivitySeriesQueryKey = (
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params?: GetActivitySeriesParams,
 ) => {
@@ -3308,7 +3312,7 @@ export const getGetActivitySeriesQueryOptions = <
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params?: GetActivitySeriesParams,
   options?: {
@@ -3356,7 +3360,7 @@ export function useGetActivitySeries<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params: undefined | GetActivitySeriesParams,
   options: {
@@ -3383,7 +3387,7 @@ export function useGetActivitySeries<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params?: GetActivitySeriesParams,
   options?: {
@@ -3410,7 +3414,7 @@ export function useGetActivitySeries<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params?: GetActivitySeriesParams,
   options?: {
@@ -3430,7 +3434,7 @@ export function useGetActivitySeries<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   series: ActivitySeriesName,
   params?: GetActivitySeriesParams,
   options?: {
@@ -3491,7 +3495,7 @@ export type getActivitySplitsResponseError = (
   headers: Headers;
 };
 
-export const getGetActivitySplitsUrl = (activityId: number, params?: GetActivitySplitsParams) => {
+export const getGetActivitySplitsUrl = (activityId: string, params?: GetActivitySplitsParams) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -3511,7 +3515,7 @@ export const getGetActivitySplitsUrl = (activityId: number, params?: GetActivity
  * One activity cut into kilometres, in the order they were ridden. Cut by the bicycle's own odometer rather than by the distance between recorded positions, so the table agrees with the distance the ride is listed at. The seconds are moving ones: a pair of samples the odometer did not advance over is a rider standing still, and is left out. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. A ride whose samples are not stored, or that recorded no distance to cut by, is served an empty list rather than an error.
  */
 export const getActivitySplits = async (
-  activityId: number,
+  activityId: string,
   params?: GetActivitySplitsParams,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<getActivitySplitsResponseSuccess> => {
@@ -3525,7 +3529,7 @@ export const getActivitySplits = async (
 };
 
 export const getGetActivitySplitsQueryKey = (
-  activityId: number,
+  activityId: string,
   params?: GetActivitySplitsParams,
 ) => {
   return [`/v1/activities/${activityId}/splits`, ...(params ? [params] : [])] as const;
@@ -3541,7 +3545,7 @@ export const getGetActivitySplitsQueryOptions = <
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivitySplitsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>>;
@@ -3586,7 +3590,7 @@ export function useGetActivitySplits<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params: undefined | GetActivitySplitsParams,
   options: {
     query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>> &
@@ -3612,7 +3616,7 @@ export function useGetActivitySplits<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivitySplitsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>> &
@@ -3638,7 +3642,7 @@ export function useGetActivitySplits<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivitySplitsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>>;
@@ -3657,7 +3661,7 @@ export function useGetActivitySplits<
     | UnavailableResponse
   >,
 >(
-  activityId: number,
+  activityId: string,
   params?: GetActivitySplitsParams,
   options?: {
     query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getActivitySplits>>, TError, TData>>;

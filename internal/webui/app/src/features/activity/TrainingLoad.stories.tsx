@@ -5,7 +5,7 @@ import { TrainingLoad } from "./TrainingLoad";
 /** A two-hour ride carrying the given metrics. */
 function ride(metrics: ActivityMetrics): Activity {
   return {
-    id: 1,
+    id: "1",
     startedAt: "2026-09-01T06:00:00Z",
     distanceMetres: 62_000,
     movingSeconds: 7_800,

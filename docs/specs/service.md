@@ -60,8 +60,9 @@ before the validator reads it.
 
 Every `type: number` in the contract is IEEE 754 double precision, declared as
 `format: double`. Identifiers and counts are `type: integer` and stay integral;
-a route identifier is an int64. Every timestamp is RFC 3339 in UTC, at second
-resolution.
+a route identifier is an int64. An activity id is `type: string` instead,
+since a Zwift id exceeds the 2^53 range a JSON number survives exactly once a
+browser parses it. Every timestamp is RFC 3339 in UTC, at second resolution.
 
 Where a route's surface classification has been cached, the view draws it: the
 route is banded by ground class on the map, and the route's split is summarised

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   activitiesQuery,
+  activitySeriesQuery,
+  activitySplitsQuery,
   activityTrackQuery,
   routeGeometryQuery,
   routeQuery,
@@ -48,13 +50,25 @@ describe("a route's query key", () => {
 
   // A track is a ride's own, so its key is the ride's id and nothing else.
   it("keys a recorded track by the activity it belongs to", () => {
-    expect(activityTrackQuery(7).queryKey).toEqual(["/v1/activities/7/track"]);
+    expect(activityTrackQuery("7").queryKey).toEqual(["/v1/activities/7/track"]);
+  });
+
+  // A Zwift snowflake exceeds 2^53, the range a JS number survives exactly:
+  // every one of the ride page's own requests must carry the id it was given,
+  // digit for digit, never a number rounded on the way in.
+  it("keys the track, series and splits by a 19-digit id without rounding it", () => {
+    const bigID = "1972687436517507104";
+    expect(activityTrackQuery(bigID).queryKey).toEqual([`/v1/activities/${bigID}/track`]);
+    expect(activitySplitsQuery(bigID).queryKey).toEqual([`/v1/activities/${bigID}/splits`]);
+    expect(activitySeriesQuery(bigID, "heartRate").queryKey).toEqual([
+      `/v1/activities/${bigID}/series/heartRate`,
+    ]);
   });
 
   // The altitudes travel beside the line on the wire, and the profile reads
   // them off the positions, so the query is where the two are put back together.
   it("folds a track's altitudes into its positions", () => {
-    const { select } = activityTrackQuery(7);
+    const { select } = activityTrackQuery("7");
     const track = select?.({
       status: 200,
       headers: new Headers(),
@@ -85,7 +99,7 @@ describe("a route's query key", () => {
   // chart: dropping it here is silent, and cost the ride page its power line
   // once already.
   it("carries a track's estimated power through to the page", () => {
-    const { select } = activityTrackQuery(7);
+    const { select } = activityTrackQuery("7");
     const track = select?.({
       status: 200,
       headers: new Headers(),
@@ -109,7 +123,7 @@ describe("a route's query key", () => {
   // A bicycle with its own meter is served no estimate at all, which must stay
   // absent rather than arriving as an empty series the chip would draw.
   it("leaves the estimate absent for a ride served none", () => {
-    const { select } = activityTrackQuery(7);
+    const { select } = activityTrackQuery("7");
     const track = select?.({
       status: 200,
       headers: new Headers(),
@@ -132,7 +146,7 @@ describe("a route's query key", () => {
 
   // A ride with no line still answers, and the state is the whole answer.
   it("keeps the state of a track that has no line", () => {
-    const { select } = activityTrackQuery(7);
+    const { select } = activityTrackQuery("7");
     const track = select?.({
       status: 200,
       headers: new Headers(),
@@ -146,7 +160,7 @@ describe("a route's query key", () => {
 
   // A sample without an altitude travels as a JSON null, not an absent entry.
   it("folds a null altitude into a two-wide position, same as an absent one", () => {
-    const { select } = activityTrackQuery(7);
+    const { select } = activityTrackQuery("7");
     const track = select?.({
       status: 200,
       headers: new Headers(),

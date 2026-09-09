@@ -323,7 +323,7 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
   startedAt.setHours(9, 0, 0, 0);
 
   return {
-    id: 1000 + index,
+    id: String(1000 + index),
     startedAt: startedAt.toISOString(),
     distanceMetres: 35_000 + index * 8_000,
     movingSeconds: 4_800 + index * 900,
@@ -476,7 +476,7 @@ export const liveMap = { chromatic: { disableSnapshot: true } };
  */
 export const riddenRides: Activity[] = [
   {
-    id: 31,
+    id: "31",
     startedAt: "2026-08-26T07:10:00Z",
     distanceMetres: 42_500,
     movingSeconds: 6_180,
@@ -495,7 +495,7 @@ export const riddenRides: Activity[] = [
     },
   },
   {
-    id: 22,
+    id: "22",
     startedAt: "2026-07-14T06:40:00Z",
     distanceMetres: 42_500,
     movingSeconds: 5_760,
@@ -514,7 +514,7 @@ export const riddenRides: Activity[] = [
     },
   },
   {
-    id: 9,
+    id: "9",
     startedAt: "2026-05-02T08:05:00Z",
     distanceMetres: 42_500,
     movingSeconds: 6_540,

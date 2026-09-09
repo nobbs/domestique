@@ -283,7 +283,7 @@ func TestGetActivitiesServesTheCallersWholeHistoryByDefault(t *testing.T) {
 	code, list := getActivities(t, handler, "/v1/activities")
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 3, "no from means no lower bound")
-	assert.Equal(t, []int64{1, 2, 3}, []int64{list.Activities[0].ID, list.Activities[1].ID, list.Activities[2].ID}, "newest first")
+	assert.Equal(t, []string{"1", "2", "3"}, []string{list.Activities[0].ID, list.Activities[1].ID, list.Activities[2].ID}, "newest first")
 	assert.InDelta(t, 1000.0, list.Activities[0].DistanceMetres, 1e-9)
 	assert.Equal(t, 15, list.Activities[0].TypeID)
 	assert.Equal(t, 1, list.Activities[0].LocationID)
@@ -330,7 +330,44 @@ func TestGetActivitiesServesAnyTargetToAnAdmin(t *testing.T) {
 	code, list := getActivities(t, handler, "/v1/activities?target=rider-b")
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 1)
-	assert.Equal(t, int64(99), list.Activities[0].ID)
+	assert.Equal(t, "99", list.Activities[0].ID)
+}
+
+// A Zwift snowflake exceeds the 2^53 range a JSON number survives exactly once
+// a browser parses it, so the list must carry it as an exact digit string, and
+// a track request by that same string must resolve the stored ride rather than
+// the double-rounded id a JSON number would have produced.
+func TestGetActivitiesCarriesAnIDBeyondJavaScriptsSafeIntegerRange(t *testing.T) {
+	const zwiftID int64 = 1972687436517507104
+	state := &fakeState{
+		targets: []fakeTarget{{id: "rider-a", authorization: "authorized", owner: "rider-a"}},
+		activities: map[string][]activities.Stored{
+			"rider-a": {{
+				ID: zwiftID, StartedAt: activityClock().Add(-time.Hour), DistanceMetres: 1000,
+				MovingSeconds: 60, ElapsedSeconds: 90, AscentMetres: 10,
+				TypeID: 15, LocationID: 1, Provider: activities.ProviderZwift,
+			}},
+		},
+		tracks: map[string][]activities.TrackPoint{
+			"rider-a/1972687436517507104": {
+				{Time: activityClock(), Latitude: 49, Longitude: 8, AltitudeMetres: 100, HasAltitude: true},
+				{
+					Time: activityClock().Add(time.Minute), Latitude: 49.1, Longitude: 8.1,
+					AltitudeMetres: 110, HasAltitude: true,
+				},
+			},
+		},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 1)
+	assert.Equal(t, "1972687436517507104", list.Activities[0].ID,
+		"the exact digits, not a float64-rounded id")
+
+	trackCode, _ := getTrack(t, handler, "/v1/activities/1972687436517507104/track")
+	assert.Equal(t, http.StatusOK, trackCode, "an id above 2^53 still resolves the stored ride")
 }
 
 // A rider who has not connected Wahoo yet has no target at all, and reads an

@@ -97,7 +97,7 @@ export interface RideSeriesResult {
  * page has to apologise for.
  */
 export function useRideSeries(
-  id: number | null,
+  id: string | null,
   shown: ReadonlySet<RideSeriesKey>,
   coordinates: Position[],
   profile: Profile | null,
@@ -106,7 +106,7 @@ export function useRideSeries(
 ): RideSeriesResult {
   const results = useQueries({
     queries: RIDE_SERIES.map((series) => ({
-      ...activitySeriesQuery(id ?? 0, series.key),
+      ...activitySeriesQuery(id ?? "", series.key),
       enabled: id !== null && shown.has(series.key),
     })),
   });
