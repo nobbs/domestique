@@ -39,16 +39,7 @@
  * asserting against an empty chart.
  */
 
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -335,16 +326,18 @@ function SeriesTooltip({
   const ref = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState(TOOLTIP_DEFAULT_SIZE);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const element = ref.current;
-    if (!element) {
+    if (!element || typeof ResizeObserver === "undefined") {
       return;
     }
-    const next = { width: element.offsetWidth, height: element.offsetHeight };
-    setSize((current) =>
-      current.width === next.width && current.height === next.height ? current : next,
-    );
-  });
+    const observer = new ResizeObserver(() => {
+      setSize({ width: element.offsetWidth, height: element.offsetHeight });
+    });
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
 
   const half = size.width / 2;
   const left = clamp(x, half, Math.max(plotWidth - half, half)) - half;
