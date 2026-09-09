@@ -117,14 +117,14 @@ func (a *Activity) Summary() ([]byte, error) {
 		EndDate          time.Time `json:"endDate"`
 		FITFileBucket    string    `json:"fitFileBucket"`
 		FITFileKey       string    `json:"fitFileKey"`
-		ID               int64     `json:"id"`
+		IDStr            string    `json:"id_str"`
 		MovingTimeInMs   int64     `json:"movingTimeInMs"`
 		DistanceInMeters float64   `json:"distanceInMeters"`
 		TotalElevation   float64   `json:"totalElevation"`
 		WorldID          int64     `json:"worldId"`
 		UTCOffsetMinutes int       `json:"utcOffsetMinutes"`
 	}{
-		ID:               a.ID,
+		IDStr:            strconv.FormatInt(a.ID, 10),
 		StartDate:        a.StartDate,
 		EndDate:          a.EndDate,
 		FITFileBucket:    a.FITBucket,

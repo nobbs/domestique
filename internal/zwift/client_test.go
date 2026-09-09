@@ -179,6 +179,24 @@ func TestActivityFITURLBuildsTheS3ObjectLocation(t *testing.T) {
 	assert.False(t, ok, "missing bucket")
 }
 
+// The summary is this package's own document, so its own decoder must read it
+// back whole: a later layer stores it and may parse it again.
+func TestActivitySummaryRoundTripsThroughTheDecoder(t *testing.T) {
+	original := Activity{ID: 1461969115156611104, Sport: "CYCLING", FITBucket: "b", FITKey: "prod/1/k",
+		StartDate: time.Date(2026, 9, 8, 18, 4, 39, 0, time.UTC), EndDate: time.Date(2026, 9, 8, 19, 0, 0, 0, time.UTC),
+		MovingTimeMs: 3600000, DistanceMeters: 30000, TotalElevation: 300, WorldID: 1, UTCOffsetMinutes: 120}
+	document, err := original.Summary()
+	require.NoError(t, err)
+	assert.Contains(t, string(document), `"id_str":"1461969115156611104"`)
+
+	var decoded Activity
+	require.NoError(t, json.Unmarshal(document, &decoded))
+	assert.Equal(t, original.ID, decoded.ID)
+	assert.Equal(t, original.FITKey, decoded.FITKey)
+	assert.Equal(t, original.UTCOffsetMinutes, decoded.UTCOffsetMinutes)
+	assert.True(t, original.StartDate.Equal(decoded.StartDate))
+}
+
 func TestActivitySummaryDropsOtherRidersFromTheResponse(t *testing.T) {
 	raw := []byte(`{
 		"id": 1, "id_str": "1461969115156611104", "sport": "CYCLING",
