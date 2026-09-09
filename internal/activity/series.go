@@ -6,9 +6,9 @@ import "time"
 // spelled as the served surface names it.
 type SeriesName string
 
-// The series a ride's samples can answer. Speed is served as derived rather
-// than recorded, from distance against time, even on a device that stores its
-// own speed reading: this series is one figure, not two disagreeing ones.
+// The series a ride's samples can answer. Speed prefers what the device
+// itself recorded, falling back sample by sample to distance against time
+// wherever a record carries none.
 const (
 	SeriesHeartRate   SeriesName = "heartRate"
 	SeriesCadence     SeriesName = "cadence"
@@ -36,9 +36,10 @@ type SampleRow struct {
 	CadenceRPM         Reading
 	PowerWatts         Reading
 	TemperatureCelsius Reading
-	// SpeedMS, GradePercent, CaloriesKcal, AscentMetres and DescentMetres are
-	// the device's own readings, kept alongside without feeding any served
-	// figure: the estimate and the derived speed series stay their own numbers.
+	// SpeedMS is the device's own reading, in metres per second, which the
+	// speed series prefers over deriving one. GradePercent, CaloriesKcal,
+	// AscentMetres and DescentMetres are kept alongside without feeding any
+	// served figure: the estimate stays its own number.
 	SpeedMS       Reading
 	GradePercent  Reading
 	CaloriesKcal  Reading
@@ -73,14 +74,26 @@ func Series(rows []SampleRow, name SeriesName) (readings []Reading, present bool
 }
 
 // speedSeries is how fast the rider was travelling at each sample, in
-// kilometres per hour, from the distance covered since the sample before it.
+// kilometres per hour: the device's own reading where a record carries one,
+// and the distance covered since the sample before it everywhere else — a
+// dropout the device leaves for one sample costs that sample alone.
 //
-// The first sample has no interval behind it, and a pair whose clock did not
-// advance — or whose odometer went backwards over a reset — has no speed to
-// report rather than an infinite or negative one.
+// A sample with neither has no speed to report. The first sample has no
+// interval behind it to derive from, and a pair whose clock did not advance —
+// or whose odometer went backwards over a reset — falls back to nothing
+// rather than an infinite or negative one.
 func speedSeries(rows []SampleRow) (readings []Reading, present bool) {
 	readings = make([]Reading, len(rows))
-	for index := 1; index < len(rows); index++ {
+	for index := range rows {
+		if rows[index].SpeedMS.Known {
+			readings[index] = Reading{Value: rows[index].SpeedMS.Value * 3.6, Known: true}
+			present = true
+
+			continue
+		}
+		if index == 0 {
+			continue
+		}
 		previous, current := &rows[index-1], &rows[index]
 		kmh, ok := DistanceSpeedKmh(
 			DistanceStep{At: previous.Time, Distance: previous.DistanceMetres.Value, Known: previous.DistanceMetres.Known},

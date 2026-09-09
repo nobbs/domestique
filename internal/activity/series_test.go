@@ -76,8 +76,64 @@ func TestSeriesReadsEveryRecordedName(t *testing.T) {
 	}
 }
 
+// A device that stores its own speed says more than distance and time can:
+// a wheel sensor or GPS Doppler reading is not exposed to the single-interval
+// spikes differencing two positions is.
+func TestSeriesPrefersRecordedSpeedOverDerived(t *testing.T) {
+	series, present := Series(rows(
+		SampleRow{
+			DistanceMetres: Reading{Value: 0, Known: true},
+			SpeedMS:        Reading{Value: 10, Known: true},
+		},
+		// 500 m in a minute derives to 30 km/h, which the recorded 12.5 m/s
+		// (45 km/h) must win over.
+		SampleRow{
+			DistanceMetres: Reading{Value: 500, Known: true},
+			SpeedMS:        Reading{Value: 12.5, Known: true},
+		},
+	), SeriesSpeed)
+
+	require.True(t, present)
+	require.Len(t, series, 2)
+	// The first sample has no interval behind it to derive from at all, so
+	// only a recorded reading could ever answer for it.
+	assert.InDelta(t, 36.0, series[0].Value, 1e-9, "10 m/s recorded")
+	assert.InDelta(t, 45.0, series[1].Value, 1e-9, "12.5 m/s recorded, not the 30 km/h distance implies")
+}
+
+// A device that drops its own speed reading for one sample — a sensor's
+// momentary dropout — costs that sample alone, not the whole series.
+func TestSeriesFallsBackToDerivedForOneMissingRecordedSample(t *testing.T) {
+	series, present := Series(rows(
+		SampleRow{DistanceMetres: Reading{Value: 0, Known: true}, SpeedMS: Reading{Value: 10, Known: true}},
+		SampleRow{DistanceMetres: Reading{Value: 500, Known: true}}, // the sensor missed this one
+		SampleRow{DistanceMetres: Reading{Value: 1100, Known: true}, SpeedMS: Reading{Value: 15, Known: true}},
+	), SeriesSpeed)
+
+	require.True(t, present)
+	require.Len(t, series, 3)
+	assert.InDelta(t, 36.0, series[0].Value, 1e-9, "recorded")
+	assert.InDelta(t, 30.0, series[1].Value, 1e-9, "500 m in a minute, the sensor recorded nothing here")
+	assert.InDelta(t, 54.0, series[2].Value, 1e-9, "recorded")
+}
+
+// A trainer's wheel sensor can answer for speed with no odometer behind it at
+// all, which distance and time never could.
+func TestSeriesReportsRecordedSpeedWithoutADistance(t *testing.T) {
+	series, present := Series(rows(
+		SampleRow{SpeedMS: Reading{Value: 5, Known: true}},
+		SampleRow{SpeedMS: Reading{Value: 6, Known: true}},
+	), SeriesSpeed)
+
+	require.True(t, present)
+	require.Len(t, series, 2)
+	assert.InDelta(t, 18.0, series[0].Value, 1e-9)
+	assert.InDelta(t, 21.6, series[1].Value, 1e-9)
+}
+
 // Speed is worked out from the distance covered since the sample before, in
-// kilometres per hour. The first sample has nothing behind it to measure.
+// kilometres per hour, on a ride whose device recorded none of its own. The
+// first sample has nothing behind it to measure.
 func TestSeriesDerivesSpeedFromDistanceAgainstTime(t *testing.T) {
 	series, present := Series(rows(
 		SampleRow{DistanceMetres: Reading{Value: 0, Known: true}},

@@ -489,7 +489,7 @@ export interface ActivityTrack {
 }
 
 /**
- * A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` is worked out from the distance covered between one sample and the next.
+ * A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` prefers the device's own reading and, for a sample carrying none, falls back to the distance covered between it and the sample before.
  */
 export type ActivitySeriesName = (typeof ActivitySeriesName)[keyof typeof ActivitySeriesName];
 

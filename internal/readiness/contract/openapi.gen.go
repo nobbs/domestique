@@ -813,7 +813,7 @@ type ActivityTrackProperties struct {
 	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
 }
 
-// ActivitySeriesName A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` is worked out from the distance covered between one sample and the next.
+// ActivitySeriesName A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` prefers the device's own reading and, for a sample carrying none, falls back to the distance covered between it and the sample before.
 type ActivitySeriesName string
 
 const (
