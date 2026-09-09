@@ -635,10 +635,11 @@ The read-only JSON surface is small:
   samples, the highest heart rate it reached, and the highest speed it reached.
   Each is the device's own session figure where the file's session message
   declared it, and otherwise worked out by the same task from the same stored
-  samples, by the rules below. A cadence
-  of nought is the rider not pedalling rather than pedalling slowly and is left
-  out of that mean, which is what makes the figure the same one every other
-  platform reports; a measured power of nought is left in, freewheeling being
+  samples, by the rules below. A cadence of nought is the rider not pedalling
+  rather than pedalling slowly and is left out of that mean, which is the figure
+  a platform working from the samples reports; a head unit's own cadence average
+  runs a few rpm above it by a rule of its own, and is what its rider and its
+  maker's app show. A measured power of nought is left in, freewheeling being
   part of what a ride averaged. A sensor that read nought throughout recorded
   nothing, and has no mean at all. Each is present only where the ride carried
   that sensor, or the file declared it, and an estimate never feeds the average
