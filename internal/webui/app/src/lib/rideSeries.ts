@@ -68,18 +68,19 @@ export function alignSeries(
     let total = 0;
     let count = 0;
     let held = 0;
-    for (
-      let at = cursor;
-      at < distances.length &&
-      (last ? (distances[at] as number) <= to : (distances[at] as number) < to);
-      at++
+    // The cursor is consumed rather than copied: the buckets are contiguous and
+    // never overlap, so a record read here belongs to no later one.
+    while (
+      cursor < distances.length &&
+      (last ? (distances[cursor] as number) <= to : (distances[cursor] as number) < to)
     ) {
       held++;
-      const value = values[at];
+      const value = values[cursor];
       if (value !== null && value !== undefined) {
         total += value;
         count++;
       }
+      cursor++;
     }
     if (count > 0) {
       return total / count;
