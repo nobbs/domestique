@@ -35,22 +35,30 @@ const BLANK_STYLE: MapStyle = { version: 8, sources: {}, layers: [] };
 
 const WORLD_ARTWORK_SOURCE_ID = "zwift-world-artwork";
 
+/** The corners of an image source, in the order it wants them. */
+type Corner = [number, number];
+type ImageCorners = [Corner, Corner, Corner, Corner];
+
 /**
- * Where a world's artwork's four corners go, in the order an image source wants
- * them: top-left, top-right, bottom-right, bottom-left of the *image*. Turning
- * the artwork upright is a cyclic shift of that list rather than pixel work —
- * MapLibre draws whatever quadrilateral the corners describe.
+ * Where a world's artwork's four corners go: top-left, top-right, bottom-right,
+ * bottom-left of the *image*. Each quarter turn clockwise shifts that list by
+ * one rather than touching a pixel — MapLibre draws whatever quadrilateral the
+ * corners describe.
  */
-function artworkCorners(world: ActivityTrackWorld): [number, number][] {
+function artworkCorners(world: ActivityTrackWorld): ImageCorners {
   const { north, west, south, east } = world.bounds;
-  const box: [number, number][] = [
+  let corners: ImageCorners = [
     [west, north],
     [east, north],
     [east, south],
     [west, south],
   ];
+  for (let turn = 0; turn < world.imageQuarterTurns; turn += 1) {
+    const [first, ...rest] = corners;
+    corners = [...rest, first];
+  }
 
-  return box.map((_, index) => box[(index + world.imageQuarterTurns) % box.length]);
+  return corners;
 }
 
 export interface ActivityMapProps {
