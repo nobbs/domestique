@@ -165,6 +165,29 @@ func TestClientInventoryReLogsInOnceWhenTheSessionExpires(t *testing.T) {
 	assert.Equal(t, int32(2), loginCount.Load(), "an expired session must trigger exactly one re-login")
 }
 
+// A fresh session the account still rejects is an authentication failure, never
+// the package's own retry sentinel.
+func TestClientInventoryRejectedFreshSessionIsAnAuthenticationFailure(t *testing.T) {
+	var loginCount atomic.Int32
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v006/account/email/rider@example.test/":
+			loginCount.Add(1)
+			writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+		case "/v007/users/42/tours/":
+			writer.WriteHeader(http.StatusForbidden)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorIs(t, err, ErrAuthentication)
+	assert.Equal(t, int32(2), loginCount.Load(), "exactly one re-login, no third attempt")
+}
+
 // A re-login that also fails must surface as an ordinary authentication
 // failure rather than being retried indefinitely.
 func TestClientInventoryReLoginFailureSurfaces(t *testing.T) {

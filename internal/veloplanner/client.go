@@ -196,7 +196,12 @@ func (c *Client) getJSONWithRetry(ctx context.Context, endpoint func(userID int)
 		return err
 	}
 
-	return session.getJSON(ctx, endpoint(userID), output)
+	err = session.getJSON(ctx, endpoint(userID), output)
+	if errors.Is(err, errSessionExpired) {
+		return fmt.Errorf("%w: a fresh session was rejected", ErrAuthentication)
+	}
+
+	return err
 }
 
 type session struct {

@@ -136,6 +136,33 @@ func TestClientInventoryReLogsInOnceWhenTheSessionExpires(t *testing.T) {
 	assert.Equal(t, int32(2), loginCount.Load(), "a rejected request must trigger exactly one re-login")
 }
 
+// A fresh session the account still rejects is an authentication failure, never
+// the package's own retry sentinel.
+func TestClientInventoryRejectedFreshSessionIsAnAuthenticationFailure(t *testing.T) {
+	var loginCount atomic.Int32
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/login":
+			writeBody(t, writer, `<input value="csrf-token" name="_csrf_token" type="hidden">`)
+		case request.Method == http.MethodPost && request.URL.Path == "/login":
+			loginCount.Add(1)
+			http.SetCookie(writer, authenticatedCookie())
+			writeBody(t, writer, `isUserLoggedIn: true, userId: 42`)
+		case request.Method == http.MethodGet && request.URL.Path == "/api/internal/users/42/routes":
+			writer.WriteHeader(http.StatusForbidden)
+		default:
+			assert.Failf(t, "unexpected request", "%s %s", request.Method, request.URL)
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorIs(t, err, ErrAuthentication)
+	assert.Equal(t, int32(2), loginCount.Load(), "exactly one re-login, no third attempt")
+}
+
 // A session no longer accepted is sometimes answered with a redirect back to
 // the login form rather than a 401/403, and Go's client follows it silently.
 func TestClientInventoryReLogsInOnceWhenRedirectedToTheLoginForm(t *testing.T) {
