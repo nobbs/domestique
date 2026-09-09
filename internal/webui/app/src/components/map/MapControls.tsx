@@ -19,7 +19,14 @@ import { Button } from "../Button";
 import { CompassButton } from "./CompassButton";
 import { LocationPin } from "./LocationPin";
 
-export function MapControls({ children }: { children?: ReactNode }) {
+export function MapControls({
+  children,
+  hideLocate = false,
+}: {
+  children?: ReactNode;
+  /** Omits the geolocate button, for a canvas with no real GPS to find. */
+  hideLocate?: boolean;
+}) {
   const { current: map } = useMap();
   const [location, setLocation] = useState<{ longitude: number; latitude: number } | null>(null);
   const geolocationAvailable = typeof navigator !== "undefined" && "geolocation" in navigator;
@@ -47,14 +54,16 @@ export function MapControls({ children }: { children?: ReactNode }) {
       ) : null}
       {/* Only where the corner is: the controls themselves are the application's own. */}
       <div className="map-controls">
-        <Button
-          variant="panel"
-          icon={<IconCurrentLocation stroke={2} />}
-          onClick={locate}
-          disabled={!geolocationAvailable || !map}
-          aria-label="Find my location"
-          title="Find my location"
-        />
+        {hideLocate ? null : (
+          <Button
+            variant="panel"
+            icon={<IconCurrentLocation stroke={2} />}
+            onClick={locate}
+            disabled={!geolocationAvailable || !map}
+            aria-label="Find my location"
+            title="Find my location"
+          />
+        )}
         {/*
          * The frame belongs to the group rather than to each button: one edge,
          * one radius, one shadow, and a rule between the buttons instead of

@@ -5,6 +5,7 @@
 
 import { IconArrowsMaximize, IconArrowsMinimize } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { Layer, Source } from "react-map-gl/maplibre";
 import { webUIConfigQuery } from "../../api/queries";
 import type { ActivityTrackWorld, BoundingBox, Position } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -17,10 +18,21 @@ import { WINDOW_MAX_ZOOM } from "../../lib/cartography";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { RouteOverlay } from "../routes/RouteOverlay";
-import { ZwiftWorldMap } from "./ZwiftWorldMap";
 
 /** As close as a whole ride is framed, so a short loop is not zoomed to the tarmac. */
 const TRACK_MAX_ZOOM = 15;
+
+/**
+ * No vector basemap: `.route-map` already paints `var(--ground)` behind the
+ * canvas, and a world ride draws over its own artwork instead of cartography.
+ * One fixed style for every world, so it never triggers `MapWidget`'s
+ * remount-on-style-change.
+ */
+const BLANK_STYLE_URL = `data:application/json,${encodeURIComponent(
+  JSON.stringify({ version: 8, sources: {}, layers: [] }),
+)}`;
+
+const WORLD_ARTWORK_SOURCE_ID = "zwift-world-artwork";
 
 export interface ActivityMapProps {
   coordinates: Position[];
@@ -64,7 +76,8 @@ export function ActivityMap({
   onExpandedChange,
   world = null,
 }: ActivityMapProps) {
-  // A world ride draws over artwork and needs no basemap, so no config read.
+  // A world ride draws over its own artwork and needs no basemap, so no
+  // config read.
   const config = useQuery({ ...webUIConfigQuery(), enabled: !world });
   const [themeChoice] = useThemeChoice();
   const [basemapChoice] = useBasemapChoice();
@@ -73,30 +86,29 @@ export function ActivityMap({
     ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
     : null;
 
-  if (world) {
-    return (
-      <ZwiftWorldMap
-        world={world}
-        coordinates={coordinates}
-        profile={profile}
-        activeMetres={activeMetres}
-        onActiveChange={onActiveChange}
-        expanded={expanded}
-        onExpandedChange={onExpandedChange}
-      />
-    );
-  }
-  if (!basemap) {
+  // The route accent picks its light-basemap colours against a world's own
+  // artwork unconditionally: that art is a bright illustration regardless of
+  // the reader's own theme, unlike a real basemap that actually has a dark
+  // style.
+  const cartography = world
+    ? { dark: false, styleUrl: BLANK_STYLE_URL, ariaLabel: `Recorded track in ${world.name}` }
+    : basemap
+      ? { dark: basemap.dark, styleUrl: basemap.styleUrl, ariaLabel: "Recorded track" }
+      : null;
+  if (!cartography) {
     return null;
   }
+  const worldBounds: BoundingBox | null = world
+    ? [world.bounds.west, world.bounds.south, world.bounds.east, world.bounds.north]
+    : null;
 
   return (
-    <CartographyProvider dark={basemap.dark}>
+    <CartographyProvider dark={cartography.dark}>
       <MapWidget
-        styleUrl={basemap.styleUrl}
-        ariaLabel="Recorded track"
+        styleUrl={cartography.styleUrl}
+        ariaLabel={cartography.ariaLabel}
         furniture={
-          <MapControls>
+          <MapControls hideLocate={world !== null}>
             <Button
               variant="panel"
               icon={
@@ -110,10 +122,25 @@ export function ActivityMap({
         }
       >
         <MapViewport
-          bounds={windowBounds ?? bounds}
+          bounds={windowBounds ?? worldBounds ?? bounds}
           maxZoom={windowBounds ? WINDOW_MAX_ZOOM : TRACK_MAX_ZOOM}
           fitRevision={expanded ? 1 : 0}
         />
+        {world ? (
+          <Source
+            id={WORLD_ARTWORK_SOURCE_ID}
+            type="image"
+            url={world.mapUrl}
+            coordinates={[
+              [world.bounds.west, world.bounds.north],
+              [world.bounds.east, world.bounds.north],
+              [world.bounds.east, world.bounds.south],
+              [world.bounds.west, world.bounds.south],
+            ]}
+          >
+            <Layer id={`${WORLD_ARTWORK_SOURCE_ID}-layer`} type="raster" />
+          </Source>
+        ) : null}
         <RouteOverlay
           coordinates={coordinates}
           profile={profile}
