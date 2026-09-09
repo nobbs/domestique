@@ -474,8 +474,8 @@ func readingNull(reading activity.Reading) sql.NullFloat64 {
 	return nullFloat(reading.Value, reading.Known)
 }
 
-// nullJSON encodes values as JSON, or NULL for an empty slice: no reading is
-// not the same as a device that reported an empty zone table.
+// nullJSON encodes values as JSON, or NULL for an empty slice: a zone table
+// with no entries says as little as none.
 func nullJSON(values []float64) sql.NullString {
 	if len(values) == 0 {
 		return sql.NullString{}

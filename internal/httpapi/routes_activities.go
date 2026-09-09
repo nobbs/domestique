@@ -141,27 +141,26 @@ func applySession(view *openapi.ActivityMetrics, session *activities.Session) {
 		{&view.AveragePowerWatts, session.AveragePowerWatts},
 	} {
 		if override.reading.Known {
-			value := override.reading.Value
-			*override.into = &value
+			*override.into = new(override.reading.Value)
 		}
 	}
 	if session.AverageSpeedKmh.Known {
-		view.AverageSpeedKmh = &session.AverageSpeedKmh.Value
+		view.AverageSpeedKmh = new(session.AverageSpeedKmh.Value)
 	}
 	if session.MinHeartRateBPM.Known {
-		view.MinHeartRateBpm = &session.MinHeartRateBPM.Value
+		view.MinHeartRateBpm = new(session.MinHeartRateBPM.Value)
 	}
 	if session.MaxCadenceRPM.Known {
-		view.MaxCadenceRpm = &session.MaxCadenceRPM.Value
+		view.MaxCadenceRpm = new(session.MaxCadenceRPM.Value)
 	}
 	if session.MaxPowerWatts.Known {
-		view.MaxPowerWatts = &session.MaxPowerWatts.Value
+		view.MaxPowerWatts = new(session.MaxPowerWatts.Value)
 	}
 	if session.ThresholdPowerWatts.Known {
-		view.ThresholdPowerWatts = &session.ThresholdPowerWatts.Value
+		view.ThresholdPowerWatts = new(session.ThresholdPowerWatts.Value)
 	}
 	if session.Sport != "" {
-		view.Sport = &session.Sport
+		view.Sport = new(session.Sport)
 	}
 	if len(session.HeartRateZoneSeconds) > 0 {
 		view.DeviceZoneSeconds = session.HeartRateZoneSeconds
@@ -271,10 +270,10 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 			}
 			if hasSession {
 				if session.DescentMetres.Known {
-					activity.DescentMetres = &session.DescentMetres.Value
+					activity.DescentMetres = new(session.DescentMetres.Value)
 				}
 				if session.CaloriesKcal.Known {
-					activity.CaloriesKcal = &session.CaloriesKcal.Value
+					activity.CaloriesKcal = new(session.CaloriesKcal.Value)
 				}
 			}
 			if summary, ok := summaries[recorded.ID]; ok {
