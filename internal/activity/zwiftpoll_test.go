@@ -26,7 +26,7 @@ type fakeZwiftSource struct {
 	unrecordable map[int]int
 	downloaded   []int64
 	// workouts maps an activity id to the workout its single-activity response
-	// would carry; an id absent from it is a free ride, which carries none.
+	// would carry; an id absent from it is a document that named nothing.
 	workouts      map[int64]Workout
 	workoutsAsked []int64
 }
@@ -270,7 +270,7 @@ func TestZwiftPollStoresAndFillsNewRides(t *testing.T) {
 	assert.Equal(t, ProviderZwift, store.stored[0].listing.Provider, "the stored provider")
 }
 
-// A new ride's structured workout is stored beside it, read once its listing
+// What Zwift lists a new ride as is stored beside it, read once its listing
 // is stored.
 func TestZwiftPollStoresTheWorkoutBesideANewRide(t *testing.T) {
 	store := newFakeZwiftStore()
@@ -305,7 +305,7 @@ func TestZwiftPollFailsWhenTheStoreCannotRecordTheWorkout(t *testing.T) {
 	assert.Equal(t, FailureState, result.Failure)
 }
 
-// A ride with no structured workout -- a free ride -- stores nothing for it.
+// A document that named nothing stores nothing for the ride.
 func TestZwiftPollStoresNothingForAFreeRide(t *testing.T) {
 	store := newFakeZwiftStore()
 	source := &fakeZwiftSource{fit: testFIT(t), pages: [][]Listing{{zwiftListing(1, at(0))}}}
@@ -313,7 +313,7 @@ func TestZwiftPollStoresNothingForAFreeRide(t *testing.T) {
 	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
 
 	assert.Equal(t, Polled, result.Outcome)
-	assert.Equal(t, []int64{1}, source.workoutsAsked, "the free ride's workout was still asked about")
+	assert.Equal(t, []int64{1}, source.workoutsAsked, "the ride was still asked about")
 	assert.Empty(t, store.workoutsStored, "nothing was stored for a ride with no workout")
 }
 

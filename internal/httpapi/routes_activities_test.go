@@ -947,7 +947,7 @@ func TestGetActivitiesCarriesDescentAndCaloriesOnlyWhenKnown(t *testing.T) {
 	assert.Nil(t, withoutSession.CaloriesKcal)
 }
 
-// A Zwift ride's structured workout is served alongside it; a ride with none
+// What Zwift lists a ride as is served alongside it; a ride with none stored
 // carries no workout fields at all.
 func TestGetActivitiesCarriesTheWorkoutOnlyWhenPresent(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
@@ -966,7 +966,7 @@ func TestGetActivitiesCarriesTheWorkoutOnlyWhenPresent(t *testing.T) {
 	assert.Equal(t, int64(998877), *withWorkout.WorkoutHash)
 	require.NotNil(t, withWorkout.WorkoutCompletion)
 	assert.InDelta(t, 0.87, *withWorkout.WorkoutCompletion, 1e-9)
-	assert.Nil(t, withoutWorkout.WorkoutName, "a free ride carries no workout")
+	assert.Nil(t, withoutWorkout.WorkoutName, "nothing stored, nothing served")
 	assert.Nil(t, withoutWorkout.WorkoutHash)
 	assert.Nil(t, withoutWorkout.WorkoutCompletion)
 }

@@ -118,8 +118,8 @@ type Stored struct {
 	StartedAt time.Time
 	// Provider is which upstream recorded this ride.
 	Provider string
-	// WorkoutName, WorkoutHash and WorkoutCompletion are the structured
-	// workout a Zwift ride carried, all zero when HasWorkout is false.
+	// WorkoutName, WorkoutHash and WorkoutCompletion are what Zwift lists a
+	// ride as, a workout's or a route's; all zero when HasWorkout is false.
 	WorkoutName       string
 	ID                int64
 	WorkoutHash       int64

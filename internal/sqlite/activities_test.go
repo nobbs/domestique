@@ -1329,7 +1329,7 @@ func TestSetActivityWorkoutRecordsAndClearsTheWorkout(t *testing.T) {
 	stored, err = store.ActivitiesBetween(t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
 	require.NoError(t, err, "ActivitiesBetween()")
 	require.Len(t, stored, 1)
-	assert.False(t, stored[0].HasWorkout, "a free ride carries no workout")
+	assert.False(t, stored[0].HasWorkout, "cleared, so nothing is served")
 }
 
 func TestSetActivityWorkoutRefusesWhatItCannotAddress(t *testing.T) {

@@ -36,13 +36,13 @@ type ZwiftReader interface {
 	// and how many entries the page held before narrowing. A page that held
 	// none is the end of the list.
 	ListActivities(ctx context.Context, start, limit int) (listings []Listing, held int, err error)
-	// ActivityWorkout reads one ride's structured workout identity and
-	// outcome. found is false for a free ride, which carries no name.
+	// ActivityWorkout reads the name Zwift lists a ride under, with its hash
+	// and completion. found is false when the document named nothing.
 	ActivityWorkout(ctx context.Context, id int64) (workout Workout, found bool, err error)
 }
 
-// Workout is a Zwift ride's structured workout identity and outcome, read
-// from the account's own single-activity response.
+// Workout is what Zwift lists a ride as: its name, a structured workout's or
+// a free ride's route, its stable hash, and how much of it was completed.
 type Workout struct {
 	Name       string
 	Hash       int64
@@ -67,8 +67,8 @@ type ZwiftStore interface {
 		recordsVersion, limit int) ([]PendingActivity, error)
 	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit FIT, recordsVersion int) error
 	MarkActivityUnreadable(ctx context.Context, targetID string, id int64) error
-	// SetActivityWorkout records a Zwift ride's structured workout, or clears
-	// it when present is false.
+	// SetActivityWorkout records what Zwift lists a ride as, or clears it
+	// when present is false.
 	SetActivityWorkout(ctx context.Context, targetID string, id int64, name string, hash int64, completion float64, present bool) error
 }
 
@@ -182,7 +182,7 @@ func (p *ZwiftPoller) storeNew(ctx context.Context, targetID string, reader Zwif
 
 // storeOne records one ride, first removing the head unit's copy of it: the two
 // are one ride, and the Zwift file is the one kept for the power it carries.
-// It then reads that ride's structured workout, whose own refusal is logged
+// It then reads what Zwift lists that ride as, whose own refusal is logged
 // and skipped rather than failing the poll: the ride is already stored.
 func (p *ZwiftPoller) storeOne(ctx context.Context, targetID string, listing Listing, reader ZwiftReader) Failure {
 	removed, err := p.store.DeleteTrainerCopy(ctx, targetID, listing.Starts, trainerCopyWindow, p.indoorTypes)

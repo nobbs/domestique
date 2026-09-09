@@ -821,8 +821,8 @@ func (r zwiftReader) ListActivities(
 	return zwiftListings(activities), len(activities), nil
 }
 
-// ActivityWorkout reads one ride's structured workout identity and outcome.
-// found is false for a free ride, which carries no name.
+// ActivityWorkout reads the name Zwift lists a ride under, with its hash and
+// completion. found is false when the document named nothing, which is unexpected.
 func (r zwiftReader) ActivityWorkout(ctx context.Context, id int64) (activity.Workout, bool, error) {
 	detail, err := r.client.Activity(ctx, r.session, id)
 	if err != nil {

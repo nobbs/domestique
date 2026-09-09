@@ -332,7 +332,7 @@ func TestZwiftProviderListsCyclingAsIndoorVirtualRides(t *testing.T) {
 		"the stored document is this service's own, never Zwift's body")
 }
 
-// ActivityWorkout reads back a ride's structured workout, and reports a free
+// ActivityWorkout reads back a ride's name, hash and completion, and reports a nameless
 // ride -- whose response carries no name -- as not found.
 func TestZwiftReaderActivityWorkoutReadsOrReportsAFreeRide(t *testing.T) {
 	t.Parallel()
@@ -368,8 +368,8 @@ func TestZwiftReaderActivityWorkoutReadsOrReportsAFreeRide(t *testing.T) {
 	assert.InDelta(t, 0.87, workout.Completion, 1e-9)
 
 	_, found, err = reader.ActivityWorkout(t.Context(), 2)
-	require.NoError(t, err, "ActivityWorkout() for a free ride")
-	assert.False(t, found, "a response with no name is a free ride")
+	require.NoError(t, err, "ActivityWorkout() for a nameless document")
+	assert.False(t, found, "a response with no name yields nothing to store")
 }
 
 // A refused workout read reaches the caller wrapped, so it can still be

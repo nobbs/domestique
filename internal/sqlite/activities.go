@@ -431,8 +431,8 @@ func (s *Store) StoreActivityRecords(
 	return nil
 }
 
-// SetActivityWorkout records the structured workout a Zwift ride's own
-// single-activity response carried, or clears it when present is false.
+// SetActivityWorkout records what Zwift lists a ride as, or clears it when
+// present is false.
 func (s *Store) SetActivityWorkout(
 	ctx context.Context, targetID string, id int64, name string, hash int64, completion float64, present bool,
 ) error {
