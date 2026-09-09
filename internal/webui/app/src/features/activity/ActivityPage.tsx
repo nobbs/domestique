@@ -57,7 +57,14 @@ export function ActivityPage() {
   // A window that built nothing is a slip, not a view: the map must not dim
   // around a stretch the chart is not showing.
   const shownProfile = windowed ?? profile;
-  const shownWindow = windowed ? zoomWindow : null;
+  // The profile's own bounds, not the request that built it: a drag near
+  // either end is widened against the whole track and then slid to fit the
+  // altitude axis, so what `windowed` actually shows can differ from what was
+  // asked for. Every other reader of the window — the map's bounds, its dimmed
+  // halo — has to agree with the chart rather than with the request.
+  const shownWindow = windowed
+    ? { startMetres: windowed.startMetres, endMetres: windowed.endMetres }
+    : null;
   // The position was chosen against the view being left, so it goes with it.
   const onZoomChange = useCallback((next: DistanceWindow | null) => {
     setZoomWindow(next);
