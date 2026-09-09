@@ -52,6 +52,7 @@
   --series-heart-rate: #c1384a;
   --series-cadence: #00806f;
   --series-power: #7439ad;
+  --series-estimated-power: #6a6191;
   --series-temperature: #b9670c;
   --series-speed: #236fc7;
   --surface-asphalt: #556b82;
@@ -122,6 +123,7 @@
   --series-heart-rate: #f0909a;
   --series-cadence: #59ceba;
   --series-power: #c199f4;
+  --series-estimated-power: #a8a0cd;
   --series-temperature: #e9a55b;
   --series-speed: #70adfb;
   --surface-asphalt: #8da8c3;
@@ -192,6 +194,7 @@
     --series-heart-rate: #f0909a;
     --series-cadence: #59ceba;
     --series-power: #c199f4;
+    --series-estimated-power: #a8a0cd;
     --series-temperature: #e9a55b;
     --series-speed: #70adfb;
     --surface-asphalt: #8da8c3;

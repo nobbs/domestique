@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
 import { activitySplitsQuery, activityTrackQuery, routesQuery } from "../../api/queries";
-import type { Activity, ActivitySeriesName, ActivityTrackState } from "../../api/types";
+import type { Activity, ActivityTrackState } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -23,7 +23,7 @@ import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
 import { RideConditions, stepStarts } from "./RideConditions";
 import { RideFigures } from "./RideFigures";
-import { SeriesChips, useRideSeries } from "./RideSeries";
+import { type RideSeriesKey, SeriesChips, useRideSeries } from "./RideSeries";
 import { RideSplits } from "./RideSplits";
 import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
@@ -42,10 +42,16 @@ export function ActivityPage() {
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [mapExpanded, setMapExpanded] = useState(false);
   useEscapeKey(mapExpanded, () => setMapExpanded(false));
-  const [shown, setShown] = useState<ReadonlySet<ActivitySeriesName>>(() => new Set());
-  const { drawn, states } = useRideSeries(id, shown, coordinates, profile);
+  const [shown, setShown] = useState<ReadonlySet<RideSeriesKey>>(() => new Set());
+  const { drawn, states } = useRideSeries(
+    id,
+    shown,
+    coordinates,
+    profile,
+    track.data?.estimatedPowerWatts,
+  );
   const title = ride ? formatTimestamp(ride.startedAt) : "Activity";
-  const toggle = useCallback((series: ActivitySeriesName) => {
+  const toggle = useCallback((series: RideSeriesKey) => {
     setShown((current) => {
       const next = new Set(current);
       if (!next.delete(series)) {

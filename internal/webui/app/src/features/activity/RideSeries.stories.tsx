@@ -1,14 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { ActivitySeriesName } from "../../api/types";
-import { SeriesChips, type SeriesState } from "./RideSeries";
+import { type RideSeriesKey, SeriesChips, type SeriesState } from "./RideSeries";
 
 /** Every series off, which is where a ride page opens. */
-const OFF: Record<ActivitySeriesName, SeriesState> = {
+const OFF: Record<RideSeriesKey, SeriesState> = {
   heartRate: "off",
   cadence: "off",
   speed: "off",
   temperature: "off",
   power: "off",
+  estimatedPower: "off",
 };
 
 const meta = {
