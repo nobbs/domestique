@@ -161,11 +161,12 @@ func run(ctx context.Context) error {
 	if reloadErr := rideModel.reload(ctx); reloadErr != nil {
 		slog.Error("the ride model could not be loaded", "error", reloadErr)
 	}
+	sourceClients := newSourceCache()
 	reconciler, err := syncservice.New(&syncservice.Options{
 		TargetIDs: destination.targetIDs,
-		Sources:   func() ([]syncservice.Source, error) { return sources(runtimeSettings) },
+		Sources:   func() ([]syncservice.Source, error) { return sourceClients.sources(runtimeSettings) },
 		SourceFor: func(provider route.Provider) (syncservice.Source, bool, error) {
-			return sourceFor(runtimeSettings, provider)
+			return sourceClients.sourceFor(runtimeSettings, provider)
 		},
 		AllowEmptySourceDeletion: func() bool {
 			return runtimeSettings.Values().Sync.AllowEmptySourceDeletion

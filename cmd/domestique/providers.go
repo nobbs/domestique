@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -490,11 +491,61 @@ func (q wahooQuotaStore) SaveQuota(ctx context.Context, quota *wahoo.Quota) erro
 	return nil
 }
 
-// sources builds the library clients a run reads, in configured order. Built per
-// call because neither client keeps a session between inventories. A source whose
-// credentials are not entered is not skipped: reading part of a library and
-// calling it the whole inventory is what the deletion gate exists to prevent.
-func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
+// sourceApplication is everything a source client is built from; an unchanged
+// one keeps the built client and the session it holds.
+type sourceApplication struct {
+	baseURL  string
+	email    []byte
+	password []byte
+}
+
+func (a sourceApplication) equal(other sourceApplication) bool {
+	return a.baseURL == other.baseURL &&
+		bytes.Equal(a.email, other.email) && bytes.Equal(a.password, other.password)
+}
+
+// sourceCache keeps the last client built per provider across runs, so the
+// session it caches outlives the per-run rebuild that lets credential edits apply.
+type sourceCache struct {
+	entries map[route.Provider]sourceCacheEntry
+	mutex   sync.Mutex
+}
+
+type sourceCacheEntry struct {
+	client      syncservice.Source
+	application sourceApplication
+}
+
+func newSourceCache() *sourceCache {
+	return &sourceCache{entries: make(map[route.Provider]sourceCacheEntry)}
+}
+
+// get returns the cached client while its base URL and credentials are
+// unchanged, and otherwise builds a fresh one in its place.
+func (c *sourceCache) get(entry runtimeconfig.Source, email, password []byte) (syncservice.Source, error) {
+	application := sourceApplication{baseURL: entry.BaseURL, email: email, password: password}
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if cached, ok := c.entries[entry.Provider]; ok && cached.application.equal(application) {
+		return cached.client, nil
+	}
+
+	client, err := newSource(entry, email, password)
+	if err != nil {
+		return nil, err
+	}
+	c.entries[entry.Provider] = sourceCacheEntry{application: application, client: client}
+
+	return client, nil
+}
+
+// sources builds the library clients a run reads, in configured order, reused
+// from the cache while unchanged. A source whose credentials are not entered
+// is not skipped: reading part of a library and calling it the whole
+// inventory is what the deletion gate exists to prevent.
+func (c *sourceCache) sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 	snapshot := settings.Snapshot()
 	configured := snapshot.Values().Sources
 	built := make([]syncservice.Source, 0, len(configured))
@@ -508,7 +559,7 @@ func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 		if len(email) == 0 || len(password) == 0 {
 			return nil, fmt.Errorf("%s credentials are not configured yet", source.Provider)
 		}
-		client, err := newSource(source, email, password)
+		client, err := c.get(source, email, password)
 		if err != nil {
 			return nil, err
 		}
@@ -518,10 +569,10 @@ func sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 	return built, nil
 }
 
-// sourceFor builds one library's client. Unlike sources it never refuses for
-// another library's missing credentials; an unconfigured provider returns no
-// client rather than an error.
-func sourceFor(
+// sourceFor builds one library's client, reused from the cache while
+// unchanged. Unlike sources it never refuses for another library's missing
+// credentials; an unconfigured provider returns no client rather than an error.
+func (c *sourceCache) sourceFor(
 	settings *runtimeconfig.Current, provider route.Provider,
 ) (source syncservice.Source, configured bool, err error) {
 	snapshot := settings.Snapshot()
@@ -538,7 +589,7 @@ func sourceFor(
 		if len(email) == 0 || len(password) == 0 {
 			return nil, false, nil
 		}
-		client, err := newSource(entry, email, password)
+		client, err := c.get(entry, email, password)
 		if err != nil {
 			return nil, false, err
 		}

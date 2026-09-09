@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -34,6 +35,10 @@ const (
 // ErrAuthentication identifies an unsuccessful Komoot login.
 var ErrAuthentication = errors.New("komoot: authentication failed")
 
+// errSessionExpired never escapes this package: a caller sees either a
+// successful retry or ErrAuthentication from the retried login.
+var errSessionExpired = errors.New("komoot: session expired")
+
 // Options configures a Komoot client with resolved credentials.
 type Options struct {
 	Transport http.RoundTripper
@@ -43,16 +48,20 @@ type Options struct {
 	Timeout   time.Duration
 }
 
-// Client inventories one Komoot account's planned tours. It does not retain a
-// session between calls to Inventory, and it issues no HTTP method other than
-// GET: the account's session token is not read-scoped, so nothing in this
-// package may risk a write against it.
+// Client inventories one Komoot account's planned tours. It issues no HTTP
+// method other than GET: the account's session token is not read-scoped, so
+// nothing in this package may risk a write against it.
+// The session is kept between Inventory calls: the account rate-limits logins.
 type Client struct {
-	transport http.RoundTripper
-	baseURL   *url.URL
-	email     []byte
-	password  []byte
-	timeout   time.Duration
+	transport  http.RoundTripper
+	baseURL    *url.URL
+	userID     string
+	token      string
+	email      []byte
+	password   []byte
+	timeout    time.Duration
+	mutex      sync.Mutex
+	hasSession bool
 }
 
 // New creates a Komoot client without contacting the upstream service.
@@ -102,17 +111,13 @@ func (c *Client) Provider() route.Provider {
 	return route.ProviderKomoot
 }
 
-// Inventory logs in with a new session and returns every planned tour as a
-// single-stage route.Route, in stable order.
+// Inventory reuses the client's cached session where one is valid, logging in
+// only when none is cached or the account rejected it, and returns every
+// planned tour as a single-stage route.Route, in stable order.
 func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
 	session := c.newSession()
 
-	userID, token, err := session.login(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	summaries, err := session.listTours(ctx, userID, token)
+	summaries, err := c.listTours(ctx, session)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +131,7 @@ func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
 			return nil, errors.New("komoot: tour library contained an invalid tour id")
 		}
 
-		detail, err := session.tourDetail(ctx, userID, token, summary.ID)
+		detail, err := c.tourDetail(ctx, session, summary.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -145,6 +150,55 @@ func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
 	}
 
 	return stages, nil
+}
+
+// currentCredentials returns the cached session, logging in under the mutex
+// when none is held so concurrent callers still log in once.
+func (c *Client) currentCredentials(ctx context.Context, session *session) (userID, token string, err error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.hasSession {
+		return c.userID, c.token, nil
+	}
+
+	userID, token, err = session.login(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	c.userID, c.token, c.hasSession = userID, token, true
+
+	return userID, token, nil
+}
+
+// invalidateSession discards a cached session a request found no longer
+// accepted, so the next credentials lookup logs in again.
+func (c *Client) invalidateSession() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.hasSession = false
+}
+
+// getJSONWithRetry retries one authenticated GET exactly once after a fresh
+// login; endpoint takes the user id because a re-login may change it.
+func (c *Client) getJSONWithRetry(ctx context.Context, session *session, endpoint func(userID string) string, output any) error {
+	userID, token, err := c.currentCredentials(ctx, session)
+	if err != nil {
+		return err
+	}
+
+	err = session.getJSON(ctx, userID, token, endpoint(userID), output)
+	if !errors.Is(err, errSessionExpired) {
+		return err
+	}
+
+	c.invalidateSession()
+	userID, token, err = c.currentCredentials(ctx, session)
+	if err != nil {
+		return err
+	}
+
+	return session.getJSON(ctx, userID, token, endpoint(userID), output)
 }
 
 type session struct {
@@ -224,7 +278,7 @@ func (s *session) login(ctx context.Context) (userID, token string, err error) {
 	return payload.Username, payload.Password, nil
 }
 
-func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSummary, error) {
+func (c *Client) listTours(ctx context.Context, session *session) ([]tourSummary, error) {
 	var tours []tourSummary
 	wantTotal, wantPages := -1, -1
 
@@ -237,8 +291,10 @@ func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSu
 		}
 
 		var payload toursResponse
-		endpoint := fmt.Sprintf("/v007/users/%s/tours/?type=%s&page=%d&limit=%d", userID, tourTypePlanned, page, tourPageSize)
-		if err := s.getJSON(ctx, userID, token, endpoint, &payload); err != nil {
+		endpoint := func(userID string) string {
+			return fmt.Sprintf("/v007/users/%s/tours/?type=%s&page=%d&limit=%d", userID, tourTypePlanned, page, tourPageSize)
+		}
+		if err := c.getJSONWithRetry(ctx, session, endpoint, &payload); err != nil {
 			return nil, fmt.Errorf("komoot: listing tours: %w", err)
 		}
 		if payload.Page == nil || payload.Page.Number == nil || payload.Page.TotalElements == nil ||
@@ -278,10 +334,10 @@ func (s *session) listTours(ctx context.Context, userID, token string) ([]tourSu
 	return tours, nil
 }
 
-func (s *session) tourDetail(ctx context.Context, userID, token string, tourID int64) (tourDetail, error) {
+func (c *Client) tourDetail(ctx context.Context, session *session, tourID int64) (tourDetail, error) {
 	var payload tourDetail
-	endpoint := fmt.Sprintf("/v007/tours/%d?_embedded=coordinates", tourID)
-	if err := s.getJSON(ctx, userID, token, endpoint, &payload); err != nil {
+	endpoint := func(string) string { return fmt.Sprintf("/v007/tours/%d?_embedded=coordinates", tourID) }
+	if err := c.getJSONWithRetry(ctx, session, endpoint, &payload); err != nil {
 		return tourDetail{}, fmt.Errorf("komoot: retrieving tour detail: %w", err)
 	}
 
@@ -298,6 +354,9 @@ func (s *session) getJSON(ctx context.Context, userID, token, endpoint string, o
 	body, status, err := s.doRequest(request)
 	if err != nil {
 		return err
+	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return errSessionExpired
 	}
 	if status != http.StatusOK {
 		return fmt.Errorf("upstream returned HTTP %d", status)
