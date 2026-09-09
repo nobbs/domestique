@@ -10,11 +10,18 @@ import { describe, expect, it, vi } from "vitest";
 import { webUIConfigQuery } from "../../api/queries";
 import type { WebUIConfig } from "../../api/types";
 import { ChromeMap } from "../../storybook/mapMock";
+import { stubPendingFetch } from "../../test/network";
 import { ActivityMap } from "./ActivityMap";
 
-// The overlay draws the recorded track itself, which needs a real MapLibre
-// instance this test never mounts; only the furniture around it is in question.
+// The overlay draws the recorded track itself, and a world's own artwork is a
+// source and a layer of its own — both need a real MapLibre instance this
+// test never mounts. Only the furniture around them is in question.
 vi.mock("../routes/RouteOverlay", () => ({ RouteOverlay: () => null }));
+vi.mock("react-map-gl/maplibre", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-map-gl/maplibre")>()),
+  Source: () => null,
+  Layer: () => null,
+}));
 
 const CONFIG: WebUIConfig = {
   basemaps: [
@@ -59,6 +66,32 @@ function show(expanded: boolean, onExpandedChange = vi.fn(), world?: typeof WORL
 }
 
 describe("ActivityMap's expand toggle", () => {
+  it("draws nothing outdoors until the basemap config has answered", () => {
+    stubPendingFetch();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <ChromeMap>
+          <ActivityMap
+            coordinates={[]}
+            world={null}
+            bounds={[8.4, 49, 8.6, 49.2]}
+            profile={null}
+            activeMetres={null}
+            onActiveChange={() => {}}
+            expanded={false}
+            onExpandedChange={() => {}}
+          />
+        </ChromeMap>
+      </QueryClientProvider>,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("offers to expand when collapsed", () => {
     show(false);
 
@@ -78,14 +111,21 @@ describe("ActivityMap's expand toggle", () => {
 // A ride in a virtual world is drawn over that world's own artwork: its
 // coordinates are not the ground's, so no basemap could be true under them.
 describe("ActivityMap in a virtual world", () => {
-  it("draws the world's artwork instead of a basemap, and keeps the toggle", async () => {
+  it("labels the canvas for the world instead of a basemap, and keeps the toggle", async () => {
     const onExpandedChange = show(false, vi.fn(), WORLD);
 
-    const artwork = screen.getByRole("img", { name: "Map of Makuri Islands" });
-    expect(artwork).toHaveAttribute("src", "/v1/zwift/worlds/9/map");
-    expect(screen.queryByLabelText("Recorded track")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "Recorded track in Makuri Islands" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Recorded track" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Expand map" }));
     expect(onExpandedChange).toHaveBeenCalledWith(true);
+  });
+
+  it("offers no geolocate button: a world has nothing real to find", () => {
+    show(false, vi.fn(), WORLD);
+
+    expect(screen.queryByRole("button", { name: "Find my location" })).not.toBeInTheDocument();
   });
 });

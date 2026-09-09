@@ -69,4 +69,11 @@ describe("MapControls", () => {
     expect(getCurrentPosition).not.toHaveBeenCalled();
     expect(map.getZoom).not.toHaveBeenCalled();
   });
+
+  it("omits the geolocate button for a canvas with nothing real to find", () => {
+    render(<MapControls hideLocate />);
+
+    expect(screen.queryByRole("button", { name: "Find my location" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+  });
 });
