@@ -21,6 +21,8 @@ type fakeZwiftSource struct {
 	signedInWith [2]string
 	fit          []byte
 	pages        [][]Listing
+	// unrecordable is how many entries a page held that narrowing dropped.
+	unrecordable map[int]int
 	downloaded   []int64
 }
 
@@ -42,7 +44,7 @@ func (s *fakeZwiftSource) ListActivities(_ context.Context, start, limit int) ([
 		return nil, 0, nil
 	}
 
-	return slices.Clone(s.pages[page]), len(s.pages[page]), nil
+	return slices.Clone(s.pages[page]), len(s.pages[page]) + s.unrecordable[page], nil
 }
 
 func (s *fakeZwiftSource) DownloadActivityFIT(_ context.Context, summary Summary) ([]byte, error) {
@@ -257,6 +259,23 @@ func TestZwiftPollStopsAtTheFirstPageHoldingNothingNew(t *testing.T) {
 
 	assert.Equal(t, Unchanged, result.Outcome)
 	assert.Empty(t, store.stored, "the poll read past a page holding nothing new")
+}
+
+// A page holding nothing but runs narrows to no ride at all, and says nothing
+// about the rides behind it.
+func TestZwiftPollReadsPastAPageOfRuns(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{
+		fit:          testFIT(t),
+		pages:        [][]Listing{{}, {zwiftListing(2, at(-90))}},
+		unrecordable: map[int]int{0: 3},
+	}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	require.Len(t, store.stored, 1, "the ride behind the page of runs")
+	assert.Equal(t, int64(2), store.stored[0].listing.ID)
 }
 
 // A refused grant is the rider's password to re-enter; nothing is marked, since

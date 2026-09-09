@@ -153,7 +153,9 @@ func (p *ZwiftPoller) storeNew(ctx context.Context, targetID string, reader Zwif
 			}
 			stored++
 		}
-		if fresh == 0 {
+		// A page of nothing but runs narrows to no listing at all and says
+		// nothing about the rides behind it; only a page of known rides does.
+		if len(listings) > 0 && fresh == 0 {
 			return stored, FailureNone
 		}
 	}
