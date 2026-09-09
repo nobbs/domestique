@@ -402,7 +402,8 @@ function EstimatedPowerTile({ power, diagnostics }: { power: Scale; diagnostics:
       </div>
       <span className="text-[var(--ink-2)] text-xs">{power.scale}</span>
       <span className="text-[10px] text-[var(--ink-2)] opacity-80" title={hoverTitle}>
-        {foldedCaption(diagnostics)}
+        <span aria-hidden="true">{foldedCaption(diagnostics)}</span>
+        <span className="sr-only">{hoverTitle}</span>
       </span>
     </div>
   );
