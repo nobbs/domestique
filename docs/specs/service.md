@@ -533,6 +533,24 @@ The read-only JSON surface is small:
   ride recorded over no ground, regardless of what it stored; a served line
   carries `stored`. Only an activity of another target, or one this service
   holds no summary for, is `404`.
+
+  An indoor ride Zwift recorded in a virtual world this service knows the
+  bounds of is the one `indoor` ride served a line. It keeps `state: indoor` —
+  it was ridden over no ground — and carries, beside the line, `properties.world`:
+  the world's id and name, the corners its coordinates fall between, and
+  `mapUrl`, the route below that serves that world's map artwork. The line is
+  drawn over that artwork and never over a basemap. An indoor ride in no world
+  this service names carries neither, exactly as before.
+- `GET /v1/zwift/worlds/{worldId}/map` returns one Zwift world's published map
+  artwork, relayed from Zwift's CDN through this origin: the CDN sends no CORS
+  header, so a browser cannot read it directly, and relaying also keeps which
+  world a rider is looking at from reaching a third party. Each world's image is
+  fetched once, held in memory, and answered from there afterwards; a failed
+  fetch is not kept. Read-only and identity-gated like every other `/v1` route,
+  cached privately for a day and revalidated by an `ETag` over the bytes. A
+  world this service's table does not name is `404`. The bounds and image names
+  are a small table kept in this repository, copied from the `zwift-data`
+  package, not a runtime dependency.
 - `GET /v1/activities/{activityId}/series/{series}` returns one named series of
   that activity's samples — `heartRate`, `cadence`, `power`, `temperature` or
   `speed` — indexed 1:1 with the coordinates the track endpoint serves, `null`
@@ -1170,9 +1188,11 @@ deletes the Zwift ride later is given the Wahoo copy back by the next poll,
 which is why nothing is tombstoned.
 
 An indoor ride is ridden over no ground. It is asked nothing about the weather,
-attributed to no library route, timed over no climb and shown no map — its
-coordinates are a virtual world's, and a real map, a real forecast or a real
-route matched against them would all be false. Which rides those are follows
+attributed to no library route, timed over no climb and shown no map of the
+ground — its coordinates are a virtual world's, and a real map, a real forecast
+or a real route matched against them would all be false. A Zwift ride in a
+world this service knows is drawn over that world's own artwork instead, which
+is the only map its coordinates are true against. Which rides those are follows
 from the recorded workout type, so a Wahoo trainer ride is treated the same as a
 Zwift one. Its samples, including power and heart rate, are stored and derived
 exactly as an outdoor ride's are.

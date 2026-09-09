@@ -196,6 +196,12 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating the Zwift client: %w", err)
 	}
+	// The world map relay reads Zwift's CDN rather than its API, so it is a
+	// client of its own.
+	zwiftWorldMaps, err := zwift.NewWorldMaps(&zwift.WorldMapOptions{})
+	if err != nil {
+		return fmt.Errorf("creating the Zwift world map relay: %w", err)
+	}
 	zwiftActivityPoller, err := activity.NewZwiftPoller(zwiftProvider{client: zwiftClient}, store, wahoo.IndoorWorkoutTypes(), time.Now)
 	if err != nil {
 		return fmt.Errorf("creating the Zwift activity poller: %w", err)
@@ -270,6 +276,8 @@ func run(ctx context.Context) error {
 			WebhookTokens:    webhookTokens{settings: runtimeSettings},
 			StoppingTypes:    wahoo.OutdoorHumanPoweredWorkoutTypes(),
 			IndoorTypes:      wahoo.IndoorWorkoutTypes(),
+			ZwiftWorldMaps:   zwiftWorldMaps,
+			ZwiftWorldOf:     zwiftWorldOf,
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			Sessions:         sessions,

@@ -112,6 +112,15 @@ type Options struct {
 	// /webhooks/wahoo answers not found.
 	WebhookTokens WebhookTokens
 
+	// ZwiftWorldMaps relays Zwift's world map artwork. Absent leaves the asset
+	// route answering not found, which is what a build with no Zwift source
+	// should answer.
+	ZwiftWorldMaps ZwiftWorldMaps
+
+	// ZwiftWorldOf names the world a stored Zwift summary was ridden in. Absent
+	// leaves every indoor ride served with no world, as before there were any.
+	ZwiftWorldOf ZwiftWorldOf
+
 	// BuildRevision and BuildImageDigest name the source commit and the image
 	// running it. Both optional, and published only when well-formed.
 	BuildRevision string
@@ -186,6 +195,8 @@ type Handler struct {
 	alerts              Alerts
 	tasks               Tasks
 	webhookTokens       WebhookTokens
+	zwiftWorldMaps      ZwiftWorldMaps
+	zwiftWorldOf        ZwiftWorldOf
 	buildRevision       string
 	buildImageDigest    string
 	browserOrigin       string
@@ -249,6 +260,8 @@ func New(
 		webhookTokens:       options.WebhookTokens,
 		stoppingTypes:       slices.Clone(options.StoppingTypes),
 		indoorTypes:         slices.Clone(options.IndoorTypes),
+		zwiftWorldMaps:      options.ZwiftWorldMaps,
+		zwiftWorldOf:        options.ZwiftWorldOf,
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,
@@ -324,6 +337,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("DELETE /v1/settings/rider/credentials/zwift", h.DeleteRiderZwiftCredentials)
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
+	h.mux.HandleFunc("GET /v1/zwift/worlds/{worldId}/map", h.GetZwiftWorldMap)
 	h.mux.HandleFunc("GET /v1/weather-grid/latest", h.GetWeatherGridLatest)
 	h.mux.HandleFunc("GET /v1/weather-grid/object", h.GetWeatherGridObject)
 	h.mux.HandleFunc("GET /auth/login", h.GetLoginPage)

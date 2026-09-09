@@ -329,17 +329,29 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 
 		return
 	}
-	// An indoor ride was ridden over no ground: its coordinates, if any, are a
-	// virtual world's, and a map of them would be false. It is served the same
-	// no-geometry shape as a ride whose samples are not stored, naming why.
+	// An indoor ride was ridden over no ground, so it stays "indoor" whatever
+	// follows. One ridden in a virtual world this service knows the map of is
+	// still served its line, to be drawn over that world's own artwork; one in
+	// no known world gets the same no-geometry shape as a ride whose samples
+	// are not stored.
+	var world *activityWorldView
 	if slices.Contains(h.indoorTypes, typeID) {
-		writer.Header().Set("Content-Type", "application/geo+json")
-		h.writeJSON(writer, http.StatusOK, activityTrackView{
-			Type:       "Feature",
-			Properties: activityTrackPropertyView{State: trackStateIndoor},
-		})
+		ridden, known, worldErr := h.rideWorld(request.Context(), targetID, id)
+		if worldErr != nil {
+			h.unavailable(writer)
 
-		return
+			return
+		}
+		if !known {
+			writer.Header().Set("Content-Type", "application/geo+json")
+			h.writeJSON(writer, http.StatusOK, activityTrackView{
+				Type:       "Feature",
+				Properties: activityTrackPropertyView{State: trackStateIndoor},
+			})
+
+			return
+		}
+		world = &ridden
 	}
 	track, trackErr := h.state.ActivityTrack(request.Context(), targetID, id)
 	if trackErr != nil {
@@ -354,8 +366,44 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 		return
 	}
 
+	feature := activityTrackFeature(track, recordsState, steps)
+	if world != nil {
+		feature.Properties.State = trackStateIndoor
+		feature.Properties.World = world
+	}
 	writer.Header().Set("Content-Type", "application/geo+json")
-	h.writeJSON(writer, http.StatusOK, activityTrackFeature(track, recordsState, steps))
+	h.writeJSON(writer, http.StatusOK, feature)
+}
+
+// rideWorld is the virtual world one ride was ridden in. known is false for a
+// ride no other provider than Zwift recorded, for a Zwift world this service's
+// table does not name, and for a build wired with no world table at all.
+func (h *Handler) rideWorld(
+	ctx context.Context, targetID string, id int64,
+) (view activityWorldView, known bool, err error) {
+	if h.zwiftWorldOf == nil {
+		return activityWorldView{}, false, nil
+	}
+	provider, summary, err := h.state.ActivityProviderSummary(ctx, targetID, id)
+	if err != nil {
+		return activityWorldView{}, false, fmt.Errorf("reading which provider recorded a ride: %w", err)
+	}
+	if provider != activities.ProviderZwift {
+		return activityWorldView{}, false, nil
+	}
+	world, found := h.zwiftWorldOf(summary)
+	if !found {
+		return activityWorldView{}, false, nil
+	}
+
+	return activityWorldView{
+		ID:   world.ID,
+		Name: world.Name,
+		Bounds: activityWorldBoundsView{
+			North: world.North, West: world.West, South: world.South, East: world.East,
+		},
+		MapURL: "/v1/zwift/worlds/" + strconv.FormatInt(world.ID, 10) + "/map",
+	}, true, nil
 }
 
 // GetActivitySeries serves one named series of one activity's samples, scoped

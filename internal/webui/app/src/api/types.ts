@@ -9,6 +9,7 @@ import {
   type ActivitySplit,
   type ActivitySplits,
   type ActivityTrackPropertiesState,
+  type ActivityTrackWorld,
   type ActivityWeatherSummary,
   type AlertSetting,
   type BrowserBasemap,
@@ -63,6 +64,7 @@ export type {
   ActivitySeriesName,
   ActivitySplit,
   ActivitySplits,
+  ActivityTrackWorld,
   ActivityWeatherSummary,
   AlertSetting,
   BrowserBasemap,
@@ -154,6 +156,11 @@ export interface ActivityTrack {
    * absent for a ride that has real power, no usable track, or no rider mass.
    */
   estimatedPowerWatts?: (number | null)[] | undefined;
+  /**
+   * The virtual world an indoor ride was ridden in, where this service knows
+   * one: its line is drawn over that world's artwork rather than over ground.
+   */
+  world?: ActivityTrackWorld | undefined;
 }
 
 export type ActivityTrackState = ActivityTrackPropertiesState;
@@ -180,6 +187,7 @@ export function activityTrack(feature: GeneratedActivityTrack | ActivityTrack): 
     bbox: feature.bbox as BoundingBox,
     state: feature.properties.state,
     weather,
+    world: feature.properties.world,
     estimatedPowerWatts: feature.properties.estimatedPowerWatts,
     coordinates: geometry.coordinates.map(([longitude = 0, latitude = 0], index) => {
       const altitude = altitudes?.[index];

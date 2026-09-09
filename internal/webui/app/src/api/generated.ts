@@ -466,6 +466,25 @@ export interface RideWeatherStep {
   cloudCoverPercent: number;
 }
 
+/**
+ * The world's corners in degrees, which the coordinates of a ride in it fall between. Virtual coordinates: Watopia sits in open ocean.
+ */
+export type ActivityTrackWorldBounds = {
+  north: number;
+  west: number;
+  south: number;
+  east: number;
+};
+
+export interface ActivityTrackWorld {
+  id: number;
+  name: string;
+  /** The world's corners in degrees, which the coordinates of a ride in it fall between. Virtual coordinates: Watopia sits in open ocean. */
+  bounds: ActivityTrackWorldBounds;
+  /** Where this service serves the world's map artwork from, on its own origin. */
+  mapUrl: string;
+}
+
 export interface ActivityTrackProperties {
   /** indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates. */
   state: ActivityTrackPropertiesState;
@@ -473,6 +492,8 @@ export interface ActivityTrackProperties {
   altitudeMetres?: (number | null)[];
   /** What this ride was actually ridden through, one row per step of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about. */
   weather?: RideWeatherStep[];
+  /** The virtual world an indoor ride was ridden in, present only for a ride whose world this service knows the map of. Such a ride keeps `state: indoor` — it was ridden over no ground — but carries its line, which is drawn over the world's own artwork and never over a basemap. */
+  world?: ActivityTrackWorld;
   /** Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass. */
   estimatedPowerWatts?: (number | null)[];
 }

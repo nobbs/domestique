@@ -1264,6 +1264,40 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "502":
           $ref: '#/components/responses/ProviderUnavailable'
+  /v1/zwift/worlds/{worldId}/map:
+    get:
+      # No tag, so Orval never generates a client for it: the browser loads the
+      # artwork with an <img>, never through a generated binding.
+      operationId: getZwiftWorldMap
+      description: >-
+        One Zwift world's published map artwork, relayed from Zwift's CDN
+        through this origin. The CDN answers no CORS header, so a browser
+        cannot read it directly; relaying it also keeps which world a rider is
+        looking at from reaching a third party. The image is fetched once and
+        held in memory. A world this service's table does not name is answered
+        not found.
+      parameters:
+        - name: worldId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: The world's map image.
+          content:
+            image/png: {}
+        "304":
+          description: The caller's copy of the image is current.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
   /oauth/wahoo/start:
     get:
       tags:
@@ -3371,6 +3405,49 @@ components:
             - type: 'null'
         properties:
           $ref: '#/components/schemas/ActivityTrackProperties'
+    ActivityTrackWorld:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - bounds
+        - mapUrl
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        bounds:
+          type: object
+          additionalProperties: false
+          description: >-
+            The world's corners in degrees, which the coordinates of a ride in
+            it fall between. Virtual coordinates: Watopia sits in open ocean.
+          required:
+            - north
+            - west
+            - south
+            - east
+          properties:
+            north:
+              type: number
+              format: double
+            west:
+              type: number
+              format: double
+            south:
+              type: number
+              format: double
+            east:
+              type: number
+              format: double
+        mapUrl:
+          type: string
+          description: >-
+            Where this service serves the world's map artwork from, on its own
+            origin.
     ActivityTrackProperties:
       type: object
       additionalProperties: false
@@ -3408,6 +3485,14 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/RideWeatherStep'
+        world:
+          description: >-
+            The virtual world an indoor ride was ridden in, present only for a
+            ride whose world this service knows the map of. Such a ride keeps
+            `state: indoor` — it was ridden over no ground — but carries its
+            line, which is drawn over the world's own artwork and never over a
+            basemap.
+          $ref: '#/components/schemas/ActivityTrackWorld'
         estimatedPowerWatts:
           description: >-
             Power this service worked out from the track itself, for a bicycle

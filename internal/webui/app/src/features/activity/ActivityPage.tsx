@@ -173,6 +173,7 @@ export function ActivityPage() {
               <ActivityMap
                 coordinates={coordinates}
                 bounds={track.data.bbox}
+                world={track.data.world}
                 windowBounds={windowBounds}
                 profile={profile}
                 activeProfile={shownProfile}

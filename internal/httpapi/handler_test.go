@@ -2478,6 +2478,8 @@ type fakeState struct {
 	sampleRowsErr        error
 	recordsStates        map[string]activities.RecordsState
 	recordsStateTypes    map[string]int
+	providerSummaries    map[string]fakeProviderSummary
+	providerSummaryErr   error
 	trackErr             error
 	recordsStateErr      error
 	targets              []fakeTarget
@@ -2907,6 +2909,26 @@ func (s *fakeState) ActivityRecordsState(
 	}
 
 	return "", 0, false, nil
+}
+
+// fakeProviderSummary is which provider recorded a ride and what it wrote.
+type fakeProviderSummary struct {
+	provider string
+	summary  []byte
+}
+
+// ActivityProviderSummary answers from what a test recorded. A ride no test
+// named has no provider, which is what a ride this target does not have looks
+// like.
+func (s *fakeState) ActivityProviderSummary(
+	_ context.Context, targetID string, id int64,
+) (provider string, summary []byte, err error) {
+	if s.providerSummaryErr != nil {
+		return "", nil, s.providerSummaryErr
+	}
+	stored := s.providerSummaries[targetID+"/"+strconv.FormatInt(id, 10)]
+
+	return stored.provider, stored.summary, nil
 }
 
 func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string, string) error) error {

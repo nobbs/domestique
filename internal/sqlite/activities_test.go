@@ -877,6 +877,35 @@ func TestActivityCaloriesAccumReadsTheOneFieldItNames(t *testing.T) {
 	require.ErrorContains(t, err, "reading an activity's raw summary")
 }
 
+// ActivityProviderSummary hands back which provider recorded the ride and the
+// document that provider wrote, and says nothing at all about a ride this
+// target does not have.
+func TestActivityProviderSummaryNamesTheProviderAndItsDocument(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
+		activity.Listing{
+			ID: 1, TypeID: wahoo.WorkoutTypeBikingIndoorVirtual, Starts: activityNow(),
+			Provider: activity.ProviderZwift,
+		},
+		activity.Summary{Raw: []byte(`{"worldId":9}`)}, activityNow()), "StoreActivity()")
+
+	provider, summary, err := store.ActivityProviderSummary(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityProviderSummary()")
+	assert.Equal(t, activity.ProviderZwift, provider)
+	assert.JSONEq(t, `{"worldId":9}`, string(summary))
+
+	provider, summary, err = store.ActivityProviderSummary(t.Context(), "rider-a", 2)
+	require.NoError(t, err, "ActivityProviderSummary() unknown ride")
+	assert.Empty(t, provider)
+	assert.Empty(t, summary)
+
+	require.NoError(t, store.Close(), "Close()")
+	_, _, err = store.ActivityProviderSummary(t.Context(), "rider-a", 1)
+	require.ErrorContains(t, err, "reading an activity's provider summary")
+}
+
 // fullTestSession is every session figure a device could report, known and
 // distinct, so a round trip that dropped or swapped a column shows up.
 func fullTestSession() activity.Session {

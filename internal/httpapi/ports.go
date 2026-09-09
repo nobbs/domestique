@@ -226,6 +226,10 @@ type ActivityState interface {
 	// ActivitySeries lists the non-positional part of one target's activity's
 	// positioned samples, indexed 1:1 with what ActivityTrack returns for it.
 	ActivitySeries(ctx context.Context, targetID string, id int64) ([]activities.SampleRow, error)
+	// ActivityProviderSummary is which provider recorded one target's activity
+	// and the summary document that provider wrote for it. Both are empty for an
+	// activity the target does not have.
+	ActivityProviderSummary(ctx context.Context, targetID string, id int64) (provider string, summary []byte, err error)
 	// ActivityRecordsState reports how far one target's activity has got in
 	// storing its recorded samples, its recorded workout type, and whether that
 	// target has the activity at all.
@@ -417,4 +421,29 @@ type WeatherGrid interface {
 	Object(
 		ctx context.Context, referenceTime, validTime time.Time, method string, conditional http.Header,
 	) (*http.Response, error)
+}
+
+// ZwiftWorld is the virtual world one indoor ride was ridden in: the corners
+// its coordinates fall between, and the name to say. Declared here so this
+// package needs no import of the Zwift adapter that knows the table.
+type ZwiftWorld struct {
+	Name  string
+	ID    int64
+	North float64
+	West  float64
+	South float64
+	East  float64
+}
+
+// ZwiftWorldOf reads a stored Zwift summary and reports the world it names, if
+// the world is one this service knows. The composition root supplies it.
+type ZwiftWorldOf func(summary []byte) (ZwiftWorld, bool)
+
+// ZwiftWorldMaps serves Zwift's published world map artwork from this origin,
+// so the browser never reaches a CDN that would refuse it anyway. Satisfied by
+// internal/zwift's relay.
+type ZwiftWorldMaps interface {
+	// Image is one world's artwork and the content type to serve it as. found is
+	// false for an id no world has, which is not a failure.
+	Image(ctx context.Context, worldID int64) (data []byte, contentType string, found bool, err error)
 }

@@ -448,6 +448,31 @@ describe("one ride's page", () => {
     expect(screen.queryByTestId("activity-map")).not.toBeInTheDocument();
   });
 
+  // An indoor ride in a virtual world this service knows is still indoors, but
+  // it has a map of its own: the world's artwork with its line over it.
+  it("draws a Zwift ride in a world it knows, rather than saying there is no map", () => {
+    show({
+      bbox: [165.8, -10.8, 165.85, -10.75],
+      coordinates: [
+        [165.8, -10.8],
+        [165.82, -10.78],
+        [165.84, -10.76],
+      ],
+      state: "indoor",
+      world: {
+        id: 9,
+        name: "Makuri Islands",
+        mapUrl: "/v1/zwift/worlds/9/map",
+        bounds: { north: -10.73746, west: 165.76591, south: -10.85234, east: 165.88222 },
+      },
+    });
+
+    expect(screen.getByTestId("activity-map")).toBeInTheDocument();
+    expect(
+      screen.queryByText("This ride was recorded indoors, so there is no map."),
+    ).not.toBeInTheDocument();
+  });
+
   it("requests no track for a non-integer activity id", () => {
     const fetchMock = vi.fn(
       async (_input: RequestInfo | URL) => new Response(null, { status: 500 }),

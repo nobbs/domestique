@@ -749,6 +749,20 @@ func (f predictorFunc) Predict(ctx context.Context, stages []route.Route) (predi
 // place that knows both vocabularies, exactly as the Wahoo mapping above is.
 type zwiftProvider struct{ client *zwift.Client }
 
+// zwiftWorldOf adapts the Zwift adapter's world table to the HTTP surface,
+// which is told a world's bounds and name but never how they are looked up.
+func zwiftWorldOf(summary []byte) (httpapi.ZwiftWorld, bool) {
+	world, found := zwift.WorldOf(summary)
+	if !found {
+		return httpapi.ZwiftWorld{}, false
+	}
+
+	return httpapi.ZwiftWorld{
+		ID: world.ID, Name: world.Name,
+		North: world.North, West: world.West, South: world.South, East: world.East,
+	}, true
+}
+
 // SignIn signs in with a rider's own credentials and resolves their player id,
 // the handle every listing request addresses them by. The grant lives in the
 // reader for the length of one poll and reaches no store.

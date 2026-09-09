@@ -791,6 +791,23 @@ type ActivityTrack struct {
 	Properties ActivityTrackProperties  `json:"properties"`
 }
 
+// ActivityTrackWorld_Bounds The world's corners in degrees, which the coordinates of a ride in it fall between. Virtual coordinates: Watopia sits in open ocean.
+type ActivityTrackWorld_Bounds struct {
+	North float64 `json:"north"`
+	West  float64 `json:"west"`
+	South float64 `json:"south"`
+	East  float64 `json:"east"`
+}
+
+type ActivityTrackWorld struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// Bounds The world's corners in degrees, which the coordinates of a ride in it fall between. Virtual coordinates: Watopia sits in open ocean.
+	Bounds ActivityTrackWorld_Bounds `json:"bounds"`
+	// MapURL Where this service serves the world's map artwork from, on its own origin.
+	MapURL string `json:"mapUrl"`
+}
+
 // ActivityTrackProperties_State indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates.
 type ActivityTrackProperties_State string
 
@@ -802,13 +819,18 @@ const (
 	ActivityTrackProperties_StateIndoor     ActivityTrackProperties_State = "indoor"
 )
 
+type ActivityTrackProperties_World struct {
+	ActivityTrackWorld
+}
+
 type ActivityTrackProperties struct {
 	// State indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates.
 	State ActivityTrackProperties_State `json:"state"`
 	// AltitudeMetres The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude.
 	AltitudeMetres []*float64 `json:"altitudeMetres,omitempty"`
 	// Weather What this ride was actually ridden through, one row per step of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about.
-	Weather []RideWeatherStep `json:"weather,omitempty"`
+	Weather []RideWeatherStep              `json:"weather,omitempty"`
+	World   *ActivityTrackProperties_World `json:"world,omitempty"`
 	// EstimatedPowerWatts Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass.
 	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
 }

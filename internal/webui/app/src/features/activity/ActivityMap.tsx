@@ -6,7 +6,7 @@
 import { IconArrowsMaximize, IconArrowsMinimize } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { webUIConfigQuery } from "../../api/queries";
-import type { BoundingBox, Position } from "../../api/types";
+import type { ActivityTrackWorld, BoundingBox, Position } from "../../api/types";
 import { Button } from "../../components/Button";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
@@ -17,6 +17,7 @@ import { WINDOW_MAX_ZOOM } from "../../lib/cartography";
 import type { DistanceWindow, Profile } from "../../lib/profile";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { RouteOverlay } from "../routes/RouteOverlay";
+import { ZwiftWorldMap } from "./ZwiftWorldMap";
 
 /** As close as a whole ride is framed, so a short loop is not zoomed to the tarmac. */
 const TRACK_MAX_ZOOM = 15;
@@ -41,6 +42,12 @@ export interface ActivityMapProps {
   onZoomChange?: (window: DistanceWindow | null) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  /**
+   * The virtual world this ride was ridden in. Present replaces the whole
+   * cartography with that world's artwork: its coordinates are not the
+   * ground's, so no basemap they were drawn over could be true.
+   */
+  world?: ActivityTrackWorld | null | undefined;
 }
 
 export function ActivityMap({
@@ -55,6 +62,7 @@ export function ActivityMap({
   onZoomChange,
   expanded,
   onExpandedChange,
+  world = null,
 }: ActivityMapProps) {
   const config = useQuery(webUIConfigQuery());
   const [themeChoice] = useThemeChoice();
@@ -64,6 +72,19 @@ export function ActivityMap({
     ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
     : null;
 
+  if (world) {
+    return (
+      <ZwiftWorldMap
+        world={world}
+        coordinates={coordinates}
+        profile={profile}
+        activeMetres={activeMetres}
+        onActiveChange={onActiveChange}
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
+      />
+    );
+  }
   if (!basemap) {
     return null;
   }
