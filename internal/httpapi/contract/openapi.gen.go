@@ -99,6 +99,14 @@ type Route struct {
 	Validation         *RouteValidation `json:"validation,omitempty"`
 }
 
+// Activity_Provider Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
+type Activity_Provider string
+
+const (
+	Activity_ProviderWahoo Activity_Provider = "wahoo"
+	Activity_ProviderZwift Activity_Provider = "zwift"
+)
+
 type Activity struct {
 	ID             int64     `json:"id"`
 	StartedAt      time.Time `json:"startedAt"`
@@ -109,12 +117,14 @@ type Activity struct {
 	// DescentMetres The ride's total descent, from the file's session message. Absent for a ride whose file declared none.
 	DescentMetres *float64 `json:"descentMetres,omitempty"`
 	// CaloriesKcal The device's own calorie estimate for the ride. Absent for a ride whose file declared none.
-	CaloriesKcal *float64                `json:"caloriesKcal,omitempty"`
-	TypeID       int                     `json:"typeId"`
-	LocationID   int                     `json:"locationId"`
-	Metrics      *ActivityMetrics        `json:"metrics,omitempty"`
-	Weather      *ActivityWeatherSummary `json:"weather,omitempty"`
-	RouteMatch   *ActivityRouteMatch     `json:"routeMatch,omitempty"`
+	CaloriesKcal *float64 `json:"caloriesKcal,omitempty"`
+	TypeID       int      `json:"typeId"`
+	LocationID   int      `json:"locationId"`
+	// Provider Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
+	Provider   Activity_Provider       `json:"provider"`
+	Metrics    *ActivityMetrics        `json:"metrics,omitempty"`
+	Weather    *ActivityWeatherSummary `json:"weather,omitempty"`
+	RouteMatch *ActivityRouteMatch     `json:"routeMatch,omitempty"`
 }
 
 // ActivityRouteMatch The library route this ride was ridden on. Absent where the ride was ridden on none of them, or has not been matched yet; the two are not distinguished, because neither gives a route to show.
@@ -781,6 +791,7 @@ type ActivityTrack struct {
 	Properties ActivityTrackProperties  `json:"properties"`
 }
 
+// ActivityTrackProperties_State indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates.
 type ActivityTrackProperties_State string
 
 const (
@@ -788,9 +799,11 @@ const (
 	ActivityTrackProperties_StatePending    ActivityTrackProperties_State = "pending"
 	ActivityTrackProperties_StateEmpty      ActivityTrackProperties_State = "empty"
 	ActivityTrackProperties_StateUnreadable ActivityTrackProperties_State = "unreadable"
+	ActivityTrackProperties_StateIndoor     ActivityTrackProperties_State = "indoor"
 )
 
 type ActivityTrackProperties struct {
+	// State indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates.
 	State ActivityTrackProperties_State `json:"state"`
 	// AltitudeMetres The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude.
 	AltitudeMetres []*float64 `json:"altitudeMetres,omitempty"`

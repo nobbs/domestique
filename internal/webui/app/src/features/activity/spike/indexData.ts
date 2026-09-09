@@ -69,6 +69,7 @@ function build(): IndexRide[] {
       ascentMetres,
       typeId: 1,
       locationId: 1,
+      provider: "wahoo",
       ...(strap
         ? {
             metrics: {

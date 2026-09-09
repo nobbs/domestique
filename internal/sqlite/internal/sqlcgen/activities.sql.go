@@ -158,7 +158,7 @@ func (q *Queries) GetActivityRawSummary(ctx context.Context, arg GetActivityRawS
 }
 
 const getActivityRecordsState = `-- name: GetActivityRecordsState :one
-SELECT records_state FROM activities WHERE target_slot = ? AND workout_id = ?
+SELECT records_state, workout_type_id FROM activities WHERE target_slot = ? AND workout_id = ?
 `
 
 type GetActivityRecordsStateParams struct {
@@ -166,11 +166,16 @@ type GetActivityRecordsStateParams struct {
 	WorkoutID  int64
 }
 
-func (q *Queries) GetActivityRecordsState(ctx context.Context, arg GetActivityRecordsStateParams) (string, error) {
+type GetActivityRecordsStateRow struct {
+	RecordsState  string
+	WorkoutTypeID int64
+}
+
+func (q *Queries) GetActivityRecordsState(ctx context.Context, arg GetActivityRecordsStateParams) (GetActivityRecordsStateRow, error) {
 	row := q.db.QueryRowContext(ctx, getActivityRecordsState, arg.TargetSlot, arg.WorkoutID)
-	var records_state string
-	err := row.Scan(&records_state)
-	return records_state, err
+	var i GetActivityRecordsStateRow
+	err := row.Scan(&i.RecordsState, &i.WorkoutTypeID)
+	return i, err
 }
 
 const insertActivityListing = `-- name: InsertActivityListing :exec

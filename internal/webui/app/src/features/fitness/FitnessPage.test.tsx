@@ -155,6 +155,7 @@ function ride(startedAt: string, decouplingPercent?: number): Activity {
     ascentMetres: 400,
     typeId: 15,
     locationId: 1,
+    provider: "wahoo",
     ...(decouplingPercent === undefined ? {} : { metrics: { decouplingPercent } }),
   };
 }

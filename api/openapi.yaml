@@ -1720,6 +1720,7 @@ components:
         - ascentMetres
         - typeId
         - locationId
+        - provider
       properties:
         id:
           type: integer
@@ -1755,6 +1756,15 @@ components:
           type: integer
         locationId:
           type: integer
+        provider:
+          type: string
+          enum:
+            - wahoo
+            - zwift
+          description: >-
+            Which upstream this service read the ride from, not where it was
+            ridden: an indoor ride recorded by a Wahoo head unit still answers
+            wahoo, not zwift.
         metrics:
           $ref: '#/components/schemas/ActivityMetrics'
         weather:
@@ -3374,6 +3384,10 @@ components:
             - pending
             - empty
             - unreadable
+            - indoor
+          description: >-
+            indoor names a ride recorded over no ground: never given a line,
+            regardless of whether it stored any coordinates.
         altitudeMetres:
           description: >-
             The altitude at each coordinate, indexed 1:1 with them; null where

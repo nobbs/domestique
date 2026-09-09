@@ -2477,6 +2477,7 @@ type fakeState struct {
 	sampleRows           map[string][]activities.SampleRow
 	sampleRowsErr        error
 	recordsStates        map[string]activities.RecordsState
+	recordsStateTypes    map[string]int
 	trackErr             error
 	recordsStateErr      error
 	targets              []fakeTarget
@@ -2888,22 +2889,24 @@ func (s *fakeState) TargetByWahooUser(
 
 // ActivityRecordsState reports the state the test gave this target's activity,
 // defaulting to stored for one the test gave a track and nothing else: an
-// activity neither names is one this target does not have.
+// activity neither names is one this target does not have. The workout type
+// defaults to zero, an outdoor type, unless the test named one.
 func (s *fakeState) ActivityRecordsState(
 	_ context.Context, targetID string, id int64,
-) (activities.RecordsState, bool, error) {
+) (state activities.RecordsState, typeID int, found bool, err error) {
 	if s.recordsStateErr != nil {
-		return "", false, s.recordsStateErr
+		return "", 0, false, s.recordsStateErr
 	}
 	key := targetID + "/" + strconv.FormatInt(id, 10)
+	typeID = s.recordsStateTypes[key]
 	if state, ok := s.recordsStates[key]; ok {
-		return state, true, nil
+		return state, typeID, true, nil
 	}
 	if _, ok := s.tracks[key]; ok {
-		return activities.RecordsStored, true, nil
+		return activities.RecordsStored, typeID, true, nil
 	}
 
-	return "", false, nil
+	return "", 0, false, nil
 }
 
 func (s *fakeState) ForEachTarget(_ context.Context, visit func(string, string, string) error) error {

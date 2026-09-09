@@ -236,6 +236,7 @@ func TestServedResponsesSatisfyTheContract(t *testing.T) {
 	state.activities = map[string][]activities.Stored{testSubject: {{
 		ID: 1, StartedAt: time.Now().Add(-time.Hour), DistanceMetres: 1000,
 		MovingSeconds: 60, ElapsedSeconds: 90, AscentMetres: 10, TypeID: 15, LocationID: 1,
+		Provider: activities.ProviderWahoo,
 	}}}
 	// One ride with a track, so the recorded-track Feature is validated against
 	// a real line rather than skipped as a not-found. The first sample carries

@@ -331,6 +331,8 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
     ascentMetres: 280 + index * 120,
     typeId: 40,
     locationId: 0,
+    // The second ride is Zwift's, so a page listing every ride shows the badge.
+    provider: index === 1 ? "zwift" : "wahoo",
   };
 });
 
@@ -482,6 +484,7 @@ export const riddenRides: Activity[] = [
     ascentMetres: 620,
     typeId: 40,
     locationId: 0,
+    provider: "wahoo",
     routeMatch: { ...routeMatch, routeCoverage: 0.94, direction: "reverse" },
     weather: {
       temperatureMinCelsius: 12.4,
@@ -500,6 +503,7 @@ export const riddenRides: Activity[] = [
     ascentMetres: 620,
     typeId: 40,
     locationId: 0,
+    provider: "wahoo",
     routeMatch,
     weather: {
       temperatureMinCelsius: 18.1,
@@ -518,6 +522,7 @@ export const riddenRides: Activity[] = [
     ascentMetres: 620,
     typeId: 40,
     locationId: 0,
+    provider: "wahoo",
     routeMatch,
   },
 ];

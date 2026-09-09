@@ -68,6 +68,8 @@ const (
 // rideSpec is one synthetic ride before it becomes samples. A spec naming no
 // stage was ridden on a trainer: every sensor, and no ground at all.
 type rideSpec struct {
+	// provider is which upstream listed this ride. Empty means Wahoo.
+	provider       string
 	workoutID      int64
 	routeID        int64
 	stageOrder     int
@@ -107,6 +109,13 @@ func rideSpecs() []rideSpec {
 			typeID:    wahoo.WorkoutTypeBikingIndoorTrainer, locationID: locationIndoors,
 			daysAgo: 2, startHour: 19, trainerMinutes: 50,
 			carries: carriesHeartRate | carriesCadence | carriesPower,
+		},
+		{
+			workoutID: 90_105,
+			typeID:    wahoo.WorkoutTypeBikingIndoorVirtual, locationID: locationIndoors,
+			daysAgo: 6, startHour: 18, trainerMinutes: 40,
+			carries:  carriesHeartRate | carriesCadence | carriesPower,
+			provider: activity.ProviderZwift,
 		},
 	}
 }
@@ -162,6 +171,7 @@ func (s *rideSpec) ride(stages []route.Route, now time.Time) (Ride, error) {
 	return Ride{
 		Listing: activity.Listing{
 			Starts: start, ID: s.workoutID, TypeID: s.typeID, LocationID: s.locationID,
+			Provider: s.provider,
 		},
 		Summary: summary,
 		FIT: activity.FIT{

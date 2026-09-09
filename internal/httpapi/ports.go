@@ -227,9 +227,9 @@ type ActivityState interface {
 	// positioned samples, indexed 1:1 with what ActivityTrack returns for it.
 	ActivitySeries(ctx context.Context, targetID string, id int64) ([]activities.SampleRow, error)
 	// ActivityRecordsState reports how far one target's activity has got in
-	// storing its recorded samples, and whether that target has the activity at
-	// all.
-	ActivityRecordsState(ctx context.Context, targetID string, id int64) (activities.RecordsState, bool, error)
+	// storing its recorded samples, its recorded workout type, and whether that
+	// target has the activity at all.
+	ActivityRecordsState(ctx context.Context, targetID string, id int64) (activities.RecordsState, int, bool, error)
 	// ActivityMetrics is every derived row one target holds, keyed by ride. A
 	// ride with none is absent from the map rather than present and empty.
 	ActivityMetrics(ctx context.Context, targetID string) (map[int64]activities.RideMetrics, error)

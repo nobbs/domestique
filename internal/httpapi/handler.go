@@ -136,6 +136,10 @@ type Options struct {
 	// StoppingTypes are the provider workout types a rider's own stopping habit
 	// is read from: the rides that stop for something. Empty offers no habit.
 	StoppingTypes []int
+
+	// IndoorTypes are the provider workout types ridden over no ground, served
+	// with no map regardless of what coordinates they stored.
+	IndoorTypes []int
 }
 
 // RideModelValidation is the frozen coefficient profile's measured
@@ -187,6 +191,7 @@ type Handler struct {
 	browserOrigin       string
 	authOrigin          string
 	stoppingTypes       []int
+	indoorTypes         []int
 }
 
 // New creates a handler. Health checks are intentionally unauthenticated;
@@ -243,6 +248,7 @@ func New(
 		tasks:               options.Tasks,
 		webhookTokens:       options.WebhookTokens,
 		stoppingTypes:       slices.Clone(options.StoppingTypes),
+		indoorTypes:         slices.Clone(options.IndoorTypes),
 		buildRevision:       publishableRevision(options.BuildRevision),
 		buildImageDigest:    publishableDigest(options.BuildImageDigest),
 		browserOrigin:       browserOrigin,

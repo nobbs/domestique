@@ -12,6 +12,7 @@ import { routesQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
+import { Badge } from "../../components/ui/badge";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
   formatAscent,
@@ -94,6 +95,11 @@ function RideBar({ ride, longest }: { ride: Activity; longest: number }) {
           {formatAscent(ride.ascentMetres)}
         </span>
         <Weather ride={ride} />
+        {ride.provider === "zwift" ? (
+          <Badge variant="secondary" className="h-auto w-fit px-1 py-0 text-[9px]">
+            Zwift
+          </Badge>
+        ) : null}
       </span>
     </Link>
   );

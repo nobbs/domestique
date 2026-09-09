@@ -13,6 +13,7 @@ function ride(metrics?: ActivityMetrics, totals?: Partial<Activity>): Activity {
     ascentMetres: 420,
     typeId: 0,
     locationId: 0,
+    provider: "wahoo",
     ...(metrics ? { metrics } : {}),
     ...totals,
   };
@@ -84,5 +85,15 @@ describe("RideFigures", () => {
 
     expect(screen.queryByText("Descended")).not.toBeInTheDocument();
     expect(screen.queryByText("Calories")).not.toBeInTheDocument();
+  });
+
+  it("badges a Zwift ride and no other", () => {
+    render(<RideFigures ride={ride(undefined, { provider: "zwift" })} />);
+    expect(screen.getByText("Zwift")).toBeInTheDocument();
+  });
+
+  it("shows no provider badge for a Wahoo ride", () => {
+    render(<RideFigures ride={ride(undefined)} />);
+    expect(screen.queryByText("Zwift")).not.toBeInTheDocument();
   });
 });

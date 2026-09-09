@@ -43,6 +43,7 @@ function activity(startedAt: Date, overrides: Partial<Activity> = {}): Activity 
     ascentMetres: 300,
     typeId: 40,
     locationId: 0,
+    provider: "wahoo",
     ...overrides,
   };
 }
