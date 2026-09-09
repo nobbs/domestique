@@ -100,17 +100,21 @@ type Route struct {
 }
 
 type Activity struct {
-	ID             int64                   `json:"id"`
-	StartedAt      time.Time               `json:"startedAt"`
-	DistanceMetres float64                 `json:"distanceMetres"`
-	MovingSeconds  float64                 `json:"movingSeconds"`
-	ElapsedSeconds float64                 `json:"elapsedSeconds"`
-	AscentMetres   float64                 `json:"ascentMetres"`
-	TypeID         int                     `json:"typeId"`
-	LocationID     int                     `json:"locationId"`
-	Metrics        *ActivityMetrics        `json:"metrics,omitempty"`
-	Weather        *ActivityWeatherSummary `json:"weather,omitempty"`
-	RouteMatch     *ActivityRouteMatch     `json:"routeMatch,omitempty"`
+	ID             int64     `json:"id"`
+	StartedAt      time.Time `json:"startedAt"`
+	DistanceMetres float64   `json:"distanceMetres"`
+	MovingSeconds  float64   `json:"movingSeconds"`
+	ElapsedSeconds float64   `json:"elapsedSeconds"`
+	AscentMetres   float64   `json:"ascentMetres"`
+	// DescentMetres The ride's total descent, from the file's session message. Absent for a ride whose file declared none.
+	DescentMetres *float64 `json:"descentMetres,omitempty"`
+	// CaloriesKcal The device's own calorie estimate for the ride. Absent for a ride whose file declared none.
+	CaloriesKcal *float64                `json:"caloriesKcal,omitempty"`
+	TypeID       int                     `json:"typeId"`
+	LocationID   int                     `json:"locationId"`
+	Metrics      *ActivityMetrics        `json:"metrics,omitempty"`
+	Weather      *ActivityWeatherSummary `json:"weather,omitempty"`
+	RouteMatch   *ActivityRouteMatch     `json:"routeMatch,omitempty"`
 }
 
 // ActivityRouteMatch The library route this ride was ridden on. Absent where the ride was ridden on none of them, or has not been matched yet; the two are not distinguished, because neither gives a route to show.
@@ -238,7 +242,7 @@ type RideWeatherStep struct {
 	CloudCoverPercent               float64  `json:"cloudCoverPercent"`
 }
 
-// ActivityMetrics What this ride's recorded samples say about how hard it was: the load figures the rider's profile shapes, and the plain averages its sensors came to on their own. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, and a profile holds what the rider entered. Average speed is not here — it is distance over moving time, both of which the activity already carries, and is known even for a ride whose file was never readable.
+// ActivityMetrics What this ride's recorded samples say about how hard it was: the load figures the rider's profile shapes, and the plain averages the device declared or, failing that, its sensors came to on their own. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, a file declares what its head unit chose to, and a profile holds what the rider entered.
 type ActivityMetrics struct {
 	// ZoneSeconds How long the ride held each of five heart-rate zones, easiest first. Cut from the lactate threshold where the profile has one and from the maximum otherwise.
 	ZoneSeconds []float64 `json:"zoneSeconds,omitempty"`
@@ -255,16 +259,32 @@ type ActivityMetrics struct {
 	// EstimatedPowerWatts The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass.
 	EstimatedPowerWatts *float64         `json:"estimatedPowerWatts,omitempty"`
 	EstimateQuality     *EstimateQuality `json:"estimateQuality,omitempty"`
-	// AverageHeartRateBpm The mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap.
+	// AverageSpeedKmh The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries.
+	AverageSpeedKmh *float64 `json:"averageSpeedKmh,omitempty"`
+	// AverageHeartRateBpm The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap.
 	AverageHeartRateBpm *float64 `json:"averageHeartRateBpm,omitempty"`
-	// MaxHeartRateBpm The highest heart rate the ride recorded.
+	// MinHeartRateBpm The lowest heart rate the device's session declared. Absent for a file that declared none.
+	MinHeartRateBpm *float64 `json:"minHeartRateBpm,omitempty"`
+	// MaxHeartRateBpm The device's own session maximum where the file declared one, otherwise the highest heart rate the ride recorded.
 	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
-	// AverageCadenceRpm The mean of the ride's recorded cadence samples. A reading of zero is a reading — a stopped rider's cadence — and counts towards it.
+	// AverageCadenceRpm The device's own session average where the file declared one, otherwise the mean of the ride's recorded cadence samples. A reading of zero is a reading — a stopped rider's cadence — and counts towards it.
 	AverageCadenceRpm *float64 `json:"averageCadenceRpm,omitempty"`
-	// AveragePowerWatts The mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power.
+	// MaxCadenceRpm The highest cadence the device's session declared. Absent for a file that declared none.
+	MaxCadenceRpm *float64 `json:"maxCadenceRpm,omitempty"`
+	// AveragePowerWatts The device's own session average where the file declared one, otherwise the mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power.
 	AveragePowerWatts *float64 `json:"averagePowerWatts,omitempty"`
-	// MaxSpeedKmh The ride's highest recorded speed in km/h, from the device's own speed reading where recorded and otherwise from distance over time. Readings above a plausible ceiling are dropped. Absent for a ride with no speed series at all.
+	// MaxPowerWatts The highest power the device's session declared. Absent for a file that declared none.
+	MaxPowerWatts *float64 `json:"maxPowerWatts,omitempty"`
+	// ThresholdPowerWatts The functional threshold power set on the head unit at the time of the ride, from the file's session message. Absent where the file declared none.
+	ThresholdPowerWatts *float64 `json:"thresholdPowerWatts,omitempty"`
+	// MaxSpeedKmh The device's own session maximum where the file declared one, otherwise the ride's highest recorded speed in km/h, from the device's own speed reading where recorded and otherwise from distance over time. Readings above a plausible ceiling are dropped in the fallback. Absent for a ride with no speed series at all.
 	MaxSpeedKmh *float64 `json:"maxSpeedKmh,omitempty"`
+	// Sport The FIT profile's sport name for the ride, e.g. "cycling". Absent where the file declared none.
+	Sport *string `json:"sport,omitempty"`
+	// DeviceZoneSeconds How long the ride held each of the head unit's own heart-rate zones, easiest first, from the file's session message. Served beside zoneSeconds rather than instead of it: the load figures above and the page's default view are worked out from the profile's zones, not the device's own.
+	DeviceZoneSeconds []float64 `json:"deviceZoneSeconds,omitempty"`
+	// DeviceZoneBoundsBpm The heart rates the head unit cut its own zones at, ascending, one fewer than deviceZoneSeconds has entries. Present whenever deviceZoneSeconds is.
+	DeviceZoneBoundsBpm []float64 `json:"deviceZoneBoundsBpm,omitempty"`
 	// DecouplingPercent How much of the ride's power-to-heart-rate ratio was lost over its second half, as a percentage of its first. Positive is the usual direction: the same watts cost more beats later on. From measured power only, over a ride of at least an hour, and absent otherwise. It describes a steady aerobic ride; over intervals the two halves are different efforts and the figure says nothing about drift. See docs/specs/measurement.md §Decoupling and heat drift.
 	DecouplingPercent *float64   `json:"decouplingPercent,omitempty"`
 	HeatDrift         *HeatDrift `json:"heatDrift,omitempty"`

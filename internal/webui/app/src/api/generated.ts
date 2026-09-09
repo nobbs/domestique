@@ -249,7 +249,7 @@ export interface HeatDrift {
 }
 
 /**
- * What this ride's recorded samples say about how hard it was: the load figures the rider's profile shapes, and the plain averages its sensors came to on their own. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, and a profile holds what the rider entered. Average speed is not here — it is distance over moving time, both of which the activity already carries, and is known even for a ride whose file was never readable.
+ * What this ride's recorded samples say about how hard it was: the load figures the rider's profile shapes, and the plain averages the device declared or, failing that, its sensors came to on their own. Absent from a ride that has none, and each part is absent on its own: a ride carries the sensors it carries, a file declares what its head unit chose to, and a profile holds what the rider entered.
  */
 export interface ActivityMetrics {
   /**
@@ -275,16 +275,32 @@ export interface ActivityMetrics {
   /** The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass. */
   estimatedPowerWatts?: number;
   estimateQuality?: EstimateQuality;
-  /** The mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap. */
+  /** The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries. */
+  averageSpeedKmh?: number;
+  /** The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap. */
   averageHeartRateBpm?: number;
-  /** The highest heart rate the ride recorded. */
+  /** The lowest heart rate the device's session declared. Absent for a file that declared none. */
+  minHeartRateBpm?: number;
+  /** The device's own session maximum where the file declared one, otherwise the highest heart rate the ride recorded. */
   maxHeartRateBpm?: number;
-  /** The mean of the ride's recorded cadence samples. A reading of zero is a reading — a stopped rider's cadence — and counts towards it. */
+  /** The device's own session average where the file declared one, otherwise the mean of the ride's recorded cadence samples. A reading of zero is a reading — a stopped rider's cadence — and counts towards it. */
   averageCadenceRpm?: number;
-  /** The mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power. */
+  /** The highest cadence the device's session declared. Absent for a file that declared none. */
+  maxCadenceRpm?: number;
+  /** The device's own session average where the file declared one, otherwise the mean of the ride's measured power samples. Never fed by an estimate: a bicycle with no meter has no average power. */
   averagePowerWatts?: number;
-  /** The ride's highest recorded speed in km/h, from the device's own speed reading where recorded and otherwise from distance over time. Readings above a plausible ceiling are dropped. Absent for a ride with no speed series at all. */
+  /** The highest power the device's session declared. Absent for a file that declared none. */
+  maxPowerWatts?: number;
+  /** The functional threshold power set on the head unit at the time of the ride, from the file's session message. Absent where the file declared none. */
+  thresholdPowerWatts?: number;
+  /** The device's own session maximum where the file declared one, otherwise the ride's highest recorded speed in km/h, from the device's own speed reading where recorded and otherwise from distance over time. Readings above a plausible ceiling are dropped in the fallback. Absent for a ride with no speed series at all. */
   maxSpeedKmh?: number;
+  /** The FIT profile's sport name for the ride, e.g. "cycling". Absent where the file declared none. */
+  sport?: string;
+  /** How long the ride held each of the head unit's own heart-rate zones, easiest first, from the file's session message. Served beside zoneSeconds rather than instead of it: the load figures above and the page's default view are worked out from the profile's zones, not the device's own. */
+  deviceZoneSeconds?: number[];
+  /** The heart rates the head unit cut its own zones at, ascending, one fewer than deviceZoneSeconds has entries. Present whenever deviceZoneSeconds is. */
+  deviceZoneBoundsBpm?: number[];
   /** How much of the ride's power-to-heart-rate ratio was lost over its second half, as a percentage of its first. Positive is the usual direction: the same watts cost more beats later on. From measured power only, over a ride of at least an hour, and absent otherwise. It describes a steady aerobic ride; over intervals the two halves are different efforts and the figure says nothing about drift. See docs/specs/measurement.md §Decoupling and heat drift. */
   decouplingPercent?: number;
   heatDrift?: HeatDrift;
@@ -336,6 +352,10 @@ export interface Activity {
   movingSeconds: number;
   elapsedSeconds: number;
   ascentMetres: number;
+  /** The ride's total descent, from the file's session message. Absent for a ride whose file declared none. */
+  descentMetres?: number;
+  /** The device's own calorie estimate for the ride. Absent for a ride whose file declared none. */
+  caloriesKcal?: number;
   typeId: number;
   locationId: number;
   metrics?: ActivityMetrics;

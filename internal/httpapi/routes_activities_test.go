@@ -663,3 +663,171 @@ func TestGetActivitiesOmitTheDriftReadingsARideDidNotYield(t *testing.T) {
 	assert.Nil(t, list.Activities[0].Metrics.DecouplingPercent)
 	assert.Nil(t, list.Activities[0].Metrics.HeatDrift)
 }
+
+// aKnownReading is a Reading the file declared, at the given value.
+func aKnownReading(value float64) activities.Reading {
+	return activities.Reading{Value: value, Known: true}
+}
+
+// deviceSession is the device's own session figures for one ride, over the
+// five fields the derived averages also carry plus the ones only it does.
+func deviceSession() activities.Session {
+	return activities.Session{
+		MaxSpeedKmh:          aKnownReading(61.0),
+		AverageSpeedKmh:      aKnownReading(28.4),
+		AverageHeartRateBPM:  aKnownReading(145.0),
+		MaxHeartRateBPM:      aKnownReading(181.0),
+		MinHeartRateBPM:      aKnownReading(88.0),
+		AverageCadenceRPM:    aKnownReading(84.0),
+		MaxCadenceRPM:        aKnownReading(112.0),
+		AveragePowerWatts:    aKnownReading(201.0),
+		MaxPowerWatts:        aKnownReading(742.0),
+		ThresholdPowerWatts:  aKnownReading(255.0),
+		DescentMetres:        aKnownReading(950.0),
+		CaloriesKcal:         aKnownReading(1800.0),
+		Sport:                "cycling",
+		HeartRateZoneSeconds: []float64{60, 120, 180, 240, 300},
+		HeartRateZoneHighBPM: []float64{120, 140, 160, 180, 254},
+	}
+}
+
+// A ride with both a derived row and a device session serves the device's own
+// figure for the five fields both carry, the new fields the derived row has
+// no equivalent for, and the device's own zone bounds without the sentinel —
+// all beside the profile-cut zoneSeconds, which the session leaves untouched.
+func TestGetActivitiesPrefersTheDevicesOwnSessionFigures(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{
+				Inputs: trainingload.Inputs{ThresholdHeartRateBPM: 170},
+				Zones:  trainingload.Zones{10, 20, 30, 40, 50}, HasZones: true,
+			},
+			Averages: activities.RideAverages{
+				HeartRateBPM: 130, MaxHeartRateBPM: 160, HasHeartRate: true,
+				CadenceRPM: 70, HasCadence: true,
+				PowerWatts: 150, HasPower: true,
+				MaxSpeedKmh: 45, HasSpeed: true,
+			},
+		}},
+	}
+	state.activitySessions = map[string]map[int64]activities.Session{
+		"rider-a": {1: deviceSession()},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	metrics := list.Activities[0].Metrics
+	require.NotNil(t, metrics)
+
+	// The profile-cut zones are untouched by the session.
+	assert.Equal(t, []float64{10, 20, 30, 40, 50}, metrics.ZoneSeconds)
+
+	require.NotNil(t, metrics.MaxSpeedKmh)
+	assert.InDelta(t, 61.0, *metrics.MaxSpeedKmh, 1e-9, "the session wins over the derived average")
+	require.NotNil(t, metrics.AverageHeartRateBpm)
+	assert.InDelta(t, 145.0, *metrics.AverageHeartRateBpm, 1e-9)
+	require.NotNil(t, metrics.MaxHeartRateBpm)
+	assert.InDelta(t, 181.0, *metrics.MaxHeartRateBpm, 1e-9)
+	require.NotNil(t, metrics.AverageCadenceRpm)
+	assert.InDelta(t, 84.0, *metrics.AverageCadenceRpm, 1e-9)
+	require.NotNil(t, metrics.AveragePowerWatts)
+	assert.InDelta(t, 201.0, *metrics.AveragePowerWatts, 1e-9)
+
+	require.NotNil(t, metrics.AverageSpeedKmh)
+	assert.InDelta(t, 28.4, *metrics.AverageSpeedKmh, 1e-9)
+	require.NotNil(t, metrics.MinHeartRateBpm)
+	assert.InDelta(t, 88.0, *metrics.MinHeartRateBpm, 1e-9)
+	require.NotNil(t, metrics.MaxCadenceRpm)
+	assert.InDelta(t, 112.0, *metrics.MaxCadenceRpm, 1e-9)
+	require.NotNil(t, metrics.MaxPowerWatts)
+	assert.InDelta(t, 742.0, *metrics.MaxPowerWatts, 1e-9)
+	require.NotNil(t, metrics.ThresholdPowerWatts)
+	assert.InDelta(t, 255.0, *metrics.ThresholdPowerWatts, 1e-9)
+	require.NotNil(t, metrics.Sport)
+	assert.Equal(t, "cycling", *metrics.Sport)
+
+	assert.Equal(t, []float64{60, 120, 180, 240, 300}, metrics.DeviceZoneSeconds)
+	// The last high is the device's sentinel top, not a real cut.
+	assert.Equal(t, []float64{120, 140, 160, 180}, metrics.DeviceZoneBoundsBpm)
+
+	require.NotNil(t, list.Activities[0].DescentMetres)
+	assert.InDelta(t, 950.0, *list.Activities[0].DescentMetres, 1e-9)
+	require.NotNil(t, list.Activities[0].CaloriesKcal)
+	assert.InDelta(t, 1800.0, *list.Activities[0].CaloriesKcal, 1e-9)
+}
+
+// A ride with a derived row and no session serves exactly what it did before
+// this session data existed.
+func TestGetActivitiesLeavesARideWithNoSessionUnchanged(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Averages: activities.RideAverages{HeartRateBPM: 130, MaxHeartRateBPM: 160, HasHeartRate: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	metrics := list.Activities[0].Metrics
+	require.NotNil(t, metrics)
+	require.NotNil(t, metrics.AverageHeartRateBpm)
+	assert.InDelta(t, 130.0, *metrics.AverageHeartRateBpm, 1e-9)
+	assert.Nil(t, metrics.AverageSpeedKmh)
+	assert.Nil(t, metrics.Sport)
+	assert.Nil(t, metrics.DeviceZoneSeconds)
+	assert.Nil(t, list.Activities[0].DescentMetres)
+	assert.Nil(t, list.Activities[0].CaloriesKcal)
+}
+
+// A ride with a session but no derived row still carries metrics, holding
+// only what the session declared.
+func TestGetActivitiesServesASessionWithNoDerivedRow(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activitySessions = map[string]map[int64]activities.Session{
+		"rider-a": {1: deviceSession()},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	metrics := list.Activities[0].Metrics
+	require.NotNil(t, metrics, "a session with no metrics row still carries metrics")
+	assert.Nil(t, metrics.ZoneSeconds, "no profile zones were derived for this ride")
+	require.NotNil(t, metrics.AverageSpeedKmh)
+	assert.InDelta(t, 28.4, *metrics.AverageSpeedKmh, 1e-9)
+	require.NotNil(t, metrics.MaxSpeedKmh)
+	assert.InDelta(t, 61.0, *metrics.MaxSpeedKmh, 1e-9)
+}
+
+// descentMetres and caloriesKcal ride with the activity, not the metrics, and
+// only appear where the session declared them.
+func TestGetActivitiesCarriesDescentAndCaloriesOnlyWhenKnown(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activitySessions = map[string]map[int64]activities.Session{
+		"rider-a": {1: {DescentMetres: aKnownReading(400)}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	withDescent, withoutSession := list.Activities[0], list.Activities[1]
+	require.NotNil(t, withDescent.DescentMetres)
+	assert.InDelta(t, 400.0, *withDescent.DescentMetres, 1e-9)
+	assert.Nil(t, withDescent.CaloriesKcal, "the session declared no calories for this ride")
+	assert.Nil(t, withoutSession.DescentMetres)
+	assert.Nil(t, withoutSession.CaloriesKcal)
+}
+
+// A store that cannot read sessions fails the whole list, the same as one
+// that cannot read metrics.
+func TestGetActivitiesReportsAnUnreadableSessionsStore(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activitySessionsErr = errors.New("unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getActivities(t, handler, "/v1/activities")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
