@@ -7,7 +7,7 @@ import type { Position } from "../../api/types";
 import type { Highlight } from "../../lib/highlight";
 import { PADDING } from "../../lib/plotAxis";
 import type { DistanceWindow } from "../../lib/profile";
-import { buildProfile, buildWindowedProfile } from "../../lib/profile";
+import { buildProfile, buildWindowedProfile, sampleIndexAt } from "../../lib/profile";
 import type { AlignedSeries } from "../../lib/rideSeries";
 import type { SurfaceSummary } from "../../lib/surface";
 import { summariseSurface } from "../../lib/surface";
@@ -70,10 +70,14 @@ function Harness({
   title = "Eich Rundkurs 90",
   surface = null,
   highlight = null,
+  series = [],
+  size,
 }: {
   title?: string;
   surface?: SurfaceSummary | null;
   highlight?: Highlight | null;
+  series?: AlignedSeries[];
+  size?: "default" | "tall";
 }) {
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
 
@@ -85,6 +89,8 @@ function Harness({
       activeMetres={activeMetres}
       onActiveChange={setActiveMetres}
       highlight={highlight}
+      series={series}
+      {...(size ? { size } : {})}
     />
   );
 }
@@ -742,6 +748,104 @@ describe("a picked class", () => {
     render(<Harness highlight={{ type: "band", band: 1 }} />);
 
     expect(screen.getByRole("img")).toHaveAccessibleName(/Only the 3 to 6% stretches are lit\./);
+  });
+});
+
+describe("ElevationProfile size", () => {
+  it("keeps the route pages' plot at its default height", () => {
+    render(<Harness />);
+
+    expect(screen.getByRole("slider").style.height).toBe("92px");
+  });
+
+  it("gives the tall variant more room than the default", () => {
+    render(<Harness size="tall" />);
+
+    expect(screen.getByRole("slider").style.height).toBe("180px");
+  });
+});
+
+describe("ElevationProfile series tooltip", () => {
+  function series(): AlignedSeries[] {
+    return [
+      {
+        key: "heartRate",
+        label: "Heart rate",
+        unit: "bpm",
+        decimals: 0,
+        colour: "var(--series-heart-rate)",
+        values: Array.from({ length: 320 }, (_, index) => index),
+      },
+      {
+        key: "cadence",
+        label: "Cadence",
+        unit: "rpm",
+        decimals: 1,
+        colour: "var(--series-cadence)",
+        // A gap at every sample, so the line the cursor lands on must not print.
+        values: Array.from({ length: 320 }, () => null),
+      },
+    ];
+  }
+
+  function indexAt(clientX: number): number {
+    const profile = buildProfile(climb());
+    if (!profile) {
+      throw new Error("fixture climb produced no profile");
+    }
+    const index = sampleIndexAt(profile, metresAt(clientX));
+    if (index === null) {
+      throw new Error("expected an index at this position");
+    }
+
+    return index;
+  }
+
+  it("shows distance, elevation and each drawn series at the hovered sample", () => {
+    render(<Harness series={series()} />);
+    fireEvent.pointerMove(measured(screen.getByRole("slider")), { pointerId: 1, clientX: 96 });
+
+    const box = screen.getByText("Heart rate").closest("div")?.parentElement;
+    expect(box?.textContent).toMatch(/\d+(\.\d)? km/);
+    expect(box?.textContent).toMatch(/\d+ m/);
+    expect(box?.textContent).toContain(`Heart rate${indexAt(96)} bpm`);
+  });
+
+  it("omits a series with a gap at the hovered sample, formatted with its own decimals", () => {
+    render(<Harness series={series()} />);
+    fireEvent.pointerMove(measured(screen.getByRole("slider")), { pointerId: 1, clientX: 96 });
+
+    expect(screen.queryByText("Cadence")).not.toBeInTheDocument();
+  });
+
+  it("shows the tenth of a unit a series asks for", () => {
+    const withReading: AlignedSeries[] = [
+      {
+        key: "speed",
+        label: "Speed",
+        unit: "km/h",
+        decimals: 1,
+        colour: "var(--series-speed)",
+        values: Array.from({ length: 320 }, () => 24.6),
+      },
+    ];
+    render(<Harness series={withReading} />);
+    fireEvent.pointerMove(measured(screen.getByRole("slider")), { pointerId: 1, clientX: 96 });
+
+    expect(screen.getByText("Speed").parentElement?.textContent).toContain("24.6 km/h");
+  });
+
+  it("renders no tooltip while nothing is hovered", () => {
+    render(<Harness series={series()} />);
+
+    expect(screen.queryByText("Heart rate")).not.toBeInTheDocument();
+  });
+
+  it("renders no tooltip on a route page's chart, which draws no series", () => {
+    render(<Harness />);
+    fireEvent.pointerMove(measured(screen.getByRole("slider")), { pointerId: 1, clientX: 96 });
+
+    expect(screen.queryByTestId("series-tooltip")).not.toBeInTheDocument();
   });
 });
 

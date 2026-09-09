@@ -105,6 +105,7 @@ export function useRideSeries(
         key: series.key,
         label: series.label,
         unit: series.unit,
+        decimals: series.decimals,
         colour: SERIES_COLOURS[series.key],
         values: alignSeries(values, coordinates, profile),
       });

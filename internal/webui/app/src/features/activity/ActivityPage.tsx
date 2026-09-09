@@ -15,7 +15,7 @@ import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatTimestamp } from "../../lib/format";
-import { buildActivityProfile, type Profile } from "../../lib/profile";
+import { buildActivityProfile, sampleIndexAt } from "../../lib/profile";
 import { WHOLE_LAP_COVERAGE } from "../../lib/rideHistory";
 import { conditionsSentence } from "../../lib/weather";
 import { ElevationProfile } from "../routes/ElevationProfile";
@@ -128,6 +128,7 @@ export function ActivityPage() {
               series={drawn}
               activeMetres={activeMetres}
               onActiveChange={setActiveMetres}
+              size="tall"
             />
             <RideConditions steps={weather} starts={starts} totalMetres={stripMetres} />
             <SeriesChips
@@ -186,24 +187,6 @@ function MatchedRoute({ ride }: { ride: Activity | undefined }) {
       )}
     </p>
   );
-}
-
-/**
- * The profile sample nearest one position along the ride.
- *
- * The samples are evenly spaced across the stretch the profile describes, so
- * this is arithmetic rather than a search — and it is the same index the
- * aligned series are laid out on.
- */
-function sampleIndexAt(profile: Profile, metres: number): number | null {
-  const span = profile.endMetres - profile.startMetres;
-  const last = profile.samples.length - 1;
-  if (span <= 0 || last < 0) {
-    return null;
-  }
-  const index = Math.round(((metres - profile.startMetres) / span) * last);
-
-  return Math.min(Math.max(index, 0), last);
 }
 
 /**

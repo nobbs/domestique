@@ -51,12 +51,13 @@ import {
   YAxis,
 } from "recharts";
 import { Button } from "../../components/Button";
+import { formatElevation, formatKilometres } from "../../lib/format";
 import type { Highlight } from "../../lib/highlight";
 import { gapsOutside, highlightLabel } from "../../lib/highlight";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile, ProfileSample } from "../../lib/profile";
-import { niceStep, sampleAt, ticksFor } from "../../lib/profile";
+import { niceStep, sampleAt, sampleIndexAt, ticksFor } from "../../lib/profile";
 import type { AlignedSeries } from "../../lib/rideSeries";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../../lib/selection";
 import type { SurfaceSummary } from "../../lib/surface";
@@ -74,6 +75,9 @@ import { useEscapeKey } from "../../lib/useEscapeKey";
  * read alongside.
  */
 const PLOT_HEIGHT = { wide: 92, narrow: 74 } as const;
+
+/** The ride page's plot height: room for five sensor lines over the terrain. */
+const TALL_PLOT_HEIGHT = { wide: 180, narrow: 140 } as const;
 
 /** The chart's two units spelled out, for the summary a screen reader hears rather than an axis tick. */
 const DISTANCE_WORD = "kilometres";
@@ -197,6 +201,8 @@ export interface ElevationProfileProps {
   caption?: boolean;
   /** Whether the zoom-back button is shown here, for a caller that places its own elsewhere. */
   zoomBack?: boolean;
+  /** `"tall"` is the ride page's height; the route pages keep `"default"`. */
+  size?: "default" | "tall";
 }
 
 /** One stretch of ground of a single steepness band. */
@@ -279,6 +285,116 @@ function capturePointer(element: Element, pointerId: number) {
   }
 }
 
+function clamp(value: number, low: number, high: number): number {
+  return high < low ? low : Math.min(Math.max(value, low), high);
+}
+
+/** Room between the tooltip and the plot's own edges. */
+const TOOLTIP_GAP_PIXELS = 8;
+/** A guess at the box before its first measurement, near enough to place it once. */
+const TOOLTIP_DEFAULT_SIZE = { width: 140, height: 40 };
+
+interface SeriesTooltipProps {
+  /** The hovered position, interpolated the same way the reference dot is. */
+  active: ProfileSample;
+  /** The nearest sample index, for reading each series' own recorded value. */
+  index: number;
+  series: AlignedSeries[];
+  geometry: { low: number; high: number };
+  /** The active position's pixel offset from the plot's left edge. */
+  x: number;
+  plotWidth: number;
+  plotHeight: number;
+  /** While a touch holds the drag, the box pins to the plot's top edge, clear of the finger. */
+  pinnedToTop: boolean;
+}
+
+/**
+ * The reading under the shared cursor: distance, elevation and one line per
+ * drawn series. Measured by ref, as `PositionTooltip` is, since its height varies.
+ */
+function SeriesTooltip({
+  active,
+  index,
+  series,
+  geometry,
+  x,
+  plotWidth,
+  plotHeight,
+  pinnedToTop,
+}: SeriesTooltipProps) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState(TOOLTIP_DEFAULT_SIZE);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      setSize({ width: element.offsetWidth, height: element.offsetHeight });
+    });
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const half = size.width / 2;
+  const left = clamp(x, half, Math.max(plotWidth - half, half)) - half;
+
+  const range = Math.max(geometry.high - geometry.low, 1);
+  const pointY = plotHeight * (1 - (active.elevationMetres - geometry.low) / range);
+  const above = pointY - TOOLTIP_GAP_PIXELS - size.height >= 0;
+  const top = pinnedToTop
+    ? 0
+    : clamp(
+        above ? pointY - TOOLTIP_GAP_PIXELS - size.height : pointY + TOOLTIP_GAP_PIXELS,
+        0,
+        Math.max(plotHeight - size.height, 0),
+      );
+
+  return (
+    <div
+      ref={ref}
+      className="absolute w-fit max-w-[calc(100%-4px)] rounded-lg bg-[var(--panel)] px-2.5 py-2 text-xs shadow-[var(--shadow)] ring-1 ring-black/5"
+      style={{ left, top }}
+    >
+      <div className="grid gap-y-1">
+        <div className="flex items-baseline gap-x-2">
+          <span className="font-semibold tabular-nums">
+            {formatKilometres(active.distanceMetres)}
+          </span>
+          <span className="text-[var(--ink-2)] tabular-nums">
+            {formatElevation(active.elevationMetres)}
+          </span>
+        </div>
+        {series.map((one) => {
+          const value = one.values[index];
+          if (value === null || value === undefined) {
+            return null;
+          }
+
+          return (
+            <div key={one.key} className="flex items-center gap-1.5 whitespace-nowrap">
+              <span
+                aria-hidden="true"
+                className="size-2 shrink-0 rounded-full"
+                // The swatch's colour is which series it is, the same
+                // information its line carries, so it keeps its own.
+                style={{ background: one.colour, forcedColorAdjust: "none" }}
+              />
+              <span>{one.label}</span>
+              <span className="tabular-nums">
+                {value.toFixed(one.decimals ?? 0)} {one.unit}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function ElevationProfile({
   profile,
   title,
@@ -291,11 +407,13 @@ export function ElevationProfile({
   series = [],
   caption = true,
   zoomBack = true,
+  size = "default",
 }: ElevationProfileProps) {
   const gradientId = useId();
   const { ref, width } = useElementWidth<HTMLDivElement>();
 
-  const plotHeight = useNarrowViewport() ? PLOT_HEIGHT.narrow : PLOT_HEIGHT.wide;
+  const plotHeights = size === "tall" ? TALL_PLOT_HEIGHT : PLOT_HEIGHT;
+  const plotHeight = useNarrowViewport() ? plotHeights.narrow : plotHeights.wide;
   const height = plotHeight + PADDING.top + PADDING.bottom;
 
   // Measured through the shared axis rather than repeating its arithmetic, so
@@ -571,6 +689,10 @@ export function ElevationProfile({
 
   const zoomed = zoomWindow !== null && onZoomChange !== undefined;
   const active = activeMetres === null ? null : sampleAt(profile, activeMetres);
+  // Only where there is a series to read: a route page's chart carries none,
+  // and must draw exactly what it always has.
+  const activeIndex =
+    series.length > 0 && activeMetres !== null ? sampleIndexAt(profile, activeMetres) : null;
   const activeKind = active && surface ? surfaceKindAt(surface, active.distanceMetres) : null;
   const activeSurface = activeKind ? SURFACE_STYLES[activeKind].label : null;
   const shownLabel =
@@ -847,6 +969,27 @@ export function ElevationProfile({
         }}
         onBlur={() => onActiveChange(null)}
       />
+
+      {active && activeIndex !== null ? (
+        <div
+          className="pointer-events-none absolute overflow-hidden"
+          style={{ left: PADDING.left, top: PADDING.top, width: plotWidth, height: plotHeight }}
+          data-testid="series-tooltip"
+          // The chips already speak every reading; this restates them for the eye.
+          aria-hidden="true"
+        >
+          <SeriesTooltip
+            active={active}
+            index={activeIndex}
+            series={series}
+            geometry={geometry}
+            x={plotAxis(width, profile.startMetres, profile.endMetres).x(active.distanceMetres)}
+            plotWidth={plotWidth}
+            plotHeight={plotHeight}
+            pinnedToTop={holding}
+          />
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         {/*
