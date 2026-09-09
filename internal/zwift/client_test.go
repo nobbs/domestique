@@ -183,7 +183,8 @@ func TestActivityFITURLBuildsTheS3ObjectLocation(t *testing.T) {
 // back whole: a later layer stores it and may parse it again.
 func TestActivitySummaryRoundTripsThroughTheDecoder(t *testing.T) {
 	original := Activity{ID: 1461969115156611104, Sport: "CYCLING", FITBucket: "b", FITKey: "prod/1/k",
-		StartDate: time.Date(2026, 9, 8, 18, 4, 39, 0, time.UTC), EndDate: time.Date(2026, 9, 8, 19, 0, 0, 0, time.UTC),
+		StartDate:    time.Date(2026, 9, 8, 18, 4, 39, 123456789, time.FixedZone("", 5*3600+30*60)),
+		EndDate:      time.Date(2026, 9, 8, 19, 0, 0, 500000000, time.UTC),
 		MovingTimeMs: 3600000, DistanceMeters: 30000, TotalElevation: 300, WorldID: 1, UTCOffsetMinutes: 120, PrivateActivity: true}
 	document, err := original.Summary()
 	require.NoError(t, err)
@@ -196,7 +197,8 @@ func TestActivitySummaryRoundTripsThroughTheDecoder(t *testing.T) {
 	assert.Equal(t, original.Sport, decoded.Sport)
 	assert.Equal(t, original.PrivateActivity, decoded.PrivateActivity)
 	assert.Equal(t, original.UTCOffsetMinutes, decoded.UTCOffsetMinutes)
-	assert.True(t, original.StartDate.Equal(decoded.StartDate))
+	assert.True(t, original.StartDate.Equal(decoded.StartDate), "fractional seconds and a +05:30 offset survive")
+	assert.True(t, original.EndDate.Equal(decoded.EndDate))
 }
 
 func TestActivitySummaryDropsOtherRidersFromTheResponse(t *testing.T) {
