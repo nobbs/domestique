@@ -45,11 +45,15 @@ export const Endurance: Story = {
     ride: ride({
       zoneSeconds: [540, 7200, 1260, 240, 40],
       zoneBoundsBpm: [144.5, 153, 161.5, 170],
+      deviceZoneSeconds: [600, 7080, 1300, 200, 100],
       trimp: 142.6,
       heartRateTss: 88.4,
       powerTss: 91.2,
       normalizedPowerWatts: 214,
       intensityFactor: 0.74,
+      maxCadenceRpm: 108,
+      maxPowerWatts: 612,
+      thresholdPowerWatts: 260,
     }),
   },
 };

@@ -1,7 +1,8 @@
 /**
- * The four figures that decide a ride, set large beside the map: how far, how
- * long, how much climbing, and how hard. Everything else the ride's sensors
- * averaged lives in the effort panel below.
+ * The figures that decide a ride, set large beside the map: how far, how
+ * long, how much climbing, and how hard, with the descent and calories where
+ * the file declared them. Everything else the ride's sensors averaged lives in
+ * the effort panel below.
  *
  * The load figure is whichever scale the ride allowed, most specific first: a
  * power TSS where the bicycle carried a meter, a heart-rate TSS where it
@@ -10,7 +11,7 @@
  */
 
 import type { Activity } from "../../api/types";
-import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
+import { formatAscent, formatDescent, formatDistance, formatDuration } from "../../lib/format";
 
 interface Headline {
   label: string;
@@ -59,6 +60,12 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
         : {}),
     },
     { label: "Climbed", value: formatAscent(ride.ascentMetres) },
+    ...(ride.descentMetres !== undefined
+      ? [{ label: "Descended", value: formatDescent(ride.descentMetres) }]
+      : []),
+    ...(ride.caloriesKcal !== undefined
+      ? [{ label: "Calories", value: ride.caloriesKcal.toFixed(0), unit: "kcal" }]
+      : []),
     ...(load ? [load] : []),
   ];
 
