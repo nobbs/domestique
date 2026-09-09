@@ -92,6 +92,21 @@ describe("MapWidget", () => {
     expect(screen.getByText("the controls")).toBeInTheDocument();
   });
 
+  // A world ride's style has no URL to fetch at all: MapLibre would ask the
+  // browser for it, and the deployed Content-Security-Policy's `connect-src`
+  // admits this service's origin and each configured basemap's, never a
+  // `data:` URL a style might otherwise have been encoded as.
+  it("accepts an inline style object, with nothing for MapLibre to fetch", () => {
+    const style = { version: 8 as const, sources: {}, layers: [] };
+    render(
+      <MapWidget styleUrl={style}>
+        <p>layered content</p>
+      </MapWidget>,
+    );
+
+    expect(drawn.maps.at(-1)).toMatchObject({ mapStyle: style });
+  });
+
   it("does not read readiness from an event that can describe the outgoing style", () => {
     // `styledata` fires several times on a basemap change, and the only one that
     // reports `isStyleLoaded()` arrives microseconds after the swap while the style
