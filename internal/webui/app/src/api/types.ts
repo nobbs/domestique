@@ -148,6 +148,12 @@ export interface ActivityTrack {
   state: ActivityTrackState;
   /** What the ride was ridden through, by the step. Absent where nothing was asked. */
   weather?: RideWeatherStep[] | undefined;
+  /**
+   * Power worked out from the track itself, one reading per coordinate, for a
+   * bicycle carrying no meter. Never a measurement and never served as one:
+   * absent for a ride that has real power, no usable track, or no rider mass.
+   */
+  estimatedPowerWatts?: (number | null)[] | undefined;
 }
 
 export type ActivityTrackState = ActivityTrackPropertiesState;
@@ -174,6 +180,7 @@ export function activityTrack(feature: GeneratedActivityTrack | ActivityTrack): 
     bbox: feature.bbox as BoundingBox,
     state: feature.properties.state,
     weather,
+    estimatedPowerWatts: feature.properties.estimatedPowerWatts,
     coordinates: geometry.coordinates.map(([longitude = 0, latitude = 0], index) => {
       const altitude = altitudes?.[index];
 

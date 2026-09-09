@@ -27,15 +27,44 @@ export const RIDE_SERIES = [
   { key: "speed", label: "Speed", unit: "km/h", decimals: 1 },
   { key: "temperature", label: "Temperature", unit: "°C", decimals: 0 },
   { key: "power", label: "Power", unit: "W", decimals: 0 },
-] as const satisfies readonly {
-  key: ActivitySeriesName;
+] as const satisfies readonly SeriesDescriptor[];
+
+/**
+ * A drawable series on the ride page: the five a ride records, and the one this
+ * service works out for a bicycle with no power meter.
+ */
+export type RideSeriesKey = ActivitySeriesName | "estimatedPower";
+
+interface SeriesDescriptor {
+  key: RideSeriesKey;
   label: string;
   unit: string;
   decimals: number;
-}[];
+  /** What the chip says when the ride has none. Absent reads "not recorded". */
+  absentLabel?: string;
+}
+
+/**
+ * The estimate is not one of the five: it is not a sensor's reading and it is
+ * never fetched, riding in the track the page already holds.
+ */
+const ESTIMATED_POWER = {
+  key: "estimatedPower",
+  label: "Estimated power",
+  unit: "W",
+  decimals: 0,
+  // Not "not recorded": nothing records an estimate. A ride has none because it
+  // carries a real meter, because its track is unusable, or because the rider
+  // has entered no mass — and the last of those is theirs to fix in settings.
+  absentLabel: "not estimated",
+} as const satisfies SeriesDescriptor;
+
+/** Every chip the ride page shows, in the order they read. */
+const CHIPS = [...RIDE_SERIES, ESTIMATED_POWER] as const satisfies readonly SeriesDescriptor[];
 
 /** Its own token per series: five lines on one chart are a categorical encoding. */
-const SERIES_COLOURS: Record<ActivitySeriesName, string> = {
+const SERIES_COLOURS: Record<RideSeriesKey, string> = {
+  estimatedPower: "var(--series-estimated-power)",
   heartRate: "var(--series-heart-rate)",
   cadence: "var(--series-cadence)",
   speed: "var(--series-speed)",
@@ -55,7 +84,7 @@ export type SeriesState = "off" | "loading" | "drawn" | "absent" | "unavailable"
 
 export interface RideSeriesResult {
   drawn: AlignedSeries[];
-  states: Record<ActivitySeriesName, SeriesState>;
+  states: Record<RideSeriesKey, SeriesState>;
 }
 
 /**
@@ -67,9 +96,11 @@ export interface RideSeriesResult {
  */
 export function useRideSeries(
   id: number | null,
-  shown: ReadonlySet<ActivitySeriesName>,
+  shown: ReadonlySet<RideSeriesKey>,
   coordinates: Position[],
   profile: Profile | null,
+  /** The estimate off the ride's track, which the page already holds. */
+  estimates?: (number | null)[],
 ): RideSeriesResult {
   const results = useQueries({
     queries: RIDE_SERIES.map((series) => ({
@@ -80,7 +111,7 @@ export function useRideSeries(
 
   return useMemo(() => {
     const drawn: AlignedSeries[] = [];
-    const states = {} as Record<ActivitySeriesName, SeriesState>;
+    const states = {} as Record<RideSeriesKey, SeriesState>;
     RIDE_SERIES.forEach((series, index) => {
       const result = results[index];
       if (!shown.has(series.key)) {
@@ -111,17 +142,35 @@ export function useRideSeries(
       });
     });
 
+    // The estimate has no request of its own to be waiting on: it arrived with
+    // the track, so a ride that has one can draw it the moment there is an axis.
+    const key = ESTIMATED_POWER.key;
+    if (!shown.has(key)) {
+      states[key] = "off";
+    } else if (!profile) {
+      states[key] = "loading";
+    } else if (!estimates) {
+      states[key] = "absent";
+    } else {
+      states[key] = "drawn";
+      drawn.push({
+        ...ESTIMATED_POWER,
+        colour: SERIES_COLOURS[key],
+        values: alignSeries(estimates, coordinates, profile),
+      });
+    }
+
     return { drawn, states };
     // The query results are read by index; their identities are what changes.
-  }, [results, shown, coordinates, profile]);
+  }, [results, shown, coordinates, profile, estimates]);
 }
 
 export interface SeriesChipsProps {
-  states: Record<ActivitySeriesName, SeriesState>;
+  states: Record<RideSeriesKey, SeriesState>;
   drawn: AlignedSeries[];
   /** Which sample the shared cursor is on, or null when nothing is hovered. */
   activeIndex: number | null;
-  onToggle: (series: ActivitySeriesName) => void;
+  onToggle: (series: RideSeriesKey) => void;
 }
 
 /**
@@ -134,7 +183,7 @@ export interface SeriesChipsProps {
 export function SeriesChips({ states, drawn, activeIndex, onToggle }: SeriesChipsProps) {
   return (
     <div className="flex flex-wrap gap-1.5">
-      {RIDE_SERIES.map((series) => {
+      {CHIPS.map((series) => {
         const state = states[series.key];
         const drawing = drawn.find((one) => one.key === series.key);
         const value = drawing && activeIndex !== null ? drawing.values[activeIndex] : null;
@@ -184,10 +233,10 @@ export function SeriesChips({ states, drawn, activeIndex, onToggle }: SeriesChip
 function chipReading(
   state: SeriesState,
   value: number | null | undefined,
-  series: (typeof RIDE_SERIES)[number],
+  series: SeriesDescriptor,
 ): string {
   if (state === "absent") {
-    return "not recorded";
+    return series.absentLabel ?? "not recorded";
   }
   if (state === "unavailable") {
     return "unavailable";

@@ -9,13 +9,19 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { ActivitySeriesName } from "../../api/types";
 import type { AlignedSeries } from "../../lib/rideSeries";
-import { SeriesChips, type SeriesState } from "./RideSeries";
+import { type RideSeriesKey, SeriesChips, type SeriesState } from "./RideSeries";
 
 /** Every series off, which is where a ride page starts. */
-function allOff(): Record<ActivitySeriesName, SeriesState> {
-  return { heartRate: "off", cadence: "off", speed: "off", temperature: "off", power: "off" };
+function allOff(): Record<RideSeriesKey, SeriesState> {
+  return {
+    heartRate: "off",
+    cadence: "off",
+    speed: "off",
+    temperature: "off",
+    power: "off",
+    estimatedPower: "off",
+  };
 }
 
 function heartRate(values: (number | null)[]): AlignedSeries {
@@ -33,7 +39,7 @@ describe("the ride's series chips", () => {
     const onToggle = vi.fn();
     render(<SeriesChips states={allOff()} drawn={[]} activeIndex={null} onToggle={onToggle} />);
 
-    expect(screen.getAllByRole("button")).toHaveLength(5);
+    expect(screen.getAllByRole("button")).toHaveLength(6);
     await userEvent.click(screen.getByRole("button", { name: /Heart rate/ }));
 
     expect(onToggle).toHaveBeenCalledWith("heartRate");
@@ -114,5 +120,47 @@ describe("the ride's series chips", () => {
     );
 
     expect(screen.getByRole("button", { name: /Cadence/ })).toHaveAttribute("aria-pressed", "true");
+  });
+  // The estimate is not a reading, and a ride without one has not "failed to
+  // record" it: it carries a real meter, has no usable track, or its rider has
+  // entered no mass.
+  it("says an estimate the ride has none of was not estimated", () => {
+    render(
+      <SeriesChips
+        states={{ ...allOff(), estimatedPower: "absent" }}
+        drawn={[]}
+        activeIndex={null}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("button", { name: /Estimated power/ });
+    expect(chip.textContent).toContain("not estimated");
+    expect(chip.textContent).not.toContain("not recorded");
+  });
+
+  // Its own chip and its own colour: an estimate from a physics model must
+  // never be read as the measurement the power chip carries.
+  it("keeps the estimate apart from measured power", () => {
+    render(
+      <SeriesChips
+        states={{ ...allOff(), estimatedPower: "drawn" }}
+        drawn={[
+          {
+            key: "estimatedPower",
+            label: "Estimated power",
+            unit: "W",
+            decimals: 0,
+            colour: "var(--series-estimated-power)",
+            values: [180, 214],
+          },
+        ]}
+        activeIndex={1}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Estimated power/ }).textContent).toContain("214 W");
+    expect(screen.getByRole("button", { name: /^Power/ }).textContent).not.toContain("214");
   });
 });

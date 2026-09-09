@@ -80,6 +80,56 @@ describe("a route's query key", () => {
     expect(track?.state).toBe("stored");
   });
 
+  // The estimate rides in the track's properties rather than in a series of its
+  // own, and this transform is the only thing standing between it and the
+  // chart: dropping it here is silent, and cost the ride page its power line
+  // once already.
+  it("carries a track's estimated power through to the page", () => {
+    const { select } = activityTrackQuery(7);
+    const track = select?.({
+      status: 200,
+      headers: new Headers(),
+      data: {
+        type: "Feature",
+        bbox: [8.4, 49, 8.5, 49.1],
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [8.4, 49],
+            [8.5, 49.1],
+          ],
+        },
+        properties: { state: "stored", estimatedPowerWatts: [null, 214.5] },
+      },
+    });
+
+    expect(track?.estimatedPowerWatts).toEqual([null, 214.5]);
+  });
+
+  // A bicycle with its own meter is served no estimate at all, which must stay
+  // absent rather than arriving as an empty series the chip would draw.
+  it("leaves the estimate absent for a ride served none", () => {
+    const { select } = activityTrackQuery(7);
+    const track = select?.({
+      status: 200,
+      headers: new Headers(),
+      data: {
+        type: "Feature",
+        bbox: [8.4, 49, 8.5, 49.1],
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [8.4, 49],
+            [8.5, 49.1],
+          ],
+        },
+        properties: { state: "stored", altitudeMetres: [110, 180] },
+      },
+    });
+
+    expect(track?.estimatedPowerWatts).toBeUndefined();
+  });
+
   // A ride with no line still answers, and the state is the whole answer.
   it("keeps the state of a track that has no line", () => {
     const { select } = activityTrackQuery(7);
