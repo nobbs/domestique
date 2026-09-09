@@ -15,15 +15,21 @@ import {
   useContext,
   useState,
 } from "react";
-import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
+import type { MapLayerMouseEvent, StyleSpecification } from "react-map-gl/maplibre";
 import { Map as MapLibre } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 // Configures the shared worker pool; without it this map renders no tiles.
 import "../../lib/maplibre";
 
+/**
+ * Either fetched (a real basemap) or inline (a world ride's blank style,
+ * built with no request the Content-Security-Policy would have to admit).
+ */
+export type MapStyle = string | StyleSpecification;
+
 /** What `MapWidget` hands whichever canvas implementation it renders. */
 export interface MapImplementationProps {
-  mapStyle: string;
+  mapStyle: MapStyle;
   onLoad?: () => void;
   onIdle?: () => void;
   style?: CSSProperties;
@@ -68,7 +74,7 @@ function RealMap(props: MapImplementationProps) {
 
 export interface MapWidgetProps {
   /** The cartography to load. The map never chooses a style for its caller. */
-  styleUrl: string;
+  styleUrl: MapStyle;
   /**
    * Anything the style has a say over: sources, layers, and the camera that
    * frames them. Held back until the style has loaded, and mounted again from
@@ -106,7 +112,7 @@ export function MapWidget({
   onMouseMove,
   onMouseOut,
 }: MapWidgetProps) {
-  const [loadedStyleUrl, setLoadedStyleUrl] = useState<string | null>(null);
+  const [loadedStyleUrl, setLoadedStyleUrl] = useState<MapStyle | null>(null);
   const MapComponent = useContext(MapImplementationContext) ?? RealMap;
 
   return (

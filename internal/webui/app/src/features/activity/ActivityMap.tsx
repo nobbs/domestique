@@ -12,6 +12,7 @@ import { Button } from "../../components/Button";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
+import type { MapStyle } from "../../components/map/MapWidget";
 import { MapWidget } from "../../components/map/MapWidget";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { WINDOW_MAX_ZOOM } from "../../lib/cartography";
@@ -25,12 +26,12 @@ const TRACK_MAX_ZOOM = 15;
 /**
  * No vector basemap: `.route-map` already paints `var(--ground)` behind the
  * canvas, and a world ride draws over its own artwork instead of cartography.
- * One fixed style for every world, so it never triggers `MapWidget`'s
- * remount-on-style-change.
+ * Inline rather than a `data:` URL: MapLibre fetches a style URL, and the
+ * Content-Security-Policy's `connect-src` admits this service's own origin
+ * and each configured basemap's, never `data:`. One fixed object for every
+ * world, so it never triggers `MapWidget`'s remount-on-style-change.
  */
-const BLANK_STYLE_URL = `data:application/json,${encodeURIComponent(
-  JSON.stringify({ version: 8, sources: {}, layers: [] }),
-)}`;
+const BLANK_STYLE: MapStyle = { version: 8, sources: {}, layers: [] };
 
 const WORLD_ARTWORK_SOURCE_ID = "zwift-world-artwork";
 
@@ -91,7 +92,7 @@ export function ActivityMap({
   // the reader's own theme, unlike a real basemap that actually has a dark
   // style.
   const cartography = world
-    ? { dark: false, styleUrl: BLANK_STYLE_URL, ariaLabel: `Recorded track in ${world.name}` }
+    ? { dark: false, styleUrl: BLANK_STYLE, ariaLabel: `Recorded track in ${world.name}` }
     : basemap
       ? { dark: basemap.dark, styleUrl: basemap.styleUrl, ariaLabel: "Recorded track" }
       : null;
