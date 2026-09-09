@@ -119,12 +119,12 @@ func (a *Activity) Summary() ([]byte, error) {
 		FITFileKey    string    `json:"fitFileKey"`
 		//nolint:tagliatelle // Zwift names it id_str, and the decoder above reads that name.
 		IDStr            string  `json:"id_str"`
+		Sport            string  `json:"sport"`
 		MovingTimeInMs   int64   `json:"movingTimeInMs"`
 		DistanceInMeters float64 `json:"distanceInMeters"`
 		TotalElevation   float64 `json:"totalElevation"`
 		WorldID          int64   `json:"worldId"`
 		UTCOffsetMinutes int     `json:"utcOffsetMinutes"`
-		Sport            string  `json:"sport"`
 		PrivateActivity  bool    `json:"privateActivity"`
 	}{
 		IDStr:            strconv.FormatInt(a.ID, 10),
