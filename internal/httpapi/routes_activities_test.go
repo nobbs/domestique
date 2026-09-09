@@ -562,7 +562,7 @@ func TestGetActivityTrackServesTheWorldOfAZwiftRide(t *testing.T) {
 // world either: the page would have nothing to draw over the artwork.
 func TestGetActivityTrackNamesNoWorldWithoutALine(t *testing.T) {
 	state := trackState("rider-a")
-	state.tracks = nil
+	state.tracks["rider-a/1"] = state.tracks["rider-a/1"][:1]
 	state.recordsStateTypes = map[string]int{"rider-a/1": 68}
 	state.providerSummaries = map[string]fakeProviderSummary{
 		"rider-a/1": {provider: activities.ProviderZwift, summary: []byte(`{"worldId":9}`)},
