@@ -64,7 +64,8 @@ export function ActivityMap({
   onExpandedChange,
   world = null,
 }: ActivityMapProps) {
-  const config = useQuery(webUIConfigQuery());
+  // A world ride draws over artwork and needs no basemap, so no config read.
+  const config = useQuery({ ...webUIConfigQuery(), enabled: !world });
   const [themeChoice] = useThemeChoice();
   const [basemapChoice] = useBasemapChoice();
   const prefersDark = usePrefersDarkScheme();

@@ -40,10 +40,10 @@ func TestWorldMapsFetchesOnceAndAnswersFromMemory(t *testing.T) {
 		_, _ = writer.Write([]byte("world-map-bytes"))
 	})
 
-	first, contentType, found, err := maps.Image(t.Context(), 1)
+	first, contentType, _, found, err := maps.Image(t.Context(), 1)
 	require.NoError(t, err, "Image()")
 	require.True(t, found)
-	second, _, _, err := maps.Image(t.Context(), 1)
+	second, _, _, _, err := maps.Image(t.Context(), 1)
 	require.NoError(t, err, "Image() again")
 
 	assert.Equal(t, "image/png", contentType)
@@ -59,11 +59,33 @@ func TestWorldMapsRefusesAnUnknownWorldWithoutARequest(t *testing.T) {
 	var requests atomic.Int64
 	maps := newWorldMaps(t, func(http.ResponseWriter, *http.Request) { requests.Add(1) })
 
-	_, _, found, err := maps.Image(t.Context(), 12)
+	_, _, _, found, err := maps.Image(t.Context(), 12)
 
 	require.NoError(t, err)
 	assert.False(t, found, "no world has that id")
 	assert.Equal(t, int64(0), requests.Load(), "nothing is fetched for a world that does not exist")
+}
+
+// A redirect could leave the CDN's origin, so it is refused rather than followed.
+func TestWorldMapsDoesNotFollowARedirect(t *testing.T) {
+	t.Parallel()
+	var followed atomic.Int32
+
+	maps := newWorldMaps(t, func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/elsewhere" {
+			followed.Add(1)
+			writer.Header().Set("Content-Type", "image/png")
+			writer.WriteHeader(http.StatusOK)
+
+			return
+		}
+		http.Redirect(writer, request, "/elsewhere", http.StatusFound)
+	})
+
+	_, _, _, _, err := maps.Image(t.Context(), 1)
+
+	require.ErrorContains(t, err, "unexpected status 302")
+	assert.Equal(t, int32(0), followed.Load(), "the redirect target must never be requested")
 }
 
 func TestWorldMapsRefusesAReplyThatIsNotAnImage(t *testing.T) {
@@ -75,7 +97,7 @@ func TestWorldMapsRefusesAReplyThatIsNotAnImage(t *testing.T) {
 		_, _ = writer.Write([]byte("<html>"))
 	})
 
-	_, _, _, err := maps.Image(t.Context(), 1)
+	_, _, _, _, err := maps.Image(t.Context(), 1)
 
 	require.ErrorContains(t, err, "not served as an image")
 }
@@ -89,7 +111,7 @@ func TestWorldMapsRefusesAnOversizedReply(t *testing.T) {
 		_, _ = writer.Write(make([]byte, (8<<20)+1))
 	})
 
-	_, _, _, err := maps.Image(t.Context(), 1)
+	_, _, _, _, err := maps.Image(t.Context(), 1)
 
 	require.ErrorContains(t, err, "larger than this relay allows")
 }
@@ -103,10 +125,10 @@ func TestWorldMapsSurfacesAnUpstreamFailureAndCachesNothing(t *testing.T) {
 		writer.WriteHeader(http.StatusBadGateway)
 	})
 
-	_, _, _, err := maps.Image(t.Context(), 1)
+	_, _, _, _, err := maps.Image(t.Context(), 1)
 	require.ErrorContains(t, err, "unexpected status 502")
 
-	_, _, _, err = maps.Image(t.Context(), 1)
+	_, _, _, _, err = maps.Image(t.Context(), 1)
 
 	require.Error(t, err)
 	assert.Equal(t, int64(2), requests.Load(), "a failed fetch is retried rather than remembered")
@@ -140,7 +162,7 @@ func TestWorldMapsReportsACDNItCannotReach(t *testing.T) {
 	require.NoError(t, err, "NewWorldMaps()")
 	server.Close()
 
-	_, _, _, err = maps.Image(t.Context(), 1)
+	_, _, _, _, err = maps.Image(t.Context(), 1)
 
 	require.ErrorContains(t, err, "zwift: world map")
 }
@@ -158,7 +180,7 @@ func TestWorldMapsRefusesATruncatedReply(t *testing.T) {
 		panic(http.ErrAbortHandler)
 	})
 
-	_, _, _, err := maps.Image(t.Context(), 1)
+	_, _, _, _, err := maps.Image(t.Context(), 1)
 
 	require.Error(t, err)
 }

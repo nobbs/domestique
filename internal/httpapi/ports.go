@@ -443,7 +443,7 @@ type ZwiftWorldOf func(summary []byte) (ZwiftWorld, bool)
 // so the browser never reaches a CDN that would refuse it anyway. Satisfied by
 // internal/zwift's relay.
 type ZwiftWorldMaps interface {
-	// Image is one world's artwork and the content type to serve it as. found is
-	// false for an id no world has, which is not a failure.
-	Image(ctx context.Context, worldID int64) (data []byte, contentType string, found bool, err error)
+	// Image is one world's artwork, the content type to serve it as and its
+	// entity tag. found is false for an id no world has, which is not a failure.
+	Image(ctx context.Context, worldID int64) (data []byte, contentType, etag string, found bool, err error)
 }

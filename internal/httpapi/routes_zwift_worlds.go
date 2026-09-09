@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 	"strconv"
 	"time"
@@ -25,7 +23,7 @@ func (h *Handler) GetZwiftWorldMap(writer http.ResponseWriter, request *http.Req
 
 		return
 	}
-	data, contentType, found, imageErr := h.zwiftWorldMaps.Image(request.Context(), worldID)
+	data, contentType, etag, found, imageErr := h.zwiftWorldMaps.Image(request.Context(), worldID)
 	if imageErr != nil {
 		h.error(writer, http.StatusBadGateway, "provider_unavailable", "the world map could not be read")
 
@@ -41,8 +39,7 @@ func (h *Handler) GetZwiftWorldMap(writer http.ResponseWriter, request *http.Req
 	// Overrides the blanket no-store serve() set: this is a published asset,
 	// the same for every reader of it.
 	header.Set("Cache-Control", cacheZwiftWorldMap)
-	digest := sha256.Sum256(data)
-	header.Set("ETag", `"`+hex.EncodeToString(digest[:])+`"`)
+	header.Set("ETag", etag)
 	// ServeContent answers the conditional request and the range, so neither is
 	// hand-rolled here. The zero time leaves it to the ETag alone.
 	http.ServeContent(writer, request, "", time.Time{}, bytes.NewReader(data))

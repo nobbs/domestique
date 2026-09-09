@@ -21,16 +21,16 @@ type fakeWorldMaps struct {
 
 func (m *fakeWorldMaps) Image(
 	_ context.Context, worldID int64,
-) (data []byte, contentType string, found bool, err error) {
+) (data []byte, contentType, etag string, found bool, err error) {
 	m.asked = append(m.asked, worldID)
 	if m.err != nil {
-		return nil, "", false, m.err
+		return nil, "", "", false, m.err
 	}
 	if m.notFound {
-		return nil, "", false, nil
+		return nil, "", "", false, nil
 	}
 
-	return m.data, "image/png", true, nil
+	return m.data, "image/png", `"fake-etag"`, true, nil
 }
 
 func worldMapHandler(t *testing.T, maps ZwiftWorldMaps) *Handler {
