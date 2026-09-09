@@ -27,8 +27,7 @@ const (
 	tokenPath = "/auth/realms/zwift/tokens/access/codes" //nolint:gosec // G101: an endpoint path, not a credential
 
 	// TokenPathCanonical is Keycloak's standard token endpoint on the same
-	// realm. Documented as a fallback the acceptance test can switch to if
-	// tokenPath ever stops answering; never read from runtime configuration.
+	// realm, kept on record as the path to try if tokenPath stops answering.
 	TokenPathCanonical = "/auth/realms/zwift/protocol/openid-connect/token" //nolint:gosec // G101: an endpoint path, not a credential
 
 	// clientID is the public mobile client id every known open-source Zwift

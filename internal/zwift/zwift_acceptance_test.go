@@ -5,6 +5,7 @@ package zwift_test
 import (
 	"context"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -42,12 +43,13 @@ func TestZwiftAcceptance(t *testing.T) {
 	require.NoError(t, err, "reading the signed-in rider's own player id")
 	require.Positive(t, playerID)
 
-	listing, err := client.Activities(ctx, session, playerID, 0, 1)
-	require.NoError(t, err, "listing the newest activity")
-	require.NotEmpty(t, listing, "this account has no recorded activity to verify against")
+	listing, err := client.Activities(ctx, session, playerID, 0, 20)
+	require.NoError(t, err, "listing the newest activities")
+	index := slices.IndexFunc(listing, func(one zwift.Activity) bool { return one.Sport == "CYCLING" })
+	require.NotEqual(t, -1, index, "this account's newest activities hold no ride to verify against")
 
-	fitURL, ok := listing[0].FITURL()
-	require.True(t, ok, "the newest activity carried no FIT bucket and key")
+	fitURL, ok := listing[index].FITURL()
+	require.True(t, ok, "the newest ride carried no FIT bucket and key")
 
 	raw, err := client.DownloadFIT(ctx, fitURL)
 	require.NoError(t, err, "downloading the FIT file from its public s3 object")
