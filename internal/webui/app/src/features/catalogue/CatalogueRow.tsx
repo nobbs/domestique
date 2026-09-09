@@ -19,20 +19,12 @@ import { Link } from "react-router";
 import type { Position, Route, SurfaceRange } from "../../api/types";
 import { RouteGlyph } from "../../components/RouteGlyph";
 import { formatAscent, formatDistance, formatGradient, formatMovingTime } from "../../lib/format";
-import { GRADIENT_BANDS, gradientBand, gradientShares } from "../../lib/profile";
+import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
+import { gradientBand, gradientShares } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
-import { SURFACE_STYLES, summariseSurface } from "../../lib/surface";
-import { SharePill } from "./SharePill";
-
-/** The custom property each surface class is painted from. */
-const SURFACE_VARIABLE: Record<keyof typeof SURFACE_STYLES, string> = {
-  asphalt: "--surface-asphalt",
-  paving: "--surface-paving",
-  compacted: "--surface-compacted",
-  gravel: "--surface-gravel",
-  ground: "--surface-ground",
-  unknown: "--surface-unsurveyed",
-};
+import { summariseSurface } from "../../lib/surface";
+import type { ProportionSegment } from "./ProportionBar";
+import { ProportionBar } from "./ProportionBar";
 
 /**
  * Whether this route has moved since the reader last opened it, as the row's
@@ -78,6 +70,19 @@ export function CatalogueRow({ route, coordinates, surface, change, to }: Catalo
   const measured = coordinates.length > 0;
   const summary = surface ? summariseSurface(coordinates, surface) : null;
   const bands = gradientShares(coordinates);
+  const surfaceSegments: ProportionSegment[] =
+    summary?.shares.map((entry) => ({
+      key: entry.kind,
+      label: surfaceLabel(entry.kind),
+      colour: surfaceVariable(entry.kind),
+      share: entry.share,
+    })) ?? [];
+  const gradientSegments: ProportionSegment[] = bands.map((entry) => ({
+    key: `${entry.band}`,
+    label: bandLabel(entry.band),
+    colour: bandVariable(entry.band),
+    share: entry.share,
+  }));
 
   return (
     <tr
@@ -121,15 +126,8 @@ export function CatalogueRow({ route, coordinates, surface, change, to }: Catalo
             </span>
           )
         ) : (
-          <span className="mt-1.5 flex flex-wrap justify-end gap-1">
-            {summary.shares.map((entry) => (
-              <SharePill
-                key={entry.kind}
-                colour={`var(${SURFACE_VARIABLE[entry.kind]})`}
-                label={SURFACE_STYLES[entry.kind].label}
-                share={entry.share}
-              />
-            ))}
+          <span className="mt-1.5 block">
+            <ProportionBar segments={surfaceSegments} description="Surface" />
           </span>
         )}
       </td>
@@ -147,15 +145,8 @@ export function CatalogueRow({ route, coordinates, surface, change, to }: Catalo
           )}
         </span>
         {bands.length === 0 ? null : (
-          <span className="mt-1.5 flex flex-wrap justify-end gap-1">
-            {bands.map((entry) => (
-              <SharePill
-                key={entry.band}
-                colour={`var(--grade-${entry.band})`}
-                label={GRADIENT_BANDS[entry.band]?.label ?? ""}
-                share={entry.share}
-              />
-            ))}
+          <span className="mt-1.5 block">
+            <ProportionBar segments={gradientSegments} description="Gradient" />
           </span>
         )}
       </td>

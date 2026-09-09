@@ -57,8 +57,8 @@ import { useNarrowViewport } from "../../lib/mediaQuery";
 import { gradientBand } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { useSeenRoutes } from "../../lib/seenRoutes";
-import { FilterPanel } from "../routes/FilterPanel";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
+import { CatalogueFilters } from "./CatalogueFilters";
 import { CatalogueHeader } from "./CatalogueHeader";
 import { CatalogueRow } from "./CatalogueRow";
 
@@ -343,12 +343,23 @@ export function CataloguePage() {
     ? `${shown.length} of ${formatCount(library.length, "route")}`
     : formatCount(library.length, "route");
 
+  const filters = (
+    <CatalogueFilters
+      library={library}
+      filters={view.filters}
+      onFiltersChange={(next) => update(() => ({ filters: next }))}
+      narrow={narrow}
+      expanded={filtersExpanded}
+      onExpandedChange={setFiltersExpanded}
+    />
+  );
+
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">Catalogue</h1>
         <div className="flex items-center gap-2">
-          <InputGroup className="bg-[var(--panel)]">
+          <InputGroup className="min-w-0 flex-1 max-w-64 bg-[var(--panel)]">
             <InputGroupAddon>
               <IconSearch size={16} stroke={1.6} aria-hidden="true" />
             </InputGroupAddon>
@@ -364,14 +375,11 @@ export function CataloguePage() {
               aria-label="Search the route library"
             />
           </InputGroup>
-          <FilterPanel
-            library={library}
-            filters={view.filters}
-            onFiltersChange={(filters) => update(() => ({ filters }))}
-            expanded={filtersExpanded}
-            onExpandedChange={setFiltersExpanded}
-          />
+          {/* On a narrow phone there is no room to spare, so the sliders fold
+           * behind this same toggle; on a wide screen the row below is them. */}
+          {narrow ? filters : null}
         </div>
+        {narrow ? null : filters}
         <p className="text-sm text-[var(--ink-2)]">
           {counted}
           {readAt ? ` · read ${formatReadTime(readAt)}` : ""}
