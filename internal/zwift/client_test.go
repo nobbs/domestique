@@ -184,7 +184,7 @@ func TestActivityFITURLBuildsTheS3ObjectLocation(t *testing.T) {
 func TestActivitySummaryRoundTripsThroughTheDecoder(t *testing.T) {
 	original := Activity{ID: 1461969115156611104, Sport: "CYCLING", FITBucket: "b", FITKey: "prod/1/k",
 		StartDate: time.Date(2026, 9, 8, 18, 4, 39, 0, time.UTC), EndDate: time.Date(2026, 9, 8, 19, 0, 0, 0, time.UTC),
-		MovingTimeMs: 3600000, DistanceMeters: 30000, TotalElevation: 300, WorldID: 1, UTCOffsetMinutes: 120}
+		MovingTimeMs: 3600000, DistanceMeters: 30000, TotalElevation: 300, WorldID: 1, UTCOffsetMinutes: 120, PrivateActivity: true}
 	document, err := original.Summary()
 	require.NoError(t, err)
 	assert.Contains(t, string(document), `"id_str":"1461969115156611104"`)
@@ -193,6 +193,8 @@ func TestActivitySummaryRoundTripsThroughTheDecoder(t *testing.T) {
 	require.NoError(t, json.Unmarshal(document, &decoded))
 	assert.Equal(t, original.ID, decoded.ID)
 	assert.Equal(t, original.FITKey, decoded.FITKey)
+	assert.Equal(t, original.Sport, decoded.Sport)
+	assert.Equal(t, original.PrivateActivity, decoded.PrivateActivity)
 	assert.Equal(t, original.UTCOffsetMinutes, decoded.UTCOffsetMinutes)
 	assert.True(t, original.StartDate.Equal(decoded.StartDate))
 }

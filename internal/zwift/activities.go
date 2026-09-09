@@ -124,6 +124,8 @@ func (a *Activity) Summary() ([]byte, error) {
 		TotalElevation   float64 `json:"totalElevation"`
 		WorldID          int64   `json:"worldId"`
 		UTCOffsetMinutes int     `json:"utcOffsetMinutes"`
+		Sport            string  `json:"sport"`
+		PrivateActivity  bool    `json:"privateActivity"`
 	}{
 		IDStr:            strconv.FormatInt(a.ID, 10),
 		StartDate:        a.StartDate,
@@ -135,6 +137,8 @@ func (a *Activity) Summary() ([]byte, error) {
 		TotalElevation:   a.TotalElevation,
 		WorldID:          a.WorldID,
 		UTCOffsetMinutes: a.UTCOffsetMinutes,
+		Sport:            a.Sport,
+		PrivateActivity:  a.PrivateActivity,
 	}
 
 	data, err := json.Marshal(document)
