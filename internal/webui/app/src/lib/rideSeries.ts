@@ -46,29 +46,35 @@ export function alignSeries(
 ): (number | null)[] {
   const distances = cumulativeMetres(coordinates);
   const samples = profile.samples;
-  const span = (samples.at(-1)?.distanceMetres ?? 0) - (samples[0]?.distanceMetres ?? 0);
-  const halfStep = samples.length > 1 ? span / (samples.length - 1) / 2 : 0;
 
   let cursor = 0;
 
   return samples.map((sample, index) => {
     const previous = samples[index - 1]?.distanceMetres;
     const next = samples[index + 1]?.distanceMetres;
-    // The end buckets are half-steps like the rest, never open: the profile
-    // starts where the altitudes do, and ground before it belongs to no sample.
-    const to =
-      next === undefined ? sample.distanceMetres + halfStep : (sample.distanceMetres + next) / 2;
+    // The end buckets stop at the axis rather than reaching half a step past
+    // it: the profile starts where the altitudes do, and a record from before
+    // that carries no ground the chart draws, sensors or not.
     const from =
-      previous === undefined
-        ? sample.distanceMetres - halfStep
-        : (previous + sample.distanceMetres) / 2;
+      previous === undefined ? sample.distanceMetres : (previous + sample.distanceMetres) / 2;
+    const to = next === undefined ? sample.distanceMetres : (sample.distanceMetres + next) / 2;
+    // The far end is closed, where every bucket before it is half open: the
+    // last recorded second sits exactly on it and belongs to no later bucket.
+    const last = next === undefined;
 
     while (cursor < distances.length && (distances[cursor] as number) < from) {
       cursor++;
     }
     let total = 0;
     let count = 0;
-    for (let at = cursor; at < distances.length && (distances[at] as number) < to; at++) {
+    let held = 0;
+    for (
+      let at = cursor;
+      at < distances.length &&
+      (last ? (distances[at] as number) <= to : (distances[at] as number) < to);
+      at++
+    ) {
+      held++;
       const value = values[at];
       if (value !== null && value !== undefined) {
         total += value;
@@ -79,8 +85,9 @@ export function alignSeries(
       return total / count;
     }
 
-    // Only a stretch that recorded nothing, or nothing but gaps, gets here.
-    return values[nearestIndex(distances, sample.distanceMetres)] ?? null;
+    // A bucket holding records that all read null is a gap, and stays one. Only
+    // a stretch with no record in it at all falls back to the nearest reading.
+    return held > 0 ? null : (values[nearestIndex(distances, sample.distanceMetres)] ?? null);
   });
 }
 

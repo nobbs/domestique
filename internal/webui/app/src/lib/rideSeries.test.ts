@@ -107,4 +107,23 @@ describe("alignSeries", () => {
     expect(aligned[0]).toBe(100);
     expect(aligned.at(-1)).toBeNull();
   });
+
+  // The profile's axis begins at the first altitude, but the records before it
+  // still carry sensors. Averaging those into the opening sample would draw
+  // readings from ground the chart does not show.
+  it("leaves the records before the first altitude out of the opening sample", () => {
+    const warmUp: Position[] = Array.from({ length: 20 }, (_, index) =>
+      // The altimeter needs a moment; everything before it is off the axis.
+      index < 3 ? [8.4 + index * 0.01, 49] : [8.4 + index * 0.01, 49, 100 + index],
+    );
+    const profile = buildActivityProfile(warmUp, 4);
+    if (!profile) {
+      throw new Error("seventeen altitudes are enough for a profile");
+    }
+    const readings = warmUp.map((_, index) => (index < 3 ? 1_000 : 80));
+
+    const aligned = alignSeries(readings, warmUp, profile);
+
+    expect(aligned[0]).toBe(80);
+  });
 });
