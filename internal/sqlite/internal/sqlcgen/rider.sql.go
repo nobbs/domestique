@@ -11,6 +11,29 @@ import (
 	"strings"
 )
 
+const deleteRiderCredential = `-- name: DeleteRiderCredential :exec
+DELETE FROM rider_credentials WHERE subject = ? AND name = ?
+`
+
+type DeleteRiderCredentialParams struct {
+	Subject string
+	Name    string
+}
+
+func (q *Queries) DeleteRiderCredential(ctx context.Context, arg DeleteRiderCredentialParams) error {
+	_, err := q.db.ExecContext(ctx, deleteRiderCredential, arg.Subject, arg.Name)
+	return err
+}
+
+const deleteRiderCredentials = `-- name: DeleteRiderCredentials :exec
+DELETE FROM rider_credentials WHERE subject = ?
+`
+
+func (q *Queries) DeleteRiderCredentials(ctx context.Context, subject string) error {
+	_, err := q.db.ExecContext(ctx, deleteRiderCredentials, subject)
+	return err
+}
+
 const getRiderProfile = `-- name: GetRiderProfile :one
 SELECT max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
   functional_threshold_power_watts, rider_mass_kg, bike_mass_kg
@@ -107,6 +130,38 @@ func (q *Queries) ListActivitySensorSamples(ctx context.Context, arg ListActivit
 	return items, nil
 }
 
+const listRiderCredentials = `-- name: ListRiderCredentials :many
+SELECT name, value FROM rider_credentials WHERE subject = ?
+`
+
+type ListRiderCredentialsRow struct {
+	Name  string
+	Value []byte
+}
+
+func (q *Queries) ListRiderCredentials(ctx context.Context, subject string) ([]ListRiderCredentialsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRiderCredentials, subject)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRiderCredentialsRow{}
+	for rows.Next() {
+		var i ListRiderCredentialsRow
+		if err := rows.Scan(&i.Name, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRiderStoppingRides = `-- name: ListRiderStoppingRides :many
 SELECT moving_seconds, elapsed_seconds, distance_metres
 FROM activities
@@ -168,6 +223,30 @@ func (q *Queries) ListRiderStoppingRides(ctx context.Context, arg ListRiderStopp
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertRiderCredential = `-- name: UpsertRiderCredential :exec
+INSERT INTO rider_credentials (subject, name, value, updated_at_unix)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(subject, name) DO UPDATE SET value = excluded.value,
+  updated_at_unix = excluded.updated_at_unix
+`
+
+type UpsertRiderCredentialParams struct {
+	Subject       string
+	Name          string
+	Value         []byte
+	UpdatedAtUnix int64
+}
+
+func (q *Queries) UpsertRiderCredential(ctx context.Context, arg UpsertRiderCredentialParams) error {
+	_, err := q.db.ExecContext(ctx, upsertRiderCredential,
+		arg.Subject,
+		arg.Name,
+		arg.Value,
+		arg.UpdatedAtUnix,
+	)
+	return err
 }
 
 const upsertRiderProfile = `-- name: UpsertRiderProfile :exec

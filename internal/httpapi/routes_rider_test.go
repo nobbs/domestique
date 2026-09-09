@@ -216,6 +216,9 @@ func TestRiderProfileReportsAnUnreadableStore(t *testing.T) {
 		"the profile cannot be written": func(s *fakeState) { s.riderProfileWriteErr = errors.New("unwritable") },
 		"the targets cannot be listed":  func(s *fakeState) { s.targetErr = errors.New("unreadable") },
 		"the rides cannot be read":      func(s *fakeState) { s.riderSuggestionErr = errors.New("unreadable") },
+		"the credentials cannot be read": func(s *fakeState) {
+			s.riderCredentialsErr = errors.New("unreadable")
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			state := riderState()
@@ -265,4 +268,123 @@ func TestGetRiderProfileOmitsAStoppingHabitTheRidesDoNotCarry(t *testing.T) {
 
 	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
 	assert.Nil(t, view.Suggestions.Stopping, "too few rides offer nothing rather than zeroes")
+}
+
+const riderZwiftCredentialsPath = "/v1/settings/rider/credentials/zwift" //nolint:gosec // G101: a route path, not a credential
+
+// A rider who has entered nothing reads emailSet/passwordSet both false.
+func TestGetRiderProfileReportsNeitherZwiftCredentialSet(t *testing.T) {
+	handler := riderHandler(t, riderState(), "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	assert.False(t, view.Zwift.EmailSet)
+	assert.False(t, view.Zwift.PasswordSet)
+}
+
+// A PUT stores through the fake, and the answer never carries the value: a GET
+// afterwards reports only that it is set.
+func TestSetRiderZwiftCredentialsStoresAndNeverReturnsAValue(t *testing.T) {
+	state := riderState()
+	handler := riderHandler(t, state, "rider-a")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderZwiftCredentialsPath,
+		`{"email": "rider@example.test", "password": "opensesame"}`))
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	assert.NotContains(t, response.Body.String(), "opensesame")
+	assert.NotContains(t, response.Body.String(), "rider@example.test")
+
+	require.Contains(t, state.riderCredentials, "rider-a")
+	assert.Equal(t, []byte("rider@example.test"),
+		state.riderCredentials["rider-a"][rider.CredentialZwiftEmail].Bytes())
+	assert.Equal(t, []byte("opensesame"),
+		state.riderCredentials["rider-a"][rider.CredentialZwiftPassword].Bytes())
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	assert.True(t, view.Zwift.EmailSet)
+	assert.True(t, view.Zwift.PasswordSet)
+}
+
+// A field left out of the body keeps whatever is stored: this is a partial
+// save, unlike the rider's parameters, which a save replaces whole.
+func TestSetRiderZwiftCredentialsLeavesOutAFieldNotTyped(t *testing.T) {
+	state := riderState()
+	handler := riderHandler(t, state, "rider-a")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderZwiftCredentialsPath,
+		`{"email": "rider@example.test", "password": "opensesame"}`))
+	require.Equal(t, http.StatusNoContent, response.Code)
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderZwiftCredentialsPath,
+		`{"password": "newpassword"}`))
+	require.Equal(t, http.StatusNoContent, response.Code)
+
+	assert.Equal(t, []byte("rider@example.test"),
+		state.riderCredentials["rider-a"][rider.CredentialZwiftEmail].Bytes(),
+		"the field left out of the second write")
+	assert.Equal(t, []byte("newpassword"),
+		state.riderCredentials["rider-a"][rider.CredentialZwiftPassword].Bytes())
+}
+
+// DELETE clears both credentials.
+func TestDeleteRiderZwiftCredentialsClearsBoth(t *testing.T) {
+	state := riderState()
+	handler := riderHandler(t, state, "rider-a")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderZwiftCredentialsPath,
+		`{"email": "rider@example.test", "password": "opensesame"}`))
+	require.Equal(t, http.StatusNoContent, response.Code)
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodDelete, riderZwiftCredentialsPath))
+	require.Equal(t, http.StatusNoContent, response.Code)
+
+	assert.Empty(t, state.riderCredentials["rider-a"])
+}
+
+// Both routes act on the caller's own subject, exactly like the rider profile
+// they sit beside, and work for a non-admin session.
+func TestRiderZwiftCredentialsAreTheCallersOwnEvenForAnAdmin(t *testing.T) {
+	state := riderState()
+	state.riderCredentials = map[string]map[rider.CredentialName]rider.Credential{
+		"rider-b": {rider.CredentialZwiftEmail: rider.NewCredential([]byte("other@example.test"))},
+	}
+	handler := handlerFor(t, newFakeSessions(), &fakeOAuth{}, state, nil)
+	handler.now = activityClock
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderZwiftCredentialsPath,
+		`{"email": "admin@example.test"}`))
+	require.Equal(t, http.StatusNoContent, response.Code)
+
+	assert.Equal(t, []byte("admin@example.test"),
+		state.riderCredentials[testSubject][rider.CredentialZwiftEmail].Bytes())
+	assert.Equal(t, []byte("other@example.test"),
+		state.riderCredentials["rider-b"][rider.CredentialZwiftEmail].Bytes(),
+		"another rider's credential is untouched")
+}
+
+func TestRiderZwiftCredentialsReportAnUnreadableStore(t *testing.T) {
+	state := riderState()
+	state.riderCredentialsErr = errors.New("unreadable")
+	handler := riderHandler(t, state, "rider-a")
+
+	put := httptest.NewRecorder()
+	handler.ServeHTTP(put, authenticatedRequestWithBody(http.MethodPut, riderZwiftCredentialsPath, `{"email": "x"}`))
+	assert.Equal(t, http.StatusServiceUnavailable, put.Code)
+
+	del := httptest.NewRecorder()
+	handler.ServeHTTP(del, authenticatedRequest(http.MethodDelete, riderZwiftCredentialsPath))
+	assert.Equal(t, http.StatusServiceUnavailable, del.Code)
+}
+
+func TestSetRiderZwiftCredentialsRefusesAFieldThisSectionHasNot(t *testing.T) {
+	handler := riderHandler(t, riderState(), "rider-a")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderZwiftCredentialsPath,
+		`{"apiKey": "x"}`))
+	assert.Equal(t, http.StatusBadRequest, response.Code)
 }

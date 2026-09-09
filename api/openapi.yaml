@@ -1091,6 +1091,55 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/rider/credentials/zwift:
+    put:
+      tags:
+        - browser-api
+      operationId: setRiderZwiftCredentials
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Writes the caller's own Zwift email and password, over their own
+        subject alone. A field left out of the body keeps whatever is stored;
+        the value is never returned in any form, in this response or any
+        other.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderZwiftCredentialsUpdate'
+      responses:
+        "204":
+          $ref: '#/components/responses/NoContent'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      tags:
+        - browser-api
+      operationId: deleteRiderZwiftCredentials
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Removes both of the caller's own Zwift credentials, over their own
+        subject alone.
+      responses:
+        "204":
+          $ref: '#/components/responses/NoContent'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/webui/config:
     get:
       tags:
@@ -1411,6 +1460,8 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    NoContent:
+      description: The write took effect. There is nothing to answer with.
     ProviderUnavailable:
       description: Provider request failed without exposing provider detail.
       content:
@@ -2814,11 +2865,41 @@ components:
       required:
         - profile
         - suggestions
+        - zwift
       properties:
         profile:
           $ref: '#/components/schemas/RiderParameters'
         suggestions:
           $ref: '#/components/schemas/RiderSuggestions'
+        zwift:
+          $ref: '#/components/schemas/RiderCredentialState'
+    RiderCredentialState:
+      type: object
+      additionalProperties: false
+      required:
+        - emailSet
+        - passwordSet
+      description: >-
+        Whether the rider's own Zwift email and password are stored. Never the
+        values themselves: a credential entered on this page is written and
+        never read back, over the rider's own subject alone.
+      properties:
+        emailSet:
+          type: boolean
+        passwordSet:
+          type: boolean
+    RiderZwiftCredentialsUpdate:
+      type: object
+      additionalProperties: false
+      description: >-
+        A save carries only what was typed: a field left out keeps whatever is
+        stored, unlike the rider's parameters below, which a save replaces
+        whole.
+      properties:
+        email:
+          type: string
+        password:
+          type: string
     RiderParameters:
       type: object
       additionalProperties: false

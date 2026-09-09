@@ -24,7 +24,11 @@ afterEach(() => {
 
 describe("RiderProfile", () => {
   it("fills each box from the rider's stored parameters", () => {
-    show({ profile: { maxHeartRateBpm: 188, riderMassKg: 74.5 }, suggestions: {} });
+    show({
+      profile: { maxHeartRateBpm: 188, riderMassKg: 74.5 },
+      suggestions: {},
+      zwift: { emailSet: false, passwordSet: false },
+    });
 
     expect(screen.getByLabelText("Maximum heart rate (bpm)")).toHaveValue(188);
     expect(screen.getByLabelText("Rider mass (kg)")).toHaveValue(74.5);
@@ -34,7 +38,11 @@ describe("RiderProfile", () => {
   // A suggestion is offered beside the field it is about and applied to none of
   // them: nothing uses one until the rider has typed it in and saved it.
   it("offers a suggestion only where the rides carry that sensor", () => {
-    show({ profile: {}, suggestions: { maxHeartRateBpm: 183.4 } });
+    show({
+      profile: {},
+      suggestions: { maxHeartRateBpm: 183.4 },
+      zwift: { emailSet: false, passwordSet: false },
+    });
 
     expect(screen.getByText(/Your rides of the last 90 days suggest 183 bpm/)).toBeInTheDocument();
     expect(screen.queryByText(/suggest \d+ W/)).not.toBeInTheDocument();
@@ -47,7 +55,11 @@ describe("RiderProfile", () => {
         new Response(JSON.stringify({ profile: {}, suggestions: {} }), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
-    show({ profile: { maxHeartRateBpm: 188, bikeMassKg: 8.4 }, suggestions: {} });
+    show({
+      profile: { maxHeartRateBpm: 188, bikeMassKg: 8.4 },
+      suggestions: {},
+      zwift: { emailSet: false, passwordSet: false },
+    });
 
     await userEvent.clear(screen.getByLabelText("Bike mass (kg)"));
     await userEvent.type(screen.getByLabelText("Rider mass (kg)"), "74.5");
@@ -94,7 +106,11 @@ describe("RiderProfile", () => {
           new Response("{}", { status: 400 }),
       ),
     );
-    show({ profile: { maxHeartRateBpm: 188 }, suggestions: {} });
+    show({
+      profile: { maxHeartRateBpm: 188 },
+      suggestions: {},
+      zwift: { emailSet: false, passwordSet: false },
+    });
 
     await userEvent.click(screen.getByRole("button", { name: "Save rider profile" }));
 

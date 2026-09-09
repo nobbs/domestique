@@ -50,7 +50,11 @@ function renderPage(statusValue: Status, configValue: WebUIConfig = config()) {
   client.setQueryData(webUIConfigQuery().queryKey, configValue);
   // The profile card sits on this page and reads its own query; these tests are
   // about the target above it, so it gets an empty profile rather than a fetch.
-  client.setQueryData(riderProfileQuery().queryKey, { profile: {}, suggestions: {} });
+  client.setQueryData(riderProfileQuery().queryKey, {
+    profile: {},
+    suggestions: {},
+    zwift: { emailSet: false, passwordSet: false },
+  });
 
   return render(
     <QueryClientProvider client={client}>

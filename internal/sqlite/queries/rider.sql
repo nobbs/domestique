@@ -30,6 +30,21 @@ WHERE a.started_at_unix >= sqlc.arg(since_unix)
   AND (r.heart_rate_bpm IS NOT NULL OR r.power_watts IS NOT NULL)
 ORDER BY r.target_slot, r.workout_id, r.record_index;
 
+-- name: ListRiderCredentials :many
+SELECT name, value FROM rider_credentials WHERE subject = ?;
+
+-- name: UpsertRiderCredential :exec
+INSERT INTO rider_credentials (subject, name, value, updated_at_unix)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(subject, name) DO UPDATE SET value = excluded.value,
+  updated_at_unix = excluded.updated_at_unix;
+
+-- name: DeleteRiderCredential :exec
+DELETE FROM rider_credentials WHERE subject = ? AND name = ?;
+
+-- name: DeleteRiderCredentials :exec
+DELETE FROM rider_credentials WHERE subject = ?;
+
 -- name: ListRiderStoppingRides :many
 SELECT moving_seconds, elapsed_seconds, distance_metres
 FROM activities

@@ -164,6 +164,7 @@ function renderPage(
   client.setQueryData(riderProfileQuery().queryKey, {
     profile: {},
     suggestions: options.stopping ? { stopping: options.stopping } : {},
+    zwift: { emailSet: false, passwordSet: false },
   });
   client.setQueryData(webUIConfigQuery().queryKey, {
     basemaps: options.basemaps ?? [
