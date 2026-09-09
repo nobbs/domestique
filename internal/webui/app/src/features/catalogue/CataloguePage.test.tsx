@@ -13,7 +13,6 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Route as LibraryRoute, RouteGeometry, Status, WebUIConfig } from "../../api/types";
-import { focusThumb } from "../../test/filterPanel";
 import { stubPendingFetch } from "../../test/network";
 import { IDLE_STATUS } from "../../test/status";
 import { CataloguePage } from "./CataloguePage";
@@ -339,13 +338,12 @@ describe("CataloguePage", () => {
   });
 
   it("narrows by a slider bound and writes it to the address", async () => {
-    const user = userEvent.setup();
     show();
 
-    await user.click(screen.getByRole("button", { name: /Show the library filters/ }));
-    // Ascents of 900, 300 and 100 m give a track to 900 m by 20 m; the
+    // The sliders sit in view rather than behind a toggle on a wide screen;
+    // ascents of 900, 300 and 100 m give a track to 900 m by 20 m, and the
     // thumb is a native range input, so one change event reaches it.
-    await focusThumb("Ascent min");
+    screen.getByRole("slider", { name: "Ascent min" }).focus();
     fireEvent.change(document.activeElement as HTMLInputElement, { target: { value: "400" } });
 
     expect(shownTitles()).toEqual([expect.stringContaining("Alpine loop")]);
@@ -408,6 +406,17 @@ describe("CataloguePage", () => {
         expect.stringContaining("Border run"),
         expect.stringContaining("Alpine loop"),
       ]);
+    });
+
+    it("folds the sliders behind a toggle where there is no room to spare", async () => {
+      const user = userEvent.setup();
+      show();
+
+      expect(screen.queryByRole("slider", { name: "Ascent min" })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Show the library filters" }));
+
+      expect(screen.getByRole("slider", { name: "Ascent min" })).toBeInTheDocument();
     });
   });
 });
