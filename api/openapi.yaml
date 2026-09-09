@@ -2280,8 +2280,9 @@ components:
             format: double
           description: >-
             The heart rates the head unit cut its own zones at, ascending, one
-            fewer than deviceZoneSeconds has entries. Present whenever
-            deviceZoneSeconds is.
+            fewer than deviceZoneSeconds has entries. Served only beside
+            deviceZoneSeconds, and absent for a file that declared the times
+            but not the table they were cut by.
         decouplingPercent:
           type: number
           format: double

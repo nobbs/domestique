@@ -283,7 +283,7 @@ type ActivityMetrics struct {
 	Sport *string `json:"sport,omitempty"`
 	// DeviceZoneSeconds How long the ride held each of the head unit's own heart-rate zones, easiest first, from the file's session message. Served beside zoneSeconds rather than instead of it: the load figures above and the page's default view are worked out from the profile's zones, not the device's own.
 	DeviceZoneSeconds []float64 `json:"deviceZoneSeconds,omitempty"`
-	// DeviceZoneBoundsBpm The heart rates the head unit cut its own zones at, ascending, one fewer than deviceZoneSeconds has entries. Present whenever deviceZoneSeconds is.
+	// DeviceZoneBoundsBpm The heart rates the head unit cut its own zones at, ascending, one fewer than deviceZoneSeconds has entries. Served only beside deviceZoneSeconds, and absent for a file that declared the times but not the table they were cut by.
 	DeviceZoneBoundsBpm []float64 `json:"deviceZoneBoundsBpm,omitempty"`
 	// DecouplingPercent How much of the ride's power-to-heart-rate ratio was lost over its second half, as a percentage of its first. Positive is the usual direction: the same watts cost more beats later on. From measured power only, over a ride of at least an hour, and absent otherwise. It describes a steady aerobic ride; over intervals the two halves are different efforts and the figure says nothing about drift. See docs/specs/measurement.md §Decoupling and heat drift.
 	DecouplingPercent *float64   `json:"decouplingPercent,omitempty"`
