@@ -199,10 +199,10 @@ export function ByTerrain({
     return null;
   }
   const fastest = Math.max(...stretches.map((stretch) => stretch.speedKmh));
-  const active =
-    activeMetres === null
-      ? null
-      : stretches.findIndex((stretch) => activeMetres < stretch.endMetres);
+  // The ride's last metre belongs to its last stretch rather than to none.
+  const found =
+    activeMetres === null ? -1 : stretches.findIndex((stretch) => activeMetres < stretch.endMetres);
+  const active = activeMetres === null ? null : found >= 0 ? found : stretches.length - 1;
   const cursorX =
     activeMetres === null
       ? null

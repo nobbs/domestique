@@ -199,9 +199,13 @@ function attemptFromSplits(
   const slice = splits.slice(startKm, endKm);
   const seconds = slice.reduce((sum, split) => sum + split.movingSeconds, 0);
   const ascentMetres = slice.reduce((sum, split) => sum + split.ascentMetres, 0);
-  const heartRateBpm =
-    slice.reduce((sum, split) => sum + (split.heartRateBpm ?? 0), 0) / slice.length;
-  const powerWatts = slice.reduce((sum, split) => sum + (split.powerWatts ?? 0), 0) / slice.length;
+  // Time-weighted, as the service means a climb's figures: a slow split counts for longer.
+  const weighted = (value: (split: ActivitySplit) => number) =>
+    seconds > 0
+      ? slice.reduce((sum, split) => sum + value(split) * split.movingSeconds, 0) / seconds
+      : 0;
+  const heartRateBpm = weighted((split) => split.heartRateBpm ?? 0);
+  const powerWatts = weighted((split) => split.powerWatts ?? 0);
 
   return {
     activityId,
