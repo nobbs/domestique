@@ -17,7 +17,7 @@ function match(overrides: Partial<ActivityRouteMatch> = {}): ActivityRouteMatch 
 /** A ride of this route unless the overrides say it was ridden elsewhere. */
 function ride(id: number, startedAt: string, overrides: Partial<Activity> = {}): Activity {
   return {
-    id,
+    id: String(id),
     startedAt,
     distanceMetres: 42_000,
     movingSeconds: 5_400,
@@ -49,7 +49,7 @@ describe("riddenOn", () => {
       ROUTE,
     );
 
-    expect(rides.map((entry) => entry.ride.id)).toEqual([1]);
+    expect(rides.map((entry) => entry.ride.id)).toEqual(["1"]);
   });
 
   it("orders the history newest first, whatever order it was given in", () => {
@@ -62,7 +62,7 @@ describe("riddenOn", () => {
       ROUTE,
     );
 
-    expect(rides.map((entry) => entry.ride.id)).toEqual([3, 2, 1]);
+    expect(rides.map((entry) => entry.ride.id)).toEqual(["3", "2", "1"]);
   });
 
   it("calls the fastest whole lap the best and reads its speed off its moving time", () => {
@@ -74,7 +74,9 @@ describe("riddenOn", () => {
       ROUTE,
     );
 
-    expect(rides.filter((entry) => entry.personalBest).map((entry) => entry.ride.id)).toEqual([2]);
+    expect(rides.filter((entry) => entry.personalBest).map((entry) => entry.ride.id)).toEqual([
+      "2",
+    ]);
     expect(rides[0]?.speedKmh).toBeCloseTo(31.5, 1);
   });
 
@@ -90,8 +92,10 @@ describe("riddenOn", () => {
       ROUTE,
     );
 
-    expect(rides.find((entry) => entry.ride.id === 2)?.whole).toBe(false);
-    expect(rides.filter((entry) => entry.personalBest).map((entry) => entry.ride.id)).toEqual([1]);
+    expect(rides.find((entry) => entry.ride.id === "2")?.whole).toBe(false);
+    expect(rides.filter((entry) => entry.personalBest).map((entry) => entry.ride.id)).toEqual([
+      "1",
+    ]);
   });
 
   it("claims no best where every lap was partial, and no speed without moving time", () => {

@@ -38,12 +38,14 @@ import { useActivities } from "./useActivities";
 export function ActivityPage() {
   const { activityId } = useParams();
   // Only a run of digits names an activity; anything else (a decimal, "NaN",
-  // stray text) must never reach the track endpoint as a path segment.
-  const id = activityId && /^\d+$/.test(activityId) ? Number(activityId) : null;
+  // stray text) must never reach the track endpoint as a path segment. Kept as
+  // a string throughout: a Zwift id exceeds 2^53, the range a JS number
+  // survives exactly.
+  const id = activityId && /^\d+$/.test(activityId) ? activityId : null;
   const { activities } = useActivities();
   const ride = activities.find((activity) => activity.id === id);
-  const track = useQuery({ ...activityTrackQuery(id ?? 0), enabled: id !== null });
-  const splits = useQuery({ ...activitySplitsQuery(id ?? 0), enabled: id !== null });
+  const track = useQuery({ ...activityTrackQuery(id ?? ""), enabled: id !== null });
+  const splits = useQuery({ ...activitySplitsQuery(id ?? ""), enabled: id !== null });
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);

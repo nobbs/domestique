@@ -220,7 +220,7 @@ func routeClimb(climb *measure.Climb, attempts []activities.StoredClimbAttempt) 
 	for index := range attempts {
 		attempt := &attempts[index]
 		one := openapi.RouteClimbAttempt{
-			ActivityID: attempt.WorkoutID,
+			ActivityID: openapi.ActivityID(strconv.FormatInt(attempt.WorkoutID, 10)),
 			RiddenAt:   attempt.RiddenAt,
 			Seconds:    attempt.Seconds,
 			// The climb's own ascent over this attempt's time, which is what
@@ -293,7 +293,7 @@ func (h *Handler) GetRouteActivities(writer http.ResponseWriter, request *http.R
 		}
 		for _, ride := range rides {
 			view.Activities = append(view.Activities, openapi.RouteActivity{
-				ID:            ride.ID,
+				ID:            openapi.ActivityID(strconv.FormatInt(ride.ID, 10)),
 				RouteCoverage: ride.RouteCoverage,
 				RideCoverage:  ride.RideCoverage,
 				Direction:     openapi.RouteRideDirection(ride.Direction.String()),

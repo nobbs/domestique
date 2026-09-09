@@ -95,7 +95,7 @@ export const activitiesQuery = () =>
  * One ride's recorded track. Geometry-shaped and served on its own endpoint, so
  * it is asked for only where a ride is actually being looked at.
  */
-export const activityTrackQuery = (id: number) =>
+export const activityTrackQuery = (id: string) =>
   getGetActivityTrackQueryOptions<ActivityTrack>(id, undefined, {
     query: {
       select: (response) => activityTrack(payload<ActivityTrackFeature>(response)),
@@ -111,7 +111,7 @@ export const activityTrackQuery = (id: number) =>
  * the page more than the track itself. A ride that recorded none of the series
  * answers not found, which is the "nothing to draw" the chips read.
  */
-export const activitySeriesQuery = (id: number, series: ActivitySeriesName) =>
+export const activitySeriesQuery = (id: string, series: ActivitySeriesName) =>
   getGetActivitySeriesQueryOptions(id, series, undefined, {
     query: {
       select: (response) => payload<ActivitySeries>(response),
@@ -125,7 +125,7 @@ export const activitySeriesQuery = (id: number, series: ActivitySeriesName) =>
  * of rows against tens of thousands of coordinates — so it is fetched with the
  * page rather than behind a chip.
  */
-export const activitySplitsQuery = (id: number) =>
+export const activitySplitsQuery = (id: string) =>
   getGetActivitySplitsQueryOptions(id, undefined, {
     query: {
       select: (response) => payload<ActivitySplits>(response),

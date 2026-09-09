@@ -536,7 +536,7 @@ describe("AtlasPage", () => {
       at: "/?route=veloplanner%2F2%2F1",
       activities: [
         {
-          id: 8,
+          id: "8",
           startedAt: "2026-08-26T08:00:00Z",
           distanceMetres: 42_000,
           movingSeconds: 5_400,

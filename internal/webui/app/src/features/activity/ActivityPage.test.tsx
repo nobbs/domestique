@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -79,7 +79,7 @@ vi.mock("../routes/ElevationProfile", () => ({
 }));
 
 const RIDE: Activity = {
-  id: 7,
+  id: "7",
   startedAt: "2026-08-26T08:00:00Z",
   distanceMetres: 30_000,
   movingSeconds: 3_600,
@@ -163,7 +163,7 @@ function config(): WebUIConfig {
 
 function show(
   recorded: ActivityTrack | null = track(),
-  activityId: number | string = RIDE.id,
+  activityId: string = RIDE.id,
   heartRate?: (number | null)[],
   ride: Activity = RIDE,
   splits: ActivitySplit[] = [],
@@ -181,7 +181,7 @@ function show(
   // The page's own guard: only a run of digits names a ride. Seeding under the
   // id the route actually carries is what keeps a test off the network, since
   // any key the page does not ask for leaves its query to fetch for real.
-  const asked = /^\d+$/.test(String(activityId)) ? Number(activityId) : null;
+  const asked = /^\d+$/.test(activityId) ? activityId : null;
   if (asked !== null) {
     client.setQueryData(activitySplitsQuery(asked).queryKey, { splits });
     if (recorded) {
@@ -483,6 +483,30 @@ describe("one ride's page", () => {
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("track"))).toBe(false);
     expect(screen.getByText("No recorded track was stored for this ride.")).toBeInTheDocument();
   });
+  // A Zwift id exceeds 2^53, the range a JS number survives exactly: routing
+  // it through Number() at any point rounds the digits before the request is
+  // built, and the track then names a ride that does not exist.
+  it("requests the track by the ride's exact digit string, above 2^53", async () => {
+    const bigID = "1972687436517507104";
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL) =>
+        new Response(
+          JSON.stringify({
+            data: { type: "Feature", geometry: null, properties: { state: "pending" } },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    show(null, bigID, undefined, { ...RIDE, id: bigID });
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.map((call) => String(call[0]))).toContain(
+        `/v1/activities/${bigID}/track`,
+      ),
+    );
+  });
+
   it("names the route a ride was matched to and links back to it", () => {
     show(track(), RIDE.id, undefined, matchedRide(), [], [LIBRARY_ROUTE]);
 

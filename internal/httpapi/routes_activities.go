@@ -254,7 +254,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 		for index := range stored {
 			recorded := &stored[index]
 			activity := openapi.Activity{
-				ID:             recorded.ID,
+				ID:             openapi.ActivityID(strconv.FormatInt(recorded.ID, 10)),
 				StartedAt:      wireTime(recorded.StartedAt),
 				DistanceMetres: recorded.DistanceMetres,
 				MovingSeconds:  recorded.MovingSeconds,

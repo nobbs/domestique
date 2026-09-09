@@ -19,7 +19,7 @@ function match(overrides: Partial<ActivityRouteMatch> = {}): ActivityRouteMatch 
 
 function ride(id: number, startedAt: string, overrides: Partial<Activity> = {}): Activity {
   return {
-    id,
+    id: String(id),
     startedAt,
     distanceMetres: 42_000,
     movingSeconds: 5_400,

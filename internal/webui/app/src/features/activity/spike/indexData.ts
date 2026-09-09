@@ -61,7 +61,7 @@ function build(): IndexRide[] {
     const hour = 7 + Math.floor(random() * 10);
     id += 1;
     rides.push({
-      id,
+      id: String(id),
       startedAt: new Date(LAST_DAY - (62 - day) * DAY + hour * 3_600_000).toISOString(),
       distanceMetres,
       movingSeconds,

@@ -17,7 +17,7 @@ const PADDING = { top: 12, right: 8, bottom: 20, left: 36 };
 /** One ride that carries a decoupling figure, at the moment it was ridden. */
 export interface DecouplingPoint {
   /** The ride's own id: two rides can start at the same moment on two targets. */
-  id: number;
+  id: string;
   at: number;
   percent: number;
 }

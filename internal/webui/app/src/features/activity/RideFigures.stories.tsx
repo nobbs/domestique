@@ -5,7 +5,7 @@ import { RideFigures } from "./RideFigures";
 /** A two-hour ride, Wahoo's unless overridden. */
 function ride(overrides: Partial<Activity> = {}): Activity {
   return {
-    id: 1,
+    id: "1",
     startedAt: "2026-09-01T06:00:00Z",
     distanceMetres: 62_000,
     movingSeconds: 7_800,
