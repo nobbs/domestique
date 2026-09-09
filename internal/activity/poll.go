@@ -36,7 +36,8 @@ const MaxRecordsPerPoll = 200
 // pace its first download took.
 //
 // 2: the file's session figures and totals.
-const RecordsVersion = 2
+// 3: the target power a structured workout prescribed per record.
+const RecordsVersion = 3
 
 // The upstreams a recorded activity is read from. A provider is a label on a
 // stored ride, never a guard: what a ride is asked about follows its workout
@@ -116,14 +117,20 @@ type PendingActivity struct {
 type Stored struct {
 	StartedAt time.Time
 	// Provider is which upstream recorded this ride.
-	Provider       string
-	ID             int64
-	DistanceMetres float64
-	MovingSeconds  float64
-	ElapsedSeconds float64
-	AscentMetres   float64
-	TypeID         int
-	LocationID     int
+	Provider string
+	// WorkoutName, WorkoutHash and WorkoutCompletion are what Zwift lists a
+	// ride as, a workout's or a route's; all zero when HasWorkout is false.
+	WorkoutName       string
+	ID                int64
+	WorkoutHash       int64
+	DistanceMetres    float64
+	MovingSeconds     float64
+	ElapsedSeconds    float64
+	AscentMetres      float64
+	WorkoutCompletion float64
+	TypeID            int
+	LocationID        int
+	HasWorkout        bool
 }
 
 // RecordsState is how far one activity's recorded samples have got: awaiting a

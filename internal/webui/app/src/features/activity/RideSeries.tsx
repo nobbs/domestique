@@ -27,6 +27,7 @@ export const RIDE_SERIES = [
   { key: "speed", label: "Speed", unit: "km/h", decimals: 1 },
   { key: "temperature", label: "Temperature", unit: "°C", decimals: 0 },
   { key: "power", label: "Power", unit: "W", decimals: 0 },
+  { key: "targetPower", label: "Target power", unit: "W", decimals: 0 },
 ] as const satisfies readonly SeriesDescriptor[];
 
 /**
@@ -70,6 +71,7 @@ const SERIES_COLOURS: Record<RideSeriesKey, string> = {
   speed: "var(--series-speed)",
   temperature: "var(--series-temperature)",
   power: "var(--series-power)",
+  targetPower: "var(--series-target-power)",
 };
 
 /**

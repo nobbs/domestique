@@ -821,6 +821,22 @@ func (r zwiftReader) ListActivities(
 	return zwiftListings(activities), len(activities), nil
 }
 
+// ActivityWorkout reads the name Zwift lists a ride under, with its hash and
+// completion. found is false when the document named nothing, which is unexpected.
+func (r zwiftReader) ActivityWorkout(ctx context.Context, id int64) (activity.Workout, bool, error) {
+	detail, err := r.client.Activity(ctx, r.session, id)
+	if err != nil {
+		return activity.Workout{}, false, fmt.Errorf("reading a Zwift activity's workout: %w", err)
+	}
+	if detail.Name == "" {
+		return activity.Workout{}, false, nil
+	}
+
+	return activity.Workout{
+		Name: detail.Name, Hash: detail.WorkoutHash, Completion: detail.PercentageCompleted,
+	}, true, nil
+}
+
 // zwiftListings narrows Zwift's activities to the rides this service records,
 // each carrying the summary its listing entry already held: unlike Wahoo, a
 // Zwift listing needs no second request to be storable.

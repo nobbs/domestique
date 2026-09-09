@@ -73,13 +73,23 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-5" aria-label="Ride figures">
       {ride.provider === "zwift" ? (
-        <div className="col-span-2">
+        <div className="col-span-2 flex flex-col gap-1">
           <dt className="sr-only">Recorded on</dt>
           <dd>
             <Badge variant="secondary" className="w-fit">
               Zwift
             </Badge>
           </dd>
+          {ride.workoutName !== undefined ? (
+            // The name is what Zwift lists the ride under, a route for a free
+            // ride; only a workout can fall short, so completion shows when it did.
+            <dd className="text-[var(--ink-2)] text-sm">
+              {ride.workoutName}
+              {ride.workoutCompletion !== undefined && ride.workoutCompletion < 1
+                ? `, ${(ride.workoutCompletion * 100).toFixed(0)} % completed`
+                : ""}
+            </dd>
+          ) : null}
         </div>
       ) : null}
       {figures.map((figure) => (

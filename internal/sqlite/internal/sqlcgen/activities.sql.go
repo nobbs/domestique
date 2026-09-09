@@ -286,7 +286,8 @@ func (q *Queries) ListActivitiesAwaitingRecords(ctx context.Context, arg ListAct
 
 const listActivitiesBetween = `-- name: ListActivitiesBetween :many
 SELECT workout_id, workout_type_id, workout_type_location_id, started_at_unix,
-  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, provider
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, provider,
+  workout_name, workout_hash, workout_completion
 FROM activities
 WHERE target_slot = ?1 AND started_at_unix >= ?2 AND started_at_unix < ?3
 ORDER BY started_at_unix DESC
@@ -310,6 +311,9 @@ type ListActivitiesBetweenRow struct {
 	ElapsedSeconds        float64
 	AscentMetres          float64
 	Provider              string
+	WorkoutName           sql.NullString
+	WorkoutHash           sql.NullInt64
+	WorkoutCompletion     sql.NullFloat64
 }
 
 func (q *Queries) ListActivitiesBetween(ctx context.Context, arg ListActivitiesBetweenParams) ([]ListActivitiesBetweenRow, error) {
@@ -336,6 +340,9 @@ func (q *Queries) ListActivitiesBetween(ctx context.Context, arg ListActivitiesB
 			&i.ElapsedSeconds,
 			&i.AscentMetres,
 			&i.Provider,
+			&i.WorkoutName,
+			&i.WorkoutHash,
+			&i.WorkoutCompletion,
 		); err != nil {
 			return nil, err
 		}
@@ -490,7 +497,7 @@ func (q *Queries) ListActivityRides(ctx context.Context, arg ListActivityRidesPa
 const listActivitySeries = `-- name: ListActivitySeries :many
 SELECT recorded_at_unix, distance_metres, altitude_metres,
   heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
-  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres, target_power_watts
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
   AND latitude IS NOT NULL AND longitude IS NOT NULL
@@ -515,6 +522,7 @@ type ListActivitySeriesRow struct {
 	CaloriesKcal       sql.NullFloat64
 	AscentMetres       sql.NullFloat64
 	DescentMetres      sql.NullFloat64
+	TargetPowerWatts   sql.NullFloat64
 }
 
 func (q *Queries) ListActivitySeries(ctx context.Context, arg ListActivitySeriesParams) ([]ListActivitySeriesRow, error) {
@@ -539,6 +547,7 @@ func (q *Queries) ListActivitySeries(ctx context.Context, arg ListActivitySeries
 			&i.CaloriesKcal,
 			&i.AscentMetres,
 			&i.DescentMetres,
+			&i.TargetPowerWatts,
 		); err != nil {
 			return nil, err
 		}
@@ -853,6 +862,33 @@ type MarkActivityRecordsUnreadableParams struct {
 
 func (q *Queries) MarkActivityRecordsUnreadable(ctx context.Context, arg MarkActivityRecordsUnreadableParams) error {
 	_, err := q.db.ExecContext(ctx, markActivityRecordsUnreadable, arg.TargetSlot, arg.WorkoutID)
+	return err
+}
+
+const setActivityWorkout = `-- name: SetActivityWorkout :exec
+UPDATE activities SET
+  workout_name = ?1,
+  workout_hash = ?2,
+  workout_completion = ?3
+WHERE target_slot = ?4 AND workout_id = ?5
+`
+
+type SetActivityWorkoutParams struct {
+	WorkoutName       sql.NullString
+	WorkoutHash       sql.NullInt64
+	WorkoutCompletion sql.NullFloat64
+	TargetSlot        string
+	WorkoutID         int64
+}
+
+func (q *Queries) SetActivityWorkout(ctx context.Context, arg SetActivityWorkoutParams) error {
+	_, err := q.db.ExecContext(ctx, setActivityWorkout,
+		arg.WorkoutName,
+		arg.WorkoutHash,
+		arg.WorkoutCompletion,
+		arg.TargetSlot,
+		arg.WorkoutID,
+	)
 	return err
 }
 

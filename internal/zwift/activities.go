@@ -61,6 +61,24 @@ func (a *Activity) FITURL() (string, bool) {
 	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", a.FITBucket, a.FITKey), true
 }
 
+// ActivityDetail is the narrow view of Zwift's single-activity response: the
+// structured workout's name, its stable hash and how much of it this ride
+// completed. Every other field the response carries -- profile figures and
+// the third-party fields the listing also withholds -- is never decoded.
+type ActivityDetail struct {
+	Name                string
+	WorkoutHash         int64
+	PercentageCompleted float64
+}
+
+// activityDetailDocument is the subset of Zwift's single-activity response
+// this package reads.
+type activityDetailDocument struct {
+	Name                string  `json:"name"`
+	WorkoutHash         int64   `json:"workoutHash"`
+	PercentageCompleted float64 `json:"percentageCompleted"`
+}
+
 // activityDocument is the subset of Zwift's listing entry this package reads.
 type activityDocument struct {
 	StartDate zwiftTime `json:"startDate"`

@@ -247,6 +247,27 @@ func (c *Client) Activities(ctx context.Context, session Session, playerID int64
 	return activities, nil
 }
 
+// Activity reads one ride's single-activity response: its structured
+// workout's name, hash and how much of it this ride completed. A refusal of
+// this one activity is reported as ErrActivityRefused, distinct from an
+// account or connection problem, so a poller can skip it rather than fail.
+func (c *Client) Activity(ctx context.Context, session Session, id int64) (ActivityDetail, error) {
+	if session.AccessToken == "" || id <= 0 {
+		return ActivityDetail{}, errors.New("zwift: session and activity id are required")
+	}
+	request, err := c.newAPIRequest(ctx, http.MethodGet, fmt.Sprintf("/api/activities/%d", id), nil, session)
+	if err != nil {
+		return ActivityDetail{}, err
+	}
+
+	var document activityDetailDocument
+	if err := c.doJSON(request, &document, activityRequest); err != nil {
+		return ActivityDetail{}, err
+	}
+
+	return ActivityDetail(document), nil
+}
+
 // DownloadFIT reads the FIT file a listing entry names, refusing any URL that
 // is not a bucket-scoped https://<bucket>.s3.amazonaws.com/<key> object: the
 // file is a public S3 object, and following anywhere else would turn a

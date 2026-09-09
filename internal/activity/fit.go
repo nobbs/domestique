@@ -41,6 +41,7 @@ type Record struct {
 	CaloriesKcal          float64
 	AscentMetres          float64
 	DescentMetres         float64
+	TargetPowerWatts      float64
 	HasCadence            bool
 	HasTemperatureCelsius bool
 	HasDistance           bool
@@ -53,6 +54,7 @@ type Record struct {
 	HasCalories           bool
 	HasAscent             bool
 	HasDescent            bool
+	HasTargetPower        bool
 }
 
 // DecodeFIT decodes an activity FIT file. A bad checksum is retained as a
@@ -93,9 +95,10 @@ func decode(raw []byte, opts ...decoder.Option) (FIT, error) {
 
 func fromActivity(activity *filedef.Activity) FIT {
 	wahooFields := wahooDeveloperFieldNames(activity)
+	namedFields := developerFieldNames(activity)
 	records := make([]Record, len(activity.Records))
 	for i, record := range activity.Records {
-		records[i] = fromRecord(record, wahooFields)
+		records[i] = fromRecord(record, wahooFields, namedFields)
 	}
 
 	decoded := FIT{Records: records, RecordingDevice: activity.FileId.Manufacturer.String()}
@@ -299,7 +302,7 @@ func powerZoneHighs(unrelated []proto.Message) []float64 {
 	return zoneHighs(zones)
 }
 
-func fromRecord(record *mesgdef.Record, wahooFields map[devFieldKey]string) Record {
+func fromRecord(record *mesgdef.Record, wahooFields, namedFields map[devFieldKey]string) Record {
 	decoded := Record{Time: record.Timestamp}
 	if record.PositionLat != basetype.Sint32Invalid && record.PositionLong != basetype.Sint32Invalid {
 		decoded.HasPosition = true
@@ -343,6 +346,7 @@ func fromRecord(record *mesgdef.Record, wahooFields map[devFieldKey]string) Reco
 		decoded.CaloriesKcal = float64(record.Calories)
 	}
 	applyWahooDeveloperFields(record, wahooFields, &decoded)
+	applyNamedDeveloperFields(record, namedFields, &decoded)
 
 	return decoded
 }
@@ -400,6 +404,44 @@ func wahooDeveloperFieldNames(activity *filedef.Activity) map[devFieldKey]string
 	}
 
 	return names
+}
+
+// developerFieldNames maps every developer field a FIT's field_descriptions
+// declare to its name, regardless of which developer_data_id's manufacturer
+// it belongs to. Unlike wahooDeveloperFieldNames, this is used for fields such
+// as Zwift's target_power whose developer_data_id carries no manufacturer.
+func developerFieldNames(activity *filedef.Activity) map[devFieldKey]string {
+	names := make(map[devFieldKey]string, len(activity.FieldDescriptions))
+	for _, description := range activity.FieldDescriptions {
+		if len(description.FieldName) == 0 {
+			continue
+		}
+		key := devFieldKey{description.DeveloperDataIndex, description.FieldDefinitionNumber}
+		names[key] = description.FieldName[0]
+	}
+
+	return names
+}
+
+// applyNamedDeveloperFields fills the record fields matched by name alone,
+// currently only the target power a structured workout prescribed.
+func applyNamedDeveloperFields(record *mesgdef.Record, namedFields map[devFieldKey]string, decoded *Record) {
+	for _, field := range record.DeveloperFields {
+		name, known := namedFields[devFieldKey{field.DeveloperDataIndex, field.Num}]
+		if !known || name != "target_power" {
+			continue
+		}
+		// Zwift's own field is a uint16; its FIT invalid sentinel is absent,
+		// never a real zero.
+		if raw, ok := field.Value.Any().(uint16); ok && raw == basetype.Uint16Invalid {
+			continue
+		}
+		value, ok := developerFieldFloat64(field.Value)
+		if !ok {
+			continue
+		}
+		decoded.HasTargetPower, decoded.TargetPowerWatts = true, value
+	}
 }
 
 // applyWahooDeveloperFields fills the cumulative ascent and descent Wahoo

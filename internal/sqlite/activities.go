@@ -192,17 +192,22 @@ func (s *Store) ActivitiesBetween(
 		return nil, fmt.Errorf("reading stored activities: %w", err)
 	}
 	stored := make([]activity.Stored, 0, len(rows))
-	for _, row := range rows {
+	for i := range rows {
+		row := &rows[i]
 		stored = append(stored, activity.Stored{
-			ID:             row.WorkoutID,
-			StartedAt:      time.Unix(row.StartedAtUnix, 0).UTC(),
-			DistanceMetres: row.DistanceMetres,
-			MovingSeconds:  row.MovingSeconds,
-			ElapsedSeconds: row.ElapsedSeconds,
-			AscentMetres:   row.AscentMetres,
-			TypeID:         int(row.WorkoutTypeID),
-			LocationID:     int(row.WorkoutTypeLocationID),
-			Provider:       row.Provider,
+			ID:                row.WorkoutID,
+			StartedAt:         time.Unix(row.StartedAtUnix, 0).UTC(),
+			DistanceMetres:    row.DistanceMetres,
+			MovingSeconds:     row.MovingSeconds,
+			ElapsedSeconds:    row.ElapsedSeconds,
+			AscentMetres:      row.AscentMetres,
+			TypeID:            int(row.WorkoutTypeID),
+			LocationID:        int(row.WorkoutTypeLocationID),
+			Provider:          row.Provider,
+			WorkoutName:       row.WorkoutName.String,
+			WorkoutHash:       row.WorkoutHash.Int64,
+			WorkoutCompletion: row.WorkoutCompletion.Float64,
+			HasWorkout:        row.WorkoutName.Valid,
 		})
 	}
 
@@ -296,6 +301,7 @@ func (s *Store) ActivitySeries(ctx context.Context, targetID string, id int64) (
 			CaloriesKcal:       reading(row.CaloriesKcal),
 			AscentMetres:       reading(row.AscentMetres),
 			DescentMetres:      reading(row.DescentMetres),
+			TargetPowerWatts:   reading(row.TargetPowerWatts),
 		})
 	}
 
@@ -343,8 +349,8 @@ const insertActivityRecordSQL = `INSERT INTO activity_records (
   target_slot, workout_id, record_index, recorded_at_unix,
   distance_metres, latitude, longitude, altitude_metres,
   cadence_rpm, heart_rate_bpm, power_watts, temperature_celsius,
-  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres, target_power_watts
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 // StoreActivityRecords replaces one activity's samples and marks it stored at
 // recordsVersion, in one transaction so a partial rewrite is never left behind
@@ -404,6 +410,7 @@ func (s *Store) StoreActivityRecords(
 			nullFloat(record.CaloriesKcal, record.HasCalories),
 			nullFloat(record.AscentMetres, record.HasAscent),
 			nullFloat(record.DescentMetres, record.HasDescent),
+			nullFloat(record.TargetPowerWatts, record.HasTargetPower),
 		); execErr != nil {
 			return fmt.Errorf("recording an activity sample: %w", execErr)
 		}
@@ -419,6 +426,27 @@ func (s *Store) StoreActivityRecords(
 	}
 	if commitErr := transaction.Commit(); commitErr != nil {
 		return fmt.Errorf("committing the activity records: %w", commitErr)
+	}
+
+	return nil
+}
+
+// SetActivityWorkout records what Zwift lists a ride as, or clears it when
+// present is false.
+func (s *Store) SetActivityWorkout(
+	ctx context.Context, targetID string, id int64, name string, hash int64, completion float64, present bool,
+) error {
+	if targetID == "" || id <= 0 {
+		return errors.New("a target and an activity id are required")
+	}
+	params := sqlcgen.SetActivityWorkoutParams{TargetSlot: targetID, WorkoutID: id}
+	if present {
+		params.WorkoutName = sql.NullString{String: name, Valid: true}
+		params.WorkoutHash = sql.NullInt64{Int64: hash, Valid: true}
+		params.WorkoutCompletion = sql.NullFloat64{Float64: completion, Valid: true}
+	}
+	if err := s.queries.SetActivityWorkout(ctx, params); err != nil {
+		return fmt.Errorf("recording an activity's workout: %w", err)
 	}
 
 	return nil
