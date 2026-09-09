@@ -186,7 +186,7 @@ func run(ctx context.Context) error {
 	}
 	// Recorded activities are read from the same Wahoo account the routes are
 	// written to, but into rows of their own, so this runs beside a reconciliation.
-	activityPoller, err := activity.NewPoller(destination, store, time.Now)
+	activityPoller, err := activity.NewPoller(destination, store, wahoo.IndoorWorkoutTypes(), time.Now)
 	if err != nil {
 		return fmt.Errorf("creating the activity poller: %w", err)
 	}

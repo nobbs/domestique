@@ -17,10 +17,11 @@ import (
 	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
-// ActivityStored reports whether one Wahoo workout is already stored for a
-// target, without reading the rest of the target's activities.
-func (s *Store) ActivityStored(ctx context.Context, targetID string, id int64) (bool, error) {
-	stored, err := s.queries.ActivityExists(ctx, sqlcgen.ActivityExistsParams{TargetSlot: targetID, WorkoutID: id})
+// ActivityStored reports whether one provider's activity is already stored for
+// a target, without reading the rest of the target's activities.
+func (s *Store) ActivityStored(ctx context.Context, targetID string, id int64, provider string) (bool, error) {
+	stored, err := s.queries.ActivityExists(ctx,
+		sqlcgen.ActivityExistsParams{TargetSlot: targetID, WorkoutID: id, Provider: provider})
 	if err != nil {
 		return false, fmt.Errorf("reading whether an activity is stored: %w", err)
 	}

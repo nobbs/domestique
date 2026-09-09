@@ -26,7 +26,7 @@ var (
 var errUnauthorized = errors.New("unauthorized")
 
 func TestNewPollerNeedsItsCollaborators(t *testing.T) {
-	_, err := NewPoller(nil, newFakeStore(), func() time.Time { return time.Unix(0, 0) })
+	_, err := NewPoller(nil, newFakeStore(), []int{68}, func() time.Time { return time.Unix(0, 0) })
 	require.ErrorContains(t, err, "are required")
 }
 
@@ -591,7 +591,7 @@ func TestPollStopsFillingRecordsWhenTheBudgetIsSpent(t *testing.T) {
 	clock := &testClock{}
 	source := newFakeSource(t)
 	source.onDownload = func() { clock.elapsed += RecordsBudgetPerPoll / 3 }
-	poller, err := NewPoller(source, store, clock.now)
+	poller, err := NewPoller(source, store, []int{68}, clock.now)
 	require.NoError(t, err, "NewPoller()")
 
 	result := poller.Poll(t.Context(), "rider-a")
@@ -768,7 +768,7 @@ func TestPollTakesTheReadingAgainOnceItHasAgedOut(t *testing.T) {
 	source.head = []Listing{{ID: 2, Starts: at(2)}, {ID: 3, Starts: at(3)}}
 
 	now := pollNow()
-	poller, err := NewPoller(source, store, func() time.Time { return now })
+	poller, err := NewPoller(source, store, []int{68}, func() time.Time { return now })
 	require.NoError(t, err, "NewPoller()")
 
 	require.Equal(t, Unchanged, poller.Poll(t.Context(), "rider-a").Outcome)
@@ -910,7 +910,7 @@ func at(minute int) time.Time {
 
 func newTestPoller(t *testing.T, source Source, store Store) *Poller {
 	t.Helper()
-	poller, err := NewPoller(source, store, pollNow)
+	poller, err := NewPoller(source, store, []int{68}, pollNow)
 	require.NoError(t, err, "NewPoller()")
 
 	return poller
@@ -1149,7 +1149,7 @@ func (s *fakeStore) KnownActivityIDs(_ context.Context, _, _ string) ([]int64, e
 	return s.known, s.knownErr
 }
 
-func (s *fakeStore) ActivityStored(_ context.Context, _ string, id int64) (bool, error) {
+func (s *fakeStore) ActivityStored(_ context.Context, _ string, id int64, _ string) (bool, error) {
 	return slices.Contains(s.known, id), s.knownErr
 }
 
@@ -1346,7 +1346,7 @@ func TestPollPassesOverAWahooListingAlongsideAStoredIndoorRide(t *testing.T) {
 	store := newFakeStore()
 	store.indoorStarts = []time.Time{at(0)}
 	source := newFakeSource(t)
-	source.listings = []Listing{{ID: 1, Starts: at(0).Add(59 * time.Second)}}
+	source.listings = []Listing{{ID: 1, TypeID: 68, Starts: at(0).Add(59 * time.Second)}}
 
 	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
 
@@ -1356,6 +1356,19 @@ func TestPollPassesOverAWahooListingAlongsideAStoredIndoorRide(t *testing.T) {
 }
 
 // Ten minutes apart is two rides, not two recordings of one.
+// An outdoor ride that starts alongside a stored Zwift ride is another ride:
+// only an indoor-typed listing can be the head unit's copy of a trainer session.
+func TestPollStoresAnOutdoorWahooListingAlongsideAStoredIndoorRide(t *testing.T) {
+	store := newFakeStore()
+	store.indoorStarts = []time.Time{at(0)}
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, TypeID: 15, Starts: at(0).Add(30 * time.Second)}}
+
+	newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Len(t, store.stored, 1, "an outdoor ride beside an indoor one is its own ride")
+}
+
 func TestPollStoresAWahooListingWellAwayFromAStoredIndoorRide(t *testing.T) {
 	store := newFakeStore()
 	store.indoorStarts = []time.Time{at(0)}

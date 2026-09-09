@@ -393,11 +393,15 @@ func TestActivityStoredAnswersForOneRide(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 7, 42_000), "StoreActivity()")
 
-	stored, err := store.ActivityStored(t.Context(), "rider-a", 7)
+	stored, err := store.ActivityStored(t.Context(), "rider-a", 7, activity.ProviderWahoo)
 	require.NoError(t, err, "ActivityStored()")
 	assert.True(t, stored)
-	other, err := store.ActivityStored(t.Context(), "rider-a", 8)
+	other, err := store.ActivityStored(t.Context(), "rider-a", 8, activity.ProviderWahoo)
 	require.NoError(t, err, "ActivityStored()")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 9, activityNow()), "StoreActivity() zwift")
+	asWahoo, err := store.ActivityStored(t.Context(), "rider-a", 9, activity.ProviderWahoo)
+	require.NoError(t, err, "ActivityStored() across providers")
+	assert.False(t, asWahoo, "a Zwift ride is not a stored Wahoo one")
 	assert.False(t, other)
 }
 

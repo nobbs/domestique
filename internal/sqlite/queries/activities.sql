@@ -2,7 +2,7 @@
 SELECT workout_id FROM activities WHERE target_slot = ? AND provider = ? ORDER BY workout_id;
 
 -- name: ActivityExists :one
-SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ?);
+SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ? AND provider = ?);
 
 -- Zero rows means the stored row belongs to another provider: two id spaces
 -- share this key, so a collision fails loudly rather than overwriting a ride.

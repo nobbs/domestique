@@ -12,16 +12,17 @@ import (
 )
 
 const activityExists = `-- name: ActivityExists :one
-SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ?)
+SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ? AND provider = ?)
 `
 
 type ActivityExistsParams struct {
 	TargetSlot string
 	WorkoutID  int64
+	Provider   string
 }
 
 func (q *Queries) ActivityExists(ctx context.Context, arg ActivityExistsParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, activityExists, arg.TargetSlot, arg.WorkoutID)
+	row := q.db.QueryRowContext(ctx, activityExists, arg.TargetSlot, arg.WorkoutID, arg.Provider)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

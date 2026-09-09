@@ -206,7 +206,7 @@ type listingStore interface {
 	// which is what tells a Wahoo listing that is the head unit's copy of one.
 	IndoorRideStarts(ctx context.Context, targetID string) ([]time.Time, error)
 	// ActivityStored reports one activity's presence without listing the rest.
-	ActivityStored(ctx context.Context, targetID string, id int64) (bool, error)
+	ActivityStored(ctx context.Context, targetID string, id int64, provider string) (bool, error)
 	// ActivityListings are the activities the account holds, oldest first, as
 	// the last full reading of it left them, and when that reading was taken.
 	// The order is what a poll fills from; it does not sort them again.
@@ -299,15 +299,18 @@ type Poller struct {
 	source Source
 	store  Store
 	now    func() time.Time
+	// indoorTypes are the workout types a head unit's copy of a trainer ride is
+	// recorded under; only such a listing can be the copy of a stored Zwift ride.
+	indoorTypes []int
 }
 
 // NewPoller builds a poller over its source and store.
-func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error) {
-	if source == nil || store == nil || now == nil {
-		return nil, errors.New("activity: a source, a store and a clock are required")
+func NewPoller(source Source, store Store, indoorTypes []int, now func() time.Time) (*Poller, error) {
+	if source == nil || store == nil || now == nil || len(indoorTypes) == 0 {
+		return nil, errors.New("activity: a source, a store, the indoor workout types and a clock are required")
 	}
 
-	return &Poller{source: source, store: store, now: now}, nil
+	return &Poller{source: source, store: store, indoorTypes: indoorTypes, now: now}, nil
 }
 
 // Poll stores a summary for every activity of one target this service has not
@@ -557,17 +560,22 @@ func (p *Poller) pending(
 		return nil, requests, FailureState
 	}
 
-	return dropTrainerCopies(unstored(p.recordable(listings), known), starts), requests, FailureNone
+	return dropTrainerCopies(unstored(p.recordable(listings), known), starts, p.indoorTypes), requests, FailureNone
 }
 
 // dropTrainerCopies is the listings that are not the head unit's recording of
 // an indoor ride already stored from Zwift.
-func dropTrainerCopies(listings []Listing, starts []time.Time) []Listing {
+func dropTrainerCopies(listings []Listing, starts []time.Time, indoorTypes []int) []Listing {
 	if len(starts) == 0 {
 		return listings
 	}
 	kept := make([]Listing, 0, len(listings))
 	for _, listing := range listings {
+		if !slices.Contains(indoorTypes, listing.TypeID) {
+			kept = append(kept, listing)
+
+			continue
+		}
 		// starts is sorted, so only the neighbours either side of the listing's
 		// own start can fall inside the window.
 		next, _ := slices.BinarySearchFunc(starts, listing.Starts, time.Time.Compare)

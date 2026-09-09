@@ -68,7 +68,7 @@ type storeOutcome struct {
 func (p *Poller) recordActivity(
 	ctx context.Context, targetID, accessToken string, listing Listing,
 ) (storeOutcome, Failure) {
-	stored, storedErr := p.store.ActivityStored(ctx, targetID, listing.ID)
+	stored, storedErr := p.store.ActivityStored(ctx, targetID, listing.ID, ProviderWahoo)
 	if storedErr != nil {
 		return storeOutcome{}, FailureState
 	}
