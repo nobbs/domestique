@@ -73,9 +73,14 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-5" aria-label="Ride figures">
       {ride.provider === "zwift" ? (
-        <Badge variant="secondary" className="col-span-2 w-fit">
-          Zwift
-        </Badge>
+        <div className="col-span-2">
+          <dt className="sr-only">Recorded on</dt>
+          <dd>
+            <Badge variant="secondary" className="w-fit">
+              Zwift
+            </Badge>
+          </dd>
+        </div>
       ) : null}
       {figures.map((figure) => (
         <div key={figure.label} className="flex flex-col gap-0.5">
