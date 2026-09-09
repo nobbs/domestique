@@ -2503,6 +2503,8 @@ type fakeState struct {
 	activityWeather      map[string]map[int64][]activities.WeatherStep
 	routeMatches         map[string]map[int64]activities.RouteMatch
 	riderProfiles        map[string]rider.Profile
+	riderCredentials     map[string]map[rider.CredentialName]rider.Credential
+	riderCredentialsErr  error
 	riderSuggestions     map[string]rider.Suggestions
 	riderSuggestionSince time.Time
 	riderSuggestionTypes []int
@@ -2646,6 +2648,53 @@ func (s *fakeState) SetRiderProfile(_ context.Context, subject string, profile r
 		s.riderProfiles = map[string]rider.Profile{}
 	}
 	s.riderProfiles[subject] = profile
+
+	return nil
+}
+
+// RiderCredentials reports what the test stored for this subject, and an
+// empty map for a subject that stored none.
+func (s *fakeState) RiderCredentials(
+	_ context.Context, subject string,
+) (map[rider.CredentialName]rider.Credential, error) {
+	if s.riderCredentialsErr != nil {
+		return nil, s.riderCredentialsErr
+	}
+
+	return s.riderCredentials[subject], nil
+}
+
+// SetRiderCredentials writes only the names it is given, an unset credential
+// removing that name, the same rule the real store follows.
+func (s *fakeState) SetRiderCredentials(
+	_ context.Context, subject string, credentials map[rider.CredentialName]rider.Credential,
+) error {
+	if s.riderCredentialsErr != nil {
+		return s.riderCredentialsErr
+	}
+	if s.riderCredentials == nil {
+		s.riderCredentials = map[string]map[rider.CredentialName]rider.Credential{}
+	}
+	if s.riderCredentials[subject] == nil {
+		s.riderCredentials[subject] = map[rider.CredentialName]rider.Credential{}
+	}
+	for name, credential := range credentials {
+		if !credential.IsSet() {
+			delete(s.riderCredentials[subject], name)
+			continue
+		}
+		s.riderCredentials[subject][name] = credential
+	}
+
+	return nil
+}
+
+// ClearRiderCredentials removes every credential the test stored for this subject.
+func (s *fakeState) ClearRiderCredentials(_ context.Context, subject string) error {
+	if s.riderCredentialsErr != nil {
+		return s.riderCredentialsErr
+	}
+	delete(s.riderCredentials, subject)
 
 	return nil
 }

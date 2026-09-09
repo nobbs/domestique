@@ -2,6 +2,7 @@ import { PageShell } from "../../components/Layout";
 import { DataSources } from "./DataSources";
 import { RiderProfile } from "./RiderProfile";
 import { WahooAccountCard } from "./WahooAccountCard";
+import { ZwiftAccountCard } from "./ZwiftAccountCard";
 
 export function SettingsPage() {
   return (
@@ -16,6 +17,7 @@ export function SettingsPage() {
          * page rather than from this one.
          */}
         <WahooAccountCard />
+        <ZwiftAccountCard />
         <RiderProfile />
         {/*
          * Last, because it is reference rather than a setting: nothing here is

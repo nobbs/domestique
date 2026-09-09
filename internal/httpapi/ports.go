@@ -204,6 +204,14 @@ type RiderProfileState interface {
 	// half-open window into one curve, leaving absent whatever no ride was long
 	// enough for. A rider's own figure, like the suggestions beside it.
 	PowerCurve(ctx context.Context, targetIDs []string, from, to time.Time) (rider.PowerCurve, error)
+	// RiderCredentials reads every credential the subject has entered. A name
+	// never stored is absent from the map.
+	RiderCredentials(ctx context.Context, subject string) (map[rider.CredentialName]rider.Credential, error)
+	// SetRiderCredentials writes only the names it is given; an unset value
+	// removes that name.
+	SetRiderCredentials(ctx context.Context, subject string, credentials map[rider.CredentialName]rider.Credential) error
+	// ClearRiderCredentials removes every credential the subject has entered.
+	ClearRiderCredentials(ctx context.Context, subject string) error
 }
 
 // ActivityState is what a poll recorded about each target's rides. The

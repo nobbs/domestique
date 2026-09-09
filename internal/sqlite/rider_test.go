@@ -71,6 +71,155 @@ func TestRiderProfileReportsAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "reading the recorded samples")
 }
 
+func TestRiderCredentialsIsEmptyForASubjectThatHasEnteredNothing(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+
+	credentials, err := store.RiderCredentials(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderCredentials()")
+	assert.Empty(t, credentials, "an unwritten set of credentials is empty, not missing")
+}
+
+func TestRiderCredentialsRoundTripAndAreNotAnotherSubjects(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("rider@example.test")),
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("opensesame")),
+	}), "SetRiderCredentials()")
+
+	read, err := store.RiderCredentials(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderCredentials()")
+	require.Contains(t, read, rider.CredentialZwiftEmail)
+	assert.Equal(t, []byte("rider@example.test"), read[rider.CredentialZwiftEmail].Bytes())
+	assert.Equal(t, []byte("opensesame"), read[rider.CredentialZwiftPassword].Bytes())
+
+	other, err := store.RiderCredentials(t.Context(), "rider-b")
+	require.NoError(t, err, "RiderCredentials() for another subject")
+	assert.Empty(t, other, "one rider's credentials are not another's")
+}
+
+// A save that names only one credential leaves the other exactly as it was.
+func TestSetRiderCredentialsPartialSaveLeavesTheOtherCredential(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("rider@example.test")),
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("opensesame")),
+	}), "SetRiderCredentials()")
+
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("newpassword")),
+	}), "SetRiderCredentials() with one name")
+
+	read, err := store.RiderCredentials(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderCredentials()")
+	assert.Equal(t, []byte("rider@example.test"), read[rider.CredentialZwiftEmail].Bytes(),
+		"the credential left out of the second write")
+	assert.Equal(t, []byte("newpassword"), read[rider.CredentialZwiftPassword].Bytes())
+}
+
+// A credential written with no value is removed, the same rule a deployment
+// credential follows.
+func TestSetRiderCredentialsRemovesACredentialWrittenWithNoValue(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: rider.NewCredential([]byte("rider@example.test")),
+	}), "SetRiderCredentials()")
+
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: {},
+	}), "SetRiderCredentials() with no value")
+
+	read, err := store.RiderCredentials(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderCredentials()")
+	assert.NotContains(t, read, rider.CredentialZwiftEmail)
+}
+
+// ClearRiderCredentials removes both names, the deliberate exception a rider's
+// own account gets that a deployment credential does not.
+func TestClearRiderCredentialsRemovesBoth(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("rider@example.test")),
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("opensesame")),
+	}), "SetRiderCredentials()")
+
+	require.NoError(t, store.ClearRiderCredentials(t.Context(), "rider-a"), "ClearRiderCredentials()")
+
+	read, err := store.RiderCredentials(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderCredentials()")
+	assert.Empty(t, read)
+}
+
+// The subject and the name together are the associated data, so a ciphertext
+// moved to another subject fails to open rather than authenticating as that
+// subject's credential.
+func TestRiderCredentialsBindToTheirSubject(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: rider.NewCredential([]byte("rider@example.test")),
+	}), "SetRiderCredentials()")
+
+	_, err := store.database.ExecContext(t.Context(), `
+		INSERT INTO rider_credentials (subject, name, value, updated_at_unix)
+		SELECT ?, name, value, updated_at_unix FROM rider_credentials WHERE subject = ?
+	`, "rider-b", "rider-a")
+	require.NoError(t, err, "copy the ciphertext to another subject")
+
+	_, err = store.RiderCredentials(t.Context(), "rider-b")
+	require.ErrorIs(t, err, ErrStateUnreadable, "RiderCredentials()")
+}
+
+func TestRiderCredentialsReportAnUnreadableStore(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.RiderCredentials(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "reading the rider credentials")
+	require.ErrorContains(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: rider.NewCredential([]byte("x")),
+	}), "rider credential")
+	require.ErrorContains(t, store.ClearRiderCredentials(t.Context(), "rider-a"), "clearing the rider credentials")
+}
+
+// A row that fails to write or clear mid-transaction is the store's own
+// failure, named as one rather than surfaced as sqlite's.
+func TestSetRiderCredentialsReportsAQueryFailure(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	_, err := store.database.ExecContext(t.Context(), `
+		CREATE TRIGGER reject_rider_credential_write BEFORE INSERT ON rider_credentials
+		BEGIN SELECT RAISE(ABORT, 'credential write failed'); END
+	`)
+	require.NoError(t, err)
+
+	require.ErrorContains(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: rider.NewCredential([]byte("x")),
+	}), "storing a rider credential")
+}
+
+func TestSetRiderCredentialsReportsADeleteFailure(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: rider.NewCredential([]byte("x")),
+	}), "SetRiderCredentials()")
+	_, err := store.database.ExecContext(t.Context(), `
+		CREATE TRIGGER reject_rider_credential_delete BEFORE DELETE ON rider_credentials
+		BEGIN SELECT RAISE(ABORT, 'credential clear failed'); END
+	`)
+	require.NoError(t, err)
+
+	require.ErrorContains(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail: {},
+	}), "clearing a rider credential")
+}
+
 // steady is a ride recorded once a second, holding one heart rate and one power
 // for as long as it lasts.
 func steady(seconds int, heartRate, power float64) activity.FIT {

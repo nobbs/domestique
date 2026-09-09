@@ -799,6 +799,15 @@ browser origin described above, and answer 403 without it.
   everything already derived from these numbers was worked out against values
   nobody holds any more. A refused start means that work is already happening.
 
+- `PUT /v1/settings/rider/credentials/zwift` and
+  `DELETE /v1/settings/rider/credentials/zwift` are the same terms again: not
+  admin-only, written over the session's own subject, never returned in any
+  form, and a save carries only what was typed. The `PUT` writes only the
+  fields the body names; a field left out keeps whatever is stored. The
+  `DELETE` removes both, which is the one credential a rider can clear from the
+  page rather than only from losing the database. `GET /v1/settings/rider`
+  answers a `zwift` object naming only whether each is set.
+
   A value the service would have refused at startup is refused here as `400`,
   in a message naming the setting, and what it stores is in force for the next
   request and the next run without a restart. Each changes what the service does
@@ -869,9 +878,9 @@ The service has a provider-neutral configuration contract:
   A deployment that has configured none of them starts, serves the settings
   page, and runs nothing. Targets are held in the same database but are not
   among these settings: each is created by its own owning subject connecting,
-  not written by an operator. Nor is a rider's own profile, which is that
-  subject's rather than the service's and is read per request over the subject
-  that asked.
+  not written by an operator. Nor is a rider's own profile or their own Zwift
+  credentials, both of which are that subject's rather than the service's and
+  are read and written per request over the subject that asked.
 - Two sensitive static values are loaded by Koanf from a Docker-style file or
   the documented direct environment variables: the 32-byte state-encryption
   key and the Auth0 client secret. Every other credential — the source

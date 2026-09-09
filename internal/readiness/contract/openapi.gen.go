@@ -581,8 +581,21 @@ type TaskRunPage struct {
 }
 
 type RiderProfile struct {
-	Profile     RiderParameters  `json:"profile"`
-	Suggestions RiderSuggestions `json:"suggestions"`
+	Profile     RiderParameters      `json:"profile"`
+	Suggestions RiderSuggestions     `json:"suggestions"`
+	Zwift       RiderCredentialState `json:"zwift"`
+}
+
+// RiderCredentialState Whether the rider's own Zwift email and password are stored. Never the values themselves: a credential entered on this page is written and never read back, over the rider's own subject alone.
+type RiderCredentialState struct {
+	EmailSet    bool `json:"emailSet"`
+	PasswordSet bool `json:"passwordSet"`
+}
+
+// RiderZwiftCredentialsUpdate A save carries only what was typed: a field left out keeps whatever is stored, unlike the rider's parameters below, which a save replaces whole.
+type RiderZwiftCredentialsUpdate struct {
+	Email    *string `json:"email,omitempty"`
+	Password *string `json:"password,omitempty"`
 }
 
 // RiderParameters One rider's own body and equipment. Every parameter is optional: one the rider has not entered is absent rather than zero, because nothing downstream can use a zero heart rate or a massless bicycle.

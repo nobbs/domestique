@@ -78,6 +78,12 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
+	credentials, err := h.state.RiderCredentials(ctx, identityOf(ctx).Subject)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
 	h.writeJSON(writer, http.StatusOK, openapi.RiderProfile{
 		Profile: openapi.RiderParameters{
 			MaxHeartRateBpm:               profile.MaxHeartRateBPM.Pointer(),
@@ -92,7 +98,56 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 			FunctionalThresholdPowerWatts: suggestions.FunctionalThresholdPowerWatts.Pointer(),
 			Stopping:                      stoppingSuggestion(suggestions.Stopping),
 		},
+		Zwift: openapi.RiderCredentialState{
+			EmailSet:    credentials[rider.CredentialZwiftEmail].IsSet(),
+			PasswordSet: credentials[rider.CredentialZwiftPassword].IsSet(),
+		},
 	})
+}
+
+// SetRiderZwiftCredentials writes only the caller's own Zwift credentials that
+// were typed; one left out keeps whatever is stored. Never returns a value:
+// the answer is 204, on the same terms the write itself carries.
+func (h *Handler) SetRiderZwiftCredentials(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.RiderZwiftCredentialsUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	credentials := riderCredentialsSubmitted(map[rider.CredentialName]*string{
+		rider.CredentialZwiftEmail:    body.Email,
+		rider.CredentialZwiftPassword: body.Password,
+	})
+	if err := h.state.SetRiderCredentials(request.Context(), identityOf(request.Context()).Subject, credentials); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteRiderZwiftCredentials removes both of the caller's own Zwift
+// credentials, so a rider can revoke their own account from the page.
+func (h *Handler) DeleteRiderZwiftCredentials(writer http.ResponseWriter, request *http.Request) {
+	if err := h.state.ClearRiderCredentials(request.Context(), identityOf(request.Context()).Subject); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+// riderCredentialsSubmitted collects the credentials an edit actually carried.
+// One left out is absent here rather than empty, because absent keeps what is
+// stored and empty removes it.
+func riderCredentialsSubmitted(values map[rider.CredentialName]*string) map[rider.CredentialName]rider.Credential {
+	credentials := make(map[rider.CredentialName]rider.Credential, len(values))
+	for name, value := range values {
+		if value != nil {
+			credentials[name] = rider.NewCredential([]byte(*value))
+		}
+	}
+
+	return credentials
 }
 
 // ownTargetIDs are the caller's own targets, an admin's included. targetIDs

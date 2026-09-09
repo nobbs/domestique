@@ -883,9 +883,26 @@ export interface RiderSuggestions {
   stopping?: StoppingSuggestion;
 }
 
+/**
+ * Whether the rider's own Zwift email and password are stored. Never the values themselves: a credential entered on this page is written and never read back, over the rider's own subject alone.
+ */
+export interface RiderCredentialState {
+  emailSet: boolean;
+  passwordSet: boolean;
+}
+
 export interface RiderProfile {
   profile: RiderParameters;
   suggestions: RiderSuggestions;
+  zwift: RiderCredentialState;
+}
+
+/**
+ * A save carries only what was typed: a field left out keeps whatever is stored, unlike the rider's parameters below, which a save replaces whole.
+ */
+export interface RiderZwiftCredentialsUpdate {
+  email?: string;
+  password?: string;
 }
 
 export interface SourceBaseUrls {
@@ -989,6 +1006,11 @@ export type TaskInProgressResponse = Error;
  * Every setting now in force, not only the section this request replaced, so one answer refills the whole page.
  */
 export type SettingsStoredResponse = Settings;
+
+/**
+ * The write took effect. There is nothing to answer with.
+ */
+export type NoContentResponse = void;
 
 /**
  * Provider request failed without exposing provider detail.
@@ -6374,6 +6396,265 @@ export const useSetRiderProfile = <
   TContext
 > => {
   return useMutation(getSetRiderProfileMutationOptions(options), queryClient);
+};
+
+export type setRiderZwiftCredentialsResponse204 = {
+  data: NoContentResponse;
+  status: 204;
+};
+
+export type setRiderZwiftCredentialsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setRiderZwiftCredentialsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setRiderZwiftCredentialsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setRiderZwiftCredentialsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setRiderZwiftCredentialsResponseSuccess = setRiderZwiftCredentialsResponse204 & {
+  headers: Headers;
+};
+export type setRiderZwiftCredentialsResponseError = (
+  | setRiderZwiftCredentialsResponse400
+  | setRiderZwiftCredentialsResponse401
+  | setRiderZwiftCredentialsResponse403
+  | setRiderZwiftCredentialsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetRiderZwiftCredentialsUrl = () => {
+  return `/v1/settings/rider/credentials/zwift`;
+};
+
+/**
+ * Writes the caller's own Zwift email and password, over their own subject alone. A field left out of the body keeps whatever is stored; the value is never returned in any form, in this response or any other.
+ */
+export const setRiderZwiftCredentials = async (
+  riderZwiftCredentialsUpdate: RiderZwiftCredentialsUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setRiderZwiftCredentialsResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setRiderZwiftCredentialsResponseSuccess>(
+    getSetRiderZwiftCredentialsUrl(),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+      body: JSON.stringify(riderZwiftCredentialsUpdate),
+    },
+  );
+};
+
+export const getSetRiderZwiftCredentialsMutationKey = () => ["setRiderZwiftCredentials"] as const;
+
+export const getSetRiderZwiftCredentialsMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setRiderZwiftCredentials>>,
+    TError,
+    SetRiderZwiftCredentialsMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setRiderZwiftCredentials>>,
+  TError,
+  SetRiderZwiftCredentialsMutationVariables,
+  TContext
+> => {
+  const mutationKey = getSetRiderZwiftCredentialsMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setRiderZwiftCredentials>>,
+    SetRiderZwiftCredentialsMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setRiderZwiftCredentials(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetRiderZwiftCredentialsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setRiderZwiftCredentials>>
+>;
+export type SetRiderZwiftCredentialsMutationBody = RiderZwiftCredentialsUpdate;
+export type SetRiderZwiftCredentialsMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetRiderZwiftCredentialsMutationVariables = { data: RiderZwiftCredentialsUpdate };
+
+export const useSetRiderZwiftCredentials = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setRiderZwiftCredentials>>,
+      TError,
+      SetRiderZwiftCredentialsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setRiderZwiftCredentials>>,
+  TError,
+  SetRiderZwiftCredentialsMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetRiderZwiftCredentialsMutationOptions(options), queryClient);
+};
+
+export type deleteRiderZwiftCredentialsResponse204 = {
+  data: NoContentResponse;
+  status: 204;
+};
+
+export type deleteRiderZwiftCredentialsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type deleteRiderZwiftCredentialsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type deleteRiderZwiftCredentialsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type deleteRiderZwiftCredentialsResponseSuccess = deleteRiderZwiftCredentialsResponse204 & {
+  headers: Headers;
+};
+export type deleteRiderZwiftCredentialsResponseError = (
+  | deleteRiderZwiftCredentialsResponse401
+  | deleteRiderZwiftCredentialsResponse403
+  | deleteRiderZwiftCredentialsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getDeleteRiderZwiftCredentialsUrl = () => {
+  return `/v1/settings/rider/credentials/zwift`;
+};
+
+/**
+ * Removes both of the caller's own Zwift credentials, over their own subject alone.
+ */
+export const deleteRiderZwiftCredentials = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<deleteRiderZwiftCredentialsResponseSuccess> => {
+  return domestiqueRequest<deleteRiderZwiftCredentialsResponseSuccess>(
+    getDeleteRiderZwiftCredentialsUrl(),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteRiderZwiftCredentialsMutationKey = () =>
+  ["deleteRiderZwiftCredentials"] as const;
+
+export const getDeleteRiderZwiftCredentialsMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteRiderZwiftCredentials>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteRiderZwiftCredentials>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = getDeleteRiderZwiftCredentialsMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteRiderZwiftCredentials>>,
+    void
+  > = () => {
+    return deleteRiderZwiftCredentials(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteRiderZwiftCredentialsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteRiderZwiftCredentials>>
+>;
+
+export type DeleteRiderZwiftCredentialsMutationError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+
+export const useDeleteRiderZwiftCredentials = <
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteRiderZwiftCredentials>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteRiderZwiftCredentials>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getDeleteRiderZwiftCredentialsMutationOptions(options), queryClient);
 };
 
 export type getWebUIConfigResponse200 = {

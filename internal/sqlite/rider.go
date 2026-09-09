@@ -54,6 +54,78 @@ func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rid
 	return nil
 }
 
+// riderCredentialAD is the associated data a rider credential is sealed
+// under: the subject and the name together, so a ciphertext moved between
+// riders or between names fails to open rather than decrypting as something
+// it never was.
+func riderCredentialAD(subject string, name rider.CredentialName) string {
+	return "rider/" + subject + "/" + string(name)
+}
+
+// RiderCredentials reads every credential a subject has entered. A name never
+// stored is absent from the map rather than an unset value in it.
+func (s *Store) RiderCredentials(ctx context.Context, subject string) (map[rider.CredentialName]rider.Credential, error) {
+	rows, err := s.queries.ListRiderCredentials(ctx, subject)
+	if err != nil {
+		return nil, fmt.Errorf("reading the rider credentials: %w", err)
+	}
+	credentials := make(map[rider.CredentialName]rider.Credential, len(rows))
+	for _, row := range rows {
+		name := rider.CredentialName(row.Name)
+		value, decryptErr := s.decrypt(riderCredentialAD(subject, name), row.Value)
+		if decryptErr != nil {
+			return nil, fmt.Errorf("reading a rider credential: %w", decryptErr)
+		}
+		credentials[name] = rider.NewCredential(value)
+	}
+
+	return credentials, nil
+}
+
+// SetRiderCredentials writes only the names it is given, so a settings page
+// can offer a replacement without ever having been told the current value. A
+// credential carrying no bytes is removed, the same rule writeRuntimeSecrets
+// follows for a deployment credential.
+func (s *Store) SetRiderCredentials(
+	ctx context.Context, subject string, credentials map[rider.CredentialName]rider.Credential,
+) error {
+	return s.withTx(ctx, "rider credentials", func(queries *sqlcgen.Queries) error {
+		for name, credential := range credentials {
+			if !credential.IsSet() {
+				if err := queries.DeleteRiderCredential(ctx, sqlcgen.DeleteRiderCredentialParams{
+					Subject: subject, Name: string(name),
+				}); err != nil {
+					return fmt.Errorf("clearing a rider credential: %w", err)
+				}
+				continue
+			}
+			ciphertext, encryptErr := s.encrypt(riderCredentialAD(subject, name), credential.Bytes())
+			if encryptErr != nil {
+				return fmt.Errorf("encrypting a rider credential: %w", encryptErr)
+			}
+			if err := queries.UpsertRiderCredential(ctx, sqlcgen.UpsertRiderCredentialParams{
+				Subject: subject, Name: string(name), Value: ciphertext, UpdatedAtUnix: time.Now().Unix(),
+			}); err != nil {
+				return fmt.Errorf("storing a rider credential: %w", err)
+			}
+		}
+
+		return nil
+	})
+}
+
+// ClearRiderCredentials removes every credential a subject has entered, the
+// deliberate exception a rider's own account gets that a deployment
+// credential does not: a rider must be able to revoke their own account
+// without the deployment losing its database.
+func (s *Store) ClearRiderCredentials(ctx context.Context, subject string) error {
+	if err := s.queries.DeleteRiderCredentials(ctx, subject); err != nil {
+		return fmt.Errorf("clearing the rider credentials: %w", err)
+	}
+
+	return nil
+}
+
 // RiderSuggestions reads the best efforts the given targets' recent rides hold,
 // as the numbers those efforts imply. The best is the best across all of them,
 // so a rider with a second connected account is offered their better effort.

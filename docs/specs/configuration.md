@@ -274,6 +274,19 @@ is entered beside the client secret and not per target, and no run needs it: a
 deployment that has not registered a webhook leaves it unset and is served by
 the poll's own schedule alone.
 
+### Rider credentials
+
+A credential that belongs to one rider rather than to the deployment is held
+against the subject a session is issued for, encrypted under the state key
+exactly as a deployment credential is, with the subject **and** the name as
+associated data. There are two: `zwift.email` and `zwift.password`. They are
+write-only on the same terms as a deployment credential — the endpoint reports
+per credential only whether one is set — and are written and removed over the
+rider's own subject alone: an administrator can neither read nor write another
+rider's. Unlike a deployment credential they can be removed from the page,
+because a rider must be able to revoke their own account without the
+deployment losing its database.
+
 ### Sources
 
 `sources` is the libraries a run reads, in the order it reads them. Each entry

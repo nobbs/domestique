@@ -193,6 +193,13 @@ type RidemodelCoefficient struct {
 	UpdatedAtUnix         int64
 }
 
+type RiderCredential struct {
+	Subject       string
+	Name          string
+	Value         []byte
+	UpdatedAtUnix int64
+}
+
 type RiderProfile struct {
 	Subject                       string
 	MaxHeartRateBpm               sql.NullFloat64

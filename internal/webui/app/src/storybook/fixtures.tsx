@@ -343,6 +343,7 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
 export const riderProfile: RiderProfile = {
   profile: { maxHeartRateBpm: 188, riderMassKg: 74.5, bikeMassKg: 8.4 },
   suggestions: { maxHeartRateBpm: 183, functionalThresholdPowerWatts: 261 },
+  zwift: { emailSet: false, passwordSet: false },
 };
 
 export function StoryProviders({ children }: { children: ReactNode }) {
