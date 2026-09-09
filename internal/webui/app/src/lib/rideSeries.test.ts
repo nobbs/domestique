@@ -66,4 +66,45 @@ describe("alignSeries", () => {
     expect(aligned[0]).toBe(3);
     expect(aligned.at(-1)).toBe(4);
   });
+  // The reason this averages at all: a ride records once a second and the
+  // profile holds a few hundred samples, so one coasted second used to draw a
+  // spike to zero across ground the rider pedalled.
+  it("averages the readings over the ground a sample stands for", () => {
+    const dense: Position[] = Array.from({ length: 40 }, (_, index) => [
+      8.4 + index * 0.01,
+      49,
+      100 + index,
+    ]);
+    const profile = buildActivityProfile(dense, 4);
+    if (!profile) {
+      throw new Error("the fixture carries altitudes throughout");
+    }
+    // Ninety, but for the one coasted second the last sample sits on — which a
+    // nearest-neighbour pick would have drawn as a cadence of zero.
+    const cadence = dense.map((_, index) => (index === dense.length - 1 ? 0 : 90));
+
+    const aligned = alignSeries(cadence, dense, profile);
+
+    expect(aligned.at(-1)).toBeGreaterThan(70);
+  });
+
+  // A stretch that recorded nothing but gaps stays a gap; the mean must not
+  // reach into a neighbouring stretch to fill it.
+  it("keeps a stretch of gaps as a gap while its neighbours draw", () => {
+    const dense: Position[] = Array.from({ length: 20 }, (_, index) => [
+      8.4 + index * 0.01,
+      49,
+      100 + index,
+    ]);
+    const profile = buildActivityProfile(dense, 4);
+    if (!profile) {
+      throw new Error("the fixture carries altitudes throughout");
+    }
+    const readings = dense.map((_, index) => (index < 10 ? 100 : null));
+
+    const aligned = alignSeries(readings, dense, profile);
+
+    expect(aligned[0]).toBe(100);
+    expect(aligned.at(-1)).toBeNull();
+  });
 });
