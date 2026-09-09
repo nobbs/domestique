@@ -14,9 +14,9 @@ import (
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
-// derivationVersion is which derivation wrote a stored row. Bumped whenever a
-// derivation starts producing a figure the rows before it cannot hold, so those
-// rows are listed again rather than keeping the new columns null for good.
+// derivationVersion is which derivation wrote a stored row. Bumped whenever the
+// rows before it have gone stale: a figure they cannot hold, or a method or an
+// input that changed under them. Those rows are listed again.
 //
 // 3: rows before it cannot hold the estimate's quality diagnostics.
 // 4: the estimate now follows a cadence gate and a per-sample air density, and
