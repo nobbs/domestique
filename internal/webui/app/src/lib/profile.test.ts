@@ -394,6 +394,25 @@ describe("buildWindowedActivityProfile", () => {
     ).toBeNull();
   });
 
+  // A drag near the tail is widened against the whole track's own distance —
+  // the caller has no other total to hand it — which the altitude axis can
+  // fall short of when the tail itself carries none. Sliding the window to fit
+  // keeps the width the caller already settled on a minimum for; trimming the
+  // overshot edge would hand back something shorter than that minimum.
+  it("slides a window that overshoots the tail rather than shortening it", () => {
+    const coordinates = route([100, 200, 300, undefined, undefined]);
+    const distances = cumulativeMetres(coordinates);
+    const last = distances[2] ?? 0;
+    const requestedSpan = 150;
+    const profile = buildWindowedActivityProfile(coordinates, {
+      startMetres: last - requestedSpan / 2,
+      endMetres: last + requestedSpan / 2,
+    });
+
+    expect(profile?.endMetres).toBeCloseTo(last, 6);
+    expect((profile?.endMetres ?? 0) - (profile?.startMetres ?? 0)).toBeCloseTo(requestedSpan, 6);
+  });
+
   it("returns null when the ride carries fewer than two altitudes", () => {
     expect(
       buildWindowedActivityProfile(route([undefined, 100, undefined]), {

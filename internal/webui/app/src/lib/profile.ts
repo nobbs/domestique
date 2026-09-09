@@ -750,6 +750,11 @@ export function buildActivityProfile(coordinates: Position[], sampleCount = 320)
  * ride with an altimeter still warming up. The window is clamped to the axis
  * `buildActivityProfile` measures, the same reasoning it clamps to for the
  * whole ride.
+ *
+ * A drag near either end is widened against the whole track, which the axis
+ * can fall short of when a warm-up or a tail carries no altitude. The window
+ * is slid to fit rather than trimmed at the edge it overshoots, so a window
+ * already widened to the caller's own minimum is never handed back shorter.
  */
 export function buildWindowedActivityProfile(
   coordinates: Position[],
@@ -763,8 +768,9 @@ export function buildWindowedActivityProfile(
   if (!track) {
     return null;
   }
-  const start = Math.min(Math.max(window.startMetres, track.first), track.last);
-  const end = Math.min(Math.max(window.endMetres, start), track.last);
+  const span = Math.min(window.endMetres - window.startMetres, track.last - track.first);
+  const start = Math.min(Math.max(window.startMetres, track.first), track.last - span);
+  const end = start + span;
 
   return profileBetween(
     track.kept,
