@@ -23,6 +23,18 @@ vi.mock("react-map-gl/maplibre", async (importOriginal) => ({
   Layer: () => null,
 }));
 
+// What the camera was actually asked to frame: `MapViewport`'s own effects
+// need a live map instance this test never mounts, so the prop it would have
+// acted on is captured here instead.
+const framed = vi.hoisted(() => ({ bounds: null as unknown }));
+vi.mock("../../components/map/MapViewport", () => ({
+  MapViewport: (props: { bounds: unknown }) => {
+    framed.bounds = props.bounds;
+
+    return null;
+  },
+}));
+
 const CONFIG: WebUIConfig = {
   basemaps: [
     { name: "Streets", styleUrl: "https://example.test/style.json", darkCartography: false },
@@ -127,5 +139,14 @@ describe("ActivityMap in a virtual world", () => {
     show(false, vi.fn(), WORLD);
 
     expect(screen.queryByRole("button", { name: "Find my location" })).not.toBeInTheDocument();
+  });
+
+  // The world's own bounds are the whole island, which is what places its
+  // artwork — framing the camera to them too zoomed every ride out to the
+  // island regardless of how short it was, however far it sat from centre.
+  it("frames the camera to the ride's own track, not the whole world", () => {
+    show(false, vi.fn(), WORLD);
+
+    expect(framed.bounds).toEqual([8.4, 49, 8.6, 49.2]);
   });
 });
