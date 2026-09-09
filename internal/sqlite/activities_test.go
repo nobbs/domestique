@@ -1145,6 +1145,16 @@ func TestStoreActivityRefusesAnotherProvidersRow(t *testing.T) {
 	assert.Equal(t, activity.ProviderWahoo, provider, "the stored ride was overwritten")
 }
 
+// SQLite counts every row an UPDATE touches, changed or not, so a store repeated
+// unchanged within the same second is idempotent rather than a provider conflict.
+func TestStoreActivityRepeatedUnchangedIsNotAProviderConflict(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity() again, unchanged")
+}
+
 // A Zwift ride replaces the head unit's copy of the same ride, and everything
 // derived from that copy goes with it. The kept listings do not: those mirror
 // the account, and the poll drops the copy from them on its own.
