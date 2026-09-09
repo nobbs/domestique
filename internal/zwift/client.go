@@ -82,7 +82,10 @@ func (Session) GoString() string { return "[redacted]" }
 
 // Client is a Zwift API client.
 type Client struct {
-	httpClient  *http.Client
+	httpClient *http.Client
+	// fileClient follows no redirect: the host check on a file URL would
+	// otherwise be undone by the first Location header.
+	fileClient  *http.Client
 	authBaseURL *url.URL
 	apiBaseURL  *url.URL
 }
@@ -113,7 +116,14 @@ func New(options *Options) (*Client, error) {
 	}
 
 	return &Client{
-		httpClient:  &http.Client{Timeout: timeout, Transport: transport},
+		httpClient: &http.Client{Timeout: timeout, Transport: transport},
+		fileClient: &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		authBaseURL: authBaseURL,
 		apiBaseURL:  apiBaseURL,
 	}, nil
@@ -255,7 +265,7 @@ func (c *Client) DownloadFIT(ctx context.Context, fileURL string) (data []byte, 
 		return nil, errors.New("zwift: fit file request could not be created")
 	}
 
-	response, doErr := c.httpClient.Do(request)
+	response, doErr := c.fileClient.Do(request)
 	if doErr != nil {
 		if urlErr, ok := errors.AsType[*url.Error](doErr); ok {
 			doErr = urlErr.Err
@@ -267,7 +277,15 @@ func (c *Client) DownloadFIT(ctx context.Context, fileURL string) (data []byte, 
 		err = errors.Join(err, response.Body.Close())
 	}()
 
-	if classified := classifyStatus(response.StatusCode, true); classified != nil {
+	// The object is public: a 403 or 404 is this file missing or withheld, and
+	// a redirect is a location this client will not follow.
+	switch status := response.StatusCode; {
+	case status == http.StatusForbidden || status == http.StatusNotFound || status == http.StatusGone:
+		return nil, fmt.Errorf("%w: HTTP %d", ErrActivityRefused, status)
+	case status >= http.StatusMultipleChoices && status < http.StatusBadRequest:
+		return nil, fmt.Errorf("%w: HTTP %d redirect", ErrActivityRefused, status)
+	}
+	if classified := classifyStatus(response.StatusCode, false); classified != nil {
 		return nil, classified
 	}
 	data, err = io.ReadAll(io.LimitReader(response.Body, maximumFITBytes+1))

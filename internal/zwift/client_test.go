@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -222,6 +223,39 @@ func TestClientDownloadReportsActivityRefusedOn404(t *testing.T) {
 	_, err := client.DownloadFIT(t.Context(), fakeS3URL("prod/1/token"))
 	require.ErrorIs(t, err, ErrActivityRefused)
 	assert.True(t, client.IsUnreadable(err))
+}
+
+// A public object answers 403 for a key it does not hold: the file's own
+// refusal, not the account's.
+func TestClientDownloadReportsActivityRefusedOn403(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	_, err := client.DownloadFIT(t.Context(), fakeS3URL("prod/1/token"))
+	require.ErrorIs(t, err, ErrActivityRefused)
+	assert.False(t, client.IsUnauthorized(err))
+}
+
+func TestClientDownloadDoesNotFollowARedirect(t *testing.T) {
+	var followed atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/elsewhere" {
+			followed.Add(1)
+			writer.WriteHeader(http.StatusOK)
+
+			return
+		}
+		http.Redirect(writer, request, "/elsewhere", http.StatusFound)
+	}))
+	defer server.Close()
+
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	_, err := client.DownloadFIT(t.Context(), fakeS3URL("prod/1/token"))
+	require.ErrorIs(t, err, ErrActivityRefused)
+	assert.Equal(t, int32(0), followed.Load(), "the redirect target must never be requested")
 }
 
 func TestClientReportsRejectedOn503(t *testing.T) {
