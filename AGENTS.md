@@ -168,13 +168,16 @@ statements live in the linked specs.
 ## Testing
 
 - Tests live beside the package, using deterministic in-memory fakes or
-  `httptest`. **No normal test contacts any network service.** Two acceptance
-  checks are invoked separately, behind build tags, never with production
-  secrets in CI: the Wahoo sandbox check
+  `httptest`. **No normal test contacts any network service.** Three
+  acceptance checks are invoked separately, behind build tags, never with
+  production secrets in CI: the Wahoo sandbox check
   ([wahoo_sandbox_test.go](internal/fit/wahoo_sandbox_test.go), `-tags
-  wahoo_sandbox`) and the Open-Meteo check
+  wahoo_sandbox`), the Open-Meteo check
   ([openmeteo_acceptance_test.go](internal/openmeteo/openmeteo_acceptance_test.go),
-  `-tags openmeteo_acceptance`, no credentials needed). Run the latter after
+  `-tags openmeteo_acceptance`, no credentials needed), and the Zwift check
+  ([zwift_acceptance_test.go](internal/zwift/zwift_acceptance_test.go), `-tags
+  zwift_acceptance`, needs `DOMESTIQUE_ZWIFT_EMAIL` and
+  `DOMESTIQUE_ZWIFT_PASSWORD`). Run the Open-Meteo check after
   changing what this service asks a weather endpoint for: an `httptest` fixture
   asserts the request this client sends, which it always agrees with, and the
   provider is the only thing that can say whether it accepts it.
