@@ -3,10 +3,13 @@
  * the entry page, and a ride is not part of the library.
  */
 
+import { IconArrowsMaximize, IconArrowsMinimize } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { webUIConfigQuery } from "../../api/queries";
 import type { BoundingBox, Position } from "../../api/types";
+import { Button } from "../../components/Button";
 import { CartographyProvider } from "../../components/map/CartographyContext";
+import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
@@ -23,6 +26,8 @@ export interface ActivityMapProps {
   profile: Profile | null;
   activeMetres: number | null;
   onActiveChange: (metres: number | null) => void;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
 }
 
 export function ActivityMap({
@@ -31,6 +36,8 @@ export function ActivityMap({
   profile,
   activeMetres,
   onActiveChange,
+  expanded,
+  onExpandedChange,
 }: ActivityMapProps) {
   const config = useQuery(webUIConfigQuery());
   const [themeChoice] = useThemeChoice();
@@ -46,8 +53,24 @@ export function ActivityMap({
 
   return (
     <CartographyProvider dark={basemap.dark}>
-      <MapWidget styleUrl={basemap.styleUrl} ariaLabel="Recorded track">
-        <MapViewport bounds={bounds} maxZoom={TRACK_MAX_ZOOM} />
+      <MapWidget
+        styleUrl={basemap.styleUrl}
+        ariaLabel="Recorded track"
+        furniture={
+          <MapControls>
+            <Button
+              variant="panel"
+              icon={
+                expanded ? <IconArrowsMinimize stroke={1.6} /> : <IconArrowsMaximize stroke={1.6} />
+              }
+              onClick={() => onExpandedChange(!expanded)}
+              aria-label={expanded ? "Collapse map" : "Expand map"}
+              title={expanded ? "Collapse map" : "Expand map"}
+            />
+          </MapControls>
+        }
+      >
+        <MapViewport bounds={bounds} maxZoom={TRACK_MAX_ZOOM} fitRevision={expanded ? 1 : 0} />
         <RouteOverlay
           coordinates={coordinates}
           profile={profile}
