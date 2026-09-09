@@ -113,16 +113,17 @@ func (a *Activity) UnmarshalJSON(raw []byte) error {
 // out of anything that persists, logs, or notifies from this activity.
 func (a *Activity) Summary() ([]byte, error) {
 	document := struct {
-		StartDate        time.Time `json:"startDate"`
-		EndDate          time.Time `json:"endDate"`
-		FITFileBucket    string    `json:"fitFileBucket"`
-		FITFileKey       string    `json:"fitFileKey"`
-		IDStr            string    `json:"id_str"`
-		MovingTimeInMs   int64     `json:"movingTimeInMs"`
-		DistanceInMeters float64   `json:"distanceInMeters"`
-		TotalElevation   float64   `json:"totalElevation"`
-		WorldID          int64     `json:"worldId"`
-		UTCOffsetMinutes int       `json:"utcOffsetMinutes"`
+		StartDate     time.Time `json:"startDate"`
+		EndDate       time.Time `json:"endDate"`
+		FITFileBucket string    `json:"fitFileBucket"`
+		FITFileKey    string    `json:"fitFileKey"`
+		//nolint:tagliatelle // Zwift names it id_str, and the decoder above reads that name.
+		IDStr            string  `json:"id_str"`
+		MovingTimeInMs   int64   `json:"movingTimeInMs"`
+		DistanceInMeters float64 `json:"distanceInMeters"`
+		TotalElevation   float64 `json:"totalElevation"`
+		WorldID          int64   `json:"worldId"`
+		UTCOffsetMinutes int     `json:"utcOffsetMinutes"`
 	}{
 		IDStr:            strconv.FormatInt(a.ID, 10),
 		StartDate:        a.StartDate,
