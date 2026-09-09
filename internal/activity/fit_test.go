@@ -159,14 +159,27 @@ func TestDecodeFITFallsBackToLegacySpeedAndAltitudeFields(t *testing.T) {
 	activityFile.FileId.SetType(typedef.FileActivity)
 	activityFile.Sessions = append(activityFile.Sessions, mesgdef.NewSession(nil).
 		SetMaxSpeedScaled(9.5).
-		SetMaxAltitudeScaled(555.5))
+		SetAvgSpeedScaled(5).
+		SetMaxAltitudeScaled(555.5).
+		SetMinAltitudeScaled(100).
+		SetAvgAltitudeScaled(300))
+	// A zone message with no bound is not a zone.
+	activityFile.UnrelatedMessages = append(activityFile.UnrelatedMessages,
+		mesgdef.NewHrZone(nil).SetMessageIndex(0).ToMesg(nil),
+		mesgdef.NewPowerZone(nil).SetMessageIndex(0).ToMesg(nil),
+	)
 
 	decoded, err := DecodeFIT(encode(t, activityFile))
 	require.NoError(t, err)
 	assert.True(t, decoded.Session.MaxSpeedKmh.Known)
 	assert.InDelta(t, 34.2, decoded.Session.MaxSpeedKmh.Value, 0.01)
+	assert.InDelta(t, 18, decoded.Session.AverageSpeedKmh.Value, 0.01)
 	assert.True(t, decoded.Session.MaxAltitudeMetres.Known)
 	assert.InDelta(t, 555.5, decoded.Session.MaxAltitudeMetres.Value, 0.1)
+	assert.InDelta(t, 100, decoded.Session.MinAltitudeMetres.Value, 0.1)
+	assert.InDelta(t, 300, decoded.Session.AverageAltitudeMetres.Value, 0.1)
+	assert.Nil(t, decoded.Session.HeartRateZoneHighBPM)
+	assert.Nil(t, decoded.Session.PowerZoneHighWatts)
 }
 
 // TestDecodeFITLeavesSessionUnknownWhenUnset asserts a session message that

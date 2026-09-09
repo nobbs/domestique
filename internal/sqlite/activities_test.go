@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -1032,4 +1033,25 @@ func TestActivitySessionsIsEmptyForATargetWithNone(t *testing.T) {
 	sessions, err := store.ActivitySessions(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivitySessions()")
 	assert.Empty(t, sessions)
+}
+
+func TestNullJSONDropsATableItCannotEncode(t *testing.T) {
+	t.Parallel()
+	assert.False(t, nullJSON([]float64{math.NaN()}).Valid)
+	assert.Equal(t, "[1,2]", nullJSON([]float64{1, 2}).String)
+}
+
+func TestActivitySessionsRejectsACorruptZoneTable(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1,
+		activity.FIT{Session: fullTestSession()}, activity.RecordsVersion), "StoreActivityRecords()")
+	_, err := store.database.ExecContext(t.Context(),
+		"UPDATE activity_session SET heart_rate_zone_seconds_json = 'nope' WHERE workout_id = 1")
+	require.NoError(t, err)
+
+	_, err = store.ActivitySessions(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "zone table")
 }
