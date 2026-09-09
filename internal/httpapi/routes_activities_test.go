@@ -558,6 +558,26 @@ func TestGetActivityTrackServesTheWorldOfAZwiftRide(t *testing.T) {
 	assert.InDelta(t, -10.73746, view.Properties.World.Bounds.North, 1e-9)
 }
 
+// A world ride whose samples are not stored yet has no line, so it names no
+// world either: the page would have nothing to draw over the artwork.
+func TestGetActivityTrackNamesNoWorldWithoutALine(t *testing.T) {
+	state := trackState("rider-a")
+	state.tracks = nil
+	state.recordsStateTypes = map[string]int{"rider-a/1": 68}
+	state.providerSummaries = map[string]fakeProviderSummary{
+		"rider-a/1": {provider: activities.ProviderZwift, summary: []byte(`{"worldId":9}`)},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	handler.indoorTypes = []int{68}
+	handler.zwiftWorldOf = testWorldOf
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, trackStateIndoor, view.Properties.State)
+	assert.Nil(t, view.Geometry)
+	assert.Nil(t, view.Properties.World, "no line, so no world to draw it over")
+}
+
 // An indoor ride in no world this service knows is served as it was before
 // there were any: no line, and nothing to draw it over.
 func TestGetActivityTrackServesNoWorldForAnUnknownOne(t *testing.T) {

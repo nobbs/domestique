@@ -369,7 +369,10 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 	feature := activityTrackFeature(track, recordsState, steps)
 	if world != nil {
 		feature.Properties.State = trackStateIndoor
-		feature.Properties.World = world
+		// A world is only worth naming beside a line to draw over it.
+		if feature.Geometry != nil {
+			feature.Properties.World = world
+		}
 	}
 	writer.Header().Set("Content-Type", "application/geo+json")
 	h.writeJSON(writer, http.StatusOK, feature)
