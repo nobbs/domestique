@@ -104,18 +104,32 @@ describe("RideFigures", () => {
           provider: "zwift",
           workoutName: "Sweet Spot Progression",
           workoutHash: 998877,
+          workoutCompletion: 0.8,
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Sweet Spot Progression, 80 % completed")).toBeInTheDocument();
+  });
+
+  it("names a completed ride without a completion figure", () => {
+    render(
+      <RideFigures
+        ride={ride(undefined, {
+          provider: "zwift",
+          workoutName: "Watopia Waistband",
+          workoutHash: 1,
           workoutCompletion: 1,
         })}
       />,
     );
 
-    expect(
-      screen.getByText("Workout: Sweet Spot Progression, 100 % completed"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Watopia Waistband")).toBeInTheDocument();
+    expect(screen.queryByText(/completed/)).not.toBeInTheDocument();
   });
 
-  it("shows no workout line for a Zwift free ride", () => {
+  it("shows no name line for a Zwift ride without one", () => {
     render(<RideFigures ride={ride(undefined, { provider: "zwift" })} />);
-    expect(screen.queryByText(/Workout:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/completed/)).not.toBeInTheDocument();
   });
 });
