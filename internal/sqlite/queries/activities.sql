@@ -117,3 +117,77 @@ FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND latitude IS NOT NULL AND longitude IS NOT NULL
 ORDER BY record_index;
+
+-- name: UpsertActivitySession :exec
+INSERT INTO activity_session (
+  target_slot, workout_id, max_speed_kmh, average_speed_kmh, distance_metres,
+  timer_seconds, elapsed_seconds, ascent_metres, descent_metres, calories_kcal,
+  average_heart_rate_bpm, max_heart_rate_bpm, min_heart_rate_bpm,
+  average_cadence_rpm, max_cadence_rpm,
+  average_power_watts, max_power_watts, normalized_power_watts, threshold_power_watts,
+  average_temperature_celsius, max_temperature_celsius,
+  average_grade_percent, max_positive_grade_percent, max_negative_grade_percent,
+  min_altitude_metres, max_altitude_metres, average_altitude_metres,
+  sport, sub_sport,
+  heart_rate_zone_seconds_json, heart_rate_zone_high_bpm_json,
+  power_zone_seconds_json, power_zone_high_watts_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(target_slot, workout_id) DO UPDATE SET
+  max_speed_kmh = excluded.max_speed_kmh,
+  average_speed_kmh = excluded.average_speed_kmh,
+  distance_metres = excluded.distance_metres,
+  timer_seconds = excluded.timer_seconds,
+  elapsed_seconds = excluded.elapsed_seconds,
+  ascent_metres = excluded.ascent_metres,
+  descent_metres = excluded.descent_metres,
+  calories_kcal = excluded.calories_kcal,
+  average_heart_rate_bpm = excluded.average_heart_rate_bpm,
+  max_heart_rate_bpm = excluded.max_heart_rate_bpm,
+  min_heart_rate_bpm = excluded.min_heart_rate_bpm,
+  average_cadence_rpm = excluded.average_cadence_rpm,
+  max_cadence_rpm = excluded.max_cadence_rpm,
+  average_power_watts = excluded.average_power_watts,
+  max_power_watts = excluded.max_power_watts,
+  normalized_power_watts = excluded.normalized_power_watts,
+  threshold_power_watts = excluded.threshold_power_watts,
+  average_temperature_celsius = excluded.average_temperature_celsius,
+  max_temperature_celsius = excluded.max_temperature_celsius,
+  average_grade_percent = excluded.average_grade_percent,
+  max_positive_grade_percent = excluded.max_positive_grade_percent,
+  max_negative_grade_percent = excluded.max_negative_grade_percent,
+  min_altitude_metres = excluded.min_altitude_metres,
+  max_altitude_metres = excluded.max_altitude_metres,
+  average_altitude_metres = excluded.average_altitude_metres,
+  sport = excluded.sport,
+  sub_sport = excluded.sub_sport,
+  heart_rate_zone_seconds_json = excluded.heart_rate_zone_seconds_json,
+  heart_rate_zone_high_bpm_json = excluded.heart_rate_zone_high_bpm_json,
+  power_zone_seconds_json = excluded.power_zone_seconds_json,
+  power_zone_high_watts_json = excluded.power_zone_high_watts_json;
+
+-- name: DeleteActivitySession :exec
+DELETE FROM activity_session WHERE target_slot = ? AND workout_id = ?;
+
+-- name: ListActivitySessions :many
+SELECT workout_id, max_speed_kmh, average_speed_kmh, distance_metres,
+  timer_seconds, elapsed_seconds, ascent_metres, descent_metres, calories_kcal,
+  average_heart_rate_bpm, max_heart_rate_bpm, min_heart_rate_bpm,
+  average_cadence_rpm, max_cadence_rpm,
+  average_power_watts, max_power_watts, normalized_power_watts, threshold_power_watts,
+  average_temperature_celsius, max_temperature_celsius,
+  average_grade_percent, max_positive_grade_percent, max_negative_grade_percent,
+  min_altitude_metres, max_altitude_metres, average_altitude_metres,
+  sport, sub_sport,
+  heart_rate_zone_seconds_json, heart_rate_zone_high_bpm_json,
+  power_zone_seconds_json, power_zone_high_watts_json
+FROM activity_session
+WHERE target_slot = ?
+ORDER BY workout_id;
+
+-- name: ApplyActivitySessionTotals :exec
+UPDATE activities SET
+  distance_metres = COALESCE(sqlc.narg(distance_metres), distance_metres),
+  moving_seconds  = COALESCE(sqlc.narg(moving_seconds), moving_seconds),
+  elapsed_seconds = COALESCE(sqlc.narg(elapsed_seconds), elapsed_seconds),
+  ascent_metres   = COALESCE(sqlc.narg(ascent_metres), ascent_metres)
+WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id);

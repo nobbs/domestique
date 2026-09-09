@@ -119,6 +119,42 @@ type ActivityRouteMatch struct {
 	MatchedAtUnix int64
 }
 
+type ActivitySession struct {
+	TargetSlot                string
+	WorkoutID                 int64
+	MaxSpeedKmh               sql.NullFloat64
+	AverageSpeedKmh           sql.NullFloat64
+	DistanceMetres            sql.NullFloat64
+	TimerSeconds              sql.NullFloat64
+	ElapsedSeconds            sql.NullFloat64
+	AscentMetres              sql.NullFloat64
+	DescentMetres             sql.NullFloat64
+	CaloriesKcal              sql.NullFloat64
+	AverageHeartRateBpm       sql.NullFloat64
+	MaxHeartRateBpm           sql.NullFloat64
+	MinHeartRateBpm           sql.NullFloat64
+	AverageCadenceRpm         sql.NullFloat64
+	MaxCadenceRpm             sql.NullFloat64
+	AveragePowerWatts         sql.NullFloat64
+	MaxPowerWatts             sql.NullFloat64
+	NormalizedPowerWatts      sql.NullFloat64
+	ThresholdPowerWatts       sql.NullFloat64
+	AverageTemperatureCelsius sql.NullFloat64
+	MaxTemperatureCelsius     sql.NullFloat64
+	AverageGradePercent       sql.NullFloat64
+	MaxPositiveGradePercent   sql.NullFloat64
+	MaxNegativeGradePercent   sql.NullFloat64
+	MinAltitudeMetres         sql.NullFloat64
+	MaxAltitudeMetres         sql.NullFloat64
+	AverageAltitudeMetres     sql.NullFloat64
+	Sport                     string
+	SubSport                  string
+	HeartRateZoneSecondsJson  sql.NullString
+	HeartRateZoneHighBpmJson  sql.NullString
+	PowerZoneSecondsJson      sql.NullString
+	PowerZoneHighWattsJson    sql.NullString
+}
+
 type ActivitySkip struct {
 	TargetSlot      string
 	WorkoutID       int64

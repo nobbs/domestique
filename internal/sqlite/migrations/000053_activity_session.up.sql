@@ -1,0 +1,41 @@
+-- What the device itself declared for the ride: the FIT session message and
+-- its zone tables. Kept beside the derived rows in activity_metrics rather
+-- than replacing them, so the two can be compared.
+CREATE TABLE activity_session (
+  target_slot                   TEXT    NOT NULL,
+  workout_id                    INTEGER NOT NULL,
+  max_speed_kmh                 REAL,
+  average_speed_kmh             REAL,
+  distance_metres               REAL,
+  timer_seconds                 REAL,
+  elapsed_seconds               REAL,
+  ascent_metres                 REAL,
+  descent_metres                REAL,
+  calories_kcal                 REAL,
+  average_heart_rate_bpm        REAL,
+  max_heart_rate_bpm            REAL,
+  min_heart_rate_bpm            REAL,
+  average_cadence_rpm           REAL,
+  max_cadence_rpm               REAL,
+  average_power_watts           REAL,
+  max_power_watts               REAL,
+  normalized_power_watts        REAL,
+  threshold_power_watts         REAL,
+  average_temperature_celsius   REAL,
+  max_temperature_celsius       REAL,
+  average_grade_percent         REAL,
+  max_positive_grade_percent    REAL,
+  max_negative_grade_percent    REAL,
+  min_altitude_metres           REAL,
+  max_altitude_metres           REAL,
+  average_altitude_metres       REAL,
+  sport                         TEXT    NOT NULL DEFAULT '',
+  sub_sport                     TEXT    NOT NULL DEFAULT '',
+  heart_rate_zone_seconds_json  TEXT,
+  heart_rate_zone_high_bpm_json TEXT,
+  power_zone_seconds_json       TEXT,
+  power_zone_high_watts_json    TEXT,
+  PRIMARY KEY (target_slot, workout_id),
+  FOREIGN KEY (target_slot, workout_id) REFERENCES activities(target_slot, workout_id) ON DELETE CASCADE
+);
+INSERT INTO schema_migrations (version, applied_at_unix) VALUES (53, CAST(strftime('%s', 'now') AS INTEGER));

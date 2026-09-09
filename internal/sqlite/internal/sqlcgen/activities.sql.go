@@ -27,6 +27,36 @@ func (q *Queries) ActivityExists(ctx context.Context, arg ActivityExistsParams) 
 	return exists, err
 }
 
+const applyActivitySessionTotals = `-- name: ApplyActivitySessionTotals :exec
+UPDATE activities SET
+  distance_metres = COALESCE(?1, distance_metres),
+  moving_seconds  = COALESCE(?2, moving_seconds),
+  elapsed_seconds = COALESCE(?3, elapsed_seconds),
+  ascent_metres   = COALESCE(?4, ascent_metres)
+WHERE target_slot = ?5 AND workout_id = ?6
+`
+
+type ApplyActivitySessionTotalsParams struct {
+	DistanceMetres sql.NullFloat64
+	MovingSeconds  sql.NullFloat64
+	ElapsedSeconds sql.NullFloat64
+	AscentMetres   sql.NullFloat64
+	TargetSlot     string
+	WorkoutID      int64
+}
+
+func (q *Queries) ApplyActivitySessionTotals(ctx context.Context, arg ApplyActivitySessionTotalsParams) error {
+	_, err := q.db.ExecContext(ctx, applyActivitySessionTotals,
+		arg.DistanceMetres,
+		arg.MovingSeconds,
+		arg.ElapsedSeconds,
+		arg.AscentMetres,
+		arg.TargetSlot,
+		arg.WorkoutID,
+	)
+	return err
+}
+
 const deleteActivityListings = `-- name: DeleteActivityListings :exec
 DELETE FROM activity_listings WHERE target_slot = ?
 `
@@ -47,6 +77,20 @@ type DeleteActivityRecordsParams struct {
 
 func (q *Queries) DeleteActivityRecords(ctx context.Context, arg DeleteActivityRecordsParams) error {
 	_, err := q.db.ExecContext(ctx, deleteActivityRecords, arg.TargetSlot, arg.WorkoutID)
+	return err
+}
+
+const deleteActivitySession = `-- name: DeleteActivitySession :exec
+DELETE FROM activity_session WHERE target_slot = ? AND workout_id = ?
+`
+
+type DeleteActivitySessionParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) DeleteActivitySession(ctx context.Context, arg DeleteActivitySessionParams) error {
+	_, err := q.db.ExecContext(ctx, deleteActivitySession, arg.TargetSlot, arg.WorkoutID)
 	return err
 }
 
@@ -436,6 +480,114 @@ func (q *Queries) ListActivitySeries(ctx context.Context, arg ListActivitySeries
 	return items, nil
 }
 
+const listActivitySessions = `-- name: ListActivitySessions :many
+SELECT workout_id, max_speed_kmh, average_speed_kmh, distance_metres,
+  timer_seconds, elapsed_seconds, ascent_metres, descent_metres, calories_kcal,
+  average_heart_rate_bpm, max_heart_rate_bpm, min_heart_rate_bpm,
+  average_cadence_rpm, max_cadence_rpm,
+  average_power_watts, max_power_watts, normalized_power_watts, threshold_power_watts,
+  average_temperature_celsius, max_temperature_celsius,
+  average_grade_percent, max_positive_grade_percent, max_negative_grade_percent,
+  min_altitude_metres, max_altitude_metres, average_altitude_metres,
+  sport, sub_sport,
+  heart_rate_zone_seconds_json, heart_rate_zone_high_bpm_json,
+  power_zone_seconds_json, power_zone_high_watts_json
+FROM activity_session
+WHERE target_slot = ?
+ORDER BY workout_id
+`
+
+type ListActivitySessionsRow struct {
+	WorkoutID                 int64
+	MaxSpeedKmh               sql.NullFloat64
+	AverageSpeedKmh           sql.NullFloat64
+	DistanceMetres            sql.NullFloat64
+	TimerSeconds              sql.NullFloat64
+	ElapsedSeconds            sql.NullFloat64
+	AscentMetres              sql.NullFloat64
+	DescentMetres             sql.NullFloat64
+	CaloriesKcal              sql.NullFloat64
+	AverageHeartRateBpm       sql.NullFloat64
+	MaxHeartRateBpm           sql.NullFloat64
+	MinHeartRateBpm           sql.NullFloat64
+	AverageCadenceRpm         sql.NullFloat64
+	MaxCadenceRpm             sql.NullFloat64
+	AveragePowerWatts         sql.NullFloat64
+	MaxPowerWatts             sql.NullFloat64
+	NormalizedPowerWatts      sql.NullFloat64
+	ThresholdPowerWatts       sql.NullFloat64
+	AverageTemperatureCelsius sql.NullFloat64
+	MaxTemperatureCelsius     sql.NullFloat64
+	AverageGradePercent       sql.NullFloat64
+	MaxPositiveGradePercent   sql.NullFloat64
+	MaxNegativeGradePercent   sql.NullFloat64
+	MinAltitudeMetres         sql.NullFloat64
+	MaxAltitudeMetres         sql.NullFloat64
+	AverageAltitudeMetres     sql.NullFloat64
+	Sport                     string
+	SubSport                  string
+	HeartRateZoneSecondsJson  sql.NullString
+	HeartRateZoneHighBpmJson  sql.NullString
+	PowerZoneSecondsJson      sql.NullString
+	PowerZoneHighWattsJson    sql.NullString
+}
+
+func (q *Queries) ListActivitySessions(ctx context.Context, targetSlot string) ([]ListActivitySessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivitySessions, targetSlot)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivitySessionsRow{}
+	for rows.Next() {
+		var i ListActivitySessionsRow
+		if err := rows.Scan(
+			&i.WorkoutID,
+			&i.MaxSpeedKmh,
+			&i.AverageSpeedKmh,
+			&i.DistanceMetres,
+			&i.TimerSeconds,
+			&i.ElapsedSeconds,
+			&i.AscentMetres,
+			&i.DescentMetres,
+			&i.CaloriesKcal,
+			&i.AverageHeartRateBpm,
+			&i.MaxHeartRateBpm,
+			&i.MinHeartRateBpm,
+			&i.AverageCadenceRpm,
+			&i.MaxCadenceRpm,
+			&i.AveragePowerWatts,
+			&i.MaxPowerWatts,
+			&i.NormalizedPowerWatts,
+			&i.ThresholdPowerWatts,
+			&i.AverageTemperatureCelsius,
+			&i.MaxTemperatureCelsius,
+			&i.AverageGradePercent,
+			&i.MaxPositiveGradePercent,
+			&i.MaxNegativeGradePercent,
+			&i.MinAltitudeMetres,
+			&i.MaxAltitudeMetres,
+			&i.AverageAltitudeMetres,
+			&i.Sport,
+			&i.SubSport,
+			&i.HeartRateZoneSecondsJson,
+			&i.HeartRateZoneHighBpmJson,
+			&i.PowerZoneSecondsJson,
+			&i.PowerZoneHighWattsJson,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActivitySkips = `-- name: ListActivitySkips :many
 SELECT workout_id, attempts, last_attempt_unix FROM activity_skips WHERE target_slot = ? ORDER BY workout_id
 `
@@ -644,6 +796,129 @@ func (q *Queries) UpsertActivity(ctx context.Context, arg UpsertActivityParams) 
 		arg.AscentMetres,
 		arg.RawSummaryJson,
 		arg.UpdatedAtUnix,
+	)
+	return err
+}
+
+const upsertActivitySession = `-- name: UpsertActivitySession :exec
+INSERT INTO activity_session (
+  target_slot, workout_id, max_speed_kmh, average_speed_kmh, distance_metres,
+  timer_seconds, elapsed_seconds, ascent_metres, descent_metres, calories_kcal,
+  average_heart_rate_bpm, max_heart_rate_bpm, min_heart_rate_bpm,
+  average_cadence_rpm, max_cadence_rpm,
+  average_power_watts, max_power_watts, normalized_power_watts, threshold_power_watts,
+  average_temperature_celsius, max_temperature_celsius,
+  average_grade_percent, max_positive_grade_percent, max_negative_grade_percent,
+  min_altitude_metres, max_altitude_metres, average_altitude_metres,
+  sport, sub_sport,
+  heart_rate_zone_seconds_json, heart_rate_zone_high_bpm_json,
+  power_zone_seconds_json, power_zone_high_watts_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(target_slot, workout_id) DO UPDATE SET
+  max_speed_kmh = excluded.max_speed_kmh,
+  average_speed_kmh = excluded.average_speed_kmh,
+  distance_metres = excluded.distance_metres,
+  timer_seconds = excluded.timer_seconds,
+  elapsed_seconds = excluded.elapsed_seconds,
+  ascent_metres = excluded.ascent_metres,
+  descent_metres = excluded.descent_metres,
+  calories_kcal = excluded.calories_kcal,
+  average_heart_rate_bpm = excluded.average_heart_rate_bpm,
+  max_heart_rate_bpm = excluded.max_heart_rate_bpm,
+  min_heart_rate_bpm = excluded.min_heart_rate_bpm,
+  average_cadence_rpm = excluded.average_cadence_rpm,
+  max_cadence_rpm = excluded.max_cadence_rpm,
+  average_power_watts = excluded.average_power_watts,
+  max_power_watts = excluded.max_power_watts,
+  normalized_power_watts = excluded.normalized_power_watts,
+  threshold_power_watts = excluded.threshold_power_watts,
+  average_temperature_celsius = excluded.average_temperature_celsius,
+  max_temperature_celsius = excluded.max_temperature_celsius,
+  average_grade_percent = excluded.average_grade_percent,
+  max_positive_grade_percent = excluded.max_positive_grade_percent,
+  max_negative_grade_percent = excluded.max_negative_grade_percent,
+  min_altitude_metres = excluded.min_altitude_metres,
+  max_altitude_metres = excluded.max_altitude_metres,
+  average_altitude_metres = excluded.average_altitude_metres,
+  sport = excluded.sport,
+  sub_sport = excluded.sub_sport,
+  heart_rate_zone_seconds_json = excluded.heart_rate_zone_seconds_json,
+  heart_rate_zone_high_bpm_json = excluded.heart_rate_zone_high_bpm_json,
+  power_zone_seconds_json = excluded.power_zone_seconds_json,
+  power_zone_high_watts_json = excluded.power_zone_high_watts_json
+`
+
+type UpsertActivitySessionParams struct {
+	TargetSlot                string
+	WorkoutID                 int64
+	MaxSpeedKmh               sql.NullFloat64
+	AverageSpeedKmh           sql.NullFloat64
+	DistanceMetres            sql.NullFloat64
+	TimerSeconds              sql.NullFloat64
+	ElapsedSeconds            sql.NullFloat64
+	AscentMetres              sql.NullFloat64
+	DescentMetres             sql.NullFloat64
+	CaloriesKcal              sql.NullFloat64
+	AverageHeartRateBpm       sql.NullFloat64
+	MaxHeartRateBpm           sql.NullFloat64
+	MinHeartRateBpm           sql.NullFloat64
+	AverageCadenceRpm         sql.NullFloat64
+	MaxCadenceRpm             sql.NullFloat64
+	AveragePowerWatts         sql.NullFloat64
+	MaxPowerWatts             sql.NullFloat64
+	NormalizedPowerWatts      sql.NullFloat64
+	ThresholdPowerWatts       sql.NullFloat64
+	AverageTemperatureCelsius sql.NullFloat64
+	MaxTemperatureCelsius     sql.NullFloat64
+	AverageGradePercent       sql.NullFloat64
+	MaxPositiveGradePercent   sql.NullFloat64
+	MaxNegativeGradePercent   sql.NullFloat64
+	MinAltitudeMetres         sql.NullFloat64
+	MaxAltitudeMetres         sql.NullFloat64
+	AverageAltitudeMetres     sql.NullFloat64
+	Sport                     string
+	SubSport                  string
+	HeartRateZoneSecondsJson  sql.NullString
+	HeartRateZoneHighBpmJson  sql.NullString
+	PowerZoneSecondsJson      sql.NullString
+	PowerZoneHighWattsJson    sql.NullString
+}
+
+func (q *Queries) UpsertActivitySession(ctx context.Context, arg UpsertActivitySessionParams) error {
+	_, err := q.db.ExecContext(ctx, upsertActivitySession,
+		arg.TargetSlot,
+		arg.WorkoutID,
+		arg.MaxSpeedKmh,
+		arg.AverageSpeedKmh,
+		arg.DistanceMetres,
+		arg.TimerSeconds,
+		arg.ElapsedSeconds,
+		arg.AscentMetres,
+		arg.DescentMetres,
+		arg.CaloriesKcal,
+		arg.AverageHeartRateBpm,
+		arg.MaxHeartRateBpm,
+		arg.MinHeartRateBpm,
+		arg.AverageCadenceRpm,
+		arg.MaxCadenceRpm,
+		arg.AveragePowerWatts,
+		arg.MaxPowerWatts,
+		arg.NormalizedPowerWatts,
+		arg.ThresholdPowerWatts,
+		arg.AverageTemperatureCelsius,
+		arg.MaxTemperatureCelsius,
+		arg.AverageGradePercent,
+		arg.MaxPositiveGradePercent,
+		arg.MaxNegativeGradePercent,
+		arg.MinAltitudeMetres,
+		arg.MaxAltitudeMetres,
+		arg.AverageAltitudeMetres,
+		arg.Sport,
+		arg.SubSport,
+		arg.HeartRateZoneSecondsJson,
+		arg.HeartRateZoneHighBpmJson,
+		arg.PowerZoneSecondsJson,
+		arg.PowerZoneHighWattsJson,
 	)
 	return err
 }

@@ -1253,6 +1253,7 @@ func (s *fakeStore) ActivitiesAwaitingRecords(
 	return slices.Clone(due[:min(len(due), limit)]), nil
 }
 
+//nolint:gocritic // value param: conforms to the store contract.
 func (s *fakeStore) StoreActivityRecords(_ context.Context, _ string, id int64, fit FIT, recordsVersion int) error {
 	if s.recordsErr != nil {
 		return s.recordsErr
