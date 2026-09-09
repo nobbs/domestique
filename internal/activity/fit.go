@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/muktihari/fit/decoder"
@@ -12,20 +13,16 @@ import (
 	"github.com/muktihari/fit/profile/filedef"
 	"github.com/muktihari/fit/profile/mesgdef"
 	"github.com/muktihari/fit/profile/typedef"
+	"github.com/muktihari/fit/profile/untyped/mesgnum"
 	"github.com/muktihari/fit/proto"
 )
 
 // FIT is the activity data Domestique retains from one FIT file.
 type FIT struct {
-	RecordingDevice     string
-	Records             []Record
-	TotalTimerTime      time.Duration
-	TotalElapsedTime    time.Duration
-	TotalAscentMetres   float64
-	ChecksumFailed      bool
-	HasTotalTimerTime   bool
-	HasTotalElapsedTime bool
-	HasTotalAscent      bool
+	RecordingDevice string
+	Records         []Record
+	Session         Session
+	ChecksumFailed  bool
 }
 
 // Record is one timestamped sample from an activity FIT file.
@@ -106,21 +103,200 @@ func fromActivity(activity *filedef.Activity) FIT {
 		return decoded
 	}
 
-	session := activity.Sessions[0]
-	if session.TotalTimerTime != basetype.Uint32Invalid {
-		decoded.HasTotalTimerTime = true
-		decoded.TotalTimerTime = time.Duration(session.TotalTimerTimeScaled() * float64(time.Second))
-	}
-	if session.TotalElapsedTime != basetype.Uint32Invalid {
-		decoded.HasTotalElapsedTime = true
-		decoded.TotalElapsedTime = time.Duration(session.TotalElapsedTimeScaled() * float64(time.Second))
-	}
-	if session.TotalAscent != basetype.Uint16Invalid {
-		decoded.HasTotalAscent = true
-		decoded.TotalAscentMetres = float64(session.TotalAscent)
-	}
+	decoded.Session = sessionFromMesg(activity.Sessions[0], activity.UnrelatedMessages)
 
 	return decoded
+}
+
+// known wraps a value already checked against its FIT invalid sentinel into a
+// Reading.
+func known(value float64) Reading {
+	return Reading{Value: value, Known: true}
+}
+
+func sessionFromMesg(session *mesgdef.Session, unrelated []proto.Message) Session {
+	var result Session
+	if session.TotalDistance != basetype.Uint32Invalid {
+		result.DistanceMetres = known(session.TotalDistanceScaled())
+	}
+	if session.TotalTimerTime != basetype.Uint32Invalid {
+		result.TimerSeconds = known(session.TotalTimerTimeScaled())
+	}
+	if session.TotalElapsedTime != basetype.Uint32Invalid {
+		result.ElapsedSeconds = known(session.TotalElapsedTimeScaled())
+	}
+	sessionSpeed(session, &result)
+	sessionTotals(session, &result)
+	sessionHeartRateAndCadence(session, &result)
+	sessionPower(session, &result)
+	sessionTemperatureAndGrade(session, &result)
+	sessionAltitude(session, &result)
+	if session.Sport != typedef.SportInvalid {
+		result.Sport = session.Sport.String()
+	}
+	if session.SubSport != typedef.SubSportInvalid {
+		result.SubSport = session.SubSport.String()
+	}
+	result.HeartRateZoneSeconds = session.TimeInHrZoneScaled()
+	result.PowerZoneSeconds = session.TimeInPowerZoneScaled()
+	result.HeartRateZoneHighBPM = hrZoneHighs(unrelated)
+	result.PowerZoneHighWatts = powerZoneHighs(unrelated)
+
+	return result
+}
+
+func sessionSpeed(session *mesgdef.Session, result *Session) {
+	if session.EnhancedMaxSpeed != basetype.Uint32Invalid {
+		result.MaxSpeedKmh = known(session.EnhancedMaxSpeedScaled() * 3.6)
+	} else if session.MaxSpeed != basetype.Uint16Invalid {
+		result.MaxSpeedKmh = known(session.MaxSpeedScaled() * 3.6)
+	}
+	if session.EnhancedAvgSpeed != basetype.Uint32Invalid {
+		result.AverageSpeedKmh = known(session.EnhancedAvgSpeedScaled() * 3.6)
+	} else if session.AvgSpeed != basetype.Uint16Invalid {
+		result.AverageSpeedKmh = known(session.AvgSpeedScaled() * 3.6)
+	}
+}
+
+func sessionTotals(session *mesgdef.Session, result *Session) {
+	if session.TotalAscent != basetype.Uint16Invalid {
+		result.AscentMetres = known(float64(session.TotalAscent))
+	}
+	if session.TotalDescent != basetype.Uint16Invalid {
+		result.DescentMetres = known(float64(session.TotalDescent))
+	}
+	if session.TotalCalories != basetype.Uint16Invalid {
+		result.CaloriesKcal = known(float64(session.TotalCalories))
+	}
+}
+
+func sessionHeartRateAndCadence(session *mesgdef.Session, result *Session) {
+	if session.AvgHeartRate != basetype.Uint8Invalid {
+		result.AverageHeartRateBPM = known(float64(session.AvgHeartRate))
+	}
+	if session.MaxHeartRate != basetype.Uint8Invalid {
+		result.MaxHeartRateBPM = known(float64(session.MaxHeartRate))
+	}
+	if session.MinHeartRate != basetype.Uint8Invalid {
+		result.MinHeartRateBPM = known(float64(session.MinHeartRate))
+	}
+	if session.AvgCadence != basetype.Uint8Invalid {
+		result.AverageCadenceRPM = known(float64(session.AvgCadence))
+	}
+	if session.MaxCadence != basetype.Uint8Invalid {
+		result.MaxCadenceRPM = known(float64(session.MaxCadence))
+	}
+}
+
+func sessionPower(session *mesgdef.Session, result *Session) {
+	if session.AvgPower != basetype.Uint16Invalid {
+		result.AveragePowerWatts = known(float64(session.AvgPower))
+	}
+	if session.MaxPower != basetype.Uint16Invalid {
+		result.MaxPowerWatts = known(float64(session.MaxPower))
+	}
+	if session.NormalizedPower != basetype.Uint16Invalid {
+		result.NormalizedPowerWatts = known(float64(session.NormalizedPower))
+	}
+	if session.ThresholdPower != basetype.Uint16Invalid {
+		result.ThresholdPowerWatts = known(float64(session.ThresholdPower))
+	}
+}
+
+func sessionTemperatureAndGrade(session *mesgdef.Session, result *Session) {
+	if session.AvgTemperature != basetype.Sint8Invalid {
+		result.AverageTemperatureCelsius = known(float64(session.AvgTemperature))
+	}
+	if session.MaxTemperature != basetype.Sint8Invalid {
+		result.MaxTemperatureCelsius = known(float64(session.MaxTemperature))
+	}
+	if session.AvgGrade != basetype.Sint16Invalid {
+		result.AverageGradePercent = known(session.AvgGradeScaled())
+	}
+	if session.MaxPosGrade != basetype.Sint16Invalid {
+		result.MaxPositiveGradePercent = known(session.MaxPosGradeScaled())
+	}
+	if session.MaxNegGrade != basetype.Sint16Invalid {
+		result.MaxNegativeGradePercent = known(session.MaxNegGradeScaled())
+	}
+}
+
+// sessionAltitude follows the same enhanced-field-wins pattern as the record
+// altitude() helper.
+func sessionAltitude(session *mesgdef.Session, result *Session) {
+	if session.EnhancedMinAltitude != basetype.Uint32Invalid {
+		result.MinAltitudeMetres = known(session.EnhancedMinAltitudeScaled())
+	} else if session.MinAltitude != basetype.Uint16Invalid {
+		result.MinAltitudeMetres = known(session.MinAltitudeScaled())
+	}
+	if session.EnhancedMaxAltitude != basetype.Uint32Invalid {
+		result.MaxAltitudeMetres = known(session.EnhancedMaxAltitudeScaled())
+	} else if session.MaxAltitude != basetype.Uint16Invalid {
+		result.MaxAltitudeMetres = known(session.MaxAltitudeScaled())
+	}
+	if session.EnhancedAvgAltitude != basetype.Uint32Invalid {
+		result.AverageAltitudeMetres = known(session.EnhancedAvgAltitudeScaled())
+	} else if session.AvgAltitude != basetype.Uint16Invalid {
+		result.AverageAltitudeMetres = known(session.AvgAltitudeScaled())
+	}
+}
+
+// zone is one hr_zone or power_zone message's upper bound, kept with its
+// message_index since the FIT profile groups zones by number, not by order.
+type zone struct {
+	index typedef.MessageIndex
+	high  float64
+}
+
+// zoneHighs sorts zones by message_index and returns nil, not an empty slice,
+// when the activity carried none.
+func zoneHighs(zones []zone) []float64 {
+	if len(zones) == 0 {
+		return nil
+	}
+	sort.Slice(zones, func(i, j int) bool { return zones[i].index < zones[j].index })
+
+	highs := make([]float64, len(zones))
+	for i := range zones {
+		highs[i] = zones[i].high
+	}
+
+	return highs
+}
+
+// hrZoneHighs collects each hr_zone message's upper bound from the messages
+// an activity did not otherwise recognise, in message_index order.
+func hrZoneHighs(unrelated []proto.Message) []float64 {
+	var zones []zone
+	for i := range unrelated {
+		if unrelated[i].Num != mesgnum.HrZone {
+			continue
+		}
+		mesg := mesgdef.NewHrZone(&unrelated[i])
+		if mesg.HighBpm == basetype.Uint8Invalid {
+			continue
+		}
+		zones = append(zones, zone{mesg.MessageIndex, float64(mesg.HighBpm)})
+	}
+
+	return zoneHighs(zones)
+}
+
+// powerZoneHighs is hrZoneHighs for power_zone messages.
+func powerZoneHighs(unrelated []proto.Message) []float64 {
+	var zones []zone
+	for i := range unrelated {
+		if unrelated[i].Num != mesgnum.PowerZone {
+			continue
+		}
+		mesg := mesgdef.NewPowerZone(&unrelated[i])
+		if mesg.HighValue == basetype.Uint16Invalid {
+			continue
+		}
+		zones = append(zones, zone{mesg.MessageIndex, float64(mesg.HighValue)})
+	}
+
+	return zoneHighs(zones)
 }
 
 func fromRecord(record *mesgdef.Record, wahooFields map[devFieldKey]string) Record {
