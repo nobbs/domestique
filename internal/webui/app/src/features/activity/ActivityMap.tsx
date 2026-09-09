@@ -99,9 +99,6 @@ export function ActivityMap({
   if (!cartography) {
     return null;
   }
-  const worldBounds: BoundingBox | null = world
-    ? [world.bounds.west, world.bounds.south, world.bounds.east, world.bounds.north]
-    : null;
 
   return (
     <CartographyProvider dark={cartography.dark}>
@@ -123,7 +120,11 @@ export function ActivityMap({
         }
       >
         <MapViewport
-          bounds={windowBounds ?? worldBounds ?? bounds}
+          // A world ride is framed to its own recorded track, exactly as an
+          // outdoor one is: the world's bounds below place the artwork, but
+          // are the whole island, not the ride, and would zoom the camera
+          // out to it every time regardless of how short the ride was.
+          bounds={windowBounds ?? bounds}
           maxZoom={windowBounds ? WINDOW_MAX_ZOOM : TRACK_MAX_ZOOM}
           fitRevision={expanded ? 1 : 0}
         />
