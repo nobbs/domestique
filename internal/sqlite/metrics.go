@@ -27,7 +27,9 @@ import (
 // 6: rows before it cannot hold a ride's decoupling or its heat-drift reading.
 // 7: rows before it cannot hold the ride's power-duration bests.
 // 8: rows before it cannot hold the ride's maximum speed.
-const derivationVersion = 8
+// 9: rows before it were worked out over samples a re-read has since replaced
+// with the device's own speed, which the re-read did not yet clear.
+const derivationVersion = 9
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
