@@ -346,7 +346,7 @@ func (s *Store) StoreActivityRecords(
 	}); matchErr != nil {
 		return fmt.Errorf("clearing a prior route match: %w", matchErr)
 	}
-	// So are the derived rows: nothing else lists a ride whose samples changed
+	// So is the metrics row: nothing else lists a ride whose samples changed
 	// under a row worked out from the old ones.
 	if metricsErr := queries.DeleteActivityMetrics(ctx, sqlcgen.DeleteActivityMetricsParams{
 		TargetSlot: targetID, WorkoutID: id,
