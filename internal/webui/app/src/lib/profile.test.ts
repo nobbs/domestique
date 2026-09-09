@@ -3,6 +3,7 @@ import type { Position } from "../api/types";
 import {
   buildActivityProfile,
   buildProfile,
+  buildWindowedActivityProfile,
   buildWindowedProfile,
   coordinateRange,
   cumulativeMetres,
@@ -325,6 +326,81 @@ describe("buildWindowedProfile", () => {
 
     expect(buildWindowedProfile(coordinates, { startMetres: 100, endMetres: 100 })).toBeNull();
     expect(buildWindowedProfile(coordinates, { startMetres: 200, endMetres: 100 })).toBeNull();
+  });
+});
+
+describe("buildWindowedActivityProfile", () => {
+  // The whole reason this exists apart from `buildWindowedProfile`: a ride
+  // whose altimeter was still warming up carries a point with no elevation,
+  // which `buildWindowedProfile` refuses outright.
+  it("serves a stretch of a ride buildWindowedProfile refuses outright", () => {
+    const coordinates = route([undefined, undefined, 100, 200, 300]);
+    const distances = cumulativeMetres(coordinates);
+
+    expect(
+      buildWindowedProfile(coordinates, {
+        startMetres: distances[3] ?? 0,
+        endMetres: distances[4] ?? 0,
+      }),
+    ).toBeNull();
+
+    const windowed = buildWindowedActivityProfile(coordinates, {
+      startMetres: distances[3] ?? 0,
+      endMetres: distances[4] ?? 0,
+    });
+
+    expect(windowed).not.toBeNull();
+    expect(windowed?.startMetres).toBeCloseTo(distances[3] ?? 0, 6);
+  });
+
+  it("measures distances from the start of the whole track, not of the window", () => {
+    const coordinates = route([100, 200, 300, 400]);
+    const distances = cumulativeMetres(coordinates);
+    const profile = buildWindowedActivityProfile(
+      coordinates,
+      { startMetres: distances[1] ?? 0, endMetres: distances[2] ?? 0 },
+      40,
+    );
+
+    expect(profile?.samples[0]?.distanceMetres).toBeCloseTo(distances[1] ?? 0, 6);
+    expect(profile?.samples.at(-1)?.distanceMetres).toBeCloseTo(distances[2] ?? 0, 6);
+  });
+
+  // A window a drag pushed past the last altitude must land on the last
+  // altitude, not on the raw recording's own end — which is exactly the
+  // ground `buildActivityProfile` itself never draws.
+  it("clamps a window to the axis buildActivityProfile measures, not to the whole recording", () => {
+    const coordinates = route([undefined, undefined, 100, 200, 300, undefined, undefined]);
+    const distances = cumulativeMetres(coordinates);
+    const wholeTrack = distances[distances.length - 1] ?? 0;
+    const profile = buildWindowedActivityProfile(coordinates, {
+      startMetres: 0,
+      endMetres: wholeTrack,
+    });
+
+    expect(profile?.startMetres).toBeCloseTo(distances[2] ?? 0, 6);
+    expect(profile?.endMetres).toBeCloseTo(distances[4] ?? 0, 6);
+  });
+
+  it("refuses a window of no length rather than dividing by it", () => {
+    const coordinates = route([100, 200, 300]);
+    const distances = cumulativeMetres(coordinates);
+
+    expect(
+      buildWindowedActivityProfile(coordinates, {
+        startMetres: distances[1] ?? 0,
+        endMetres: distances[1] ?? 0,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when the ride carries fewer than two altitudes", () => {
+    expect(
+      buildWindowedActivityProfile(route([undefined, 100, undefined]), {
+        startMetres: 0,
+        endMetres: 200,
+      }),
+    ).toBeNull();
   });
 });
 

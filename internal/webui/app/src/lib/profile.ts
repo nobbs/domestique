@@ -685,16 +685,16 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
   );
 }
 
-/**
- * A recorded ride's profile. Samples without an altitude are dropped, but each
- * kept one keeps its distance along the whole track, so the chart spans the
- * first to the last altitude on the track's own axis, never extrapolating over
- * a warm-up or a tail the sensor missed. Null with fewer than two altitudes.
- */
-export function buildActivityProfile(coordinates: Position[], sampleCount = 320): Profile | null {
-  if (sampleCount < 2) {
-    return null;
-  }
+/** Positions carrying elevation, each kept with its distance along the whole track. */
+interface AltitudeTrack {
+  kept: Position[];
+  keptDistances: number[];
+  total: number;
+  first: number;
+  last: number;
+}
+
+function keptWithAltitude(coordinates: Position[]): AltitudeTrack | null {
   const distances = cumulativeMetres(coordinates);
   const kept: Position[] = [];
   const keptDistances: number[] = [];
@@ -714,13 +714,65 @@ export function buildActivityProfile(coordinates: Position[], sampleCount = 320)
     return null;
   }
 
+  return { kept, keptDistances, total, first, last };
+}
+
+/**
+ * A recorded ride's profile. Samples without an altitude are dropped, but each
+ * kept one keeps its distance along the whole track, so the chart spans the
+ * first to the last altitude on the track's own axis, never extrapolating over
+ * a warm-up or a tail the sensor missed. Null with fewer than two altitudes.
+ */
+export function buildActivityProfile(coordinates: Position[], sampleCount = 320): Profile | null {
+  if (sampleCount < 2) {
+    return null;
+  }
+  const track = keptWithAltitude(coordinates);
+  if (!track) {
+    return null;
+  }
+
   return profileBetween(
-    kept,
-    keptDistances,
-    bandedRanges(kept, keptDistances),
-    total,
-    first,
-    last,
+    track.kept,
+    track.keptDistances,
+    bandedRanges(track.kept, track.keptDistances),
+    track.total,
+    track.first,
+    track.last,
+    sampleCount,
+  );
+}
+
+/**
+ * The same profile, restricted to one stretch of the ride and sampled across it
+ * at the full count — a ride's counterpart to `buildWindowedProfile`, which
+ * refuses any track carrying one point with no elevation and so cannot serve a
+ * ride with an altimeter still warming up. The window is clamped to the axis
+ * `buildActivityProfile` measures, the same reasoning it clamps to for the
+ * whole ride.
+ */
+export function buildWindowedActivityProfile(
+  coordinates: Position[],
+  window: DistanceWindow,
+  sampleCount = 320,
+): Profile | null {
+  if (sampleCount < 2) {
+    return null;
+  }
+  const track = keptWithAltitude(coordinates);
+  if (!track) {
+    return null;
+  }
+  const start = Math.min(Math.max(window.startMetres, track.first), track.last);
+  const end = Math.min(Math.max(window.endMetres, start), track.last);
+
+  return profileBetween(
+    track.kept,
+    track.keptDistances,
+    bandedRanges(track.kept, track.keptDistances),
+    track.total,
+    start,
+    end,
     sampleCount,
   );
 }

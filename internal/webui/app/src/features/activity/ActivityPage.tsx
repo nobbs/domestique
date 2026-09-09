@@ -15,7 +15,14 @@ import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatTimestamp } from "../../lib/format";
-import { buildActivityProfile, sampleIndexAt } from "../../lib/profile";
+import type { DistanceWindow } from "../../lib/profile";
+import {
+  buildActivityProfile,
+  buildWindowedActivityProfile,
+  coordinateRange,
+  rangeBounds,
+  sampleIndexAt,
+} from "../../lib/profile";
 import { WHOLE_LAP_COVERAGE } from "../../lib/rideHistory";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { conditionsSentence } from "../../lib/weather";
@@ -40,6 +47,29 @@ export function ActivityPage() {
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [zoomWindow, setZoomWindow] = useState<DistanceWindow | null>(null);
+  // Rebuilt from the original coordinates rather than from the last window, so
+  // zooming inside a zoom compounds no rounding error and needs no stack.
+  const windowed = useMemo(
+    () => (zoomWindow ? buildWindowedActivityProfile(coordinates, zoomWindow) : null),
+    [coordinates, zoomWindow],
+  );
+  // A window that built nothing is a slip, not a view: the map must not dim
+  // around a stretch the chart is not showing.
+  const shownProfile = windowed ?? profile;
+  const shownWindow = windowed ? zoomWindow : null;
+  // The position was chosen against the view being left, so it goes with it.
+  const onZoomChange = useCallback((next: DistanceWindow | null) => {
+    setZoomWindow(next);
+    setActiveMetres(null);
+  }, []);
+  const windowBounds = useMemo(() => {
+    const range = shownWindow
+      ? coordinateRange(coordinates, shownWindow.startMetres, shownWindow.endMetres)
+      : null;
+
+    return range ? rangeBounds(coordinates, range) : null;
+  }, [coordinates, shownWindow]);
   const [mapExpanded, setMapExpanded] = useState(false);
   useEscapeKey(mapExpanded, () => setMapExpanded(false));
   const [shown, setShown] = useState<ReadonlySet<RideSeriesKey>>(() => new Set());
@@ -47,7 +77,7 @@ export function ActivityPage() {
     id,
     shown,
     coordinates,
-    profile,
+    shownProfile,
     track.data?.estimatedPowerWatts,
   );
   const title = ride ? formatTimestamp(ride.startedAt) : "Activity";
@@ -64,8 +94,9 @@ export function ActivityPage() {
   // Which sample the shared cursor is on, so a chip can say what its series
   // read there. The profile's samples are evenly spaced across its own stretch.
   const activeIndex = useMemo(
-    () => (profile && activeMetres !== null ? sampleIndexAt(profile, activeMetres) : null),
-    [profile, activeMetres],
+    () =>
+      shownProfile && activeMetres !== null ? sampleIndexAt(shownProfile, activeMetres) : null,
+    [shownProfile, activeMetres],
   );
   const weather = track.data?.weather;
   // The strip shares the profile's axis where there is one, and the listed
@@ -128,9 +159,13 @@ export function ActivityPage() {
               <ActivityMap
                 coordinates={coordinates}
                 bounds={track.data.bbox}
+                windowBounds={windowBounds}
                 profile={profile}
+                activeProfile={shownProfile}
                 activeMetres={activeMetres}
                 onActiveChange={setActiveMetres}
+                zoomWindow={shownWindow}
+                onZoomChange={onZoomChange}
                 expanded={mapExpanded}
                 onExpandedChange={setMapExpanded}
               />
@@ -140,11 +175,13 @@ export function ActivityPage() {
         {drawable && profile ? (
           <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
             <ElevationProfile
-              profile={profile}
+              profile={shownProfile}
               title={title}
               series={drawn}
               activeMetres={activeMetres}
               onActiveChange={setActiveMetres}
+              zoomWindow={shownWindow}
+              onZoomChange={onZoomChange}
               size="tall"
             />
             <RideConditions steps={weather} starts={starts} totalMetres={stripMetres} />
