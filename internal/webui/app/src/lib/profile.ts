@@ -815,7 +815,7 @@ export function sampleAt(profile: Profile, metres: number): ProfileSample | null
 export function sampleIndexAt(profile: Profile, metres: number): number | null {
   const span = profile.endMetres - profile.startMetres;
   const last = profile.samples.length - 1;
-  if (span <= 0 || last < 0) {
+  if (span <= 0 || last < 0 || !Number.isFinite(metres)) {
     return null;
   }
   const index = Math.round(((metres - profile.startMetres) / span) * last);
