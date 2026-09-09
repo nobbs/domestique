@@ -196,7 +196,7 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating the Zwift client: %w", err)
 	}
-	zwiftActivityPoller, err := activity.NewZwiftPoller(zwiftProvider{client: zwiftClient}, store, time.Now)
+	zwiftActivityPoller, err := activity.NewZwiftPoller(zwiftProvider{client: zwiftClient}, store, wahoo.IndoorWorkoutTypes(), time.Now)
 	if err != nil {
 		return fmt.Errorf("creating the Zwift activity poller: %w", err)
 	}

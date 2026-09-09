@@ -111,20 +111,27 @@ func (q *Queries) DeleteActivitySkip(ctx context.Context, arg DeleteActivitySkip
 const deleteTrainerCopyActivity = `-- name: DeleteTrainerCopyActivity :execrows
 DELETE FROM activities
 WHERE target_slot = ?1 AND provider = 'wahoo'
-  AND started_at_unix >= ?2 AND started_at_unix <= ?3
+  AND workout_type_id IN (SELECT value FROM json_each(CAST(?2 AS TEXT)))
+  AND started_at_unix >= ?3 AND started_at_unix <= ?4
 `
 
 type DeleteTrainerCopyActivityParams struct {
-	TargetSlot string
-	FromUnix   int64
-	ToUnix     int64
+	TargetSlot    string
+	IndoorTypeIds string
+	FromUnix      int64
+	ToUnix        int64
 }
 
 // The head unit's copy of an indoor ride Zwift also recorded. Every derived row
 // goes with it through the existing cascades; the skip and listing rows do not,
 // and must not: those mirror the account rather than what is stored.
 func (q *Queries) DeleteTrainerCopyActivity(ctx context.Context, arg DeleteTrainerCopyActivityParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, deleteTrainerCopyActivity, arg.TargetSlot, arg.FromUnix, arg.ToUnix)
+	result, err := q.db.ExecContext(ctx, deleteTrainerCopyActivity,
+		arg.TargetSlot,
+		arg.IndoorTypeIds,
+		arg.FromUnix,
+		arg.ToUnix,
+	)
 	if err != nil {
 		return 0, err
 	}

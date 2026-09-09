@@ -1162,14 +1162,14 @@ func TestDeleteTrainerCopyRemovesTheWahooRideAndItsDerivedRows(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
-	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeIndoorWahooActivity(t, store, "rider-a", 1), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), PowerWatts: 200, HasPower: true}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
 	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a",
 		[]activity.Listing{{ID: 1, TypeID: 15, Starts: activityNow()}}, activityNow()), "ReplaceActivityListings()")
 
-	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow().Add(30*time.Second), time.Minute)
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow().Add(30*time.Second), time.Minute, wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "DeleteTrainerCopy()")
 	assert.Equal(t, 1, removed, "the copy went")
 
@@ -1180,6 +1180,31 @@ func TestDeleteTrainerCopyRemovesTheWahooRideAndItsDerivedRows(t *testing.T) {
 		"the kept listings mirror the account and must stay")
 }
 
+// storeIndoorWahooActivity stores a Wahoo ride of the trainer type the head
+// unit records a Zwift session under.
+func storeIndoorWahooActivity(t *testing.T, store *Store, targetID string, id int64) error {
+	t.Helper()
+
+	return store.StoreActivity(t.Context(), targetID,
+		activity.Listing{ID: id, TypeID: wahoo.WorkoutTypeBikingIndoorVirtual, LocationID: 1, Starts: activityNow()},
+		activity.Summary{DistanceMetres: 100, MovingSeconds: 3600, ElapsedSeconds: 3900, Raw: []byte(`{}`)},
+		activityNow(),
+	)
+}
+
+// An outdoor ride that happens to start in the window is another ride, never a
+// copy: only an indoor type can be the head unit's recording of a trainer session.
+func TestDeleteTrainerCopyLeavesAnOutdoorRideInTheWindow(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity() outdoor type 15")
+
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow(), time.Minute, wahoo.IndoorWorkoutTypes())
+	require.NoError(t, err, "DeleteTrainerCopy()")
+	assert.Zero(t, removed)
+}
+
 // A ride outside the window is another ride, not another recording of this one.
 func TestDeleteTrainerCopyLeavesARideOutsideTheWindow(t *testing.T) {
 	t.Parallel()
@@ -1187,7 +1212,7 @@ func TestDeleteTrainerCopyLeavesARideOutsideTheWindow(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 
-	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow().Add(10*time.Minute), time.Minute)
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow().Add(10*time.Minute), time.Minute, wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "DeleteTrainerCopy()")
 	assert.Zero(t, removed)
 }
@@ -1199,7 +1224,7 @@ func TestDeleteTrainerCopyLeavesTheZwiftRide(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 7, activityNow()), "StoreActivity()")
 
-	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow(), time.Minute)
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow(), time.Minute, wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "DeleteTrainerCopy()")
 	assert.Zero(t, removed)
 

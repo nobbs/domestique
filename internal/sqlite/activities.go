@@ -696,12 +696,13 @@ func (s *Store) IndoorRideStarts(ctx context.Context, targetID string) ([]time.T
 // through the schema's cascades; the skip and listing rows do not, because
 // those mirror the account rather than what is stored.
 func (s *Store) DeleteTrainerCopy(
-	ctx context.Context, targetID string, at time.Time, window time.Duration,
+	ctx context.Context, targetID string, at time.Time, window time.Duration, indoorTypeIDs []int,
 ) (int, error) {
 	removed, err := s.queries.DeleteTrainerCopyActivity(ctx, sqlcgen.DeleteTrainerCopyActivityParams{
-		TargetSlot: targetID,
-		FromUnix:   at.Add(-window).Unix(),
-		ToUnix:     at.Add(window).Unix(),
+		TargetSlot:    targetID,
+		IndoorTypeIds: typeIDList(indoorTypeIDs),
+		FromUnix:      at.Add(-window).Unix(),
+		ToUnix:        at.Add(window).Unix(),
 	})
 	if err != nil {
 		return 0, fmt.Errorf("removing a trainer copy of an indoor ride: %w", err)

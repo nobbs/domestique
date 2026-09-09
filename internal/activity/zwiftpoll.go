@@ -48,9 +48,10 @@ type ZwiftStore interface {
 	RiderZwiftCredentials(ctx context.Context, subject string) (email, password []byte, err error)
 	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
 	StoreActivity(ctx context.Context, targetID string, listing Listing, summary Summary, now time.Time) error
-	// DeleteTrainerCopy removes the Wahoo activities that started within window
-	// of at, and reports how many went.
-	DeleteTrainerCopy(ctx context.Context, targetID string, at time.Time, window time.Duration) (int, error)
+	// DeleteTrainerCopy removes the Wahoo activities of an indoor type that
+	// started within window of at, and reports how many went.
+	DeleteTrainerCopy(ctx context.Context, targetID string, at time.Time, window time.Duration,
+		indoorTypeIDs []int) (int, error)
 	ActivitiesAwaitingRecords(ctx context.Context, targetID, provider string,
 		recordsVersion, limit int) ([]PendingActivity, error)
 	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit FIT, recordsVersion int) error
@@ -62,15 +63,18 @@ type ZwiftPoller struct {
 	source ZwiftSource
 	store  ZwiftStore
 	now    func() time.Time
+	// indoorTypes are the workout types a head unit's copy of a trainer ride is
+	// recorded under; only those may be removed as a copy.
+	indoorTypes []int
 }
 
 // NewZwiftPoller builds a Zwift poller over its source and store.
-func NewZwiftPoller(source ZwiftSource, store ZwiftStore, now func() time.Time) (*ZwiftPoller, error) {
-	if source == nil || store == nil || now == nil {
-		return nil, errors.New("activity: a source, a store and a clock are required")
+func NewZwiftPoller(source ZwiftSource, store ZwiftStore, indoorTypes []int, now func() time.Time) (*ZwiftPoller, error) {
+	if source == nil || store == nil || now == nil || len(indoorTypes) == 0 {
+		return nil, errors.New("activity: a source, a store, the indoor workout types and a clock are required")
 	}
 
-	return &ZwiftPoller{source: source, store: store, now: now}, nil
+	return &ZwiftPoller{source: source, store: store, indoorTypes: indoorTypes, now: now}, nil
 }
 
 // Poll stores every ride of one target's owner that their Zwift account has
@@ -160,7 +164,7 @@ func (p *ZwiftPoller) storeNew(ctx context.Context, targetID string, reader Zwif
 // storeOne records one ride, first removing the head unit's copy of it: the two
 // are one ride, and the Zwift file is the one kept for the power it carries.
 func (p *ZwiftPoller) storeOne(ctx context.Context, targetID string, listing Listing) Failure {
-	removed, err := p.store.DeleteTrainerCopy(ctx, targetID, listing.Starts, trainerCopyWindow)
+	removed, err := p.store.DeleteTrainerCopy(ctx, targetID, listing.Starts, trainerCopyWindow, p.indoorTypes)
 	if err != nil {
 		return FailureState
 	}

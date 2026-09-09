@@ -571,8 +571,8 @@ func dropTrainerCopies(listings []Listing, starts []time.Time) []Listing {
 		// starts is sorted, so only the neighbours either side of the listing's
 		// own start can fall inside the window.
 		next, _ := slices.BinarySearchFunc(starts, listing.Starts, time.Time.Compare)
-		isCopy := next < len(starts) && starts[next].Sub(listing.Starts).Abs() < trainerCopyWindow ||
-			next > 0 && listing.Starts.Sub(starts[next-1]).Abs() < trainerCopyWindow
+		isCopy := next < len(starts) && starts[next].Sub(listing.Starts).Abs() <= trainerCopyWindow ||
+			next > 0 && listing.Starts.Sub(starts[next-1]).Abs() <= trainerCopyWindow
 		if !isCopy {
 			kept = append(kept, listing)
 		}

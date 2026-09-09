@@ -124,7 +124,7 @@ func (s *fakeZwiftStore) StoreActivity(
 }
 
 func (s *fakeZwiftStore) DeleteTrainerCopy(
-	_ context.Context, _ string, at time.Time, _ time.Duration,
+	_ context.Context, _ string, at time.Time, _ time.Duration, _ []int,
 ) (int, error) {
 	if s.deleteErr != nil {
 		return 0, s.deleteErr
@@ -181,14 +181,14 @@ func zwiftListing(id int64, starts time.Time) Listing {
 
 func newTestZwiftPoller(t *testing.T, source ZwiftSource, store ZwiftStore) *ZwiftPoller {
 	t.Helper()
-	poller, err := NewZwiftPoller(source, store, pollNow)
+	poller, err := NewZwiftPoller(source, store, []int{68}, pollNow)
 	require.NoError(t, err, "NewZwiftPoller()")
 
 	return poller
 }
 
 func TestNewZwiftPollerNeedsItsCollaborators(t *testing.T) {
-	_, err := NewZwiftPoller(nil, newFakeZwiftStore(), pollNow)
+	_, err := NewZwiftPoller(nil, newFakeZwiftStore(), []int{68}, pollNow)
 	require.ErrorContains(t, err, "are required")
 }
 
@@ -373,7 +373,7 @@ func TestZwiftPollStopsFillingWhenTheBudgetIsSpent(t *testing.T) {
 	// The clock is past the budget from the first fill onwards, so the phase
 	// starts none at all and the rides stay awaiting their samples.
 	spent := 0
-	poller, err := NewZwiftPoller(source, store, func() time.Time {
+	poller, err := NewZwiftPoller(source, store, []int{68}, func() time.Time {
 		spent++
 
 		return pollNow().Add(time.Duration(spent) * RecordsBudgetPerPoll)
