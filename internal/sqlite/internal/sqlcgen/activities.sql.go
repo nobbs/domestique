@@ -12,16 +12,17 @@ import (
 )
 
 const activityExists = `-- name: ActivityExists :one
-SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ?)
+SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ? AND provider = ?)
 `
 
 type ActivityExistsParams struct {
 	TargetSlot string
 	WorkoutID  int64
+	Provider   string
 }
 
 func (q *Queries) ActivityExists(ctx context.Context, arg ActivityExistsParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, activityExists, arg.TargetSlot, arg.WorkoutID)
+	row := q.db.QueryRowContext(ctx, activityExists, arg.TargetSlot, arg.WorkoutID, arg.Provider)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -108,6 +109,36 @@ func (q *Queries) DeleteActivitySkip(ctx context.Context, arg DeleteActivitySkip
 	return err
 }
 
+const deleteTrainerCopyActivity = `-- name: DeleteTrainerCopyActivity :execrows
+DELETE FROM activities
+WHERE target_slot = ?1 AND provider = 'wahoo'
+  AND workout_type_id IN (SELECT value FROM json_each(CAST(?2 AS TEXT)))
+  AND started_at_unix >= ?3 AND started_at_unix <= ?4
+`
+
+type DeleteTrainerCopyActivityParams struct {
+	TargetSlot    string
+	IndoorTypeIds string
+	FromUnix      int64
+	ToUnix        int64
+}
+
+// The head unit's copy of an indoor ride Zwift also recorded. Every derived row
+// goes with it through the existing cascades; the skip and listing rows do not,
+// and must not: those mirror the account rather than what is stored.
+func (q *Queries) DeleteTrainerCopyActivity(ctx context.Context, arg DeleteTrainerCopyActivityParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteTrainerCopyActivity,
+		arg.TargetSlot,
+		arg.IndoorTypeIds,
+		arg.FromUnix,
+		arg.ToUnix,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const getActivityRawSummary = `-- name: GetActivityRawSummary :one
 SELECT raw_summary_json
 FROM activities
@@ -178,14 +209,16 @@ const listActivitiesAwaitingRecords = `-- name: ListActivitiesAwaitingRecords :m
 SELECT workout_id, raw_summary_json
 FROM activities
 WHERE target_slot = ?1
+  AND provider = ?2
   AND (records_state = 'pending'
-    OR (records_state = 'stored' AND records_version < ?2))
+    OR (records_state = 'stored' AND records_version < ?3))
 ORDER BY records_state <> 'pending', started_at_unix DESC, workout_id DESC
-LIMIT ?3
+LIMIT ?4
 `
 
 type ListActivitiesAwaitingRecordsParams struct {
 	TargetSlot     string
+	Provider       string
 	RecordsVersion int64
 	RowLimit       int64
 }
@@ -196,7 +229,12 @@ type ListActivitiesAwaitingRecordsRow struct {
 }
 
 func (q *Queries) ListActivitiesAwaitingRecords(ctx context.Context, arg ListActivitiesAwaitingRecordsParams) ([]ListActivitiesAwaitingRecordsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingRecords, arg.TargetSlot, arg.RecordsVersion, arg.RowLimit)
+	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingRecords,
+		arg.TargetSlot,
+		arg.Provider,
+		arg.RecordsVersion,
+		arg.RowLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -220,7 +258,7 @@ func (q *Queries) ListActivitiesAwaitingRecords(ctx context.Context, arg ListAct
 
 const listActivitiesBetween = `-- name: ListActivitiesBetween :many
 SELECT workout_id, workout_type_id, workout_type_location_id, started_at_unix,
-  distance_metres, moving_seconds, elapsed_seconds, ascent_metres
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, provider
 FROM activities
 WHERE target_slot = ?1 AND started_at_unix >= ?2 AND started_at_unix < ?3
 ORDER BY started_at_unix DESC
@@ -243,6 +281,7 @@ type ListActivitiesBetweenRow struct {
 	MovingSeconds         float64
 	ElapsedSeconds        float64
 	AscentMetres          float64
+	Provider              string
 }
 
 func (q *Queries) ListActivitiesBetween(ctx context.Context, arg ListActivitiesBetweenParams) ([]ListActivitiesBetweenRow, error) {
@@ -268,6 +307,7 @@ func (q *Queries) ListActivitiesBetween(ctx context.Context, arg ListActivitiesB
 			&i.MovingSeconds,
 			&i.ElapsedSeconds,
 			&i.AscentMetres,
+			&i.Provider,
 		); err != nil {
 			return nil, err
 		}
@@ -283,11 +323,16 @@ func (q *Queries) ListActivitiesBetween(ctx context.Context, arg ListActivitiesB
 }
 
 const listActivityIDs = `-- name: ListActivityIDs :many
-SELECT workout_id FROM activities WHERE target_slot = ? ORDER BY workout_id
+SELECT workout_id FROM activities WHERE target_slot = ? AND provider = ? ORDER BY workout_id
 `
 
-func (q *Queries) ListActivityIDs(ctx context.Context, targetSlot string) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listActivityIDs, targetSlot)
+type ListActivityIDsParams struct {
+	TargetSlot string
+	Provider   string
+}
+
+func (q *Queries) ListActivityIDs(ctx context.Context, arg ListActivityIDsParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityIDs, arg.TargetSlot, arg.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -671,6 +716,37 @@ func (q *Queries) ListActivityTrack(ctx context.Context, arg ListActivityTrackPa
 	return items, nil
 }
 
+const listIndoorRideStarts = `-- name: ListIndoorRideStarts :many
+SELECT started_at_unix FROM activities
+WHERE target_slot = ? AND provider = 'zwift'
+ORDER BY started_at_unix
+`
+
+// Zwift rides alone: a Wahoo listing starting within a minute of one of these
+// is the head unit's copy of that same indoor ride.
+func (q *Queries) ListIndoorRideStarts(ctx context.Context, targetSlot string) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listIndoorRideStarts, targetSlot)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var started_at_unix int64
+		if err := rows.Scan(&started_at_unix); err != nil {
+			return nil, err
+		}
+		items = append(items, started_at_unix)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecordedActivities = `-- name: ListRecordedActivities :many
 SELECT target_slot, workout_id, ascent_metres, distance_metres, moving_seconds
 FROM activities
@@ -752,11 +828,12 @@ func (q *Queries) MarkActivityRecordsUnreadable(ctx context.Context, arg MarkAct
 	return err
 }
 
-const upsertActivity = `-- name: UpsertActivity :exec
+const upsertActivity = `-- name: UpsertActivity :execrows
 INSERT INTO activities (
   target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
-  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix,
+  provider
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   workout_type_id = excluded.workout_type_id,
   workout_type_location_id = excluded.workout_type_location_id,
@@ -767,6 +844,7 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   ascent_metres = excluded.ascent_metres,
   raw_summary_json = excluded.raw_summary_json,
   updated_at_unix = excluded.updated_at_unix
+WHERE activities.provider = excluded.provider
 `
 
 type UpsertActivityParams struct {
@@ -781,10 +859,13 @@ type UpsertActivityParams struct {
 	AscentMetres          float64
 	RawSummaryJson        []byte
 	UpdatedAtUnix         int64
+	Provider              string
 }
 
-func (q *Queries) UpsertActivity(ctx context.Context, arg UpsertActivityParams) error {
-	_, err := q.db.ExecContext(ctx, upsertActivity,
+// Zero rows means the stored row belongs to another provider: two id spaces
+// share this key, so a collision fails loudly rather than overwriting a ride.
+func (q *Queries) UpsertActivity(ctx context.Context, arg UpsertActivityParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, upsertActivity,
 		arg.TargetSlot,
 		arg.WorkoutID,
 		arg.WorkoutTypeID,
@@ -796,8 +877,12 @@ func (q *Queries) UpsertActivity(ctx context.Context, arg UpsertActivityParams) 
 		arg.AscentMetres,
 		arg.RawSummaryJson,
 		arg.UpdatedAtUnix,
+		arg.Provider,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const upsertActivitySession = `-- name: UpsertActivitySession :exec

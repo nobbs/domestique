@@ -1,4 +1,4 @@
-h1:4Yu4PFf3Lk4EU15MblRW6zr5hqGIx3GNX1n4bVXQFtw=
+h1:r657Kw2OlPh/PPTy2+R9L3E2+8dq+KexZO0Jx8EY78o=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -53,3 +53,5 @@ h1:4Yu4PFf3Lk4EU15MblRW6zr5hqGIx3GNX1n4bVXQFtw=
 000052_rider_credentials.up.sql h1:4ubenNYFiOeJskWcs0P22fryvbkgKSK/V3kSCAaOY7w=
 000053_activity_session.down.sql h1:h726jFuj+IAQCcF9UTSMGvfUU4oVsj95fllOvlX4p8w=
 000053_activity_session.up.sql h1:Dz7ZxHMXcIVtNlSKTl6iQH9ZaxIQqi26pEF/3vqpi1Y=
+000054_activity_provider.down.sql h1:BjIyJvVAr1MFq0AyKpVpnHCaMwL/4z5WJ94uzwqSTZU=
+000054_activity_provider.up.sql h1:SKtg3jDFNa9UWMy7e/GmuxVTSEe+hSElye39ZeCrgWw=

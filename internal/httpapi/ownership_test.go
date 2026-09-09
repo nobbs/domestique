@@ -228,10 +228,10 @@ func TestStartOAuthAllowsAdminToStartAnotherExistingTarget(t *testing.T) {
 	assert.Equal(t, "rider-b", oauthService.targetID)
 }
 
-// A non-admin's own target sync and activity poll are accepted: they are the
+// A non-admin's own target sync and activity polls are accepted: they are the
 // only tasks they may start at all.
 func TestRunTaskAllowsNonAdminToRunTheirOwnTarget(t *testing.T) {
-	for _, name := range []string{TaskSyncTarget, TaskActivityPoll} {
+	for _, name := range []string{TaskSyncTarget, TaskActivityPoll, TaskZwiftPoll} {
 		t.Run(name, func(t *testing.T) {
 			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
 			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
@@ -278,7 +278,7 @@ func TestRunTaskRefusesSyncClearOverTheOwnTargetForNonAdmin(t *testing.T) {
 // A non-admin cannot start sync:target/sync:clear against another subject's
 // target, nor run it over every target by leaving the argument empty.
 func TestRunTaskRefusesAnotherSubjectsTargetForNonAdmin(t *testing.T) {
-	for _, name := range []string{TaskSyncTarget, TaskSyncClear, TaskActivityPoll} {
+	for _, name := range []string{TaskSyncTarget, TaskSyncClear, TaskActivityPoll, TaskZwiftPoll} {
 		t.Run(name, func(t *testing.T) {
 			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
 			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)
@@ -294,7 +294,7 @@ func TestRunTaskRefusesAnotherSubjectsTargetForNonAdmin(t *testing.T) {
 // Leaving the argument empty runs a target-scoped task over every target, which
 // only an admin may ask for.
 func TestRunTaskRefusesAnEmptyArgumentForNonAdmin(t *testing.T) {
-	for _, name := range []string{TaskSyncTarget, TaskActivityPoll} {
+	for _, name := range []string{TaskSyncTarget, TaskActivityPoll, TaskZwiftPoll} {
 		t.Run(name, func(t *testing.T) {
 			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
 			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, tasks)

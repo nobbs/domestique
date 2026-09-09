@@ -23,6 +23,7 @@ type Activity struct {
 	RecordsState          string
 	FitChecksumFailed     int64
 	RecordsVersion        int64
+	Provider              string
 }
 
 type ActivityClimbAttempt struct {

@@ -267,3 +267,15 @@ func riderValue(value sql.NullFloat64) rider.Value {
 func nullRiderValue(value rider.Value) sql.NullFloat64 {
 	return sql.NullFloat64{Float64: value.Number, Valid: value.Set}
 }
+
+// RiderZwiftCredentials are one rider's own Zwift email and password, each
+// empty when they have not entered it. The only read of a rider credential
+// outside the poll that spends it.
+func (s *Store) RiderZwiftCredentials(ctx context.Context, subject string) (email, password []byte, err error) {
+	credentials, err := s.RiderCredentials(ctx, subject)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return credentials[rider.CredentialZwiftEmail].Bytes(), credentials[rider.CredentialZwiftPassword].Bytes(), nil
+}

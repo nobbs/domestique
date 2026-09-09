@@ -38,13 +38,29 @@ const MaxRecordsPerPoll = 200
 // 2: the file's session figures and totals.
 const RecordsVersion = 2
 
+// The upstreams a recorded activity is read from. A provider is a label on a
+// stored ride, never a guard: what a ride is asked about follows its workout
+// type, so a Wahoo trainer ride and a Zwift one are treated alike.
+const (
+	ProviderWahoo = "wahoo"
+	ProviderZwift = "zwift"
+)
+
+// trainerCopyWindow is how close two starts must be for one to be the head
+// unit's copy of an indoor ride Zwift also recorded. One ride, two recorders
+// started by hand seconds apart.
+const trainerCopyWindow = time.Minute
+
 // Listing is one recorded activity as the rider's account lists it.
 type Listing struct {
 	Starts time.Time
 	// Summary is the summary the account's listing itself carried, or nil. Only
 	// a fresh reading of the account carries one; the store keeps listings
 	// without it.
-	Summary    *Summary
+	Summary *Summary
+	// Provider is which upstream listed this activity. Empty means Wahoo, the
+	// only provider that predates the column.
+	Provider   string
 	ID         int64
 	TypeID     int
 	LocationID int
@@ -98,7 +114,9 @@ type PendingActivity struct {
 // Stored is one recorded activity as the read model serves it: the listing and
 // the summary totals, without the provider's own summary document.
 type Stored struct {
-	StartedAt      time.Time
+	StartedAt time.Time
+	// Provider is which upstream recorded this ride.
+	Provider       string
 	ID             int64
 	DistanceMetres float64
 	MovingSeconds  float64
@@ -183,9 +201,12 @@ type Store interface {
 // it has yet to store, kept apart so neither half grows past what one reader
 // can hold.
 type listingStore interface {
-	KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error)
+	KnownActivityIDs(ctx context.Context, targetID, provider string) ([]int64, error)
+	// IndoorRideStarts are the start times of the target's stored Zwift rides,
+	// which is what tells a Wahoo listing that is the head unit's copy of one.
+	IndoorRideStarts(ctx context.Context, targetID string) ([]time.Time, error)
 	// ActivityStored reports one activity's presence without listing the rest.
-	ActivityStored(ctx context.Context, targetID string, id int64) (bool, error)
+	ActivityStored(ctx context.Context, targetID string, id int64, provider string) (bool, error)
 	// ActivityListings are the activities the account holds, oldest first, as
 	// the last full reading of it left them, and when that reading was taken.
 	// The order is what a poll fills from; it does not sort them again.
@@ -201,7 +222,10 @@ type recordStore interface {
 	// absent, newest first, followed by the stored activities whose samples
 	// predate recordsVersion, also newest first, so a fresh ride never waits
 	// behind a backfill and a schema re-read never outpaces the first download.
-	ActivitiesAwaitingRecords(ctx context.Context, targetID string, recordsVersion, limit int) ([]PendingActivity, error)
+	// Only one provider's rides: each poller downloads from the upstream that
+	// recorded them, and a summary belongs to the shape that wrote it.
+	ActivitiesAwaitingRecords(ctx context.Context, targetID, provider string,
+		recordsVersion, limit int) ([]PendingActivity, error)
 	StoreActivityRecords(ctx context.Context, targetID string, id int64, fit FIT, recordsVersion int) error
 	MarkActivityUnreadable(ctx context.Context, targetID string, id int64) error
 }
@@ -275,15 +299,18 @@ type Poller struct {
 	source Source
 	store  Store
 	now    func() time.Time
+	// indoorTypes are the workout types a head unit's copy of a trainer ride is
+	// recorded under; only such a listing can be the copy of a stored Zwift ride.
+	indoorTypes []int
 }
 
 // NewPoller builds a poller over its source and store.
-func NewPoller(source Source, store Store, now func() time.Time) (*Poller, error) {
-	if source == nil || store == nil || now == nil {
-		return nil, errors.New("activity: a source, a store and a clock are required")
+func NewPoller(source Source, store Store, indoorTypes []int, now func() time.Time) (*Poller, error) {
+	if source == nil || store == nil || now == nil || len(indoorTypes) == 0 {
+		return nil, errors.New("activity: a source, a store, the indoor workout types and a clock are required")
 	}
 
-	return &Poller{source: source, store: store, now: now}, nil
+	return &Poller{source: source, store: store, indoorTypes: indoorTypes, now: now}, nil
 }
 
 // Poll stores a summary for every activity of one target this service has not
@@ -389,7 +416,7 @@ func deferred(skips []Skip, now time.Time) []int64 {
 // RecordsVersion, both newest first, until RecordsBudgetPerPoll is spent or
 // MaxRecordsPerPoll are done. It reports how many it stored and marked unreadable.
 func (p *Poller) fillRecords(ctx context.Context, targetID string) (stored, unreadable int, failure Failure) {
-	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, RecordsVersion, MaxRecordsPerPoll)
+	pending, err := p.store.ActivitiesAwaitingRecords(ctx, targetID, ProviderWahoo, RecordsVersion, MaxRecordsPerPoll)
 	if err != nil {
 		return 0, 0, FailureState
 	}
@@ -521,12 +548,45 @@ func (p *Poller) pending(
 		listings = fresh
 	}
 
-	known, knownErr := p.store.KnownActivityIDs(ctx, targetID)
+	known, knownErr := p.store.KnownActivityIDs(ctx, targetID, ProviderWahoo)
 	if knownErr != nil {
 		return nil, requests, FailureState
 	}
+	// Read once per poll, and before any summary request: the copy costs no
+	// quota, and it is also what stops it being stored again after a Zwift poll
+	// removed it — the kept listings go on mirroring the account, correctly.
+	starts, startsErr := p.store.IndoorRideStarts(ctx, targetID)
+	if startsErr != nil {
+		return nil, requests, FailureState
+	}
 
-	return unstored(p.recordable(listings), known), requests, FailureNone
+	return dropTrainerCopies(unstored(p.recordable(listings), known), starts, p.indoorTypes), requests, FailureNone
+}
+
+// dropTrainerCopies is the listings that are not the head unit's recording of
+// an indoor ride already stored from Zwift.
+func dropTrainerCopies(listings []Listing, starts []time.Time, indoorTypes []int) []Listing {
+	if len(starts) == 0 {
+		return listings
+	}
+	kept := make([]Listing, 0, len(listings))
+	for _, listing := range listings {
+		if !slices.Contains(indoorTypes, listing.TypeID) {
+			kept = append(kept, listing)
+
+			continue
+		}
+		// starts is sorted, so only the neighbours either side of the listing's
+		// own start can fall inside the window.
+		next, _ := slices.BinarySearchFunc(starts, listing.Starts, time.Time.Compare)
+		isCopy := next < len(starts) && starts[next].Sub(listing.Starts).Abs() <= trainerCopyWindow ||
+			next > 0 && listing.Starts.Sub(starts[next-1]).Abs() <= trainerCopyWindow
+		if !isCopy {
+			kept = append(kept, listing)
+		}
+	}
+
+	return kept
 }
 
 // carrying is the kept listings with the summaries the account's first page

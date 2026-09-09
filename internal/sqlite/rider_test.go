@@ -436,3 +436,25 @@ func TestRiderSuggestionsReportAnUnreadableStoppingCorpus(t *testing.T) {
 		t.Context(), []string{"rider-a"}, outdoorTypes(), activityNow())
 	require.ErrorContains(t, err, "reading the recorded ride summaries")
 }
+
+// The poll reads the two Zwift names alone, and a rider who has entered
+// neither has an empty pair rather than an error.
+func TestRiderZwiftCredentialsReadsBothNames(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+
+	email, password, err := store.RiderZwiftCredentials(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderZwiftCredentials()")
+	assert.Empty(t, email, "an unentered email")
+	assert.Empty(t, password, "an unentered password")
+
+	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
+		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("rider@example.test")),
+		rider.CredentialZwiftPassword: rider.NewCredential([]byte("hunter2")),
+	}), "SetRiderCredentials()")
+
+	email, password, err = store.RiderZwiftCredentials(t.Context(), "rider-a")
+	require.NoError(t, err, "RiderZwiftCredentials()")
+	assert.Equal(t, []byte("rider@example.test"), email)
+	assert.Equal(t, []byte("hunter2"), password)
+}

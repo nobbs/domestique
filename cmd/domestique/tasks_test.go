@@ -737,6 +737,56 @@ func TestActivityPollTaskHoldsOnlyTheActivities(t *testing.T) {
 	assert.Equal(t, []string{"rider-a"}, poller.polled, "polled")
 }
 
+// The Zwift poll writes the same activity rows the Wahoo one does, and removes
+// the head unit's copy of a ride it stores, so it holds the same resource.
+func TestZwiftPollTaskHoldsTheActivitiesExclusively(t *testing.T) {
+	t.Parallel()
+
+	poller := &fakePoller{results: map[string]activity.Result{"rider-a": {Outcome: activity.Polled, Stored: 1}}}
+	definition := zwiftPollTask(poller, allEnabled, func() []string { return []string{"rider-a"} })
+
+	assert.Equal(t, taskZwiftPoll, definition.Name, "name")
+	assert.Equal(t,
+		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
+		definition.Resources(""),
+		"resources",
+	)
+	assert.Equal(t, []string{"rider-a"}, definition.FanOut(), "fan-out")
+	assert.Equal(t, zwiftPollInterval, definition.InitialDelay(), "InitialDelay()")
+	at := time.Date(2026, time.August, 30, 9, 0, 0, 0, time.UTC)
+	assert.Equal(t, at.Add(zwiftPollInterval), definition.Schedule.NextFire(at), "NextFire()")
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskZwiftPoll, Argument: "rider-a"})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	assert.Equal(t, []string{"rider-a"}, poller.polled, "polled")
+}
+
+// No argument is every slot, exactly as the Wahoo poll's is.
+func TestZwiftPollTaskWithoutAnArgumentPollsEveryTarget(t *testing.T) {
+	t.Parallel()
+
+	poller := &fakePoller{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Polled},
+		"rider-b": {Outcome: activity.NotReady},
+	}}
+	definition := zwiftPollTask(poller, allEnabled, func() []string { return []string{"rider-a", "rider-b"} })
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskZwiftPoll})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	assert.Equal(t, []string{"rider-a", "rider-b"}, poller.polled, "every slot was polled")
+}
+
+// A rider who has entered no Zwift credentials is skipped rather than failed.
+func TestZwiftPollTaskReportsARiderWithNoCredentialsAsNotReady(t *testing.T) {
+	t.Parallel()
+
+	poller := &fakePoller{results: map[string]activity.Result{"rider-a": {Outcome: activity.NotReady}}}
+	definition := zwiftPollTask(poller, allEnabled, func() []string { return []string{"rider-a"} })
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskZwiftPoll, Argument: "rider-a"})
+	assert.Equal(t, task.NotReady, result.Outcome, "outcome")
+}
+
 // No argument is every slot, and one slot's failure neither hides the others nor
 // is hidden by them.
 func TestActivityPollTaskWithoutAnArgumentPollsEveryTarget(t *testing.T) {
@@ -1136,7 +1186,7 @@ func (d *fakeDeriver) Derive(_ context.Context, targetID string) activity.Result
 	return d.results[targetID]
 }
 
-// The derivation follows both readers of recorded samples and holds the same
+// The derivation follows every reader of recorded samples and holds the same
 // resource, so a ride whose FIT has just landed is derived on the same cycle
 // and never while the rows it reads are being written.
 func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) {
@@ -1146,7 +1196,8 @@ func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) 
 	definition := activityDeriveTask(deriver, allEnabled, func() []string { return []string{"rider-a"} })
 
 	assert.Equal(t, taskActivityDerive, definition.Name, "name")
-	assert.ElementsMatch(t, []string{taskActivityPoll, taskActivityRecord}, definition.Follows, "follows")
+	assert.ElementsMatch(t,
+		[]string{taskActivityPoll, taskActivityRecord, taskZwiftPoll}, definition.Follows, "follows")
 	assert.Equal(t,
 		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
 		definition.Resources(""),

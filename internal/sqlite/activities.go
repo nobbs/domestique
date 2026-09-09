@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -16,10 +17,11 @@ import (
 	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 )
 
-// ActivityStored reports whether one Wahoo workout is already stored for a
-// target, without reading the rest of the target's activities.
-func (s *Store) ActivityStored(ctx context.Context, targetID string, id int64) (bool, error) {
-	stored, err := s.queries.ActivityExists(ctx, sqlcgen.ActivityExistsParams{TargetSlot: targetID, WorkoutID: id})
+// ActivityStored reports whether one provider's activity is already stored for
+// a target, without reading the rest of the target's activities.
+func (s *Store) ActivityStored(ctx context.Context, targetID string, id int64, provider string) (bool, error) {
+	stored, err := s.queries.ActivityExists(ctx,
+		sqlcgen.ActivityExistsParams{TargetSlot: targetID, WorkoutID: id, Provider: provider})
 	if err != nil {
 		return false, fmt.Errorf("reading whether an activity is stored: %w", err)
 	}
@@ -27,10 +29,10 @@ func (s *Store) ActivityStored(ctx context.Context, targetID string, id int64) (
 	return stored, nil
 }
 
-// KnownActivityIDs are the Wahoo workout IDs already stored for one target,
-// which is what a poll compares the account's listing against.
-func (s *Store) KnownActivityIDs(ctx context.Context, targetID string) ([]int64, error) {
-	ids, err := s.queries.ListActivityIDs(ctx, targetID)
+// KnownActivityIDs are one provider's activity ids already stored for one
+// target, which is what that provider's poll compares its listing against.
+func (s *Store) KnownActivityIDs(ctx context.Context, targetID, provider string) ([]int64, error) {
+	ids, err := s.queries.ListActivityIDs(ctx, sqlcgen.ListActivityIDsParams{TargetSlot: targetID, Provider: provider})
 	if err != nil {
 		return nil, fmt.Errorf("reading stored activity ids: %w", err)
 	}
@@ -49,7 +51,7 @@ func (s *Store) StoreActivity(
 	}
 
 	return s.withTx(ctx, "activity", func(queries *sqlcgen.Queries) error {
-		if err := queries.UpsertActivity(ctx, sqlcgen.UpsertActivityParams{
+		written, err := queries.UpsertActivity(ctx, sqlcgen.UpsertActivityParams{
 			TargetSlot:            targetID,
 			WorkoutID:             listing.ID,
 			WorkoutTypeID:         int64(listing.TypeID),
@@ -61,8 +63,13 @@ func (s *Store) StoreActivity(
 			AscentMetres:          summary.AscentMetres,
 			RawSummaryJson:        summary.Raw,
 			UpdatedAtUnix:         now.Unix(),
-		}); err != nil {
+			Provider:              cmp.Or(listing.Provider, activity.ProviderWahoo),
+		})
+		if err != nil {
 			return fmt.Errorf("recording an activity: %w", err)
+		}
+		if written == 0 {
+			return fmt.Errorf("%w: activity %d of %s", ErrActivityProviderConflict, listing.ID, targetID)
 		}
 		if err := queries.DeleteActivitySkip(ctx, sqlcgen.DeleteActivitySkipParams{TargetSlot: targetID, WorkoutID: listing.ID}); err != nil {
 			return fmt.Errorf("forgetting an activity skip: %w", err)
@@ -195,6 +202,7 @@ func (s *Store) ActivitiesBetween(
 			AscentMetres:   row.AscentMetres,
 			TypeID:         int(row.WorkoutTypeID),
 			LocationID:     int(row.WorkoutTypeLocationID),
+			Provider:       row.Provider,
 		})
 	}
 
@@ -283,13 +291,14 @@ func reading(column sql.NullFloat64) activity.Reading {
 // samples are still absent, newest first, followed by the activities whose
 // samples predate recordsVersion, also newest first, at most limit of them.
 func (s *Store) ActivitiesAwaitingRecords(
-	ctx context.Context, targetID string, recordsVersion, limit int,
+	ctx context.Context, targetID, provider string, recordsVersion, limit int,
 ) ([]activity.PendingActivity, error) {
 	if targetID == "" || limit <= 0 {
 		return nil, errors.New("a target and a positive limit are required")
 	}
 	rows, err := s.queries.ListActivitiesAwaitingRecords(ctx, sqlcgen.ListActivitiesAwaitingRecordsParams{
 		TargetSlot:     targetID,
+		Provider:       cmp.Or(provider, activity.ProviderWahoo),
 		RecordsVersion: int64(recordsVersion),
 		RowLimit:       int64(limit),
 	})
@@ -580,12 +589,8 @@ func (s *Store) ActivityRides(
 	if len(workoutTypeIDs) == 0 {
 		return nil, nil
 	}
-	types := make([]int64, len(workoutTypeIDs))
-	for index, id := range workoutTypeIDs {
-		types[index] = int64(id)
-	}
 	rows, err := s.queries.ListActivityRides(ctx, sqlcgen.ListActivityRidesParams{
-		SinceUnix: since.Unix(), WorkoutTypeIds: types,
+		SinceUnix: since.Unix(), WorkoutTypeIds: int64s(workoutTypeIDs),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("reading activities for calibration: %w", err)
@@ -665,4 +670,66 @@ func (s *Store) RecordedRides(ctx context.Context) ([]RecordedRide, error) {
 	}
 
 	return rides, nil
+}
+
+// ErrActivityProviderConflict reports a stored activity whose provider is not
+// the one writing it. Two id spaces share the activity key, so a collision is
+// refused rather than allowed to overwrite another upstream's ride.
+var ErrActivityProviderConflict = errors.New("an activity of this id belongs to another provider")
+
+// IndoorRideStarts are the start times of one target's stored Zwift rides,
+// which is what tells a Wahoo listing that is the head unit's copy of one.
+func (s *Store) IndoorRideStarts(ctx context.Context, targetID string) ([]time.Time, error) {
+	rows, err := s.queries.ListIndoorRideStarts(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("reading indoor ride starts: %w", err)
+	}
+	starts := make([]time.Time, 0, len(rows))
+	for _, unix := range rows {
+		starts = append(starts, time.Unix(unix, 0).UTC())
+	}
+
+	return starts, nil
+}
+
+// DeleteTrainerCopy removes the Wahoo activities that started within window of
+// at, and reports how many went. Everything derived from them goes with them
+// through the schema's cascades; the skip and listing rows do not, because
+// those mirror the account rather than what is stored.
+func (s *Store) DeleteTrainerCopy(
+	ctx context.Context, targetID string, at time.Time, window time.Duration, indoorTypeIDs []int,
+) (int, error) {
+	removed, err := s.queries.DeleteTrainerCopyActivity(ctx, sqlcgen.DeleteTrainerCopyActivityParams{
+		TargetSlot:    targetID,
+		IndoorTypeIds: typeIDList(indoorTypeIDs),
+		FromUnix:      at.Add(-window).Unix(),
+		ToUnix:        at.Add(window).Unix(),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("removing a trainer copy of an indoor ride: %w", err)
+	}
+
+	return int(removed), nil
+}
+
+// int64s widens workout type ids for a query binding.
+func int64s(values []int) []int64 {
+	widened := make([]int64, len(values))
+	for index, value := range values {
+		widened[index] = int64(value)
+	}
+
+	return widened
+}
+
+// typeIDList renders workout type ids as the JSON array json_each reads. A
+// bound list rather than sqlc.slice: SQLite numbers the other placeholders, and
+// an expanded slice before a LIMIT would take their indices.
+func typeIDList(values []int) string {
+	rendered := make([]string, len(values))
+	for index, value := range values {
+		rendered[index] = strconv.Itoa(value)
+	}
+
+	return "[" + strings.Join(rendered, ",") + "]"
 }

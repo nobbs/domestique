@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/wahoo"
+	"github.com/nobbs/domestique/internal/zwift"
 )
 
 // signInProvider is a thin forwarding adapter to *auth0.Client; these exercise
@@ -253,4 +257,180 @@ func TestWebhookTokensVerifyOnlyTheConfiguredToken(t *testing.T) {
 			assert.Equal(t, expected.verified, verified)
 		})
 	}
+}
+
+// newZwiftTestProvider points a Zwift provider at a local test server, which is
+// the only thing here that ever answers it.
+func newZwiftTestProvider(t *testing.T, server *httptest.Server) zwiftProvider {
+	t.Helper()
+	client, err := zwift.New(&zwift.Options{
+		AuthBaseURL: server.URL,
+		APIBaseURL:  server.URL,
+		Transport:   server.Client().Transport,
+		Timeout:     5 * time.Second,
+	})
+	require.NoError(t, err, "zwift.New()")
+
+	return zwiftProvider{client: client}
+}
+
+// zwiftListingEntry is one activity as Zwift's listing serves it, narrowed to
+// the fields this adapter reads.
+func zwiftListingEntry(id, sport string) map[string]any {
+	return map[string]any{
+		"id_str": id, "sport": sport,
+		"startDate": "2026-04-01T06:30:00.000+0000", "endDate": "2026-04-01T07:35:00.000+0000",
+		"movingTimeInMs": 3_600_000, "distanceInMeters": 30_000.0, "totalElevation": 120.0,
+		"fitFileBucket": "test-bucket", "fitFileKey": "rides/1.fit",
+		"socialInteractions": map[string]any{"other": "riders"},
+	}
+}
+
+// Zwift's word for a ride stops at this adapter: a listed ride reaches the
+// activity package as an indoor virtual ride carrying its own summary, and a
+// run on the treadmill is not one this service records.
+func TestZwiftProviderListsCyclingAsIndoorVirtualRides(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/auth/realms/zwift/tokens/access/codes":
+			writeTestJSON(t, writer, map[string]any{
+				"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600,
+			})
+		case "/api/profiles/me":
+			writeTestJSON(t, writer, map[string]any{"id": 4711})
+		case "/api/profiles/4711/activities":
+			assert.Equal(t, "30", request.URL.Query().Get("start"), "start")
+			writeTestJSON(t, writer, []map[string]any{
+				zwiftListingEntry("1461969115156611104", "CYCLING"),
+				zwiftListingEntry("1461969115156611105", "RUNNING"),
+			})
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	reader, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
+	require.NoError(t, err, "SignIn()")
+
+	listings, held, err := reader.ListActivities(t.Context(), 30, 30)
+	require.NoError(t, err, "ListActivities()")
+	assert.Equal(t, 2, held, "the page held both, cycling or not")
+	require.Len(t, listings, 1, "only the ride is recorded")
+	assert.Equal(t, int64(1461969115156611104), listings[0].ID, "the id comes from id_str, unrounded")
+	assert.Equal(t, wahoo.WorkoutTypeBikingIndoorVirtual, listings[0].TypeID, "the indoor virtual type")
+	assert.Zero(t, listings[0].LocationID, "a virtual world is nowhere")
+	assert.Equal(t, activity.ProviderZwift, listings[0].Provider, "provider")
+	require.NotNil(t, listings[0].Summary, "the listing entry carries its own summary")
+	assert.InDelta(t, 30_000.0, listings[0].Summary.DistanceMetres, 1e-9, "distance")
+	assert.InDelta(t, 3_600.0, listings[0].Summary.MovingSeconds, 1e-9, "moving seconds")
+	assert.InDelta(t, 3_900.0, listings[0].Summary.ElapsedSeconds, 1e-9, "elapsed seconds")
+	assert.InDelta(t, 120.0, listings[0].Summary.AscentMetres, 1e-9, "ascent")
+	assert.NotContains(t, string(listings[0].Summary.Raw), "socialInteractions",
+		"the stored document is this service's own, never Zwift's body")
+}
+
+func TestZwiftProviderReportsARefusedSignIn(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	provider := newZwiftTestProvider(t, server)
+	_, err := provider.SignIn(t.Context(), []byte("rider@example.test"), []byte("wrong"))
+	require.ErrorContains(t, err, "signing in to Zwift")
+	assert.True(t, provider.IsUnauthorized(err), "a refused grant is an authorization failure")
+	assert.False(t, provider.IsUnreadable(err), "and not one activity's own")
+}
+
+// A signed-in rider whose profile cannot be read has no handle to list by.
+func TestZwiftProviderReportsAProfileThatCouldNotBeRead(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/api/profiles/me" {
+			writer.WriteHeader(http.StatusInternalServerError)
+
+			return
+		}
+		writeTestJSON(t, writer, map[string]any{
+			"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600,
+		})
+	}))
+	defer server.Close()
+
+	_, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
+	require.ErrorContains(t, err, "reading the Zwift player id")
+}
+
+func TestZwiftProviderReportsAListingThatFailed(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/api/profiles/me":
+			writeTestJSON(t, writer, map[string]any{"id": 4711})
+		case "/api/profiles/4711/activities":
+			writer.WriteHeader(http.StatusTooManyRequests)
+		default:
+			writeTestJSON(t, writer, map[string]any{
+				"access_token": "access-token", "refresh_token": "refresh-token", "expires_in": 3600,
+			})
+		}
+	}))
+	defer server.Close()
+
+	reader, err := newZwiftTestProvider(t, server).SignIn(t.Context(), []byte("rider@example.test"), []byte("hunter2"))
+	require.NoError(t, err, "SignIn()")
+
+	_, _, err = reader.ListActivities(t.Context(), 0, 30)
+	require.ErrorContains(t, err, "listing Zwift activities")
+}
+
+// Where the FIT file sits is this service's own stored shape, written by the
+// adapter, so it is read back here rather than anywhere the activity package
+// can see.
+func TestZwiftProviderDownloadRefusesASummaryThatNamesNoFile(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+	provider := newZwiftTestProvider(t, server)
+
+	_, err := provider.DownloadActivityFIT(t.Context(), activity.Summary{Raw: []byte("not json")})
+	require.ErrorIs(t, err, activity.ErrNoActivityFile)
+
+	_, err = provider.DownloadActivityFIT(t.Context(),
+		activity.Summary{Raw: []byte(`{"id_str":"1","startDate":"2026-04-01T06:30:00.000+0000"}`)})
+	require.ErrorIs(t, err, activity.ErrNoActivityFile)
+	require.ErrorContains(t, err, "does not name a file")
+}
+
+// The file is a public S3 object; anywhere else is refused by the client rather
+// than followed.
+func TestZwiftProviderDownloadRefusesAForeignHost(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := newZwiftTestProvider(t, server).DownloadActivityFIT(t.Context(), activity.Summary{
+		Raw: []byte(`{"id_str":"1","startDate":"2026-04-01T06:30:00.000+0000",` +
+			`"fitFileBucket":"bucket.example.test/x","fitFileKey":"a.fit"}`),
+	})
+	require.ErrorContains(t, err, "downloading a Zwift activity file")
+}
+
+func writeTestJSON(t *testing.T, writer http.ResponseWriter, body any) {
+	t.Helper()
+	writer.Header().Set("Content-Type", "application/json")
+	require.NoError(t, json.NewEncoder(writer).Encode(body), "encoding a test response")
 }

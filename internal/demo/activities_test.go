@@ -9,6 +9,7 @@ import (
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/demo"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/wahoo"
 )
 
 // rideByID is one synthetic ride, which every test here names rather than
@@ -176,7 +177,7 @@ func TestSeededRidesDeriveTrainingNumbersAgainstTheSeededProfile(t *testing.T) {
 	t.Parallel()
 
 	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
-	deriver, err := activity.NewDeriver(store, nil, nil, seededAt)
+	deriver, err := activity.NewDeriver(store, nil, nil, wahoo.IndoorWorkoutTypes(), seededAt)
 	require.NoError(t, err)
 
 	result := deriver.Derive(t.Context(), "rider-a")

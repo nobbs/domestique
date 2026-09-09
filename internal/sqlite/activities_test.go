@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +22,7 @@ func TestKnownActivityIDsIsEmptyForATargetWithNoActivities(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Empty(t, ids)
 }
@@ -37,7 +38,7 @@ func TestStoreActivityKeepsEachTargetsActivitiesApart(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 	require.NoError(t, storeTestActivity(t, store, "rider-b", 2, 200), "StoreActivity()")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Equal(t, []int64{1}, ids)
 }
@@ -52,7 +53,7 @@ func TestStoreActivityOverwritesAPriorSummary(t *testing.T) {
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 250), "StoreActivity() again")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Equal(t, []int64{1}, ids, "the second read added a row instead of replacing one")
 
@@ -79,7 +80,7 @@ func TestKnownActivityIDsReportsAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	_, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.ErrorContains(t, err, "reading stored activity ids")
 }
 
@@ -119,7 +120,7 @@ func TestASkippedActivityIsNotAStoredOne(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, store.RecordActivitySkip(t.Context(), "rider-a", 7, "HTTP 404", activityNow()), "RecordActivitySkip()")
 
-	ids, err := store.KnownActivityIDs(t.Context(), "rider-a")
+	ids, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
 	require.NoError(t, err, "KnownActivityIDs()")
 	assert.Empty(t, ids, "a skip was reported as a known activity")
 	stored, err := store.ActivitiesBetween(t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
@@ -301,7 +302,7 @@ func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	require.Len(t, pending, 1)
 	assert.Equal(t, int64(1), pending[0].ID)
@@ -333,7 +334,7 @@ func TestStoreActivityRecordsWritesSamplesAndSettlesTheActivity(t *testing.T) {
 	assert.Equal(t, "stored", state)
 	assert.Equal(t, 1, checksumFailed)
 
-	pending, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
+	pending, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords() again")
 	assert.Empty(t, pending, "a settled activity must no longer be awaiting records")
 }
@@ -370,7 +371,7 @@ func TestActivityRecordsCascadeAndStayWithTheirTarget(t *testing.T) {
 		Records: []activity.Record{{Time: activityNow()}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-b", activity.RecordsVersion, 10)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-b", "wahoo", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	require.Len(t, pending, 1, "another rider's activity was settled")
 
@@ -392,11 +393,15 @@ func TestActivityStoredAnswersForOneRide(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 7, 42_000), "StoreActivity()")
 
-	stored, err := store.ActivityStored(t.Context(), "rider-a", 7)
+	stored, err := store.ActivityStored(t.Context(), "rider-a", 7, activity.ProviderWahoo)
 	require.NoError(t, err, "ActivityStored()")
 	assert.True(t, stored)
-	other, err := store.ActivityStored(t.Context(), "rider-a", 8)
+	other, err := store.ActivityStored(t.Context(), "rider-a", 8, activity.ProviderWahoo)
 	require.NoError(t, err, "ActivityStored()")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 9, activityNow()), "StoreActivity() zwift")
+	asWahoo, err := store.ActivityStored(t.Context(), "rider-a", 9, activity.ProviderWahoo)
+	require.NoError(t, err, "ActivityStored() across providers")
+	assert.False(t, asWahoo, "a Zwift ride is not a stored Wahoo one")
 	assert.False(t, other)
 }
 
@@ -414,7 +419,7 @@ func TestActivitiesAwaitingRecordsIsNewestFirstAndLimited(t *testing.T) {
 			activity.Summary{Raw: []byte(`{}`)}, activityNow()), "StoreActivity()")
 	}
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 2)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 2)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	require.Len(t, pending, 2)
 	assert.Equal(t, []int64{1, 3}, []int64{pending[0].ID, pending[1].ID}, "newest first")
@@ -451,11 +456,11 @@ func TestActivitiesAwaitingRecordsListsPendingThenStaleStoredNewestFirst(t *test
 		Records: []activity.Record{{Time: activityNow()}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
 
-	due, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
+	due, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	assert.Equal(t, []int64{1, 2, 3, 4}, idsOf(due), "pending newest first, then stale newest first")
 
-	limited, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 3)
+	limited, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 3)
 	require.NoError(t, err, "ActivitiesAwaitingRecords() limited")
 	assert.Equal(t, []int64{1, 2, 3}, idsOf(limited), "the limit crosses from pending into the stale group")
 }
@@ -478,7 +483,7 @@ func TestMarkActivityUnreadableTakesItOutOfThePendingSet(t *testing.T) {
 
 	require.NoError(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "MarkActivityUnreadable()")
 
-	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
+	pending, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 10)
 	require.NoError(t, err, "ActivitiesAwaitingRecords()")
 	assert.Empty(t, pending)
 
@@ -493,7 +498,7 @@ func TestActivityRecordWritesReportAnUnreadableStore(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.Close(), "Close()")
 
-	_, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 10)
+	_, err := store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 10)
 	require.ErrorContains(t, err, "reading activities awaiting records")
 	require.Error(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{}, activity.RecordsVersion))
 	require.ErrorContains(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "marking an activity unreadable")
@@ -512,11 +517,11 @@ func TestActivityRecordWritesRefuseInvalidInputs(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
 
-	_, err := store.ActivitiesAwaitingRecords(t.Context(), "", activity.RecordsVersion, 10)
+	_, err := store.ActivitiesAwaitingRecords(t.Context(), "", "wahoo", activity.RecordsVersion, 10)
 	require.ErrorContains(t, err, "target and a positive limit")
-	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, 0)
+	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, 0)
 	require.ErrorContains(t, err, "target and a positive limit")
-	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", activity.RecordsVersion, -1)
+	_, err = store.ActivitiesAwaitingRecords(t.Context(), "rider-a", "wahoo", activity.RecordsVersion, -1)
 	require.ErrorContains(t, err, "target and a positive limit")
 
 	require.ErrorContains(t, store.StoreActivityRecords(t.Context(), "", 1, activity.FIT{}, activity.RecordsVersion), "target and an activity id")
@@ -1090,4 +1095,191 @@ func TestStoreActivityRecordsReportsAMetricsRowItCannotClear(t *testing.T) {
 
 	err = store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{}, activity.RecordsVersion)
 	require.ErrorContains(t, err, "clearing prior activity metrics")
+}
+
+// storeZwiftActivity records one indoor ride as the Zwift poll does: the
+// virtual-cycling workout type, under the Zwift provider.
+func storeZwiftActivity(t *testing.T, store *Store, targetID string, id int64, starts time.Time) error {
+	t.Helper()
+
+	return store.StoreActivity(t.Context(), targetID,
+		activity.Listing{
+			ID: id, TypeID: wahoo.WorkoutTypeBikingIndoorVirtual, Starts: starts,
+			Provider: activity.ProviderZwift,
+		},
+		activity.Summary{DistanceMetres: 30_000, MovingSeconds: 3600, ElapsedSeconds: 3600, Raw: []byte(`{}`)},
+		activityNow(),
+	)
+}
+
+// Every activity stored before the provider column existed came from Wahoo, and
+// a caller that names none still means Wahoo.
+func TestStoreActivityDefaultsToTheWahooProvider(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	var provider string
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT provider FROM activities WHERE target_slot = 'rider-a' AND workout_id = 1`).Scan(&provider))
+	assert.Equal(t, activity.ProviderWahoo, provider)
+
+	stored, err := store.ActivitiesBetween(
+		t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	require.Len(t, stored, 1)
+	assert.Equal(t, activity.ProviderWahoo, stored[0].Provider, "the provider is served with the ride")
+}
+
+// Two id spaces share the activity key. A collision is refused rather than
+// allowed to overwrite the other provider's ride.
+func TestStoreActivityRefusesAnotherProvidersRow(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	err := storeZwiftActivity(t, store, "rider-a", 1, activityNow())
+	require.ErrorIs(t, err, ErrActivityProviderConflict)
+
+	var provider string
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT provider FROM activities WHERE target_slot = 'rider-a' AND workout_id = 1`).Scan(&provider))
+	assert.Equal(t, activity.ProviderWahoo, provider, "the stored ride was overwritten")
+}
+
+// SQLite counts every row an UPDATE touches, changed or not, so a store repeated
+// unchanged within the same second is idempotent rather than a provider conflict.
+func TestStoreActivityRepeatedUnchangedIsNotAProviderConflict(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity() again, unchanged")
+}
+
+// A Zwift ride replaces the head unit's copy of the same ride, and everything
+// derived from that copy goes with it. The kept listings do not: those mirror
+// the account, and the poll drops the copy from them on its own.
+func TestDeleteTrainerCopyRemovesTheWahooRideAndItsDerivedRows(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeIndoorWahooActivity(t, store, "rider-a", 1), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow(), PowerWatts: 200, HasPower: true}},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	require.NoError(t, store.ReplaceActivityListings(t.Context(), "rider-a",
+		[]activity.Listing{{ID: 1, TypeID: 15, Starts: activityNow()}}, activityNow()), "ReplaceActivityListings()")
+
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow().Add(30*time.Second), time.Minute, wahoo.IndoorWorkoutTypes())
+	require.NoError(t, err, "DeleteTrainerCopy()")
+	assert.Equal(t, 1, removed, "the copy went")
+
+	assert.Zero(t, countRows(t, store, `SELECT COUNT(*) FROM activities WHERE target_slot = 'rider-a'`))
+	assert.Zero(t, countRows(t, store, `SELECT COUNT(*) FROM activity_records WHERE target_slot = 'rider-a'`),
+		"the copy's samples went with it")
+	assert.Equal(t, 1, countRows(t, store, `SELECT COUNT(*) FROM activity_listings WHERE target_slot = 'rider-a'`),
+		"the kept listings mirror the account and must stay")
+}
+
+// storeIndoorWahooActivity stores a Wahoo ride of the trainer type the head
+// unit records a Zwift session under.
+func storeIndoorWahooActivity(t *testing.T, store *Store, targetID string, id int64) error {
+	t.Helper()
+
+	return store.StoreActivity(t.Context(), targetID,
+		activity.Listing{ID: id, TypeID: wahoo.WorkoutTypeBikingIndoorVirtual, LocationID: 1, Starts: activityNow()},
+		activity.Summary{DistanceMetres: 100, MovingSeconds: 3600, ElapsedSeconds: 3900, Raw: []byte(`{}`)},
+		activityNow(),
+	)
+}
+
+// An outdoor ride that happens to start in the window is another ride, never a
+// copy: only an indoor type can be the head unit's recording of a trainer session.
+func TestDeleteTrainerCopyLeavesAnOutdoorRideInTheWindow(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity() outdoor type 15")
+
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow(), time.Minute, wahoo.IndoorWorkoutTypes())
+	require.NoError(t, err, "DeleteTrainerCopy()")
+	assert.Zero(t, removed)
+}
+
+// Each poll compares its listing against its own provider's ids alone, so an
+// id another provider happens to hold reaches the upsert and fails there.
+func TestKnownActivityIDsAreScopedToOneProvider(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 7, activityNow()), "StoreActivity() zwift")
+
+	wahooIDs, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderWahoo)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{1}, wahooIDs)
+	zwiftIDs, err := store.KnownActivityIDs(t.Context(), "rider-a", activity.ProviderZwift)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{7}, zwiftIDs)
+}
+
+// A ride outside the window is another ride, not another recording of this one.
+func TestDeleteTrainerCopyLeavesARideOutsideTheWindow(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow().Add(10*time.Minute), time.Minute, wahoo.IndoorWorkoutTypes())
+	require.NoError(t, err, "DeleteTrainerCopy()")
+	assert.Zero(t, removed)
+}
+
+// Only the head unit's copy: a Zwift ride is never removed by its own poll.
+func TestDeleteTrainerCopyLeavesTheZwiftRide(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 7, activityNow()), "StoreActivity()")
+
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow(), time.Minute, wahoo.IndoorWorkoutTypes())
+	require.NoError(t, err, "DeleteTrainerCopy()")
+	assert.Zero(t, removed)
+
+	starts, err := store.IndoorRideStarts(t.Context(), "rider-a")
+	require.NoError(t, err, "IndoorRideStarts()")
+	assert.Equal(t, []time.Time{activityNow()}, starts, "the stored Zwift ride's start")
+}
+
+// Each poller fills the rides its own upstream recorded: a summary belongs to
+// the shape that wrote it, and neither poller can download the other's file.
+func TestActivitiesAwaitingRecordsIsScopedToOneProvider(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 7, activityNow()), "StoreActivity() for Zwift")
+
+	wahooPending, err := store.ActivitiesAwaitingRecords(
+		t.Context(), "rider-a", activity.ProviderWahoo, activity.RecordsVersion, 10)
+	require.NoError(t, err, "ActivitiesAwaitingRecords()")
+	require.Len(t, wahooPending, 1)
+	assert.Equal(t, int64(1), wahooPending[0].ID)
+
+	zwiftPending, err := store.ActivitiesAwaitingRecords(
+		t.Context(), "rider-a", activity.ProviderZwift, activity.RecordsVersion, 10)
+	require.NoError(t, err, "ActivitiesAwaitingRecords() for Zwift")
+	require.Len(t, zwiftPending, 1)
+	assert.Equal(t, int64(7), zwiftPending[0].ID)
+}
+
+func countRows(t *testing.T, store *Store, query string) int {
+	t.Helper()
+	var count int
+	require.NoError(t, store.database.QueryRowContext(t.Context(), query).Scan(&count))
+
+	return count
 }
