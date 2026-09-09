@@ -29,7 +29,8 @@ func TestSourcesFollowTheConfiguredLibraries(t *testing.T) {
 	t.Parallel()
 
 	current := testSettings(t, testStore(t, t.TempDir()))
-	built, err := sources(current)
+	cache := newSourceCache()
+	built, err := cache.sources(current)
 	require.NoError(t, err, "sources() with nothing configured")
 	assert.Empty(t, built, "a client was built for a library that has not been configured")
 
@@ -43,7 +44,7 @@ func TestSourcesFollowTheConfiguredLibraries(t *testing.T) {
 	// Reading part of a library and calling it the whole inventory is what the
 	// deletion gate exists to prevent, so a source missing its credentials
 	// fails the lot rather than quietly dropping itself.
-	_, err = sources(current)
+	_, err = cache.sources(current)
 	require.Error(t, err, "sources() with no credentials stored")
 
 	require.NoError(t, current.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
@@ -53,7 +54,7 @@ func TestSourcesFollowTheConfiguredLibraries(t *testing.T) {
 		runtimeconfig.SecretKomootPassword:      runtimeconfig.NewSecret([]byte("secret")),
 	}), "SetSecrets()")
 
-	built, err = sources(current)
+	built, err = cache.sources(current)
 	require.NoError(t, err, "sources()")
 	require.Len(t, built, 2, "sources()")
 	assert.Equal(t, route.ProviderVeloPlanner, built[0].Provider(), "first source")
@@ -75,19 +76,57 @@ func TestSourceForBuildsOneLibraryWhateverTheOthersAreMissing(t *testing.T) {
 		runtimeconfig.SecretKomootPassword: runtimeconfig.NewSecret([]byte("secret")),
 	}), "SetSecrets()")
 
-	_, err := sources(current)
+	cache := newSourceCache()
+	_, err := cache.sources(current)
 	require.Error(t, err, "sources() with one library missing its credentials")
 
-	built, configured, err := sourceFor(current, route.ProviderKomoot)
+	built, configured, err := cache.sourceFor(current, route.ProviderKomoot)
 	require.NoError(t, err, "sourceFor(komoot)")
 	require.True(t, configured, "a configured library reported itself unconfigured")
 	require.NotNil(t, built, "no client was built for a configured library")
 	assert.Equal(t, route.ProviderKomoot, built.Provider(), "the library that was built")
 
-	half, configured, err := sourceFor(current, route.ProviderVeloPlanner)
+	half, configured, err := cache.sourceFor(current, route.ProviderVeloPlanner)
 	require.NoError(t, err, "sourceFor() with the credentials not entered")
 	assert.False(t, configured, "a library without credentials reported itself configured")
 	assert.Nil(t, half, "a client was built without credentials")
+}
+
+// The composition root rebuilds its source list on every run so a credential
+// edit takes effect; the cache is what keeps that from discarding the session
+// a client caches between calls to Inventory.
+func TestSourceCacheRebuildsOnlyWhenALibrarysOwnCredentialsChange(t *testing.T) {
+	t.Parallel()
+
+	current := testSettings(t, testStore(t, t.TempDir()))
+	values := current.Values()
+	values.Sources = []runtimeconfig.Source{
+		{Provider: route.ProviderKomoot, BaseURL: "https://komoot.example.test"},
+	}
+	storeSettings(t, current, values)
+	require.NoError(t, current.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretKomootEmail:    runtimeconfig.NewSecret([]byte("rider@example.test")),
+		runtimeconfig.SecretKomootPassword: runtimeconfig.NewSecret([]byte("secret")),
+	}), "SetSecrets()")
+
+	cache := newSourceCache()
+	first, configured, err := cache.sourceFor(current, route.ProviderKomoot)
+	require.NoError(t, err, "sourceFor()")
+	require.True(t, configured)
+
+	again, configured, err := cache.sourceFor(current, route.ProviderKomoot)
+	require.NoError(t, err, "sourceFor()")
+	require.True(t, configured)
+	assert.Same(t, first, again, "the client was rebuilt with unchanged credentials")
+
+	require.NoError(t, current.SetSecrets(t.Context(), map[runtimeconfig.SecretName]runtimeconfig.Secret{
+		runtimeconfig.SecretKomootPassword: runtimeconfig.NewSecret([]byte("a-rotated-password")),
+	}), "SetSecrets()")
+
+	rebuilt, configured, err := cache.sourceFor(current, route.ProviderKomoot)
+	require.NoError(t, err, "sourceFor()")
+	require.True(t, configured)
+	assert.NotSame(t, first, rebuilt, "a changed password was still served by the old client")
 }
 
 // Until the Wahoo application is entered there is nothing to reconcile against,

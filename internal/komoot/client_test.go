@@ -126,13 +126,128 @@ func TestClientInventoryReadsPlannedToursAcrossPages(t *testing.T) {
 
 	_, err = client.Inventory(t.Context())
 	require.NoError(t, err, "second Inventory()")
-	assert.Equal(t, int32(2), loginCount.Load(), "each run must authenticate its own session rather than reusing a cached token")
+	assert.Equal(t, int32(1), loginCount.Load(), "a second run against the same client must reuse the cached session")
 
 	mu.Lock()
 	defer mu.Unlock()
 	for _, method := range methods {
 		assert.Equal(t, http.MethodGet, method, "komoot's session token permits writes; this package must never issue one")
 	}
+}
+
+// The account rate-limits logins, so a session that is still valid must be
+// reused rather than replaced; only a request the account no longer accepts
+// should trigger exactly one re-login.
+func TestClientInventoryReLogsInOnceWhenTheSessionExpires(t *testing.T) {
+	var loginCount atomic.Int32
+	var listingCalls atomic.Int32
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v006/account/email/rider@example.test/":
+			loginCount.Add(1)
+			writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+		case "/v007/users/42/tours/":
+			if listingCalls.Add(1) == 1 {
+				writer.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			writeJSON(t, writer, `{"_embedded":{"tours":[]},"page":{"size":50,"totalElements":0,"totalPages":0,"number":0}}`)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	stages, err := newTestClient(t, server).Inventory(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, stages)
+	assert.Equal(t, int32(2), loginCount.Load(), "an expired session must trigger exactly one re-login")
+}
+
+// A fresh session the account still rejects is an authentication failure, never
+// the package's own retry sentinel.
+func TestClientInventoryRejectedFreshSessionIsAnAuthenticationFailure(t *testing.T) {
+	var loginCount atomic.Int32
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v006/account/email/rider@example.test/":
+			loginCount.Add(1)
+			writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+		case "/v007/users/42/tours/":
+			writer.WriteHeader(http.StatusForbidden)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorIs(t, err, ErrAuthentication)
+	assert.Equal(t, int32(2), loginCount.Load(), "exactly one re-login, no third attempt")
+}
+
+// A re-login that also fails must surface as an ordinary authentication
+// failure rather than being retried indefinitely.
+func TestClientInventoryReLoginFailureSurfaces(t *testing.T) {
+	var loginCount atomic.Int32
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v006/account/email/rider@example.test/":
+			if loginCount.Add(1) == 1 {
+				writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+				return
+			}
+			writer.WriteHeader(http.StatusUnauthorized)
+		case "/v007/users/42/tours/":
+			writer.WriteHeader(http.StatusUnauthorized)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	_, err := newTestClient(t, server).Inventory(t.Context())
+	require.ErrorIs(t, err, ErrAuthentication)
+	assert.Equal(t, int32(2), loginCount.Load(), "a failing retry must still be attempted only once")
+}
+
+// The client is not used concurrently by anything today, but the mutex
+// guarding the cached session must make that safe regardless.
+func TestClientInventoryIsSafeForConcurrentUse(t *testing.T) {
+	var loginCount atomic.Int32
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v006/account/email/rider@example.test/":
+			loginCount.Add(1)
+			writeJSON(t, writer, `{"username":"42","password":"session-token"}`)
+		case "/v007/users/42/tours/":
+			writeJSON(t, writer, `{"_embedded":{"tours":[]},"page":{"size":50,"totalElements":0,"totalPages":0,"number":0}}`)
+		default:
+			writer.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	for index := range errs {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			_, errs[index] = client.Inventory(t.Context())
+		}(index)
+	}
+	wg.Wait()
+
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int32(1), loginCount.Load(), "concurrent calls sharing a client must still log in only once")
 }
 
 func TestClientInventoryRejectsUnauthenticatedLogin(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -30,6 +31,10 @@ var (
 	// ErrAuthentication identifies an unsuccessful VeloPlanner login.
 	ErrAuthentication = errors.New("veloplanner: authentication failed")
 
+	// errSessionExpired never escapes this package: a caller sees either a
+	// successful retry or ErrAuthentication from the retried login.
+	errSessionExpired = errors.New("veloplanner: session expired")
+
 	inputTagRE  = regexp.MustCompile(`(?i)<input\b[^>]*>`)
 	nameAttrRE  = regexp.MustCompile(`(?i)\bname\s*=\s*"([^"]*)"`)
 	valueAttrRE = regexp.MustCompile(`(?i)\bvalue\s*=\s*"([^"]*)"`)
@@ -46,14 +51,17 @@ type Options struct {
 	Timeout   time.Duration
 }
 
-// Client inventories one VeloPlanner account. It does not retain a session
-// between calls to Inventory.
+// Client inventories one VeloPlanner account.
+// The session is kept between Inventory calls: the account rate-limits logins.
 type Client struct {
 	transport http.RoundTripper
 	baseURL   *url.URL
+	active    *session
 	email     []byte
 	password  []byte
 	timeout   time.Duration
+	userID    int
+	mutex     sync.Mutex
 }
 
 // New creates a VeloPlanner client without contacting the upstream service.
@@ -103,20 +111,11 @@ func (c *Client) Provider() route.Provider {
 	return route.ProviderVeloPlanner
 }
 
-// Inventory logs in with a new session and returns every non-empty source
-// route stage in stable source order.
+// Inventory reuses the client's cached session where one is valid, logging in
+// only when none is cached or the account redirected it back to the login
+// form, and returns every non-empty source route stage in stable source order.
 func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
-	session, err := c.newSession()
-	if err != nil {
-		return nil, fmt.Errorf("veloplanner: creating session: %w", err)
-	}
-
-	userID, err := session.login(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	summaries, err := session.listRoutes(ctx, userID)
+	summaries, err := c.listRoutes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +129,7 @@ func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
 			return nil, errors.New("veloplanner: route library contained an invalid route id")
 		}
 
-		detail, err := session.routeDetail(ctx, summary.ID)
+		detail, err := c.routeDetail(ctx, summary.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -146,6 +145,63 @@ func (c *Client) Inventory(ctx context.Context) ([]route.Route, error) {
 	}
 
 	return stages, nil
+}
+
+// currentSession returns the cached session, logging in under the mutex when
+// none is held so concurrent callers still log in once.
+func (c *Client) currentSession(ctx context.Context) (*session, int, error) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if c.active != nil {
+		return c.active, c.userID, nil
+	}
+
+	session, err := c.newSession()
+	if err != nil {
+		return nil, 0, fmt.Errorf("veloplanner: creating session: %w", err)
+	}
+	userID, err := session.login(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	c.active, c.userID = session, userID
+
+	return session, userID, nil
+}
+
+// invalidateSession drops the cached session so the next lookup logs in again.
+func (c *Client) invalidateSession() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.active, c.userID = nil, 0
+}
+
+// getJSONWithRetry retries one authenticated GET exactly once after a fresh
+// login; endpoint takes the user id because a re-login may change it.
+func (c *Client) getJSONWithRetry(ctx context.Context, endpoint func(userID int) string, output any) error {
+	session, userID, err := c.currentSession(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = session.getJSON(ctx, endpoint(userID), output)
+	if !errors.Is(err, errSessionExpired) {
+		return err
+	}
+
+	c.invalidateSession()
+	session, userID, err = c.currentSession(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = session.getJSON(ctx, endpoint(userID), output)
+	if errors.Is(err, errSessionExpired) {
+		return fmt.Errorf("%w: a fresh session was rejected", ErrAuthentication)
+	}
+
+	return err
 }
 
 type session struct {
@@ -213,7 +269,7 @@ func (s *session) login(ctx context.Context) (int, error) {
 	return userID, nil
 }
 
-func (s *session) listRoutes(ctx context.Context, userID int) ([]routeSummary, error) {
+func (c *Client) listRoutes(ctx context.Context) ([]routeSummary, error) {
 	var routes []routeSummary
 	for page := 1; page <= maximumPages; page++ {
 		if err := ctx.Err(); err != nil {
@@ -231,8 +287,10 @@ func (s *session) listRoutes(ctx context.Context, userID int) ([]routeSummary, e
 			} `json:"metadata"`
 		}
 
-		endpoint := fmt.Sprintf("/api/internal/users/%d/routes?page=%d", userID, page)
-		if err := s.getJSON(ctx, endpoint, &payload); err != nil {
+		endpoint := func(userID int) string {
+			return fmt.Sprintf("/api/internal/users/%d/routes?page=%d", userID, page)
+		}
+		if err := c.getJSONWithRetry(ctx, endpoint, &payload); err != nil {
 			return nil, fmt.Errorf("veloplanner: listing routes: %w", err)
 		}
 		if payload.Metadata.Page != page || payload.Metadata.TotalCount < 0 ||
@@ -256,11 +314,12 @@ func (s *session) listRoutes(ctx context.Context, userID int) ([]routeSummary, e
 	return nil, errors.New("veloplanner: route library exceeded maximum page count")
 }
 
-func (s *session) routeDetail(ctx context.Context, routeID int64) (sourceRoute, error) {
+func (c *Client) routeDetail(ctx context.Context, routeID int64) (sourceRoute, error) {
 	var payload struct {
 		Data sourceRoute `json:"data"`
 	}
-	if err := s.getJSON(ctx, fmt.Sprintf("/api/internal/user_routes/%d", routeID), &payload); err != nil {
+	endpoint := func(int) string { return fmt.Sprintf("/api/internal/user_routes/%d", routeID) }
+	if err := c.getJSONWithRetry(ctx, endpoint, &payload); err != nil {
 		return sourceRoute{}, fmt.Errorf("veloplanner: retrieving route detail: %w", err)
 	}
 
@@ -325,6 +384,13 @@ func (s *session) do(request *http.Request) (body []byte, err error) {
 	}
 	if len(body) > maximumBodyBytes {
 		return nil, errors.New("upstream response exceeded size limit")
+	}
+	// An expired session is redirected to the login form, which the client
+	// follows silently: the path actually served is the only signal left.
+	if request.URL.Path != "/login" &&
+		(response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden ||
+			response.Request.URL.Path == "/login") {
+		return nil, errSessionExpired
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("upstream returned HTTP %d", response.StatusCode)
