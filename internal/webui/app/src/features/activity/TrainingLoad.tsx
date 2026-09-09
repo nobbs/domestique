@@ -111,7 +111,7 @@ function ZoneStack({
           </li>
         ))}
       </ul>
-      {deviceZoneSeconds ? (
+      {deviceZoneSeconds && deviceZoneSeconds.length > 0 ? (
         // The profile's zones above are the default; this is only a caption
         // naming the head unit's own cut of the same ride, for comparison.
         <p className="text-[var(--ink-2)] text-xs opacity-70">

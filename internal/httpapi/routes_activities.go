@@ -122,7 +122,7 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session)
 	return view
 }
 
-// sessionOverride is one plain figure the device's own session take
+// sessionOverride is one plain figure the device's own session takes
 // precedence over when the file declared it.
 type sessionOverride struct {
 	into    **float64
@@ -162,11 +162,13 @@ func applySession(view *openapi.ActivityMetrics, session *activities.Session) {
 	if session.Sport != "" {
 		view.Sport = new(session.Sport)
 	}
+	// The bounds go only with the times: a zone table without its seconds is
+	// half a figure.
 	if len(session.HeartRateZoneSeconds) > 0 {
 		view.DeviceZoneSeconds = session.HeartRateZoneSeconds
-	}
-	if bounds := len(session.HeartRateZoneHighBPM); bounds >= 2 {
-		view.DeviceZoneBoundsBpm = session.HeartRateZoneHighBPM[:bounds-1]
+		if bounds := len(session.HeartRateZoneHighBPM); bounds >= 2 {
+			view.DeviceZoneBoundsBpm = session.HeartRateZoneHighBPM[:bounds-1]
+		}
 	}
 }
 

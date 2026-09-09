@@ -831,3 +831,18 @@ func TestGetActivitiesReportsAnUnreadableSessionsStore(t *testing.T) {
 	code, _ := getActivities(t, handler, "/v1/activities")
 	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
+
+func TestGetActivitiesWithholdsDeviceZoneBoundsWithoutTheirTimes(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	session := deviceSession()
+	session.HeartRateZoneSeconds = nil
+	state.activitySessions = map[string]map[int64]activities.Session{"rider-a": {1: session}}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	metrics := list.Activities[0].Metrics
+	require.NotNil(t, metrics)
+	assert.Nil(t, metrics.DeviceZoneSeconds)
+	assert.Nil(t, metrics.DeviceZoneBoundsBpm)
+}

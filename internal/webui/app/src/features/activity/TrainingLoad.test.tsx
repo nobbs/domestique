@@ -269,4 +269,10 @@ describe("TrainingLoad", () => {
 
     expect(screen.queryByText(/Device zones:/)).not.toBeInTheDocument();
   });
+
+  it("leaves out the device zones caption for an empty zone table", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], deviceZoneSeconds: [] });
+
+    expect(screen.queryByText(/Device zones:/)).not.toBeInTheDocument();
+  });
 });
