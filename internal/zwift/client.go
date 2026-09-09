@@ -185,7 +185,7 @@ func (c *Client) token(ctx context.Context, form url.Values) (Session, error) {
 		ExpiresIn int64 `json:"expires_in"`
 	}
 	requestedAt := time.Now()
-	if err := c.doJSON(request, &response, false); err != nil {
+	if err := c.doJSON(request, &response, grantRequest); err != nil {
 		return Session{}, err
 	}
 	if response.AccessToken == "" || response.RefreshToken == "" {
@@ -213,7 +213,7 @@ func (c *Client) PlayerID(ctx context.Context, session Session) (int64, error) {
 	var response struct {
 		ID int64 `json:"id"`
 	}
-	if err := c.doJSON(request, &response, false); err != nil {
+	if err := c.doJSON(request, &response, apiRequest); err != nil {
 		return 0, err
 	}
 	if response.ID <= 0 {
@@ -240,7 +240,7 @@ func (c *Client) Activities(ctx context.Context, session Session, playerID int64
 	}
 
 	var activities []Activity
-	if err := c.doJSON(request, &activities, false); err != nil {
+	if err := c.doJSON(request, &activities, apiRequest); err != nil {
 		return nil, err
 	}
 
@@ -284,7 +284,7 @@ func (c *Client) DownloadFIT(ctx context.Context, fileURL string) (data []byte, 
 	case status >= http.StatusMultipleChoices && status < http.StatusBadRequest:
 		return nil, fmt.Errorf("%w: HTTP %d redirect", ErrActivityRefused, status)
 	}
-	if classified := classifyStatus(response.StatusCode, false); classified != nil {
+	if classified := classifyStatus(response.StatusCode, apiRequest); classified != nil {
 		return nil, classified
 	}
 	data, err = io.ReadAll(io.LimitReader(response.Body, maximumFITBytes+1))
@@ -325,7 +325,16 @@ func (c *Client) endpoint(base *url.URL, path string) *url.URL {
 // doJSON sends request and decodes a JSON reply into output. activityRefusal
 // says whether a 404 or 410 here belongs to one activity rather than the
 // connection or the account.
-func (c *Client) doJSON(request *http.Request, output any, activityRefusal bool) (err error) {
+// requestKind says whose fault a refusal is: the grant's, one activity's, or the call's.
+type requestKind int
+
+const (
+	apiRequest requestKind = iota
+	activityRequest
+	grantRequest
+)
+
+func (c *Client) doJSON(request *http.Request, output any, kind requestKind) (err error) {
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		if urlErr, ok := errors.AsType[*url.Error](err); ok {
@@ -338,7 +347,7 @@ func (c *Client) doJSON(request *http.Request, output any, activityRefusal bool)
 		err = errors.Join(err, response.Body.Close())
 	}()
 
-	if classified := classifyStatus(response.StatusCode, activityRefusal); classified != nil {
+	if classified := classifyStatus(response.StatusCode, kind); classified != nil {
 		return classified
 	}
 
@@ -358,13 +367,16 @@ func (c *Client) doJSON(request *http.Request, output any, activityRefusal bool)
 
 // classifyStatus maps an HTTP status onto this package's sentinels. The error
 // text carries only the status and the category name, never the response body.
-func classifyStatus(status int, activityRefusal bool) error {
+func classifyStatus(status int, kind requestKind) error {
 	switch {
 	case status >= http.StatusOK && status < http.StatusMultipleChoices:
 		return nil
 	case status == http.StatusUnauthorized || status == http.StatusForbidden:
 		return fmt.Errorf("%w: HTTP %d", ErrUnauthorized, status)
-	case activityRefusal && (status == http.StatusNotFound || status == http.StatusGone):
+	// Keycloak answers a wrong password or a stale refresh token with 400 invalid_grant.
+	case kind == grantRequest && status == http.StatusBadRequest:
+		return fmt.Errorf("%w: HTTP %d", ErrUnauthorized, status)
+	case kind == activityRequest && (status == http.StatusNotFound || status == http.StatusGone):
 		return fmt.Errorf("%w: HTTP %d", ErrActivityRefused, status)
 	case status == http.StatusTooManyRequests || status >= http.StatusInternalServerError:
 		return fmt.Errorf("%w: HTTP %d", ErrRejected, status)

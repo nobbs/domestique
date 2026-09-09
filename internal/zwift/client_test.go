@@ -222,6 +222,20 @@ func TestActivitySummaryDropsOtherRidersFromTheResponse(t *testing.T) {
 	assert.NotContains(t, string(summary), "Someone Else")
 }
 
+// Keycloak refuses a wrong password with 400 invalid_grant rather than 401.
+func TestClientReportsUnauthorizedOnAnInvalidGrant(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusBadRequest)
+		writeJSON(t, writer, map[string]string{"error": "invalid_grant"})
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	_, err := client.Session(t.Context(), []byte("rider@example.test"), []byte("wrong"))
+	require.ErrorIs(t, err, ErrUnauthorized)
+	assert.True(t, client.IsUnauthorized(err))
+}
+
 func TestClientReportsUnauthorizedOn401(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusUnauthorized)
@@ -476,7 +490,7 @@ func TestSessionRedactsItselfFromFormattingVerbs(t *testing.T) {
 }
 
 func TestClassifyStatusReportsAnUnrecognisedStatusPlainly(t *testing.T) {
-	err := classifyStatus(http.StatusTeapot, true)
+	err := classifyStatus(http.StatusTeapot, activityRequest)
 	require.Error(t, err)
 	require.NotErrorIs(t, err, ErrUnauthorized)
 	require.NotErrorIs(t, err, ErrActivityRefused)
