@@ -278,6 +278,21 @@ func TestZwiftPollReadsPastAPageOfRuns(t *testing.T) {
 	assert.Equal(t, int64(2), store.stored[0].listing.ID)
 }
 
+// Offset paging repeats a ride when the account adds one mid-poll; the repeat is
+// neither stored nor counted twice.
+func TestZwiftPollStoresARideRepeatedAcrossPagesOnce(t *testing.T) {
+	store := newFakeZwiftStore()
+	source := &fakeZwiftSource{
+		fit:   testFIT(t),
+		pages: [][]Listing{{zwiftListing(1, at(0))}, {zwiftListing(1, at(0)), zwiftListing(2, at(-90))}},
+	}
+
+	result := newTestZwiftPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, 2, result.Stored)
+	assert.Len(t, store.stored, 2, "the repeated ride was stored again")
+}
+
 // A refused grant is the rider's password to re-enter; nothing is marked, since
 // there is no authorization for them to be sent back to.
 func TestZwiftPollReportsARefusedGrant(t *testing.T) {

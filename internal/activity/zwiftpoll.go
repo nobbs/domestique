@@ -152,6 +152,9 @@ func (p *ZwiftPoller) storeNew(ctx context.Context, targetID string, reader Zwif
 				return stored, storeErr
 			}
 			stored++
+			// A ride the account adds mid-poll shifts the offsets, so a page may
+			// repeat one already stored this run.
+			known[listing.ID] = struct{}{}
 		}
 		// A page of nothing but runs narrows to no listing at all and says
 		// nothing about the rides behind it; only a page of known rides does.
