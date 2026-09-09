@@ -595,6 +595,8 @@ func TestGetActivityTrackServesTheWorldOfAZwiftRide(t *testing.T) {
 	assert.Equal(t, "Makuri Islands", view.Properties.World.Name)
 	assert.Equal(t, "/v1/zwift/worlds/9/map", view.Properties.World.MapURL)
 	assert.InDelta(t, -10.73746, view.Properties.World.Bounds.North, 1e-9)
+	assert.Equal(t, 3, view.Properties.World.ImageQuarterTurns,
+		"the page cannot place the artwork square without the turn the table carries")
 }
 
 // A world ride whose samples are not stored yet has no line, so it names no
@@ -665,6 +667,7 @@ func testWorldOf(summary []byte) (ZwiftWorld, bool) {
 	return ZwiftWorld{
 		ID: 9, Name: "Makuri Islands",
 		North: -10.73746, West: 165.76591, South: -10.85234, East: 165.88222,
+		ImageQuarterTurns: 3,
 	}, true
 }
 

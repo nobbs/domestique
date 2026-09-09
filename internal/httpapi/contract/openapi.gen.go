@@ -815,6 +815,8 @@ type ActivityTrackWorld struct {
 	Bounds ActivityTrackWorld_Bounds `json:"bounds"`
 	// MapURL Where this service serves the world's map artwork from, on its own origin.
 	MapURL string `json:"mapUrl"`
+	// ImageQuarterTurns How many quarter turns clockwise a reader has to turn the artwork by before `bounds` describes it. Zwift draws the newer worlds' minimaps a quarter turn from the frame their coordinates are quoted in, so artwork placed in that box untouched lands nowhere near the roads a ride in it was recorded on.
+	ImageQuarterTurns int `json:"imageQuarterTurns"`
 }
 
 // ActivityTrackProperties_State indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates.

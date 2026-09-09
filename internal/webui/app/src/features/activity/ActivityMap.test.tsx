@@ -15,11 +15,17 @@ import { ActivityMap } from "./ActivityMap";
 
 // The overlay draws the recorded track itself, and a world's own artwork is a
 // source and a layer of its own — both need a real MapLibre instance this
-// test never mounts. Only the furniture around them is in question.
+// test never mounts. Only the furniture around them is in question, and where
+// the artwork's corners were placed.
 vi.mock("../routes/RouteOverlay", () => ({ RouteOverlay: () => null }));
+const artwork = vi.hoisted(() => ({ coordinates: null as unknown }));
 vi.mock("react-map-gl/maplibre", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react-map-gl/maplibre")>()),
-  Source: () => null,
+  Source: (props: { coordinates?: unknown }) => {
+    artwork.coordinates = props.coordinates;
+
+    return null;
+  },
   Layer: () => null,
 }));
 
@@ -48,7 +54,8 @@ const WORLD = {
   id: 9,
   name: "Makuri Islands",
   mapUrl: "/v1/zwift/worlds/9/map",
-  bounds: { north: -10.73746, west: 165.76591, south: -10.85234, east: 165.88222 },
+  bounds: { north: -1, west: 10, south: -2, east: 11 },
+  imageQuarterTurns: 0,
 };
 
 function show(expanded: boolean, onExpandedChange = vi.fn(), world?: typeof WORLD) {
@@ -148,5 +155,31 @@ describe("ActivityMap in a virtual world", () => {
     show(false, vi.fn(), WORLD);
 
     expect(framed.bounds).toEqual([8.4, 49, 8.6, 49.2]);
+  });
+
+  // Zwift publishes the newer worlds' artwork a quarter turn from the frame
+  // their coordinates are quoted in. Turning it is a cyclic shift of the four
+  // corners an image source names, clockwise: the image's top-left corner is
+  // handed the box corner that ends up there once the artwork stands upright.
+  it("places the artwork's corners square with the world when it needs no turn", () => {
+    show(false, vi.fn(), WORLD);
+
+    expect(artwork.coordinates).toEqual([
+      [10, -1],
+      [11, -1],
+      [11, -2],
+      [10, -2],
+    ]);
+  });
+
+  it("shifts the artwork's corners by the turns the world carries", () => {
+    show(false, vi.fn(), { ...WORLD, imageQuarterTurns: 3 });
+
+    expect(artwork.coordinates).toEqual([
+      [10, -2],
+      [10, -1],
+      [11, -1],
+      [11, -2],
+    ]);
   });
 });

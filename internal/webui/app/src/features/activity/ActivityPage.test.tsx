@@ -464,6 +464,7 @@ describe("one ride's page", () => {
         name: "Makuri Islands",
         mapUrl: "/v1/zwift/worlds/9/map",
         bounds: { north: -10.73746, west: 165.76591, south: -10.85234, east: 165.88222 },
+        imageQuarterTurns: 3,
       },
     });
 

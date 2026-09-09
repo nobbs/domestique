@@ -410,7 +410,8 @@ func (h *Handler) rideWorld(
 		Bounds: activityWorldBoundsView{
 			North: world.North, West: world.West, South: world.South, East: world.East,
 		},
-		MapURL: "/v1/zwift/worlds/" + strconv.FormatInt(world.ID, 10) + "/map",
+		MapURL:            "/v1/zwift/worlds/" + strconv.FormatInt(world.ID, 10) + "/map",
+		ImageQuarterTurns: world.ImageQuarterTurns,
 	}, true, nil
 }
 

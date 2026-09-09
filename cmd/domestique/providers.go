@@ -760,6 +760,7 @@ func zwiftWorldOf(summary []byte) (httpapi.ZwiftWorld, bool) {
 	return httpapi.ZwiftWorld{
 		ID: world.ID, Name: world.Name,
 		North: world.North, West: world.West, South: world.South, East: world.East,
+		ImageQuarterTurns: world.ImageQuarterTurns,
 	}, true
 }
 
