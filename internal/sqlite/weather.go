@@ -13,13 +13,15 @@ import (
 // ActivitiesAwaitingWeather lists the target's rides nobody has asked the
 // weather about, newest first, at most limit of them. A ride whose read failed
 // for good left a record saying so and is not among them: asking again spends a
-// request to be told the same thing.
+// request to be told the same thing. A ride of one of indoorTypeIDs was ridden
+// over no ground and is never among them.
 func (s *Store) ActivitiesAwaitingWeather(
-	ctx context.Context, targetID string, limit int,
+	ctx context.Context, targetID string, indoorTypeIDs []int, limit int,
 ) ([]activity.PendingWeather, error) {
 	rows, err := s.queries.ListActivitiesAwaitingWeather(ctx, sqlcgen.ListActivitiesAwaitingWeatherParams{
-		TargetSlot: targetID,
-		RowLimit:   int64(limit),
+		TargetSlot:    targetID,
+		IndoorTypeIds: typeIDList(indoorTypeIDs),
+		RowLimit:      int64(limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing activities awaiting weather: %w", err)

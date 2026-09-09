@@ -81,14 +81,16 @@ FROM activities AS a
 LEFT JOIN activity_weather_reads AS r ON r.target_slot = a.target_slot AND r.workout_id = a.workout_id
 WHERE a.target_slot = ?1
   AND a.records_state = 'stored'
+  AND a.workout_type_id NOT IN (SELECT value FROM json_each(CAST(?2 AS TEXT)))
   AND r.workout_id IS NULL
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
-LIMIT ?2
+LIMIT ?3
 `
 
 type ListActivitiesAwaitingWeatherParams struct {
-	TargetSlot string
-	RowLimit   int64
+	TargetSlot    string
+	IndoorTypeIds string
+	RowLimit      int64
 }
 
 type ListActivitiesAwaitingWeatherRow struct {
@@ -100,7 +102,7 @@ type ListActivitiesAwaitingWeatherRow struct {
 // Rides whose weather has never been asked about. A read that failed for good
 // left a row saying so, which is what keeps it out of this list.
 func (q *Queries) ListActivitiesAwaitingWeather(ctx context.Context, arg ListActivitiesAwaitingWeatherParams) ([]ListActivitiesAwaitingWeatherRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingWeather, arg.TargetSlot, arg.RowLimit)
+	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingWeather, arg.TargetSlot, arg.IndoorTypeIds, arg.RowLimit)
 	if err != nil {
 		return nil, err
 	}

@@ -31,6 +31,7 @@ const (
 	taskActivityPoll       = httpapi.TaskActivityPoll
 	taskActivityRecord     = httpapi.TaskActivityRecord
 	taskActivityDerive     = httpapi.TaskActivityDerive
+	taskZwiftPoll          = httpapi.TaskZwiftPoll
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -70,6 +71,11 @@ const targetBackstopInterval = 6 * time.Hour
 // ride is finished long before anybody asks about it, and each poll spends from
 // the same daily Wahoo budget the reconciliation does.
 const activityPollInterval = 12 * time.Hour
+
+// zwiftPollInterval is how often a rider's own Zwift account is read. Zwift
+// publishes no quota, and a poll is a sign-in and a handful of pages; six hours
+// is often enough that an evening's ride is derived the same night.
+const zwiftPollInterval = 6 * time.Hour
 
 // The weather half of a derivation pass is bounded per target per run, so a
 // stored history needs several to be asked about; hourly drains one in a day at
@@ -140,10 +146,16 @@ type synchronizer interface {
 	Predict(ctx context.Context) (failed int, err error)
 }
 
-// activityPoller is the activity work the task layer starts.
+// activityPoller is the activity work the task layer starts; zwiftPoller is
+// the reading of a rider's own Zwift account, which has no notification to
+// serve and so no single-ride read.
 type activityPoller interface {
-	Poll(ctx context.Context, targetID string) activity.Result
+	zwiftPoller
 	Record(ctx context.Context, targetID string, workoutID int64) activity.Result
+}
+
+type zwiftPoller interface {
+	Poll(ctx context.Context, targetID string) activity.Result
 }
 
 // activityDeriver works out what one target's rides say about how hard they
@@ -355,6 +367,34 @@ func activityPollTask(
 	}
 }
 
+// zwiftPollTask reads each target owner's own Zwift rides into the store. It
+// takes the same exclusive resource the Wahoo poll does — it writes the same
+// rows, and removes the head unit's copy of a ride it stores.
+func zwiftPollTask(
+	poller zwiftPoller, enabled func(string) func() bool, targetIDs func() []string,
+) task.Definition {
+	return task.Definition{
+		Name:    taskZwiftPoll,
+		Enabled: enabled(taskZwiftPoll),
+		Resources: func(string) []task.Resource {
+			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
+		},
+		Schedule:     task.Every(func() time.Duration { return zwiftPollInterval }),
+		InitialDelay: func() time.Duration { return zwiftPollInterval },
+		FanOut:       targetIDs,
+		Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
+		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+			if invocation.Argument != "" {
+				polled := poller.Poll(ctx, invocation.Argument)
+
+				return activityResult(&polled)
+			}
+
+			return pollEveryTarget(ctx, poller, targetIDs())
+		}),
+	}
+}
+
 // activityDeriveTask works out what each of a target's rides says about how
 // hard it was. It follows both readers of recorded samples, so a ride whose
 // FIT has just landed is derived on the same cycle rather than the next one,
@@ -369,7 +409,7 @@ func activityDeriveTask(
 	return task.Definition{
 		Name:         taskActivityDerive,
 		Enabled:      enabled(taskActivityDerive),
-		Follows:      []string{taskActivityPoll, taskActivityRecord},
+		Follows:      []string{taskActivityPoll, taskActivityRecord, taskZwiftPoll},
 		Schedule:     task.Every(func() time.Duration { return activityDeriveInterval }),
 		InitialDelay: func() time.Duration { return activityDeriveInitialDelay },
 		Resources: func(string) []task.Resource {
@@ -430,7 +470,7 @@ func parseActivityRecordArgument(argument string) (targetID string, workoutID in
 
 // pollEveryTarget polls every slot, reporting the most serious thing that
 // happened: one rider's dead token must not stop another's rides being read.
-func pollEveryTarget(ctx context.Context, poller activityPoller, targetIDs []string) task.Result {
+func pollEveryTarget(ctx context.Context, poller zwiftPoller, targetIDs []string) task.Result {
 	aggregate := task.Result{Outcome: task.NotReady}
 	for _, targetID := range targetIDs {
 		polled := poller.Poll(ctx, targetID)

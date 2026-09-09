@@ -114,6 +114,7 @@ sync:source       stored an inventory     ->  ridemodel:predict
 ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
+zwift:poll        stored indoor rides     ->  activity:derive
 ~~~
 
 A calibration that fitted a new pair makes every stored prediction stale, so it
@@ -270,8 +271,18 @@ is checked rather than inferred.
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
 | `activity:poll` | target slot, or none for every one | `activities` exclusive | every twelve hours |
 | `activity:record` | target slot and workout id | `activities` exclusive | none |
+| `zwift:poll` | target slot, or none for every one | `activities` exclusive | every six hours |
 | `activity:derive` | target slot, or none for every one | `activities` exclusive | every hour |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
+
+`zwift:poll` reads the same rows from a rider's own Zwift account, under the
+same exclusivity: it stores the indoor rides that account recorded and removes
+the head unit's copy of each, which is the one place a poll removes an activity
+([service.md](service.md)). A rider who has entered no Zwift credentials is
+skipped rather than failed — most riders have none, and there is nothing there
+to read — and a refused sign-in is reported as an authorization failure without
+marking anything for renewal, because what it asks for is a password re-entered
+rather than a grant re-issued.
 
 `activity:poll` stores cycling alone. A rider's account may record any sport
 their device or app supports, and the poll keeps only what the provider counts

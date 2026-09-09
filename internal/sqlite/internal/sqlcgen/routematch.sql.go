@@ -98,19 +98,21 @@ FROM activities AS a
 LEFT JOIN activity_route_match AS m ON m.target_slot = a.target_slot AND m.workout_id = a.workout_id
 WHERE a.target_slot = ?1
   AND a.records_state = 'stored'
-  AND (m.workout_id IS NULL OR m.library_hash <> ?2)
+  AND a.workout_type_id NOT IN (SELECT value FROM json_each(CAST(?2 AS TEXT)))
+  AND (m.workout_id IS NULL OR m.library_hash <> ?3)
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
 `
 
 type ListActivitiesAwaitingRouteMatchParams struct {
-	TargetSlot  string
-	LibraryHash string
+	TargetSlot    string
+	IndoorTypeIds string
+	LibraryHash   string
 }
 
 // Rides whose samples are stored and whose match was never worked out, or was
 // worked out against a library that has since changed.
 func (q *Queries) ListActivitiesAwaitingRouteMatch(ctx context.Context, arg ListActivitiesAwaitingRouteMatchParams) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingRouteMatch, arg.TargetSlot, arg.LibraryHash)
+	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingRouteMatch, arg.TargetSlot, arg.IndoorTypeIds, arg.LibraryHash)
 	if err != nil {
 		return nil, err
 	}

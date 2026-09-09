@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -90,7 +91,7 @@ func TestActivitiesAwaitingWeatherSkipsWhatWasAlreadyAsked(t *testing.T) {
 	require.NoError(t, store.StoreActivityWeather(t.Context(), "rider-a", 2, nil, activityNow()),
 		"StoreActivityWeather() with nothing")
 
-	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", 10)
+	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", wahoo.IndoorWorkoutTypes(), 10)
 	require.NoError(t, err, "ActivitiesAwaitingWeather()")
 	require.Len(t, pending, 1, "only the ride nobody has asked about")
 	assert.Equal(t, int64(3), pending[0].ID)
@@ -103,7 +104,7 @@ func TestActivitiesAwaitingWeatherSkipsARideWithNoStoredRecords(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
 
-	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", 10)
+	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", wahoo.IndoorWorkoutTypes(), 10)
 	require.NoError(t, err, "ActivitiesAwaitingWeather()")
 	assert.Empty(t, pending)
 }
@@ -117,7 +118,7 @@ func TestActivitiesAwaitingWeatherHonoursTheLimit(t *testing.T) {
 		}, activity.RecordsVersion), "StoreActivityRecords()")
 	}
 
-	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", 2)
+	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", wahoo.IndoorWorkoutTypes(), 2)
 	require.NoError(t, err, "ActivitiesAwaitingWeather()")
 	assert.Len(t, pending, 2)
 }
@@ -162,8 +163,29 @@ func TestActivityWeatherReportsAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "reading the activity weather")
 	_, err = store.ActivityWeatherSteps(t.Context(), "rider-a", 1)
 	require.ErrorContains(t, err, "reading the activity weather")
-	_, err = store.ActivitiesAwaitingWeather(t.Context(), "rider-a", 10)
+	_, err = store.ActivitiesAwaitingWeather(t.Context(), "rider-a", wahoo.IndoorWorkoutTypes(), 10)
 	require.ErrorContains(t, err, "listing activities awaiting weather")
 	require.ErrorContains(t, store.StoreActivityWeather(t.Context(), "rider-a", 1, nil, activityNow()),
 		"starting the activity weather write")
+}
+
+// An indoor ride is ridden over no ground: its coordinates are a virtual
+// world's, and a forecast asked against them would be false. This holds for a
+// Wahoo trainer ride exactly as it does for a Zwift one.
+func TestActivitiesAwaitingWeatherSkipsAnIndoorRide(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity() outdoors")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 7, activityNow()), "StoreActivity() indoors")
+	for _, id := range []int64{1, 7} {
+		require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", id, activity.FIT{
+			Records: []activity.Record{{Time: activityNow()}},
+		}, activity.RecordsVersion), "StoreActivityRecords()")
+	}
+
+	pending, err := store.ActivitiesAwaitingWeather(t.Context(), "rider-a", wahoo.IndoorWorkoutTypes(), 10)
+	require.NoError(t, err, "ActivitiesAwaitingWeather()")
+	require.Len(t, pending, 1, "only the ride over real ground")
+	assert.Equal(t, int64(1), pending[0].ID)
 }

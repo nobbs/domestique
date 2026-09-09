@@ -1105,13 +1105,16 @@ target. It never deletes manually created Wahoo routes.
 ## Recorded activities
 
 Domestique stores a summary of every activity the rider's own Wahoo account
-recorded, against the target that owns that account: when it started, its
-distance, moving and elapsed time and ascent, and Wahoo's own summary document
-kept verbatim. Those four totals are Wahoo's own summary figures until its FIT
-file's samples are read, at which point its session message's own figures
-overwrite them; a file that never reads leaves Wahoo's summary as the last word.
-An activity is the owning target's, the same as its routes are, and is served
-only to the subject that owns that target or to an admin.
+recorded and of every indoor ride their own Zwift account recorded, against the
+target that owns them: when it started, its distance, moving and elapsed time
+and ascent, and the provider's own summary document. Each activity records
+which provider it came from; everything downstream — derivation, training load,
+the ride page — reads both alike. Those four totals are the provider's own
+summary figures until its FIT file's samples are read, at which point its
+session message's own figures overwrite them; a file that never reads leaves the
+provider's summary as the last word. An activity is the owning target's, the
+same as its routes are, and is served only to the subject that owns that target
+or to an admin.
 
 Polling only adds. An activity the account no longer lists is never removed,
 and a summary read again replaces the row it already had. A summary the
@@ -1152,6 +1155,35 @@ ordering the provider might give its list is relied on for correctness.
 An activity a poll set aside as unreadable stays in the kept reading, so its
 retry is offered from there when its backoff has passed even though no poll in
 between read the account's list again.
+
+A trainer ride recorded in Zwift is usually recorded a second time by the
+Wahoo-linked head unit. The two are one ride, and the Zwift file is the one
+kept: it carries the power channel the trainer measured. A Zwift ride stored
+within a minute of a Wahoo ride's start removes that Wahoo ride and everything
+derived from it, and a later Wahoo poll passes over a listing whose start
+coincides with a stored Zwift ride rather than storing it again — before the
+summary request, so the copy costs no Wahoo quota. This is the one place a poll
+removes an activity, and it removes the copy rather than the ride. A rider who
+deletes the Zwift ride later is given the Wahoo copy back by the next poll,
+which is why nothing is tombstoned.
+
+An indoor ride is ridden over no ground. It is asked nothing about the weather,
+attributed to no library route, timed over no climb and shown no map — its
+coordinates are a virtual world's, and a real map, a real forecast or a real
+route matched against them would all be false. Which rides those are follows
+from the recorded workout type, so a Wahoo trainer ride is treated the same as a
+Zwift one. Its samples, including power and heart rate, are stored and derived
+exactly as an outdoor ride's are.
+
+The Zwift adapter stores the rider's own ride and nothing else. The activity
+document names other riders — who rode alongside, who gave a ride-on, a
+subgroup's results — and none of it is read into memory, persisted, logged or
+notified: the adapter decodes into its own narrow shape and stores a document it
+composed itself, never the provider's body verbatim. A Zwift account is reached
+with the rider's own credentials, held against their subject alone
+([configuration.md](configuration.md)); a rider who has entered none is skipped,
+not failed, and a refused sign-in asks them for their password again rather than
+marking a grant for renewal.
 
 A summary Wahoo rejects for that one activity alone — unauthorised, not found,
 or not a summary at all — is skipped rather than allowed to stop the poll: the

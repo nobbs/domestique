@@ -7,6 +7,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -83,7 +84,7 @@ func TestStoreRecordsANoMatchWithoutServingOne(t *testing.T) {
 	require.NoError(t, err, "ActivityRouteMatches()")
 	assert.Empty(t, matches)
 
-	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1", wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
 	assert.Empty(t, owed, "a recorded no-match is an answer, not an omission")
 }
@@ -98,11 +99,11 @@ func TestStoreOwesAMatchForARideMeasuredAgainstAnotherLibrary(t *testing.T) {
 		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 
-	unchanged, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	unchanged, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1", wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
 	assert.Empty(t, unchanged)
 
-	edited, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-2")
+	edited, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-2", wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
 	assert.Equal(t, []int64{11}, edited, "a library that has changed owes every ride a fresh match")
 }
@@ -115,7 +116,7 @@ func TestStoreOwesNoMatchForARideWithoutSamples(t *testing.T) {
 	storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
 
-	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1", wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
 	assert.Empty(t, owed)
 }
@@ -138,7 +139,7 @@ func TestStoreDropsARouteMatchWhenTheSamplesAreReplaced(t *testing.T) {
 	require.NoError(t, err, "ActivityRouteMatches()")
 	assert.Empty(t, matches)
 
-	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1", wahoo.IndoorWorkoutTypes())
 	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
 	assert.Equal(t, []int64{11}, owed)
 }
@@ -241,7 +242,7 @@ func TestStoreReportsAnUnreadableRouteMatchStore(t *testing.T) {
 	_, _, libraryErr := store.LibraryRoutes(t.Context())
 	require.ErrorContains(t, libraryErr, "reading the library geometry")
 
-	_, owedErr := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1")
+	_, owedErr := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1", wahoo.IndoorWorkoutTypes())
 	require.ErrorContains(t, owedErr, "listing activities awaiting a route match")
 
 	_, matchesErr := store.ActivityRouteMatches(t.Context(), "rider-a")
@@ -630,4 +631,20 @@ func TestLibraryRoutesDigestTellsNoHeightFromSeaLevel(t *testing.T) {
 	_, withSeaLevel, err := store.LibraryRoutes(t.Context())
 	require.NoError(t, err, "LibraryRoutes() again")
 	assert.NotEqual(t, withoutHeight, withSeaLevel, "no height is not a height of nought")
+}
+
+// An indoor ride was ridden over no ground, so there is no library route it
+// could have been ridden on and no climb of one to have attempted.
+func TestActivitiesAwaitingRouteMatchSkipsAnIndoorRide(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity() outdoors")
+	require.NoError(t, storeZwiftActivity(t, store, "rider-a", 12, activityNow()), "StoreActivity() indoors")
+	require.NoError(t, storeTestRecords(t, store, "rider-a", 11), "StoreActivityRecords()")
+	require.NoError(t, storeTestRecords(t, store, "rider-a", 12), "StoreActivityRecords() indoors")
+
+	owed, err := store.ActivitiesAwaitingRouteMatch(t.Context(), "rider-a", "library-1", wahoo.IndoorWorkoutTypes())
+	require.NoError(t, err, "ActivitiesAwaitingRouteMatch()")
+	assert.Equal(t, []int64{11}, owed, "only the ride over real ground is owed a match")
 }

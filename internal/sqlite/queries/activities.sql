@@ -4,11 +4,14 @@ SELECT workout_id FROM activities WHERE target_slot = ? ORDER BY workout_id;
 -- name: ActivityExists :one
 SELECT EXISTS(SELECT 1 FROM activities WHERE target_slot = ? AND workout_id = ?);
 
--- name: UpsertActivity :exec
+-- Zero rows means the stored row belongs to another provider: two id spaces
+-- share this key, so a collision fails loudly rather than overwriting a ride.
+-- name: UpsertActivity :execrows
 INSERT INTO activities (
   target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
-  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix,
+  provider
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   workout_type_id = excluded.workout_type_id,
   workout_type_location_id = excluded.workout_type_location_id,
@@ -18,11 +21,12 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   elapsed_seconds = excluded.elapsed_seconds,
   ascent_metres = excluded.ascent_metres,
   raw_summary_json = excluded.raw_summary_json,
-  updated_at_unix = excluded.updated_at_unix;
+  updated_at_unix = excluded.updated_at_unix
+WHERE activities.provider = excluded.provider;
 
 -- name: ListActivitiesBetween :many
 SELECT workout_id, workout_type_id, workout_type_location_id, started_at_unix,
-  distance_metres, moving_seconds, elapsed_seconds, ascent_metres
+  distance_metres, moving_seconds, elapsed_seconds, ascent_metres, provider
 FROM activities
 WHERE target_slot = sqlc.arg(target_slot) AND started_at_unix >= sqlc.arg(from_unix) AND started_at_unix < sqlc.arg(to_unix)
 ORDER BY started_at_unix DESC
@@ -46,6 +50,7 @@ DELETE FROM activity_skips WHERE target_slot = ? AND workout_id = ?;
 SELECT workout_id, raw_summary_json
 FROM activities
 WHERE target_slot = sqlc.arg(target_slot)
+  AND provider = sqlc.arg(provider)
   AND (records_state = 'pending'
     OR (records_state = 'stored' AND records_version < sqlc.arg(records_version)))
 ORDER BY records_state <> 'pending', started_at_unix DESC, workout_id DESC
@@ -191,3 +196,18 @@ UPDATE activities SET
   elapsed_seconds = COALESCE(sqlc.narg(elapsed_seconds), elapsed_seconds),
   ascent_metres   = COALESCE(sqlc.narg(ascent_metres), ascent_metres)
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id);
+
+-- Zwift rides alone: a Wahoo listing starting within a minute of one of these
+-- is the head unit's copy of that same indoor ride.
+-- name: ListIndoorRideStarts :many
+SELECT started_at_unix FROM activities
+WHERE target_slot = ? AND provider = 'zwift'
+ORDER BY started_at_unix;
+
+-- The head unit's copy of an indoor ride Zwift also recorded. Every derived row
+-- goes with it through the existing cascades; the skip and listing rows do not,
+-- and must not: those mirror the account rather than what is stored.
+-- name: DeleteTrainerCopyActivity :execrows
+DELETE FROM activities
+WHERE target_slot = sqlc.arg(target_slot) AND provider = 'wahoo'
+  AND started_at_unix >= sqlc.arg(from_unix) AND started_at_unix <= sqlc.arg(to_unix);

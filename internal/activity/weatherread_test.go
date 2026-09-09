@@ -16,20 +16,21 @@ func weatherNow() time.Time { return time.Date(2026, 8, 24, 12, 0, 0, 0, time.UT
 // fakeWeatherStore is the rides owed a weather read and what was recorded about
 // them.
 type fakeWeatherStore struct {
-	pendingErr error
-	trackErr   error
-	storeErr   error
-	tracks     map[int64][]activity.TrackPoint
-	stored     map[int64][]activity.WeatherStep
-	pending    []activity.PendingWeather
-	recorded   []int64
-	askedLimit int
+	pendingErr         error
+	trackErr           error
+	storeErr           error
+	tracks             map[int64][]activity.TrackPoint
+	stored             map[int64][]activity.WeatherStep
+	pending            []activity.PendingWeather
+	recorded           []int64
+	askedIndoorTypeIDs []int
+	askedLimit         int
 }
 
 func (s *fakeWeatherStore) ActivitiesAwaitingWeather(
-	_ context.Context, _ string, limit int,
+	_ context.Context, _ string, indoorTypeIDs []int, limit int,
 ) ([]activity.PendingWeather, error) {
-	s.askedLimit = limit
+	s.askedLimit, s.askedIndoorTypeIDs = limit, indoorTypeIDs
 
 	return s.pending, s.pendingErr
 }
@@ -118,7 +119,7 @@ func weatherTrack(points int) []activity.TrackPoint {
 
 func weatherDeriver(t *testing.T, store *fakeWeatherStore, source *fakeWeatherSource) *activity.Deriver {
 	t.Helper()
-	deriver, err := activity.NewDeriver(&fakeDeriveStore{}, store, source, weatherNow)
+	deriver, err := activity.NewDeriver(&fakeDeriveStore{}, store, source, indoorWorkoutTypes(), weatherNow)
 	require.NoError(t, err, "NewDeriver()")
 
 	return deriver
@@ -149,6 +150,7 @@ func TestDeriveBoundsHowManyRidesOneRunAsksAbout(t *testing.T) {
 	store := &fakeWeatherStore{}
 
 	weatherDeriver(t, store, &fakeWeatherSource{}).Derive(t.Context(), "rider-a")
+	assert.Equal(t, indoorWorkoutTypes(), store.askedIndoorTypeIDs, "the indoor types the guard reads")
 	assert.Positive(t, store.askedLimit, "a limit was asked for")
 	assert.LessOrEqual(t, store.askedLimit, 50, "and it is a small one")
 }
@@ -494,7 +496,7 @@ func TestDeriveKeepsAnAbsentProbabilityAbsent(t *testing.T) {
 // A build wired without a weather source still derives the training numbers.
 func TestDeriveWithoutAWeatherSourceStillDerivesTheRest(t *testing.T) {
 	t.Parallel()
-	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a"}, nil, nil, weatherNow)
+	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a"}, nil, nil, indoorWorkoutTypes(), weatherNow)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.NotReady, deriver.Derive(t.Context(), "rider-a").Outcome)

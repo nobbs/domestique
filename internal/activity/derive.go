@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/nobbs/domestique/internal/measure"
@@ -88,22 +89,36 @@ type Deriver struct {
 	weatherStore WeatherStore
 	weather      WeatherSource
 	now          func() time.Time
+	// indoorTypes are the workout types ridden over no ground, which are asked
+	// nothing about the weather and attributed to no route.
+	indoorTypes []int
 }
 
 // NewDeriver builds a deriver over stored state.
 //
 // The weather source and its store are optional together: a build wired
 // without them derives the training numbers and asks nobody about the weather,
-// rather than refusing to derive at all.
-func NewDeriver(store DeriveStore, weatherStore WeatherStore, weather WeatherSource, now func() time.Time) (*Deriver, error) {
+// rather than refusing to derive at all. indoorTypes is not optional: an empty
+// list would ask a query to name no type at all, and the guard it carries is
+// what keeps a virtual world's coordinates out of a forecast and a route match.
+func NewDeriver(
+	store DeriveStore, weatherStore WeatherStore, weather WeatherSource,
+	indoorTypes []int, now func() time.Time,
+) (*Deriver, error) {
 	if store == nil {
 		return nil, errors.New("activity: a store is required")
+	}
+	if len(indoorTypes) == 0 {
+		return nil, errors.New("activity: the indoor workout types are required")
 	}
 	if now == nil {
 		now = time.Now
 	}
 
-	return &Deriver{store: store, weatherStore: weatherStore, weather: weather, now: now}, nil
+	return &Deriver{
+		store: store, weatherStore: weatherStore, weather: weather,
+		indoorTypes: slices.Clone(indoorTypes), now: now,
+	}, nil
 }
 
 // Derive settles what this service can work out about one target's rides: the

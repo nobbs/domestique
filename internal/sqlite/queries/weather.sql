@@ -33,6 +33,7 @@ FROM activities AS a
 LEFT JOIN activity_weather_reads AS r ON r.target_slot = a.target_slot AND r.workout_id = a.workout_id
 WHERE a.target_slot = sqlc.arg(target_slot)
   AND a.records_state = 'stored'
+  AND a.workout_type_id NOT IN (SELECT value FROM json_each(CAST(sqlc.arg(indoor_type_ids) AS TEXT)))
   AND r.workout_id IS NULL
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
 LIMIT sqlc.arg(row_limit);

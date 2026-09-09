@@ -6,6 +6,7 @@ FROM activities AS a
 LEFT JOIN activity_route_match AS m ON m.target_slot = a.target_slot AND m.workout_id = a.workout_id
 WHERE a.target_slot = sqlc.arg(target_slot)
   AND a.records_state = 'stored'
+  AND a.workout_type_id NOT IN (SELECT value FROM json_each(CAST(sqlc.arg(indoor_type_ids) AS TEXT)))
   AND (m.workout_id IS NULL OR m.library_hash <> sqlc.arg(library_hash))
 ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 

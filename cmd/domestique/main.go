@@ -38,6 +38,7 @@ import (
 	"github.com/nobbs/domestique/internal/task"
 	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/nobbs/domestique/internal/webui"
+	"github.com/nobbs/domestique/internal/zwift"
 )
 
 const (
@@ -189,10 +190,20 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating the activity poller: %w", err)
 	}
+	// A rider's own Zwift account, read with the credentials they entered. The
+	// endpoints are compiled in: there is no second Zwift host to point at.
+	zwiftClient, err := zwift.New(&zwift.Options{})
+	if err != nil {
+		return fmt.Errorf("creating the Zwift client: %w", err)
+	}
+	zwiftActivityPoller, err := activity.NewZwiftPoller(zwiftProvider{client: zwiftClient}, store, time.Now)
+	if err != nil {
+		return fmt.Errorf("creating the Zwift activity poller: %w", err)
+	}
 	// No upstream of its own: it reads the samples the two above stored and the
 	// rider's own profile, which is why a profile edit can start it directly.
 	rideWeather := rideWeatherAdapter(weatherProvider)
-	activityDeriver, err := activity.NewDeriver(store, store, rideWeather, time.Now)
+	activityDeriver, err := activity.NewDeriver(store, store, rideWeather, wahoo.IndoorWorkoutTypes(), time.Now)
 	if err != nil {
 		return fmt.Errorf("creating the activity deriver: %w", err)
 	}
@@ -204,6 +215,7 @@ func run(ctx context.Context) error {
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
 			activityRecordTask(activityPoller),
+			zwiftPollTask(zwiftActivityPoller, switches.enabledFor, destination.targetIDs),
 			activityDeriveTask(activityDeriver, switches.enabledFor, destination.targetIDs),
 			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
 		),

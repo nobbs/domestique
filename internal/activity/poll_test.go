@@ -1072,7 +1072,7 @@ type storedActivity struct {
 }
 
 type fakeStore struct {
-	authorizationErr   error
+	readAt             time.Time
 	storeErr           error
 	knownErr           error
 	refreshTokenErr    error
@@ -1083,23 +1083,28 @@ type fakeStore struct {
 	listingsErr        error
 	replaceListingsErr error
 	pendingErr         error
+	indoorStartsErr    error
 	recordsErr         error
 	unreadableErr      error
+	authorizationErr   error
 	records            map[int64]FIT
-	readAt             time.Time
+	recordVersions     map[int64]int
 	authorization      string
 	refreshToken       string
-	known              []int64
-	listings           []Listing
-	skips              []Skip
-	stored             []storedActivity
+	recordProvider     string
 	skipped            []recordedSkip
+	stored             []storedActivity
+	skips              []Skip
 	pending            []PendingActivity
 	// stale is the fake's second ActivitiesAwaitingRecords group: rides already
 	// stored whose recordVersions entry a test set below the current one.
-	stale                    []PendingActivity
-	recordVersions           map[int64]int
+	stale []PendingActivity
+	// indoorStarts are the starts of the slot's stored Zwift rides, which is
+	// what tells a listing that is the head unit's copy of one.
+	indoorStarts             []time.Time
+	listings                 []Listing
 	unreadable               []int64
+	known                    []int64
 	recordLimit              int
 	markedForReauthorization bool
 }
@@ -1235,9 +1240,9 @@ func captureLogs(t *testing.T) *bytes.Buffer {
 // still pending, then the stale rides whose recordVersions entry is below
 // recordsVersion, both in the order a test set them.
 func (s *fakeStore) ActivitiesAwaitingRecords(
-	_ context.Context, _ string, recordsVersion, limit int,
+	_ context.Context, _, provider string, recordsVersion, limit int,
 ) ([]PendingActivity, error) {
-	s.recordLimit = limit
+	s.recordLimit, s.recordProvider = limit, provider
 	if s.pendingErr != nil {
 		return nil, s.pendingErr
 	}
@@ -1263,6 +1268,11 @@ func (s *fakeStore) StoreActivityRecords(_ context.Context, _ string, id int64, 
 	s.settled(id)
 
 	return nil
+}
+
+// IndoorRideStarts are the stored Zwift rides a test placed for the slot.
+func (s *fakeStore) IndoorRideStarts(_ context.Context, _ string) ([]time.Time, error) {
+	return slices.Clone(s.indoorStarts), s.indoorStartsErr
 }
 
 func (s *fakeStore) MarkActivityUnreadable(_ context.Context, _ string, id int64) error {
@@ -1326,4 +1336,47 @@ func TestPollKeepsTheAccountsWholeListingSoTheHeadCheckHolds(t *testing.T) {
 		"a second poll re-read the whole account after its head check disagreed")
 	assert.Equal(t, 1, source.headed,
 		"the second poll settles on the head alone; the first had no reading to check")
+}
+
+// A Wahoo listing that starts alongside a stored Zwift ride is the head unit's
+// copy of that ride. It is dropped before the summary request, so the copy
+// costs no quota, and it is what stops the copy being stored again after a
+// Zwift poll removed it.
+func TestPollPassesOverAWahooListingAlongsideAStoredIndoorRide(t *testing.T) {
+	store := newFakeStore()
+	store.indoorStarts = []time.Time{at(0)}
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(0).Add(59 * time.Second)}}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Unchanged, result.Outcome)
+	assert.Empty(t, store.stored, "the head unit's copy of an indoor ride was stored")
+	assert.Empty(t, source.summarized, "a summary was spent on the head unit's copy")
+}
+
+// Ten minutes apart is two rides, not two recordings of one.
+func TestPollStoresAWahooListingWellAwayFromAStoredIndoorRide(t *testing.T) {
+	store := newFakeStore()
+	store.indoorStarts = []time.Time{at(0)}
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(10)}}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Polled, result.Outcome)
+	require.Len(t, store.stored, 1, "the ride was not stored")
+	assert.Equal(t, int64(1), store.stored[0].listing.ID)
+}
+
+func TestPollReportsIndoorRideStartsThatCouldNotBeRead(t *testing.T) {
+	store := newFakeStore()
+	store.indoorStartsErr = errors.New("state failed")
+	source := newFakeSource(t)
+	source.listings = []Listing{{ID: 1, Starts: at(0)}}
+
+	result := newTestPoller(t, source, store).Poll(t.Context(), "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.Equal(t, FailureState, result.Failure)
 }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/veloplanner"
 	"github.com/nobbs/domestique/internal/wahoo"
+	"github.com/nobbs/domestique/internal/zwift"
 )
 
 // oauthCallbackPath is where this service receives a Wahoo authorization. It is
@@ -742,3 +744,107 @@ type predictorFunc func(ctx context.Context, stages []route.Route) (predicted, f
 func (f predictorFunc) Predict(ctx context.Context, stages []route.Route) (predicted, failed int, err error) {
 	return f(ctx, stages)
 }
+
+// zwiftProvider adapts the Zwift client to activity.ZwiftSource. It is the only
+// place that knows both vocabularies, exactly as the Wahoo mapping above is.
+type zwiftProvider struct{ client *zwift.Client }
+
+// SignIn signs in with a rider's own credentials and resolves their player id,
+// the handle every listing request addresses them by. The grant lives in the
+// reader for the length of one poll and reaches no store.
+func (p zwiftProvider) SignIn(ctx context.Context, email, password []byte) (activity.ZwiftReader, error) {
+	grant, err := p.client.Session(ctx, email, password)
+	if err != nil {
+		return nil, fmt.Errorf("signing in to Zwift: %w", err)
+	}
+	playerID, err := p.client.PlayerID(ctx, grant)
+	if err != nil {
+		return nil, fmt.Errorf("reading the Zwift player id: %w", err)
+	}
+
+	return zwiftReader{client: p.client, session: grant, playerID: playerID}, nil
+}
+
+// DownloadActivityFIT reads the file a stored Zwift summary names. Where that
+// URL sits in the document is this service's own shape, written by the adapter.
+func (p zwiftProvider) DownloadActivityFIT(ctx context.Context, summary activity.Summary) ([]byte, error) {
+	var stored zwift.Activity
+	if err := json.Unmarshal(summary.Raw, &stored); err != nil {
+		// The cause names a field, never the file URL, so it may travel.
+		return nil, fmt.Errorf("%w: stored Zwift activity summary could not be read as one: %w", activity.ErrNoActivityFile, err)
+	}
+	fileURL, ok := stored.FITURL()
+	if !ok {
+		return nil, fmt.Errorf("%w: stored Zwift activity summary does not name a file", activity.ErrNoActivityFile)
+	}
+	data, err := p.client.DownloadFIT(ctx, fileURL)
+	if err != nil {
+		return nil, fmt.Errorf("downloading a Zwift activity file: %w", err)
+	}
+
+	return data, nil
+}
+
+func (p zwiftProvider) IsUnauthorized(err error) bool { return p.client.IsUnauthorized(err) }
+
+func (p zwiftProvider) IsUnreadable(err error) bool { return p.client.IsUnreadable(err) }
+
+// zwiftReader lists one signed-in rider's own activities.
+type zwiftReader struct {
+	client   *zwift.Client
+	session  zwift.Session
+	playerID int64
+}
+
+func (r zwiftReader) ListActivities(
+	ctx context.Context, start, limit int,
+) (listings []activity.Listing, held int, err error) {
+	activities, err := r.client.Activities(ctx, r.session, r.playerID, start, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("listing Zwift activities: %w", err)
+	}
+
+	return zwiftListings(activities), len(activities), nil
+}
+
+// zwiftListings narrows Zwift's activities to the rides this service records,
+// each carrying the summary its listing entry already held: unlike Wahoo, a
+// Zwift listing needs no second request to be storable.
+//
+// Every ride is stored under Wahoo's own virtual-cycling workout type, which is
+// what the weather, route-match and map guards read: a Zwift ride is ridden
+// over no ground, exactly as a Wahoo trainer ride is.
+func zwiftListings(activities []zwift.Activity) []activity.Listing {
+	listings := make([]activity.Listing, 0, len(activities))
+	for index := range activities {
+		ride := &activities[index]
+		if !strings.EqualFold(ride.Sport, zwiftCyclingSport) {
+			continue
+		}
+		raw, err := ride.Summary()
+		if err != nil {
+			continue
+		}
+		summary := activity.Summary{
+			Raw:            raw,
+			DistanceMetres: ride.DistanceMeters,
+			MovingSeconds:  float64(ride.MovingTimeMs) / 1000,
+			ElapsedSeconds: ride.EndDate.Sub(ride.StartDate).Seconds(),
+			AscentMetres:   ride.TotalElevation,
+		}
+		listings = append(listings, activity.Listing{
+			ID:         ride.ID,
+			TypeID:     wahoo.WorkoutTypeBikingIndoorVirtual,
+			LocationID: 0,
+			Starts:     ride.StartDate,
+			Summary:    &summary,
+			Provider:   activity.ProviderZwift,
+		})
+	}
+
+	return listings
+}
+
+// zwiftCyclingSport is the sport Zwift names a ride; a run on the treadmill is
+// listed by the same account and is not one this service records.
+const zwiftCyclingSport = "CYCLING"

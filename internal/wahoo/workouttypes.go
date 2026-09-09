@@ -50,3 +50,15 @@ func OutdoorHumanPoweredWorkoutTypes() []int {
 		WorkoutTypeBikingTrack,
 	}
 }
+
+// IndoorWorkoutTypes are the biking types ridden over no ground. A ride of one
+// of these has a virtual world's coordinates or none at all, so it is asked
+// nothing about the weather and attributed to no library route.
+func IndoorWorkoutTypes() []int {
+	return []int{
+		WorkoutTypeBikingIndoor,
+		WorkoutTypeBikingIndoorCyclingClass,
+		WorkoutTypeBikingIndoorTrainer,
+		WorkoutTypeBikingIndoorVirtual,
+	}
+}

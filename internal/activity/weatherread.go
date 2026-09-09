@@ -27,7 +27,10 @@ const weatherStepFallback = time.Hour
 type WeatherStore interface {
 	// ActivitiesAwaitingWeather lists the rides nobody has asked the weather
 	// about, newest first, at most limit of them.
-	ActivitiesAwaitingWeather(ctx context.Context, targetID string, limit int) ([]PendingWeather, error)
+	// A ride of one of indoorTypeIDs was ridden over no ground and is never
+	// among them.
+	ActivitiesAwaitingWeather(ctx context.Context, targetID string,
+		indoorTypeIDs []int, limit int) ([]PendingWeather, error)
 	// ActivityTrack lists the positioned samples of one ride, in the order they
 	// were recorded.
 	ActivityTrack(ctx context.Context, targetID string, id int64) ([]TrackPoint, error)
@@ -48,7 +51,7 @@ func (d *Deriver) readWeather(ctx context.Context, targetID string) Result {
 	if d.weather == nil || d.weatherStore == nil {
 		return Result{Outcome: NotReady}
 	}
-	pending, err := d.weatherStore.ActivitiesAwaitingWeather(ctx, targetID, weatherRidesPerRun)
+	pending, err := d.weatherStore.ActivitiesAwaitingWeather(ctx, targetID, d.indoorTypes, weatherRidesPerRun)
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}

@@ -360,8 +360,10 @@ type RouteMatchStore interface {
 	// different hash was measured against a library that has since changed.
 	LibraryRoutes(ctx context.Context) (routes []RouteCandidate, libraryHash string, err error)
 	// ActivitiesAwaitingRouteMatch lists the rides owed a match against this
-	// library: those never matched, and those matched against another.
-	ActivitiesAwaitingRouteMatch(ctx context.Context, targetID, libraryHash string) ([]int64, error)
+	// library: those never matched, and those matched against another. A ride
+	// of one of indoorTypeIDs was ridden over no ground to match against.
+	ActivitiesAwaitingRouteMatch(ctx context.Context, targetID, libraryHash string,
+		indoorTypeIDs []int) ([]int64, error)
 	// ClearActivityRouteMatches removes every match one target holds and reports
 	// how many went, for a library that no longer holds any route to have
 	// ridden.
@@ -408,7 +410,7 @@ func (d *Deriver) matchRoutes(ctx context.Context, targetID string) Result {
 
 		return Result{Outcome: Polled, Matched: removed}
 	}
-	ids, err := d.store.ActivitiesAwaitingRouteMatch(ctx, targetID, libraryHash)
+	ids, err := d.store.ActivitiesAwaitingRouteMatch(ctx, targetID, libraryHash, d.indoorTypes)
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}

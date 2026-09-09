@@ -68,7 +68,11 @@ func (s *fakeDeriveStore) LibraryRoutes(context.Context) ([]activity.RouteCandid
 	return s.library, s.libraryHash, s.libraryErr
 }
 
-func (s *fakeDeriveStore) ActivitiesAwaitingRouteMatch(_ context.Context, _, libraryHash string) ([]int64, error) {
+// indoorWorkoutTypes are the same ids wahoo.IndoorWorkoutTypes() returns,
+// written out here so the activity package's tests import no adapter.
+func indoorWorkoutTypes() []int { return []int{12, 49, 61, 68} }
+
+func (s *fakeDeriveStore) ActivitiesAwaitingRouteMatch(_ context.Context, _, libraryHash string, _ []int) ([]int64, error) {
 	s.matchedAgainst = libraryHash
 
 	return s.owedMatches, s.owedMatchesErr
@@ -198,7 +202,7 @@ func TestDeriveWritesEveryRideOwedOne(t *testing.T) {
 			8: {HeartRate: heartRateRide(600, 160)},
 		},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -216,7 +220,7 @@ func TestDeriveWritesEveryRideOwedOne(t *testing.T) {
 func TestDeriveIsNotReadyWithoutAProfile(t *testing.T) {
 	t.Parallel()
 	store := &fakeDeriveStore{owner: "rider-a"}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.NotReady, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -229,7 +233,7 @@ func TestDeriveIsNotReadyWithoutAProfile(t *testing.T) {
 func TestDeriveClearsEveryRowWhenTheProfileIsCleared(t *testing.T) {
 	t.Parallel()
 	store := &fakeDeriveStore{owner: "rider-a", clearedRows: 12}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -240,7 +244,7 @@ func TestDeriveClearsEveryRowWhenTheProfileIsCleared(t *testing.T) {
 
 func TestDeriveReportsAStoreThatCannotClear(t *testing.T) {
 	t.Parallel()
-	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a", clearErr: errors.New("unwritable")}, nil, nil, nil)
+	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a", clearErr: errors.New("unwritable")}, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -252,7 +256,7 @@ func TestDeriveReportsAStoreThatCannotClear(t *testing.T) {
 // nothing to do rather than a failure.
 func TestDeriveLeavesAnUnownedTargetAlone(t *testing.T) {
 	t.Parallel()
-	deriver, err := activity.NewDeriver(&fakeDeriveStore{}, nil, nil, nil)
+	deriver, err := activity.NewDeriver(&fakeDeriveStore{}, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Unchanged, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -260,7 +264,7 @@ func TestDeriveLeavesAnUnownedTargetAlone(t *testing.T) {
 
 func TestDeriveIsUnchangedWhenNoRideIsOwedOne(t *testing.T) {
 	t.Parallel()
-	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a", profile: fullProfile()}, nil, nil, nil)
+	deriver, err := activity.NewDeriver(&fakeDeriveStore{owner: "rider-a", profile: fullProfile()}, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Unchanged, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -276,7 +280,7 @@ func TestDeriveKeepsWhatItStoredWhenAReadFails(t *testing.T) {
 		owed:       []int64{7},
 		samplesErr: errors.New("unreadable"),
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -298,7 +302,7 @@ func TestDeriveReportsAnUnreadableStore(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			deriver, err := activity.NewDeriver(store, nil, nil, nil)
+			deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 			require.NoError(t, err, "NewDeriver()")
 
 			result := deriver.Derive(t.Context(), "rider-a")
@@ -338,7 +342,7 @@ func TestDeriveEstimatesPowerForARideWithNoMeter(t *testing.T) {
 		owed:  []int64{7},
 		rides: map[int64]activity.RideSamples{7: trackRide(120)},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -366,7 +370,7 @@ func TestDeriveStoresTheEstimateQualityEstimateSeriesReports(t *testing.T) {
 		owed:  []int64{7},
 		rides: map[int64]activity.RideSamples{7: track},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -389,7 +393,7 @@ func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {
 		owed:  []int64{7},
 		rides: map[int64]activity.RideSamples{7: ride},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -422,7 +426,7 @@ func TestDeriveEstimatesNoPowerWithoutATrackOrAMass(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			deriver, err := activity.NewDeriver(store, nil, nil, nil)
+			deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 			require.NoError(t, err, "NewDeriver()")
 
 			require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -442,7 +446,7 @@ func TestDeriveRecordsTheMassItWorkedTheEstimateOutAgainst(t *testing.T) {
 		owed:    []int64{7},
 		rides:   map[int64]activity.RideSamples{7: trackRide(120)},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -461,7 +465,7 @@ func TestDeriveWritesNoMetricsWhenTheEstimateCannotBeStored(t *testing.T) {
 		rides:       map[int64]activity.RideSamples{7: trackRide(120)},
 		estimateErr: errors.New("unwritable"),
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -482,7 +486,7 @@ func TestDeriveCapsHeartRateAboveTheProfilesMaximumBeforeDerivingLoad(t *testing
 		owed:    []int64{7},
 		rides:   map[int64]activity.RideSamples{7: {HeartRate: spiked}},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -512,7 +516,7 @@ func TestDeriveLeavesHeartRateAloneWithoutAProfileMaximum(t *testing.T) {
 		owed:  []int64{7},
 		rides: map[int64]activity.RideSamples{7: {HeartRate: spiked}},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -525,7 +529,7 @@ func TestDeriveLeavesHeartRateAloneWithoutAProfileMaximum(t *testing.T) {
 
 func TestNewDeriverNeedsAStore(t *testing.T) {
 	t.Parallel()
-	_, err := activity.NewDeriver(nil, nil, nil, nil)
+	_, err := activity.NewDeriver(nil, nil, nil, indoorWorkoutTypes(), nil)
 	require.ErrorContains(t, err, "a store is required")
 }
 
@@ -561,7 +565,7 @@ func TestDeriveWritesTheRidesSensorAverages(t *testing.T) {
 			},
 		},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -583,7 +587,7 @@ func TestDeriveWritesTheRidesMaxSpeed(t *testing.T) {
 		owed:    []int64{7},
 		rides:   map[int64]activity.RideSamples{7: {Speed: varyingRide(5, 30)}},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -602,7 +606,7 @@ func TestDeriveLeavesMaxSpeedAbsentWithoutASpeedSeries(t *testing.T) {
 		owed:    []int64{7},
 		rides:   map[int64]activity.RideSamples{7: {HeartRate: varyingRide(5, 100)}},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -628,7 +632,7 @@ func TestDeriveAveragesCadenceOverThePedallingOnly(t *testing.T) {
 			})},
 		},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -652,7 +656,7 @@ func TestDeriveLeavesCadenceAbsentWhereTheRiderNeverPedalled(t *testing.T) {
 	for index := range store.rides[7].Cadence {
 		store.rides[7].Cadence[index].Value = 0
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -676,7 +680,7 @@ func TestDeriveLeavesAnAverageAbsentWhereTheRideCarriedNoSensor(t *testing.T) {
 				owed:    []int64{7},
 				rides:   map[int64]activity.RideSamples{7: samples},
 			}
-			deriver, err := activity.NewDeriver(store, nil, nil, nil)
+			deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 			require.NoError(t, err, "NewDeriver()")
 			deriver.Derive(t.Context(), "rider-a")
 
@@ -698,7 +702,7 @@ func TestDeriveWritesARideThatOnlyYieldsAnAverage(t *testing.T) {
 		owed:    []int64{7},
 		rides:   map[int64]activity.RideSamples{7: {Cadence: varyingRide(5, 60)}},
 	}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	assert.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
@@ -752,7 +756,7 @@ func libraryStore(owed []int64, tracks map[int64][]activity.TrackPoint) *fakeDer
 func TestDeriveMatchesARideToTheRouteItWasRiddenOn(t *testing.T) {
 	t.Parallel()
 	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: squareTrack()})
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -775,7 +779,7 @@ func TestDeriveRecordsARideThatMatchedNoRoute(t *testing.T) {
 		{Latitude: 52.52, Longitude: 13.42},
 	}
 	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: elsewhere})
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -790,7 +794,7 @@ func TestDeriveRecordsARideThatMatchedNoRoute(t *testing.T) {
 func TestDeriveMatchesNothingAgainstAnEmptyLibrary(t *testing.T) {
 	t.Parallel()
 	store := &fakeDeriveStore{owner: "rider-a", owedMatches: []int64{11}}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -805,7 +809,7 @@ func TestDeriveMatchesNothingAgainstAnEmptyLibrary(t *testing.T) {
 func TestDeriveClearsTheMatchesAnEmptiedLibraryLeftBehind(t *testing.T) {
 	t.Parallel()
 	store := &fakeDeriveStore{owner: "rider-a", clearedMatches: 9}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -817,7 +821,7 @@ func TestDeriveClearsTheMatchesAnEmptiedLibraryLeftBehind(t *testing.T) {
 func TestDeriveReportsAStoreThatCannotClearMatches(t *testing.T) {
 	t.Parallel()
 	store := &fakeDeriveStore{owner: "rider-a", clearMatchesErr: errors.New("unavailable")}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -830,7 +834,7 @@ func TestDeriveReportsAStoreThatCannotClearMatches(t *testing.T) {
 func TestDeriveMatchesRoutesForARiderWithNoProfile(t *testing.T) {
 	t.Parallel()
 	store := libraryStore([]int64{11}, map[int64][]activity.TrackPoint{11: squareTrack()})
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -843,7 +847,7 @@ func TestDeriveKeepsTheMatchesItStoredWhenATrackReadFails(t *testing.T) {
 	t.Parallel()
 	store := libraryStore([]int64{11}, nil)
 	store.trackErr = errors.New("unavailable")
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -857,7 +861,7 @@ func TestDeriveReportsALibraryItCannotRead(t *testing.T) {
 	t.Parallel()
 	store := libraryStore(nil, nil)
 	store.libraryErr = errors.New("unavailable")
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -873,7 +877,7 @@ func TestDeriveCountsBothWhatItDerivedAndWhatItMatched(t *testing.T) {
 	store.profile = fullProfile()
 	store.owed = []int64{7}
 	store.rides = map[int64]activity.RideSamples{7: {HeartRate: heartRateRide(600, 150)}}
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -895,7 +899,7 @@ func TestDeriveKeepsEachPassesCountWhicheverIsReported(t *testing.T) {
 	weather := &fakeWeatherStore{
 		pending: []activity.PendingWeather{{ID: 8, StartedAt: weatherNow(), ElapsedSeconds: 3600}},
 	}
-	deriver, err := activity.NewDeriver(store, weather, &fakeWeatherSource{}, weatherNow)
+	deriver, err := activity.NewDeriver(store, weather, &fakeWeatherSource{}, indoorWorkoutTypes(), weatherNow)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -952,7 +956,7 @@ func climbingLibraryStore() *fakeDeriveStore {
 func TestDeriveTimesAMatchedRideOverTheRoutesClimbs(t *testing.T) {
 	t.Parallel()
 	store := climbingLibraryStore()
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -970,7 +974,7 @@ func TestDeriveTimesNothingOverARouteWithNoHeight(t *testing.T) {
 	t.Parallel()
 	store := climbingLibraryStore()
 	store.library[0].Elevations = nil
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -984,7 +988,7 @@ func TestDeriveReportsASeriesItCannotRead(t *testing.T) {
 	t.Parallel()
 	store := climbingLibraryStore()
 	store.seriesErr = errors.New("the samples are unreadable")
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
@@ -996,10 +1000,20 @@ func TestDeriveReportsAStoreThatCannotKeepClimbAttempts(t *testing.T) {
 	t.Parallel()
 	store := climbingLibraryStore()
 	store.climbAttemptErr = errors.New("the attempts cannot be stored")
-	deriver, err := activity.NewDeriver(store, nil, nil, nil)
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
 	require.NoError(t, err, "NewDeriver()")
 
 	result := deriver.Derive(t.Context(), "rider-a")
 
 	assert.Equal(t, activity.Failed, result.Outcome)
+}
+
+// The indoor types are the guard that keeps a virtual world's coordinates out
+// of a forecast and a route match; an empty list would ask a query to name no
+// type at all, so a deriver refuses to be built without them.
+func TestNewDeriverRefusesAnEmptyIndoorTypeList(t *testing.T) {
+	t.Parallel()
+
+	_, err := activity.NewDeriver(&fakeDeriveStore{}, nil, nil, nil, nil)
+	require.ErrorContains(t, err, "indoor workout types are required")
 }
