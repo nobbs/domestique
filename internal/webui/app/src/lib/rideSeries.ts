@@ -23,9 +23,21 @@ export interface AlignedSeries {
 }
 
 /**
- * The series' value at each profile sample, taken from the nearest coordinate
- * by distance rather than interpolated: a gap the sensor left stays a gap,
- * and averaging across one would invent a reading over it.
+ * The series averaged over the ground each profile sample stands for: every
+ * reading from halfway back to halfway on, which is the stretch the sample is
+ * drawn across.
+ *
+ * A ride records once a second and the profile holds a few hundred samples, so
+ * a reading taken at one of them describes one second out of several hundred
+ * metres — a single coasted second draws a cadence spike to zero across ground
+ * the rider pedalled. The mean describes the stretch; the pick described the
+ * instant it landed on.
+ *
+ * A gap the sensor left is still a gap: nulls are left out of the mean, and a
+ * stretch whose records all read null draws as null rather than borrowing from
+ * its neighbours. Only a stretch holding no record whatsoever — the samples sit
+ * closer together than the ride recorded — falls back to the nearest reading,
+ * which is what every sample was given before.
  */
 export function alignSeries(
   values: (number | null)[],
@@ -33,10 +45,51 @@ export function alignSeries(
   profile: Profile,
 ): (number | null)[] {
   const distances = cumulativeMetres(coordinates);
+  const samples = profile.samples;
 
-  return profile.samples.map(
-    (sample) => values[nearestIndex(distances, sample.distanceMetres)] ?? null,
-  );
+  let cursor = 0;
+
+  return samples.map((sample, index) => {
+    const previous = samples[index - 1]?.distanceMetres;
+    const next = samples[index + 1]?.distanceMetres;
+    // The end buckets stop at the axis rather than reaching half a step past
+    // it: the profile starts where the altitudes do, and a record from before
+    // that carries no ground the chart draws, sensors or not.
+    const from =
+      previous === undefined ? sample.distanceMetres : (previous + sample.distanceMetres) / 2;
+    const to = next === undefined ? sample.distanceMetres : (sample.distanceMetres + next) / 2;
+    // The far end is closed, where every bucket before it is half open: the
+    // last recorded second sits exactly on it and belongs to no later bucket.
+    const last = next === undefined;
+
+    while (cursor < distances.length && (distances[cursor] as number) < from) {
+      cursor++;
+    }
+    let total = 0;
+    let count = 0;
+    let held = 0;
+    // The cursor is consumed rather than copied: the buckets are contiguous and
+    // never overlap, so a record read here belongs to no later one.
+    while (
+      cursor < distances.length &&
+      (last ? (distances[cursor] as number) <= to : (distances[cursor] as number) < to)
+    ) {
+      held++;
+      const value = values[cursor];
+      if (value !== null && value !== undefined) {
+        total += value;
+        count++;
+      }
+      cursor++;
+    }
+    if (count > 0) {
+      return total / count;
+    }
+
+    // A bucket holding records that all read null is a gap, and stays one. Only
+    // a stretch with no record in it at all falls back to the nearest reading.
+    return held > 0 ? null : (values[nearestIndex(distances, sample.distanceMetres)] ?? null);
+  });
 }
 
 /** The index of the distance closest to metres, by binary search. */
