@@ -39,12 +39,12 @@ func TestDecodeFITReadsActivityRecordsAndSession(t *testing.T) {
 	require.Len(t, decoded.Records, 1)
 	assert.False(t, decoded.ChecksumFailed)
 	assert.Equal(t, typedef.ManufacturerDevelopment.String(), decoded.RecordingDevice)
-	assert.True(t, decoded.HasTotalTimerTime)
-	assert.Equal(t, 120*time.Second, decoded.TotalTimerTime)
-	assert.True(t, decoded.HasTotalElapsedTime)
-	assert.Equal(t, 125*time.Second, decoded.TotalElapsedTime)
-	assert.True(t, decoded.HasTotalAscent)
-	assert.InDelta(t, 42.0, decoded.TotalAscentMetres, 0)
+	assert.True(t, decoded.Session.TimerSeconds.Known)
+	assert.InDelta(t, 120.0, decoded.Session.TimerSeconds.Value, 0)
+	assert.True(t, decoded.Session.ElapsedSeconds.Known)
+	assert.InDelta(t, 125.0, decoded.Session.ElapsedSeconds.Value, 0)
+	assert.True(t, decoded.Session.AscentMetres.Known)
+	assert.InDelta(t, 42.0, decoded.Session.AscentMetres.Value, 0)
 	assert.Equal(t, start, decoded.Records[0].Time)
 	assert.True(t, decoded.Records[0].HasPosition)
 	assert.InDelta(t, 50.0, decoded.Records[0].Latitude, 0.0001)
@@ -67,6 +67,165 @@ func TestDecodeFITReadsActivityRecordsAndSession(t *testing.T) {
 	plainAltitude := fromRecord(mesgdef.NewRecord(nil).SetAltitudeScaled(100), nil)
 	assert.InDelta(t, 100, plainAltitude.AltitudeMetres, 0.1)
 	assert.False(t, fromRecord(mesgdef.NewRecord(nil), nil).HasAltitude)
+}
+
+// TestDecodeFITReadsSessionAndZoneMessages exercises every session field this
+// package decodes, plus hr_zone and power_zone messages arriving out of
+// message_index order.
+func TestDecodeFITReadsSessionAndZoneMessages(t *testing.T) {
+	activityFile := &filedef.Activity{}
+	activityFile.FileId.SetType(typedef.FileActivity)
+	activityFile.Sessions = append(activityFile.Sessions, mesgdef.NewSession(nil).
+		SetEnhancedMaxSpeedScaled(17.686).
+		SetEnhancedAvgSpeedScaled(8.5).
+		SetTotalDistanceScaled(45000).
+		SetTotalTimerTimeScaled(7200).
+		SetTotalElapsedTimeScaled(7500).
+		SetTotalAscent(650).
+		SetTotalDescent(640).
+		SetTotalCalories(1800).
+		SetAvgHeartRate(140).
+		SetMaxHeartRate(175).
+		SetMinHeartRate(90).
+		SetAvgCadence(85).
+		SetMaxCadence(110).
+		SetAvgPower(180).
+		SetMaxPower(650).
+		SetNormalizedPower(200).
+		SetThresholdPower(265).
+		SetAvgTemperature(18).
+		SetMaxTemperature(24).
+		SetAvgGradeScaled(1.5).
+		SetMaxPosGradeScaled(12.5).
+		SetMaxNegGradeScaled(-15.5).
+		SetEnhancedMinAltitudeScaled(100.0).
+		SetEnhancedMaxAltitudeScaled(800.5).
+		SetEnhancedAvgAltitudeScaled(300.2).
+		SetSport(typedef.SportCycling).
+		SetSubSport(typedef.SubSportRoad).
+		SetTimeInHrZoneScaled([]float64{100, 200, 300, 400, 500}))
+	for i, high := range map[typedef.MessageIndex]uint8{2: 130, 0: 100, 1: 115, 4: 170, 3: 150} {
+		activityFile.UnrelatedMessages = append(activityFile.UnrelatedMessages,
+			mesgdef.NewHrZone(nil).SetMessageIndex(i).SetHighBpm(high).ToMesg(nil))
+	}
+	for i, high := range map[typedef.MessageIndex]uint16{1: 200, 0: 100} {
+		activityFile.UnrelatedMessages = append(activityFile.UnrelatedMessages,
+			mesgdef.NewPowerZone(nil).SetMessageIndex(i).SetHighValue(high).ToMesg(nil))
+	}
+
+	decoded, err := DecodeFIT(encode(t, activityFile))
+	require.NoError(t, err)
+	session := decoded.Session
+
+	assert.InDelta(t, 63.6696, session.MaxSpeedKmh.Value, 0.001)
+	assert.InDelta(t, 30.6, session.AverageSpeedKmh.Value, 0.001)
+	assert.InDelta(t, 45000, session.DistanceMetres.Value, 0.1)
+	assert.InDelta(t, 7200, session.TimerSeconds.Value, 0.1)
+	assert.InDelta(t, 7500, session.ElapsedSeconds.Value, 0.1)
+	assert.InDelta(t, 650, session.AscentMetres.Value, 0)
+	assert.InDelta(t, 640, session.DescentMetres.Value, 0)
+	assert.InDelta(t, 1800, session.CaloriesKcal.Value, 0)
+	assert.InDelta(t, 140, session.AverageHeartRateBPM.Value, 0)
+	assert.InDelta(t, 175, session.MaxHeartRateBPM.Value, 0)
+	assert.InDelta(t, 90, session.MinHeartRateBPM.Value, 0)
+	assert.InDelta(t, 85, session.AverageCadenceRPM.Value, 0)
+	assert.InDelta(t, 110, session.MaxCadenceRPM.Value, 0)
+	assert.InDelta(t, 180, session.AveragePowerWatts.Value, 0)
+	assert.InDelta(t, 650, session.MaxPowerWatts.Value, 0)
+	assert.InDelta(t, 200, session.NormalizedPowerWatts.Value, 0)
+	assert.InDelta(t, 265, session.ThresholdPowerWatts.Value, 0)
+	assert.InDelta(t, 18, session.AverageTemperatureCelsius.Value, 0)
+	assert.InDelta(t, 24, session.MaxTemperatureCelsius.Value, 0)
+	assert.InDelta(t, 1.5, session.AverageGradePercent.Value, 0.01)
+	assert.InDelta(t, 12.5, session.MaxPositiveGradePercent.Value, 0.01)
+	assert.InDelta(t, -15.5, session.MaxNegativeGradePercent.Value, 0.01)
+	assert.InDelta(t, 100.0, session.MinAltitudeMetres.Value, 0.1)
+	assert.InDelta(t, 800.5, session.MaxAltitudeMetres.Value, 0.1)
+	assert.InDelta(t, 300.2, session.AverageAltitudeMetres.Value, 0.1)
+	assert.Equal(t, typedef.SportCycling.String(), session.Sport)
+	assert.Equal(t, typedef.SubSportRoad.String(), session.SubSport)
+	assert.InDeltaSlice(t, []float64{100, 200, 300, 400, 500}, session.HeartRateZoneSeconds, 0.001)
+	assert.Equal(t, []float64{100, 115, 130, 150, 170}, session.HeartRateZoneHighBPM,
+		"hr_zone messages must come back sorted by message_index, not arrival order")
+	assert.Equal(t, []float64{100, 200}, session.PowerZoneHighWatts,
+		"power_zone messages must come back sorted by message_index, not arrival order")
+	assert.True(t, session.Any())
+}
+
+// TestDecodeFITFallsBackToLegacySpeedAndAltitudeFields covers a session that
+// only carries the pre-enhanced 16-bit fields.
+func TestDecodeFITFallsBackToLegacySpeedAndAltitudeFields(t *testing.T) {
+	activityFile := &filedef.Activity{}
+	activityFile.FileId.SetType(typedef.FileActivity)
+	activityFile.Sessions = append(activityFile.Sessions, mesgdef.NewSession(nil).
+		SetMaxSpeedScaled(9.5).
+		SetAvgSpeedScaled(5).
+		SetMaxAltitudeScaled(555.5).
+		SetMinAltitudeScaled(100).
+		SetAvgAltitudeScaled(300))
+	// A zone message with no bound is not a zone.
+	activityFile.UnrelatedMessages = append(activityFile.UnrelatedMessages,
+		mesgdef.NewHrZone(nil).SetMessageIndex(0).ToMesg(nil),
+		mesgdef.NewPowerZone(nil).SetMessageIndex(0).ToMesg(nil),
+	)
+
+	decoded, err := DecodeFIT(encode(t, activityFile))
+	require.NoError(t, err)
+	assert.True(t, decoded.Session.MaxSpeedKmh.Known)
+	assert.InDelta(t, 34.2, decoded.Session.MaxSpeedKmh.Value, 0.01)
+	assert.InDelta(t, 18, decoded.Session.AverageSpeedKmh.Value, 0.01)
+	assert.True(t, decoded.Session.MaxAltitudeMetres.Known)
+	assert.InDelta(t, 555.5, decoded.Session.MaxAltitudeMetres.Value, 0.1)
+	assert.InDelta(t, 100, decoded.Session.MinAltitudeMetres.Value, 0.1)
+	assert.InDelta(t, 300, decoded.Session.AverageAltitudeMetres.Value, 0.1)
+	assert.Nil(t, decoded.Session.HeartRateZoneHighBPM)
+	assert.Nil(t, decoded.Session.PowerZoneHighWatts)
+}
+
+// TestDecodeFITLeavesSessionUnknownWhenUnset asserts a session message that
+// sets none of these fields leaves every Reading unknown, Sport empty, the
+// zone slices nil, and Session.Any false.
+func TestDecodeFITLeavesSessionUnknownWhenUnset(t *testing.T) {
+	activityFile := &filedef.Activity{}
+	activityFile.FileId.SetType(typedef.FileActivity)
+	activityFile.Sessions = append(activityFile.Sessions, mesgdef.NewSession(nil).
+		SetTimestamp(time.Date(2026, time.August, 1, 6, 0, 0, 0, time.UTC)))
+
+	decoded, err := DecodeFIT(encode(t, activityFile))
+	require.NoError(t, err)
+	session := decoded.Session
+	assert.False(t, session.MaxSpeedKmh.Known)
+	assert.False(t, session.AverageSpeedKmh.Known)
+	assert.False(t, session.DistanceMetres.Known)
+	assert.False(t, session.TimerSeconds.Known)
+	assert.False(t, session.ElapsedSeconds.Known)
+	assert.False(t, session.AscentMetres.Known)
+	assert.False(t, session.DescentMetres.Known)
+	assert.False(t, session.CaloriesKcal.Known)
+	assert.False(t, session.AverageHeartRateBPM.Known)
+	assert.False(t, session.MaxHeartRateBPM.Known)
+	assert.False(t, session.MinHeartRateBPM.Known)
+	assert.False(t, session.AverageCadenceRPM.Known)
+	assert.False(t, session.MaxCadenceRPM.Known)
+	assert.False(t, session.AveragePowerWatts.Known)
+	assert.False(t, session.MaxPowerWatts.Known)
+	assert.False(t, session.NormalizedPowerWatts.Known)
+	assert.False(t, session.ThresholdPowerWatts.Known)
+	assert.False(t, session.AverageTemperatureCelsius.Known)
+	assert.False(t, session.MaxTemperatureCelsius.Known)
+	assert.False(t, session.AverageGradePercent.Known)
+	assert.False(t, session.MaxPositiveGradePercent.Known)
+	assert.False(t, session.MaxNegativeGradePercent.Known)
+	assert.False(t, session.MinAltitudeMetres.Known)
+	assert.False(t, session.MaxAltitudeMetres.Known)
+	assert.False(t, session.AverageAltitudeMetres.Known)
+	assert.Empty(t, session.Sport)
+	assert.Empty(t, session.SubSport)
+	assert.Nil(t, session.HeartRateZoneSeconds)
+	assert.Nil(t, session.HeartRateZoneHighBPM)
+	assert.Nil(t, session.PowerZoneSeconds)
+	assert.Nil(t, session.PowerZoneHighWatts)
+	assert.False(t, session.Any())
 }
 
 // wahooDeveloperDataID is one developer_data_id message declaring Wahoo as the

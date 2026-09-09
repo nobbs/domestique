@@ -320,6 +320,8 @@ const insertActivityRecordSQL = `INSERT INTO activity_records (
 // StoreActivityRecords replaces one activity's samples and marks it stored at
 // recordsVersion, in one transaction so a partial rewrite is never left behind
 // as complete.
+//
+//nolint:gocritic // value param: this method conforms to the activity poll's store contract.
 func (s *Store) StoreActivityRecords(
 	ctx context.Context, targetID string, id int64, fit activity.FIT, recordsVersion int,
 ) error {
@@ -370,6 +372,9 @@ func (s *Store) StoreActivityRecords(
 			return fmt.Errorf("recording an activity sample: %w", execErr)
 		}
 	}
+	if sessionErr := storeActivitySession(ctx, queries, targetID, id, &fit.Session); sessionErr != nil {
+		return sessionErr
+	}
 	if markErr := queries.MarkActivityRecordsStored(ctx, sqlcgen.MarkActivityRecordsStoredParams{
 		TargetSlot: targetID, WorkoutID: id, FitChecksumFailed: boolInteger(fit.ChecksumFailed),
 		RecordsVersion: int64(recordsVersion),
@@ -400,6 +405,161 @@ func (s *Store) MarkActivityUnreadable(ctx context.Context, targetID string, id 
 
 func nullFloat(value float64, valid bool) sql.NullFloat64 {
 	return sql.NullFloat64{Float64: value, Valid: valid}
+}
+
+// storeActivitySession replaces one ride's device-declared session figures, or
+// removes the row when the file carried none: no row is what "the file said
+// nothing" already means for activity_metrics.
+func storeActivitySession(ctx context.Context, queries *sqlcgen.Queries, targetID string, id int64, session *activity.Session) error {
+	if !session.Any() {
+		if err := queries.DeleteActivitySession(ctx, sqlcgen.DeleteActivitySessionParams{
+			TargetSlot: targetID, WorkoutID: id,
+		}); err != nil {
+			return fmt.Errorf("clearing a prior activity session: %w", err)
+		}
+
+		return nil
+	}
+	if err := queries.UpsertActivitySession(ctx, sqlcgen.UpsertActivitySessionParams{
+		TargetSlot: targetID, WorkoutID: id,
+		MaxSpeedKmh:               readingNull(session.MaxSpeedKmh),
+		AverageSpeedKmh:           readingNull(session.AverageSpeedKmh),
+		DistanceMetres:            readingNull(session.DistanceMetres),
+		TimerSeconds:              readingNull(session.TimerSeconds),
+		ElapsedSeconds:            readingNull(session.ElapsedSeconds),
+		AscentMetres:              readingNull(session.AscentMetres),
+		DescentMetres:             readingNull(session.DescentMetres),
+		CaloriesKcal:              readingNull(session.CaloriesKcal),
+		AverageHeartRateBpm:       readingNull(session.AverageHeartRateBPM),
+		MaxHeartRateBpm:           readingNull(session.MaxHeartRateBPM),
+		MinHeartRateBpm:           readingNull(session.MinHeartRateBPM),
+		AverageCadenceRpm:         readingNull(session.AverageCadenceRPM),
+		MaxCadenceRpm:             readingNull(session.MaxCadenceRPM),
+		AveragePowerWatts:         readingNull(session.AveragePowerWatts),
+		MaxPowerWatts:             readingNull(session.MaxPowerWatts),
+		NormalizedPowerWatts:      readingNull(session.NormalizedPowerWatts),
+		ThresholdPowerWatts:       readingNull(session.ThresholdPowerWatts),
+		AverageTemperatureCelsius: readingNull(session.AverageTemperatureCelsius),
+		MaxTemperatureCelsius:     readingNull(session.MaxTemperatureCelsius),
+		AverageGradePercent:       readingNull(session.AverageGradePercent),
+		MaxPositiveGradePercent:   readingNull(session.MaxPositiveGradePercent),
+		MaxNegativeGradePercent:   readingNull(session.MaxNegativeGradePercent),
+		MinAltitudeMetres:         readingNull(session.MinAltitudeMetres),
+		MaxAltitudeMetres:         readingNull(session.MaxAltitudeMetres),
+		AverageAltitudeMetres:     readingNull(session.AverageAltitudeMetres),
+		Sport:                     session.Sport,
+		SubSport:                  session.SubSport,
+		HeartRateZoneSecondsJson:  nullJSON(session.HeartRateZoneSeconds),
+		HeartRateZoneHighBpmJson:  nullJSON(session.HeartRateZoneHighBPM),
+		PowerZoneSecondsJson:      nullJSON(session.PowerZoneSeconds),
+		PowerZoneHighWattsJson:    nullJSON(session.PowerZoneHighWatts),
+	}); err != nil {
+		return fmt.Errorf("recording an activity session: %w", err)
+	}
+	if err := queries.ApplyActivitySessionTotals(ctx, sqlcgen.ApplyActivitySessionTotalsParams{
+		TargetSlot: targetID, WorkoutID: id,
+		DistanceMetres: readingNull(session.DistanceMetres),
+		MovingSeconds:  readingNull(session.TimerSeconds),
+		ElapsedSeconds: readingNull(session.ElapsedSeconds),
+		AscentMetres:   readingNull(session.AscentMetres),
+	}); err != nil {
+		return fmt.Errorf("applying an activity session's totals: %w", err)
+	}
+
+	return nil
+}
+
+// readingNull carries a Reading across as the nullable column it is.
+func readingNull(reading activity.Reading) sql.NullFloat64 {
+	return nullFloat(reading.Value, reading.Known)
+}
+
+// nullJSON encodes values as JSON, or NULL for an empty slice: a zone table
+// with no entries says as little as none.
+func nullJSON(values []float64) sql.NullString {
+	if len(values) == 0 {
+		return sql.NullString{}
+	}
+	encoded, err := json.Marshal(values)
+	if err != nil {
+		// Only a NaN or infinity fails here, and a zone table with one is no
+		// table at all.
+		return sql.NullString{}
+	}
+
+	return sql.NullString{String: string(encoded), Valid: true}
+}
+
+// ActivitySessions reads every device-declared session row one target holds,
+// keyed by ride. A target with none has an empty map.
+func (s *Store) ActivitySessions(ctx context.Context, targetID string) (map[int64]activity.Session, error) {
+	rows, err := s.queries.ListActivitySessions(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("reading activity sessions: %w", err)
+	}
+	sessions := make(map[int64]activity.Session, len(rows))
+	for index := range rows {
+		row := &rows[index]
+		session, decodeErr := activitySessionOf(row)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		sessions[row.WorkoutID] = session
+	}
+
+	return sessions, nil
+}
+
+// activitySessionOf maps one stored row to the activity.Session it holds.
+func activitySessionOf(row *sqlcgen.ListActivitySessionsRow) (activity.Session, error) {
+	session := activity.Session{
+		MaxSpeedKmh:               reading(row.MaxSpeedKmh),
+		AverageSpeedKmh:           reading(row.AverageSpeedKmh),
+		DistanceMetres:            reading(row.DistanceMetres),
+		TimerSeconds:              reading(row.TimerSeconds),
+		ElapsedSeconds:            reading(row.ElapsedSeconds),
+		AscentMetres:              reading(row.AscentMetres),
+		DescentMetres:             reading(row.DescentMetres),
+		CaloriesKcal:              reading(row.CaloriesKcal),
+		AverageHeartRateBPM:       reading(row.AverageHeartRateBpm),
+		MaxHeartRateBPM:           reading(row.MaxHeartRateBpm),
+		MinHeartRateBPM:           reading(row.MinHeartRateBpm),
+		AverageCadenceRPM:         reading(row.AverageCadenceRpm),
+		MaxCadenceRPM:             reading(row.MaxCadenceRpm),
+		AveragePowerWatts:         reading(row.AveragePowerWatts),
+		MaxPowerWatts:             reading(row.MaxPowerWatts),
+		NormalizedPowerWatts:      reading(row.NormalizedPowerWatts),
+		ThresholdPowerWatts:       reading(row.ThresholdPowerWatts),
+		AverageTemperatureCelsius: reading(row.AverageTemperatureCelsius),
+		MaxTemperatureCelsius:     reading(row.MaxTemperatureCelsius),
+		AverageGradePercent:       reading(row.AverageGradePercent),
+		MaxPositiveGradePercent:   reading(row.MaxPositiveGradePercent),
+		MaxNegativeGradePercent:   reading(row.MaxNegativeGradePercent),
+		MinAltitudeMetres:         reading(row.MinAltitudeMetres),
+		MaxAltitudeMetres:         reading(row.MaxAltitudeMetres),
+		AverageAltitudeMetres:     reading(row.AverageAltitudeMetres),
+		Sport:                     row.Sport,
+		SubSport:                  row.SubSport,
+	}
+	zoneFields := []struct {
+		target *[]float64
+		json   sql.NullString
+	}{
+		{&session.HeartRateZoneSeconds, row.HeartRateZoneSecondsJson},
+		{&session.HeartRateZoneHighBPM, row.HeartRateZoneHighBpmJson},
+		{&session.PowerZoneSeconds, row.PowerZoneSecondsJson},
+		{&session.PowerZoneHighWatts, row.PowerZoneHighWattsJson},
+	}
+	for _, field := range zoneFields {
+		if !field.json.Valid {
+			continue
+		}
+		if err := json.Unmarshal([]byte(field.json.String), field.target); err != nil {
+			return activity.Session{}, fmt.Errorf("decoding an activity session's zone table: %w", err)
+		}
+	}
+
+	return session, nil
 }
 
 // ActivityRides is every target's recorded activity of one of workoutTypeIDs,

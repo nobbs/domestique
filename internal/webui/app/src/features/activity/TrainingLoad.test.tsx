@@ -230,4 +230,49 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Decoupling")).toBeNull();
     expect(screen.queryByText("Heat drift")).toBeNull();
   });
+
+  it("uses the server's average speed over the ride's own totals when it is given", () => {
+    show({ averageSpeedKmh: 28.6 });
+
+    expect(screen.getByText("28.6")).toBeInTheDocument();
+  });
+
+  it("shows the ride's maximum cadence and its threshold and maximum power", () => {
+    show({ maxCadenceRpm: 108, maxPowerWatts: 612, thresholdPowerWatts: 260 });
+
+    expect(screen.getByText("Max cadence")).toBeInTheDocument();
+    expect(screen.getByText("108")).toBeInTheDocument();
+    expect(screen.getByText("Max power")).toBeInTheDocument();
+    expect(screen.getByText("612")).toBeInTheDocument();
+    expect(screen.getByText("Threshold power")).toBeInTheDocument();
+    expect(screen.getByText("260")).toBeInTheDocument();
+    expect(screen.getByText("watts set on the device")).toBeInTheDocument();
+  });
+
+  it("leaves out the device figures a ride did not carry", () => {
+    show({ averageHeartRateBpm: 142.4 });
+
+    expect(screen.queryByText("Max cadence")).not.toBeInTheDocument();
+    expect(screen.queryByText("Max power")).not.toBeInTheDocument();
+    expect(screen.queryByText("Threshold power")).not.toBeInTheDocument();
+  });
+
+  it("still renders the profile's zones when the device also cut its own", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], deviceZoneSeconds: [70, 110, 190, 230, 300] });
+
+    expect(screen.getByText("Recovery")).toBeInTheDocument();
+    expect(screen.getByText(/Device zones:/)).toBeInTheDocument();
+  });
+
+  it("leaves out the device zones caption for a ride the head unit did not cut", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300] });
+
+    expect(screen.queryByText(/Device zones:/)).not.toBeInTheDocument();
+  });
+
+  it("leaves out the device zones caption for an empty zone table", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], deviceZoneSeconds: [] });
+
+    expect(screen.queryByText(/Device zones:/)).not.toBeInTheDocument();
+  });
 });

@@ -1739,6 +1739,18 @@ components:
         ascentMetres:
           type: number
           format: double
+        descentMetres:
+          type: number
+          format: double
+          description: >-
+            The ride's total descent, from the file's session message. Absent
+            for a ride whose file declared none.
+        caloriesKcal:
+          type: number
+          format: double
+          description: >-
+            The device's own calorie estimate for the ride. Absent for a ride
+            whose file declared none.
         typeId:
           type: integer
         locationId:
@@ -2111,12 +2123,11 @@ components:
       additionalProperties: false
       description: >-
         What this ride's recorded samples say about how hard it was: the load
-        figures the rider's profile shapes, and the plain averages its sensors
-        came to on their own. Absent from a ride that has none, and each part is
-        absent on its own: a ride carries the sensors it carries, and a profile
-        holds what the rider entered. Average speed is not here — it is distance
-        over moving time, both of which the activity already carries, and is
-        known even for a ride whose file was never readable.
+        figures the rider's profile shapes, and the plain averages the device
+        declared or, failing that, its sensors came to on their own. Absent
+        from a ride that has none, and each part is absent on its own: a ride
+        carries the sensors it carries, a file declares what its head unit
+        chose to, and a profile holds what the rider entered.
       properties:
         zoneSeconds:
           type: array
@@ -2175,36 +2186,103 @@ components:
             rider has entered no mass.
         estimateQuality:
           $ref: '#/components/schemas/EstimateQuality'
+        averageSpeedKmh:
+          type: number
+          format: double
+          description: >-
+            The device's own average speed in km/h, from the file's session
+            message. Absent where the file declared none, in which case a
+            client falls back to distance over moving time — both of which
+            the activity already carries.
         averageHeartRateBpm:
           type: number
           format: double
           description: >-
-            The mean of the ride's recorded heart-rate samples. Absent for a
-            ride that carried no strap.
+            The device's own session average where the file declared one,
+            otherwise the mean of the ride's recorded heart-rate samples.
+            Absent for a ride that carried no strap.
+        minHeartRateBpm:
+          type: number
+          format: double
+          description: >-
+            The lowest heart rate the device's session declared. Absent for a
+            file that declared none.
         maxHeartRateBpm:
           type: number
           format: double
-          description: The highest heart rate the ride recorded.
+          description: >-
+            The device's own session maximum where the file declared one,
+            otherwise the highest heart rate the ride recorded.
         averageCadenceRpm:
           type: number
           format: double
           description: >-
-            The mean of the ride's recorded cadence samples. A reading of zero
-            is a reading — a stopped rider's cadence — and counts towards it.
+            The device's own session average where the file declared one,
+            otherwise the mean of the ride's recorded cadence samples. A
+            reading of zero is a reading — a stopped rider's cadence — and
+            counts towards it.
+        maxCadenceRpm:
+          type: number
+          format: double
+          description: >-
+            The highest cadence the device's session declared. Absent for a
+            file that declared none.
         averagePowerWatts:
           type: number
           format: double
           description: >-
-            The mean of the ride's measured power samples. Never fed by an
-            estimate: a bicycle with no meter has no average power.
+            The device's own session average where the file declared one,
+            otherwise the mean of the ride's measured power samples. Never
+            fed by an estimate: a bicycle with no meter has no average power.
+        maxPowerWatts:
+          type: number
+          format: double
+          description: >-
+            The highest power the device's session declared. Absent for a
+            file that declared none.
+        thresholdPowerWatts:
+          type: number
+          format: double
+          description: >-
+            The functional threshold power set on the head unit at the time
+            of the ride, from the file's session message. Absent where the
+            file declared none.
         maxSpeedKmh:
           type: number
           format: double
           description: >-
-            The ride's highest recorded speed in km/h, from the device's own
-            speed reading where recorded and otherwise from distance over
-            time. Readings above a plausible ceiling are dropped. Absent for a
-            ride with no speed series at all.
+            The device's own session maximum where the file declared one,
+            otherwise the ride's highest recorded speed in km/h, from the
+            device's own speed reading where recorded and otherwise from
+            distance over time. Readings above a plausible ceiling are
+            dropped in the fallback. Absent for a ride with no speed series
+            at all.
+        sport:
+          type: string
+          description: >-
+            The FIT profile's sport name for the ride, e.g. "cycling". Absent
+            where the file declared none.
+        deviceZoneSeconds:
+          type: array
+          items:
+            type: number
+            format: double
+          description: >-
+            How long the ride held each of the head unit's own heart-rate
+            zones, easiest first, from the file's session message. Served
+            beside zoneSeconds rather than instead of it: the load figures
+            above and the page's default view are worked out from the
+            profile's zones, not the device's own.
+        deviceZoneBoundsBpm:
+          type: array
+          items:
+            type: number
+            format: double
+          description: >-
+            The heart rates the head unit cut its own zones at, ascending, one
+            fewer than deviceZoneSeconds has entries. Served only beside
+            deviceZoneSeconds, and absent for a file that declared the times
+            but not the table they were cut by.
         decouplingPercent:
           type: number
           format: double

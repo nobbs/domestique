@@ -68,4 +68,21 @@ describe("RideFigures", () => {
 
     expect(screen.queryByLabelText("Ride figures")).not.toBeInTheDocument();
   });
+
+  it("shows the ride's descent and calories when the file gave them", () => {
+    render(<RideFigures ride={ride(undefined, { descentMetres: 380, caloriesKcal: 1420 })} />);
+
+    expect(screen.getByText("Descended")).toBeInTheDocument();
+    expect(screen.getByText("380 m")).toBeInTheDocument();
+    expect(screen.getByText("Calories")).toBeInTheDocument();
+    expect(screen.getByText("1420")).toBeInTheDocument();
+    expect(screen.getByText("kcal")).toBeInTheDocument();
+  });
+
+  it("leaves out descent and calories for a ride whose file did not give them", () => {
+    render(<RideFigures ride={ride(undefined)} />);
+
+    expect(screen.queryByText("Descended")).not.toBeInTheDocument();
+    expect(screen.queryByText("Calories")).not.toBeInTheDocument();
+  });
 });

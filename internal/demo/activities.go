@@ -17,8 +17,8 @@ import (
 // Ride is one synthetic recorded activity: the listing an account would carry,
 // its totals, and the samples its FIT file would have held.
 type Ride struct {
-	Summary activity.Summary
 	Listing activity.Listing
+	Summary activity.Summary
 	FIT     activity.FIT
 }
 
@@ -165,16 +165,34 @@ func (s *rideSpec) ride(stages []route.Route, now time.Time) (Ride, error) {
 		},
 		Summary: summary,
 		FIT: activity.FIT{
-			RecordingDevice:     "Demo Head Unit",
-			Records:             records,
-			TotalTimerTime:      time.Duration(summary.MovingSeconds * float64(time.Second)),
-			TotalElapsedTime:    time.Duration(summary.ElapsedSeconds * float64(time.Second)),
-			TotalAscentMetres:   summary.AscentMetres,
-			HasTotalTimerTime:   true,
-			HasTotalElapsedTime: true,
-			HasTotalAscent:      true,
+			RecordingDevice: "Demo Head Unit",
+			Records:         records,
+			Session: activity.Session{
+				TimerSeconds:   activity.Reading{Value: summary.MovingSeconds, Known: true},
+				ElapsedSeconds: activity.Reading{Value: summary.ElapsedSeconds, Known: true},
+				DistanceMetres: activity.Reading{Value: summary.DistanceMetres, Known: true},
+				AscentMetres:   activity.Reading{Value: summary.AscentMetres, Known: true},
+				MaxSpeedKmh:    activity.Reading{Value: peakSpeedKmh(records), Known: true},
+			},
 		},
 	}, nil
+}
+
+// peakSpeedKmh is the fastest stretch between two of the synthetic records,
+// standing in for the maximum a head unit would have declared.
+func peakSpeedKmh(records []activity.Record) float64 {
+	peak := 0.0
+	for index := 1; index < len(records); index++ {
+		seconds := records[index].Time.Sub(records[index-1].Time).Seconds()
+		if seconds <= 0 {
+			continue
+		}
+		if kmh := (records[index].DistanceMetres - records[index-1].DistanceMetres) / seconds * 3.6; kmh > peak {
+			peak = kmh
+		}
+	}
+
+	return peak
 }
 
 // startedAt is when the ride set off: a whole hour of a past day, so a fixture

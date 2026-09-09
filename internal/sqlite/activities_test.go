@@ -3,6 +3,7 @@ package sqlite
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -868,4 +869,189 @@ func TestActivityCaloriesAccumReadsTheOneFieldItNames(t *testing.T) {
 	require.NoError(t, store.Close(), "Close()")
 	_, _, err = store.ActivityCaloriesAccum(t.Context(), "rider-a", 1)
 	require.ErrorContains(t, err, "reading an activity's raw summary")
+}
+
+// fullTestSession is every session figure a device could report, known and
+// distinct, so a round trip that dropped or swapped a column shows up.
+func fullTestSession() activity.Session {
+	known := func(value float64) activity.Reading { return activity.Reading{Value: value, Known: true} }
+
+	return activity.Session{
+		MaxSpeedKmh:               known(58.4),
+		AverageSpeedKmh:           known(27.1),
+		DistanceMetres:            known(50_000),
+		TimerSeconds:              known(3_600),
+		ElapsedSeconds:            known(3_900),
+		AscentMetres:              known(800),
+		DescentMetres:             known(790),
+		CaloriesKcal:              known(1_500),
+		AverageHeartRateBPM:       known(142),
+		MaxHeartRateBPM:           known(178),
+		MinHeartRateBPM:           known(88),
+		AverageCadenceRPM:         known(84),
+		MaxCadenceRPM:             known(120),
+		AveragePowerWatts:         known(190),
+		MaxPowerWatts:             known(720),
+		NormalizedPowerWatts:      known(205),
+		ThresholdPowerWatts:       known(250),
+		AverageTemperatureCelsius: known(19.5),
+		MaxTemperatureCelsius:     known(28),
+		AverageGradePercent:       known(1.8),
+		MaxPositiveGradePercent:   known(14.2),
+		MaxNegativeGradePercent:   known(-12.6),
+		MinAltitudeMetres:         known(120),
+		MaxAltitudeMetres:         known(980),
+		AverageAltitudeMetres:     known(410),
+		Sport:                     "cycling",
+		SubSport:                  "road",
+		HeartRateZoneSeconds:      []float64{60, 300, 1200, 1500, 540},
+		HeartRateZoneHighBPM:      []float64{114, 133, 152, 171, 190},
+		PowerZoneSeconds:          []float64{120, 900, 1800, 600, 180},
+		PowerZoneHighWatts:        []float64{137, 187, 225, 262, 337},
+	}
+}
+
+// Storing a FIT whose Session carries readings must round-trip every one of
+// them, including the zone tables, and must replace the ride's summary
+// totals with the device's own.
+func TestStoreActivityRecordsStoresSessionAndAppliesTotals(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	session := fullTestSession()
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+		Session: session,
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	sessions, err := store.ActivitySessions(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivitySessions()")
+	require.Contains(t, sessions, int64(1))
+	assert.Equal(t, session, sessions[1])
+
+	stored, err := store.ActivitiesBetween(
+		t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	require.Len(t, stored, 1)
+	assert.InDelta(t, session.DistanceMetres.Value, stored[0].DistanceMetres, 1e-9)
+	assert.InDelta(t, session.TimerSeconds.Value, stored[0].MovingSeconds, 1e-9)
+	assert.InDelta(t, session.ElapsedSeconds.Value, stored[0].ElapsedSeconds, 1e-9)
+	assert.InDelta(t, session.AscentMetres.Value, stored[0].AscentMetres, 1e-9)
+}
+
+// A file that only carries some session figures must leave the summary's
+// totals alone for whichever of the four it did not carry, and the columns it
+// never carried must read back unknown rather than zero.
+func TestStoreActivityRecordsPartialSessionKeepsUnknownTotals(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	session := activity.Session{AverageHeartRateBPM: activity.Reading{Value: 150, Known: true}}
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+		Session: session,
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	sessions, err := store.ActivitySessions(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivitySessions()")
+	stored, ok := sessions[1]
+	require.True(t, ok)
+	assert.InDelta(t, 150.0, stored.AverageHeartRateBPM.Value, 1e-9)
+	assert.False(t, stored.DistanceMetres.Known, "an uncarried figure must read back unknown")
+	assert.Nil(t, stored.HeartRateZoneSeconds, "an uncarried zone table must read back nil")
+	assert.Nil(t, stored.PowerZoneHighWatts, "an uncarried zone table must read back nil")
+
+	rides, err := store.ActivitiesBetween(
+		t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	require.Len(t, rides, 1)
+	assert.InDelta(t, 100.0, rides[0].DistanceMetres, 1e-9, "the summary's own distance must stand")
+	assert.InDelta(t, 3600.0, rides[0].MovingSeconds, 1e-9, "the summary's own moving time must stand")
+	assert.InDelta(t, 3900.0, rides[0].ElapsedSeconds, 1e-9, "the summary's own elapsed time must stand")
+	assert.InDelta(t, 120.0, rides[0].AscentMetres, 1e-9, "the summary's own ascent must stand")
+}
+
+// A re-download whose file no longer carries a session must drop the stored
+// row, leaving the totals a prior session applied untouched.
+func TestStoreActivityRecordsClearsSessionWhenFileHasNone(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+		Session: fullTestSession(),
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}, activity.RecordsVersion), "StoreActivityRecords() again with no session")
+
+	sessions, err := store.ActivitySessions(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivitySessions()")
+	assert.NotContains(t, sessions, int64(1), "a file with no session must leave no row")
+
+	rides, err := store.ActivitiesBetween(
+		t.Context(), "rider-a", activityNow().Add(-time.Hour), activityNow().Add(time.Hour), 10)
+	require.NoError(t, err, "ActivitiesBetween()")
+	require.Len(t, rides, 1)
+	assert.InDelta(t, 50_000.0, rides[0].DistanceMetres, 1e-9, "the earlier session's totals must stand")
+}
+
+// The session row belongs to its activity: deleting the activity takes it too.
+func TestActivitySessionCascadesWithTheActivity(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+		Session: fullTestSession(),
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	_, err := store.database.ExecContext(t.Context(),
+		`DELETE FROM activities WHERE target_slot = 'rider-a' AND workout_id = 1`)
+	require.NoError(t, err)
+
+	var rows int
+	require.NoError(t, store.database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM activity_session`).Scan(&rows))
+	assert.Zero(t, rows, "the session outlived the activity it belongs to")
+}
+
+// A target with no stored sessions has an empty map, not an error.
+func TestActivitySessionsIsEmptyForATargetWithNone(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	sessions, err := store.ActivitySessions(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivitySessions()")
+	assert.Empty(t, sessions)
+}
+
+func TestNullJSONDropsATableItCannotEncode(t *testing.T) {
+	t.Parallel()
+	assert.False(t, nullJSON([]float64{math.NaN()}).Valid)
+	assert.Equal(t, "[1,2]", nullJSON([]float64{1, 2}).String)
+}
+
+func TestActivitySessionsRejectsACorruptZoneTable(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1,
+		activity.FIT{Session: fullTestSession()}, activity.RecordsVersion), "StoreActivityRecords()")
+	_, err := store.database.ExecContext(t.Context(),
+		"UPDATE activity_session SET heart_rate_zone_seconds_json = 'nope' WHERE workout_id = 1")
+	require.NoError(t, err)
+
+	_, err = store.ActivitySessions(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "zone table")
 }

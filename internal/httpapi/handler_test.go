@@ -2494,12 +2494,14 @@ type fakeState struct {
 	riderProfileWriteErr error
 	riderSuggestionErr   error
 	activityMetricsErr   error
+	activitySessionsErr  error
 	activityWeatherErr   error
 	routeMatchErr        error
 	routeRidesErr        error
 	rideLoadsErr         error
 	rideLoads            map[string][]trainingload.RideLoad
 	activityMetrics      map[string]map[int64]activities.RideMetrics
+	activitySessions     map[string]map[int64]activities.Session
 	activityWeather      map[string]map[int64][]activities.WeatherStep
 	routeMatches         map[string]map[int64]activities.RouteMatch
 	riderProfiles        map[string]rider.Profile
@@ -2627,6 +2629,16 @@ func (s *fakeState) ActivityMetrics(_ context.Context, targetID string) (map[int
 	}
 
 	return s.activityMetrics[targetID], nil
+}
+
+// ActivitySessions reports the device-declared session rows the test gave
+// this target.
+func (s *fakeState) ActivitySessions(_ context.Context, targetID string) (map[int64]activities.Session, error) {
+	if s.activitySessionsErr != nil {
+		return nil, s.activitySessionsErr
+	}
+
+	return s.activitySessions[targetID], nil
 }
 
 // RiderProfile reports what the test stored for this subject, and an empty

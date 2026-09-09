@@ -630,23 +630,33 @@ The read-only JSON surface is small:
   interpolated across before any of this is worked out. What computes them,
   and when, is [`activity:derive`](task-layer.md).
 
-  Beside those, and worked out by the same task from the same stored samples,
-  are the plain figures the ride's own sensors came to with no profile
-  involved: the mean of its heart-rate, cadence and measured power samples, the
-  highest heart rate it reached, and the highest speed it reached. A cadence of
-  nought is the rider not pedalling rather than pedalling slowly and is left
+  Beside those are the plain figures the ride's own sensors came to with no
+  profile involved: the mean of its heart-rate, cadence and measured power
+  samples, the highest heart rate it reached, and the highest speed it reached.
+  Each is the device's own session figure where the file's session message
+  declared it, and otherwise worked out by the same task from the same stored
+  samples, by the rules below. A cadence
+  of nought is the rider not pedalling rather than pedalling slowly and is left
   out of that mean, which is what makes the figure the same one every other
   platform reports; a measured power of nought is left in, freewheeling being
   part of what a ride averaged. A sensor that read nought throughout recorded
   nothing, and has no mean at all. Each is present only where the ride carried
-  that sensor, and an estimate never feeds the average power — a bicycle with no
-  meter has none. Average speed is not among them: it is the distance and moving
-  time the activity already carries, divided, and is therefore known even for a
-  ride whose recorded file was never readable. The highest speed is worked out
-  from the device's own speed reading where any record carried one, and
-  otherwise from distance over time; a reading past a plausible ceiling is
-  dropped as a clock or odometer fault rather than counted as the ride's peak
-  (see [measurement.md](measurement.md)).
+  that sensor, or the file declared it, and an estimate never feeds the average
+  power — a bicycle with no meter has none. Average speed is the device's own
+  where the file declared it, and otherwise the distance and moving time the
+  activity already carries, divided — known even for a ride whose recorded file
+  was never readable. The highest speed is the device's own session maximum
+  where declared, and otherwise worked out from the device's own speed reading
+  where any record carried one, and otherwise from distance over time; a reading
+  past a plausible ceiling is dropped as a clock or odometer fault rather than
+  counted as the ride's peak (see [measurement.md](measurement.md)). The lowest
+  heart rate, the highest cadence, the highest power and the threshold power set
+  on the head unit at the time are served only where the file's session message
+  declared them: no fallback is worked out for a figure the samples alone cannot
+  answer. The device's own time in its own heart-rate zones, and the heart rates
+  it cut them at, are served beside the profile-cut `zoneSeconds` and
+  `zoneBoundsBpm` above, which remain what the load figures on this page are
+  worked out against and what the page shows by default.
 
   Each activity also carries a one-line summary of the weather it was ridden
   through, where that was asked about: the range the temperature moved over, the
@@ -1096,9 +1106,11 @@ target. It never deletes manually created Wahoo routes.
 Domestique stores a summary of every activity the rider's own Wahoo account
 recorded, against the target that owns that account: when it started, its
 distance, moving and elapsed time and ascent, and Wahoo's own summary document
-kept verbatim. An activity is the owning target's, the same as its
-routes are, and is served only to the subject that owns that target or to an
-admin.
+kept verbatim. Those four totals are Wahoo's own summary figures until its FIT
+file's samples are read, at which point its session message's own figures
+overwrite them; a file that never reads leaves Wahoo's summary as the last word.
+An activity is the owning target's, the same as its routes are, and is served
+only to the subject that owns that target or to an admin.
 
 Polling only adds. An activity the account no longer lists is never removed,
 and a summary read again replaces the row it already had. A summary the
@@ -1155,17 +1167,20 @@ API request budget and without credentials — and decoded into per-sample rows:
 position, altitude, distance, speed, grade, cadence, heart rate, power,
 temperature, cumulative calories, and the device's own cumulative ascent and
 descent, with a sensor the ride did not carry left absent rather than recorded
-as zero. One poll fills in a bounded number of activities, newest first and
-under a wall-clock budget ([task-layer.md](task-layer.md)), because decoding
-and storing thousands of samples per ride is the cost that bounds this rather
-than the request budget. A file that does not decode, and one the CDN says is
-gone or forbidden, is recorded as unreadable and never downloaded again; a file
-whose checksum failed but which still reads is stored, with that fact kept
-beside it. Any other download failure — a rate limit or an outage among them —
-stops the records phase, marks nothing, and is retried by the next poll, so one
-outage never condemns a day's rides. Nothing is deleted: a file downloaded again
-replaces that activity's samples, whether downloaded because the ride was new or
-re-read because the record schema grew a field since it was first stored.
+as zero. The file's own session message and the zone tables beside it are kept
+alongside those rows rather than in their place; a re-read refreshes them the
+same way it refreshes the samples. One poll fills in a bounded number of
+activities, newest first and under a wall-clock budget
+([task-layer.md](task-layer.md)), because decoding and storing thousands of
+samples per ride is the cost that bounds this rather than the request budget. A
+file that does not decode, and one the CDN says is gone or forbidden, is
+recorded as unreadable and never downloaded again; a file whose checksum failed
+but which still reads is stored, with that fact kept beside it. Any other
+download failure — a rate limit or an outage among them — stops the records
+phase, marks nothing, and is retried by the next poll, so one outage never
+condemns a day's rides. Nothing is deleted: a file downloaded again replaces
+that activity's samples, whether downloaded because the ride was new or re-read
+because the record schema grew a field since it was first stored.
 
 Each stored ride is also attributed to the library route it was ridden on, from
 its own track and the routes' stored geometry, at no upstream request. A ride is

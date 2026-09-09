@@ -68,9 +68,11 @@ function zoneColour(zone: number): string {
 function ZoneStack({
   zoneSeconds,
   zoneBounds,
+  deviceZoneSeconds,
 }: {
   zoneSeconds: number[];
   zoneBounds: number[] | undefined;
+  deviceZoneSeconds: number[] | undefined;
 }) {
   const total = zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
   if (total <= 0) {
@@ -109,18 +111,27 @@ function ZoneStack({
           </li>
         ))}
       </ul>
+      {deviceZoneSeconds && deviceZoneSeconds.length > 0 ? (
+        // The profile's zones above are the default; this is only a caption
+        // naming the head unit's own cut of the same ride, for comparison.
+        <p className="text-[var(--ink-2)] text-xs opacity-70">
+          Device zones: {deviceZoneSeconds.map((seconds) => formatDuration(seconds)).join(" · ")}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 /**
- * The ride's average speed in kilometres per hour, from the summary totals.
- *
- * Distance over moving time, so it is there even for a ride whose recorded
- * file was never readable; a ride whose moving time is nought has no speed
- * rather than an infinite one.
+ * The ride's average speed in kilometres per hour, preferring the server's
+ * own figure. Falls back to distance over moving time so it is there even for
+ * a ride whose recorded file was never readable; a ride whose moving time is
+ * nought has no speed rather than an infinite one.
  */
-function averageSpeedKmh(ride: Activity): number | undefined {
+function averageSpeedKmh(ride: Activity, metrics: ActivityMetrics | undefined): number | undefined {
+  if (Number.isFinite(metrics?.averageSpeedKmh)) {
+    return metrics?.averageSpeedKmh;
+  }
   if (!Number.isFinite(ride.distanceMetres) || !(ride.movingSeconds > 0)) {
     return undefined;
   }
@@ -130,12 +141,19 @@ function averageSpeedKmh(ride: Activity): number | undefined {
 
 function figuresFor(ride: Activity, metrics: ActivityMetrics | undefined): Scale[] {
   return [
-    { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride), decimals: 1 },
+    { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride, metrics), decimals: 1 },
     { label: "Max speed", scale: "km/h", value: metrics?.maxSpeedKmh, decimals: 1 },
     { label: "Heart rate", scale: "bpm average", value: metrics?.averageHeartRateBpm },
     { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
     { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
+    { label: "Max cadence", scale: "rpm", value: metrics?.maxCadenceRpm },
     { label: "Power", scale: "watts average", value: metrics?.averagePowerWatts },
+    { label: "Max power", scale: "watts", value: metrics?.maxPowerWatts },
+    {
+      label: "Threshold power",
+      scale: "watts set on the device",
+      value: metrics?.thresholdPowerWatts,
+    },
     // Never beside a measured average: the service serves one or the other, and
     // the label carries the estimate's provenance so it cannot read as a reading.
     {
@@ -205,7 +223,13 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
     >
       <h2 className="font-medium text-sm">Effort</h2>
       <div className={zones ? "grid gap-6 md:grid-cols-2" : ""}>
-        {zones ? <ZoneStack zoneSeconds={zones} zoneBounds={metrics?.zoneBoundsBpm} /> : null}
+        {zones ? (
+          <ZoneStack
+            zoneSeconds={zones}
+            zoneBounds={metrics?.zoneBoundsBpm}
+            deviceZoneSeconds={metrics?.deviceZoneSeconds}
+          />
+        ) : null}
         {figures.length > 0 ? (
           <div className="grid grid-cols-3 gap-x-4 gap-y-3">
             {figures.map((figure) => (

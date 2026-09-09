@@ -34,7 +34,9 @@ const MaxRecordsPerPoll = 200
 // whenever Record gains a field a stored ride's samples must be re-read to
 // carry; a poll re-reads every stored ride below this version, at the same
 // pace its first download took.
-const RecordsVersion = 1
+//
+// 2: the file's session figures and totals.
+const RecordsVersion = 2
 
 // Listing is one recorded activity as the rider's account lists it.
 type Listing struct {

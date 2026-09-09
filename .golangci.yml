@@ -32,6 +32,10 @@ linters:
     errcheck:
       check-blank: true
       check-type-assertions: true
+    interfacebloat:
+      # ActivityState grew an eleventh method for the device's own session
+      # figures; still one responsibility, one target's recorded activities.
+      max: 11
     gocritic:
       enabled-tags:
         - diagnostic

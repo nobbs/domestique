@@ -53,12 +53,14 @@ func rideWeatherSteps(steps []activities.WeatherStep) []openapi.RideWeatherStep 
 	return view
 }
 
-// activityMetrics is the wire form of one ride's derived numbers. Each part is
-// omitted where the ride or the profile did not allow it, rather than sent as a
-// zero the page would have to read as "not worked out".
+// activityMetrics is the wire form of one ride's derived numbers, with the
+// device's own session figures applied over them where the file declared any.
+// Each part is omitted where the ride, the file or the profile did not allow
+// it, rather than sent as a zero the page would have to read as "not worked
+// out".
 //
 //nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
-func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
+func activityMetrics(stored activities.RideMetrics, session *activities.Session) *openapi.ActivityMetrics {
 	metrics, averages := stored.Load, stored.Averages
 	view := &openapi.ActivityMetrics{}
 	if metrics.HasZones {
@@ -113,8 +115,61 @@ func activityMetrics(stored activities.RideMetrics) *openapi.ActivityMetrics {
 			Samples:            stored.HeatDrift.Samples,
 		}
 	}
+	if session != nil {
+		applySession(view, session)
+	}
 
 	return view
+}
+
+// sessionOverride is one plain figure the device's own session takes
+// precedence over when the file declared it.
+type sessionOverride struct {
+	into    **float64
+	reading activities.Reading
+}
+
+// applySession lays the device's own session figures over the derived ones:
+// each declared reading overrides its plain-average counterpart, and fills
+// the fields the derived rows have no equivalent for at all.
+func applySession(view *openapi.ActivityMetrics, session *activities.Session) {
+	for _, override := range []sessionOverride{
+		{&view.MaxSpeedKmh, session.MaxSpeedKmh},
+		{&view.AverageHeartRateBpm, session.AverageHeartRateBPM},
+		{&view.MaxHeartRateBpm, session.MaxHeartRateBPM},
+		{&view.AverageCadenceRpm, session.AverageCadenceRPM},
+		{&view.AveragePowerWatts, session.AveragePowerWatts},
+	} {
+		if override.reading.Known {
+			*override.into = new(override.reading.Value)
+		}
+	}
+	if session.AverageSpeedKmh.Known {
+		view.AverageSpeedKmh = new(session.AverageSpeedKmh.Value)
+	}
+	if session.MinHeartRateBPM.Known {
+		view.MinHeartRateBpm = new(session.MinHeartRateBPM.Value)
+	}
+	if session.MaxCadenceRPM.Known {
+		view.MaxCadenceRpm = new(session.MaxCadenceRPM.Value)
+	}
+	if session.MaxPowerWatts.Known {
+		view.MaxPowerWatts = new(session.MaxPowerWatts.Value)
+	}
+	if session.ThresholdPowerWatts.Known {
+		view.ThresholdPowerWatts = new(session.ThresholdPowerWatts.Value)
+	}
+	if session.Sport != "" {
+		view.Sport = new(session.Sport)
+	}
+	// The bounds go only with the times: a zone table without its seconds is
+	// half a figure.
+	if len(session.HeartRateZoneSeconds) > 0 {
+		view.DeviceZoneSeconds = session.HeartRateZoneSeconds
+		if bounds := len(session.HeartRateZoneHighBPM); bounds >= 2 {
+			view.DeviceZoneBoundsBpm = session.HeartRateZoneHighBPM[:bounds-1]
+		}
+	}
 }
 
 // activityRouteMatch is the wire form of the route a ride was ridden on. A ride
@@ -176,6 +231,12 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 			return
 		}
+		sessions, sessionsErr := h.state.ActivitySessions(request.Context(), targetID)
+		if sessionsErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
 		summaries, weatherErr := h.state.ActivityWeatherSummaries(request.Context(), targetID)
 		if weatherErr != nil {
 			h.unavailable(writer)
@@ -200,8 +261,22 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				TypeID:         recorded.TypeID,
 				LocationID:     recorded.LocationID,
 			}
-			if metrics, ok := derived[recorded.ID]; ok {
-				activity.Metrics = activityMetrics(metrics)
+			metrics, hasMetrics := derived[recorded.ID]
+			session, hasSession := sessions[recorded.ID]
+			if hasMetrics || hasSession {
+				var sessionArg *activities.Session
+				if hasSession {
+					sessionArg = &session
+				}
+				activity.Metrics = activityMetrics(metrics, sessionArg)
+			}
+			if hasSession {
+				if session.DescentMetres.Known {
+					activity.DescentMetres = new(session.DescentMetres.Value)
+				}
+				if session.CaloriesKcal.Known {
+					activity.CaloriesKcal = new(session.CaloriesKcal.Value)
+				}
 			}
 			if summary, ok := summaries[recorded.ID]; ok {
 				activity.Weather = weatherSummary(summary)
