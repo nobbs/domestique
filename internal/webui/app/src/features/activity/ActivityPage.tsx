@@ -62,9 +62,16 @@ export function ActivityPage() {
   // altitude axis, so what `windowed` actually shows can differ from what was
   // asked for. Every other reader of the window — the map's bounds, its dimmed
   // halo — has to agree with the chart rather than with the request.
-  const shownWindow = windowed
-    ? { startMetres: windowed.startMetres, endMetres: windowed.endMetres }
-    : null;
+  //
+  // Memoised on `windowed` itself, which is already stable across a render
+  // that moved only the cursor: a fresh object here every render would carry
+  // that instability into `windowBounds` below and into `RouteOverlay`'s own
+  // window-keyed memoisation, costing both a full coordinate scan on every
+  // hover while zoomed.
+  const shownWindow = useMemo(
+    () => (windowed ? { startMetres: windowed.startMetres, endMetres: windowed.endMetres } : null),
+    [windowed],
+  );
   // The position was chosen against the view being left, so it goes with it.
   const onZoomChange = useCallback((next: DistanceWindow | null) => {
     setZoomWindow(next);
