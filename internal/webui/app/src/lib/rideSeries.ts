@@ -16,6 +16,8 @@ export interface AlignedSeries {
   key: string;
   label: string;
   unit: string;
+  /** How many decimals a reading is shown with. Absent reads as a whole number. */
+  decimals?: number;
   colour: string;
   values: (number | null)[];
 }

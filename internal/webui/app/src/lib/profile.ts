@@ -806,6 +806,24 @@ export function sampleAt(profile: Profile, metres: number): ProfileSample | null
 }
 
 /**
+ * The profile sample nearest one position along the stretch, by index.
+ *
+ * The samples are evenly spaced across the stretch the profile describes, so
+ * this is arithmetic rather than a search — and it is the same index a series
+ * aligned onto this profile is laid out on.
+ */
+export function sampleIndexAt(profile: Profile, metres: number): number | null {
+  const span = profile.endMetres - profile.startMetres;
+  const last = profile.samples.length - 1;
+  if (span <= 0 || last < 0) {
+    return null;
+  }
+  const index = Math.round(((metres - profile.startMetres) / span) * last);
+
+  return Math.min(Math.max(index, 0), last);
+}
+
+/**
  * Where a stretch measured in metres begins and ends in a coordinate array.
  *
  * Rounded outwards — back to the last point at or before the start, on to the
