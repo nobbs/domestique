@@ -7,38 +7,73 @@ import (
 	"time"
 )
 
+// zwiftTimeLayout is the live listing's own timestamp shape: milliseconds and
+// a numeric offset without a colon, which Go's RFC 3339 decoding refuses.
+const zwiftTimeLayout = "2006-01-02T15:04:05.000-0700"
+
+// zwiftTime decodes a Zwift activity timestamp in zwiftTimeLayout, falling
+// back to RFC 3339 in case Zwift ever emits that instead.
+type zwiftTime time.Time
+
+// UnmarshalJSON implements json.Unmarshaler.
+func (t *zwiftTime) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return fmt.Errorf("zwift: activity timestamp: %w", err)
+	}
+	parsed, err := time.Parse(zwiftTimeLayout, value)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339, value)
+	}
+	if err != nil {
+		return fmt.Errorf("zwift: activity timestamp: %w", err)
+	}
+	*t = zwiftTime(parsed)
+
+	return nil
+}
+
 // Activity is the narrow view of one Zwift ride. The response also names every
 // other rider who took part; nothing here names them, so they are never decoded.
 type Activity struct {
-	StartDate       time.Time
-	EndDate         time.Time
-	Sport           string
-	FitnessStatus   string
-	FullDataURL     string
-	ID              int64
-	MovingTimeMs    int64
-	DistanceMeters  float64
-	TotalElevation  float64
-	WorldID         int64
-	PrivateActivity bool
+	StartDate        time.Time
+	EndDate          time.Time
+	Sport            string
+	FITBucket        string
+	FITKey           string
+	ID               int64
+	MovingTimeMs     int64
+	DistanceMeters   float64
+	TotalElevation   float64
+	WorldID          int64
+	UTCOffsetMinutes int
+	PrivateActivity  bool
 }
 
-// activityDocument is the subset of Zwift's JSON this package reads, whether
-// it arrived as a listing entry or the single-activity response.
+// FITURL returns the public S3 location of this activity's FIT file — no
+// bearer token is accepted there — when the listing carried both fields.
+func (a *Activity) FITURL() (string, bool) {
+	if a.FITBucket == "" || a.FITKey == "" {
+		return "", false
+	}
+
+	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", a.FITBucket, a.FITKey), true
+}
+
+// activityDocument is the subset of Zwift's listing entry this package reads.
 type activityDocument struct {
-	StartDate time.Time `json:"startDate"`
-	EndDate   time.Time `json:"endDate"`
+	StartDate zwiftTime `json:"startDate"`
+	EndDate   zwiftTime `json:"endDate"`
 	//nolint:tagliatelle // Zwift's API uses snake_case.
-	IDStr       string `json:"id_str"`
-	Sport       string `json:"sport"`
-	FitnessData struct {
-		Status      string `json:"status"`
-		FullDataURL string `json:"fullDataUrl"`
-	} `json:"fitnessData"`
+	IDStr            string  `json:"id_str"`
+	Sport            string  `json:"sport"`
+	FITFileBucket    string  `json:"fitFileBucket"`
+	FITFileKey       string  `json:"fitFileKey"`
 	MovingTimeInMs   int64   `json:"movingTimeInMs"`
 	DistanceInMeters float64 `json:"distanceInMeters"`
 	TotalElevation   float64 `json:"totalElevation"`
 	WorldID          int64   `json:"worldId"`
+	UTCOffsetMinutes int     `json:"utcOffsetMinutes"`
 	PrivateActivity  bool    `json:"privateActivity"`
 }
 
@@ -56,17 +91,18 @@ func (a *Activity) UnmarshalJSON(raw []byte) error {
 	}
 
 	*a = Activity{
-		ID:              id,
-		StartDate:       doc.StartDate,
-		EndDate:         doc.EndDate,
-		MovingTimeMs:    doc.MovingTimeInMs,
-		DistanceMeters:  doc.DistanceInMeters,
-		TotalElevation:  doc.TotalElevation,
-		Sport:           doc.Sport,
-		PrivateActivity: doc.PrivateActivity,
-		WorldID:         doc.WorldID,
-		FitnessStatus:   doc.FitnessData.Status,
-		FullDataURL:     doc.FitnessData.FullDataURL,
+		ID:               id,
+		StartDate:        time.Time(doc.StartDate),
+		EndDate:          time.Time(doc.EndDate),
+		MovingTimeMs:     doc.MovingTimeInMs,
+		DistanceMeters:   doc.DistanceInMeters,
+		TotalElevation:   doc.TotalElevation,
+		Sport:            doc.Sport,
+		PrivateActivity:  doc.PrivateActivity,
+		WorldID:          doc.WorldID,
+		FITBucket:        doc.FITFileBucket,
+		FITKey:           doc.FITFileKey,
+		UTCOffsetMinutes: doc.UTCOffsetMinutes,
 	}
 
 	return nil
@@ -79,21 +115,25 @@ func (a *Activity) Summary() ([]byte, error) {
 	document := struct {
 		StartDate        time.Time `json:"startDate"`
 		EndDate          time.Time `json:"endDate"`
-		FullDataURL      string    `json:"fullDataUrl"`
+		FITFileBucket    string    `json:"fitFileBucket"`
+		FITFileKey       string    `json:"fitFileKey"`
 		ID               int64     `json:"id"`
 		MovingTimeInMs   int64     `json:"movingTimeInMs"`
 		DistanceInMeters float64   `json:"distanceInMeters"`
 		TotalElevation   float64   `json:"totalElevation"`
 		WorldID          int64     `json:"worldId"`
+		UTCOffsetMinutes int       `json:"utcOffsetMinutes"`
 	}{
 		ID:               a.ID,
 		StartDate:        a.StartDate,
 		EndDate:          a.EndDate,
-		FullDataURL:      a.FullDataURL,
+		FITFileBucket:    a.FITBucket,
+		FITFileKey:       a.FITKey,
 		DistanceInMeters: a.DistanceMeters,
 		MovingTimeInMs:   a.MovingTimeMs,
 		TotalElevation:   a.TotalElevation,
 		WorldID:          a.WorldID,
+		UTCOffsetMinutes: a.UTCOffsetMinutes,
 	}
 
 	data, err := json.Marshal(document)

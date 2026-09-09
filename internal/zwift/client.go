@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,10 @@ var ErrActivityRefused = errors.New("zwift: activity was refused")
 // ErrRejected reports a request Zwift refused outright: rate limited or its
 // own failure, rather than this account's or this activity's.
 var ErrRejected = errors.New("zwift: request was rejected")
+
+// fitHostPattern matches only a bucket-scoped S3 virtual-hosted URL; anchored
+// so neither a trailing nor a spoofed leading label can slip past it.
+var fitHostPattern = regexp.MustCompile(`^[a-z0-9.-]+\.s3\.amazonaws\.com$`)
 
 // Options configures a Zwift API client.
 type Options struct {
@@ -216,7 +221,7 @@ func (c *Client) Activities(ctx context.Context, session Session, playerID int64
 		return nil, errors.New("zwift: session and player id are required")
 	}
 	if start < 0 || limit <= 0 {
-		return nil, errors.New("zwift: start and limit must be positive")
+		return nil, errors.New("zwift: start must not be negative and limit must be positive")
 	}
 
 	query := url.Values{"start": {strconv.Itoa(start)}, "limit": {strconv.Itoa(limit)}}
@@ -233,44 +238,22 @@ func (c *Client) Activities(ctx context.Context, session Session, playerID int64
 	return activities, nil
 }
 
-// Activity reads one activity, carrying where its FIT file can be downloaded
-// from.
-func (c *Client) Activity(ctx context.Context, session Session, id int64) (Activity, error) {
-	if session.AccessToken == "" || id <= 0 {
-		return Activity{}, errors.New("zwift: session and activity id are required")
-	}
-	request, err := c.newAPIRequest(ctx, http.MethodGet, fmt.Sprintf("/api/activities/%d", id), nil, session)
-	if err != nil {
-		return Activity{}, err
-	}
-
-	var one Activity
-	if err := c.doJSON(request, &one, true); err != nil {
-		return Activity{}, err
-	}
-
-	return one, nil
-}
-
-// DownloadFIT reads the FIT file an activity names, refusing a URL whose host
-// is not this client's own API host: Zwift's file URLs are same-origin, and
-// following anywhere else would turn a summary into SSRF.
-func (c *Client) DownloadFIT(ctx context.Context, session Session, fileURL string) (data []byte, err error) {
-	if session.AccessToken == "" {
-		return nil, errors.New("zwift: session access token is required")
-	}
+// DownloadFIT reads the FIT file a listing entry names, refusing any URL that
+// is not a bucket-scoped https://<bucket>.s3.amazonaws.com/<key> object: the
+// file is a public S3 object, and following anywhere else would turn a
+// listing into SSRF. No Authorization header is sent — the bucket rejects one.
+func (c *Client) DownloadFIT(ctx context.Context, fileURL string) (data []byte, err error) {
 	parsed, parseErr := url.Parse(fileURL)
 	if parseErr != nil || parsed.Scheme != "https" || parsed.User != nil ||
-		!strings.EqualFold(parsed.Host, c.apiBaseURL.Host) {
+		!fitHostPattern.MatchString(parsed.Host) {
 		return nil, errors.New("zwift: fit file url was invalid")
 	}
 
 	request, requestErr := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), http.NoBody)
 	if requestErr != nil {
-		// Not wrapped: a *url.Error message would carry the signed file URL.
+		// Not wrapped: a *url.Error message would carry the fit file url.
 		return nil, errors.New("zwift: fit file request could not be created")
 	}
-	request.Header.Set("Authorization", "Bearer "+session.AccessToken)
 
 	response, doErr := c.httpClient.Do(request)
 	if doErr != nil {

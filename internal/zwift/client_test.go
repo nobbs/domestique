@@ -3,9 +3,11 @@ package zwift
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"testing/iotest"
@@ -14,6 +16,45 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// s3RedirectTransport lets a DownloadFIT test use a real
+// https://bucket.s3.amazonaws.com URL — as fitHostPattern requires — while
+// the request actually lands on the local httptest.Server behind target.
+type s3RedirectTransport struct {
+	target    *url.URL
+	transport http.RoundTripper
+}
+
+func (s s3RedirectTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	redirected := request.Clone(request.Context())
+	redirected.URL.Scheme = s.target.Scheme
+	redirected.URL.Host = s.target.Host
+	redirected.Host = s.target.Host
+
+	response, err := s.transport.RoundTrip(redirected)
+	if err != nil {
+		return nil, fmt.Errorf("s3RedirectTransport: %w", err)
+	}
+
+	return response, nil
+}
+
+func fakeS3URL(key string) string {
+	return "https://test-bucket.s3.amazonaws.com/" + key
+}
+
+func newDownloadTestClient(t *testing.T, server *httptest.Server, timeout time.Duration) *Client {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	client, err := New(&Options{
+		Transport: s3RedirectTransport{target: target, transport: server.Client().Transport},
+		Timeout:   timeout,
+	})
+	require.NoError(t, err)
+
+	return client
+}
 
 func TestClientSignsInWithThePasswordGrant(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -80,6 +121,7 @@ func TestClientListsActivitiesByOffsetAndParsesIDStr(t *testing.T) {
 		assert.Equal(t, "/api/profiles/99/activities", request.URL.Path)
 		assert.Equal(t, "20", request.URL.Query().Get("start"), "start")
 		assert.Equal(t, "10", request.URL.Query().Get("limit"), "limit")
+		assert.Equal(t, "application/json", request.Header.Get("Accept"), "accept header, or Zwift answers protobuf-lite")
 		// id is Zwift's own float-rounded numeric id; id_str is exact and this
 		// package must read that one instead.
 		writer.Write([]byte(`[{"id":1461969115156611000,"id_str":"1461969115156611104","sport":"CYCLING"}]`)) //nolint:errcheck,gosec // test server, nothing to act on
@@ -91,6 +133,49 @@ func TestClientListsActivitiesByOffsetAndParsesIDStr(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, activities, 1)
 	assert.Equal(t, int64(1461969115156611104), activities[0].ID, "id must come from id_str, not the rounded id")
+}
+
+func TestClientListActivitiesDecodesTheLiveTimestampLayout(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Write([]byte(`[{"id_str":"1","sport":"CYCLING",` + //nolint:errcheck,gosec // test server, nothing to act on
+			`"startDate":"2026-09-08T18:04:39.000+0000","endDate":"2026-09-08T19:04:39.123-0530"}]`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	activities, err := client.Activities(t.Context(), Session{AccessToken: "access-token"}, 1, 0, 1)
+	require.NoError(t, err)
+	require.Len(t, activities, 1)
+	assert.True(t, activities[0].StartDate.Equal(time.Date(2026, 9, 8, 18, 4, 39, 0, time.UTC)), "start date")
+	assert.True(t, activities[0].EndDate.Equal(time.Date(2026, 9, 8, 19, 4, 39, 123_000_000, time.FixedZone("", -5*3600-30*60))), "end date")
+}
+
+func TestClientListActivitiesFallsBackToRFC3339Timestamps(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Write([]byte(`[{"id_str":"1","sport":"CYCLING",` + //nolint:errcheck,gosec // test server, nothing to act on
+			`"startDate":"2026-09-08T18:04:39Z","endDate":"2026-09-08T19:04:39Z"}]`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	activities, err := client.Activities(t.Context(), Session{AccessToken: "access-token"}, 1, 0, 1)
+	require.NoError(t, err)
+	require.Len(t, activities, 1)
+	assert.True(t, activities[0].StartDate.Equal(time.Date(2026, 9, 8, 18, 4, 39, 0, time.UTC)), "start date")
+}
+
+func TestActivityFITURLBuildsTheS3ObjectLocation(t *testing.T) {
+	activity := Activity{FITBucket: "prod-zwift-fit", FITKey: "prod/12345/token"}
+	fitURL, ok := activity.FITURL()
+	require.True(t, ok)
+	assert.Equal(t, "https://prod-zwift-fit.s3.amazonaws.com/prod/12345/token", fitURL)
+
+	bucketOnly := Activity{FITBucket: "prod-zwift-fit"}
+	_, ok = bucketOnly.FITURL()
+	assert.False(t, ok, "missing key")
+	keyOnly := Activity{FITKey: "prod/12345/token"}
+	_, ok = keyOnly.FITURL()
+	assert.False(t, ok, "missing bucket")
 }
 
 func TestActivitySummaryDropsOtherRidersFromTheResponse(t *testing.T) {
@@ -127,14 +212,14 @@ func TestClientReportsUnauthorizedOn401(t *testing.T) {
 	assert.NotContains(t, err.Error(), "wrong-password", "the credential must not reach the error")
 }
 
-func TestClientReportsActivityRefusedOn404(t *testing.T) {
+func TestClientDownloadReportsActivityRefusedOn404(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, server)
-	_, err := client.Activity(t.Context(), Session{AccessToken: "access-token"}, 1)
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	_, err := client.DownloadFIT(t.Context(), fakeS3URL("prod/1/token"))
 	require.ErrorIs(t, err, ErrActivityRefused)
 	assert.True(t, client.IsUnreadable(err))
 }
@@ -151,16 +236,32 @@ func TestClientReportsRejectedOn503(t *testing.T) {
 	assert.True(t, client.IsRejected(err))
 }
 
-func TestClientDownloadRefusesAForeignHost(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.WriteHeader(http.StatusOK)
-	}))
+func TestClientDownloadRefusesANonS3Host(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer server.Close()
 
-	client := newTestClient(t, server)
-	_, err := client.DownloadFIT(t.Context(), Session{AccessToken: "access-token"}, "https://evil.example.com/file")
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	_, err := client.DownloadFIT(t.Context(), "https://evil.example.com/file")
 	require.Error(t, err)
 	assert.False(t, client.IsUnauthorized(err), "a rejected url must not read as an authorization failure")
+}
+
+func TestClientDownloadRefusesAHostWithASecondLabel(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer server.Close()
+
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	_, err := client.DownloadFIT(t.Context(), "https://bucket.s3.amazonaws.com.evil.example.com/file")
+	require.Error(t, err)
+}
+
+func TestClientDownloadRefusesAPathTraversalDisguisedAsTheS3Host(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer server.Close()
+
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	_, err := client.DownloadFIT(t.Context(), "https://evil.example.com/../bucket.s3.amazonaws.com/file")
+	require.Error(t, err, "the s3 host only appears in the path, not the actual host")
 }
 
 func TestClientDownloadCapsTheFile(t *testing.T) {
@@ -171,9 +272,8 @@ func TestClientDownloadCapsTheFile(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, server)
-	fileURL := server.URL + "/api/activities/1/file/1"
-	_, err := client.DownloadFIT(t.Context(), Session{AccessToken: "access-token"}, fileURL)
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	_, err := client.DownloadFIT(t.Context(), fakeS3URL("prod/1/token"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "size limit")
 }
@@ -199,35 +299,15 @@ func TestClientHonoursItsTimeout(t *testing.T) {
 	require.True(t, errors.As(err, &netErr) || strings.Contains(err.Error(), "deadline"), "expected a timeout error, got %v", err)
 }
 
-func TestClientReadsOneActivity(t *testing.T) {
-	var server *httptest.Server
-	server = httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assert.Equal(t, "/api/activities/1461969115156611104", request.URL.Path)
-		body := `{
-			"id": 1461969115156611000, "id_str": "1461969115156611104", "sport": "CYCLING",
-			"fitnessData": {"status": "AVAILABLE", "fullDataUrl": "` + server.URL + `/api/activities/1461969115156611104/file/1"}
-		}`
-		writer.Write([]byte(body)) //nolint:errcheck,gosec // test server, nothing to act on
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server)
-	one, err := client.Activity(t.Context(), Session{AccessToken: "access-token"}, 1461969115156611104)
-	require.NoError(t, err)
-	assert.Equal(t, int64(1461969115156611104), one.ID)
-	assert.Equal(t, "AVAILABLE", one.FitnessStatus)
-	assert.NotEmpty(t, one.FullDataURL)
-}
-
-func TestClientDownloadsTheFITFile(t *testing.T) {
+func TestClientDownloadsTheFITFileWithoutAnAuthorizationHeader(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		assert.Equal(t, "Bearer access-token", request.Header.Get("Authorization"), "authorization")
+		assert.Empty(t, request.Header.Get("Authorization"), "the public s3 object must not see a bearer token")
 		writer.Write([]byte("fit-file-bytes")) //nolint:errcheck,gosec // test server, nothing to act on
 	}))
 	defer server.Close()
 
-	client := newTestClient(t, server)
-	data, err := client.DownloadFIT(t.Context(), Session{AccessToken: "access-token"}, server.URL+"/api/activities/1/file/1")
+	client := newDownloadTestClient(t, server, 5*time.Second)
+	data, err := client.DownloadFIT(t.Context(), fakeS3URL("prod/1/token"))
 	require.NoError(t, err)
 	assert.Equal(t, []byte("fit-file-bytes"), data)
 }
@@ -251,10 +331,17 @@ func TestClientRequiredInputsAreValidated(t *testing.T) {
 	require.Error(t, err, "negative start")
 	_, err = client.Activities(t.Context(), Session{AccessToken: "token"}, 1, 0, 0)
 	require.Error(t, err, "zero limit")
-	_, err = client.Activity(t.Context(), Session{AccessToken: "token"}, 0)
-	require.Error(t, err, "missing activity id")
-	_, err = client.DownloadFIT(t.Context(), Session{}, server.URL+"/x")
-	require.Error(t, err, "empty access token")
+	_, err = client.DownloadFIT(t.Context(), "not a url")
+	require.Error(t, err, "invalid fit file url")
+}
+
+func TestActivitiesRejectsANegativeStartWithTheCorrectMessage(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer server.Close()
+	client := newTestClient(t, server)
+
+	_, err := client.Activities(t.Context(), Session{AccessToken: "token"}, 1, -1, 1)
+	require.ErrorContains(t, err, "start must not be negative and limit must be positive")
 }
 
 func TestNewRejectsInvalidOptions(t *testing.T) {
@@ -297,15 +384,9 @@ func TestClientDownloadReportsAConnectionFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := New(&Options{
-		AuthBaseURL: server.URL,
-		APIBaseURL:  server.URL,
-		Transport:   server.Client().Transport,
-		Timeout:     10 * time.Millisecond,
-	})
-	require.NoError(t, err)
+	client := newDownloadTestClient(t, server, 10*time.Millisecond)
 
-	_, err = client.DownloadFIT(t.Context(), Session{AccessToken: "access-token"}, server.URL+"/api/activities/1/file/1")
+	_, err := client.DownloadFIT(t.Context(), fakeS3URL("prod/1/token"))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "fit file request failed")
 }

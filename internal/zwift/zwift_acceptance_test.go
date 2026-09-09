@@ -46,12 +46,11 @@ func TestZwiftAcceptance(t *testing.T) {
 	require.NoError(t, err, "listing the newest activity")
 	require.NotEmpty(t, listing, "this account has no recorded activity to verify against")
 
-	one, err := client.Activity(ctx, session, listing[0].ID)
-	require.NoError(t, err, "reading the newest activity")
-	require.NotEmpty(t, one.FullDataURL, "the activity carried no downloadable file")
+	fitURL, ok := listing[0].FITURL()
+	require.True(t, ok, "the newest activity carried no FIT bucket and key")
 
-	raw, err := client.DownloadFIT(ctx, session, one.FullDataURL)
-	require.NoError(t, err, "downloading the FIT file needed the bearer token")
+	raw, err := client.DownloadFIT(ctx, fitURL)
+	require.NoError(t, err, "downloading the FIT file from its public s3 object")
 	require.NotEmpty(t, raw)
 
 	decoded, err := activity.DecodeFIT(raw)
