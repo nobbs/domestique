@@ -13,19 +13,32 @@ import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
-import type { Profile } from "../../lib/profile";
+import { WINDOW_MAX_ZOOM } from "../../lib/cartography";
+import type { DistanceWindow, Profile } from "../../lib/profile";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { RouteOverlay } from "../routes/RouteOverlay";
 
-/** As close as a ride is framed, so a short loop is not zoomed to the tarmac. */
+/** As close as a whole ride is framed, so a short loop is not zoomed to the tarmac. */
 const TRACK_MAX_ZOOM = 15;
 
 export interface ActivityMapProps {
   coordinates: Position[];
+  /** The whole track's box; overridden by `windowBounds` while zoomed. */
   bounds: BoundingBox;
+  /** Framed instead of `bounds`, and at `WINDOW_MAX_ZOOM`, while a stretch is zoomed. */
+  windowBounds?: BoundingBox | null;
   profile: Profile | null;
+  /**
+   * The profile the elevation chart is actually drawing, windowed while zoomed.
+   * See `RouteOverlay`'s own `activeProfile` for why it is kept apart from
+   * `profile`.
+   */
+  activeProfile?: Profile | null;
   activeMetres: number | null;
   onActiveChange: (metres: number | null) => void;
+  /** The stretch on show; a drag along the track can set it through `onZoomChange`. */
+  zoomWindow?: DistanceWindow | null;
+  onZoomChange?: (window: DistanceWindow | null) => void;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
 }
@@ -33,9 +46,13 @@ export interface ActivityMapProps {
 export function ActivityMap({
   coordinates,
   bounds,
+  windowBounds = null,
   profile,
+  activeProfile = null,
   activeMetres,
   onActiveChange,
+  zoomWindow = null,
+  onZoomChange,
   expanded,
   onExpandedChange,
 }: ActivityMapProps) {
@@ -70,12 +87,19 @@ export function ActivityMap({
           </MapControls>
         }
       >
-        <MapViewport bounds={bounds} maxZoom={TRACK_MAX_ZOOM} fitRevision={expanded ? 1 : 0} />
+        <MapViewport
+          bounds={windowBounds ?? bounds}
+          maxZoom={windowBounds ? WINDOW_MAX_ZOOM : TRACK_MAX_ZOOM}
+          fitRevision={expanded ? 1 : 0}
+        />
         <RouteOverlay
           coordinates={coordinates}
           profile={profile}
+          activeProfile={activeProfile}
           activeMetres={activeMetres}
           onActiveChange={onActiveChange}
+          zoomWindow={zoomWindow}
+          onZoomChange={onZoomChange}
         />
       </MapWidget>
     </CartographyProvider>
