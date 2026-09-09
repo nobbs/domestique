@@ -34,10 +34,10 @@ export interface AlignedSeries {
  * instant it landed on.
  *
  * A gap the sensor left is still a gap: nulls are left out of the mean, and a
- * stretch that recorded nothing at all stays null rather than borrowing from
- * its neighbours. A stretch holding no reading at all — the samples sit closer
- * together than the recording does — falls back to the nearest reading, which
- * is what it would have been given before.
+ * stretch whose records all read null draws as null rather than borrowing from
+ * its neighbours. Only a stretch holding no record whatsoever — the samples sit
+ * closer together than the ride recorded — falls back to the nearest reading,
+ * which is what every sample was given before.
  */
 export function alignSeries(
   values: (number | null)[],
