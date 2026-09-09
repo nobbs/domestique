@@ -283,7 +283,9 @@ func TestGetActivitiesServesTheCallersWholeHistoryByDefault(t *testing.T) {
 	code, list := getActivities(t, handler, "/v1/activities")
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 3, "no from means no lower bound")
-	assert.Equal(t, []string{"1", "2", "3"}, []string{list.Activities[0].ID, list.Activities[1].ID, list.Activities[2].ID}, "newest first")
+	assert.Equal(t, []string{"1", "2", "3"},
+		[]string{string(list.Activities[0].ID), string(list.Activities[1].ID), string(list.Activities[2].ID)},
+		"newest first")
 	assert.InDelta(t, 1000.0, list.Activities[0].DistanceMetres, 1e-9)
 	assert.Equal(t, 15, list.Activities[0].TypeID)
 	assert.Equal(t, 1, list.Activities[0].LocationID)
@@ -330,7 +332,7 @@ func TestGetActivitiesServesAnyTargetToAnAdmin(t *testing.T) {
 	code, list := getActivities(t, handler, "/v1/activities?target=rider-b")
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 1)
-	assert.Equal(t, "99", list.Activities[0].ID)
+	assert.Equal(t, "99", string(list.Activities[0].ID))
 }
 
 // A Zwift snowflake exceeds the 2^53 range a JSON number survives exactly once
@@ -363,7 +365,7 @@ func TestGetActivitiesCarriesAnIDBeyondJavaScriptsSafeIntegerRange(t *testing.T)
 	code, list := getActivities(t, handler, "/v1/activities")
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 1)
-	assert.Equal(t, "1972687436517507104", list.Activities[0].ID,
+	assert.Equal(t, "1972687436517507104", string(list.Activities[0].ID),
 		"the exact digits, not a float64-rounded id")
 
 	trackCode, _ := getTrack(t, handler, "/v1/activities/1972687436517507104/track")

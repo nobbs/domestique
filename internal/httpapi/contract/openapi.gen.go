@@ -99,6 +99,9 @@ type Route struct {
 	Validation         *RouteValidation `json:"validation,omitempty"`
 }
 
+// ActivityID An activity id exceeds the 2^53 range a JSON number survives exactly in a browser, so it is carried as a string everywhere it appears on the wire, request paths included.
+type ActivityID string
+
 // Activity_Provider Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
 type Activity_Provider string
 
@@ -108,13 +111,12 @@ const (
 )
 
 type Activity struct {
-	// ID An activity id exceeds the 2^53 range a JSON number survives exactly in a browser, so it is carried as a string on the wire.
-	ID             string    `json:"id"`
-	StartedAt      time.Time `json:"startedAt"`
-	DistanceMetres float64   `json:"distanceMetres"`
-	MovingSeconds  float64   `json:"movingSeconds"`
-	ElapsedSeconds float64   `json:"elapsedSeconds"`
-	AscentMetres   float64   `json:"ascentMetres"`
+	ID             ActivityID `json:"id"`
+	StartedAt      time.Time  `json:"startedAt"`
+	DistanceMetres float64    `json:"distanceMetres"`
+	MovingSeconds  float64    `json:"movingSeconds"`
+	ElapsedSeconds float64    `json:"elapsedSeconds"`
+	AscentMetres   float64    `json:"ascentMetres"`
 	// DescentMetres The ride's total descent, from the file's session message. Absent for a ride whose file declared none.
 	DescentMetres *float64 `json:"descentMetres,omitempty"`
 	// CaloriesKcal The device's own calorie estimate for the ride. Absent for a ride whose file declared none.
@@ -156,7 +158,7 @@ const (
 )
 
 type RouteActivity struct {
-	ID            int64              `json:"id"`
+	ID            ActivityID         `json:"id"`
 	RouteCoverage float64            `json:"routeCoverage"`
 	RideCoverage  float64            `json:"rideCoverage"`
 	Direction     RouteRideDirection `json:"direction"`
@@ -180,9 +182,9 @@ type RouteClimb struct {
 
 // RouteClimbAttempt One ride over one climb. Only a ride that reached both ends of it the way the route stores it is here: a ride that turned back, or ran the route the other way round, made no attempt at it.
 type RouteClimbAttempt struct {
-	ActivityID int64     `json:"activityId"`
-	RiddenAt   time.Time `json:"riddenAt"`
-	Seconds    float64   `json:"seconds"`
+	ActivityID ActivityID `json:"activityId"`
+	RiddenAt   time.Time  `json:"riddenAt"`
+	Seconds    float64    `json:"seconds"`
 	// VamMetresPerHour The climb's own ascent over the time this attempt took, which is what makes two attempts at one climb comparable.
 	VamMetresPerHour float64 `json:"vamMetresPerHour"`
 	// HeartRateBpm The mean over the samples inside the climb.

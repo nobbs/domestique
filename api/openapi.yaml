@@ -373,8 +373,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^[0-9]+$'
+            $ref: '#/components/schemas/ActivityID'
         - name: target
           in: query
           description: >-
@@ -419,8 +418,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^[0-9]+$'
+            $ref: '#/components/schemas/ActivityID'
         - name: series
           in: path
           required: true
@@ -470,8 +468,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
-            pattern: '^[0-9]+$'
+            $ref: '#/components/schemas/ActivityID'
         - name: target
           in: query
           description: >-
@@ -1742,6 +1739,13 @@ components:
           format: double
         validation:
           $ref: '#/components/schemas/RouteValidation'
+    ActivityID:
+      type: string
+      pattern: '^[0-9]+$'
+      description: >-
+        An activity id exceeds the 2^53 range a JSON number survives exactly
+        in a browser, so it is carried as a string everywhere it appears on
+        the wire, request paths included.
     Activity:
       type: object
       additionalProperties: false
@@ -1757,11 +1761,7 @@ components:
         - provider
       properties:
         id:
-          type: string
-          pattern: '^[0-9]+$'
-          description: >-
-            An activity id exceeds the 2^53 range a JSON number survives
-            exactly in a browser, so it is carried as a string on the wire.
+          $ref: '#/components/schemas/ActivityID'
         startedAt:
           type: string
           format: date-time
@@ -1877,8 +1877,7 @@ components:
         - direction
       properties:
         id:
-          type: integer
-          format: int64
+          $ref: '#/components/schemas/ActivityID'
         routeCoverage:
           type: number
           format: double
@@ -1950,8 +1949,7 @@ components:
         - vamMetresPerHour
       properties:
         activityId:
-          type: integer
-          format: int64
+          $ref: '#/components/schemas/ActivityID'
         riddenAt:
           type: string
           format: date-time

@@ -43,7 +43,7 @@ function climb(attempts: [number, string][]): Climb {
     averageGradePercent: 6,
     maxGradePercent: 8,
     attempts: attempts.map(([seconds, riddenAt], index) => ({
-      activityId: index + 1,
+      activityId: String(index + 1),
       riddenAt,
       seconds,
       vamMetresPerHour: (36 / seconds) * 3600,

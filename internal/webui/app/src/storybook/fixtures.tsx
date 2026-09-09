@@ -140,8 +140,8 @@ export const climbs: Climb[] = [
     distanceMetres: 600,
     ascentMetres: 54,
     attempts: [
-      { activityId: 1, riddenAt: "2026-07-01T06:00:00Z", seconds: 760, vamMetresPerHour: 256 },
-      { activityId: 2, riddenAt: "2026-08-01T06:00:00Z", seconds: 785, vamMetresPerHour: 248 },
+      { activityId: "1", riddenAt: "2026-07-01T06:00:00Z", seconds: 760, vamMetresPerHour: 256 },
+      { activityId: "2", riddenAt: "2026-08-01T06:00:00Z", seconds: 785, vamMetresPerHour: 248 },
     ],
     averageGradePercent: 9,
     maxGradePercent: 11.4,

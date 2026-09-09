@@ -76,7 +76,7 @@ func TestGetRouteActivitiesServesOnlyTheCallersOwnRides(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 1, "another rider's ride on this route is not this rider's history")
-	assert.Equal(t, int64(1), list.Activities[0].ID)
+	assert.Equal(t, "1", string(list.Activities[0].ID))
 	assert.InDelta(t, 0.98, list.Activities[0].RouteCoverage, 1e-9)
 	assert.InDelta(t, 0.95, list.Activities[0].RideCoverage, 1e-9)
 	assert.Equal(t, openapi.RouteRideDirectionReverse, list.Activities[0].Direction,
@@ -140,7 +140,7 @@ func TestGetRouteActivitiesLetsAnAdminNameATarget(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 1)
-	assert.Equal(t, int64(99), list.Activities[0].ID)
+	assert.Equal(t, "99", string(list.Activities[0].ID))
 }
 
 func TestGetRouteActivitiesReportsAnUnreadableStore(t *testing.T) {
@@ -243,6 +243,6 @@ func TestGetRouteActivitiesServesTheNewestRideFirst(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, code)
 	require.Len(t, list.Activities, 2)
-	assert.Equal(t, int64(1), list.Activities[0].ID, "the ride an hour old")
-	assert.Equal(t, int64(2), list.Activities[1].ID, "then the one two hours old")
+	assert.Equal(t, "1", string(list.Activities[0].ID), "the ride an hour old")
+	assert.Equal(t, "2", string(list.Activities[1].ID), "then the one two hours old")
 }
