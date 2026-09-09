@@ -99,13 +99,14 @@ type activityTrackView struct {
 }
 
 // The states a track is served in: the line is here, its samples are not
-// downloaded yet, too few of them carried a position, or the file did not
-// decode.
+// downloaded yet, too few of them carried a position, the file did not
+// decode, or the ride was recorded indoors and so was never given a line.
 const (
 	trackStateStored     = "stored"
 	trackStatePending    = "pending"
 	trackStateEmpty      = "empty"
 	trackStateUnreadable = "unreadable"
+	trackStateIndoor     = "indoor"
 )
 
 type trackLineStringView struct {

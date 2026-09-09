@@ -13,6 +13,7 @@ function ride(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>):
     ascentMetres: 420,
     typeId: 0,
     locationId: 0,
+    provider: "wahoo",
     ...(metrics ? { metrics } : {}),
     ...totals,
   };

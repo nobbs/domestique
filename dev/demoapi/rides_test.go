@@ -88,7 +88,7 @@ func TestSeedIsRepeatable(t *testing.T) {
 
 	metrics, err := store.ActivityMetrics(t.Context(), demoSubject)
 	require.NoError(t, err)
-	assert.Len(t, metrics, 4, "a second seeding replaces the rides rather than doubling them")
+	assert.Len(t, metrics, 5, "a second seeding replaces the rides rather than doubling them")
 }
 
 // The derivation asks its provider for a window and reads back a step; both

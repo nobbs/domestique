@@ -30,14 +30,17 @@ func activityState(subject string, ages ...time.Duration) *fakeState {
 			{id: "rider-b", authorization: "authorized", owner: "rider-b"},
 		},
 		activities: map[string][]activities.Stored{
-			"rider-b": {{ID: 99, StartedAt: activityClock().Add(-time.Hour), DistanceMetres: 1}},
+			"rider-b": {{
+				ID: 99, StartedAt: activityClock().Add(-time.Hour), DistanceMetres: 1,
+				Provider: activities.ProviderWahoo,
+			}},
 		},
 	}
 	for index, age := range ages {
 		state.activities[subject] = append(state.activities[subject], activities.Stored{
 			ID: int64(index + 1), StartedAt: activityClock().Add(-age),
 			DistanceMetres: 1000, MovingSeconds: 60, ElapsedSeconds: 90, AscentMetres: 10,
-			TypeID: 15, LocationID: 1,
+			TypeID: 15, LocationID: 1, Provider: activities.ProviderWahoo,
 		})
 	}
 
@@ -284,6 +287,7 @@ func TestGetActivitiesServesTheCallersWholeHistoryByDefault(t *testing.T) {
 	assert.InDelta(t, 1000.0, list.Activities[0].DistanceMetres, 1e-9)
 	assert.Equal(t, 15, list.Activities[0].TypeID)
 	assert.Equal(t, 1, list.Activities[0].LocationID)
+	assert.Equal(t, openapi.Activity_ProviderWahoo, list.Activities[0].Provider, "which upstream recorded the ride")
 }
 
 // An explicit window is half-open on the start time.
@@ -512,6 +516,32 @@ func TestGetActivityTrackNamesWhyItHasNoLine(t *testing.T) {
 			assert.Equal(t, expected.want, view.Properties.State)
 		})
 	}
+}
+
+// An indoor ride is served no geometry regardless of what it stored, because
+// its coordinates, if any, belong to a virtual world and a map of them would
+// be false.
+func TestGetActivityTrackServesNoGeometryForAnIndoorRide(t *testing.T) {
+	state := trackState("rider-a")
+	state.recordsStateTypes = map[string]int{"rider-a/1": 68}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	handler.indoorTypes = []int{68}
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Nil(t, view.Geometry, "an indoor ride has no line to draw")
+	assert.Equal(t, trackStateIndoor, view.Properties.State)
+}
+
+// An outdoor ride of the same shape is unaffected by the indoor type list.
+func TestGetActivityTrackDrawsAnOutdoorRideDespiteAnIndoorTypeList(t *testing.T) {
+	state := trackState("rider-a")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	handler.indoorTypes = []int{68}
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	require.NotNil(t, view.Geometry, "an outdoor ride still draws its line")
 }
 
 // A single positioned sample draws no line either, and the ride that recorded

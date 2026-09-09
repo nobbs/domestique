@@ -32,7 +32,7 @@ func TestRidesCoverTheShapesTheActivityViewsHaveToDraw(t *testing.T) {
 
 	rides, err := demo.Rides(seededAt())
 	require.NoError(t, err)
-	require.Len(t, rides, 4)
+	require.Len(t, rides, 5)
 
 	full := rideByID(t, rides, 90_101)
 	assert.NotEmpty(t, full.FIT.Records)
@@ -139,11 +139,20 @@ func TestSeedGivesAnOnboardedSlotItsRidesAndLeavesAnUnauthorizedOneEmpty(t *test
 
 	onboarded, err := store.ActivitiesBetween(t.Context(), "rider-a", window, seededAt(), 50)
 	require.NoError(t, err)
-	assert.Len(t, onboarded, 4, "every fixture ride reached the slot that has been onboarded")
+	assert.Len(t, onboarded, 5, "every fixture ride reached the slot that has been onboarded")
 
 	unauthorized, err := store.ActivitiesBetween(t.Context(), "rider-b", window, seededAt(), 50)
 	require.NoError(t, err)
 	assert.Empty(t, unauthorized, "nothing has ever read the account behind an unauthorized slot")
+
+	for _, recorded := range onboarded {
+		if recorded.ID == 90_105 {
+			assert.Equal(t, activity.ProviderZwift, recorded.Provider, "one fixture ride is Zwift's")
+
+			return
+		}
+	}
+	t.Fatal("the Zwift fixture ride was not among the onboarded slot's activities")
 }
 
 // The samples have to arrive as stored, not pending: a ride whose records the
@@ -153,8 +162,8 @@ func TestSeededRidesArriveWithTheirSamplesStored(t *testing.T) {
 
 	store := seed(t, []demo.Slot{{ID: "rider-a", State: demo.SlotCurrent}})
 
-	for _, id := range []int64{90_101, 90_102, 90_103, 90_104} {
-		state, found, err := store.ActivityRecordsState(t.Context(), "rider-a", id)
+	for _, id := range []int64{90_101, 90_102, 90_103, 90_104, 90_105} {
+		state, _, found, err := store.ActivityRecordsState(t.Context(), "rider-a", id)
 		require.NoError(t, err)
 		require.True(t, found, "ride %d is stored", id)
 		assert.Equal(t, activity.RecordsStored, state, "ride %d has its samples", id)
@@ -185,7 +194,7 @@ func TestSeededRidesDeriveTrainingNumbersAgainstTheSeededProfile(t *testing.T) {
 
 	metrics, err := store.ActivityMetrics(t.Context(), "rider-a")
 	require.NoError(t, err)
-	require.Len(t, metrics, 4, "every ride yields something")
+	require.Len(t, metrics, 5, "every ride yields something")
 
 	measured := metrics[90_101]
 	assert.True(t, measured.Load.HasTRIMP, "a ride with heart rate has a load")

@@ -271,6 +271,8 @@ function absenceMessage(state: ActivityTrackState | undefined): string {
       return "This ride recorded too few positions to draw a line.";
     case "unreadable":
       return "The ride's recorded file could not be read.";
+    case "indoor":
+      return "This ride was recorded indoors, so there is no map.";
     default:
       return "No recorded track was stored for this ride.";
   }

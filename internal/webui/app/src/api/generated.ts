@@ -222,6 +222,16 @@ export interface SyncRunPage {
 }
 
 /**
+ * Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
+ */
+export type ActivityProvider = (typeof ActivityProvider)[keyof typeof ActivityProvider];
+
+export const ActivityProvider = {
+  wahoo: "wahoo",
+  zwift: "zwift",
+} as const;
+
+/**
  * What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present beside estimatedPowerWatts once the ride has been derived since these existed; a ride derived before then omits it until it is derived again. See docs/specs/measurement.md §Estimated power.
  */
 export interface EstimateQuality {
@@ -358,6 +368,8 @@ export interface Activity {
   caloriesKcal?: number;
   typeId: number;
   locationId: number;
+  /** Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift. */
+  provider: ActivityProvider;
   metrics?: ActivityMetrics;
   weather?: ActivityWeatherSummary;
   routeMatch?: ActivityRouteMatch;
@@ -422,6 +434,9 @@ export interface ActivityTrackLineString {
   coordinates: number[][];
 }
 
+/**
+ * indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates.
+ */
 export type ActivityTrackPropertiesState =
   (typeof ActivityTrackPropertiesState)[keyof typeof ActivityTrackPropertiesState];
 
@@ -430,6 +445,7 @@ export const ActivityTrackPropertiesState = {
   pending: "pending",
   empty: "empty",
   unreadable: "unreadable",
+  indoor: "indoor",
 } as const;
 
 /**
@@ -451,6 +467,7 @@ export interface RideWeatherStep {
 }
 
 export interface ActivityTrackProperties {
+  /** indoor names a ride recorded over no ground: never given a line, regardless of whether it stored any coordinates. */
   state: ActivityTrackPropertiesState;
   /** The altitude at each coordinate, indexed 1:1 with them; null where that sample recorded none. Omitted, never all null, when no positioned sample recorded an altitude. */
   altitudeMetres?: (number | null)[];

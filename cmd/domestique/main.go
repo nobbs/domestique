@@ -269,6 +269,7 @@ func run(ctx context.Context) error {
 			Tasks:            taskSurface{ctx: runCtx, manager: tasks, switches: switches},
 			WebhookTokens:    webhookTokens{settings: runtimeSettings},
 			StoppingTypes:    wahoo.OutdoorHumanPoweredWorkoutTypes(),
+			IndoorTypes:      wahoo.IndoorWorkoutTypes(),
 			BuildRevision:    buildInfo.Revision,
 			BuildImageDigest: buildInfo.ImageDigest,
 			Sessions:         sessions,

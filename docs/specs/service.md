@@ -463,9 +463,10 @@ The read-only JSON surface is small:
   geometry with the coefficient pair in force — a predicted moving time.
   It is omitted, never zero, for a route nothing has predicted yet.
 - `GET /v1/activities` returns one target's recorded activities, newest first:
-  each one's Wahoo workout id, start time, distance, moving and elapsed time,
-  ascent, and Wahoo's workout type and location ids — never the verbatim
-  summary document. The optional `from` and `to` bound the start time as a
+  each one's workout id, start time, distance, moving and elapsed time, ascent,
+  Wahoo's workout type and location ids, and which upstream — `wahoo` or
+  `zwift` — this service read it from, never the verbatim summary document.
+  The optional `from` and `to` bound the start time as a
   half-open window with no default lower bound and no maximum span — `to`
   defaults to now, and `from` after `to` is refused; at most 5000 activities
   are served in one response. A caller reads
@@ -528,7 +529,8 @@ The read-only JSON surface is small:
   two positioned samples is served as an unlocated Feature — a null `geometry`
   and no box — whose `properties.state` says why: `pending` for samples not
   downloaded yet, `empty` for samples too few of which carried a position to
-  draw a line, and `unreadable` for a file that did not decode; a served line
+  draw a line, `unreadable` for a file that did not decode, and `indoor` for a
+  ride recorded over no ground, regardless of what it stored; a served line
   carries `stored`. Only an activity of another target, or one this service
   holds no summary for, is `404`.
 - `GET /v1/activities/{activityId}/series/{series}` returns one named series of

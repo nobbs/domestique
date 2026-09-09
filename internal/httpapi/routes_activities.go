@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"time"
 
@@ -260,6 +261,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				AscentMetres:   recorded.AscentMetres,
 				TypeID:         recorded.TypeID,
 				LocationID:     recorded.LocationID,
+				Provider:       openapi.Activity_Provider(recorded.Provider),
 			}
 			metrics, hasMetrics := derived[recorded.ID]
 			session, hasSession := sessions[recorded.ID]
@@ -314,7 +316,7 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 
 		return
 	}
-	recordsState, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
+	recordsState, typeID, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
 	if stateErr != nil {
 		h.unavailable(writer)
 
@@ -324,6 +326,18 @@ func (h *Handler) GetActivityTrack(writer http.ResponseWriter, request *http.Req
 	// samples are merely absent answers with the state that says so.
 	if !stored {
 		h.notFound(writer)
+
+		return
+	}
+	// An indoor ride was ridden over no ground: its coordinates, if any, are a
+	// virtual world's, and a map of them would be false. It is served the same
+	// no-geometry shape as a ride whose samples are not stored, naming why.
+	if slices.Contains(h.indoorTypes, typeID) {
+		writer.Header().Set("Content-Type", "application/geo+json")
+		h.writeJSON(writer, http.StatusOK, activityTrackView{
+			Type:       "Feature",
+			Properties: activityTrackPropertyView{State: trackStateIndoor},
+		})
 
 		return
 	}
@@ -369,7 +383,7 @@ func (h *Handler) GetActivitySeries(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
-	_, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
+	_, _, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
 	if stateErr != nil {
 		h.unavailable(writer)
 
@@ -418,7 +432,7 @@ func (h *Handler) GetActivitySplits(writer http.ResponseWriter, request *http.Re
 
 		return
 	}
-	_, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
+	_, _, stored, stateErr := h.state.ActivityRecordsState(request.Context(), targetID, id)
 	if stateErr != nil {
 		h.unavailable(writer)
 

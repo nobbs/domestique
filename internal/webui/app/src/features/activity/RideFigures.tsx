@@ -11,6 +11,7 @@
  */
 
 import type { Activity } from "../../api/types";
+import { Badge } from "../../components/ui/badge";
 import { formatAscent, formatDescent, formatDistance, formatDuration } from "../../lib/format";
 
 interface Headline {
@@ -71,6 +72,16 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
 
   return (
     <dl className="grid grid-cols-2 gap-x-6 gap-y-5" aria-label="Ride figures">
+      {ride.provider === "zwift" ? (
+        <div className="col-span-2">
+          <dt className="sr-only">Recorded on</dt>
+          <dd>
+            <Badge variant="secondary" className="w-fit">
+              Zwift
+            </Badge>
+          </dd>
+        </div>
+      ) : null}
       {figures.map((figure) => (
         <div key={figure.label} className="flex flex-col gap-0.5">
           <dt className="font-semibold text-[10px] text-[var(--ink-2)] uppercase tracking-[0.08em]">

@@ -45,6 +45,7 @@ function activity(id: number, startedAt: string, overrides: Partial<Activity> = 
     ascentMetres: 300,
     typeId: 40,
     locationId: 0,
+    provider: "wahoo",
     ...overrides,
   };
 }
@@ -138,6 +139,15 @@ describe("the activity list", () => {
     show([]);
 
     expect(screen.getByRole("link", { name: "settings" })).toHaveAttribute("href", "/settings");
+  });
+
+  it("badges a Zwift ride on the list and no other", () => {
+    show([
+      activity(1, "2026-08-19T08:00:00Z", { provider: "zwift" }),
+      activity(2, "2026-08-26T08:00:00Z"),
+    ]);
+
+    expect(screen.getAllByText("Zwift")).toHaveLength(1);
   });
 
   it("shows a ride's max temperature and rain when the service reported them", () => {

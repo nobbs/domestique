@@ -816,30 +816,31 @@ func TestActivityRecordsStateTellsPendingFromStored(t *testing.T) {
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
 
-	state, found, err := store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	state, typeID, found, err := store.ActivityRecordsState(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRecordsState()")
 	require.True(t, found)
 	assert.Equal(t, activity.RecordsPending, state, "a stored summary owes its samples")
+	assert.Equal(t, 15, typeID, "the workout type the summary was stored with")
 
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow()}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
-	state, found, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	state, _, found, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRecordsState()")
 	require.True(t, found)
 	assert.Equal(t, activity.RecordsStored, state)
 
 	require.NoError(t, store.MarkActivityUnreadable(t.Context(), "rider-a", 1), "MarkActivityUnreadable()")
-	state, _, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	state, _, _, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRecordsState()")
 	assert.Equal(t, activity.RecordsUnreadable, state)
 
-	_, found, err = store.ActivityRecordsState(t.Context(), "rider-b", 1)
+	_, _, found, err = store.ActivityRecordsState(t.Context(), "rider-b", 1)
 	require.NoError(t, err, "ActivityRecordsState() for another target")
 	assert.False(t, found, "another target's activity id is a ride this one does not have")
 
 	require.NoError(t, store.Close(), "Close()")
-	_, _, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
+	_, _, _, err = store.ActivityRecordsState(t.Context(), "rider-a", 1)
 	require.ErrorContains(t, err, "reading an activity records state")
 }
 

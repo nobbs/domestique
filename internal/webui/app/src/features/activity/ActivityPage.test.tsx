@@ -87,6 +87,7 @@ const RIDE: Activity = {
   ascentMetres: 300,
   typeId: 40,
   locationId: 0,
+  provider: "wahoo",
 };
 
 /** A track as the query hands it over, with or without altitudes. */
@@ -439,6 +440,7 @@ describe("one ride's page", () => {
     ["pending" as const, "The ride's samples have not been read from Wahoo yet."],
     ["empty" as const, "This ride recorded too few positions to draw a line."],
     ["unreadable" as const, "The ride's recorded file could not be read."],
+    ["indoor" as const, "This ride was recorded indoors, so there is no map."],
   ])("says why a %s ride has no line", (state, message) => {
     show({ coordinates: [], state });
 
