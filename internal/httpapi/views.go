@@ -115,6 +115,10 @@ type trackLineStringView struct {
 }
 
 type activityTrackPropertyView struct {
+	// World is the virtual world an indoor ride was ridden in, present only for
+	// one this service knows the map of. Its line is a world's coordinates, not
+	// the ground's, so it is drawn over that world's artwork and nothing else.
+	World *activityWorldView `json:"world,omitempty"`
 	// State is why a ride carries no line, and is "stored" where it carries one.
 	State string `json:"state"`
 	// AltitudeMetres is the altitude at each coordinate, indexed 1:1 with them;
@@ -128,6 +132,23 @@ type activityTrackPropertyView struct {
 	// it rather than one per coordinate: the provider answers by the hour or the
 	// quarter hour, and a ride keeps whichever step it was first given.
 	Weather []openapi.RideWeatherStep `json:"weather,omitempty"`
+}
+
+// activityWorldView names one virtual world, the box its coordinates fall in,
+// and where this service serves its map artwork from.
+type activityWorldView struct {
+	Name   string                  `json:"name"`
+	MapURL string                  `json:"mapUrl"`
+	Bounds activityWorldBoundsView `json:"bounds"`
+	ID     int64                   `json:"id"`
+}
+
+// activityWorldBoundsView is a world's corners, in degrees.
+type activityWorldBoundsView struct {
+	North float64 `json:"north"`
+	West  float64 `json:"west"`
+	South float64 `json:"south"`
+	East  float64 `json:"east"`
 }
 
 // activitySeriesView is one named series of one ride's samples, indexed 1:1

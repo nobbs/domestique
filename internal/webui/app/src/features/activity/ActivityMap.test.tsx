@@ -25,7 +25,14 @@ const CONFIG: WebUIConfig = {
   identity: { display: "rider@example.test", admin: false },
 };
 
-function show(expanded: boolean, onExpandedChange = vi.fn()) {
+const WORLD = {
+  id: 9,
+  name: "Makuri Islands",
+  mapUrl: "/v1/zwift/worlds/9/map",
+  bounds: { north: -10.73746, west: 165.76591, south: -10.85234, east: 165.88222 },
+};
+
+function show(expanded: boolean, onExpandedChange = vi.fn(), world?: typeof WORLD) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -36,6 +43,7 @@ function show(expanded: boolean, onExpandedChange = vi.fn()) {
       <ChromeMap>
         <ActivityMap
           coordinates={[]}
+          world={world ?? null}
           bounds={[8.4, 49, 8.6, 49.2]}
           profile={null}
           activeMetres={null}
@@ -64,5 +72,20 @@ describe("ActivityMap's expand toggle", () => {
     await user.click(screen.getByRole("button", { name: "Collapse map" }));
 
     expect(onExpandedChange).toHaveBeenCalledWith(false);
+  });
+});
+
+// A ride in a virtual world is drawn over that world's own artwork: its
+// coordinates are not the ground's, so no basemap could be true under them.
+describe("ActivityMap in a virtual world", () => {
+  it("draws the world's artwork instead of a basemap, and keeps the toggle", async () => {
+    const onExpandedChange = show(false, vi.fn(), WORLD);
+
+    const artwork = screen.getByRole("img", { name: "Map of Makuri Islands" });
+    expect(artwork).toHaveAttribute("src", "/v1/zwift/worlds/9/map");
+    expect(screen.queryByLabelText("Recorded track")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Expand map" }));
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
   });
 });

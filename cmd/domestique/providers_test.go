@@ -429,6 +429,24 @@ func TestZwiftProviderDownloadRefusesAForeignHost(t *testing.T) {
 	require.ErrorContains(t, err, "downloading a Zwift activity file")
 }
 
+// The world table reaches the HTTP surface through this adaptation alone, so a
+// world it does not name has to arrive as no world rather than an empty one.
+func TestZwiftWorldOfAdaptsTheWorldTable(t *testing.T) {
+	t.Parallel()
+
+	world, found := zwiftWorldOf([]byte(`{"worldId":9}`))
+	require.True(t, found, "world 9 is in the table")
+	assert.Equal(t, "Makuri Islands", world.Name)
+	assert.Equal(t, int64(9), world.ID)
+	assert.InDelta(t, -10.73746, world.North, 1e-9)
+	assert.InDelta(t, 165.76591, world.West, 1e-9)
+	assert.InDelta(t, -10.85234, world.South, 1e-9)
+	assert.InDelta(t, 165.88222, world.East, 1e-9)
+
+	_, found = zwiftWorldOf([]byte(`{"worldId":99}`))
+	assert.False(t, found, "a world the table does not name")
+}
+
 func writeTestJSON(t *testing.T, writer http.ResponseWriter, body any) {
 	t.Helper()
 	writer.Header().Set("Content-Type", "application/json")

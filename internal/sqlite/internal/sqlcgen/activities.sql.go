@@ -139,6 +139,29 @@ func (q *Queries) DeleteTrainerCopyActivity(ctx context.Context, arg DeleteTrain
 	return result.RowsAffected()
 }
 
+const getActivityProviderSummary = `-- name: GetActivityProviderSummary :one
+SELECT provider, raw_summary_json
+FROM activities
+WHERE target_slot = ? AND workout_id = ?
+`
+
+type GetActivityProviderSummaryParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+type GetActivityProviderSummaryRow struct {
+	Provider       string
+	RawSummaryJson []byte
+}
+
+func (q *Queries) GetActivityProviderSummary(ctx context.Context, arg GetActivityProviderSummaryParams) (GetActivityProviderSummaryRow, error) {
+	row := q.db.QueryRowContext(ctx, getActivityProviderSummary, arg.TargetSlot, arg.WorkoutID)
+	var i GetActivityProviderSummaryRow
+	err := row.Scan(&i.Provider, &i.RawSummaryJson)
+	return i, err
+}
+
 const getActivityRawSummary = `-- name: GetActivityRawSummary :one
 SELECT raw_summary_json
 FROM activities

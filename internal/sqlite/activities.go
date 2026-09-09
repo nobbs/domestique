@@ -229,6 +229,25 @@ func (s *Store) ActivityRecordsState(
 	return activity.RecordsState(stored.RecordsState), int(stored.WorkoutTypeID), true, nil
 }
 
+// ActivityProviderSummary is which provider recorded one target's activity and
+// the summary document that provider's own adapter wrote for it. Interpreting
+// the document is the caller's; this store only holds it.
+func (s *Store) ActivityProviderSummary(
+	ctx context.Context, targetID string, id int64,
+) (provider string, summary []byte, err error) {
+	row, err := s.queries.GetActivityProviderSummary(ctx, sqlcgen.GetActivityProviderSummaryParams{
+		TargetSlot: targetID, WorkoutID: id,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, nil
+	}
+	if err != nil {
+		return "", nil, fmt.Errorf("reading an activity's provider summary: %w", err)
+	}
+
+	return row.Provider, row.RawSummaryJson, nil
+}
+
 // ActivityTrack is the positioned samples of one target's activity, in the
 // order they were recorded. Records without a position are left out, so an
 // activity that never recorded one has an empty track.

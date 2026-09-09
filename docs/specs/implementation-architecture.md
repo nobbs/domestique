@@ -55,7 +55,7 @@ private to this service.
 │   ├── openmeteo/                  weather forecast HTTP adapter
 │   ├── fit/                        FIT encoding adapter
 │   ├── wahoo/                      Wahoo OAuth and route HTTP adapter
-│   ├── zwift/                      Zwift authentication and activity HTTP adapter
+│   ├── zwift/                      Zwift authentication, activity and world-map HTTP adapter
 │   ├── sqlite/                     encrypted durable-state adapter
 │   ├── pushover/                   notification adapter
 │   ├── build/                      revision and image digest, stamped at link

@@ -533,6 +533,102 @@ func TestGetActivityTrackServesNoGeometryForAnIndoorRide(t *testing.T) {
 	assert.Equal(t, trackStateIndoor, view.Properties.State)
 }
 
+// A ride in a virtual world this service knows keeps saying it was indoors —
+// it was ridden over no ground — but carries its line and the world to draw it
+// over.
+func TestGetActivityTrackServesTheWorldOfAZwiftRide(t *testing.T) {
+	state := trackState("rider-a")
+	state.recordsStateTypes = map[string]int{"rider-a/1": 68}
+	state.providerSummaries = map[string]fakeProviderSummary{
+		"rider-a/1": {provider: activities.ProviderZwift, summary: []byte(`{"worldId":9}`)},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	handler.indoorTypes = []int{68}
+	handler.zwiftWorldOf = testWorldOf
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, trackStateIndoor, view.Properties.State, "a virtual world is still no ground")
+	require.NotNil(t, view.Geometry, "a world map needs the line to draw on it")
+	assert.NotEmpty(t, view.BBox)
+	require.NotNil(t, view.Properties.World)
+	assert.Equal(t, int64(9), view.Properties.World.ID)
+	assert.Equal(t, "Makuri Islands", view.Properties.World.Name)
+	assert.Equal(t, "/v1/zwift/worlds/9/map", view.Properties.World.MapURL)
+	assert.InDelta(t, -10.73746, view.Properties.World.Bounds.North, 1e-9)
+}
+
+// A world ride whose samples are not stored yet has no line, so it names no
+// world either: the page would have nothing to draw over the artwork.
+func TestGetActivityTrackNamesNoWorldWithoutALine(t *testing.T) {
+	state := trackState("rider-a")
+	state.tracks["rider-a/1"] = state.tracks["rider-a/1"][:1]
+	state.recordsStateTypes = map[string]int{"rider-a/1": 68}
+	state.providerSummaries = map[string]fakeProviderSummary{
+		"rider-a/1": {provider: activities.ProviderZwift, summary: []byte(`{"worldId":9}`)},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	handler.indoorTypes = []int{68}
+	handler.zwiftWorldOf = testWorldOf
+
+	code, view := getTrack(t, handler, "/v1/activities/1/track")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, trackStateIndoor, view.Properties.State)
+	assert.Nil(t, view.Geometry)
+	assert.Nil(t, view.Properties.World, "no line, so no world to draw it over")
+}
+
+// An indoor ride in no world this service knows is served as it was before
+// there were any: no line, and nothing to draw it over.
+func TestGetActivityTrackServesNoWorldForAnUnknownOne(t *testing.T) {
+	for name, summary := range map[string]fakeProviderSummary{
+		"another provider": {provider: "wahoo", summary: []byte(`{"worldId":9}`)},
+		"unknown world":    {provider: activities.ProviderZwift, summary: []byte(`{"worldId":99}`)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := trackState("rider-a")
+			state.recordsStateTypes = map[string]int{"rider-a/1": 68}
+			state.providerSummaries = map[string]fakeProviderSummary{"rider-a/1": summary}
+			handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+			handler.indoorTypes = []int{68}
+			handler.zwiftWorldOf = testWorldOf
+
+			code, view := getTrack(t, handler, "/v1/activities/1/track")
+			require.Equal(t, http.StatusOK, code)
+			assert.Equal(t, trackStateIndoor, view.Properties.State)
+			assert.Nil(t, view.Geometry, "an indoor ride in no known world has no line")
+			assert.Nil(t, view.Properties.World)
+		})
+	}
+}
+
+// A store that cannot say which provider recorded the ride is a failure, not a
+// ride without a world.
+func TestGetActivityTrackReportsAFailedWorldRead(t *testing.T) {
+	state := trackState("rider-a")
+	state.recordsStateTypes = map[string]int{"rider-a/1": 68}
+	state.providerSummaryErr = assert.AnError
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	handler.indoorTypes = []int{68}
+	handler.zwiftWorldOf = testWorldOf
+
+	code, _ := getTrack(t, handler, "/v1/activities/1/track")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
+
+// testWorldOf stands in for the composition root's own adaptation of the Zwift
+// world table, over the one world these tests name.
+func testWorldOf(summary []byte) (ZwiftWorld, bool) {
+	if string(summary) != `{"worldId":9}` {
+		return ZwiftWorld{}, false
+	}
+
+	return ZwiftWorld{
+		ID: 9, Name: "Makuri Islands",
+		North: -10.73746, West: 165.76591, South: -10.85234, East: 165.88222,
+	}, true
+}
+
 // An outdoor ride of the same shape is unaffected by the indoor type list.
 func TestGetActivityTrackDrawsAnOutdoorRideDespiteAnIndoorTypeList(t *testing.T) {
 	state := trackState("rider-a")
