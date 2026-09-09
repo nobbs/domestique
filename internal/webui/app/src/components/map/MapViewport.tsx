@@ -26,6 +26,8 @@ export interface MapViewportProps {
    * where the reader can see it rather than half under the column beside it.
    */
   insets?: Insets;
+  /** Bumped when the box itself was resized on purpose, so the same bounds re-frame. */
+  fitRevision?: number;
 }
 
 /**
@@ -49,6 +51,7 @@ export function MapViewport({
   maxZoom,
   padding = 56,
   insets = NO_INSETS,
+  fitRevision,
 }: MapViewportProps) {
   const { current: map } = useMap();
   // The camera is animated by MapLibre rather than by a transition, so the
@@ -89,13 +92,24 @@ export function MapViewport({
     // remounting the map and re-downloading the style. Only a change of subject
     // moves the camera. Every input the framing reads, so a reflow re-frames
     // while a remount that moved nothing does not.
-    const subject = JSON.stringify([bounds, maxZoom, padding, top, right, bottom, left]);
+    const subject = JSON.stringify([
+      bounds,
+      maxZoom,
+      padding,
+      top,
+      right,
+      bottom,
+      left,
+      fitRevision,
+    ]);
     const container = map.getContainer();
     if (framedTo.get(container) === subject) {
       return;
     }
     framedTo.set(container, subject);
 
+    // The canvas must have the box's current size before fitBounds reads it.
+    map.resize();
     map.fitBounds(
       [
         [bounds[0], bounds[1]],
@@ -112,7 +126,7 @@ export function MapViewport({
         maxZoom,
       },
     );
-  }, [map, bounds, maxZoom, padding, top, right, bottom, left, reducedMotion]);
+  }, [map, bounds, maxZoom, padding, top, right, bottom, left, fitRevision, reducedMotion]);
 
   return null;
 }

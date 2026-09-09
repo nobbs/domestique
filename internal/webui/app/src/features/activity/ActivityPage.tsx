@@ -17,6 +17,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { formatTimestamp } from "../../lib/format";
 import { buildActivityProfile, sampleIndexAt } from "../../lib/profile";
 import { WHOLE_LAP_COVERAGE } from "../../lib/rideHistory";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 import { conditionsSentence } from "../../lib/weather";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
@@ -39,6 +40,8 @@ export function ActivityPage() {
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [mapExpanded, setMapExpanded] = useState(false);
+  useEscapeKey(mapExpanded, () => setMapExpanded(false));
   const [shown, setShown] = useState<ReadonlySet<ActivitySeriesName>>(() => new Set());
   const { drawn, states } = useRideSeries(id, shown, coordinates, profile);
   const title = ride ? formatTimestamp(ride.startedAt) : "Activity";
@@ -109,13 +112,21 @@ export function ActivityPage() {
               {absenceMessage(track.data?.state)}
             </p>
           ) : (
-            <div className="h-80 overflow-hidden rounded-2xl ring-1 ring-black/5">
+            <div
+              className={
+                mapExpanded
+                  ? "h-[75vh] overflow-hidden rounded-2xl ring-1 ring-black/5 lg:col-span-2"
+                  : "h-80 overflow-hidden rounded-2xl ring-1 ring-black/5"
+              }
+            >
               <ActivityMap
                 coordinates={coordinates}
                 bounds={track.data.bbox}
                 profile={profile}
                 activeMetres={activeMetres}
                 onActiveChange={setActiveMetres}
+                expanded={mapExpanded}
+                onExpandedChange={setMapExpanded}
               />
             </div>
           )}

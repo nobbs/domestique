@@ -42,11 +42,30 @@ const drawn = vi.hoisted(() => ({
 }));
 
 vi.mock("./ActivityMap", () => ({
-  ActivityMap: (props: { coordinates: Position[]; bounds: number[]; profile: Profile | null }) => {
+  ActivityMap: (props: {
+    coordinates: Position[];
+    bounds: number[];
+    profile: Profile | null;
+    expanded: boolean;
+    onExpandedChange: (expanded: boolean) => void;
+  }) => {
     drawn.coordinates = props.coordinates;
     drawn.bounds = props.bounds;
 
-    return <div data-testid="activity-map" />;
+    // Stands in for the real expand toggle inside ActivityMap's own map
+    // controls, which this page's tests never mount a canvas to reach.
+    const label = props.expanded ? "Collapse map" : "Expand map";
+    return (
+      <div data-testid="activity-map">
+        <button
+          type="button"
+          aria-label={label}
+          onClick={() => props.onExpandedChange(!props.expanded)}
+        >
+          {label}
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -460,5 +479,32 @@ describe("one ride's page", () => {
 
     expect(screen.queryByRole("link", { name: "Alpine loop — Descent" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/v1/routes"))).toBe(false);
+  });
+
+  it("enlarges the map box on the expand toggle and shrinks it back on the next press", async () => {
+    const user = userEvent.setup();
+    show();
+
+    const box = screen.getByTestId("activity-map").parentElement;
+    expect(box).toHaveClass("h-80");
+
+    await user.click(screen.getByRole("button", { name: "Expand map" }));
+    expect(box).toHaveClass("h-[75vh]");
+
+    await user.click(screen.getByRole("button", { name: "Collapse map" }));
+    expect(box).toHaveClass("h-80");
+  });
+
+  it("collapses the enlarged map on Escape", async () => {
+    const user = userEvent.setup();
+    show();
+
+    await user.click(screen.getByRole("button", { name: "Expand map" }));
+    expect(screen.getByTestId("activity-map").parentElement).toHaveClass("h-[75vh]");
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.getByTestId("activity-map").parentElement).toHaveClass("h-80");
+    expect(screen.getByRole("button", { name: "Expand map" })).toBeInTheDocument();
   });
 });

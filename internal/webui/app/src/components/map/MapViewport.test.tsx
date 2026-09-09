@@ -212,6 +212,17 @@ describe("MapViewport", () => {
     expect(map().framings()).toHaveLength(2);
   });
 
+  // An expand toggle changes the container's size without touching bounds,
+  // zoom, padding, or insets — nothing else in the subject would catch it.
+  it("re-frames when fitRevision changes, resizing the canvas first", () => {
+    const { rerender } = show(BOUNDS);
+    const resizesBeforeExpand = map().resizes();
+    rerender(<MapViewport bounds={BOUNDS} maxZoom={14} fitRevision={1} />);
+
+    expect(map().framings()).toHaveLength(2);
+    expect(map().resizes()).toBeGreaterThan(resizesBeforeExpand);
+  });
+
   /*
    * A change of basemap unmounts this component and mounts it again — MapWidget
    * holds its children back until the new style has loaded — and a mount that
