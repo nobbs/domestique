@@ -107,7 +107,7 @@ func New(options *Options) (*Client, error) {
 		timeout = defaultTimeout
 	}
 	if timeout < 0 {
-		return nil, errors.New("zwift: timeout must be positive")
+		return nil, errors.New("zwift: timeout must not be negative")
 	}
 	transport := options.Transport
 	if transport == nil {
@@ -322,9 +322,6 @@ func (c *Client) endpoint(base *url.URL, path string) *url.URL {
 	return &endpoint
 }
 
-// doJSON sends request and decodes a JSON reply into output. activityRefusal
-// says whether a 404 or 410 here belongs to one activity rather than the
-// connection or the account.
 // requestKind says whose fault a refusal is: the grant's, one activity's, or the call's.
 type requestKind int
 
@@ -334,6 +331,7 @@ const (
 	grantRequest
 )
 
+// doJSON sends request and decodes a JSON reply into output.
 func (c *Client) doJSON(request *http.Request, output any, kind requestKind) (err error) {
 	response, err := c.httpClient.Do(request)
 	if err != nil {

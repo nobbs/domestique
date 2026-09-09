@@ -2,6 +2,7 @@ package zwift
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -19,14 +20,14 @@ type zwiftTime time.Time
 func (t *zwiftTime) UnmarshalJSON(raw []byte) error {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return fmt.Errorf("zwift: activity timestamp: %w", err)
+		return errors.New("zwift: activity timestamp was not readable")
 	}
 	parsed, err := time.Parse(zwiftTimeLayout, value)
 	if err != nil {
 		parsed, err = time.Parse(time.RFC3339, value)
 	}
 	if err != nil {
-		return fmt.Errorf("zwift: activity timestamp: %w", err)
+		return errors.New("zwift: activity timestamp was not readable")
 	}
 	*t = zwiftTime(parsed)
 
