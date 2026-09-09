@@ -975,6 +975,8 @@ export function ElevationProfile({
           className="pointer-events-none absolute overflow-hidden"
           style={{ left: PADDING.left, top: PADDING.top, width: plotWidth, height: plotHeight }}
           data-testid="series-tooltip"
+          // The chips already speak every reading; this restates them for the eye.
+          aria-hidden="true"
         >
           <SeriesTooltip
             active={active}
