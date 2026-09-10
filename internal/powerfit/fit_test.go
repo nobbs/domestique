@@ -105,19 +105,24 @@ func TestBridgeWattsAtNeverReadsBelowNought(t *testing.T) {
 func TestFitScaleRecoversTheScaleItsTargetsWereBuiltAt(t *testing.T) {
 	t.Parallel()
 	base := rideAtSpeeds([]float64{4, 6, 8, 10, 12, 14}, 300, 92)
-	for _, scale := range []float64{0.8, 1.0, 1.5, 2.0} {
-		want := measure.Coefficients{
-			DragArea:          measure.DefaultCoefficients().DragArea * scale,
-			RollingResistance: measure.DefaultCoefficients().RollingResistance * scale,
+	priors := []measure.Coefficients{
+		measure.DefaultCoefficients(), {DragArea: 0.45, RollingResistance: 0.010},
+	}
+	for _, prior := range priors {
+		for _, scale := range []float64{0.8, 1.0, 1.5, 2.0} {
+			want := measure.Coefficients{
+				DragArea:          prior.DragArea * scale,
+				RollingResistance: prior.RollingResistance * scale,
+			}
+			rides := []powerfit.Ride{targetedAt(t, base, want)}
+
+			got, result, ok := powerfit.FitScale(prior, rides)
+			require.True(t, ok)
+
+			assert.InEpsilon(t, want.DragArea, got.DragArea, 0.02, "prior %v scale %v", prior, scale)
+			assert.InEpsilon(t, want.RollingResistance, got.RollingResistance, 0.02, "prior %v scale %v", prior, scale)
+			assert.Less(t, result.RMSWatts, 1.0, "prior %v scale %v", prior, scale)
 		}
-		rides := []powerfit.Ride{targetedAt(t, base, want)}
-
-		got, result, ok := powerfit.FitScale(rides)
-		require.True(t, ok)
-
-		assert.InEpsilon(t, want.DragArea, got.DragArea, 0.02, "scale %v", scale)
-		assert.InEpsilon(t, want.RollingResistance, got.RollingResistance, 0.02, "scale %v", scale)
-		assert.Less(t, result.RMSWatts, 1.0, "scale %v", scale)
 	}
 }
 

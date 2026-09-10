@@ -109,16 +109,15 @@ const (
 )
 
 // FitScale fits the one factor that scales both coefficients together,
-// leaving the ratio between them at the built-in road bicycle's. Gravity and
-// inertia are untouched: the mass is the rider's own and the grade and
-// acceleration were recorded, so neither has anything to fit.
+// leaving the ratio between them at base's. Gravity and inertia are
+// untouched: the mass is the rider's own and the grade and acceleration were
+// recorded, so neither has anything to fit.
 //
 // This is the fit a corpus of one rider's rides can actually support. The two
 // coefficients move the model along nearly the same direction — over the
 // operator's own rides the rolling and aerodynamic bases correlate at 0.93 —
 // so their sum is well determined and their split is not.
-func FitScale(rides []Ride) (measure.Coefficients, Result, bool) {
-	base := measure.DefaultCoefficients()
+func FitScale(base measure.Coefficients, rides []Ride) (measure.Coefficients, Result, bool) {
 	best, ok := minimise1D(minScale, maxScale, func(scale float64) (float64, bool) {
 		result, evalOK := Evaluate(rides, scaledBy(base, scale))
 		return result.RMSWatts, evalOK
