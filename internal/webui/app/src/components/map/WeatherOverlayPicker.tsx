@@ -13,13 +13,30 @@
  */
 
 import { IconCloud } from "@tabler/icons-react";
+import { useIsFetching } from "@tanstack/react-query";
 import { Button } from "@/components/Button";
 import { Slider } from "@/components/Slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { useHourTick } from "../../lib/clock";
 import type { Measure, MeasureKey } from "../../lib/measures";
+import { usePrefersReducedMotion } from "../../lib/mediaQuery";
+
+/**
+ * Whether any overlay's grid is mid-fetch, wherever in the tree it lives.
+ *
+ * `useViewportGrid` keys every query `${something}-grid`; reading the shared
+ * query cache this way means the picker learns of a fetch under `WindOverlay`
+ * or any `ScalarOverlay` without either handing its loading state up through
+ * `LibraryMap`.
+ */
+function isGridQuery(queryKey: readonly unknown[]): boolean {
+  const [key] = queryKey;
+
+  return typeof key === "string" && key.endsWith("-grid");
+}
 
 /** The forecast horizon ICON-D2 publishes past its reference run. */
 export const MAX_HOURS_AHEAD = 48;
@@ -67,13 +84,26 @@ export function WeatherOverlayPicker({
   // boundary would otherwise show a label a step behind the data the
   // overlays it names have already moved on to.
   useHourTick(anyOn);
+  const loading = useIsFetching({ predicate: (query) => isGridQuery(query.queryKey) }) > 0;
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <Popover open={expanded} onOpenChange={onExpandedChange}>
-      <PopoverTrigger
-        render={<Button variant="panel" active={anyOn} icon={<IconCloud stroke={1.6} />} />}
-        aria-label={expanded ? "Hide the weather overlay choices" : "Show weather over the map"}
-      />
+      <span className="relative inline-flex">
+        <PopoverTrigger
+          render={<Button variant="panel" active={anyOn} icon={<IconCloud stroke={1.6} />} />}
+          aria-label={expanded ? "Hide the weather overlay choices" : "Show weather over the map"}
+        />
+        {loading ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute -inset-1 rounded-full border-2 border-[var(--accent)] border-t-transparent",
+              reducedMotion ? "animate-pulse" : "animate-spin",
+            )}
+          />
+        ) : null}
+      </span>
       <PopoverContent
         align="end"
         aria-label="Weather overlay choices"
