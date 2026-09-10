@@ -200,36 +200,36 @@ describe("WeatherOverlayPicker", () => {
       );
     }
 
-    it("shows a spinning ring while a grid query fetches, and hides it once it settles", async () => {
+    it("shows a tracing ring while a grid query fetches, and hides it once it settles", async () => {
       const { container } = renderPicker();
-      expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
+      expect(container.querySelector(".animate-ring-trace")).not.toBeInTheDocument();
 
       let resolve: (value: number) => void = () => {};
       const pending = new Promise<number>((res) => {
         resolve = res;
       });
       void client.fetchQuery({ queryKey: ["wind-grid", 0, null], queryFn: () => pending });
-      await vi.waitFor(() => expect(container.querySelector(".animate-spin")).toBeInTheDocument());
-      // Dashed, not a solid traced ring: a gap is what makes the rotation
-      // this element's `animate-spin` drives actually visible against the
-      // button's own border, which is this same accent colour whenever a
-      // measure is checked — the case every fetch this ring shows for is in.
-      const spinning = container.querySelector(".animate-spin");
-      expect(spinning?.querySelector("[stroke-dasharray]")).toHaveAttribute(
+      await vi.waitFor(() =>
+        expect(container.querySelector(".animate-ring-trace")).toBeInTheDocument(),
+      );
+      // Dashed and offset along its own path, never rotated: turning the ring
+      // itself would carry the rounded corners round with it.
+      expect(container.querySelector(".animate-ring-trace")).toHaveAttribute(
         "stroke-dasharray",
         "30 70",
       );
+      expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
 
       resolve(1);
       await vi.waitFor(() =>
-        expect(container.querySelector(".animate-spin")).not.toBeInTheDocument(),
+        expect(container.querySelector(".animate-ring-trace")).not.toBeInTheDocument(),
       );
     });
 
     it("hides the ring once a grid query settles into an error, not just a success", async () => {
       // The demo API answers every weather-grid request unavailable on
       // purpose (no `.om` fixture bundled for it); the ring has to clear on
-      // that path too, or a reader would see it spin forever.
+      // that path too, or a reader would see it run forever.
       const { container } = renderPicker();
       let reject: (reason: unknown) => void = () => {};
       const failing = new Promise<number>((_res, rej) => {
@@ -238,11 +238,13 @@ describe("WeatherOverlayPicker", () => {
       void client
         .fetchQuery({ queryKey: ["wind-grid", 0, null], queryFn: () => failing, retry: false })
         .catch(() => {});
-      await vi.waitFor(() => expect(container.querySelector(".animate-spin")).toBeInTheDocument());
+      await vi.waitFor(() =>
+        expect(container.querySelector(".animate-ring-trace")).toBeInTheDocument(),
+      );
 
       reject(new Error("unavailable"));
       await vi.waitFor(() =>
-        expect(container.querySelector(".animate-spin")).not.toBeInTheDocument(),
+        expect(container.querySelector(".animate-ring-trace")).not.toBeInTheDocument(),
       );
     });
 
@@ -254,7 +256,7 @@ describe("WeatherOverlayPicker", () => {
       });
       await vi.waitFor(() => expect(client.isFetching()).toBeGreaterThan(0));
 
-      expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
+      expect(container.querySelector(".animate-ring-trace")).not.toBeInTheDocument();
     });
 
     it("pulses instead of spinning once the reader has asked for less motion", async () => {
@@ -280,7 +282,7 @@ describe("WeatherOverlayPicker", () => {
         await vi.waitFor(() =>
           expect(container.querySelector(".animate-pulse")).toBeInTheDocument(),
         );
-        expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
+        expect(container.querySelector(".animate-ring-trace")).not.toBeInTheDocument();
         // A full ring, not the spinner's dashed gap: the fade this reader
         // gets instead of rotation is meant to read as "still going", not as
         // a stalled spinner stuck mid-turn.

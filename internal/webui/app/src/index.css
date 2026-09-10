@@ -227,6 +227,16 @@
   }
 }
 
+/* Moves the dash along the ring rather than turning the ring: rotating a
+   rounded square through its own corners reads as a windmill. */
+@theme {
+  --animate-ring-trace: ring-trace 1.4s linear infinite;
+
+  @keyframes ring-trace {
+    to { stroke-dashoffset: -100; }
+  }
+}
+
 @theme inline {
   --font-sans: var(--font-sans);
   --font-heading: var(--font-sans);
