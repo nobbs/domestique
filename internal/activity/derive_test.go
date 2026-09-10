@@ -432,6 +432,32 @@ func TestDeriveEstimatesAtTheDefaultBicycleWhenNoneIsEntered(t *testing.T) {
 	assert.InDelta(t, wantShare, store.written[7].EstimatedPedallingShare, 1e-9)
 }
 
+// Half a bicycle is no bicycle: one number without the other is estimated at
+// the default pair, never at a pair mixed from the two.
+func TestDeriveEstimatesAtTheDefaultBicycleWhenOnlyOneNumberIsEntered(t *testing.T) {
+	t.Parallel()
+	for name, partial := range map[string]rider.Profile{
+		"drag area only":          {DragAreaM2: rider.Set(0.5)},
+		"rolling resistance only": {RollingResistance: rider.Set(0.02)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			profile := partial
+			profile.MaxHeartRateBPM, profile.RiderMassKG, profile.BikeMassKG = rider.Set(190), rider.Set(74), rider.Set(8)
+			store := &fakeDeriveStore{
+				owner: "rider-a", profile: profile, owed: []int64{7},
+				rides: map[int64]activity.RideSamples{7: trackRide(120)},
+			}
+			deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
+			require.NoError(t, err, "NewDeriver()")
+
+			require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+			assert.Equal(t, measure.DefaultCoefficients(), store.owedCoefficients)
+			assert.Equal(t, measure.DefaultCoefficients(), store.written[7].Coefficients)
+		})
+	}
+}
+
 // An estimate exists because there is no meter. Putting one beside a real
 // reading only invites the two to be confused.
 func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {

@@ -407,6 +407,12 @@ func TestPedallingMeanExcludesCoastedSamplesFromTheMeanButCountsThemInTheShare(t
 
 // ok is false only where nothing was estimated at all -- an empty series or
 // one whose every sample precedes what the model could work anything from.
+func TestPedallingMeanRefusesAnEstimatePerSampleMismatch(t *testing.T) {
+	t.Parallel()
+	_, _, ok := measure.PedallingMean(nil, []measure.Estimate{{Watts: 100, Known: true}})
+	assert.False(t, ok)
+}
+
 func TestPedallingMeanIsAbsentWhenNothingWasEstimated(t *testing.T) {
 	t.Parallel()
 	_, _, ok := measure.PedallingMean(nil, nil)
