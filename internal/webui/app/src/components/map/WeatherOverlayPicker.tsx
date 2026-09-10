@@ -107,10 +107,14 @@ export function WeatherOverlayPicker({
                 : "conic-gradient(var(--accent) 0deg 270deg, transparent 270deg 360deg)",
               // The two-mask XOR trick: the padding above sets the ring's
               // thickness, and this keeps only that band — the button's own
-              // face and icon stay exactly as they were underneath it.
+              // face and icon stay exactly as they were underneath it. Both
+              // the standard and `-webkit-` mask properties are set: Safari
+              // still needs the prefix, and a browser with neither would
+              // otherwise paint the ring's background over the whole button.
+              mask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+              maskComposite: "exclude",
               WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
               WebkitMaskComposite: "xor",
-              maskComposite: "exclude",
             }}
           />
         ) : null}
