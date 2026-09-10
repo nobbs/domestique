@@ -306,6 +306,10 @@ type rideScore struct {
 
 func (s rideScore) errorPercent() float64 { return 100 * (s.modelled - s.target) / s.target }
 
+// scorable is whether a ride can be judged in per cent at all: a target of
+// nought names no scale to judge against.
+func (s rideScore) scorable() bool { return s.target > 0 }
+
 // A meteredCheck is the model held against a meter on the rides that had
 // one: per ride, per block and per second.
 type meteredCheck struct {
@@ -332,7 +336,7 @@ func smoothed(values []float64, width int) []float64 {
 	out := make([]float64, len(values))
 	half := width / 2
 	for index := range values {
-		low, high := max(index-half, 0), min(index+half, len(values)-1)
+		low, high := max(index-half, 0), min(index+width-half-1, len(values)-1)
 		total := 0.0
 		for held := low; held <= high; held++ {
 			total += values[held]
@@ -387,7 +391,7 @@ func (r *report) String() string {
 
 	fmt.Fprintln(&b, "held-out whole-ride agreement with what the rider's heart rate says")
 	fmt.Fprintf(&b, "  %-8s %6s %10s %10s %10s %10s %10s %10s\n",
-		"candidate", "rides", "MAE %", "bias %", "q1 %", "q3 %", "RMS W", "bias W")
+		"candidate", "rides", "MdAE %", "bias %", "q1 %", "q3 %", "RMS W", "bias W")
 	for _, name := range []string{"default", "prior", "profile", "cda"} {
 		if scores := r.rides[name]; len(scores) > 0 {
 			fmt.Fprintf(&b, "  %-8s ", name)
@@ -451,7 +455,7 @@ func (r *report) String() string {
 	if len(r.checks) > 0 {
 		fmt.Fprintf(&b, "\nthe model against a meter, on %d metered rides with a track\n", r.checkedRides)
 		fmt.Fprintf(&b, "  %-14s %6s %10s %10s %10s %10s %10s %10s\n",
-			"coefficients", "rides", "MAE %", "bias %", "q1 %", "q3 %", "RMS W", "bias W")
+			"coefficients", "rides", "MdAE %", "bias %", "q1 %", "q3 %", "RMS W", "bias W")
 		for _, check := range r.checks {
 			if len(check.rides) == 0 {
 				continue
@@ -589,7 +593,9 @@ func checkAgainstMeter(
 			continue
 		}
 		target := wholes[index].Blocks[0].TargetWatts
-		check.rides = append(check.rides, rideScore{modelled: target + scored.BiasWatts, target: target})
+		if score := (rideScore{modelled: target + scored.BiasWatts, target: target}); score.scorable() {
+			check.rides = append(check.rides, score)
+		}
 		estimates, estimateOK := measure.EstimateSeries(wholes[index].Samples, wholes[index].TotalMassKG, coefficients)
 		if !estimateOK {
 			continue
@@ -771,9 +777,12 @@ func study(
 					continue
 				}
 				target := ride.whole.Blocks[0].TargetWatts
-				result.rides[held.name] = append(result.rides[held.name], rideScore{
+				score := rideScore{
 					modelled: target + scored.BiasWatts, target: target, windKMH: ride.windKMH, hasWind: ride.hasWind,
-				})
+				}
+				if score.scorable() {
+					result.rides[held.name] = append(result.rides[held.name], score)
+				}
 			}
 		}
 	}

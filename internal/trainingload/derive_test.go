@@ -273,6 +273,22 @@ func TestDeriveWithholdsTheHeartRateFiguresBelowMinSeriesCoverage(t *testing.T) 
 	assert.True(t, partial.HasPower, "the meter's own coverage is unaffected by the strap's")
 }
 
+func TestDeriveWithholdsThePowerFiguresBelowMinSeriesCoverage(t *testing.T) {
+	t.Parallel()
+	inputs := trainingload.Inputs{
+		MaxHeartRateBPM: 190, RestingHeartRateBPM: 50,
+		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
+	}
+
+	partial := trainingload.Derive(steady(3601, 150), steady(600, 200), 3600, inputs)
+	assert.False(t, partial.HasPower, "the meter held for a fifth of the ride's moving time")
+	assert.True(t, partial.HasZones && partial.HasTRIMP && partial.HasHeartRateTSS,
+		"the strap's own coverage is unaffected by the meter's")
+
+	full := trainingload.Derive(steady(3601, 150), steady(3601, 200), 3600, inputs)
+	assert.True(t, full.HasPower)
+}
+
 // Without a moving time to judge coverage against, today's behaviour holds:
 // nothing is withheld that the sensors and profile would otherwise allow.
 func TestDeriveWithholdsNothingWhenMovingSecondsIsUnknown(t *testing.T) {
