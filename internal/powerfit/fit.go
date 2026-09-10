@@ -90,73 +90,37 @@ const (
 	searchRounds = 3
 )
 
-// scaleBounds is how far from the built-in road bicycle a scale is allowed to
-// travel. A rider on gravel is roughly 1.5 times draggier; anything beyond
-// this range is a fit that has run away rather than a bicycle.
-const (
-	minScale = 0.4
-	maxScale = 3.0
-)
-
-// dragAreaBounds and rollingBounds span the handover's own tables, from a
-// rider on aerobars to one sitting up, and from slicks on asphalt to loose
-// gravel. See docs/references/power-estimation-handover.md §2.
+// dragAreaBounds span the handover's own table, from a rider on aerobars to
+// one sitting up. See docs/references/power-estimation-handover.md §2.
 const (
 	minDragArea = 0.15
 	maxDragArea = 0.75
-	minRolling  = 0.002
-	maxRolling  = 0.025
 )
 
-// FitScale fits the one factor that scales both coefficients together,
-// leaving the ratio between them at base's. Gravity and inertia are
-// untouched: the mass is the rider's own and the grade and acceleration were
-// recorded, so neither has anything to fit.
+// FitDragArea fits the drag area at a stated rolling resistance. Crr is what a
+// tyre and a surface set and can be looked up; CdA is posture, clothing and
+// luggage, which nothing but the rider's own rides can name. Gravity and
+// inertia are untouched: the mass is the rider's own and the grade and
+// acceleration were recorded, so neither has anything to fit.
 //
 // This is the fit a corpus of one rider's rides can actually support. The two
 // coefficients move the model along nearly the same direction — over the
 // operator's own rides the rolling and aerodynamic bases correlate at 0.93 —
 // so their sum is well determined and their split is not.
-func FitScale(base measure.Coefficients, rides []Ride) (measure.Coefficients, Result, bool) {
-	best, ok := minimise1D(minScale, maxScale, func(scale float64) (float64, bool) {
-		result, evalOK := Evaluate(rides, scaledBy(base, scale))
+func FitDragArea(rollingResistance float64, rides []Ride) (measure.Coefficients, Result, bool) {
+	best, ok := minimise1D(minDragArea, maxDragArea, func(dragArea float64) (float64, bool) {
+		result, evalOK := Evaluate(rides, measure.Coefficients{
+			DragArea: dragArea, RollingResistance: rollingResistance,
+		})
 		return result.RMSWatts, evalOK
 	})
 	if !ok {
 		return measure.Coefficients{}, Result{}, false
 	}
-	coefficients := scaledBy(base, best)
+	coefficients := measure.Coefficients{DragArea: best, RollingResistance: rollingResistance}
 	result, evalOK := Evaluate(rides, coefficients)
 
 	return coefficients, result, evalOK
-}
-
-// FitPair fits the drag area and the rolling resistance independently.
-func FitPair(rides []Ride) (measure.Coefficients, Result, bool) {
-	drag, rolling, ok := minimise2D(
-		minDragArea, maxDragArea, minRolling, maxRolling,
-		func(dragArea, rollingResistance float64) (float64, bool) {
-			result, evalOK := Evaluate(rides, measure.Coefficients{
-				DragArea: dragArea, RollingResistance: rollingResistance,
-			})
-			return result.RMSWatts, evalOK
-		})
-	if !ok {
-		return measure.Coefficients{}, Result{}, false
-	}
-	coefficients := measure.Coefficients{DragArea: drag, RollingResistance: rolling}
-	result, evalOK := Evaluate(rides, coefficients)
-
-	return coefficients, result, evalOK
-}
-
-// scaledBy moves both coefficients by one factor, keeping the ratio between
-// them.
-func scaledBy(base measure.Coefficients, scale float64) measure.Coefficients {
-	return measure.Coefficients{
-		DragArea:          base.DragArea * scale,
-		RollingResistance: base.RollingResistance * scale,
-	}
 }
 
 // minimise1D sweeps a grid and refines into the interval around its best
@@ -181,30 +145,4 @@ func minimise1D(low, high float64, score func(float64) (float64, bool)) (float64
 	}
 
 	return best, found
-}
-
-// minimise2D is minimise1D over two arguments at once.
-func minimise2D(
-	lowA, highA, lowB, highB float64, score func(a, b float64) (float64, bool),
-) (bestA, bestB float64, found bool) {
-	floorA, ceilingA, floorB, ceilingB := lowA, highA, lowB, highB
-	bestScore := math.Inf(1)
-	for range searchRounds {
-		stepA, stepB := (highA-lowA)/searchSteps, (highB-lowB)/searchSteps
-		for indexA := range searchSteps + 1 {
-			for indexB := range searchSteps + 1 {
-				a, b := lowA+stepA*float64(indexA), lowB+stepB*float64(indexB)
-				if scored, ok := score(a, b); ok && scored < bestScore {
-					bestA, bestB, bestScore, found = a, b, scored, true
-				}
-			}
-		}
-		if !found {
-			return 0, 0, false
-		}
-		lowA, highA = max(bestA-stepA, floorA), min(bestA+stepA, ceilingA)
-		lowB, highB = max(bestB-stepB, floorB), min(bestB+stepB, ceilingB)
-	}
-
-	return bestA, bestB, found
 }

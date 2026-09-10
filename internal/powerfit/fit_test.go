@@ -102,45 +102,23 @@ func TestBridgeWattsAtNeverReadsBelowNought(t *testing.T) {
 
 // The recovery test the handover asks of any fitter (§6): a target generated
 // from a known answer must lead back to it.
-func TestFitScaleRecoversTheScaleItsTargetsWereBuiltAt(t *testing.T) {
+func TestFitDragAreaRecoversTheDragAreaItsTargetsWereBuiltAt(t *testing.T) {
 	t.Parallel()
 	base := rideAtSpeeds([]float64{4, 6, 8, 10, 12, 14}, 300, 92)
-	priors := []measure.Coefficients{
-		measure.DefaultCoefficients(), {DragArea: 0.45, RollingResistance: 0.010},
+	for _, want := range []measure.Coefficients{
+		{DragArea: 0.30, RollingResistance: 0.005},
+		{DragArea: 0.38, RollingResistance: 0.010},
+		{DragArea: 0.60, RollingResistance: 0.010},
+	} {
+		rides := []powerfit.Ride{targetedAt(t, base, want)}
+
+		got, result, ok := powerfit.FitDragArea(want.RollingResistance, rides)
+		require.True(t, ok)
+
+		assert.InEpsilon(t, want.DragArea, got.DragArea, 0.02, "want %v", want)
+		assert.InDelta(t, want.RollingResistance, got.RollingResistance, 0, "want %v", want)
+		assert.Less(t, result.RMSWatts, 1.0, "want %v", want)
 	}
-	for _, prior := range priors {
-		for _, scale := range []float64{0.8, 1.0, 1.5, 2.0} {
-			want := measure.Coefficients{
-				DragArea:          prior.DragArea * scale,
-				RollingResistance: prior.RollingResistance * scale,
-			}
-			rides := []powerfit.Ride{targetedAt(t, base, want)}
-
-			got, result, ok := powerfit.FitScale(prior, rides)
-			require.True(t, ok)
-
-			assert.InEpsilon(t, want.DragArea, got.DragArea, 0.02, "prior %v scale %v", prior, scale)
-			assert.InEpsilon(t, want.RollingResistance, got.RollingResistance, 0.02, "prior %v scale %v", prior, scale)
-			assert.Less(t, result.RMSWatts, 1.0, "prior %v scale %v", prior, scale)
-		}
-	}
-}
-
-// Blocks held at six different speeds do separate drag from rolling
-// resistance. A real corpus does not spread nearly this well, which is the
-// whole reason FitScale exists beside this.
-func TestFitPairRecoversBothCoefficientsWhenTheSpeedsSpreadWidely(t *testing.T) {
-	t.Parallel()
-	base := rideAtSpeeds([]float64{4, 6, 8, 10, 12, 14}, 300, 92)
-	want := measure.Coefficients{DragArea: 0.44, RollingResistance: 0.008}
-	rides := []powerfit.Ride{targetedAt(t, base, want)}
-
-	got, result, ok := powerfit.FitPair(rides)
-	require.True(t, ok)
-
-	assert.InEpsilon(t, want.DragArea, got.DragArea, 0.05)
-	assert.InEpsilon(t, want.RollingResistance, got.RollingResistance, 0.15)
-	assert.Less(t, result.RMSWatts, 2.0)
 }
 
 func TestEvaluateReportsTheSignedBiasOfACandidate(t *testing.T) {
@@ -176,18 +154,17 @@ func TestFitRefusesCoefficientsNoBicycleCouldHave(t *testing.T) {
 }
 
 // A search that refines around its best point must not refine its way out of
-// the bounds it was given: those say what a bicycle can be, and a pair beyond
-// them is a fit that ran away rather than an answer.
-func TestFitPairStaysInsideTheBoundsABicycleCouldHave(t *testing.T) {
+// the bounds it was given: those say what a bicycle can be, and a drag area
+// beyond them is a fit that ran away rather than an answer.
+func TestFitDragAreaStaysInsideTheBoundsABicycleCouldHave(t *testing.T) {
 	t.Parallel()
 	// Targets built at a drag area far under anything rideable, so the search
 	// is pulled hard at its own floor.
 	base := rideAtSpeeds([]float64{4, 8, 12}, 300, 92)
-	rides := []powerfit.Ride{targetedAt(t, base, measure.Coefficients{DragArea: 0.16, RollingResistance: 0.0021})}
+	rides := []powerfit.Ride{targetedAt(t, base, measure.Coefficients{DragArea: 0.05, RollingResistance: 0.010})}
 
-	got, _, ok := powerfit.FitPair(rides)
+	got, _, ok := powerfit.FitDragArea(0.010, rides)
 	require.True(t, ok)
 
 	assert.GreaterOrEqual(t, got.DragArea, 0.15)
-	assert.GreaterOrEqual(t, got.RollingResistance, 0.002)
 }
