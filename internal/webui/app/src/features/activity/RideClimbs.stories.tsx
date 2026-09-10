@@ -48,8 +48,20 @@ export const HillyRide: Story = {
         averageGradePercent: 6.4,
         maxGradePercent: 12.1,
         attempts: [
-          attempt({ activityId: RIDE_ID, seconds: 372, heartRateBpm: 162.4, powerWatts: 271.6 }),
-          attempt({ activityId: "9001", seconds: 398, heartRateBpm: 158.1, powerWatts: 254.2 }),
+          attempt({
+            activityId: RIDE_ID,
+            seconds: 372,
+            heartRateBpm: 162.4,
+            powerWatts: 271.6,
+            riddenAt: "2026-09-01T06:00:00Z",
+          }),
+          attempt({
+            activityId: "9001",
+            seconds: 398,
+            heartRateBpm: 158.1,
+            powerWatts: 254.2,
+            riddenAt: "2026-06-01T06:00:00Z",
+          }),
         ],
       },
       {
@@ -65,12 +77,14 @@ export const HillyRide: Story = {
             seconds: 205,
             heartRateBpm: 165.8,
             estimatedPowerWatts: 288.4,
+            riddenAt: "2026-06-01T06:00:00Z",
           }),
           attempt({
             activityId: RIDE_ID,
             seconds: 224,
             heartRateBpm: 160.2,
             estimatedPowerWatts: 261.7,
+            riddenAt: "2026-09-01T06:00:00Z",
           }),
         ],
       },

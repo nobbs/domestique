@@ -75,8 +75,8 @@ describe("RideClimbs", () => {
         climbs={[
           climb({
             attempts: [
-              attempt({ activityId: "9", seconds: 340 }),
-              attempt({ activityId: RIDE_ID, seconds: 365 }),
+              attempt({ activityId: "9", seconds: 340, riddenAt: "2026-08-01T06:00:00Z" }),
+              attempt({ activityId: RIDE_ID, seconds: 365, riddenAt: "2026-09-01T06:00:00Z" }),
             ],
           }),
         ]}
@@ -86,6 +86,27 @@ describe("RideClimbs", () => {
 
     expect(screen.getByText(/6:05 · #2 of 2/)).toBeInTheDocument();
     expect(screen.getByText("best here 5:40")).toBeInTheDocument();
+  });
+
+  // The rank and the target to beat must never come from a ride that had not
+  // happened yet: they are what stood before this ride, not what stands now.
+  it("leaves out the rank and best-here caption for the rider's chronologically first attempt, even though a later ride was faster", () => {
+    render(
+      <RideClimbs
+        climbs={[
+          climb({
+            attempts: [
+              attempt({ activityId: "9", seconds: 300, riddenAt: "2026-10-01T06:00:00Z" }),
+              attempt({ activityId: RIDE_ID, seconds: 420, riddenAt: "2026-08-01T06:00:00Z" }),
+            ],
+          }),
+        ]}
+        activityId={RIDE_ID}
+      />,
+    );
+
+    expect(screen.queryByText(/of 2/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/best here/)).not.toBeInTheDocument();
   });
 
   it("leaves out the rank and best-here caption for a first-ever attempt", () => {
@@ -106,8 +127,8 @@ describe("RideClimbs", () => {
         climbs={[
           climb({
             attempts: [
-              attempt({ activityId: RIDE_ID, seconds: 300 }),
-              attempt({ activityId: "9", seconds: 340 }),
+              attempt({ activityId: RIDE_ID, seconds: 300, riddenAt: "2026-09-01T06:00:00Z" }),
+              attempt({ activityId: "9", seconds: 340, riddenAt: "2026-08-01T06:00:00Z" }),
             ],
           }),
         ]}

@@ -24,6 +24,23 @@ function attemptPower(attempt: RouteClimbAttempt): string {
   return "—";
 }
 
+/**
+ * This attempt's standing among the rider's attempts up to and including it
+ * — never a later ride's, which `attempts`' quickest-first order alone
+ * cannot tell apart from an earlier one. A ride from before any other
+ * attempt on this climb existed has nothing to rank against or beat, however
+ * fast a later ride went.
+ */
+function standingAt(attempts: RouteClimbAttempt[], mine: RouteClimbAttempt) {
+  const myTime = Date.parse(mine.riddenAt);
+  const soFar = attempts.filter((attempt) => Date.parse(attempt.riddenAt) <= myTime);
+  const bySpeed = [...soFar].sort((a, b) => a.seconds - b.seconds);
+  const rank = bySpeed.findIndex((attempt) => attempt.activityId === mine.activityId);
+  const best = bySpeed[0];
+
+  return { hasEarlierAttempts: soFar.length > 1, rank, total: soFar.length, best };
+}
+
 function ClimbRow({
   climb,
   ordinal,
@@ -33,14 +50,11 @@ function ClimbRow({
   ordinal: number;
   activityId: string;
 }) {
-  const rank = climb.attempts.findIndex((attempt) => attempt.activityId === activityId);
-  const mine = climb.attempts[rank];
+  const mine = climb.attempts.find((attempt) => attempt.activityId === activityId);
   if (!mine) {
     return null;
   }
-  const best = climb.attempts[0];
-  // A rider's first-ever attempt has nothing to rank against or beat.
-  const hasEarlierAttempts = climb.attempts.length > 1;
+  const { hasEarlierAttempts, rank, total, best } = standingAt(climb.attempts, mine);
 
   return (
     <div className="flex items-start justify-between gap-4 border-[var(--rule)] border-t pt-2 text-sm first:border-t-0 first:pt-0">
@@ -54,7 +68,7 @@ function ClimbRow({
       <div className="text-right text-xs tabular-nums">
         <div className="text-[var(--ink)]">
           {formatClimbTime(mine.seconds)}
-          {hasEarlierAttempts ? ` · #${rank + 1} of ${climb.attempts.length}` : ""}
+          {hasEarlierAttempts ? ` · #${rank + 1} of ${total}` : ""}
         </div>
         <div className="text-[var(--ink-2)]">
           {mine.heartRateBpm !== undefined ? `${Math.round(mine.heartRateBpm)} bpm · ` : ""}
