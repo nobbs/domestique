@@ -336,6 +336,9 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 			},
 			EstimatedPedallingShare:    row.EstimatedPedallingShare.Float64,
 			HasEstimatedPedallingShare: row.EstimatedPedallingShare.Valid,
+			Coefficients: measure.Coefficients{
+				DragArea: row.InputDragArea, RollingResistance: row.InputRollingResistance,
+			},
 			Decoupling: activity.Decoupling{
 				Percent: row.DecouplingPercent.Float64,
 				Known:   row.DecouplingPercent.Valid,

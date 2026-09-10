@@ -86,7 +86,7 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session)
 	if metrics.HasEstimatedPower {
 		view.EstimatedPowerWatts = &metrics.EstimatedPowerWatts
 	}
-	if stored.HasEstimatedPedallingShare {
+	if metrics.HasEstimatedPower && stored.HasEstimatedPedallingShare {
 		view.EstimatedPedallingShare = &stored.EstimatedPedallingShare
 	}
 	if averages.HasHeartRate {

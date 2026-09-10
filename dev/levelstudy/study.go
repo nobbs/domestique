@@ -646,6 +646,11 @@ func study(
 	bicycleCache := map[string]measure.Coefficients{}
 	profile := measure.DefaultCoefficients()
 	if len(rides) > 0 {
+		for _, ride := range rides {
+			if ride.TargetID != rides[0].TargetID {
+				return nil, errors.New("the database holds several targets: name one with -target")
+			}
+		}
 		profile, err = bicycleForTarget(ctx, store, rides[0].TargetID, bicycleCache)
 		if err != nil {
 			return nil, err

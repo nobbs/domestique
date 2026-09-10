@@ -2253,8 +2253,9 @@ components:
           maximum: 1
           description: >-
             The share of the ride's samples the rider was pedalling through,
-            which the estimate is averaged over. Present exactly when
-            estimatedPowerWatts is.
+            which the estimate is averaged over. Present only beside
+            estimatedPowerWatts, and absent for a ride whose estimate was
+            worked out before a share was kept, until it is derived again.
         averageSpeedKmh:
           type: number
           format: double
