@@ -98,8 +98,11 @@ export function WeatherOverlayPicker({
           <span
             aria-hidden="true"
             className={cn(
-              "pointer-events-none absolute -inset-1 rounded-full border-2 border-[var(--accent)] border-t-transparent",
-              reducedMotion ? "animate-pulse" : "animate-spin",
+              "pointer-events-none absolute -inset-1 rounded-full border-2 border-[var(--accent)]",
+              // A full ring fading in and out reads as "still going" without
+              // the rotation `animate-spin` needs a gap to show; the gap
+              // itself is motion the reader asked to have less of.
+              reducedMotion ? "animate-pulse" : "animate-spin border-t-transparent",
             )}
           />
         ) : null}

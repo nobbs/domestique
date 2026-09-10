@@ -217,6 +217,26 @@ describe("WeatherOverlayPicker", () => {
       );
     });
 
+    it("hides the ring once a grid query settles into an error, not just a success", async () => {
+      // The demo API answers every weather-grid request unavailable on
+      // purpose (no `.om` fixture bundled for it); the ring has to clear on
+      // that path too, or a reader would see it spin forever.
+      const { container } = renderPicker();
+      let reject: (reason: unknown) => void = () => {};
+      const failing = new Promise<number>((_res, rej) => {
+        reject = rej;
+      });
+      void client
+        .fetchQuery({ queryKey: ["wind-grid", 0, null], queryFn: () => failing, retry: false })
+        .catch(() => {});
+      await vi.waitFor(() => expect(container.querySelector(".animate-spin")).toBeInTheDocument());
+
+      reject(new Error("unavailable"));
+      await vi.waitFor(() =>
+        expect(container.querySelector(".animate-spin")).not.toBeInTheDocument(),
+      );
+    });
+
     it("ignores a fetch for a query outside the weather grid", async () => {
       const { container } = renderPicker();
       void client.fetchQuery({
@@ -242,15 +262,23 @@ describe("WeatherOverlayPicker", () => {
           dispatchEvent: () => false,
         }) as MediaQueryList;
 
-      const { container } = renderPicker();
-      void client.fetchQuery({
-        queryKey: ["wind-grid", 0, null],
-        queryFn: () => new Promise(() => {}),
-      });
-      await vi.waitFor(() => expect(container.querySelector(".animate-pulse")).toBeInTheDocument());
-      expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
-
-      window.matchMedia = restore;
+      try {
+        const { container } = renderPicker();
+        void client.fetchQuery({
+          queryKey: ["wind-grid", 0, null],
+          queryFn: () => new Promise(() => {}),
+        });
+        await vi.waitFor(() =>
+          expect(container.querySelector(".animate-pulse")).toBeInTheDocument(),
+        );
+        expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
+        // A full ring, not the spinner's gapped arc: the fade this reader gets
+        // instead of rotation is meant to read as "still going", not as a
+        // stalled spinner stuck mid-turn.
+        expect(container.querySelector(".animate-pulse")).not.toHaveClass("border-t-transparent");
+      } finally {
+        window.matchMedia = restore;
+      }
     });
   });
 });
