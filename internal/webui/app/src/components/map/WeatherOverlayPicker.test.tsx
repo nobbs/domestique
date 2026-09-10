@@ -210,6 +210,15 @@ describe("WeatherOverlayPicker", () => {
       });
       void client.fetchQuery({ queryKey: ["wind-grid", 0, null], queryFn: () => pending });
       await vi.waitFor(() => expect(container.querySelector(".animate-spin")).toBeInTheDocument());
+      // Dashed, not a solid traced ring: a gap is what makes the rotation
+      // this element's `animate-spin` drives actually visible against the
+      // button's own border, which is this same accent colour whenever a
+      // measure is checked — the case every fetch this ring shows for is in.
+      const spinning = container.querySelector(".animate-spin");
+      expect(spinning?.querySelector("[stroke-dasharray]")).toHaveAttribute(
+        "stroke-dasharray",
+        "30 70",
+      );
 
       resolve(1);
       await vi.waitFor(() =>
