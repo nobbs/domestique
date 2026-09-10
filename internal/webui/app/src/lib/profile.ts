@@ -11,9 +11,14 @@
  * and compress sparse ones — the profile would misreport where a climb is.
  *
  * A profile describes a stretch of the route rather than always the whole of
- * it. Asked for a stretch, it samples that stretch at the full count instead of
+ * it. Asked for a stretch, it resamples that stretch directly instead of
  * handing back the few whole-route samples that fall inside it: a window
  * redrawn from those would magnify the sampling rather than the terrain.
+ *
+ * Sample count is not fixed: it tracks how many raw points fall inside the
+ * stretch, floored at MIN_SAMPLE_COUNT for sparse geometry. A wide window
+ * over a few points is not stretched to a magic count it has no data for,
+ * and a dense stretch is not thinned to one either.
  */
 
 import type { BoundingBox, Position } from "../api/types";
@@ -88,6 +93,9 @@ export const GRADIENT_WINDOW_METRES = 100;
  * place a reader was aiming for.
  */
 const POSITION_TOLERANCE_METRES = 0.5;
+
+/** The fewest samples a stretch is ever resampled to, however few raw points it holds. */
+const MIN_SAMPLE_COUNT = 40;
 
 export function gradientBand(percent: number): number {
   const magnitude = Math.abs(percent);
@@ -646,11 +654,7 @@ function profileBetween(
 /** The measured route, or null when it carries no plottable elevation. */
 function measure(
   coordinates: Position[],
-  sampleCount: number,
 ): { distances: number[]; total: number; ranges: BandedRange[] } | null {
-  if (sampleCount < 2) {
-    return null;
-  }
   if (coordinates.length < 2 || coordinates.some((point) => elevationOf(point) === undefined)) {
     return null;
   }
@@ -660,19 +664,31 @@ function measure(
   return total > 0 ? { distances, total, ranges: bandedRanges(coordinates, distances) } : null;
 }
 
+/** How many samples a stretch earns on its own raw geometry, not a fixed count. */
+function densitySampleCount(distances: number[], startMetres: number, endMetres: number): number {
+  const count = distances.filter((d) => d >= startMetres && d <= endMetres).length;
+
+  return Math.max(MIN_SAMPLE_COUNT, count);
+}
+
 /**
  * Builds an evenly spaced profile of the whole route, or null when it carries
  * no complete elevation — a partial profile would imply flat ground where data
  * is simply absent.
  *
- * Fewer than two samples is also null: the spacing divides by sampleCount - 1,
- * and one sample describes no span to plot.
+ * Sample count defaults to the route's own point density (see the file
+ * header); an explicit count below two is also null, since the spacing
+ * divides by sampleCount - 1 and one sample describes no span to plot.
  */
-export function buildProfile(coordinates: Position[], sampleCount = 320): Profile | null {
-  const measured = measure(coordinates, sampleCount);
+export function buildProfile(coordinates: Position[], sampleCount?: number): Profile | null {
+  if (sampleCount !== undefined && sampleCount < 2) {
+    return null;
+  }
+  const measured = measure(coordinates);
   if (!measured) {
     return null;
   }
+  const count = sampleCount ?? densitySampleCount(measured.distances, 0, measured.total);
 
   return profileBetween(
     coordinates,
@@ -681,7 +697,7 @@ export function buildProfile(coordinates: Position[], sampleCount = 320): Profil
     measured.total,
     0,
     measured.total,
-    sampleCount,
+    count,
   );
 }
 
@@ -723,14 +739,18 @@ function keptWithAltitude(coordinates: Position[]): AltitudeTrack | null {
  * first to the last altitude on the track's own axis, never extrapolating over
  * a warm-up or a tail the sensor missed. Null with fewer than two altitudes.
  */
-export function buildActivityProfile(coordinates: Position[], sampleCount = 320): Profile | null {
-  if (sampleCount < 2) {
+export function buildActivityProfile(
+  coordinates: Position[],
+  sampleCount?: number,
+): Profile | null {
+  if (sampleCount !== undefined && sampleCount < 2) {
     return null;
   }
   const track = keptWithAltitude(coordinates);
   if (!track) {
     return null;
   }
+  const count = sampleCount ?? densitySampleCount(track.keptDistances, track.first, track.last);
 
   return profileBetween(
     track.kept,
@@ -739,15 +759,15 @@ export function buildActivityProfile(coordinates: Position[], sampleCount = 320)
     track.total,
     track.first,
     track.last,
-    sampleCount,
+    count,
   );
 }
 
 /**
- * The same profile, restricted to one stretch of the ride and sampled across it
- * at the full count — a ride's counterpart to `buildWindowedProfile`, which
- * refuses any track carrying one point with no elevation and so cannot serve a
- * ride with an altimeter still warming up. The window is clamped to the axis
+ * The same profile, restricted to one stretch of the ride and resampled
+ * across it — a ride's counterpart to `buildWindowedProfile`, which refuses
+ * any track carrying one point with no elevation and so cannot serve a ride
+ * with an altimeter still warming up. The window is clamped to the axis
  * `buildActivityProfile` measures, the same reasoning it clamps to for the
  * whole ride.
  *
@@ -759,9 +779,9 @@ export function buildActivityProfile(coordinates: Position[], sampleCount = 320)
 export function buildWindowedActivityProfile(
   coordinates: Position[],
   window: DistanceWindow,
-  sampleCount = 320,
+  sampleCount?: number,
 ): Profile | null {
-  if (sampleCount < 2) {
+  if (sampleCount !== undefined && sampleCount < 2) {
     return null;
   }
   const track = keptWithAltitude(coordinates);
@@ -771,6 +791,7 @@ export function buildWindowedActivityProfile(
   const span = Math.min(window.endMetres - window.startMetres, track.last - track.first);
   const start = Math.min(Math.max(window.startMetres, track.first), track.last - span);
   const end = start + span;
+  const count = sampleCount ?? densitySampleCount(track.keptDistances, start, end);
 
   return profileBetween(
     track.kept,
@@ -779,13 +800,13 @@ export function buildWindowedActivityProfile(
     track.total,
     start,
     end,
-    sampleCount,
+    count,
   );
 }
 
 /**
- * The same profile, restricted to one stretch of the route and sampled across
- * it at the full count.
+ * The same profile, restricted to one stretch of the route and resampled
+ * across it.
  *
  * A named entry point rather than a third argument to `buildProfile`, because
  * the one call site that wants a window should say so.
@@ -797,14 +818,18 @@ export function buildWindowedActivityProfile(
 export function buildWindowedProfile(
   coordinates: Position[],
   window: DistanceWindow,
-  sampleCount = 320,
+  sampleCount?: number,
 ): Profile | null {
-  const measured = measure(coordinates, sampleCount);
+  if (sampleCount !== undefined && sampleCount < 2) {
+    return null;
+  }
+  const measured = measure(coordinates);
   if (!measured) {
     return null;
   }
   const start = Math.min(Math.max(window.startMetres, 0), measured.total);
   const end = Math.min(Math.max(window.endMetres, start), measured.total);
+  const count = sampleCount ?? densitySampleCount(measured.distances, start, end);
 
   return profileBetween(
     coordinates,
@@ -813,7 +838,7 @@ export function buildWindowedProfile(
     measured.total,
     start,
     end,
-    sampleCount,
+    count,
   );
 }
 

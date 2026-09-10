@@ -111,11 +111,10 @@ export interface RouteOverlayProps {
    *
    * The tooltip's content (elevation, gradient, band) is read from this in
    * preference to `profile` above, because a windowed profile resamples the
-   * stretch on show at the same count `profile` samples the whole route at —
-   * finer near a short climb, coarser near a long one — so the two can report
-   * a different gradient at the same distance. Reading whichever one the
-   * chart is reading is what keeps the tooltip from disagreeing with the
-   * readout it stands in for.
+   * stretch on show at its own density, not the whole route's — so the two
+   * can report a different gradient at the same distance. Reading whichever
+   * one the chart is reading is what keeps the tooltip from disagreeing with
+   * the readout it stands in for.
    *
    * The position dot never reads this: it tracks `profile` regardless, so
    * hovering the dimmed route outside the zoomed stretch still moves it — a
