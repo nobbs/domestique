@@ -95,6 +95,28 @@ func gradeWindowMetres(samples []Sample) float64 {
 	return min(max(quantum/targetGradePrecision, minWindowMetres), maxWindowMetres)
 }
 
+// Coefficients are the two terms of the model a rider's own rides can move.
+// Everything else in it is either measured from the track or a constant of
+// nature: the mass is the rider's own, gravity and air density are what they
+// are, and the grade and acceleration were recorded. These two cannot be
+// measured by a rider at all, which is why they are what a calibration fits.
+type Coefficients struct {
+	DragArea          float64 // m², CdA
+	RollingResistance float64 // Crr
+}
+
+// DefaultCoefficients is the road bicycle every estimate is worked out at
+// until a calibration of the rider's own replaces it.
+func DefaultCoefficients() Coefficients {
+	return Coefficients{DragArea: dragArea, RollingResistance: rollingResistance}
+}
+
+// Valid reports whether these coefficients could have come from a real
+// bicycle, rather than from a fit that ran away.
+func (c Coefficients) Valid() bool {
+	return c.DragArea > 0 && c.DragArea < 2 && c.RollingResistance > 0 && c.RollingResistance < 0.1
+}
+
 // Estimate is one sample's estimated power. Absent where the track gave the
 // model nothing to work from — the first sample of a ride or of a stretch after
 // a pause, which has no step behind it to measure a speed over.
@@ -133,7 +155,21 @@ type Quality struct {
 //
 // See docs/specs/measurement.md §Estimated power.
 func EstimateSeries(samples []Sample, totalMassKG float64) ([]Estimate, Quality, bool) {
-	return estimateSeries(samples, totalMassKG, nil)
+	return estimateSeries(samples, totalMassKG, DefaultCoefficients(), nil)
+}
+
+// EstimateSeriesWith is EstimateSeries at a rider's own calibrated
+// coefficients rather than the built-in road bicycle, and with the same
+// optional headwind EstimateSeriesWithWind takes. Coefficients that could not
+// have come from a bicycle are refused rather than quietly estimated at.
+func EstimateSeriesWith(
+	samples []Sample, totalMassKG float64, coefficients Coefficients, headwindMS []float64,
+) ([]Estimate, Quality, bool) {
+	if !coefficients.Valid() || (headwindMS != nil && len(headwindMS) != len(samples)) {
+		return nil, Quality{}, false
+	}
+
+	return estimateSeries(samples, totalMassKG, coefficients, headwindMS)
 }
 
 // EstimateSeriesWithWind is EstimateSeries with the aerodynamic term's speed
@@ -151,12 +187,14 @@ func EstimateSeriesWithWind(samples []Sample, totalMassKG float64, headwindMS []
 		return nil, Quality{}, false
 	}
 
-	return estimateSeries(samples, totalMassKG, headwindMS)
+	return estimateSeries(samples, totalMassKG, DefaultCoefficients(), headwindMS)
 }
 
 // estimateSeries is EstimateSeries and EstimateSeriesWithWind's shared body;
 // headwindMS is nil for the wind-free case.
-func estimateSeries(samples []Sample, totalMassKG float64, headwindMS []float64) ([]Estimate, Quality, bool) {
+func estimateSeries(
+	samples []Sample, totalMassKG float64, coefficients Coefficients, headwindMS []float64,
+) ([]Estimate, Quality, bool) {
 	if totalMassKG <= 0 || len(samples) < 2 {
 		return nil, Quality{}, false
 	}
@@ -211,7 +249,8 @@ func estimateSeries(samples []Sample, totalMassKG float64, headwindMS []float64)
 			if headwindMS != nil {
 				headwind = headwindMS[high]
 			}
-			clamped, clipBias := watts(speed, slope(samples[low], samples[high]), totalMassKG, density, headwind, acceleration)
+			clamped, clipBias := watts(
+				speed, slope(samples[low], samples[high]), totalMassKG, density, headwind, acceleration, coefficients)
 			estimates[index] = Estimate{Watts: clamped, Known: true}
 			known = true
 			clipBiasSum += clipBias
@@ -301,11 +340,13 @@ func correlation(a, b []float64) float64 {
 // the rider pushes rather than spuriously drags (handover §2); the mechanical
 // power is still force·v, since the wind moves air past the rider, not the
 // bicycle down the road.
-func watts(speed, grade, totalMassKG, density, headwindMS, accelerationMSS float64) (clamped, clipBias float64) {
+func watts(
+	speed, grade, totalMassKG, density, headwindMS, accelerationMSS float64, coefficients Coefficients,
+) (clamped, clipBias float64) {
 	weight := totalMassKG * gravity
 	airspeed := speed + headwindMS
-	force := weight*grade + weight*rollingResistance +
-		0.5*density*dragArea*math.Abs(airspeed)*airspeed +
+	force := weight*grade + weight*coefficients.RollingResistance +
+		0.5*density*coefficients.DragArea*math.Abs(airspeed)*airspeed +
 		(totalMassKG+rotationalMassKG)*accelerationMSS
 	unclamped := force * speed / drivetrainEfficiency
 	if unclamped > 0 {
