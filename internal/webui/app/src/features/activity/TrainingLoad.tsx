@@ -316,6 +316,8 @@ function EstimatedPowerTile({ power, diagnostics }: { power: Scale; diagnostics:
     )
     .join(" · ");
 
+  const tier = estimateTier(diagnostics);
+
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[var(--ink-2)] text-xs">{power.label}</span>
@@ -324,10 +326,10 @@ function EstimatedPowerTile({ power, diagnostics }: { power: Scale; diagnostics:
           {power.value?.toFixed(power.decimals ?? 0)}
         </span>
         <Badge
-          variant={estimateTier(diagnostics) === "steady" ? "secondary" : "outline"}
+          variant={tier === "steady" ? "secondary" : "outline"}
           className="h-4 px-1.5 text-[9px]"
         >
-          {estimateTier(diagnostics)}
+          {tier}
         </Badge>
       </div>
       <span className="text-[var(--ink-2)] text-xs">{power.scale}</span>
