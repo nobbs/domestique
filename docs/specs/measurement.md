@@ -129,9 +129,8 @@ estimated-power model's window from each ride's own altimeter instead.
 (`internal/measure/profile.go`).
 
 **Status.** 100 m meets the derived floor and is validated for routes and
-the browser. The estimated-power model's known deviation is resolved: its
-window is no longer fixed below the floor but derived from each ride's own
-altimeter resolution, landing at 100 m for a typical 0.2 m barometer.
+the browser. The estimated-power model's window is derived from each ride's
+own altimeter resolution, landing at 100 m for a typical 0.2 m barometer.
 
 ## Ascent and descent
 
@@ -185,10 +184,8 @@ the weekly calibration that fits `seconds_per_ascent_m`
 (`internal/ridemodel/calibrate.go`, fed by `activities.ascent_metres`) fits
 against the ascent Wahoo's device reported for each ride, which the device
 counted with its own threshold. The prediction and its calibration therefore
-price different definitions of ascent today, and the ascent study
-(`dev/ascentstudy`, #608) measures how far apart they are on the rider's own
-rides. The offline fitter that once benchmarked the model against a Strava
-export was retired with the model's calibration moving into the service.
+price different definitions of ascent today, measured on the rider's own
+rides.
 
 **Other platforms.** Strava and Intervals.icu both count ascent with a
 hysteresis threshold: Strava uses 2 m with barometric data and 10 m without
@@ -197,8 +194,7 @@ it (Strava "Elevation" and "Elevation on Strava FAQs"); Intervals.icu uses
 in `measure.AscentWithHysteresisMetres` and `DescentWithHysteresisMetres`
 (`internal/measure/profile.go`), called by nobody yet.
 
-**Status.** Settled by the ascent study (#608, `dev/ascentstudy`) over the
-operator's rides. A ride's own barometric samples need the 3 m walk: the
+**Status.** Settled over the operator's own rides (#608). A ride's own barometric samples need the 3 m walk: the
 raw sum over-reports the head unit by about three quarters, the walk lands
 within a few per cent. A route's stored profile needs no walk: it already
 reads about 5 % under the head unit for the same ground, and every
@@ -275,110 +271,31 @@ best-average pages show today.
 
 ## Estimated power
 
-**Definition.** A force-balance model of the power needed to hold a
-recorded speed over a recorded grade, for rides with no power meter.
+**Definition.** The power a rider was producing at each recorded sample, worked out from the ride's own track by a force balance, for a bicycle carrying no meter; and the ride's figure, the mean of it over the samples the rider was pedalling through, beside the share of the ride that was.
 
-**Formula.** In symbols:
+**Formula.** Samples are cut into stretches wherever the clock advances by more than the recording gap (10 s); nothing is measured across a gap. Around sample $i$, the window $[lo, hi]$ is the smallest span of samples inside the stretch covering $W$ metres of distance (W from §Gradient, 100 m for a 0.2 m barometer). Then
 
-~~~text
-P = 0                                              where cadence is known and zero
-P = v · (m·g·grade + m·g·Crr + ½·ρ·CdA·v² + (m + m_rot)·a) / η,
-                                             clamped at 0,   otherwise
+$$v_i = \frac{d_{hi} - d_{lo}}{t_{hi} - t_{lo}}, \qquad \text{grade}_i = \frac{h_{hi} - h_{lo}}{d_{hi} - d_{lo}}, \qquad a_i = \frac{v_i - v_j}{t_i - t_j}$$
 
-a = (v here − v at the first sample at least 10 s behind it) / those seconds,
-    and nought where this stretch does not reach back that far
+where $j$ is the first sample at least 10 s behind $i$ in the same stretch, and $a_i = 0$ where the stretch reaches back no further. Air density at the window's high sample:
 
-p = 101325 · (1 - 2.25577e-5 · h)^5.25588          (h in metres)
-ρ = p / (287.058 · (T + 273.15))                   (T in °C)
-~~~
+$$p = 101325\,(1 - 2.25577\times10^{-5}\, h)^{5.25588}, \qquad \rho = \frac{p}{287.058\,(T + 273.15)}$$
 
-v is speed in m/s, grade is the dimensionless rise over run from the
-Gradient section above (measured over the window §Gradient derives), m is
-total system mass in kg. The cadence rule is checked first and is physics,
-not the zero clamp below it: a sample the rider was not pedalling through
-has no power to estimate, whatever the track says about grade and speed at
-that moment. It contributes nothing to the clamp's own bias diagnostic
-below, since the clamp never had a chance to fire on it. ρ is evaluated at
-the window's high sample's altitude and its temperature where the sample
-carries one.
+with $h$ in metres and $T$ in °C, 15 °C where the sample carries no thermometer. The power:
 
-**Constants.** g = 9.80665 m/s², Crr = 0.005, CdA = 0.36 m²,
-m_rot = 1.5 kg, η = 0.977 (`internal/measure/estimate.go` `gravity`,
-`rollingResistance`, `dragArea`, `rotationalMassKG`, `drivetrainEfficiency`).
-CdA is the handover's own road-hoods figure; the 0.32 m² this model used
-before sat between that table's hoods and drops rows while its comment
-claimed the hoods. m_rot is carried by the inertial term alone: gravity and
-rolling resistance act on the mass that is really there.
+$$P_i = \frac{v_i}{\eta}\left(m g\,\text{grade}_i + m g\, C_{rr} + \tfrac{1}{2}\rho\, C_dA\, v_i\,|v_i| + (m + m_{rot})\, a_i\right)$$
 
-The inertial term's 10 s baseline (`accelerationBaseline`) is not a smoothing
-taste. Differentiated against the sample before it instead, the term reads as
-recorder noise rather than as a rider: over the operator's own rides that
-costs the lag-1 autocorrelation its threshold (0.59 against a target of 0.8)
-and doubles the mean second-to-second change (43 W/s against a target of 40),
-while moving the served figure by 0.1 W. The handover smooths speed over
-eleven samples before differentiating for the same reason (§4).
-A sample with no temperature reading is evaluated at 15 °C, the value the
-model's density used to be fixed at
-(`internal/measure/estimate.go` `defaultTemperatureCelsius`).
+$P_i = 0$ where the cadence is known and zero (a rider who is not pedalling produces nothing, whatever the track says); otherwise $P_i$ is clamped at zero (a rider cannot absorb power). $m$ is the total system mass, rider plus bicycle. The ride's figure, over the pedalling set $S$ = samples with a known estimate whose cadence is unknown or above zero:
 
-**Source.** Martin et al. 1998, whose drivetrain efficiency and rotational
-inertia this model now carries at the source's own values. One term of the
-source's is still left out of the figure a ride is served: wind as a signed
-`|v+w|·(v+w)` aerodynamic term rather than `v²` alone, so that a tailwind
-faster than the rider pushes instead of reading as a spurious drag.
-`measure.EstimateSeriesWithWind` implements it and `dev/windstudy` scores it,
-but no shipped path supplies a headwind yet (#587).
+$$\bar P = \frac{1}{|S|}\sum_{i \in S} P_i, \qquad \text{share} = \frac{|S|}{\text{samples with a known estimate}}$$
 
-**Why the inertial term is not nought.** Over a ride the momentum a rider
-buys back comes to nothing, so the term looks like it should cancel. It does
-not, because the clamp below sits underneath it: an acceleration is charged
-and the braking that undoes it is refunded nothing, which is what a rider
-accelerating away from each junction actually spends. Measured over the
-operator's own rides the term nets +0.95 W before the clamp and, at the
-baseline above, lifts the served median from 90.0 W to 101.8 W
-(`dev/calorie-convention.sql` §5). Air density follows the handover document's own formula
-(§2) rather than the fixed sea-level, fifteen-degree constant this service
-used to use; the cadence gate is the handover's own §5 rule, kept distinct
-from the zero clamp for the same reason the handover gives: conflating them
-hides how much of the estimate the clamp is inventing.
+**Constants.** $g$ = 9.80665 m/s², $\eta$ = 0.977 (drivetrain), $m_{rot}$ = 1.5 kg (equivalent linear mass of the wheels' rotational inertia, in the inertial term only), 10 s acceleration baseline, 15 °C default temperature, the recording gap and window from their own sections. $C_dA$ and $C_{rr}$ are the rider's own bicycle, entered on the rider profile (`dragAreaM2`, `rollingResistance`); a profile without them is estimated at a road bicycle on the hoods, $C_dA$ = 0.36 m², $C_{rr}$ = 0.005. Guidance rows from the handover table: hoods 0.36, gravel bike on the hoods 0.40, sitting up 0.45 m²; slick road tyre 0.005, wide gravel tyre on tarmac 0.008. Code: `internal/measure/estimate.go` (`gravity`, `drivetrainEfficiency`, `rotationalMassKG`, `accelerationBaseline`, `defaultTemperatureCelsius`, `DefaultCoefficients`).
 
-**Quality diagnostics.** The handover document
-([power-estimation-handover.md](../references/power-estimation-handover.md)
-§7) gates its output on three self-diagnosing checks: lag-1 autocorrelation
-greater than +0.8, mean absolute second-to-second power change under 40 W,
-and a clipping bias under roughly 8 W. A series failing them should report
-average power and energy only, because normalised power and best-average
-figures both take a maximum or a fourth power and so amplify noise rather
-than average it away. Computed by `EstimateSeries` and returned beside the
-series; stored on the ride's metrics row alongside the estimate
-(`activity_metrics.estimate_autocorrelation`,
-`activity_metrics.estimate_delta_watts_per_second`,
-`activity_metrics.estimate_clip_bias_watts`), served as `estimateQuality`
-beside `estimatedPowerWatts`, and shown on the ride page. A ride derived
-before those columns existed holds nulls in them and is served without an
-`estimateQuality` until the bumped derivation version lists it again.
-The three thresholds above remain the handover's own targets, not a rule this
-service enforces: nothing in this service gates on the diagnostics yet.
+**Source.** Martin et al. 1998 [2] for the force balance, its drivetrain efficiency and rotational inertia; the handover document [5] for the coefficient table and the window derivation.
 
-**Applied by.** `measure.EstimateSeries`, called by
-`activity.RideSamples.EstimatePower`.
+**Applied by.** `measure.EstimateSeries` for the series and `measure.PedallingMean` for the ride figure and share, called by `activity.RideSamples.EstimatePower` in `activity:derive`; stored per record as `activity_records.estimated_power_watts` and per ride as `activity_metrics.estimated_power_watts` and `estimated_pedalling_share`; served as `estimatedPowerWatts` and `estimatedPedallingShare`. The estimate is named as one everywhere, is never mixed with measured power and never feeds a training load, a power curve or a normalized power. A climb attempt's estimated mean is the mean of the stored series over the climb.
 
-**Status.** Levelled against the operator's own measured power, not against
-a lookup table. Their indoor rides carry a meter, which gives two validators
-the outdoor estimate can be held to: the device's calories, which on 126
-measured rides imply a sane 0.25 gross efficiency and so cannot be dismissed
-as running high, and the rider's own heart-rate-to-power relation at matched
-heart rate. Before the inertial term, drivetrain loss and the corrected CdA,
-the estimate failed both by 1.3–1.4× (#623); with them the energy check moves
-from −39.6% to −31.4% and every §7 diagnostic stays inside its target, the
-clip bias improving on what it was. `dev/calorie-convention.sql` reproduces
-the measurement and `dev/windstudy` the diagnostics. A gap remains, and the
-constants are where it now sits.
-
-The constants themselves remain the handover's table rather than a fit, and
-the corpus cannot yet do better: 184 of 200 outdoor rides sit between 18 and
-26 km/h, too narrow a spread of speeds to separate CdA (which scales with v³)
-from Crr (which scales with v).
+**Status.** Validated against the operator's own trainer power at matched heart rate: ride means within 6% on rides held out from the check, which `dev/levelstudy` reproduces from a state snapshot.
 
 ## Sustained climbs
 
@@ -542,9 +459,8 @@ pages show today.
 ## Decoupling and heat drift
 
 Two readings taken over a ride's own sensors, both from **measured power
-only**. An estimated power carries a per-ride bias (see §Estimated power), and
-either figure fed by one would compare a ride against a differently biased
-version of itself.
+only**. An estimated power is never fed to either figure (see §Estimated
+power): comparing a ride against itself needs one consistent kind of number.
 
 Both read the **cleaned** heart-rate series (§Sensor cleaning), not the ride's
 raw one. A spike above the rider's maximum falls in one half, and read raw it
@@ -588,7 +504,7 @@ Heart rate and temperature are paired by the second each was recorded at, which
 is the resolution the records are stored at and so the only basis on which two
 sensors are known to describe the same moment.
 
-**Source.** Decoupling is Friel's Pw:Hr [17]. Heat drift has no single source:
+**Source.** Decoupling is Friel's Pw:Hr [14]. Heat drift has no single source:
 it is the plain pairing this service stores, and the interpretation is left to
 the reader.
 
@@ -639,45 +555,37 @@ covered by unit tests over synthetic streams with known bests.
 2. Martin, J. C., Milliken, D. L., Cobb, J. E., McFadden, K. L., Coggan,
    A. R. (1998) "Validation of a Mathematical Model for Road Cycling
    Power", Journal of Applied Biomechanics 14(3):276-291.
-3. Danek, T. et al. (2020) arXiv:2005.04229 and arXiv:2005.04480
-   (least-squares estimation of CdA, Crr and drivetrain loss).
-4. Banister, E. W. (1991) "Modeling elite athletic performance" in
+3. Banister, E. W. (1991) "Modeling elite athletic performance" in
    Physiological Testing of Elite Athletes.
-5. Allen, H. and Coggan, A. (2010) Training and Racing with a Power Meter,
+4. Allen, H. and Coggan, A. (2010) Training and Racing with a Power Meter,
    2nd ed.
-6. The internal handover document at
+5. The internal handover document at
    [docs/references/power-estimation-handover.md](../references/power-estimation-handover.md).
-7. Strava "Elevation"
+6. Strava "Elevation"
    <https://support.strava.com/en-us/articles/15401909-elevation>, accessed
    2026-09-07.
-8. Strava "Elevation on Strava FAQs"
+7. Strava "Elevation on Strava FAQs"
    <https://support.strava.com/hc/en-us/articles/115001294564-Elevation-on-Strava-FAQs>,
    accessed 2026-09-07.
-9. Strava "How to get power for your rides"
-   <https://support.strava.com/en-us/articles/15401944-how-to-get-power-for-your-rides>,
+8. Intervals.icu forum "Elevation gain off?"
+   <https://forum.intervals.icu/t/elevation-gain-off/8463>, accessed
+   2026-09-07.
+9. Intervals.icu forum "Heartrate spikes now automatically fixed"
+   <https://forum.intervals.icu/t/heartrate-spikes-now-automatically-fixed/174>,
    accessed 2026-09-07.
-10. Intervals.icu forum "Elevation gain off?"
-    <https://forum.intervals.icu/t/elevation-gain-off/8463>, accessed
-    2026-09-07.
-11. Intervals.icu forum "Heartrate spikes now automatically fixed"
-    <https://forum.intervals.icu/t/heartrate-spikes-now-automatically-fixed/174>,
-    accessed 2026-09-07.
-12. Intervals.icu forum "Estimating load for rides without power meters"
-    <https://forum.intervals.icu/t/estimating-load-for-rides-without-power-meters/20863>,
-    accessed 2026-09-07.
-13. Rapaport, D. C. (2011) "Evaluating cumulative ascent: Mountain biking
+10. Rapaport, D. C. (2011) "Evaluating cumulative ascent: Mountain biking
     meets Mandelbrot", arXiv:1011.4778 [physics.data-an],
     <https://arxiv.org/abs/1011.4778>.
-14. Menaspà, P., Haakonssen, E., Sharma, A., Clark, B. (2016) "Accuracy in
+11. Menaspà, P., Haakonssen, E., Sharma, A., Clark, B. (2016) "Accuracy in
     measurement of elevation gain in road cycling", Journal of Science and
     Cycling 5(1):10–12, CC BY 3.0; reproduced as
     [menaspa-2016-elevation-gain-road-cycling.pdf](../references/menaspa-2016-elevation-gain-road-cycling.pdf).
-15. Sánchez, R., Villena, M. (2020) "Comparative evaluation of wearable
+12. Sánchez, R., Villena, M. (2020) "Comparative evaluation of wearable
     devices for measuring elevation gain in mountain physical activities",
     Proceedings of the Institution of Mechanical Engineers, Part P: Journal
     of Sports Engineering and Technology, doi:10.1177/1754337120918975.
-16. US patent 5,058,427 (1991) "Accumulating altimeter with ascent/descent
+13. US patent 5,058,427 (1991) "Accumulating altimeter with ascent/descent
     accumulation thresholds", <https://patents.justia.com/patent/5058427>.
-17. Friel, J. "Aerobic Endurance Testing", josephfriel.com,
+14. Friel, J. "Aerobic Endurance Testing", josephfriel.com,
     <https://josephfriel.com/aerobic-endurance-testing/>; the Pw:Hr
     decoupling ratio as used by TrainingPeaks.

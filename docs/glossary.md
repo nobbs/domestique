@@ -195,9 +195,10 @@ a rider; not every reader has connected one yet, and an admin sees every
 rider's target where a rider sees only their own.
 
 **rider profile** — one rider's own body and equipment: maximum, resting and
-threshold heart rate, functional threshold power, and rider and bike mass. Kept
-per subject, not per target, and never another rider's. Not a *setting*: the
-settings are the service's and shared, this is one person's own.
+threshold heart rate, functional threshold power, rider and bike mass, and the
+bicycle's drag area and rolling resistance. Kept per subject, not per target,
+and never another rider's. Not a *setting*: the settings are the service's and
+shared, this is one person's own.
 
 **training load** — how much one ride took out of the rider, as a single
 number. This service keeps two scales side by side and converts between neither:
@@ -215,12 +216,12 @@ and [[training load]], which a [[rider profile]] shapes, and the plain means its
 own sensors came to, which it does not. Worked out once by `activity:derive` and
 stored beside the ride, never read from a provider.
 
-**estimated power** — power this service worked out from a ride's own track,
-for a bicycle carrying no meter: a physics model over grade, speed, acceleration
-and mass at fixed road-bike constants save for air density, which follows the
-sample's own altitude and temperature, both grade and speed measured over a
-window of distance rather than between neighbouring samples. Always named as an estimate, never mixed with
-measured power, and never an input to a [[training load]].
+**estimated power** — power this service worked out from a ride's own track
+for a bicycle carrying no meter, a force balance over grade, speed,
+acceleration and mass at the rider's own drag area and rolling resistance,
+reported as the mean while pedalling beside the share of the ride that was.
+Always named as an estimate, never mixed with measured power, and never an
+input to a [[training load]].
 
 **recorded weather** — what a ride was actually ridden through, asked of the
 weather provider once after the ride's samples were stored and kept per hour.

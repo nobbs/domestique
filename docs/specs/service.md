@@ -698,40 +698,21 @@ The read-only JSON surface is small:
   and a mean of two codes names no weather. It is absent both for a ride nobody
   has asked about and for one that was asked about and had nothing to answer.
 
-  A ride carrying no meter, for a rider who has entered both a rider and a bike
-  mass, also carries `estimatedPowerWatts`: its average **estimated** power. It is worked out from the
-  recorded track by a physics model — gravity against the grade, rolling
-  resistance and drag at fixed road-bike constants, never below zero and never
-  accounting for wind. The air's density follows the sample's own altitude and
-  temperature rather than a fixed figure, and a sample the rider was not
-  pedalling through — its cadence known and zero — reads no power at all,
-  checked before the zero clamp ever runs. Both the grade and the speed are measured over the same
-  window of distance rather than between one sample and the next: at one sample
-  a second the step is barometric noise and GPS jitter as much as it is riding,
-  and the clamp at zero would keep the half of that noise which reads positive
-  and discard the half which reads negative. The change in speed is not charged
-  for. Over a ride it is the kinetic energy the rider gets back, and at this
-  sampling rate a real surge cannot be told from the jitter. It is an
-  estimate and is named as one everywhere: it is never normalised, never scored,
-  and never an input to a training load. A ride that measured its own power has
-  none, because an estimate beside a reading only invites the two to be
-  confused.
-
-  `estimatedPowerWatts` carries `estimateQuality` beside it, present once the
-  ride has been derived since the diagnostics existed and never without the
-  estimate; a ride derived before then omits it until it is derived again. It
-  holds the lag-1 autocorrelation of the estimated watts, the mean
-  absolute change in watts per second between consecutive samples, and the
-  mean amount the zero clamp added. What the estimate's own shape says about
-  whether to trust it, not a judgement this service makes about it — see
-  [measurement.md](measurement.md) §Estimated power.
+  A ride carrying no meter, for a rider who has entered both masses, carries
+  `estimatedPowerWatts`, its estimated power while pedalling, from the force
+  balance in [measurement.md](measurement.md) §Estimated power at the rider's
+  own bicycle numbers, and `estimatedPedallingShare`, the share of the ride's
+  samples the rider pedalled through. Named as an estimate everywhere; never
+  normalised, never scored, never an input to a training load; absent for a
+  ride that measured its own power.
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
-  maximum, resting and threshold heart rate, functional threshold power, and
-  rider and bike mass — every one of them optional, so a parameter the rider has
-  not entered is absent rather than zero. It is answered for the **caller's own
-  subject only**: no session reads another rider's profile on this path, an
-  administrator's included, and a subject that has entered nothing reads an
-  empty profile rather than a `404`.
+  maximum, resting and threshold heart rate, functional threshold power, rider
+  and bike mass, and the bicycle's drag area and rolling resistance — every one
+  of them optional, so a parameter the rider has not entered is absent rather
+  than zero. It is answered for the **caller's own subject only**: no session
+  reads another rider's profile on this path, an administrator's included, and
+  a subject that has entered nothing reads an empty profile rather than a
+  `404`.
 
   Beside the stored parameters it carries what the caller's own rides of the
   last ninety days suggest some of them could be: the highest heart rate held
