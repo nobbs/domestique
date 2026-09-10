@@ -119,8 +119,12 @@ func (m *metricTable) String() string {
 // the forecast, and the meter-ride comparison. No ride identifier, date,
 // position, heading series or altitude value is ever held here.
 type report struct {
-	metrics              map[string]*metricTable
-	meterRMS             map[string][]float64
+	metrics  map[string]*metricTable
+	meterRMS map[string][]float64
+	// estimateWattsByHR bins each studied ride's mean estimated watts by its
+	// own mean heart rate, so the level can be read against the measured power
+	// the same rider holds at the same heart rate indoors (#623).
+	estimateWattsByHR    map[int][]float64
 	speedDiffMS          []float64
 	angleDiffDeg         []float64
 	totalRides           int
@@ -142,7 +146,11 @@ func newReport() *report {
 		metrics[name] = newMetricTable(name, candidateOrder())
 	}
 
-	return &report{metrics: metrics, meterRMS: make(map[string][]float64, len(candidateOrder()))}
+	return &report{
+		metrics:           metrics,
+		meterRMS:          make(map[string][]float64, len(candidateOrder())),
+		estimateWattsByHR: map[int][]float64{},
+	}
 }
 
 // recordCandidate folds one ride's one candidate series into every metric
@@ -189,6 +197,21 @@ func (r *report) String() string {
 		fmt.Fprintf(&b, "hrfit vs the weather forecast at ride midpoint (%d rides)\n", speed.rides)
 		fmt.Fprintf(&b, "  speed diff (m/s):  median %6.2f q1 %6.2f q3 %6.2f\n", speed.medianVal, speed.q1Val, speed.q3Val)
 		fmt.Fprintf(&b, "  angle diff (deg):  median %6.1f q1 %6.1f q3 %6.1f\n", angle.medianVal, angle.q1Val, angle.q3Val)
+	}
+
+	fmt.Fprintln(&b)
+	if len(r.estimateWattsByHR) > 0 {
+		bins := make([]int, 0, len(r.estimateWattsByHR))
+		for bin := range r.estimateWattsByHR {
+			bins = append(bins, bin)
+		}
+		sort.Ints(bins)
+		fmt.Fprintln(&b, "mean estimated watts by the ride's own mean heart rate (candidate none)")
+		fmt.Fprintf(&b, "  %-8s %6s %10s\n", "hr bin", "rides", "median")
+		for _, bin := range bins {
+			s := summarize(r.estimateWattsByHR[bin])
+			fmt.Fprintf(&b, "  %-8d %6d %10.1f\n", bin, s.rides, s.medianVal)
+		}
 	}
 
 	fmt.Fprintln(&b)
@@ -705,6 +728,15 @@ func study(
 			}
 
 			continue
+		}
+
+		if mean, meanOK := measure.MeanEstimate(noneEstimates); meanOK && len(samples.HeartRate) > 0 {
+			total := 0.0
+			for _, reading := range samples.HeartRate {
+				total += reading.Value
+			}
+			bin := int(total/float64(len(samples.HeartRate))) / 10 * 10
+			result.estimateWattsByHR[bin] = append(result.estimateWattsByHR[bin], mean)
 		}
 
 		for _, candidate := range candidates {
