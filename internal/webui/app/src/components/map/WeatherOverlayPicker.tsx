@@ -98,12 +98,20 @@ export function WeatherOverlayPicker({
           <span
             aria-hidden="true"
             className={cn(
-              "pointer-events-none absolute -inset-1 rounded-full border-2 border-[var(--accent)]",
-              // A full ring fading in and out reads as "still going" without
-              // the rotation `animate-spin` needs a gap to show; the gap
-              // itself is motion the reader asked to have less of.
-              reducedMotion ? "animate-pulse" : "animate-spin border-t-transparent",
+              "pointer-events-none absolute inset-0 rounded-lg p-0.5",
+              reducedMotion ? "animate-pulse" : "animate-spin",
             )}
+            style={{
+              background: reducedMotion
+                ? "var(--accent)"
+                : "conic-gradient(var(--accent) 0deg 270deg, transparent 270deg 360deg)",
+              // The two-mask XOR trick: the padding above sets the ring's
+              // thickness, and this keeps only that band — the button's own
+              // face and icon stay exactly as they were underneath it.
+              WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
+              WebkitMaskComposite: "xor",
+              maskComposite: "exclude",
+            }}
           />
         ) : null}
       </span>
