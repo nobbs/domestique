@@ -639,15 +639,20 @@ function profileBetween(
   });
 
   const samples = measured.slice(leadCount);
-  const elevations = samples.map((sample) => sample.elevationMetres);
+  let minElevationMetres = Number.POSITIVE_INFINITY;
+  let maxElevationMetres = Number.NEGATIVE_INFINITY;
+  for (const sample of samples) {
+    minElevationMetres = Math.min(minElevationMetres, sample.elevationMetres);
+    maxElevationMetres = Math.max(maxElevationMetres, sample.elevationMetres);
+  }
 
   return {
     samples,
     startMetres,
     endMetres,
     totalDistanceMetres,
-    minElevationMetres: Math.min(...elevations),
-    maxElevationMetres: Math.max(...elevations),
+    minElevationMetres,
+    maxElevationMetres,
   };
 }
 
