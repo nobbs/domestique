@@ -71,3 +71,62 @@ WITH r AS (
 )
 SELECT place, COUNT(*) AS samples, ROUND(100.0 * SUM(cadence_rpm = 0) / COUNT(*), 1) AS pct_zero_cadence
 FROM r GROUP BY place;
+
+.print ''
+.print '== 4. what the model omits: aero convexity lost to the speed window =='
+.print '   (the estimate feeds window-mean speed into a v^3 term; raw vs 16 s vs 49 s)'
+WITH s AS (
+  SELECT c.target_slot AS ts, c.workout_id AS wid, c.record_index AS i,
+         c.recorded_at_unix AS t, c.distance_metres AS d
+  FROM activities AS a
+  JOIN activity_records AS c USING (target_slot, workout_id)
+  WHERE a.workout_type_id NOT IN (12, 49, 61, 68) AND c.distance_metres IS NOT NULL
+),
+v AS (
+  SELECT ts, wid, i, (d - LAG(d) OVER w) / NULLIF(t - LAG(t) OVER w, 0) AS v
+  FROM s WINDOW w AS (PARTITION BY ts, wid ORDER BY i)
+),
+f AS (SELECT * FROM v WHERE v IS NOT NULL AND v >= 0 AND v < 25),
+smoothed AS (
+  SELECT v,
+    AVG(v) OVER (PARTITION BY ts, wid ORDER BY i ROWS BETWEEN  8 PRECEDING AND  8 FOLLOWING) AS v16,
+    AVG(v) OVER (PARTITION BY ts, wid ORDER BY i ROWS BETWEEN 24 PRECEDING AND 24 FOLLOWING) AS v49
+  FROM f
+)
+SELECT COUNT(*) AS samples,
+       ROUND(AVG(v * v * v) / AVG(v16 * v16 * v16), 3) AS aero_loss_16s,
+       ROUND(AVG(v * v * v) / AVG(v49 * v49 * v49), 3) AS aero_loss_49s
+FROM smoothed;
+
+.print ''
+.print '== 5. what the model omits: the inertia term under the zero clamp =='
+.print '   (net over a ride is nil, but the clamp keeps the accelerations and'
+.print '    refunds none of the braking, which is what a rider actually pays)'
+WITH s AS (
+  SELECT c.target_slot AS ts, c.workout_id AS wid, c.record_index AS i,
+         c.recorded_at_unix AS t, c.distance_metres AS d
+  FROM activities AS a
+  JOIN activity_records AS c USING (target_slot, workout_id)
+  WHERE a.workout_type_id NOT IN (12, 49, 61, 68) AND c.distance_metres IS NOT NULL
+),
+v AS (
+  SELECT ts, wid, i, t, (d - LAG(d) OVER w) / NULLIF(t - LAG(t) OVER w, 0) AS v
+  FROM s WINDOW w AS (PARTITION BY ts, wid ORDER BY i)
+),
+f AS (SELECT * FROM v WHERE v IS NOT NULL AND v >= 0 AND v < 25),
+smoothed AS (
+  SELECT ts, wid, i, t,
+         AVG(v) OVER (PARTITION BY ts, wid ORDER BY i ROWS BETWEEN 5 PRECEDING AND 5 FOLLOWING) AS v
+  FROM f
+),
+acc AS (
+  SELECT v, (v - LAG(v) OVER w) / NULLIF(t - LAG(t) OVER w, 0) AS a
+  FROM smoothed WINDOW w AS (PARTITION BY ts, wid ORDER BY i)
+)
+-- 93.5 kg is the rider profile's 92 kg total plus the handover's 1.5 kg of
+-- equivalent linear mass for wheel rotational inertia.
+SELECT COUNT(*) AS samples,
+       ROUND(AVG(93.5 * a * v), 2)                          AS mean_inertia_w_net,
+       ROUND(AVG(MAX(93.5 * a * v, 0)), 1)                  AS mean_inertia_w_positive,
+       ROUND(AVG(MAX(93.5 * a * v, 0)) - AVG(93.5 * a * v), 1) AS clamp_asymmetry_w
+FROM acc WHERE a IS NOT NULL AND ABS(a) < 5;
