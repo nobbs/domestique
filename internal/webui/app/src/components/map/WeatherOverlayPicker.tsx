@@ -19,7 +19,6 @@ import { Slider } from "@/components/Slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import { useHourTick } from "../../lib/clock";
 import type { Measure, MeasureKey } from "../../lib/measures";
 import { usePrefersReducedMotion } from "../../lib/mediaQuery";
@@ -98,20 +97,10 @@ export function WeatherOverlayPicker({
           <svg
             aria-hidden="true"
             viewBox="0 0 32 32"
-            className={cn(
-              "pointer-events-none absolute inset-0 size-full",
-              reducedMotion ? "" : "animate-spin",
-            )}
+            className="pointer-events-none absolute inset-0 size-full"
           >
-            {/*
-             * A traced rect, not a masked gradient: this button's own border
-             * is already accent-coloured whenever a measure is checked —
-             * which is every time this ring shows — so a plain gap between
-             * dashes would show accent through accent and never look like it
-             * moved. This backing stroke covers the real border in panel's
-             * colour first, then the dashed one on top draws the moving mark
-             * against that rather than against whatever was already there.
-             */}
+            {/* The button's own border is accent-coloured whenever a measure is
+                checked, so the gap needs its resting colour under it to show. */}
             <rect
               x="0.5"
               y="0.5"
@@ -119,7 +108,7 @@ export function WeatherOverlayPicker({
               height="31"
               rx="9.5"
               fill="none"
-              stroke="var(--panel)"
+              stroke="var(--rule)"
               vectorEffect="non-scaling-stroke"
             />
             <rect
@@ -136,7 +125,7 @@ export function WeatherOverlayPicker({
               // scaled to the button's rendered size, e.g. under a root
               // font-size change — otherwise it drifts off the real border.
               vectorEffect="non-scaling-stroke"
-              className={reducedMotion ? "animate-pulse" : undefined}
+              className={reducedMotion ? "animate-pulse" : "animate-ring-trace"}
             />
           </svg>
         ) : null}
