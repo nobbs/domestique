@@ -141,7 +141,7 @@ func (s *fakeDeriveStore) ActivityRideSamples(
 
 func (s *fakeDeriveStore) ActivityMovingSeconds(
 	_ context.Context, _ string, id int64,
-) (float64, bool, error) {
+) (movingSeconds float64, found bool, err error) {
 	if s.movingErr != nil {
 		return 0, false, s.movingErr
 	}

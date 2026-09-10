@@ -106,7 +106,7 @@ func TestSeriesCoverageIsCappedAtOneWhenHeldExceedsMovingTime(t *testing.T) {
 	t.Parallel()
 	share, ok := trainingload.SeriesCoverage(steady(3600, 140), 1800)
 	require.True(t, ok)
-	assert.Equal(t, 1.0, share)
+	assert.InDelta(t, 1.0, share, 1e-9)
 }
 
 func TestSeriesCoverageIsPartialWhenTheSeriesDroppedOutPartway(t *testing.T) {
