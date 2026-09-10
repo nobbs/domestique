@@ -179,7 +179,8 @@ WHERE target_slot = ? AND workout_id = ? AND record_index = ?`
 // StoreEstimatedPower replaces one ride's estimated power series, in one
 // transaction so a partial rewrite is never left behind as complete. An empty
 // series clears whatever was there, which is what a ride that has stopped
-// yielding an estimate needs.
+// yielding an estimate needs. The ride's route match goes with it: its climb
+// attempts were read from the series being replaced, so the match is redone.
 func (s *Store) StoreEstimatedPower(
 	ctx context.Context, targetID string, id int64, recordIndices []int64, estimates []measure.Estimate,
 ) error {
@@ -198,6 +199,16 @@ func (s *Store) StoreEstimatedPower(
 		TargetSlot: targetID, WorkoutID: id,
 	}); clearErr != nil {
 		return fmt.Errorf("clearing the estimated power: %w", clearErr)
+	}
+	if err := queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
+		TargetSlot: targetID, WorkoutID: id,
+	}); err != nil {
+		return fmt.Errorf("forgetting the climb attempts: %w", err)
+	}
+	if err := queries.DeleteActivityRouteMatch(ctx, sqlcgen.DeleteActivityRouteMatchParams{
+		TargetSlot: targetID, WorkoutID: id,
+	}); err != nil {
+		return fmt.Errorf("forgetting the route match: %w", err)
 	}
 	// Prepared once for the whole ride, as the sample insert is: a long ride is
 	// thousands of these, and preparing each one costs more than running it.

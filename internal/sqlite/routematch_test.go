@@ -49,6 +49,22 @@ func matchOf(key route.Key) *activity.RouteMatch {
 	}
 }
 
+func TestStoreEstimatedPowerForgetsTheRideRouteMatch(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 11, nil, nil), "StoreEstimatedPower()")
+
+	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRouteMatches()")
+	assert.NotContains(t, matches, int64(11), "a new series needs its climb attempts read again")
+}
+
 func TestStoreRoundTripsARouteMatch(t *testing.T) {
 	t.Parallel()
 	store := matchStore(t, "rider-a", "rider-b")
