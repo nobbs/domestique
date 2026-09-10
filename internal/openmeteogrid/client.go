@@ -114,12 +114,25 @@ func (c *Client) Latest(ctx context.Context, conditional http.Header) (*http.Res
 
 	// The shared fetch runs detached from any one caller's cancellation, so a
 	// leader giving up cannot fail the followers; the client timeout bounds it.
+	// It stores its own result before returning, rather than leaving that to
+	// whichever caller happens to read the singleflight channel: a leader that
+	// gave up never reads it, and a follower arriving after the fetch has
+	// already left the group would otherwise race the cache write and start a
+	// second fetch of its own.
 	results := c.manifest.group.DoChan("latest", func() (any, error) {
 		if entry, ok := c.manifest.lookup(c.now()); ok {
 			return entry, nil
 		}
 
-		return c.fetchManifestEntry(context.WithoutCancel(ctx))
+		entry, err := c.fetchManifestEntry(context.WithoutCancel(ctx))
+		if err != nil {
+			return nil, err
+		}
+		if entry.cacheable {
+			c.manifest.store(entry, c.now().Add(c.latestTTL))
+		}
+
+		return entry, nil
 	})
 	var result singleflight.Result
 	select {
@@ -133,9 +146,6 @@ func (c *Client) Latest(ctx context.Context, conditional http.Header) (*http.Res
 	entry, ok := result.Val.(*manifestCacheEntry)
 	if !ok {
 		return nil, errors.New("openmeteogrid: manifest fetch returned an unexpected value")
-	}
-	if entry.cacheable {
-		c.manifest.store(entry, c.now().Add(c.latestTTL))
 	}
 
 	return respondFromManifest(entry, conditional), nil
