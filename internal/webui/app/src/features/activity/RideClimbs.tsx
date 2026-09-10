@@ -74,9 +74,12 @@ export interface RideClimbsProps {
 }
 
 export function RideClimbs({ climbs, activityId }: RideClimbsProps) {
-  const ridden = (climbs ?? []).filter((climb) =>
-    climb.attempts.some((attempt) => attempt.activityId === activityId),
-  );
+  // Ordinal from the climb's position in the route's own order — the same
+  // one ClimbsSidebar's list and its chart bracket carry — not from position
+  // after filtering, which would renumber a climb a partial lap skipped.
+  const ridden = (climbs ?? [])
+    .map((climb, index) => ({ climb, ordinal: index + 1 }))
+    .filter(({ climb }) => climb.attempts.some((attempt) => attempt.activityId === activityId));
   if (ridden.length === 0) {
     return null;
   }
@@ -88,11 +91,11 @@ export function RideClimbs({ climbs, activityId }: RideClimbsProps) {
     >
       <h2 className="font-medium text-sm">By the climb</h2>
       <div className="flex flex-col gap-2">
-        {ridden.map((climb, index) => (
+        {ridden.map(({ climb, ordinal }) => (
           <ClimbRow
             key={climb.startMetres}
             climb={climb}
-            ordinal={index + 1}
+            ordinal={ordinal}
             activityId={activityId}
           />
         ))}

@@ -134,6 +134,24 @@ describe("RideClimbs", () => {
     expect(screen.queryByText("Climb 2")).not.toBeInTheDocument();
   });
 
+  // The ordinal is the climb's position in the route's own order — the same
+  // one the route page's climb list carries — not its position after
+  // filtering, which would relabel a later climb as "Climb 1".
+  it("keeps a climb's route-order ordinal when an earlier climb was skipped", () => {
+    render(
+      <RideClimbs
+        climbs={[
+          climb({ startMetres: 0, attempts: [attempt({ activityId: "9" })] }),
+          climb({ startMetres: 5000, attempts: [attempt({ activityId: RIDE_ID })] }),
+        ]}
+        activityId={RIDE_ID}
+      />,
+    );
+
+    expect(screen.queryByText("Climb 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Climb 2")).toBeInTheDocument();
+  });
+
   it("renders nothing for a matched route with no sustained climb", () => {
     const { container } = render(<RideClimbs climbs={[]} activityId={RIDE_ID} />);
 
