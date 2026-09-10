@@ -120,6 +120,7 @@ export function WeatherOverlayPicker({
               rx="9.5"
               fill="none"
               stroke="var(--panel)"
+              vectorEffect="non-scaling-stroke"
             />
             <rect
               x="0.5"
@@ -131,6 +132,10 @@ export function WeatherOverlayPicker({
               fill="none"
               stroke="var(--accent)"
               strokeDasharray={reducedMotion ? undefined : "30 70"}
+              // Keeps the stroke at a true 1px however the viewBox ends up
+              // scaled to the button's rendered size, e.g. under a root
+              // font-size change — otherwise it drifts off the real border.
+              vectorEffect="non-scaling-stroke"
               className={reducedMotion ? "animate-pulse" : undefined}
             />
           </svg>
