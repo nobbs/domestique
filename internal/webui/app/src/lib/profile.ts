@@ -669,23 +669,47 @@ function measure(
   return total > 0 ? { distances, total, ranges: bandedRanges(coordinates, distances) } : null;
 }
 
+/** Index of the first distance in a non-decreasing array at or past `target`. */
+function lowerBound(distances: number[], target: number): number {
+  let low = 0;
+  let high = distances.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if ((distances[mid] ?? 0) < target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
+/** Index just past the last distance in a non-decreasing array at or before `target`. */
+function upperBound(distances: number[], target: number): number {
+  let low = 0;
+  let high = distances.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if ((distances[mid] ?? 0) <= target) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
 /**
  * How many samples a stretch earns on its own raw geometry, not a fixed count.
  *
- * `distances` is cumulative and so monotonically non-decreasing; scanning
- * stops the moment it passes endMetres rather than walking the rest of the
- * route.
+ * `distances` is cumulative and so monotonically non-decreasing, which is what
+ * lets both ends of the count be found by binary search rather than a scan of
+ * the whole route.
  */
 function densitySampleCount(distances: number[], startMetres: number, endMetres: number): number {
-  let count = 0;
-  for (const distance of distances) {
-    if (distance > endMetres) {
-      break;
-    }
-    if (distance >= startMetres) {
-      count++;
-    }
-  }
+  const count = upperBound(distances, endMetres) - lowerBound(distances, startMetres);
 
   return Math.max(MIN_SAMPLE_COUNT, count);
 }

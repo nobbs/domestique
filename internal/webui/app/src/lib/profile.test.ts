@@ -178,6 +178,22 @@ describe("buildProfile", () => {
       expect(buildProfile(route([100, 200, 300]), sampleCount)).toBeNull();
     }
   });
+
+  it("floors a sparse route's default sample count well under the old fixed 320", () => {
+    const profile = buildProfile(route([100, 150, 200, 250, 300, 350, 400]));
+
+    expect(profile?.samples.length).toBeGreaterThanOrEqual(40);
+    expect(profile?.samples.length).toBeLessThan(320);
+  });
+
+  it("scales a dense route's default sample count past 320 rather than capping it", () => {
+    const points: Position[] = [];
+    for (let index = 0; index < 500; index++) {
+      points.push([8, 49 + index * 0.0001, 100 + index * 0.5]);
+    }
+
+    expect(buildProfile(points)?.samples.length).toBeGreaterThan(320);
+  });
 });
 
 describe("buildActivityProfile", () => {
@@ -237,6 +253,22 @@ describe("buildActivityProfile", () => {
 
   it("returns null when fewer than two samples recorded one", () => {
     expect(buildActivityProfile(route([100, undefined, undefined]))).toBeNull();
+  });
+
+  it("floors a sparse ride's default sample count well under the old fixed 320", () => {
+    const profile = buildActivityProfile(route([100, 150, 200, 250, 300, 350, 400]));
+
+    expect(profile?.samples.length).toBeGreaterThanOrEqual(40);
+    expect(profile?.samples.length).toBeLessThan(320);
+  });
+
+  it("scales a dense ride's default sample count past 320 rather than capping it", () => {
+    const points: Position[] = [];
+    for (let index = 0; index < 500; index++) {
+      points.push([8, 49 + index * 0.0001, 100 + index * 0.5]);
+    }
+
+    expect(buildActivityProfile(points)?.samples.length).toBeGreaterThan(320);
   });
 });
 
