@@ -55,8 +55,6 @@ func run(database string, minSamples int, block time.Duration, folds, window, ch
 		return errors.New("-folds must be at least two")
 	case window < 1:
 		return errors.New("-window must be at least one ride")
-	case massFlag <= 0:
-		return errors.New("-mass must be a positive number of kilograms")
 	}
 
 	ctx := context.Background()

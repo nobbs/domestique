@@ -78,8 +78,8 @@ WHERE a.target_slot = ?1
     OR m.input_threshold_heart_rate <> ?4
     OR m.input_threshold_power <> ?5
     OR m.input_total_mass <> ?6
-    OR m.input_drag_area <> ?7
-    OR m.input_rolling_resistance <> ?8
+    OR (m.estimated_power_watts IS NOT NULL AND (m.input_drag_area <> ?7
+      OR m.input_rolling_resistance <> ?8))
     OR m.derivation_version <> ?9)
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
 `
@@ -98,10 +98,11 @@ type ListActivitiesAwaitingDerivationParams struct {
 
 // Rides whose stored samples could still yield something this derivation now
 // allows: those with no metrics row at all, those whose row was worked out
-// against different profile or bicycle values, and those whose row an
-// earlier derivation wrote and so cannot hold every figure this one
-// produces. A ride still awaiting its FIT has nothing to derive from and is
-// left for the download to bring in.
+// against different profile values, those holding an estimate worked out
+// against a different bicycle, and those whose row an earlier derivation
+// wrote and so cannot hold every figure this one produces. A ride still
+// awaiting its FIT has nothing to derive from and is left for the download
+// to bring in.
 func (q *Queries) ListActivitiesAwaitingDerivation(ctx context.Context, arg ListActivitiesAwaitingDerivationParams) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingDerivation,
 		arg.TargetSlot,

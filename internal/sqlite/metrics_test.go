@@ -1,12 +1,14 @@
 package sqlite
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,8 +37,9 @@ func derivedMetrics(inputs trainingload.Inputs, coefficients measure.Coefficient
 			PowerWatts: 196.25, HasPower: true,
 			MaxSpeedKmh: 47.3, HasSpeed: true,
 		},
-		EstimatedPedallingShare: 0.83,
-		Coefficients:            coefficients,
+		EstimatedPedallingShare:    0.83,
+		HasEstimatedPedallingShare: true,
+		Coefficients:               coefficients,
 	}
 }
 
@@ -108,6 +111,27 @@ func TestActivityMetricsKeepEachPartAbsentOnItsOwn(t *testing.T) {
 	assert.False(t, read[1].Averages.HasCadence, "nor a cadence sensor")
 	assert.False(t, read[1].Load.HasEstimatedPower, "nor an estimate")
 	assert.Zero(t, read[1].EstimatedPedallingShare, "no estimate, no share")
+}
+
+// A row written before migration 057 holds an estimate but no share: it must
+// come back as no share rather than a false zero.
+func TestActivityMetricsPreMigration057RowHasNoShare(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	require.NoError(t, store.queries.UpsertActivityMetrics(t.Context(), sqlcgen.UpsertActivityMetricsParams{
+		TargetSlot: "rider-a", WorkoutID: 1,
+		EstimatedPowerWatts:     sql.NullFloat64{Float64: 168.5, Valid: true},
+		EstimatedPedallingShare: sql.NullFloat64{Valid: false},
+		InputDragArea:           testCoefficients().DragArea,
+		InputRollingResistance:  testCoefficients().RollingResistance,
+	}), "UpsertActivityMetrics()")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	require.Contains(t, read, int64(1))
+	assert.True(t, read[1].Load.HasEstimatedPower)
+	assert.False(t, read[1].HasEstimatedPedallingShare, "no share was ever written")
 }
 
 // A profile edit that takes a parameter away takes its numbers with it: a
@@ -445,6 +469,24 @@ func TestActivitiesAwaitingDerivationNoticesABicycleChange(t *testing.T) {
 	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), slipperier)
 	require.NoError(t, err, "ActivitiesAwaitingDerivation() after a bicycle change")
 	assert.Equal(t, []int64{1}, owed)
+}
+
+// A metered ride holds no estimate, so a bicycle change has nothing in it to
+// go stale and must not re-list it.
+func TestActivitiesAwaitingDerivationIgnoresABicycleChangeForAMeteredRide(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	metered := derivedMetrics(testInputs(), testCoefficients())
+	metered.Load.HasEstimatedPower = false
+	metered.HasEstimatedPedallingShare = false
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, metered),
+		"StoreActivityMetrics()")
+
+	slipperier := testCoefficients()
+	slipperier.DragArea = 0.30
+	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), slipperier)
+	require.NoError(t, err, "ActivitiesAwaitingDerivation() after a bicycle change")
+	assert.Empty(t, owed, "a metered ride has no estimate to go stale")
 }
 
 func TestTargetOwnerIsEmptyForASlotThisDeploymentDoesNotHave(t *testing.T) {

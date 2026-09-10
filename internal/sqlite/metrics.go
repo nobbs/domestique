@@ -254,7 +254,7 @@ func (s *Store) StoreActivityMetrics(
 		IntensityFactor:         nullFloat(metrics.Power.IntensityFactor, metrics.HasPower),
 		PowerTss:                nullFloat(metrics.Power.TSS, metrics.HasPower),
 		EstimatedPowerWatts:     nullFloat(metrics.EstimatedPowerWatts, metrics.HasEstimatedPower),
-		EstimatedPedallingShare: nullFloat(stored.EstimatedPedallingShare, metrics.HasEstimatedPower),
+		EstimatedPedallingShare: nullFloat(stored.EstimatedPedallingShare, stored.HasEstimatedPedallingShare),
 		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
 		MaxHeartRateBpm:         nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
 		AverageCadenceRpm:       nullFloat(averages.CadenceRPM, averages.HasCadence),
@@ -334,7 +334,8 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				HasPower:        row.AveragePowerWatts.Valid,
 				HasSpeed:        row.MaxSpeedKmh.Valid,
 			},
-			EstimatedPedallingShare: row.EstimatedPedallingShare.Float64,
+			EstimatedPedallingShare:    row.EstimatedPedallingShare.Float64,
+			HasEstimatedPedallingShare: row.EstimatedPedallingShare.Valid,
 			Decoupling: activity.Decoupling{
 				Percent: row.DecouplingPercent.Float64,
 				Known:   row.DecouplingPercent.Valid,

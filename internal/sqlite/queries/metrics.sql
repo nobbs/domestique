@@ -72,10 +72,11 @@ ORDER BY workout_id;
 
 -- Rides whose stored samples could still yield something this derivation now
 -- allows: those with no metrics row at all, those whose row was worked out
--- against different profile or bicycle values, and those whose row an
--- earlier derivation wrote and so cannot hold every figure this one
--- produces. A ride still awaiting its FIT has nothing to derive from and is
--- left for the download to bring in.
+-- against different profile values, those holding an estimate worked out
+-- against a different bicycle, and those whose row an earlier derivation
+-- wrote and so cannot hold every figure this one produces. A ride still
+-- awaiting its FIT has nothing to derive from and is left for the download
+-- to bring in.
 -- name: ListActivitiesAwaitingDerivation :many
 SELECT a.workout_id
 FROM activities AS a
@@ -88,8 +89,8 @@ WHERE a.target_slot = sqlc.arg(target_slot)
     OR m.input_threshold_heart_rate <> sqlc.arg(threshold_heart_rate)
     OR m.input_threshold_power <> sqlc.arg(threshold_power)
     OR m.input_total_mass <> sqlc.arg(total_mass)
-    OR m.input_drag_area <> sqlc.arg(drag_area)
-    OR m.input_rolling_resistance <> sqlc.arg(rolling_resistance)
+    OR (m.estimated_power_watts IS NOT NULL AND (m.input_drag_area <> sqlc.arg(drag_area)
+      OR m.input_rolling_resistance <> sqlc.arg(rolling_resistance)))
     OR m.derivation_version <> sqlc.arg(derivation_version))
 ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 

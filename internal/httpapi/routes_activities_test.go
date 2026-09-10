@@ -87,7 +87,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 				PowerWatts: 196.25, HasPower: true,
 				MaxSpeedKmh: 54.2, HasSpeed: true,
 			},
-			EstimatedPedallingShare: 0.87,
+			EstimatedPedallingShare:    0.87,
+			HasEstimatedPedallingShare: true,
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
@@ -143,6 +144,27 @@ func TestGetActivitiesCarriesNoPedallingShareWithoutAnEstimate(t *testing.T) {
 	assert.Nil(t, derived.Metrics.EstimatedPowerWatts)
 	assert.Nil(t, derived.Metrics.EstimatedPedallingShare)
 	assert.Nil(t, derived.Metrics.MaxSpeedKmh, "no speed series behind this ride")
+}
+
+// A row written before migration 057 holds an estimate but no share, and must
+// be served without the field rather than a false zero.
+func TestGetActivitiesCarriesNoPedallingShareForAPreMigrationRow(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedPowerWatts)
+	assert.Nil(t, derived.Metrics.EstimatedPedallingShare, "no share was ever written for this row")
 }
 
 // The listing card gets one line about the ride: the range the temperature

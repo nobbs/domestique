@@ -81,15 +81,17 @@ func meanAndPeak(samples []trainingload.Sample, skipZeroReadings bool) (mean, pe
 
 // RideMetrics is everything one derivation writes about a ride: the load
 // figures the rider's profile shapes and the sensor averages it does not.
-// EstimatedPedallingShare and Coefficients are present exactly when
-// Load.HasEstimatedPower is.
+// EstimatedPedallingShare is valid only when HasEstimatedPedallingShare is —
+// a row written before migration 057 holds an estimate but no share.
+// Coefficients is present exactly when Load.HasEstimatedPower is.
 type RideMetrics struct {
-	Load                    trainingload.Metrics
-	Averages                RideAverages
-	Decoupling              Decoupling
-	HeatDrift               HeatDrift
-	PowerBests              rider.PowerCurve
-	EstimatedPedallingShare float64
+	Load                       trainingload.Metrics
+	Averages                   RideAverages
+	Decoupling                 Decoupling
+	HeatDrift                  HeatDrift
+	PowerBests                 rider.PowerCurve
+	EstimatedPedallingShare    float64
+	HasEstimatedPedallingShare bool
 	// Coefficients is the bicycle the estimate was worked out at, stored so a
 	// row worked out against a rider's earlier bicycle is recognisably stale.
 	Coefficients measure.Coefficients

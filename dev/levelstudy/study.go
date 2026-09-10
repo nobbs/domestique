@@ -13,11 +13,13 @@ import (
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
-// uprightPrior is the bicycle the fit starts from: a drop-bar gravel bike
+// statedBicycle is the bicycle the fit starts from: a drop-bar gravel bike
 // ridden on the hoods, on 47 mm WTB Byway tyres, whose Crr is the drum
 // figure Bicycle Rolling Resistance measured. Its Crr is what the fit holds
 // fixed; its CdA is only the baseline candidate.
-var uprightPrior = measure.Coefficients{DragArea: 0.40, RollingResistance: 0.008} //nolint:gochecknoglobals // dev tool
+func statedBicycle() measure.Coefficients {
+	return measure.Coefficients{DragArea: 0.40, RollingResistance: 0.008}
+}
 
 // zwiftRollingResistance is what Zwift's own simulation rolls a road bike at,
 // so a drag area fitted on its rides is read against its physics, not ours.
@@ -128,7 +130,7 @@ func pedalling(sample *measure.Sample) bool {
 func unmeteredBlocksOf(
 	track []measure.Sample, heartRate []trainingload.Sample, massKG float64, block time.Duration,
 ) (whole Block, blocks []Block, blockHeartRate []float64) {
-	estimates, ok := measure.EstimateSeries(track, massKG, uprightPrior)
+	estimates, ok := measure.EstimateSeries(track, massKG, statedBicycle())
 	if !ok || len(track) == 0 {
 		return Block{}, nil, nil
 	}
@@ -273,9 +275,9 @@ func candidates() []candidate {
 
 	return []candidate{
 		{name: "default", fit: fixed(measure.DefaultCoefficients())},
-		{name: "prior", fit: fixed(uprightPrior)},
+		{name: "prior", fit: fixed(statedBicycle())},
 		{name: "cda", fit: func(rides []Ride) (measure.Coefficients, bool) {
-			coefficients, _, ok := FitDragArea(uprightPrior.RollingResistance, rides)
+			coefficients, _, ok := FitDragArea(statedBicycle().RollingResistance, rides)
 			return coefficients, ok
 		}},
 	}
@@ -400,7 +402,7 @@ func (r *report) String() string {
 			drag = append(drag, coefficients.DragArea)
 		}
 		fmt.Fprintf(&b, "\ndrag area at Crr %.3f, fold to fold: CdA %.3f ±%.3f\n",
-			uprightPrior.RollingResistance, mean(drag), spread(drag))
+			statedBicycle().RollingResistance, mean(drag), spread(drag))
 		fmt.Fprintf(&b, "fitted over the whole corpus: CdA %.3f, Crr %.3f\n", r.shipped.DragArea, r.shipped.RollingResistance)
 	}
 
@@ -422,9 +424,13 @@ func (r *report) String() string {
 					windy = append(windy, errors[index])
 				}
 			}
-			fmt.Fprintf(&b, "\nwind, a diagnostic only: %d rides with a forecast, error against wind speed r = %.2f, "+
-				"mean error %.1f %% on the calmer half (≤ %.0f km/h) and %.1f %% on the windier half\n",
-				len(wind), correlation(errors, wind), mean(calm), median, mean(windy))
+			fmt.Fprintf(&b, "\nwind, a diagnostic only: %d rides with a forecast, error against wind speed r = %.2f",
+				len(wind), correlation(errors, wind))
+			if len(calm) > 0 && len(windy) > 0 {
+				fmt.Fprintf(&b, ", mean error %.1f %% on the calmer half (<= %.0f km/h) and %.1f %% on the windier half",
+					mean(calm), median, mean(windy))
+			}
+			fmt.Fprintln(&b)
 		}
 	}
 
@@ -433,12 +439,18 @@ func (r *report) String() string {
 		fmt.Fprintf(&b, "  %-14s %6s %10s %10s %10s %10s %10s %10s\n",
 			"coefficients", "rides", "MAE %", "bias %", "q1 %", "q3 %", "RMS W", "bias W")
 		for _, check := range r.checks {
+			if len(check.rides) == 0 {
+				continue
+			}
 			fmt.Fprintf(&b, "  %-14s ", check.name)
 			writeRideTable(&b, check.rides)
 		}
 		fmt.Fprintf(&b, "  %-14s %10s %10s %10s %10s %10s %10s %10s\n", "",
 			"blk RMS W", "blk bias W", "blocks", "sec r", "sec RMS W", "30s r", "30s RMS W")
 		for _, check := range r.checks {
+			if len(check.rides) == 0 {
+				continue
+			}
 			fmt.Fprintf(&b, "  %-14s %10.1f %10.1f %10d %10.2f %10.1f %10.2f %10.1f\n", check.name,
 				check.blocks.RMSWatts, check.blocks.BiasWatts, check.blocks.Blocks,
 				check.secondCorrelation, check.secondRMS, check.smoothCorrelation, check.smoothRMS)
@@ -507,7 +519,7 @@ func meteredRideOf(
 	for _, reading := range ride.power {
 		wattsAt[reading.At.Unix()] = reading.Value
 	}
-	estimates, ok := measure.EstimateSeries(ride.track, ride.massKG, uprightPrior)
+	estimates, ok := measure.EstimateSeries(ride.track, ride.massKG, statedBicycle())
 	if !ok {
 		return Ride{}, Ride{}, nil, nil
 	}
@@ -734,7 +746,8 @@ func study(
 	for index := range unmetered {
 		whole = append(whole, unmetered[index].whole)
 	}
-	if shipped, _, shipOK := FitDragArea(uprightPrior.RollingResistance, whole); shipOK {
+	shipped, _, shipOK := FitDragArea(statedBicycle().RollingResistance, whole)
+	if shipOK {
 		result.shipped = shipped
 	}
 
@@ -759,8 +772,11 @@ func study(
 		result.checkedRides = len(wholes)
 		if len(wholes) > 0 {
 			zwiftFit, _, zwiftOK := FitDragArea(zwiftRollingResistance, wholes)
+			if shipOK {
+				result.checks = append(result.checks,
+					checkAgainstMeter("learned", result.shipped, wholes, blocks, indices, measured))
+			}
 			result.checks = append(result.checks,
-				checkAgainstMeter("learned", result.shipped, wholes, blocks, indices, measured),
 				checkAgainstMeter("default", measure.DefaultCoefficients(), wholes, blocks, indices, measured))
 			if zwiftOK {
 				result.checks = append(result.checks, checkAgainstMeter(
@@ -794,6 +810,9 @@ func massForTarget(
 		if inputs := trainingload.InputsOf(&profile); inputs.TotalMassKG > 0 {
 			mass = inputs.TotalMassKG
 		}
+	}
+	if mass <= 0 {
+		return 0, fmt.Errorf("target %s: neither a rider profile nor -mass gives a positive mass", targetID)
 	}
 	cache[targetID] = mass
 

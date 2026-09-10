@@ -59,46 +59,6 @@ func targetedAt(t *testing.T, ride Ride, coefficients measure.Coefficients) Ride
 	return ride
 }
 
-func TestFitBridgeRecoversTheLineItWasGiven(t *testing.T) {
-	t.Parallel()
-	blocks := make([]MeasuredBlock, 0, 20)
-	for beat := 100; beat < 160; beat += 3 {
-		blocks = append(blocks, MeasuredBlock{
-			HeartRateBPM:  float64(beat),
-			WattsMeasured: 1.5*float64(beat) - 40,
-		})
-	}
-
-	bridge, ok := FitBridge(blocks)
-	require.True(t, ok)
-
-	assert.InDelta(t, 1.5, bridge.WattsPerBPM, 1e-9)
-	assert.InDelta(t, -40, bridge.InterceptWatts, 1e-9)
-	assert.InDelta(t, 0, bridge.ResidualRMSWatts, 1e-9)
-}
-
-func TestFitBridgeRefusesTooFewBlocksAndASingleHeartRate(t *testing.T) {
-	t.Parallel()
-	_, ok := FitBridge([]MeasuredBlock{{HeartRateBPM: 120, WattsMeasured: 150}})
-	assert.False(t, ok)
-
-	flat := []MeasuredBlock{
-		{HeartRateBPM: 120, WattsMeasured: 150},
-		{HeartRateBPM: 120, WattsMeasured: 160},
-		{HeartRateBPM: 120, WattsMeasured: 170},
-	}
-	_, ok = FitBridge(flat)
-	assert.False(t, ok)
-}
-
-func TestBridgeWattsAtNeverReadsBelowNought(t *testing.T) {
-	t.Parallel()
-	bridge := Bridge{WattsPerBPM: 1.5, InterceptWatts: -40}
-
-	assert.InDelta(t, 140.0, bridge.WattsAt(120), 1e-9)
-	assert.Zero(t, bridge.WattsAt(10))
-}
-
 // The recovery test the handover asks of any fitter (§6): a target generated
 // from a known answer must lead back to it.
 func TestFitDragAreaRecoversTheDragAreaItsTargetsWereBuiltAt(t *testing.T) {

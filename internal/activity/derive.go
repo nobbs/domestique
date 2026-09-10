@@ -246,13 +246,14 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		records, estimates, watts, share, estimated := samples.EstimatePower(inputs.TotalMassKG, coefficients)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = watts, estimated
 		metrics := RideMetrics{
-			Load:                    load,
-			Averages:                samples.Averages(),
-			Decoupling:              samples.Decoupling(heartRate),
-			HeatDrift:               samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts),
-			PowerBests:              samples.PowerBests(),
-			EstimatedPedallingShare: share,
-			Coefficients:            coefficients,
+			Load:                       load,
+			Averages:                   samples.Averages(),
+			Decoupling:                 samples.Decoupling(heartRate),
+			HeatDrift:                  samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts),
+			PowerBests:                 samples.PowerBests(),
+			EstimatedPedallingShare:    share,
+			HasEstimatedPedallingShare: estimated,
+			Coefficients:               coefficients,
 		}
 		// The series first: a metrics row is what says a ride has been derived,
 		// so it must not appear before the samples it describes are in place.
