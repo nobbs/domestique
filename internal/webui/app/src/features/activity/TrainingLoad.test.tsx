@@ -169,6 +169,22 @@ describe("TrainingLoad", () => {
     ).toBeInTheDocument();
   });
 
+  // A raw bias just under zero must not surface as the confusing "-0 W":
+  // toFixed prepends a sign from the unrounded value even when the rounded
+  // magnitude is nought.
+  it('rounds a near-zero clamp bias to a plain zero rather than "-0 W"', () => {
+    show({
+      estimatedPowerWatts: 187.4,
+      estimateQuality: {
+        autocorrelation: 0.923,
+        meanAbsDeltaWattsPerSecond: 5,
+        clipBiasWatts: -0.3,
+      },
+    });
+
+    expect(screen.getByText("steady, low jitter, 0 W clamp bias")).toBeInTheDocument();
+  });
+
   it("leaves out the quality diagnostics when the ride has no estimate", () => {
     show({ averagePowerWatts: 196.2 });
 

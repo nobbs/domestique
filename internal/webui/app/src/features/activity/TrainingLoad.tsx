@@ -289,8 +289,11 @@ function foldedCaption(diagnostics: Scale[]): string {
       : (jitter?.value ?? 0) < 20
         ? "moderate jitter"
         : "high jitter";
-  const biasValue = bias?.value ?? 0;
-  const biasWord = `${biasValue >= 0 ? "+" : ""}${biasValue.toFixed(0)} W clamp bias`;
+  // Rounded first, then signed from the rounded value: toFixed prepends "-"
+  // from the raw sign even when the rounded magnitude is zero, "-0.3".toFixed(0)
+  // reading as "-0 W clamp bias" rather than the "0 W" the rounding meant.
+  const roundedBias = Math.round(bias?.value ?? 0);
+  const biasWord = `${roundedBias > 0 ? "+" : ""}${roundedBias} W clamp bias`;
 
   return `${steadyWord}, ${jitterWord}, ${biasWord}`;
 }
