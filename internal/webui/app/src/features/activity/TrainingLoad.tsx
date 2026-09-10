@@ -6,10 +6,15 @@
  * different questions and neither converts to the other — and each is named,
  * so a number is never a bare figure the reader has to guess the meaning of.
  * Anything the ride's sensors or the rider's profile did not allow is left out
- * rather than shown as a zero.
+ * rather than shown as a zero. The figures group under small headings —
+ * Sensors, Power, Load, Physiology — so a reader can skim past what a ride's
+ * shape does not carry rather than meet an eighteen-tile grid every time.
  */
 
+import type { ReactNode } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
+import { Badge } from "../../components/ui/badge";
+import { Separator } from "../../components/ui/separator";
 import { formatDuration } from "../../lib/format";
 
 /** The five zones, easiest first, as a rider reading a training app knows them. */
@@ -139,61 +144,101 @@ function averageSpeedKmh(ride: Activity, metrics: ActivityMetrics | undefined): 
   return (ride.distanceMetres / ride.movingSeconds) * 3.6;
 }
 
-function figuresFor(ride: Activity, metrics: ActivityMetrics | undefined): Scale[] {
-  return [
+interface Groups {
+  sensors: Scale[];
+  power: Scale | undefined;
+  isEstimate: boolean;
+  diagnostics: Scale[];
+  devicePower: Scale[];
+  normalizedPower: Scale | undefined;
+  load: Scale[];
+  physiology: Scale[];
+}
+
+function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Groups {
+  const sensors: Scale[] = [
     { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride, metrics), decimals: 1 },
     { label: "Max speed", scale: "km/h", value: metrics?.maxSpeedKmh, decimals: 1 },
     { label: "Heart rate", scale: "bpm average", value: metrics?.averageHeartRateBpm },
     { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
     { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
     { label: "Max cadence", scale: "rpm", value: metrics?.maxCadenceRpm },
-    { label: "Power", scale: "watts average", value: metrics?.averagePowerWatts },
+  ].filter((figure) => figure.value !== undefined);
+
+  // Never beside a measured average: the service serves one or the other, and
+  // the label carries the estimate's provenance so it cannot read as a reading.
+  const isEstimate =
+    metrics?.averagePowerWatts === undefined && metrics?.estimatedPowerWatts !== undefined;
+  const power: Scale | undefined =
+    metrics?.averagePowerWatts !== undefined
+      ? { label: "Power", scale: "watts average", value: metrics.averagePowerWatts }
+      : metrics?.estimatedPowerWatts !== undefined
+        ? {
+            label: "Estimated power",
+            scale: "watts, from the track",
+            value: metrics.estimatedPowerWatts,
+          }
+        : undefined;
+
+  // estimateQuality's three fields arrive together or not at all, and only
+  // for an estimate — fixed positional order so the folded caption below can
+  // read it positionally: steadiness, jitter, clamp bias.
+  const diagnostics: Scale[] =
+    isEstimate && metrics?.estimateQuality
+      ? [
+          {
+            label: "Estimate steadiness",
+            scale: "lag-1 correlation",
+            value: metrics.estimateQuality.autocorrelation,
+            decimals: 2,
+          },
+          {
+            label: "Estimate jitter",
+            scale: "watts change per second",
+            value: metrics.estimateQuality.meanAbsDeltaWattsPerSecond,
+            decimals: 1,
+          },
+          {
+            label: "Clamp bias",
+            scale: "watts the zero clamp added",
+            value: metrics.estimateQuality.clipBiasWatts,
+            decimals: 1,
+          },
+        ]
+      : [];
+
+  const devicePower: Scale[] = [
     { label: "Max power", scale: "watts", value: metrics?.maxPowerWatts },
     {
       label: "Threshold power",
       scale: "watts set on the device",
       value: metrics?.thresholdPowerWatts,
     },
-    // Never beside a measured average: the service serves one or the other, and
-    // the label carries the estimate's provenance so it cannot read as a reading.
-    {
-      label: "Estimated power",
-      scale: "watts, from the track",
-      value: metrics?.estimatedPowerWatts,
-    },
-    {
-      label: "Estimate steadiness",
-      scale: "lag-1 correlation",
-      value: metrics?.estimateQuality?.autocorrelation,
-      decimals: 2,
-    },
-    {
-      label: "Estimate jitter",
-      scale: "watts change per second",
-      value: metrics?.estimateQuality?.meanAbsDeltaWattsPerSecond,
-      decimals: 1,
-    },
-    {
-      label: "Clamp bias",
-      scale: "watts the zero clamp added",
-      value: metrics?.estimateQuality?.clipBiasWatts,
-      decimals: 1,
-    },
-    { label: "Normalized power", scale: "watts", value: metrics?.normalizedPowerWatts },
+  ].filter((figure) => figure.value !== undefined);
+
+  const normalizedPower: Scale | undefined =
+    metrics?.normalizedPowerWatts !== undefined
+      ? { label: "Normalized power", scale: "watts", value: metrics.normalizedPowerWatts }
+      : undefined;
+
+  const load: Scale[] = [
     { label: "Intensity", scale: "of threshold", value: metrics?.intensityFactor, decimals: 2 },
     { label: "TSS", scale: "power", value: metrics?.powerTss },
     { label: "hrTSS", scale: "heart rate", value: metrics?.heartRateTss },
     { label: "TRIMP", scale: "Banister", value: metrics?.trimp },
-    // Positive is the usual direction, and the scale says so: the reader is
-    // told what the number measures rather than sold what it means.
+  ].filter((figure) => figure.value !== undefined);
+
+  // Positive is the usual direction, and the scale says so: the reader is
+  // told what the number measures rather than sold what it means. The pair is
+  // one figure and its condition: the beats, at the degrees they were held
+  // at. One ride is a point, not a trend.
+  const physiology: Scale[] = [
     {
       label: "Decoupling",
       scale: "% of ratio lost over the second half",
       value: metrics?.decouplingPercent,
       decimals: 1,
     },
-    // The pair is one figure and its condition: the beats, at the degrees they
-    // were held at. One ride is a point, not a trend.
     {
       label: "Heat drift",
       scale:
@@ -203,6 +248,154 @@ function figuresFor(ride: Activity, metrics: ActivityMetrics | undefined): Scale
       value: metrics?.heatDrift?.heartRateBpm,
     },
   ].filter((figure) => figure.value !== undefined);
+
+  return {
+    sensors,
+    power,
+    isEstimate,
+    diagnostics,
+    devicePower,
+    normalizedPower,
+    load,
+    physiology,
+  };
+}
+
+const GRID = "grid grid-cols-3 gap-x-4 gap-y-3";
+
+function figureGrid(figures: Scale[]): ReactNode {
+  return (
+    <div className={GRID}>
+      {figures.map((figure) => (
+        <Figure key={figure.label} {...figure} />
+      ))}
+    </div>
+  );
+}
+
+/** Fixed positional order from `buildGroups`: steadiness, jitter, clamp bias. */
+function foldedCaption(diagnostics: Scale[]): string {
+  const [steadiness, jitter, bias] = diagnostics;
+  const steadyWord =
+    (steadiness?.value ?? 0) >= 0.85
+      ? "steady"
+      : (steadiness?.value ?? 0) >= 0.6
+        ? "some drift"
+        : "noisy";
+  const jitterWord =
+    (jitter?.value ?? 0) < 10
+      ? "low jitter"
+      : (jitter?.value ?? 0) < 20
+        ? "moderate jitter"
+        : "high jitter";
+  const biasValue = bias?.value ?? 0;
+  const biasWord = `${biasValue >= 0 ? "+" : ""}${biasValue.toFixed(0)} W clamp bias`;
+
+  return `${steadyWord}, ${jitterWord}, ${biasWord}`;
+}
+
+function estimateTier(diagnostics: Scale[]): "steady" | "rough" {
+  const [steadiness, jitter, bias] = diagnostics;
+  const good =
+    (steadiness?.value ?? 0) >= 0.85 && (jitter?.value ?? 0) < 12 && Math.abs(bias?.value ?? 0) < 5;
+
+  return good ? "steady" : "rough";
+}
+
+/**
+ * The estimate's power tile, with its three diagnostics folded into a caption
+ * and a quality badge rather than three tiles beside it. The caption's words
+ * are decorative; the exact values stay reachable on touch and to assistive
+ * technology as hidden text, not only through the hover title.
+ */
+function EstimatedPowerTile({ power, diagnostics }: { power: Scale; diagnostics: Scale[] }) {
+  const hoverTitle = diagnostics
+    .map(
+      (diagnostic) =>
+        `${diagnostic.label} ${diagnostic.value?.toFixed(diagnostic.decimals ?? 0)} ${diagnostic.scale}`,
+    )
+    .join(" · ");
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[var(--ink-2)] text-xs">{power.label}</span>
+      <div className="flex items-baseline gap-1.5">
+        <span className="font-semibold text-lg tabular-nums">
+          {power.value?.toFixed(power.decimals ?? 0)}
+        </span>
+        <Badge
+          variant={estimateTier(diagnostics) === "steady" ? "secondary" : "outline"}
+          className="h-4 px-1.5 text-[9px]"
+        >
+          {estimateTier(diagnostics)}
+        </Badge>
+      </div>
+      <span className="text-[var(--ink-2)] text-xs">{power.scale}</span>
+      <span className="text-[10px] text-[var(--ink-2)] opacity-80" title={hoverTitle}>
+        <span aria-hidden="true">{foldedCaption(diagnostics)}</span>
+        <span className="sr-only">{hoverTitle}</span>
+      </span>
+    </div>
+  );
+}
+
+interface Group {
+  title: string;
+  content: ReactNode;
+}
+
+function groupedSections(groups: Groups): Group[] {
+  const powerContent: ReactNode[] = [];
+  if (groups.power) {
+    if (groups.isEstimate && groups.diagnostics.length === 3) {
+      powerContent.push(
+        <EstimatedPowerTile key="power" power={groups.power} diagnostics={groups.diagnostics} />,
+      );
+    } else {
+      powerContent.push(<Figure key={groups.power.label} {...groups.power} />);
+      for (const diagnostic of groups.diagnostics) {
+        powerContent.push(<Figure key={diagnostic.label} {...diagnostic} />);
+      }
+    }
+  }
+  for (const figure of groups.devicePower) {
+    powerContent.push(<Figure key={figure.label} {...figure} />);
+  }
+  if (groups.normalizedPower) {
+    powerContent.push(<Figure key="normalized-power" {...groups.normalizedPower} />);
+  }
+
+  const sections: Group[] = [];
+  if (groups.sensors.length > 0) {
+    sections.push({ title: "Sensors", content: figureGrid(groups.sensors) });
+  }
+  if (powerContent.length > 0) {
+    sections.push({ title: "Power", content: <div className={GRID}>{powerContent}</div> });
+  }
+  if (groups.load.length > 0) {
+    sections.push({ title: "Load", content: figureGrid(groups.load) });
+  }
+  if (groups.physiology.length > 0) {
+    sections.push({ title: "Physiology", content: figureGrid(groups.physiology) });
+  }
+
+  return sections;
+}
+
+function GroupList({ groups }: { groups: Group[] }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {groups.map((group, index) => (
+        <div key={group.title} className="flex flex-col gap-2">
+          {index > 0 ? <Separator /> : null}
+          <h3 className="text-[10px] text-[var(--ink-2)] font-semibold uppercase tracking-[0.08em]">
+            {group.title}
+          </h3>
+          {group.content}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
@@ -211,8 +404,8 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
   }
   const metrics = ride.metrics;
   const zones = metrics?.zoneSeconds?.some((seconds) => seconds > 0) ? metrics.zoneSeconds : null;
-  const figures = figuresFor(ride, metrics);
-  if (!zones && figures.length === 0) {
+  const sections = groupedSections(buildGroups(ride, metrics));
+  if (!zones && sections.length === 0) {
     return null;
   }
 
@@ -230,13 +423,7 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
             deviceZoneSeconds={metrics?.deviceZoneSeconds}
           />
         ) : null}
-        {figures.length > 0 ? (
-          <div className="grid grid-cols-3 gap-x-4 gap-y-3">
-            {figures.map((figure) => (
-              <Figure key={figure.label} {...figure} />
-            ))}
-          </div>
-        ) : null}
+        {sections.length > 0 ? <GroupList groups={sections} /> : null}
       </div>
     </section>
   );

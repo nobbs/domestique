@@ -56,8 +56,36 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("178")).toBeInTheDocument();
     expect(screen.getByText("Cadence")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
-    expect(screen.getByText("Power")).toBeInTheDocument();
+    // "Power" also names the group heading, so the figure is found by its tag.
+    expect(screen.getByText("Power", { selector: "span" })).toBeInTheDocument();
     expect(screen.getByText("196")).toBeInTheDocument();
+  });
+
+  it("groups a power-meter ride's figures under Sensors, Power, Load and Physiology", () => {
+    show({
+      averageHeartRateBpm: 142.4,
+      averageCadenceRpm: 81.6,
+      averagePowerWatts: 196.2,
+      normalizedPowerWatts: 214,
+      trimp: 42.4,
+      decouplingPercent: 4.2,
+    });
+
+    expect(screen.getByRole("heading", { name: "Sensors" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Power" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Load" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Physiology" })).toBeInTheDocument();
+    expect(screen.getByText("Power", { selector: "span" })).toBeInTheDocument();
+    expect(screen.getByText("Normalized power")).toBeInTheDocument();
+  });
+
+  it("renders only the Sensors heading for a bare ride with speed alone", () => {
+    show(undefined);
+
+    expect(screen.getByRole("heading", { name: "Sensors" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Power" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Load" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Physiology" })).not.toBeInTheDocument();
   });
 
   it("shows the ride's maximum speed beside its average", () => {
@@ -91,10 +119,13 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("Estimated power")).toBeInTheDocument();
     expect(screen.getByText("187")).toBeInTheDocument();
     expect(screen.getByText("watts, from the track")).toBeInTheDocument();
-    expect(screen.queryByText("Power")).not.toBeInTheDocument();
+    expect(screen.queryByText("Power", { selector: "span" })).not.toBeInTheDocument();
   });
 
-  it("shows the estimate's quality diagnostics beside it", () => {
+  // A strap-only ride: the tile's caption and badge are the reader's summary,
+  // and the exact values stay reachable on touch and to assistive technology
+  // as hidden text beside them, not only through the caption's hover title.
+  it("folds the estimate's quality diagnostics into its power tile", () => {
     show({
       estimatedPowerWatts: 187.4,
       estimateQuality: {
@@ -104,15 +135,13 @@ describe("TrainingLoad", () => {
       },
     });
 
-    expect(screen.getByText("Estimate steadiness")).toBeInTheDocument();
-    expect(screen.getByText("0.92")).toBeInTheDocument();
-    expect(screen.getByText("lag-1 correlation")).toBeInTheDocument();
-    expect(screen.getByText("Estimate jitter")).toBeInTheDocument();
-    expect(screen.getByText("12.3")).toBeInTheDocument();
-    expect(screen.getByText("watts change per second")).toBeInTheDocument();
-    expect(screen.getByText("Clamp bias")).toBeInTheDocument();
-    expect(screen.getByText("3.5")).toBeInTheDocument();
-    expect(screen.getByText("watts the zero clamp added")).toBeInTheDocument();
+    expect(screen.getByText("steady, moderate jitter, +3 W clamp bias")).toBeInTheDocument();
+    expect(screen.getByText("rough")).toBeInTheDocument();
+    const exact = screen.getByText(
+      "Estimate steadiness 0.92 lag-1 correlation · Estimate jitter 12.3 watts change per second · Clamp bias 3.5 watts the zero clamp added",
+    );
+    expect(exact).toHaveClass("sr-only");
+    expect(screen.queryByText("Estimate steadiness", { selector: "span" })).not.toBeInTheDocument();
   });
 
   it("leaves out the quality diagnostics when the ride has no estimate", () => {
