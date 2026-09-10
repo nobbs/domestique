@@ -1,13 +1,13 @@
-// Command levelstudy answers #623: how far a drag area fitted to the rider
-// brings the estimated-power model's level to what their own heart rate says,
-// judged whole ride by whole ride on rides the fit never saw, and how the
-// model then sits against a real meter on the trainer rides that had one.
+// Command levelstudy measures how far a drag area fitted to the rider brings
+// the estimated-power model's level to what their own heart rate says, judged
+// whole ride by whole ride on rides the fit never saw, and how the model then
+// sits against a real meter on the trainer rides that had one.
 //
 // The rider's own trainer rides carry a measured power and a heart rate; their
 // road rides carry a track and a heart rate. Heart rate is the only quantity
-// both record honestly, so it bridges them (see internal/powerfit), with the
-// bridge's level read from the metered rides before each road ride so a
-// winter's fitness is not read as a summer's.
+// both record honestly, so it bridges them, with the bridge's level read from
+// the metered rides before each road ride so a winter's fitness is not read
+// as a summer's.
 //
 // Development tooling, not part of the shipped binary and never run in quick
 // or check: it needs the operator's own snapshot of real rides. Its report is

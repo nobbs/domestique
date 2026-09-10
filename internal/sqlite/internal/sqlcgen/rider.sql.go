@@ -36,7 +36,8 @@ func (q *Queries) DeleteRiderCredentials(ctx context.Context, subject string) er
 
 const getRiderProfile = `-- name: GetRiderProfile :one
 SELECT max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
-  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg
+  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg,
+  drag_area_m2, rolling_resistance
 FROM rider_profiles
 WHERE subject = ?
 `
@@ -48,6 +49,8 @@ type GetRiderProfileRow struct {
 	FunctionalThresholdPowerWatts sql.NullFloat64
 	RiderMassKg                   sql.NullFloat64
 	BikeMassKg                    sql.NullFloat64
+	DragAreaM2                    sql.NullFloat64
+	RollingResistance             sql.NullFloat64
 }
 
 func (q *Queries) GetRiderProfile(ctx context.Context, subject string) (GetRiderProfileRow, error) {
@@ -60,6 +63,8 @@ func (q *Queries) GetRiderProfile(ctx context.Context, subject string) (GetRider
 		&i.FunctionalThresholdPowerWatts,
 		&i.RiderMassKg,
 		&i.BikeMassKg,
+		&i.DragAreaM2,
+		&i.RollingResistance,
 	)
 	return i, err
 }
@@ -252,8 +257,9 @@ func (q *Queries) UpsertRiderCredential(ctx context.Context, arg UpsertRiderCred
 const upsertRiderProfile = `-- name: UpsertRiderProfile :exec
 INSERT INTO rider_profiles (
   subject, max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
-  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg, updated_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg,
+  drag_area_m2, rolling_resistance, updated_at_unix
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(subject) DO UPDATE SET
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   resting_heart_rate_bpm = excluded.resting_heart_rate_bpm,
@@ -261,6 +267,8 @@ ON CONFLICT(subject) DO UPDATE SET
   functional_threshold_power_watts = excluded.functional_threshold_power_watts,
   rider_mass_kg = excluded.rider_mass_kg,
   bike_mass_kg = excluded.bike_mass_kg,
+  drag_area_m2 = excluded.drag_area_m2,
+  rolling_resistance = excluded.rolling_resistance,
   updated_at_unix = excluded.updated_at_unix
 `
 
@@ -272,6 +280,8 @@ type UpsertRiderProfileParams struct {
 	FunctionalThresholdPowerWatts sql.NullFloat64
 	RiderMassKg                   sql.NullFloat64
 	BikeMassKg                    sql.NullFloat64
+	DragAreaM2                    sql.NullFloat64
+	RollingResistance             sql.NullFloat64
 	UpdatedAtUnix                 int64
 }
 
@@ -284,6 +294,8 @@ func (q *Queries) UpsertRiderProfile(ctx context.Context, arg UpsertRiderProfile
 		arg.FunctionalThresholdPowerWatts,
 		arg.RiderMassKg,
 		arg.BikeMassKg,
+		arg.DragAreaM2,
+		arg.RollingResistance,
 		arg.UpdatedAtUnix,
 	)
 	return err

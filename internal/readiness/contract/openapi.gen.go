@@ -275,9 +275,10 @@ type ActivityMetrics struct {
 	NormalizedPowerWatts *float64 `json:"normalizedPowerWatts,omitempty"`
 	IntensityFactor      *float64 `json:"intensityFactor,omitempty"`
 	PowerTss             *float64 `json:"powerTss,omitempty"`
-	// EstimatedPowerWatts The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass.
-	EstimatedPowerWatts *float64         `json:"estimatedPowerWatts,omitempty"`
-	EstimateQuality     *EstimateQuality `json:"estimateQuality,omitempty"`
+	// EstimatedPowerWatts The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track at the rider's own bicycle numbers, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass.
+	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
+	// EstimatedPedallingShare The share of the ride's samples the rider was pedalling through, which the estimate is averaged over. Present exactly when estimatedPowerWatts is.
+	EstimatedPedallingShare *float64 `json:"estimatedPedallingShare,omitempty"`
 	// AverageSpeedKmh The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries.
 	AverageSpeedKmh *float64 `json:"averageSpeedKmh,omitempty"`
 	// AverageHeartRateBpm The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap.
@@ -317,16 +318,6 @@ type HeatDrift struct {
 	TemperatureCelsius float64 `json:"temperatureCelsius"`
 	// Samples How many samples the pair was read from.
 	Samples int `json:"samples"`
-}
-
-// EstimateQuality What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present beside estimatedPowerWatts once the ride has been derived since these existed; a ride derived before then omits it until it is derived again. See docs/specs/measurement.md §Estimated power.
-type EstimateQuality struct {
-	// Autocorrelation The lag-1 Pearson correlation of the estimated watts with themselves shifted by one sample.
-	Autocorrelation float64 `json:"autocorrelation"`
-	// MeanAbsDeltaWattsPerSecond The mean absolute change in watts per second of elapsed time between consecutive samples.
-	MeanAbsDeltaWattsPerSecond float64 `json:"meanAbsDeltaWattsPerSecond"`
-	// ClipBiasWatts The mean amount the zero clamp added: clamped watts minus the unclamped force times speed it would otherwise have reported.
-	ClipBiasWatts float64 `json:"clipBiasWatts"`
 }
 
 type ActivityList struct {
@@ -647,6 +638,10 @@ type RiderParameters struct {
 	RiderMassKg                   *float64 `json:"riderMassKg,omitempty"`
 	// BikeMassKg The bicycle and everything carried on it.
 	BikeMassKg *float64 `json:"bikeMassKg,omitempty"`
+	// DragAreaM2 The bicycle's drag area, CdA, in square metres: 0.36 on a road bike's hoods, 0.40 on a gravel bike's hoods, 0.45 sitting up.
+	DragAreaM2 *float64 `json:"dragAreaM2,omitempty"`
+	// RollingResistance The tyres' rolling resistance coefficient on tarmac, Crr: 0.005 for a road slick, 0.008 for a wide gravel tyre.
+	RollingResistance *float64 `json:"rollingResistance,omitempty"`
 }
 
 // RiderSuggestions What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.

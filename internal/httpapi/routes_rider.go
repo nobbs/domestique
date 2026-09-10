@@ -33,6 +33,8 @@ func (h *Handler) SetRiderProfile(writer http.ResponseWriter, request *http.Requ
 		FunctionalThresholdPowerWatts: rider.FromPointer(body.FunctionalThresholdPowerWatts),
 		RiderMassKG:                   rider.FromPointer(body.RiderMassKg),
 		BikeMassKG:                    rider.FromPointer(body.BikeMassKg),
+		DragAreaM2:                    rider.FromPointer(body.DragAreaM2),
+		RollingResistance:             rider.FromPointer(body.RollingResistance),
 	}
 	ctx := request.Context()
 	if err := h.state.SetRiderProfile(ctx, identityOf(ctx).Subject, profile); err != nil {
@@ -92,6 +94,8 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 			FunctionalThresholdPowerWatts: profile.FunctionalThresholdPowerWatts.Pointer(),
 			RiderMassKg:                   profile.RiderMassKG.Pointer(),
 			BikeMassKg:                    profile.BikeMassKG.Pointer(),
+			DragAreaM2:                    profile.DragAreaM2.Pointer(),
+			RollingResistance:             profile.RollingResistance.Pointer(),
 		},
 		Suggestions: openapi.RiderSuggestions{
 			MaxHeartRateBpm:               suggestions.MaxHeartRateBPM.Pointer(),

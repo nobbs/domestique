@@ -53,6 +53,7 @@ type fakeDeriveStore struct {
 	matchWriteOrder  []int64
 	profile          rider.Profile
 	owedInputs       trainingload.Inputs
+	owedCoefficients measure.Coefficients
 	cleared          int
 	clearedRows      int
 	clearedMatches   int
@@ -126,9 +127,10 @@ func (s *fakeDeriveStore) RiderProfile(context.Context, string) (rider.Profile, 
 }
 
 func (s *fakeDeriveStore) ActivitiesAwaitingDerivation(
-	_ context.Context, _ string, inputs trainingload.Inputs,
+	_ context.Context, _ string, inputs trainingload.Inputs, coefficients measure.Coefficients,
 ) ([]int64, error) {
 	s.owedInputs = inputs
+	s.owedCoefficients = coefficients
 
 	return s.owed, s.owedErr
 }
@@ -361,19 +363,53 @@ func TestDeriveEstimatesPowerForARideWithNoMeter(t *testing.T) {
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
 	assert.True(t, store.written[7].Load.HasEstimatedPower, "the ride's average estimate")
 	assert.Positive(t, store.written[7].Load.EstimatedPowerWatts)
+	assert.Positive(t, store.written[7].EstimatedPedallingShare, "the share the mean was worked out over")
 	assert.Len(t, store.estimated[7], 120, "an entry per track sample")
 	assert.Len(t, store.estimatedRecords, 120, "each naming the record it came from")
 }
 
-// The quality diagnostics stored on the row are exactly what EstimateSeries
-// itself reports for the same track, not a value the deriver works out on its
-// own by some other route.
-func TestDeriveStoresTheEstimateQualityEstimateSeriesReports(t *testing.T) {
+// A rider who has entered a bicycle is estimated at its own numbers, not the
+// built-in road bicycle: two profiles differing only in drag area yield
+// different estimates for the very same track.
+func TestDeriveEstimatesAtTheProfilesOwnBicycleWhereBothNumbersAreSet(t *testing.T) {
 	t.Parallel()
 	track := trackRide(120)
-	wantEstimates, wantQuality, ok := measure.EstimateSeries(track.Track, 82)
-	require.True(t, ok, "EstimateSeries()")
-	require.NotEmpty(t, wantEstimates)
+	baseProfile := rider.Profile{
+		MaxHeartRateBPM: rider.Set(190), RestingHeartRateBPM: rider.Set(48),
+		RiderMassKG: rider.Set(74), BikeMassKG: rider.Set(8),
+	}
+	slipperyProfile := baseProfile
+	slipperyProfile.DragAreaM2, slipperyProfile.RollingResistance = rider.Set(0.30), rider.Set(0.004)
+	uprightProfile := baseProfile
+	uprightProfile.DragAreaM2, uprightProfile.RollingResistance = rider.Set(0.45), rider.Set(0.008)
+
+	slipperyStore := &fakeDeriveStore{
+		owner: "rider-a", profile: slipperyProfile, owed: []int64{7},
+		rides: map[int64]activity.RideSamples{7: track},
+	}
+	slipperyDeriver, err := activity.NewDeriver(slipperyStore, nil, nil, indoorWorkoutTypes(), nil)
+	require.NoError(t, err, "NewDeriver()")
+	require.Equal(t, activity.Polled, slipperyDeriver.Derive(t.Context(), "rider-a").Outcome)
+
+	uprightStore := &fakeDeriveStore{
+		owner: "rider-a", profile: uprightProfile, owed: []int64{7},
+		rides: map[int64]activity.RideSamples{7: track},
+	}
+	uprightDeriver, err := activity.NewDeriver(uprightStore, nil, nil, indoorWorkoutTypes(), nil)
+	require.NoError(t, err, "NewDeriver()")
+	require.Equal(t, activity.Polled, uprightDeriver.Derive(t.Context(), "rider-a").Outcome)
+
+	assert.NotEqual(t, slipperyStore.written[7].Load.EstimatedPowerWatts,
+		uprightStore.written[7].Load.EstimatedPowerWatts, "the bicycle reached the estimator")
+	assert.InDelta(t, 0.30, slipperyStore.owedCoefficients.DragArea, 1e-9)
+	assert.InDelta(t, 0.45, uprightStore.owedCoefficients.DragArea, 1e-9)
+}
+
+// A rider who has entered a mass but no bicycle is estimated at the built-in
+// road bicycle, exactly what measure.DefaultCoefficients names.
+func TestDeriveEstimatesAtTheDefaultBicycleWhenNoneIsEntered(t *testing.T) {
+	t.Parallel()
+	track := trackRide(120)
 	store := &fakeDeriveStore{
 		owner: "rider-a",
 		profile: rider.Profile{
@@ -387,8 +423,13 @@ func TestDeriveStoresTheEstimateQualityEstimateSeriesReports(t *testing.T) {
 	require.NoError(t, err, "NewDeriver()")
 
 	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
-	assert.Equal(t, wantQuality, store.written[7].EstimateQuality)
-	assert.True(t, store.written[7].HasEstimateQuality)
+	assert.Equal(t, measure.DefaultCoefficients(), store.owedCoefficients)
+	wantEstimates, ok := measure.EstimateSeries(track.Track, 82, measure.DefaultCoefficients())
+	require.True(t, ok, "EstimateSeries()")
+	wantWatts, wantShare, ok := measure.PedallingMean(track.Track, wantEstimates)
+	require.True(t, ok, "PedallingMean()")
+	assert.InDelta(t, wantWatts, store.written[7].Load.EstimatedPowerWatts, 1e-9)
+	assert.InDelta(t, wantShare, store.written[7].EstimatedPedallingShare, 1e-9)
 }
 
 // An estimate exists because there is no meter. Putting one beside a real
@@ -413,7 +454,6 @@ func TestDeriveEstimatesNoPowerForARideThatCarriesAMeter(t *testing.T) {
 	assert.False(t, store.written[7].Load.HasEstimatedPower, "the ride measured its own power")
 	assert.Empty(t, store.estimated[7], "and the stored series is cleared rather than filled")
 	assert.True(t, store.written[7].Load.HasPower, "the measured numbers are still worked out")
-	assert.False(t, store.written[7].HasEstimateQuality, "no estimate means no quality to report either")
 }
 
 // A ride with no usable track is skipped rather than estimated as zero, and so

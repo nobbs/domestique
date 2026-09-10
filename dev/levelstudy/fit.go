@@ -1,4 +1,4 @@
-package powerfit
+package main
 
 import (
 	"math"
@@ -38,7 +38,7 @@ func Evaluate(rides []Ride, coefficients measure.Coefficients) (Result, bool) {
 	var sumSquares, sumSigned float64
 	count := 0
 	for _, ride := range rides {
-		estimates, _, ok := measure.EstimateSeriesWith(ride.Samples, ride.TotalMassKG, coefficients, nil)
+		estimates, ok := measure.EstimateSeries(ride.Samples, ride.TotalMassKG, coefficients)
 		if !ok {
 			continue
 		}

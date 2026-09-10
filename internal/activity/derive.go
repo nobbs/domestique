@@ -29,8 +29,8 @@ type RideSamples struct {
 	TrackRecords []int64
 }
 
-// EstimatePower works out the ride's estimated power series, its average and
-// its quality diagnostics.
+// EstimatePower works out the ride's estimated power series and its
+// pedalling mean and share.
 //
 // A ride that already carries measured power yields none: an estimate exists
 // because there is no meter, and putting one beside a real reading only invites
@@ -39,18 +39,18 @@ type RideSamples struct {
 // The records and the estimates are returned together and are always the same
 // length, so a caller cannot pair one ride's estimates with another's records.
 func (s *RideSamples) EstimatePower(
-	totalMassKG float64,
-) (records []int64, estimates []measure.Estimate, average measure.Estimate, quality measure.Quality) {
+	totalMassKG float64, coefficients measure.Coefficients,
+) (records []int64, estimates []measure.Estimate, watts, share float64, ok bool) {
 	if len(s.Power) > 0 {
-		return nil, nil, measure.Estimate{}, measure.Quality{}
+		return nil, nil, 0, 0, false
 	}
-	estimates, quality, ok := measure.EstimateSeries(s.Track, totalMassKG)
+	estimates, ok = measure.EstimateSeries(s.Track, totalMassKG, coefficients)
 	if !ok {
-		return nil, nil, measure.Estimate{}, measure.Quality{}
+		return nil, nil, 0, 0, false
 	}
-	mean, hasMean := measure.MeanEstimate(estimates)
+	watts, share, ok = measure.PedallingMean(s.Track, estimates)
 
-	return s.TrackRecords, estimates, measure.Estimate{Watts: mean, Known: hasMean}, quality
+	return s.TrackRecords, estimates, watts, share, ok
 }
 
 // DeriveStore is what working out a ride's training numbers needs of stored
@@ -67,7 +67,9 @@ type DeriveStore interface {
 	// those derived against different values.
 	// Rides an earlier derivation wrote are listed too: its row cannot hold
 	// every figure this one produces.
-	ActivitiesAwaitingDerivation(ctx context.Context, targetID string, inputs trainingload.Inputs) ([]int64, error)
+	ActivitiesAwaitingDerivation(
+		ctx context.Context, targetID string, inputs trainingload.Inputs, coefficients measure.Coefficients,
+	) ([]int64, error)
 	// ActivityRideSamples reads one ride's recorded series, split by what each
 	// is for.
 	ActivityRideSamples(ctx context.Context, targetID string, id int64) (RideSamples, error)
@@ -172,6 +174,16 @@ func severityOf(outcome Outcome) int {
 	return 0
 }
 
+// bicycleOf is the coefficients a ride is estimated at. The road bicycle on
+// the hoods is what a rider who has entered no bicycle is estimated at.
+func bicycleOf(profile *rider.Profile) measure.Coefficients {
+	if profile.DragAreaM2.Set && profile.RollingResistance.Set {
+		return measure.Coefficients{DragArea: profile.DragAreaM2.Number, RollingResistance: profile.RollingResistance.Number}
+	}
+
+	return measure.DefaultCoefficients()
+}
+
 // deriveMetrics works out every ride of one target that is owed a derivation,
 // against the owner's profile as it stands now.
 //
@@ -207,7 +219,8 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 
 		return Result{Outcome: Polled, Derived: removed}
 	}
-	ids, err := d.store.ActivitiesAwaitingDerivation(ctx, targetID, inputs)
+	coefficients := bicycleOf(&profile)
+	ids, err := d.store.ActivitiesAwaitingDerivation(ctx, targetID, inputs, coefficients)
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
@@ -230,17 +243,16 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		}
 		heartRate := measure.CapHeartRate(samples.HeartRate, inputs.MaxHeartRateBPM)
 		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, inputs)
-		records, estimates, average, quality := samples.EstimatePower(inputs.TotalMassKG)
-		load.EstimatedPowerWatts, load.HasEstimatedPower = average.Watts, average.Known
+		records, estimates, watts, share, estimated := samples.EstimatePower(inputs.TotalMassKG, coefficients)
+		load.EstimatedPowerWatts, load.HasEstimatedPower = watts, estimated
 		metrics := RideMetrics{
-			Load:       load,
-			Averages:   samples.Averages(),
-			Decoupling: samples.Decoupling(heartRate),
-			HeatDrift:  samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts),
-			PowerBests: samples.PowerBests(),
-		}
-		if load.HasEstimatedPower {
-			metrics.EstimateQuality, metrics.HasEstimateQuality = quality, true
+			Load:                    load,
+			Averages:                samples.Averages(),
+			Decoupling:              samples.Decoupling(heartRate),
+			HeatDrift:               samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts),
+			PowerBests:              samples.PowerBests(),
+			EstimatedPedallingShare: share,
+			Coefficients:            coefficients,
 		}
 		// The series first: a metrics row is what says a ride has been derived,
 		// so it must not appear before the samples it describes are in place.

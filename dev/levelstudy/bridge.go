@@ -1,5 +1,5 @@
-// Package powerfit calibrates the estimated-power model's two fittable
-// coefficients against power a rider really produced.
+// The heart-rate bridge that lets a rider's bicycle numbers be checked
+// against power they really produced.
 //
 // A rider with no meter on their road bicycle may still own rides that
 // measured power — on a trainer, where the speed and the distance are a
@@ -8,7 +8,7 @@
 // rider's heart does at a known power indoors says what power they were
 // producing at the same heart rate outdoors, and the model's coefficients are
 // then whatever makes it agree.
-package powerfit
+package main
 
 import "math"
 

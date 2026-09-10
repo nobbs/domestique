@@ -1124,7 +1124,7 @@ func TestStoreActivityRecordsClearsTheDerivedRow(t *testing.T) {
 	fit := activity.FIT{Records: []activity.Record{{Time: activityNow(), PowerWatts: 240, HasPower: true}}}
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, fit, activity.RecordsVersion),
 		"StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
 
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, fit, activity.RecordsVersion+1),
@@ -1133,7 +1133,7 @@ func TestStoreActivityRecordsClearsTheDerivedRow(t *testing.T) {
 	read, err := store.ActivityMetrics(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityMetrics()")
 	assert.NotContains(t, read, int64(1))
-	awaiting, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	awaiting, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
 	assert.Equal(t, []int64{1}, awaiting)
 }

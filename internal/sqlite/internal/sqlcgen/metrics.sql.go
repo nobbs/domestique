@@ -78,7 +78,9 @@ WHERE a.target_slot = ?1
     OR m.input_threshold_heart_rate <> ?4
     OR m.input_threshold_power <> ?5
     OR m.input_total_mass <> ?6
-    OR m.derivation_version <> ?7)
+    OR m.input_drag_area <> ?7
+    OR m.input_rolling_resistance <> ?8
+    OR m.derivation_version <> ?9)
 ORDER BY a.started_at_unix DESC, a.workout_id DESC
 `
 
@@ -89,15 +91,17 @@ type ListActivitiesAwaitingDerivationParams struct {
 	ThresholdHeartRate float64
 	ThresholdPower     float64
 	TotalMass          float64
+	DragArea           float64
+	RollingResistance  float64
 	DerivationVersion  int64
 }
 
 // Rides whose stored samples could still yield something this derivation now
 // allows: those with no metrics row at all, those whose row was worked out
-// against different profile values, and those whose row an earlier derivation
-// wrote and so cannot hold every figure this one produces. A ride still
-// awaiting its FIT has nothing to derive from and is left for the download to
-// bring in.
+// against different profile or bicycle values, and those whose row an
+// earlier derivation wrote and so cannot hold every figure this one
+// produces. A ride still awaiting its FIT has nothing to derive from and is
+// left for the download to bring in.
 func (q *Queries) ListActivitiesAwaitingDerivation(ctx context.Context, arg ListActivitiesAwaitingDerivationParams) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, listActivitiesAwaitingDerivation,
 		arg.TargetSlot,
@@ -106,6 +110,8 @@ func (q *Queries) ListActivitiesAwaitingDerivation(ctx context.Context, arg List
 		arg.ThresholdHeartRate,
 		arg.ThresholdPower,
 		arg.TotalMass,
+		arg.DragArea,
+		arg.RollingResistance,
 		arg.DerivationVersion,
 	)
 	if err != nil {
@@ -133,7 +139,7 @@ const listActivityMetrics = `-- name: ListActivityMetrics :many
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
+  estimated_power_watts, estimated_pedalling_share,
   input_max_heart_rate, input_threshold_heart_rate,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
@@ -156,9 +162,7 @@ type ListActivityMetricsRow struct {
 	IntensityFactor             sql.NullFloat64
 	PowerTss                    sql.NullFloat64
 	EstimatedPowerWatts         sql.NullFloat64
-	EstimateAutocorrelation     sql.NullFloat64
-	EstimateDeltaWattsPerSecond sql.NullFloat64
-	EstimateClipBiasWatts       sql.NullFloat64
+	EstimatedPedallingShare     sql.NullFloat64
 	InputMaxHeartRate           float64
 	InputThresholdHeartRate     float64
 	AverageHeartRateBpm         sql.NullFloat64
@@ -200,9 +204,7 @@ func (q *Queries) ListActivityMetrics(ctx context.Context, targetSlot string) ([
 			&i.IntensityFactor,
 			&i.PowerTss,
 			&i.EstimatedPowerWatts,
-			&i.EstimateAutocorrelation,
-			&i.EstimateDeltaWattsPerSecond,
-			&i.EstimateClipBiasWatts,
+			&i.EstimatedPedallingShare,
 			&i.InputMaxHeartRate,
 			&i.InputThresholdHeartRate,
 			&i.AverageHeartRateBpm,
@@ -440,12 +442,12 @@ INSERT INTO activity_metrics (
   target_slot, workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
+  estimated_power_watts, estimated_pedalling_share,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
-  input_total_mass, derivation_version, computed_at_unix
+  input_total_mass, input_drag_area, input_rolling_resistance, derivation_version, computed_at_unix
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
@@ -459,9 +461,7 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   intensity_factor = excluded.intensity_factor,
   power_tss = excluded.power_tss,
   estimated_power_watts = excluded.estimated_power_watts,
-  estimate_autocorrelation = excluded.estimate_autocorrelation,
-  estimate_delta_watts_per_second = excluded.estimate_delta_watts_per_second,
-  estimate_clip_bias_watts = excluded.estimate_clip_bias_watts,
+  estimated_pedalling_share = excluded.estimated_pedalling_share,
   average_heart_rate_bpm = excluded.average_heart_rate_bpm,
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
@@ -482,6 +482,8 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
   input_threshold_power = excluded.input_threshold_power,
   input_total_mass = excluded.input_total_mass,
+  input_drag_area = excluded.input_drag_area,
+  input_rolling_resistance = excluded.input_rolling_resistance,
   derivation_version = excluded.derivation_version,
   computed_at_unix = excluded.computed_at_unix
 `
@@ -500,9 +502,7 @@ type UpsertActivityMetricsParams struct {
 	IntensityFactor             sql.NullFloat64
 	PowerTss                    sql.NullFloat64
 	EstimatedPowerWatts         sql.NullFloat64
-	EstimateAutocorrelation     sql.NullFloat64
-	EstimateDeltaWattsPerSecond sql.NullFloat64
-	EstimateClipBiasWatts       sql.NullFloat64
+	EstimatedPedallingShare     sql.NullFloat64
 	AverageHeartRateBpm         sql.NullFloat64
 	MaxHeartRateBpm             sql.NullFloat64
 	AverageCadenceRpm           sql.NullFloat64
@@ -523,6 +523,8 @@ type UpsertActivityMetricsParams struct {
 	InputThresholdHeartRate     float64
 	InputThresholdPower         float64
 	InputTotalMass              float64
+	InputDragArea               float64
+	InputRollingResistance      float64
 	DerivationVersion           int64
 	ComputedAtUnix              int64
 }
@@ -542,9 +544,7 @@ func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityM
 		arg.IntensityFactor,
 		arg.PowerTss,
 		arg.EstimatedPowerWatts,
-		arg.EstimateAutocorrelation,
-		arg.EstimateDeltaWattsPerSecond,
-		arg.EstimateClipBiasWatts,
+		arg.EstimatedPedallingShare,
 		arg.AverageHeartRateBpm,
 		arg.MaxHeartRateBpm,
 		arg.AverageCadenceRpm,
@@ -565,6 +565,8 @@ func (q *Queries) UpsertActivityMetrics(ctx context.Context, arg UpsertActivityM
 		arg.InputThresholdHeartRate,
 		arg.InputThresholdPower,
 		arg.InputTotalMass,
+		arg.InputDragArea,
+		arg.InputRollingResistance,
 		arg.DerivationVersion,
 		arg.ComputedAtUnix,
 	)

@@ -1,14 +1,16 @@
 -- name: GetRiderProfile :one
 SELECT max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
-  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg
+  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg,
+  drag_area_m2, rolling_resistance
 FROM rider_profiles
 WHERE subject = ?;
 
 -- name: UpsertRiderProfile :exec
 INSERT INTO rider_profiles (
   subject, max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
-  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg, updated_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  functional_threshold_power_watts, rider_mass_kg, bike_mass_kg,
+  drag_area_m2, rolling_resistance, updated_at_unix
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(subject) DO UPDATE SET
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   resting_heart_rate_bpm = excluded.resting_heart_rate_bpm,
@@ -16,6 +18,8 @@ ON CONFLICT(subject) DO UPDATE SET
   functional_threshold_power_watts = excluded.functional_threshold_power_watts,
   rider_mass_kg = excluded.rider_mass_kg,
   bike_mass_kg = excluded.bike_mass_kg,
+  drag_area_m2 = excluded.drag_area_m2,
+  rolling_resistance = excluded.rolling_resistance,
   updated_at_unix = excluded.updated_at_unix;
 
 -- name: ListActivitySensorSamples :many

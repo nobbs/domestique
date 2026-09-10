@@ -238,18 +238,6 @@ export const ActivityProvider = {
 } as const;
 
 /**
- * What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present beside estimatedPowerWatts once the ride has been derived since these existed; a ride derived before then omits it until it is derived again. See docs/specs/measurement.md §Estimated power.
- */
-export interface EstimateQuality {
-  /** The lag-1 Pearson correlation of the estimated watts with themselves shifted by one sample. */
-  autocorrelation: number;
-  /** The mean absolute change in watts per second of elapsed time between consecutive samples. */
-  meanAbsDeltaWattsPerSecond: number;
-  /** The mean amount the zero clamp added: clamped watts minus the unclamped force times speed it would otherwise have reported. */
-  clipBiasWatts: number;
-}
-
-/**
  * What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, or a rider who has entered no threshold power to place the band with.
  */
 export interface HeatDrift {
@@ -288,9 +276,14 @@ export interface ActivityMetrics {
   normalizedPowerWatts?: number;
   intensityFactor?: number;
   powerTss?: number;
-  /** The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass. */
+  /** The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track at the rider's own bicycle numbers, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass. */
   estimatedPowerWatts?: number;
-  estimateQuality?: EstimateQuality;
+  /**
+   * The share of the ride's samples the rider was pedalling through, which the estimate is averaged over. Present exactly when estimatedPowerWatts is.
+   * @minimum 0
+   * @maximum 1
+   */
+  estimatedPedallingShare?: number;
   /** The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries. */
   averageSpeedKmh?: number;
   /** The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap. */
@@ -930,6 +923,18 @@ export interface RiderParameters {
    * @maximum 500
    */
   bikeMassKg?: number;
+  /**
+   * The bicycle's drag area, CdA, in square metres: 0.36 on a road bike's hoods, 0.40 on a gravel bike's hoods, 0.45 sitting up.
+   * @minimum 0.1
+   * @maximum 1.5
+   */
+  dragAreaM2?: number;
+  /**
+   * The tyres' rolling resistance coefficient on tarmac, Crr: 0.005 for a road slick, 0.008 for a wide gravel tyre.
+   * @minimum 0.002
+   * @maximum 0.03
+   */
+  rollingResistance?: number;
 }
 
 /**

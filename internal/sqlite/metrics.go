@@ -19,20 +19,21 @@ import (
 // input that changed under them. Those rows are listed again.
 //
 // 3: rows before it cannot hold the estimate's quality diagnostics.
-// 4: the estimate now follows a cadence gate and a per-sample air density, and
-// the heart-rate figures are now worked out from the capped series — both
+// 4: the estimate follows a cadence gate and a per-sample air density, and
+// the heart-rate figures are worked out from the capped series -- both
 // change every figure a row before it holds.
-// 5: the estimate's grade-and-speed window is now derived per ride from the
-// altimeter's own resolution instead of fixed at 30 m.
+// 5: the estimate's grade-and-speed window is derived per ride from the
+// altimeter's own resolution.
 // 6: rows before it cannot hold a ride's decoupling or its heat-drift reading.
 // 7: rows before it cannot hold the ride's power-duration bests.
 // 8: rows before it cannot hold the ride's maximum speed.
 // 9: rows before it were worked out over samples the version 2 re-read has
 // since replaced, at a time when a re-read left the metrics row in place.
-// 10: the estimate now carries the inertial term and the drivetrain loss the
-// model used to leave out, at a corrected drag area, which moves every
-// estimated figure a row before it holds.
-const derivationVersion = 10
+// 10: the estimate carries the inertial term and the drivetrain loss, which
+// moves every estimated figure a row before it holds.
+// 11: rows before it hold no pedalling share and were worked out at another
+// bicycle.
+const derivationVersion = 11
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
@@ -40,7 +41,7 @@ const derivationVersion = 10
 // wrote. Newest first, so a rider watching a long recompute sees the rides they
 // care about settle first.
 func (s *Store) ActivitiesAwaitingDerivation(
-	ctx context.Context, targetID string, inputs trainingload.Inputs,
+	ctx context.Context, targetID string, inputs trainingload.Inputs, coefficients measure.Coefficients,
 ) ([]int64, error) {
 	ids, err := s.queries.ListActivitiesAwaitingDerivation(ctx, sqlcgen.ListActivitiesAwaitingDerivationParams{
 		TargetSlot:         targetID,
@@ -49,6 +50,8 @@ func (s *Store) ActivitiesAwaitingDerivation(
 		ThresholdHeartRate: inputs.ThresholdHeartRateBPM,
 		ThresholdPower:     inputs.FunctionalThresholdPowerWatts,
 		TotalMass:          inputs.TotalMassKG,
+		DragArea:           coefficients.DragArea,
+		RollingResistance:  coefficients.RollingResistance,
 		DerivationVersion:  derivationVersion,
 	})
 	if err != nil {
@@ -240,8 +243,6 @@ func (s *Store) StoreActivityMetrics(
 	for index := range zones {
 		zones[index] = nullFloat(metrics.Zones[index], metrics.HasZones)
 	}
-	// A quality without an estimate is not one: the columns go together.
-	hasQuality := metrics.HasEstimatedPower && stored.HasEstimateQuality
 	bests := stored.PowerBests
 	if err := s.queries.UpsertActivityMetrics(ctx, sqlcgen.UpsertActivityMetricsParams{
 		TargetSlot: targetID, WorkoutID: id,
@@ -253,17 +254,14 @@ func (s *Store) StoreActivityMetrics(
 		IntensityFactor:         nullFloat(metrics.Power.IntensityFactor, metrics.HasPower),
 		PowerTss:                nullFloat(metrics.Power.TSS, metrics.HasPower),
 		EstimatedPowerWatts:     nullFloat(metrics.EstimatedPowerWatts, metrics.HasEstimatedPower),
-		EstimateAutocorrelation: nullFloat(stored.EstimateQuality.Autocorrelation1, hasQuality),
-		EstimateDeltaWattsPerSecond: nullFloat(
-			stored.EstimateQuality.MeanAbsDeltaWattsPerSecond, hasQuality),
-		EstimateClipBiasWatts: nullFloat(stored.EstimateQuality.ClipBiasWatts, hasQuality),
-		AverageHeartRateBpm:   nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
-		MaxHeartRateBpm:       nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
-		AverageCadenceRpm:     nullFloat(averages.CadenceRPM, averages.HasCadence),
-		AveragePowerWatts:     nullFloat(averages.PowerWatts, averages.HasPower),
-		MaxSpeedKmh:           nullFloat(averages.MaxSpeedKmh, averages.HasSpeed),
-		DecouplingPercent:     nullFloat(stored.Decoupling.Percent, stored.Decoupling.Known),
-		HeatDriftHeartRateBpm: nullFloat(stored.HeatDrift.HeartRateBPM, stored.HeatDrift.Known),
+		EstimatedPedallingShare: nullFloat(stored.EstimatedPedallingShare, metrics.HasEstimatedPower),
+		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
+		MaxHeartRateBpm:         nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
+		AverageCadenceRpm:       nullFloat(averages.CadenceRPM, averages.HasCadence),
+		AveragePowerWatts:       nullFloat(averages.PowerWatts, averages.HasPower),
+		MaxSpeedKmh:             nullFloat(averages.MaxSpeedKmh, averages.HasSpeed),
+		DecouplingPercent:       nullFloat(stored.Decoupling.Percent, stored.Decoupling.Known),
+		HeatDriftHeartRateBpm:   nullFloat(stored.HeatDrift.HeartRateBPM, stored.HeatDrift.Known),
 		HeatDriftTemperatureCelsius: nullFloat(
 			stored.HeatDrift.TemperatureCelsius, stored.HeatDrift.Known),
 		HeatDriftSamples:        nullInt(int64(stored.HeatDrift.Samples), stored.HeatDrift.Known),
@@ -278,6 +276,8 @@ func (s *Store) StoreActivityMetrics(
 		InputThresholdHeartRate: metrics.Inputs.ThresholdHeartRateBPM,
 		InputThresholdPower:     metrics.Inputs.FunctionalThresholdPowerWatts,
 		InputTotalMass:          metrics.Inputs.TotalMassKG,
+		InputDragArea:           stored.Coefficients.DragArea,
+		InputRollingResistance:  stored.Coefficients.RollingResistance,
 		DerivationVersion:       derivationVersion,
 		ComputedAtUnix:          time.Now().Unix(),
 	}); err != nil {
@@ -334,16 +334,7 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				HasPower:        row.AveragePowerWatts.Valid,
 				HasSpeed:        row.MaxSpeedKmh.Valid,
 			},
-			EstimateQuality: measure.Quality{
-				Autocorrelation1:           row.EstimateAutocorrelation.Float64,
-				MeanAbsDeltaWattsPerSecond: row.EstimateDeltaWattsPerSecond.Float64,
-				ClipBiasWatts:              row.EstimateClipBiasWatts.Float64,
-			},
-			// A row derived before the diagnostics existed holds nulls here
-			// until it is derived again; a null is not a quality of nought, and
-			// a quality without an estimate is not one either.
-			HasEstimateQuality: row.EstimatedPowerWatts.Valid && row.EstimateAutocorrelation.Valid &&
-				row.EstimateDeltaWattsPerSecond.Valid && row.EstimateClipBiasWatts.Valid,
+			EstimatedPedallingShare: row.EstimatedPedallingShare.Float64,
 			Decoupling: activity.Decoupling{
 				Percent: row.DecouplingPercent.Float64,
 				Known:   row.DecouplingPercent.Valid,

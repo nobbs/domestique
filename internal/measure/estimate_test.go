@@ -48,10 +48,11 @@ func TestEstimateSeriesMatchesTheClosedFormOnASteadyClimb(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			estimates, _, ok := measure.EstimateSeries(ramp(300, 7.5, grade), 82)
+			samples := ramp(300, 7.5, grade)
+			estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 			require.True(t, ok, "a steady ride yields an estimate")
 
-			mean, hasMean := measure.MeanEstimate(estimates)
+			mean, _, hasMean := measure.PedallingMean(samples, estimates)
 			require.True(t, hasMean)
 			want := closedForm(7.5, grade, 82, 100)
 			assert.InEpsilon(t, want, mean, 0.03, "within a few per cent of the closed form")
@@ -63,16 +64,16 @@ func TestEstimateSeriesMatchesTheClosedFormOnASteadyClimb(t *testing.T) {
 // say they are taking something out.
 func TestEstimateSeriesClampsADescentToZeroRatherThanNegativeWatts(t *testing.T) {
 	t.Parallel()
-	estimates, quality, ok := measure.EstimateSeries(ramp(300, 12, -0.08), 82)
+	samples := ramp(300, 12, -0.08)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	require.True(t, ok)
 
 	for index, estimate := range estimates {
 		assert.GreaterOrEqual(t, estimate.Watts, 0.0, "sample %d", index)
 	}
-	mean, hasMean := measure.MeanEstimate(estimates)
+	mean, _, hasMean := measure.PedallingMean(samples, estimates)
 	require.True(t, hasMean)
 	assert.Zero(t, mean, "a steep enough descent costs nothing at all")
-	assert.Positive(t, quality.ClipBiasWatts, "and every sample of it is what the clamp added")
 }
 
 // The cadence gate is physics, checked before the numerical clamp ever runs:
@@ -83,7 +84,7 @@ func TestEstimateSeriesReadsZeroWattsWhereCadenceIsKnownAndZero(t *testing.T) {
 	samples := ramp(10, 7.5, 0.08)
 	samples[5].HasCadence, samples[5].CadenceRPM = true, 0
 
-	estimates, _, ok := measure.EstimateSeries(samples, 82)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	require.True(t, ok)
 	require.True(t, estimates[5].Known, "the gate still yields an estimate, just a zero one")
 	assert.Zero(t, estimates[5].Watts)
@@ -99,9 +100,9 @@ func TestEstimateSeriesUsesTheSamplesTemperatureWhereKnown(t *testing.T) {
 		track[index].HasTemperature, track[index].TemperatureCelsius = true, 30
 	}
 
-	estimates, _, ok := measure.EstimateSeries(track, mass)
+	estimates, ok := measure.EstimateSeries(track, mass, measure.DefaultCoefficients())
 	require.True(t, ok)
-	mean, hasMean := measure.MeanEstimate(estimates)
+	mean, _, hasMean := measure.PedallingMean(track, estimates)
 	require.True(t, hasMean)
 	assert.InEpsilon(t, closedFormAtTemperature(speedMS, 0, mass, 100, 30), mean, 0.03)
 }
@@ -113,20 +114,19 @@ func TestEstimateSeriesIsUnchangedByARideWithNoCadenceSensor(t *testing.T) {
 	t.Parallel()
 	track := ramp(300, 7.5, 0.04)
 
-	withoutSensor, withoutQuality, withoutOK := measure.EstimateSeries(track, 82)
-	withSensor, withQuality, withOK := measure.EstimateSeries(withCadence(track, 80), 82)
+	withoutSensor, withoutOK := measure.EstimateSeries(track, 82, measure.DefaultCoefficients())
+	withSensor, withOK := measure.EstimateSeries(withCadence(track, 80), 82, measure.DefaultCoefficients())
 
 	require.True(t, withoutOK)
 	require.True(t, withOK)
 	assert.Equal(t, withoutSensor, withSensor)
-	assert.Equal(t, withoutQuality, withQuality)
 }
 
 // The first sample has no step behind it to measure a speed over, so it carries
 // no estimate rather than a zero the chart would draw as a moment of rest.
 func TestEstimateSeriesLeavesTheFirstSampleWithoutAnEstimate(t *testing.T) {
 	t.Parallel()
-	estimates, _, ok := measure.EstimateSeries(ramp(10, 7.5, 0.02), 82)
+	estimates, ok := measure.EstimateSeries(ramp(10, 7.5, 0.02), 82, measure.DefaultCoefficients())
 	require.True(t, ok)
 
 	require.Len(t, estimates, 10)
@@ -145,7 +145,7 @@ func TestEstimateSeriesWillNotCrossARecordingGap(t *testing.T) {
 		{At: start().Add(time.Hour + time.Second), DistanceMetres: 22.5, AltitudeMetres: 100},
 	}
 
-	estimates, _, ok := measure.EstimateSeries(samples, 82)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	require.True(t, ok)
 	assert.True(t, estimates[1].Known, "before the pause")
 	assert.False(t, estimates[2].Known, "the step across the pause is not a speed")
@@ -165,13 +165,13 @@ func TestEstimateSeriesIsNotInflatedByRecorderNoise(t *testing.T) {
 	clean := ramp(1200, speedMS, 0)
 	rough := noisy(clean)
 
-	quiet, _, ok := measure.EstimateSeries(clean, mass)
+	quiet, ok := measure.EstimateSeries(clean, mass, measure.DefaultCoefficients())
 	require.True(t, ok)
-	roughEstimates, _, ok := measure.EstimateSeries(rough, mass)
+	roughEstimates, ok := measure.EstimateSeries(rough, mass, measure.DefaultCoefficients())
 	require.True(t, ok)
-	quietMean, ok := measure.MeanEstimate(quiet)
+	quietMean, _, ok := measure.PedallingMean(clean, quiet)
 	require.True(t, ok)
-	roughMean, ok := measure.MeanEstimate(roughEstimates)
+	roughMean, _, ok := measure.PedallingMean(rough, roughEstimates)
 	require.True(t, ok)
 
 	assert.InDelta(t, closedForm(speedMS, 0, mass, 100), quietMean, 1,
@@ -194,7 +194,7 @@ func TestEstimateSeriesIsNotInflatedByRecorderNoise(t *testing.T) {
 func TestEstimateSeriesChargesForTheAccelerationOnFlatGround(t *testing.T) {
 	t.Parallel()
 	const speedMS, accelerationMSS, mass = 7.0, 0.01, 82.0
-	estimates, _, ok := measure.EstimateSeries(accelerating(300, speedMS, accelerationMSS), mass)
+	estimates, ok := measure.EstimateSeries(accelerating(300, speedMS, accelerationMSS), mass, measure.DefaultCoefficients())
 	require.True(t, ok)
 
 	// Read away from either end, where the window stops being centred on its
@@ -207,22 +207,24 @@ func TestEstimateSeriesChargesForTheAccelerationOnFlatGround(t *testing.T) {
 	}
 }
 
-// What #623 turned on. Over a surge and the deceleration undoing it the
-// inertial term nets to nothing, but the clamp refunds none of the braking, so
-// covering the same ground in the same time costs a surging rider more than a
-// steady one — which is what a rider accelerating away from every junction
-// actually pays. See docs/specs/measurement.md §Estimated power.
+// Over a surge and the deceleration undoing it the inertial term nets to
+// nothing, but the clamp refunds none of the braking, so covering the same
+// ground in the same time costs a surging rider more than a steady one --
+// which is what a rider accelerating away from every junction actually pays.
+// See docs/specs/measurement.md §Estimated power.
 func TestEstimateSeriesChargesASurgingRideAboveASteadyOne(t *testing.T) {
 	t.Parallel()
 	const speedMS, mass = 7.0, 82.0
-	steady, _, ok := measure.EstimateSeries(flat(600, speedMS), mass)
+	flatTrack := flat(600, speedMS)
+	surgingTrack := surges(600, speedMS, 1.5)
+	steady, ok := measure.EstimateSeries(flatTrack, mass, measure.DefaultCoefficients())
 	require.True(t, ok)
-	surging, _, ok := measure.EstimateSeries(surges(600, speedMS, 1.5), mass)
+	surging, ok := measure.EstimateSeries(surgingTrack, mass, measure.DefaultCoefficients())
 	require.True(t, ok)
 
-	steadyMean, ok := measure.MeanEstimate(steady)
+	steadyMean, _, ok := measure.PedallingMean(flatTrack, steady)
 	require.True(t, ok)
-	surgingMean, ok := measure.MeanEstimate(surging)
+	surgingMean, _, ok := measure.PedallingMean(surgingTrack, surging)
 	require.True(t, ok)
 
 	assert.Greater(t, surgingMean, steadyMean)
@@ -243,13 +245,13 @@ func TestGradeIsNotMeasuredAcrossARecordingGapForEstimatedPower(t *testing.T) {
 	}
 	samples := slices.Concat(before, after)
 
-	estimates, _, ok := measure.EstimateSeries(samples, 82)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	require.True(t, ok)
 
-	flat := closedForm(7.5, 0, 82, 140)
+	flatWatts := closedForm(7.5, 0, 82, 140)
 	for index := len(before) + 1; index < len(samples); index++ {
 		require.True(t, estimates[index].Known, "sample %d", index)
-		assert.InEpsilon(t, flat, estimates[index].Watts, 0.05,
+		assert.InEpsilon(t, flatWatts, estimates[index].Watts, 0.05,
 			"sample %d rides flat ground, whatever happened during the stop", index)
 	}
 }
@@ -265,7 +267,7 @@ func TestEstimateSeriesHandlesAStretchShorterThanTheGradeWindow(t *testing.T) {
 		samples[index].AltitudeMetres = 100
 	}
 
-	estimates, _, ok := measure.EstimateSeries(samples, 82)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	require.True(t, ok, "the samples are still samples")
 	for index, estimate := range estimates {
 		assert.Zero(t, estimate.Watts, "sample %d: standing still costs nothing", index)
@@ -281,13 +283,9 @@ func TestEstimateSeriesReportsNoEstimateWhenEveryStepIsAGap(t *testing.T) {
 		{At: start().Add(time.Hour), DistanceMetres: 7.5, AltitudeMetres: 100},
 	}
 
-	estimates, quality, ok := measure.EstimateSeries(samples, 82)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	assert.False(t, ok)
 	assert.False(t, estimates[1].Known)
-	// The window is still derived from the track even where every step is a
-	// gap and nothing else in Quality ends up non-zero: this flat two-sample
-	// track has no positive altitude step, so it takes the floor.
-	assert.Equal(t, measure.Quality{WindowMetres: 30}, quality)
 }
 
 // A GPS glitch that reports distance running backward is not a speed this
@@ -299,78 +297,26 @@ func TestEstimateSeriesSkipsAStepWhereDistanceWentBackward(t *testing.T) {
 		{At: start().Add(time.Second), DistanceMetres: 0, AltitudeMetres: 100},
 	}
 
-	estimates, _, ok := measure.EstimateSeries(samples, 82)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	assert.False(t, ok)
 	assert.False(t, estimates[1].Known)
 }
 
 func TestEstimateSeriesNeedsAMassAndMoreThanOneSample(t *testing.T) {
 	t.Parallel()
-	_, _, ok := measure.EstimateSeries(ramp(300, 7.5, 0), 0)
+	_, ok := measure.EstimateSeries(ramp(300, 7.5, 0), 0, measure.DefaultCoefficients())
 	assert.False(t, ok, "without a mass there is nothing to accelerate or lift")
 
-	_, _, ok = measure.EstimateSeries(ramp(1, 7.5, 0), 82)
+	_, ok = measure.EstimateSeries(ramp(1, 7.5, 0), 82, measure.DefaultCoefficients())
 	assert.False(t, ok, "one sample is not a track")
 }
 
-// The window is derived per ride from the altimeter's own resolution:
-// window = clamp(quantum / 0.002, 30, 300). See docs/specs/measurement.md
-// §Gradient.
-func TestEstimateSeriesDerivesTheGradeWindowFromTheAltimetersResolution(t *testing.T) {
+// Coefficients that could not have come from a real bicycle are refused
+// rather than quietly estimated at.
+func TestEstimateSeriesRefusesCoefficientsNoBicycleCouldHave(t *testing.T) {
 	t.Parallel()
-	cases := map[string]struct {
-		samples []measure.Sample
-		want    float64
-	}{
-		"a barometer that steps in fifths of a metre gets 100 m": {
-			samples: noisy(flat(1200, 7.0)),
-			want:    100,
-		},
-		"a ramp rising 0.35 m a second gets 175 m": {
-			samples: ramp(10, 7, 0.05),
-			want:    175,
-		},
-		"metre-scale steps clamp to the 300 m ceiling": {
-			samples: ramp(10, 1, 1),
-			want:    300,
-		},
-		"two-centimetre steps clamp to the 30 m floor": {
-			samples: ramp(10, 1, 0.02),
-			want:    30,
-		},
-		"a flat ride with no positive step takes the floor": {
-			samples: flat(300, 7.5),
-			want:    30,
-		},
-	}
-	for name, testCase := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			_, quality, ok := measure.EstimateSeries(testCase.samples, 82)
-			require.True(t, ok)
-			assert.InDelta(t, testCase.want, quality.WindowMetres, 0.001)
-		})
-	}
-}
-
-// A step across a pause is drift, not a reading of the altimeter's own
-// resolution: the only positive altitude change in this fixture sits between
-// two flat stretches either side of a stop longer than DefaultMaxGap, so it
-// is ignored and the flat stretches leave the ride at the floor.
-func TestEstimateSeriesIgnoresAnAltitudeStepAcrossAPauseWhenDerivingTheWindow(t *testing.T) {
-	t.Parallel()
-	before := flat(120, 7.5)
-	after := flat(120, 7.5)
-	for index := range after {
-		after[index].At = before[len(before)-1].At.Add(time.Hour + time.Duration(index)*time.Second)
-		after[index].DistanceMetres += before[len(before)-1].DistanceMetres
-		after[index].AltitudeMetres += 40
-	}
-	samples := slices.Concat(before, after)
-
-	_, quality, ok := measure.EstimateSeries(samples, 82)
-	require.True(t, ok)
-	assert.InDelta(t, 30, quality.WindowMetres, 0.001)
+	_, ok := measure.EstimateSeries(ramp(300, 7.5, 0), 82, measure.Coefficients{DragArea: -1, RollingResistance: 0.005})
+	assert.False(t, ok)
 }
 
 // A stretch shorter than the derived window still takes the "measure it end
@@ -392,21 +338,14 @@ func TestCentredWindowHandlesAShortStretchAtALargeDerivedWindow(t *testing.T) {
 	}
 	samples := slices.Concat(coarse, short)
 
-	estimates, quality, ok := measure.EstimateSeries(samples, 82)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	require.True(t, ok)
-	require.InDelta(t, 300, quality.WindowMetres, 0.001)
 	// The very first sample after the pause has no step behind it to measure,
 	// same as after any other gap; only what follows it is checked here.
 	for index := len(coarse) + 1; index < len(samples); index++ {
 		require.True(t, estimates[index].Known, "sample %d", index)
 		assert.Zero(t, estimates[index].Watts, "sample %d: no distance covered in the short stretch", index)
 	}
-}
-
-func TestMeanEstimateIsAbsentWhenNothingWasEstimated(t *testing.T) {
-	t.Parallel()
-	_, ok := measure.MeanEstimate([]measure.Estimate{{}, {}})
-	assert.False(t, ok)
 }
 
 // The smoothing is what keeps barometric noise from reading as a wall: a flat
@@ -420,99 +359,65 @@ func TestGradeIsSmoothedAcrossAltitudeNoiseForEstimatedPower(t *testing.T) {
 		}
 	}
 
-	estimates, _, ok := measure.EstimateSeries(jittery, 82)
+	estimates, ok := measure.EstimateSeries(jittery, 82, measure.DefaultCoefficients())
 	require.True(t, ok)
-	mean, hasMean := measure.MeanEstimate(estimates)
+	mean, _, hasMean := measure.PedallingMean(jittery, estimates)
 	require.True(t, hasMean)
 	assert.InEpsilon(t, closedForm(7.5, 0, 82, 100), mean, 0.05,
 		"half a metre of jitter every second is not a one-in-fifteen ramp")
 }
 
-// A real ride's power is strongly autocorrelated sample to sample and moves by
-// a few watts a second; a steady climb out and the equal descent back down is
-// the cleanest case of both, its one direction change aside.
-func TestEstimateSeriesQualityOnASteadyClimbReadsAsTrustworthy(t *testing.T) {
-	t.Parallel()
-	_, quality, ok := measure.EstimateSeries(outAndBack(500, 7.5, 0.04), 82)
-	require.True(t, ok)
-
-	assert.Greater(t, quality.Autocorrelation1, 0.95)
-	assert.Less(t, quality.MeanAbsDeltaWattsPerSecond, 1.0)
-}
-
-// At the fixed 30 m window this fixture used to demonstrate a slower rider's
-// smaller rolling resistance and drag letting recorder noise push the
-// windowed grade past what their momentum could explain. The window this
-// fixture derives is 100 m (see gradeWindowMetres), more than three times as
-// wide, and over it the same noise averages out to nothing: this is the
-// deviation docs/specs/measurement.md §Gradient Status named as resolved. The
-// inertial term is differentiated over a baseline wide enough to keep it so.
-func TestEstimateSeriesQualityOnTheNoisyFixtureHasNoClipBiasAtTheDerivedWindow(t *testing.T) {
-	t.Parallel()
-	_, quality, ok := measure.EstimateSeries(withCadence(noisy(flat(600, 3.0)), 80), 82)
-	require.True(t, ok)
-
-	assert.Zero(t, quality.ClipBiasWatts)
-}
-
 // The Strava regression itself: the same noisy fixture, but with a cadence of
 // zero throughout — nobody was pedalling, so the gate reads every sample as
-// zero before the clamp ever sees the noise, and the clamp's own bias
-// diagnostic has nothing left to report.
+// zero and the mean is zero rather than whatever the recorder's own noise
+// would otherwise have suggested.
 func TestEstimateSeriesReadsZeroThroughoutWhenCadenceIsZeroThroughoutDespiteRecorderNoise(t *testing.T) {
 	t.Parallel()
-	estimates, quality, ok := measure.EstimateSeries(withCadence(noisy(flat(600, 3.0)), 0), 82)
+	samples := withCadence(noisy(flat(600, 3.0)), 0)
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
 	require.True(t, ok)
 
-	mean, hasMean := measure.MeanEstimate(estimates)
+	mean, share, hasMean := measure.PedallingMean(samples, estimates)
 	require.True(t, hasMean)
 	assert.Zero(t, mean)
-	assert.Zero(t, quality.ClipBiasWatts)
+	assert.Zero(t, share, "nobody pedalled a stroke of it")
 }
 
-// Too few known estimates to say anything statistical yields the zero value
-// rather than a diagnostic computed over one or two points.
-func TestEstimateSeriesQualityIsZeroWithFewerThanThreeKnownEstimates(t *testing.T) {
+// A bicycle produces nothing while it coasts: a coasted sample is excluded
+// from the mean and from the pedalling share's numerator, but still counts
+// among the ride's known samples.
+func TestPedallingMeanExcludesCoastedSamplesFromTheMeanButCountsThemInTheShare(t *testing.T) {
 	t.Parallel()
-	_, quality, ok := measure.EstimateSeries(ramp(2, 7.5, 0), 82)
+	samples := withCadence(ramp(10, 7.5, 0.04), 80)
+	samples[5].CadenceRPM = 0 // one coasted sample out of ten
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
+	require.True(t, ok)
+	require.Zero(t, estimates[5].Watts, "the coasted sample reads zero watts from the cadence gate itself")
+
+	pedallingOnly, ok := measure.EstimateSeries(withCadence(ramp(10, 7.5, 0.04), 80), 82, measure.DefaultCoefficients())
 	require.True(t, ok)
 
-	// A flat two-sample ramp has no positive altitude step either, so the
-	// window still reads as the floor.
-	assert.Equal(t, measure.Quality{WindowMetres: 30}, quality)
+	mean, share, hasMean := measure.PedallingMean(samples, estimates)
+	require.True(t, hasMean)
+	wantMean, _, wantOK := measure.PedallingMean(samples, pedallingOnly)
+	require.True(t, wantOK)
+	assert.InDelta(t, wantMean, mean, 1e-9, "the coasted sample does not drag the mean toward zero")
+	assert.Less(t, share, 1.0, "one sample out of the known ones was not pedalled")
 }
 
-// A pause breaks the run of adjacent known estimates a pair needs: the sample
-// just after the gap has no known predecessor to pair with, so the pause
-// contributes no pair to either diagnostic.
-func TestEstimateSeriesQualityPairsOnlyWithinAStretch(t *testing.T) {
+// ok is false only where nothing was estimated at all -- an empty series or
+// one whose every sample precedes what the model could work anything from.
+func TestPedallingMeanIsAbsentWhenNothingWasEstimated(t *testing.T) {
 	t.Parallel()
+	_, _, ok := measure.PedallingMean(nil, nil)
+	assert.False(t, ok)
+
 	samples := []measure.Sample{
 		{At: start(), DistanceMetres: 0, AltitudeMetres: 100},
-		{At: start().Add(time.Second), DistanceMetres: 7.5, AltitudeMetres: 100},
-		{At: start().Add(2 * time.Second), DistanceMetres: 15, AltitudeMetres: 100},
-		{At: start().Add(time.Hour), DistanceMetres: 22.5, AltitudeMetres: 100},
-		{At: start().Add(time.Hour + time.Second), DistanceMetres: 30, AltitudeMetres: 100},
+		{At: start().Add(time.Hour), DistanceMetres: 7.5, AltitudeMetres: 100},
 	}
-
-	_, quality, ok := measure.EstimateSeries(samples, 82)
-	require.True(t, ok)
-
-	// Only samples 1 and 2 are an adjacent known pair; sample 4 has no known
-	// predecessor across the gap. One pair alone cannot correlate.
-	assert.Zero(t, quality.Autocorrelation1)
-}
-
-// A clock that did not advance is no step the series measures over, so an
-// altitude change across one is no reading of the altimeter's resolution.
-func TestEstimateSeriesIgnoresAnAltitudeStepAcrossANonAdvancingClockWhenDerivingTheWindow(t *testing.T) {
-	t.Parallel()
-	samples := noisy(flat(600, 7))
-	last := samples[len(samples)-1]
-	last.AltitudeMetres += 0.01
-	samples = append(samples, last)
-
-	_, quality, ok := measure.EstimateSeries(samples, 82)
-	require.True(t, ok)
-	assert.InDelta(t, 100, quality.WindowMetres, 0.001)
+	estimates, seriesOK := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
+	require.False(t, seriesOK, "the one step in this fixture is a recording gap")
+	_, _, ok = measure.PedallingMean(samples, estimates)
+	assert.False(t, ok)
 }

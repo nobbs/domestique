@@ -1,4 +1,4 @@
-package powerfit_test
+package main
 
 import (
 	"testing"
@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/measure"
-	"github.com/nobbs/domestique/internal/powerfit"
 )
 
 func start() time.Time { return time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC) }
@@ -17,11 +16,11 @@ func start() time.Time { return time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC) }
 // speedsMS in turn for blockSeconds, and blocks the result to match. A fit
 // needs blocks at different speeds to tell drag from rolling resistance:
 // rolling grows with speed and drag with its cube.
-func rideAtSpeeds(speedsMS []float64, blockSeconds int, massKG float64) powerfit.Ride {
-	ride := powerfit.Ride{TotalMassKG: massKG}
+func rideAtSpeeds(speedsMS []float64, blockSeconds int, massKG float64) Ride {
+	ride := Ride{TotalMassKG: massKG}
 	distance, at := 0.0, 0
 	for _, speed := range speedsMS {
-		block := powerfit.Block{}
+		block := Block{}
 		for range blockSeconds {
 			ride.Samples = append(ride.Samples, measure.Sample{
 				At:             start().Add(time.Duration(at) * time.Second),
@@ -41,9 +40,9 @@ func rideAtSpeeds(speedsMS []float64, blockSeconds int, massKG float64) powerfit
 // targetedAt rewrites a ride's block targets to what the model itself
 // produces at the given coefficients, so a fit run against it has a known
 // answer to recover.
-func targetedAt(t *testing.T, ride powerfit.Ride, coefficients measure.Coefficients) powerfit.Ride {
+func targetedAt(t *testing.T, ride Ride, coefficients measure.Coefficients) Ride {
 	t.Helper()
-	estimates, _, ok := measure.EstimateSeriesWith(ride.Samples, ride.TotalMassKG, coefficients, nil)
+	estimates, ok := measure.EstimateSeries(ride.Samples, ride.TotalMassKG, coefficients)
 	require.True(t, ok)
 	for blockIndex, block := range ride.Blocks {
 		total, count := 0.0, 0
@@ -62,15 +61,15 @@ func targetedAt(t *testing.T, ride powerfit.Ride, coefficients measure.Coefficie
 
 func TestFitBridgeRecoversTheLineItWasGiven(t *testing.T) {
 	t.Parallel()
-	blocks := make([]powerfit.MeasuredBlock, 0, 20)
+	blocks := make([]MeasuredBlock, 0, 20)
 	for beat := 100; beat < 160; beat += 3 {
-		blocks = append(blocks, powerfit.MeasuredBlock{
+		blocks = append(blocks, MeasuredBlock{
 			HeartRateBPM:  float64(beat),
 			WattsMeasured: 1.5*float64(beat) - 40,
 		})
 	}
 
-	bridge, ok := powerfit.FitBridge(blocks)
+	bridge, ok := FitBridge(blocks)
 	require.True(t, ok)
 
 	assert.InDelta(t, 1.5, bridge.WattsPerBPM, 1e-9)
@@ -80,21 +79,21 @@ func TestFitBridgeRecoversTheLineItWasGiven(t *testing.T) {
 
 func TestFitBridgeRefusesTooFewBlocksAndASingleHeartRate(t *testing.T) {
 	t.Parallel()
-	_, ok := powerfit.FitBridge([]powerfit.MeasuredBlock{{HeartRateBPM: 120, WattsMeasured: 150}})
+	_, ok := FitBridge([]MeasuredBlock{{HeartRateBPM: 120, WattsMeasured: 150}})
 	assert.False(t, ok)
 
-	flat := []powerfit.MeasuredBlock{
+	flat := []MeasuredBlock{
 		{HeartRateBPM: 120, WattsMeasured: 150},
 		{HeartRateBPM: 120, WattsMeasured: 160},
 		{HeartRateBPM: 120, WattsMeasured: 170},
 	}
-	_, ok = powerfit.FitBridge(flat)
+	_, ok = FitBridge(flat)
 	assert.False(t, ok)
 }
 
 func TestBridgeWattsAtNeverReadsBelowNought(t *testing.T) {
 	t.Parallel()
-	bridge := powerfit.Bridge{WattsPerBPM: 1.5, InterceptWatts: -40}
+	bridge := Bridge{WattsPerBPM: 1.5, InterceptWatts: -40}
 
 	assert.InDelta(t, 140.0, bridge.WattsAt(120), 1e-9)
 	assert.Zero(t, bridge.WattsAt(10))
@@ -110,9 +109,9 @@ func TestFitDragAreaRecoversTheDragAreaItsTargetsWereBuiltAt(t *testing.T) {
 		{DragArea: 0.38, RollingResistance: 0.010},
 		{DragArea: 0.60, RollingResistance: 0.010},
 	} {
-		rides := []powerfit.Ride{targetedAt(t, base, want)}
+		rides := []Ride{targetedAt(t, base, want)}
 
-		got, result, ok := powerfit.FitDragArea(want.RollingResistance, rides)
+		got, result, ok := FitDragArea(want.RollingResistance, rides)
 		require.True(t, ok)
 
 		assert.InEpsilon(t, want.DragArea, got.DragArea, 0.02, "want %v", want)
@@ -124,11 +123,11 @@ func TestFitDragAreaRecoversTheDragAreaItsTargetsWereBuiltAt(t *testing.T) {
 func TestEvaluateReportsTheSignedBiasOfACandidate(t *testing.T) {
 	t.Parallel()
 	base := rideAtSpeeds([]float64{6, 10, 14}, 300, 92)
-	rides := []powerfit.Ride{targetedAt(t, base, measure.Coefficients{DragArea: 0.50, RollingResistance: 0.008})}
+	rides := []Ride{targetedAt(t, base, measure.Coefficients{DragArea: 0.50, RollingResistance: 0.008})}
 
 	// A bicycle slipperier than the one the targets were built at must read
 	// low, and say so with a negative bias rather than only a bare RMS.
-	result, ok := powerfit.Evaluate(rides, measure.Coefficients{DragArea: 0.30, RollingResistance: 0.004})
+	result, ok := Evaluate(rides, measure.Coefficients{DragArea: 0.30, RollingResistance: 0.004})
 	require.True(t, ok)
 
 	assert.Negative(t, result.BiasWatts)
@@ -137,19 +136,19 @@ func TestEvaluateReportsTheSignedBiasOfACandidate(t *testing.T) {
 
 func TestEvaluateRefusesRidesWithNoBlockItCanEstimateAcross(t *testing.T) {
 	t.Parallel()
-	_, ok := powerfit.Evaluate(nil, measure.DefaultCoefficients())
+	_, ok := Evaluate(nil, measure.DefaultCoefficients())
 	assert.False(t, ok)
 
-	empty := []powerfit.Ride{{Samples: rideAtSpeeds([]float64{6}, 300, 92).Samples, TotalMassKG: 92}}
-	_, ok = powerfit.Evaluate(empty, measure.DefaultCoefficients())
+	empty := []Ride{{Samples: rideAtSpeeds([]float64{6}, 300, 92).Samples, TotalMassKG: 92}}
+	_, ok = Evaluate(empty, measure.DefaultCoefficients())
 	assert.False(t, ok)
 }
 
 func TestFitRefusesCoefficientsNoBicycleCouldHave(t *testing.T) {
 	t.Parallel()
-	rides := []powerfit.Ride{targetedAt(t, rideAtSpeeds([]float64{6, 10}, 300, 92), measure.DefaultCoefficients())}
+	rides := []Ride{targetedAt(t, rideAtSpeeds([]float64{6, 10}, 300, 92), measure.DefaultCoefficients())}
 
-	_, ok := powerfit.Evaluate(rides, measure.Coefficients{DragArea: -1, RollingResistance: 0.005})
+	_, ok := Evaluate(rides, measure.Coefficients{DragArea: -1, RollingResistance: 0.005})
 	assert.False(t, ok)
 }
 
@@ -161,9 +160,9 @@ func TestFitDragAreaStaysInsideTheBoundsABicycleCouldHave(t *testing.T) {
 	// Targets built at a drag area far under anything rideable, so the search
 	// is pulled hard at its own floor.
 	base := rideAtSpeeds([]float64{4, 8, 12}, 300, 92)
-	rides := []powerfit.Ride{targetedAt(t, base, measure.Coefficients{DragArea: 0.05, RollingResistance: 0.010})}
+	rides := []Ride{targetedAt(t, base, measure.Coefficients{DragArea: 0.05, RollingResistance: 0.010})}
 
-	got, _, ok := powerfit.FitDragArea(0.010, rides)
+	got, _, ok := FitDragArea(0.010, rides)
 	require.True(t, ok)
 
 	assert.GreaterOrEqual(t, got.DragArea, 0.15)

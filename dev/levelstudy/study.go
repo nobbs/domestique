@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/measure"
-	"github.com/nobbs/domestique/internal/powerfit"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
@@ -35,7 +34,7 @@ type meteredRide struct {
 	at     time.Time
 	track  []measure.Sample
 	power  []trainingload.Sample
-	blocks []powerfit.MeasuredBlock
+	blocks []MeasuredBlock
 	massKG float64
 }
 
@@ -45,8 +44,8 @@ type meteredRide struct {
 // diagnostic of the shape.
 type unmeteredRide struct {
 	blockHeartRate []float64
-	whole          powerfit.Ride
-	blocks         powerfit.Ride
+	whole          Ride
+	blocks         Ride
 	meanHeartRate  float64
 	windKMH        float64
 	hasWind        bool
@@ -86,7 +85,7 @@ func blockMean(readings []trainingload.Sample, start time.Time, block time.Durat
 // meteredBlocksOf cuts a metered ride into blocks: those holding at least
 // half their own length in both readings. Only the power and the heart rate
 // are read. A trainer ride's speed and distance are a simulation.
-func meteredBlocksOf(power, heartRate []trainingload.Sample, block time.Duration) []powerfit.MeasuredBlock {
+func meteredBlocksOf(power, heartRate []trainingload.Sample, block time.Duration) []MeasuredBlock {
 	if len(power) == 0 || len(heartRate) == 0 {
 		return nil
 	}
@@ -101,12 +100,12 @@ func meteredBlocksOf(power, heartRate []trainingload.Sample, block time.Duration
 	sort.Ints(keys)
 
 	half := int(block.Seconds() / 2)
-	blocks := make([]powerfit.MeasuredBlock, 0, len(keys))
+	blocks := make([]MeasuredBlock, 0, len(keys))
 	for _, key := range keys {
 		if powerCounts[key] < half || heartRateCounts[key] < half {
 			continue
 		}
-		blocks = append(blocks, powerfit.MeasuredBlock{
+		blocks = append(blocks, MeasuredBlock{
 			HeartRateBPM: heartRateMeans[key], WattsMeasured: powerMeans[key],
 		})
 	}
@@ -128,10 +127,10 @@ func pedalling(sample *measure.Sample) bool {
 // membership once for every candidate that follows.
 func unmeteredBlocksOf(
 	track []measure.Sample, heartRate []trainingload.Sample, massKG float64, block time.Duration,
-) (whole powerfit.Block, blocks []powerfit.Block, blockHeartRate []float64) {
-	estimates, _, ok := measure.EstimateSeriesWith(track, massKG, uprightPrior, nil)
+) (whole Block, blocks []Block, blockHeartRate []float64) {
+	estimates, ok := measure.EstimateSeries(track, massKG, uprightPrior)
 	if !ok || len(track) == 0 {
-		return powerfit.Block{}, nil, nil
+		return Block{}, nil, nil
 	}
 	start := track[0].At
 	indicesByBlock := map[int][]int{}
@@ -156,7 +155,7 @@ func unmeteredBlocksOf(
 		if len(indicesByBlock[key]) < half || heartRateCounts[key] < half {
 			continue
 		}
-		blocks = append(blocks, powerfit.Block{Indices: indicesByBlock[key]})
+		blocks = append(blocks, Block{Indices: indicesByBlock[key]})
 		blockHeartRate = append(blockHeartRate, heartRateMeans[key])
 	}
 
@@ -261,22 +260,22 @@ func (b bridge) wattsAt(at time.Time, heartRateBPM float64) float64 {
 // A candidate is one way of choosing the coefficients, scored on rides its
 // fit never saw.
 type candidate struct {
-	fit  func([]powerfit.Ride) (measure.Coefficients, bool)
+	fit  func([]Ride) (measure.Coefficients, bool)
 	name string
 }
 
 // candidates are the built-in road bicycle, the upright prior as it stands,
 // and the drag area fitted at the prior's rolling resistance.
 func candidates() []candidate {
-	fixed := func(coefficients measure.Coefficients) func([]powerfit.Ride) (measure.Coefficients, bool) {
-		return func([]powerfit.Ride) (measure.Coefficients, bool) { return coefficients, true }
+	fixed := func(coefficients measure.Coefficients) func([]Ride) (measure.Coefficients, bool) {
+		return func([]Ride) (measure.Coefficients, bool) { return coefficients, true }
 	}
 
 	return []candidate{
 		{name: "default", fit: fixed(measure.DefaultCoefficients())},
 		{name: "prior", fit: fixed(uprightPrior)},
-		{name: "cda", fit: func(rides []powerfit.Ride) (measure.Coefficients, bool) {
-			coefficients, _, ok := powerfit.FitDragArea(uprightPrior.RollingResistance, rides)
+		{name: "cda", fit: func(rides []Ride) (measure.Coefficients, bool) {
+			coefficients, _, ok := FitDragArea(uprightPrior.RollingResistance, rides)
 			return coefficients, ok
 		}},
 	}
@@ -296,7 +295,7 @@ func (s rideScore) errorPercent() float64 { return 100 * (s.modelled - s.target)
 type meteredCheck struct {
 	name              string
 	rides             []rideScore
-	blocks            powerfit.Result
+	blocks            Result
 	coefficients      measure.Coefficients
 	secondCorrelation float64
 	secondRMS         float64
@@ -332,7 +331,7 @@ func smoothed(values []float64, width int) []float64 {
 // position or altitude value is ever held here.
 type report struct {
 	rides        map[string][]rideScore
-	blocks       map[string][]powerfit.Result
+	blocks       map[string][]Result
 	fitted       map[string][]measure.Coefficients
 	checks       []meteredCheck
 	bridge       bridge
@@ -503,17 +502,17 @@ func correlation(a, b []float64) float64 {
 // unmetered ride is, with the meter's own mean as each block's target.
 func meteredRideOf(
 	ride *meteredRide, block time.Duration,
-) (whole, blocks powerfit.Ride, indices []int, measured []float64) {
+) (whole, blocks Ride, indices []int, measured []float64) {
 	wattsAt := make(map[int64]float64, len(ride.power))
 	for _, reading := range ride.power {
 		wattsAt[reading.At.Unix()] = reading.Value
 	}
-	estimates, _, ok := measure.EstimateSeriesWith(ride.track, ride.massKG, uprightPrior, nil)
+	estimates, ok := measure.EstimateSeries(ride.track, ride.massKG, uprightPrior)
 	if !ok {
-		return powerfit.Ride{}, powerfit.Ride{}, nil, nil
+		return Ride{}, Ride{}, nil, nil
 	}
 	start := ride.track[0].At
-	all := powerfit.Block{}
+	all := Block{}
 	byBlock, sumByBlock := map[int][]int{}, map[int]float64{}
 	for index := range ride.track {
 		watts, present := wattsAt[ride.track[index].At.Unix()]
@@ -529,7 +528,7 @@ func meteredRideOf(
 		sumByBlock[key] += watts
 	}
 	if len(all.Indices) == 0 {
-		return powerfit.Ride{}, powerfit.Ride{}, nil, nil
+		return Ride{}, Ride{}, nil, nil
 	}
 	all.TargetWatts /= float64(len(all.Indices))
 	keys := make([]int, 0, len(byBlock))
@@ -537,35 +536,35 @@ func meteredRideOf(
 		keys = append(keys, key)
 	}
 	sort.Ints(keys)
-	var cuts []powerfit.Block
+	var cuts []Block
 	half := int(block.Seconds() / 2)
 	for _, key := range keys {
 		if len(byBlock[key]) < half {
 			continue
 		}
-		cuts = append(cuts, powerfit.Block{Indices: byBlock[key], TargetWatts: sumByBlock[key] / float64(len(byBlock[key]))})
+		cuts = append(cuts, Block{Indices: byBlock[key], TargetWatts: sumByBlock[key] / float64(len(byBlock[key]))})
 	}
 
-	return powerfit.Ride{Samples: ride.track, Blocks: []powerfit.Block{all}, TotalMassKG: ride.massKG},
-		powerfit.Ride{Samples: ride.track, Blocks: cuts, TotalMassKG: ride.massKG}, indices, measured
+	return Ride{Samples: ride.track, Blocks: []Block{all}, TotalMassKG: ride.massKG},
+		Ride{Samples: ride.track, Blocks: cuts, TotalMassKG: ride.massKG}, indices, measured
 }
 
 // checkAgainstMeter runs the model at one pair of coefficients over every
 // metered ride with a track and reports how it sits against the meter per
 // ride, per block and per second.
 func checkAgainstMeter(
-	name string, coefficients measure.Coefficients, wholes, blocks []powerfit.Ride, indices [][]int, measured [][]float64,
+	name string, coefficients measure.Coefficients, wholes, blocks []Ride, indices [][]int, measured [][]float64,
 ) meteredCheck {
 	check := meteredCheck{name: name, coefficients: coefficients}
 	var modelledSeconds, measuredSeconds, modelledSmooth, measuredSmooth []float64
 	for index := range wholes {
-		scored, ok := powerfit.Evaluate(wholes[index:index+1], coefficients)
+		scored, ok := Evaluate(wholes[index:index+1], coefficients)
 		if !ok {
 			continue
 		}
 		target := wholes[index].Blocks[0].TargetWatts
 		check.rides = append(check.rides, rideScore{modelled: target + scored.BiasWatts, target: target})
-		estimates, _, estimateOK := measure.EstimateSeriesWith(wholes[index].Samples, wholes[index].TotalMassKG, coefficients, nil)
+		estimates, estimateOK := measure.EstimateSeries(wholes[index].Samples, wholes[index].TotalMassKG, coefficients)
 		if !estimateOK {
 			continue
 		}
@@ -578,7 +577,7 @@ func checkAgainstMeter(
 		modelledSmooth = append(modelledSmooth, smoothed(modelledRide, smoothingSeconds)...)
 		measuredSmooth = append(measuredSmooth, smoothed(measured[index], smoothingSeconds)...)
 	}
-	check.blocks, _ = powerfit.Evaluate(blocks, coefficients)
+	check.blocks, _ = Evaluate(blocks, coefficients)
 	check.seconds = len(modelledSeconds)
 	if check.seconds >= 3 {
 		check.secondCorrelation, check.secondRMS = agreement(modelledSeconds, measuredSeconds)
@@ -616,7 +615,7 @@ func study(
 
 	result := &report{
 		rides:  map[string][]rideScore{},
-		blocks: map[string][]powerfit.Result{},
+		blocks: map[string][]Result{},
 		fitted: map[string][]measure.Coefficients{},
 	}
 	massCache := map[string]float64{}
@@ -663,8 +662,8 @@ func study(
 		}
 		held := unmeteredRide{
 			atUnix:         samples.Track[0].At.Unix(),
-			whole:          powerfit.Ride{Samples: samples.Track, Blocks: []powerfit.Block{whole}, TotalMassKG: mass},
-			blocks:         powerfit.Ride{Samples: samples.Track, Blocks: blocks, TotalMassKG: mass},
+			whole:          Ride{Samples: samples.Track, Blocks: []Block{whole}, TotalMassKG: mass},
+			blocks:         Ride{Samples: samples.Track, Blocks: blocks, TotalMassKG: mass},
 			blockHeartRate: heartRates,
 			meanHeartRate:  heartRateSum / float64(len(heartRate)),
 		}
@@ -697,7 +696,7 @@ func study(
 	result.rideCount = len(unmetered)
 
 	for fold := range folds {
-		var train []powerfit.Ride
+		var train []Ride
 		var test []*unmeteredRide
 		for index := range unmetered {
 			if index%folds == fold {
@@ -716,10 +715,10 @@ func study(
 			}
 			result.fitted[held.name] = append(result.fitted[held.name], coefficients)
 			for _, ride := range test {
-				if scored, scoreOK := powerfit.Evaluate([]powerfit.Ride{ride.blocks}, coefficients); scoreOK {
+				if scored, scoreOK := Evaluate([]Ride{ride.blocks}, coefficients); scoreOK {
 					result.blocks[held.name] = append(result.blocks[held.name], scored)
 				}
-				scored, scoreOK := powerfit.Evaluate([]powerfit.Ride{ride.whole}, coefficients)
+				scored, scoreOK := Evaluate([]Ride{ride.whole}, coefficients)
 				if !scoreOK {
 					continue
 				}
@@ -731,16 +730,16 @@ func study(
 		}
 	}
 
-	whole := make([]powerfit.Ride, 0, len(unmetered))
+	whole := make([]Ride, 0, len(unmetered))
 	for index := range unmetered {
 		whole = append(whole, unmetered[index].whole)
 	}
-	if shipped, _, shipOK := powerfit.FitDragArea(uprightPrior.RollingResistance, whole); shipOK {
+	if shipped, _, shipOK := FitDragArea(uprightPrior.RollingResistance, whole); shipOK {
 		result.shipped = shipped
 	}
 
 	if checkYear > 0 {
-		var wholes, blocks []powerfit.Ride
+		var wholes, blocks []Ride
 		var indices [][]int
 		var measured [][]float64
 		for index := range metered {
@@ -759,7 +758,7 @@ func study(
 		}
 		result.checkedRides = len(wholes)
 		if len(wholes) > 0 {
-			zwiftFit, _, zwiftOK := powerfit.FitDragArea(zwiftRollingResistance, wholes)
+			zwiftFit, _, zwiftOK := FitDragArea(zwiftRollingResistance, wholes)
 			result.checks = append(result.checks,
 				checkAgainstMeter("learned", result.shipped, wholes, blocks, indices, measured),
 				checkAgainstMeter("default", measure.DefaultCoefficients(), wholes, blocks, indices, measured))

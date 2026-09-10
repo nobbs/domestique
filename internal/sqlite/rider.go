@@ -30,6 +30,8 @@ func (s *Store) RiderProfile(ctx context.Context, subject string) (rider.Profile
 		FunctionalThresholdPowerWatts: riderValue(row.FunctionalThresholdPowerWatts),
 		RiderMassKG:                   riderValue(row.RiderMassKg),
 		BikeMassKG:                    riderValue(row.BikeMassKg),
+		DragAreaM2:                    riderValue(row.DragAreaM2),
+		RollingResistance:             riderValue(row.RollingResistance),
 	}, nil
 }
 
@@ -46,6 +48,8 @@ func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rid
 		FunctionalThresholdPowerWatts: nullRiderValue(profile.FunctionalThresholdPowerWatts),
 		RiderMassKg:                   nullRiderValue(profile.RiderMassKG),
 		BikeMassKg:                    nullRiderValue(profile.BikeMassKG),
+		DragAreaM2:                    nullRiderValue(profile.DragAreaM2),
+		RollingResistance:             nullRiderValue(profile.RollingResistance),
 		UpdatedAtUnix:                 time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("storing the rider profile: %w", err)

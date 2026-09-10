@@ -1,4 +1,4 @@
-h1:zHjvm0IEGyf/NJ9hVotjL/eF4MCNqdlTglvj6FMx350=
+h1:29qs9lXG6OdhodGTa6uTbDC79Sj1fjiwAR7gBduYWgM=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -57,3 +57,7 @@ h1:zHjvm0IEGyf/NJ9hVotjL/eF4MCNqdlTglvj6FMx350=
 000054_activity_provider.up.sql h1:SKtg3jDFNa9UWMy7e/GmuxVTSEe+hSElye39ZeCrgWw=
 000055_activity_target_power.down.sql h1:LEzxo8baXZOi4kB98ArTkamcTCDCGF95f4qOtO4PMgQ=
 000055_activity_target_power.up.sql h1:Kbs3h32XUvqzwx8u+9LH9yt67HyV3brsdoNM837W9TE=
+000056_rider_bicycle.down.sql h1:68ZGpGtiq3cgRFEgY6tcKmotSig5t6inSO3F01tqzf0=
+000056_rider_bicycle.up.sql h1:UIyPuk1FRMFC9BSsuRb0P3Jyl+z//0lUdVRcfv2YofE=
+000057_estimate_pedalling.down.sql h1:9W6JWoKYGDmNjur11/KfWkLkQMl11pkxzviLMUDAbxI=
+000057_estimate_pedalling.up.sql h1:sYDPvMDaJ0d3km2DhKOYP24XlY5iDJaevREy80sy06o=
