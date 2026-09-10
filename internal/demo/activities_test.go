@@ -8,6 +8,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/demo"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/wahoo"
 )
@@ -119,12 +120,21 @@ func TestAPositionedRideIsRecordedOverTheStageItFollowed(t *testing.T) {
 		require.NotEmpty(t, geometry, "ride %d names a stage the library holds", id)
 
 		records := ride.FIT.Records
-		require.Len(t, records, len(geometry), "one sample per point of the stage")
+		require.NotEmpty(t, records)
 		assert.InDelta(t, geometry[0].Latitude, records[0].Latitude, 1e-9,
 			"ride %d sets off where the stage does", id)
 		assert.InDelta(t, geometry[len(geometry)-1].Longitude, records[len(records)-1].Longitude, 1e-9,
 			"ride %d finishes where the stage does", id)
 		assert.Positive(t, records[len(records)-1].DistanceMetres, "and covers ground on the way")
+
+		// The whole reason records are timed rather than pointed: the
+		// geometry's own distance spacing must never leave a gap wide enough
+		// to read as the sensor having dropped out.
+		for index := 1; index < len(records); index++ {
+			gap := records[index].Time.Sub(records[index-1].Time)
+			assert.LessOrEqual(t, gap, measure.DefaultMaxGap,
+				"ride %d: consecutive samples %v apart", id, gap)
+		}
 	}
 }
 
