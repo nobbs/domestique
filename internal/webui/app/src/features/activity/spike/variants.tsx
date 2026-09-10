@@ -30,7 +30,6 @@ import { flowBearingDegrees } from "../../../lib/windField";
 import { ElevationProfile } from "../../routes/ElevationProfile";
 import { windWeight } from "../../routes/forecastCells";
 import { RouteOverlay } from "../../routes/RouteOverlay";
-import { RideSplits } from "../RideSplits";
 import {
   ASCENT_METRES,
   AVERAGE_KMH,
@@ -551,7 +550,6 @@ function Page({ children, wide = false }: { children: ReactNode; wide?: boolean 
  */
 export function HeadlinePage() {
   const [active, setActive] = useState<number | null>(null);
-  const [table, setTable] = useState(false);
   const { profile, series } = useRide();
 
   return (
@@ -612,25 +610,12 @@ export function HeadlinePage() {
           </div>
         </div>
       </Panel>
-      <Panel
-        title="By the kilometre"
-        action={
-          <button
-            type="button"
-            onClick={() => setTable(!table)}
-            className="flex items-center gap-1 text-[var(--ink-2)] text-xs hover:text-[var(--ink)]"
-          >
-            {table ? "Hide the table" : "Show the table"}
-            {table ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />}
-          </button>
-        }
-      >
+      <Panel title="By the kilometre">
         <Scrub active={active} onActive={setActive}>
           <SplitBars active={active} />
         </Scrub>
         <SplitReadout active={active} />
       </Panel>
-      {table ? <RideSplits splits={SPLITS} /> : null}
     </Page>
   );
 }
@@ -1065,12 +1050,9 @@ export function AtlasPage() {
           <SeriesLegend active={active} />
         </div>
       </div>
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <Panel title="Conditions">
-          <Steps compact />
-        </Panel>
-        <RideSplits splits={SPLITS} />
-      </div>
+      <Panel title="Conditions">
+        <Steps compact />
+      </Panel>
     </Page>
   );
 }

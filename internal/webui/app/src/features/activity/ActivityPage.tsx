@@ -1,15 +1,20 @@
 /**
  * One recorded ride: the four figures that decide it set large beside the map,
- * then the terrain with the weather laid under it, the effort, and the ride by
- * the kilometre. The summary is read from the same activities query the list
- * uses, so arriving from the list costs only the track request; a direct link
- * fetches both.
+ * then the terrain with the weather laid under it, the effort, and the ride's
+ * attempts at its route's sustained climbs. The summary is read from the same
+ * activities query the list uses, so arriving from the list costs only the
+ * track request; a direct link fetches both.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import { activitySplitsQuery, activityTrackQuery, routesQuery } from "../../api/queries";
+import {
+  activitySplitsQuery,
+  activityTrackQuery,
+  routeClimbsQuery,
+  routesQuery,
+} from "../../api/queries";
 import type { Activity, ActivityTrackState } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
@@ -28,10 +33,10 @@ import { useEscapeKey } from "../../lib/useEscapeKey";
 import { conditionsSentence } from "../../lib/weather";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
+import { RideClimbs } from "./RideClimbs";
 import { RideConditions, stepStarts } from "./RideConditions";
 import { RideFigures } from "./RideFigures";
 import { type RideSeriesKey, SeriesChips, useRideSeries } from "./RideSeries";
-import { RideSplits } from "./RideSplits";
 import { TrainingLoad } from "./TrainingLoad";
 import { useActivities } from "./useActivities";
 
@@ -45,7 +50,19 @@ export function ActivityPage() {
   const { activities } = useActivities();
   const ride = activities.find((activity) => activity.id === id);
   const track = useQuery({ ...activityTrackQuery(id ?? ""), enabled: id !== null });
+  // Kept for RideConditions' own stepStarts below, which places a weather
+  // sample by moving time rather than elapsed time; the panel it once fed,
+  // "By the kilometre", is gone in favour of RideClimbs.
   const splits = useQuery({ ...activitySplitsQuery(id ?? ""), enabled: id !== null });
+  const routeMatch = ride?.routeMatch;
+  const routeClimbs = useQuery({
+    ...routeClimbsQuery(
+      routeMatch?.provider ?? "",
+      routeMatch?.sourceRouteId ?? 0,
+      routeMatch?.stageOrder ?? 0,
+    ),
+    enabled: routeMatch !== undefined,
+  });
   const coordinates = useMemo(() => track.data?.coordinates ?? [], [track.data]);
   const profile = useMemo(() => buildActivityProfile(coordinates), [coordinates]);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
@@ -220,12 +237,7 @@ export function ActivityPage() {
           </div>
         ) : null}
         <TrainingLoad ride={ride} />
-        <RideSplits
-          splits={splits.data?.splits}
-          activeMetres={activeMetres}
-          onActiveChange={setActiveMetres}
-          {...(profile ? { axisMetres: profile.totalDistanceMetres } : {})}
-        />
+        {id !== null ? <RideClimbs climbs={routeClimbs.data?.climbs} activityId={id} /> : null}
       </div>
     </PageShell>
   );

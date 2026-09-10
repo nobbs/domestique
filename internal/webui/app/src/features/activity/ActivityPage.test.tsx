@@ -17,6 +17,7 @@ import {
   activitySeriesQuery,
   activitySplitsQuery,
   activityTrackQuery,
+  routeClimbsQuery,
   routesQuery,
   webUIConfigQuery,
 } from "../../api/queries";
@@ -26,6 +27,7 @@ import type {
   ActivityTrack,
   Route as LibraryRoute,
   Position,
+  RouteClimb,
   WebUIConfig,
 } from "../../api/types";
 import type { Profile } from "../../lib/profile";
@@ -168,6 +170,7 @@ function show(
   ride: Activity = RIDE,
   splits: ActivitySplit[] = [],
   library: LibraryRoute[] | null = [],
+  climbs: RouteClimb[] = [],
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -184,6 +187,12 @@ function show(
   const asked = /^\d+$/.test(activityId) ? activityId : null;
   if (asked !== null) {
     client.setQueryData(activitySplitsQuery(asked).queryKey, { splits });
+    if (ride.routeMatch) {
+      const { provider, sourceRouteId, stageOrder } = ride.routeMatch;
+      client.setQueryData(routeClimbsQuery(provider, sourceRouteId, stageOrder).queryKey, {
+        climbs,
+      });
+    }
     if (recorded) {
       client.setQueryData(activityTrackQuery(asked).queryKey, recorded);
     }
@@ -246,15 +255,31 @@ describe("one ride's page", () => {
     expect(screen.getByText("1 h 6 min elapsed")).toBeInTheDocument();
   });
 
-  it("hands the ride's fetched splits to the table", async () => {
-    show(track(), RIDE.id, undefined, RIDE, [
-      { distanceMetres: 1000, movingSeconds: 120, ascentMetres: 0 },
-      { distanceMetres: 500, movingSeconds: 90, ascentMetres: 0 },
-    ]);
+  it("hands the ride's fetched climbs to the panel", () => {
+    show(
+      track(),
+      RIDE.id,
+      undefined,
+      matchedRide(),
+      [],
+      [LIBRARY_ROUTE],
+      [
+        {
+          startMetres: 0,
+          endMetres: 2000,
+          distanceMetres: 2000,
+          ascentMetres: 180,
+          averageGradePercent: 6.2,
+          maxGradePercent: 11.4,
+          attempts: [
+            { activityId: RIDE.id, riddenAt: RIDE.startedAt, seconds: 365, vamMetresPerHour: 890 },
+          ],
+        },
+      ],
+    );
 
-    expect(screen.getByLabelText("Splits")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Show the table" }));
-    expect(screen.getByText("1.5 km")).toBeInTheDocument();
+    expect(screen.getByLabelText("By the climb")).toBeInTheDocument();
+    expect(screen.getByText("Climb 1")).toBeInTheDocument();
   });
 
   it("says what the ride was ridden through, where it was asked about", () => {
@@ -304,11 +329,12 @@ describe("one ride's page", () => {
     expect(Number.parseFloat(tiles[1]?.style.left ?? "")).toBeGreaterThan(0);
   });
 
-  // A ride the service cut into no stretches shows no table at all.
-  it("shows no splits table for a ride with none", () => {
+  // A ride matched to no route, or matched to one it rode no climb of, shows
+  // no panel at all.
+  it("shows no climbs panel for an unmatched ride", () => {
     show();
 
-    expect(screen.queryByLabelText("Splits")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("By the climb")).not.toBeInTheDocument();
   });
 
   // Two near-identical figures say less than one.
