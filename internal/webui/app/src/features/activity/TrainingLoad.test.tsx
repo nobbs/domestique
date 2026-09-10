@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { TrainingLoad } from "./TrainingLoad";
@@ -142,6 +143,30 @@ describe("TrainingLoad", () => {
     );
     expect(exact).toHaveClass("sr-only");
     expect(screen.queryByText("Estimate steadiness", { selector: "span" })).not.toBeInTheDocument();
+  });
+
+  // A hover title alone leaves a sighted touch user with no way to reach the
+  // exact values at all; a tap must open them the same as a screen reader's
+  // direct read of the caption's accessible name does.
+  it("lets a tap reveal the estimate's exact diagnostic values", async () => {
+    const user = userEvent.setup();
+    show({
+      estimatedPowerWatts: 187.4,
+      estimateQuality: {
+        autocorrelation: 0.923,
+        meanAbsDeltaWattsPerSecond: 12.34,
+        clipBiasWatts: 3.456,
+      },
+    });
+
+    await user.click(screen.getByRole("button", { name: /Estimate steadiness/ }));
+
+    expect(
+      screen.getByText(
+        "Estimate steadiness 0.92 lag-1 correlation · Estimate jitter 12.3 watts change per second · Clamp bias 3.5 watts the zero clamp added",
+        { selector: "div" },
+      ),
+    ).toBeInTheDocument();
   });
 
   it("leaves out the quality diagnostics when the ride has no estimate", () => {

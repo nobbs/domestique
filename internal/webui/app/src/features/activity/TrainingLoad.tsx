@@ -14,6 +14,7 @@
 import type { ReactNode } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { Badge } from "../../components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Separator } from "../../components/ui/separator";
 import { formatDuration } from "../../lib/format";
 
@@ -305,11 +306,12 @@ function estimateTier(diagnostics: Scale[]): "steady" | "rough" {
 /**
  * The estimate's power tile, with its three diagnostics folded into a caption
  * and a quality badge rather than three tiles beside it. The caption's words
- * are decorative; the exact values stay reachable on touch and to assistive
- * technology as hidden text, not only through the hover title.
+ * are decorative; a screen reader gets the exact values straight away as the
+ * caption button's own accessible name, and a tap or click opens them for a
+ * sighted reader too — not only through a hover title, unreachable on touch.
  */
 function EstimatedPowerTile({ power, diagnostics }: { power: Scale; diagnostics: Scale[] }) {
-  const hoverTitle = diagnostics
+  const exactValues = diagnostics
     .map(
       (diagnostic) =>
         `${diagnostic.label} ${diagnostic.value?.toFixed(diagnostic.decimals ?? 0)} ${diagnostic.scale}`,
@@ -333,10 +335,13 @@ function EstimatedPowerTile({ power, diagnostics }: { power: Scale; diagnostics:
         </Badge>
       </div>
       <span className="text-[var(--ink-2)] text-xs">{power.scale}</span>
-      <span className="text-[10px] text-[var(--ink-2)] opacity-80" title={hoverTitle}>
-        <span aria-hidden="true">{foldedCaption(diagnostics)}</span>
-        <span className="sr-only">{hoverTitle}</span>
-      </span>
+      <Popover>
+        <PopoverTrigger className="w-fit text-left text-[10px] text-[var(--ink-2)] underline decoration-dotted underline-offset-2 opacity-80">
+          <span aria-hidden="true">{foldedCaption(diagnostics)}</span>
+          <span className="sr-only">{exactValues}</span>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto text-xs">{exactValues}</PopoverContent>
+      </Popover>
     </div>
   );
 }
