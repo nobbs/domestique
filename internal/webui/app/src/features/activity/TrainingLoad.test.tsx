@@ -125,7 +125,7 @@ describe("TrainingLoad", () => {
   it("shows the estimate's pedalling share as its scale", () => {
     show({ estimatedPowerWatts: 187.4, estimatedPedallingShare: 0.87 });
 
-    expect(screen.getByText("watts while pedalling, 87% of the ride")).toBeInTheDocument();
+    expect(screen.getByText("watts while pedalling, 87% of its samples")).toBeInTheDocument();
   });
 
   it("names each zone and how long the ride held it", () => {

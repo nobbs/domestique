@@ -277,7 +277,7 @@ type ActivityMetrics struct {
 	PowerTss             *float64 `json:"powerTss,omitempty"`
 	// EstimatedPowerWatts The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track at the rider's own bicycle numbers, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass.
 	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
-	// EstimatedPedallingShare The share of the ride's samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
+	// EstimatedPedallingShare The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
 	EstimatedPedallingShare *float64 `json:"estimatedPedallingShare,omitempty"`
 	// AverageSpeedKmh The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries.
 	AverageSpeedKmh *float64 `json:"averageSpeedKmh,omitempty"`

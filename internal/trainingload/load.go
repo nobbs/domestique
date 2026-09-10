@@ -28,12 +28,19 @@ const MinSeriesCoverage = 0.90
 // over, against the ride's own moving time rather than its elapsed one, so a
 // stop with the sensor detached does not count against it. Capped at 1: a
 // series held for the whole elapsed ride, stops included, still covers the
-// moving time in full. False for a series with nothing to hold at all.
+// moving time in full. False for a series with nothing to hold at all. A
+// reading of nought is no reading: an unpaired strap writes nought.
 func SeriesCoverage(samples []Sample, movingSeconds float64) (share float64, ok bool) {
 	if movingSeconds <= 0 {
 		return 0, false
 	}
-	_, held := measure.MeanHeld(samples, measure.DefaultMaxGap)
+	present := make([]Sample, 0, len(samples))
+	for _, sample := range samples {
+		if sample.Value > 0 {
+			present = append(present, sample)
+		}
+	}
+	_, held := measure.MeanHeld(present, measure.DefaultMaxGap)
 	if held <= 0 {
 		return 0, false
 	}

@@ -117,6 +117,12 @@ func TestSeriesCoverageIsPartialWhenTheSeriesDroppedOutPartway(t *testing.T) {
 	assert.InDelta(t, 599.0/3600, share, 1e-9)
 }
 
+func TestSeriesCoverageDoesNotCountAReadingOfNought(t *testing.T) {
+	t.Parallel()
+	_, ok := trainingload.SeriesCoverage(steady(3600, 0), 3600)
+	assert.False(t, ok, "an unpaired strap writes nought for the whole ride")
+}
+
 func TestSeriesCoverageIsUnknownForAnEmptySeries(t *testing.T) {
 	t.Parallel()
 	_, ok := trainingload.SeriesCoverage(nil, 3600)
