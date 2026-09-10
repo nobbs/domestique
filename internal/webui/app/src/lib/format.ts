@@ -228,6 +228,18 @@ export function formatDuration(seconds: number | undefined): string {
 }
 
 /**
+ * A climb time, which is minutes and seconds: the shortest climb worth its own
+ * row still takes longer than a minute, and none of them takes hours.
+ */
+export function formatClimbTime(seconds: number): string {
+  // Rounded to the second before it is split, not after: a time of 59.6 s
+  // rounded within the minute would read 0:60, which is not a time.
+  const whole = Math.round(seconds);
+
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+}
+
+/**
  * Predicted moving time, rounded to the nearest five minutes — coarse enough
  * that it reads as an estimate rather than a promise. Absent, never zero,
  * when nothing has predicted this route's geometry.
