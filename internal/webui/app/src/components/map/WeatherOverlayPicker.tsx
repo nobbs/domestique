@@ -100,7 +100,7 @@ export function WeatherOverlayPicker({
             className="pointer-events-none absolute inset-0 size-full"
           >
             {/* The button's own border is accent-coloured whenever a measure is
-                checked, so the gap needs panel under it to read as a gap. */}
+                checked, so the gap needs its resting colour under it to show. */}
             <rect
               x="0.5"
               y="0.5"
@@ -108,7 +108,7 @@ export function WeatherOverlayPicker({
               height="31"
               rx="9.5"
               fill="none"
-              stroke="var(--panel)"
+              stroke="var(--rule)"
               vectorEffect="non-scaling-stroke"
             />
             <rect

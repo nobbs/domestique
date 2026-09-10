@@ -219,6 +219,10 @@ describe("WeatherOverlayPicker", () => {
         "30 70",
       );
       expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
+      // The stroke the gap shows through is the button's own resting border,
+      // not the panel behind it, or the ring reads as a hole in the border.
+      const [backing] = Array.from(container.querySelectorAll("svg rect"));
+      expect(backing).toHaveAttribute("stroke", "var(--rule)");
 
       resolve(1);
       await vi.waitFor(() =>
