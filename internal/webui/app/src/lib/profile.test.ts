@@ -178,6 +178,28 @@ describe("buildProfile", () => {
       expect(buildProfile(route([100, 200, 300]), sampleCount)).toBeNull();
     }
   });
+
+  it("refuses a non-integer sample count rather than letting it corrupt the spacing", () => {
+    for (const sampleCount of [Number.NaN, Number.POSITIVE_INFINITY, 2.5]) {
+      expect(buildProfile(route([100, 200, 300]), sampleCount)).toBeNull();
+    }
+  });
+
+  it("floors a sparse route's default sample count well under the old fixed 320", () => {
+    const profile = buildProfile(route([100, 150, 200, 250, 300, 350, 400]));
+
+    expect(profile?.samples.length).toBeGreaterThanOrEqual(40);
+    expect(profile?.samples.length).toBeLessThan(320);
+  });
+
+  it("scales a dense route's default sample count past 320 rather than capping it", () => {
+    const points: Position[] = [];
+    for (let index = 0; index < 500; index++) {
+      points.push([8, 49 + index * 0.0001, 100 + index * 0.5]);
+    }
+
+    expect(buildProfile(points)?.samples.length).toBeGreaterThan(320);
+  });
 });
 
 describe("buildActivityProfile", () => {
@@ -237,6 +259,22 @@ describe("buildActivityProfile", () => {
 
   it("returns null when fewer than two samples recorded one", () => {
     expect(buildActivityProfile(route([100, undefined, undefined]))).toBeNull();
+  });
+
+  it("floors a sparse ride's default sample count well under the old fixed 320", () => {
+    const profile = buildActivityProfile(route([100, 150, 200, 250, 300, 350, 400]));
+
+    expect(profile?.samples.length).toBeGreaterThanOrEqual(40);
+    expect(profile?.samples.length).toBeLessThan(320);
+  });
+
+  it("scales a dense ride's default sample count past 320 rather than capping it", () => {
+    const points: Position[] = [];
+    for (let index = 0; index < 500; index++) {
+      points.push([8, 49 + index * 0.0001, 100 + index * 0.5]);
+    }
+
+    expect(buildActivityProfile(points)?.samples.length).toBeGreaterThan(320);
   });
 });
 
@@ -326,6 +364,31 @@ describe("buildWindowedProfile", () => {
 
     expect(buildWindowedProfile(coordinates, { startMetres: 100, endMetres: 100 })).toBeNull();
     expect(buildWindowedProfile(coordinates, { startMetres: 200, endMetres: 100 })).toBeNull();
+  });
+
+  it("floors a sparse window's sample count well under the old fixed 320", () => {
+    // Only three raw points fall inside this window, nowhere near the fixed
+    // 320 the default used to produce — but the floor still holds.
+    const profile = buildWindowedProfile(route([100, 150, 200, 250, 300, 350, 400]), {
+      startMetres: 0,
+      endMetres: 2.5 * POINT_SPACING_METRES,
+    });
+
+    expect(profile?.samples.length).toBeGreaterThanOrEqual(40);
+    expect(profile?.samples.length).toBeLessThan(320);
+  });
+
+  it("scales a dense window's sample count past 320 rather than capping it", () => {
+    const points: Position[] = [];
+    for (let index = 0; index < 500; index++) {
+      points.push([8, 49 + index * 0.0001, 100 + index * 0.5]);
+    }
+    const profile = buildWindowedProfile(points, {
+      startMetres: 1000,
+      endMetres: 1000 + 400 * FINE_SPACING_METRES,
+    });
+
+    expect(profile?.samples.length).toBeGreaterThan(320);
   });
 });
 
