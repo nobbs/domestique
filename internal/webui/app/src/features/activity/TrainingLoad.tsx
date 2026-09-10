@@ -172,7 +172,7 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
             label: "Estimated power",
             scale:
               metrics.estimatedPedallingShare === undefined
-                ? "watts while pedalling"
+                ? "watts, from the track"
                 : `watts while pedalling, ${Math.round(metrics.estimatedPedallingShare * 100)}% of the ride`,
             value: metrics.estimatedPowerWatts,
           }

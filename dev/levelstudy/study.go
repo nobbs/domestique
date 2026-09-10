@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -267,8 +268,9 @@ type candidate struct {
 }
 
 // candidates are the built-in road bicycle, the upright prior as it stands,
-// and the drag area fitted at the prior's rolling resistance.
-func candidates() []candidate {
+// the rider's own saved bicycle, and the drag area fitted at the prior's
+// rolling resistance.
+func candidates(profile measure.Coefficients) []candidate {
 	fixed := func(coefficients measure.Coefficients) func([]Ride) (measure.Coefficients, bool) {
 		return func([]Ride) (measure.Coefficients, bool) { return coefficients, true }
 	}
@@ -276,6 +278,7 @@ func candidates() []candidate {
 	return []candidate{
 		{name: "default", fit: fixed(measure.DefaultCoefficients())},
 		{name: "prior", fit: fixed(statedBicycle())},
+		{name: "profile", fit: fixed(profile)},
 		{name: "cda", fit: func(rides []Ride) (measure.Coefficients, bool) {
 			coefficients, _, ok := FitDragArea(statedBicycle().RollingResistance, rides)
 			return coefficients, ok
@@ -346,21 +349,21 @@ type report struct {
 }
 
 func writeRideTable(b *strings.Builder, scores []rideScore) {
-	errors := make([]float64, 0, len(scores))
+	percents := make([]float64, 0, len(scores))
 	var sumSquares, sumSigned float64
 	for _, score := range scores {
-		errors = append(errors, score.errorPercent())
+		percents = append(percents, score.errorPercent())
 		residual := score.modelled - score.target
 		sumSquares += residual * residual
 		sumSigned += residual
 	}
-	absolute := make([]float64, len(errors))
-	for index, held := range errors {
+	absolute := make([]float64, len(percents))
+	for index, held := range percents {
 		absolute[index] = math.Abs(held)
 	}
 	n := float64(len(scores))
 	fmt.Fprintf(b, "%6d %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f\n", len(scores),
-		quantile(absolute, 0.5), mean(errors), quantile(errors, 0.25), quantile(errors, 0.75),
+		quantile(absolute, 0.5), mean(percents), quantile(percents, 0.25), quantile(percents, 0.75),
 		math.Sqrt(sumSquares/n), sumSigned/n)
 }
 
@@ -374,7 +377,7 @@ func (r *report) String() string {
 	fmt.Fprintln(&b, "held-out whole-ride agreement with what the rider's heart rate says")
 	fmt.Fprintf(&b, "  %-8s %6s %10s %10s %10s %10s %10s %10s\n",
 		"candidate", "rides", "MAE %", "bias %", "q1 %", "q3 %", "RMS W", "bias W")
-	for _, name := range []string{"default", "prior", "cda"} {
+	for _, name := range []string{"default", "prior", "profile", "cda"} {
 		if scores := r.rides[name]; len(scores) > 0 {
 			fmt.Fprintf(&b, "  %-8s ", name)
 			writeRideTable(&b, scores)
@@ -383,7 +386,7 @@ func (r *report) String() string {
 
 	fmt.Fprintln(&b, "\nheld-out five-minute blocks, a diagnostic of the shape (lower is better)")
 	fmt.Fprintf(&b, "  %-8s %10s %10s %10s\n", "candidate", "RMS W", "bias W", "blocks")
-	for _, name := range []string{"default", "prior", "cda"} {
+	for _, name := range []string{"default", "prior", "profile", "cda"} {
 		rms, bias, blocks := 0.0, 0.0, 0
 		for _, result := range r.blocks[name] {
 			rms += result.RMSWatts * float64(result.Blocks)
@@ -407,10 +410,10 @@ func (r *report) String() string {
 	}
 
 	if scores := r.rides["cda"]; len(scores) > 0 {
-		var errors, wind []float64
+		var percents, wind []float64
 		for _, score := range scores {
 			if score.hasWind {
-				errors = append(errors, score.errorPercent())
+				percents = append(percents, score.errorPercent())
 				wind = append(wind, score.windKMH)
 			}
 		}
@@ -419,13 +422,13 @@ func (r *report) String() string {
 			var calm, windy []float64
 			for index, held := range wind {
 				if held <= median {
-					calm = append(calm, errors[index])
+					calm = append(calm, percents[index])
 				} else {
-					windy = append(windy, errors[index])
+					windy = append(windy, percents[index])
 				}
 			}
 			fmt.Fprintf(&b, "\nwind, a diagnostic only: %d rides with a forecast, error against wind speed r = %.2f",
-				len(wind), correlation(errors, wind))
+				len(wind), correlation(percents, wind))
 			if len(calm) > 0 && len(windy) > 0 {
 				fmt.Fprintf(&b, ", mean error %.1f %% on the calmer half (<= %.0f km/h) and %.1f %% on the windier half",
 					mean(calm), median, mean(windy))
@@ -618,11 +621,20 @@ func agreement(a, b []float64) (r, rms float64) {
 // test set. With checkYear set, the metered rides of that year are also
 // held against their own meter at the coefficients the corpus fitted.
 func study(
-	ctx context.Context, store *sqlite.Store, minSamples int, block time.Duration, folds, window, checkYear int, massFlagKG float64,
+	ctx context.Context, store *sqlite.Store, minSamples int, block time.Duration, folds, window, checkYear int, massFlagKG float64, target string,
 ) (*report, error) {
 	rides, err := store.RecordedRides(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing recorded rides: %w", err)
+	}
+	if target != "" {
+		filtered := rides[:0]
+		for _, ride := range rides {
+			if ride.TargetID == target {
+				filtered = append(filtered, ride)
+			}
+		}
+		rides = filtered
 	}
 
 	result := &report{
@@ -631,6 +643,14 @@ func study(
 		fitted: map[string][]measure.Coefficients{},
 	}
 	massCache := map[string]float64{}
+	bicycleCache := map[string]measure.Coefficients{}
+	profile := measure.DefaultCoefficients()
+	if len(rides) > 0 {
+		profile, err = bicycleForTarget(ctx, store, rides[0].TargetID, bicycleCache)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var metered []meteredRide
 	var unmetered []unmeteredRide
 
@@ -720,7 +740,7 @@ func study(
 		if len(train) == 0 || len(test) == 0 {
 			continue
 		}
-		for _, held := range candidates() {
+		for _, held := range candidates(profile) {
 			coefficients, fitOK := held.fit(train)
 			if !fitOK {
 				continue
@@ -777,7 +797,8 @@ func study(
 					checkAgainstMeter("learned", result.shipped, wholes, blocks, indices, measured))
 			}
 			result.checks = append(result.checks,
-				checkAgainstMeter("default", measure.DefaultCoefficients(), wholes, blocks, indices, measured))
+				checkAgainstMeter("default", measure.DefaultCoefficients(), wholes, blocks, indices, measured),
+				checkAgainstMeter("profile", profile, wholes, blocks, indices, measured))
 			if zwiftOK {
 				result.checks = append(result.checks, checkAgainstMeter(
 					fmt.Sprintf("zwift-fit %.2f", zwiftFit.DragArea), zwiftFit, wholes, blocks, indices, measured))
@@ -786,6 +807,34 @@ func study(
 	}
 
 	return result, nil
+}
+
+// bicycleForTarget is one target's saved bicycle, the way
+// internal/activity/derive.go bicycleOf reads it: both numbers set names that
+// pair, else the built-in default.
+func bicycleForTarget(
+	ctx context.Context, store *sqlite.Store, targetID string, cache map[string]measure.Coefficients,
+) (measure.Coefficients, error) {
+	if cached, ok := cache[targetID]; ok {
+		return cached, nil
+	}
+	coefficients := measure.DefaultCoefficients()
+	subject, err := store.TargetOwner(ctx, targetID)
+	if err != nil {
+		return measure.Coefficients{}, fmt.Errorf("reading a target's owner: %w", err)
+	}
+	if subject != "" {
+		profile, profileErr := store.RiderProfile(ctx, subject)
+		if profileErr != nil {
+			return measure.Coefficients{}, fmt.Errorf("reading a rider profile: %w", profileErr)
+		}
+		if profile.DragAreaM2.Set && profile.RollingResistance.Set {
+			coefficients = measure.Coefficients{DragArea: profile.DragAreaM2.Number, RollingResistance: profile.RollingResistance.Number}
+		}
+	}
+	cache[targetID] = coefficients
+
+	return coefficients, nil
 }
 
 // massForTarget is one target's total system mass: its rider profile's, the
@@ -812,7 +861,7 @@ func massForTarget(
 		}
 	}
 	if mass <= 0 {
-		return 0, fmt.Errorf("target %s: neither a rider profile nor -mass gives a positive mass", targetID)
+		return 0, errors.New("a target has neither a profile mass nor a -mass flag")
 	}
 	cache[targetID] = mass
 

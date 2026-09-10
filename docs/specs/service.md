@@ -659,8 +659,11 @@ The read-only JSON surface is small:
   for carries none of it, and the zones are cut from the threshold rate where
   the profile has one and from the maximum otherwise. A heart-rate reading
   above the profile's own maximum is a sensor fault rather than a rider: it is
-  interpolated across before any of this is worked out. What computes them,
-  and when, is [`activity:derive`](task-layer.md).
+  interpolated across before any of this is worked out. Zones, TRIMP and
+  hrTSS are all withheld together when the heart-rate strap covered under 90%
+  of the ride's moving time; a ride withheld this way contributes nothing to
+  any training-load trend built from it. What computes them, and when, is
+  [`activity:derive`](task-layer.md).
 
   Beside those are the plain figures the ride's own sensors came to with no
   profile involved: the mean of its heart-rate, cadence and measured power

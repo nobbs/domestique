@@ -118,7 +118,7 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Estimated power")).toBeInTheDocument();
     expect(screen.getByText("187")).toBeInTheDocument();
-    expect(screen.getByText("watts while pedalling")).toBeInTheDocument();
+    expect(screen.getByText("watts, from the track")).toBeInTheDocument();
     expect(screen.queryByText("Power", { selector: "span" })).not.toBeInTheDocument();
   });
 

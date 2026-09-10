@@ -13,6 +13,10 @@
 // or check: it needs the operator's own snapshot of real rides. Its report is
 // aggregate numbers only — no ride identifier, date, position or altitude
 // value — and is safe to paste into an issue.
+//
+// A database holding several riders' rides should be run once per target with
+// -target: the "profile" candidate and the metered check both read one
+// bicycle for the whole run, so mixing targets mixes their bicycles too.
 package main
 
 import (
@@ -35,15 +39,16 @@ func main() {
 	window := flag.Int("window", 30, "how many metered rides before a road ride its bridge level is the median of")
 	checkYear := flag.Int("check-year", 0, "hold the fitted model against the meter on that year's metered rides (0: skip)")
 	mass := flag.Float64("mass", 0, "total system mass in kg, used for a target with no rider profile")
+	target := flag.String("target", "", "restrict recorded rides to one target slot (default: every target)")
 	flag.Parse()
 
-	if err := run(*database, *minSamples, *block, *folds, *window, *checkYear, *mass); err != nil {
+	if err := run(*database, *minSamples, *block, *folds, *window, *checkYear, *mass, *target); err != nil {
 		fmt.Fprintf(os.Stderr, "levelstudy: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(database string, minSamples int, block time.Duration, folds, window, checkYear int, massFlag float64) error {
+func run(database string, minSamples int, block time.Duration, folds, window, checkYear int, massFlag float64, target string) error {
 	switch {
 	case database == "":
 		return errors.New("-database is required")
@@ -76,7 +81,7 @@ func run(database string, minSamples int, block time.Duration, folds, window, ch
 		}
 	}()
 
-	result, err := study(ctx, store, minSamples, block, folds, window, checkYear, massFlag)
+	result, err := study(ctx, store, minSamples, block, folds, window, checkYear, massFlag, target)
 	if err != nil {
 		return err
 	}
