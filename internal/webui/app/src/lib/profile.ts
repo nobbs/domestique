@@ -664,11 +664,20 @@ function measure(
   return total > 0 ? { distances, total, ranges: bandedRanges(coordinates, distances) } : null;
 }
 
-/** How many samples a stretch earns on its own raw geometry, not a fixed count. */
+/**
+ * How many samples a stretch earns on its own raw geometry, not a fixed count.
+ *
+ * `distances` is cumulative and so monotonically non-decreasing; scanning
+ * stops the moment it passes endMetres rather than walking the rest of the
+ * route.
+ */
 function densitySampleCount(distances: number[], startMetres: number, endMetres: number): number {
   let count = 0;
   for (const distance of distances) {
-    if (distance >= startMetres && distance <= endMetres) {
+    if (distance > endMetres) {
+      break;
+    }
+    if (distance >= startMetres) {
       count++;
     }
   }
@@ -794,6 +803,9 @@ export function buildWindowedActivityProfile(
     return null;
   }
   const span = Math.min(window.endMetres - window.startMetres, track.last - track.first);
+  if (span <= 0) {
+    return null;
+  }
   const start = Math.min(Math.max(window.startMetres, track.first), track.last - span);
   const end = start + span;
   const count = sampleCount ?? densitySampleCount(track.keptDistances, start, end);
@@ -834,6 +846,9 @@ export function buildWindowedProfile(
   }
   const start = Math.min(Math.max(window.startMetres, 0), measured.total);
   const end = Math.min(Math.max(window.endMetres, start), measured.total);
+  if (end <= start) {
+    return null;
+  }
   const count = sampleCount ?? densitySampleCount(measured.distances, start, end);
 
   return profileBetween(
