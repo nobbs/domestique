@@ -95,28 +95,45 @@ export function WeatherOverlayPicker({
           aria-label={expanded ? "Hide the weather overlay choices" : "Show weather over the map"}
         />
         {loading ? (
-          <span
+          <svg
             aria-hidden="true"
+            viewBox="0 0 32 32"
             className={cn(
-              "pointer-events-none absolute inset-0 rounded-lg p-0.5",
-              reducedMotion ? "animate-pulse" : "animate-spin",
+              "pointer-events-none absolute inset-0 size-full",
+              reducedMotion ? "" : "animate-spin",
             )}
-            style={{
-              background: reducedMotion
-                ? "var(--accent)"
-                : "conic-gradient(var(--accent) 0deg 270deg, transparent 270deg 360deg)",
-              // The two-mask XOR trick: the padding above sets the ring's
-              // thickness, and this keeps only that band — the button's own
-              // face and icon stay exactly as they were underneath it. Both
-              // the standard and `-webkit-` mask properties are set: Safari
-              // still needs the prefix, and a browser with neither would
-              // otherwise paint the ring's background over the whole button.
-              mask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-              maskComposite: "exclude",
-              WebkitMask: "linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)",
-              WebkitMaskComposite: "xor",
-            }}
-          />
+          >
+            {/*
+             * A traced rect, not a masked gradient: this button's own border
+             * is already accent-coloured whenever a measure is checked —
+             * which is every time this ring shows — so a plain gap between
+             * dashes would show accent through accent and never look like it
+             * moved. This backing stroke covers the real border in panel's
+             * colour first, then the dashed one on top draws the moving mark
+             * against that rather than against whatever was already there.
+             */}
+            <rect
+              x="0.5"
+              y="0.5"
+              width="31"
+              height="31"
+              rx="9.5"
+              fill="none"
+              stroke="var(--panel)"
+            />
+            <rect
+              x="0.5"
+              y="0.5"
+              width="31"
+              height="31"
+              rx="9.5"
+              pathLength={100}
+              fill="none"
+              stroke="var(--accent)"
+              strokeDasharray={reducedMotion ? undefined : "30 70"}
+              className={reducedMotion ? "animate-pulse" : undefined}
+            />
+          </svg>
         ) : null}
       </span>
       <PopoverContent

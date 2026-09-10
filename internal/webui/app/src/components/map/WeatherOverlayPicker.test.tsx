@@ -272,12 +272,10 @@ describe("WeatherOverlayPicker", () => {
           expect(container.querySelector(".animate-pulse")).toBeInTheDocument(),
         );
         expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
-        // A full ring, not the spinner's rotating gap: the fade this reader
+        // A full ring, not the spinner's dashed gap: the fade this reader
         // gets instead of rotation is meant to read as "still going", not as
         // a stalled spinner stuck mid-turn.
-        expect((container.querySelector(".animate-pulse") as HTMLElement).style.background).toBe(
-          "var(--accent)",
-        );
+        expect(container.querySelector(".animate-pulse")).not.toHaveAttribute("stroke-dasharray");
       } finally {
         window.matchMedia = restore;
       }
