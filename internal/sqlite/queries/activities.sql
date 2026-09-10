@@ -113,6 +113,9 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
 -- name: GetActivityRecordsState :one
 SELECT records_state, workout_type_id FROM activities WHERE target_slot = ? AND workout_id = ?;
 
+-- name: GetActivityMovingSeconds :one
+SELECT moving_seconds FROM activities WHERE target_slot = ? AND workout_id = ?;
+
 -- name: ListActivityTrack :many
 SELECT recorded_at_unix, latitude, longitude, altitude_metres, estimated_power_watts
 FROM activity_records

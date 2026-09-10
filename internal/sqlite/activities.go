@@ -234,6 +234,25 @@ func (s *Store) ActivityRecordsState(
 	return activity.RecordsState(stored.RecordsState), int(stored.WorkoutTypeID), true, nil
 }
 
+// ActivityMovingSeconds is one ride's own moving time, the derivation's share
+// of a series' coverage is judged against. found is false when the target has
+// no such activity.
+func (s *Store) ActivityMovingSeconds(
+	ctx context.Context, targetID string, id int64,
+) (movingSeconds float64, found bool, err error) {
+	movingSeconds, err = s.queries.GetActivityMovingSeconds(ctx, sqlcgen.GetActivityMovingSecondsParams{
+		TargetSlot: targetID, WorkoutID: id,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("reading an activity's moving time: %w", err)
+	}
+
+	return movingSeconds, true, nil
+}
+
 // ActivityProviderSummary is which provider recorded one target's activity and
 // the summary document that provider's own adapter wrote for it. Interpreting
 // the document is the caller's; this store only holds it.

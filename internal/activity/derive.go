@@ -71,6 +71,9 @@ type DeriveStore interface {
 	// ActivityRideSamples reads one ride's recorded series, split by what each
 	// is for.
 	ActivityRideSamples(ctx context.Context, targetID string, id int64) (RideSamples, error)
+	// ActivityMovingSeconds is one ride's own moving time, which a load
+	// figure's series coverage is judged against.
+	ActivityMovingSeconds(ctx context.Context, targetID string, id int64) (movingSeconds float64, found bool, err error)
 	StoreActivityMetrics(ctx context.Context, targetID string, id int64, metrics RideMetrics) error
 	// StoreEstimatedPower replaces one ride's estimated power series. An empty
 	// series clears whatever was there.
@@ -218,8 +221,15 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		if samplesErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
+		// Not found leaves it at zero, which a coverage share judged against it
+		// reads as unmeasured rather than failed — the same as any other ride
+		// whose moving time this derivation cannot yet supply.
+		movingSeconds, _, movingErr := d.store.ActivityMovingSeconds(ctx, targetID, id)
+		if movingErr != nil {
+			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
+		}
 		heartRate := measure.CapHeartRate(samples.HeartRate, inputs.MaxHeartRateBPM)
-		load := trainingload.Derive(heartRate, samples.Power, inputs)
+		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, inputs)
 		records, estimates, average, quality := samples.EstimatePower(inputs.TotalMassKG)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = average.Watts, average.Known
 		metrics := RideMetrics{

@@ -27,6 +27,7 @@ type fakeDeriveStore struct {
 	profileErr       error
 	owedErr          error
 	samplesErr       error
+	movingErr        error
 	storeErr         error
 	clearErr         error
 	estimateErr      error
@@ -36,6 +37,7 @@ type fakeDeriveStore struct {
 	trackErr         error
 	matchErr         error
 	rides            map[int64]activity.RideSamples
+	movingSeconds    map[int64]float64
 	written          map[int64]activity.RideMetrics
 	estimated        map[int64][]measure.Estimate
 	tracks           map[int64][]activity.TrackPoint
@@ -135,6 +137,17 @@ func (s *fakeDeriveStore) ActivityRideSamples(
 	_ context.Context, _ string, id int64,
 ) (activity.RideSamples, error) {
 	return s.rides[id], s.samplesErr
+}
+
+func (s *fakeDeriveStore) ActivityMovingSeconds(
+	_ context.Context, _ string, id int64,
+) (float64, bool, error) {
+	if s.movingErr != nil {
+		return 0, false, s.movingErr
+	}
+	seconds, found := s.movingSeconds[id]
+
+	return seconds, found, nil
 }
 
 func (s *fakeDeriveStore) StoreEstimatedPower(
@@ -525,6 +538,33 @@ func TestDeriveLeavesHeartRateAloneWithoutAProfileMaximum(t *testing.T) {
 	require.True(t, ok)
 	assert.InDelta(t, wantTSS, store.written[7].Load.HeartRateTSS, 1e-9,
 		"a profile with no maximum leaves the series uncapped")
+}
+
+// A strap that held for a sixth of the ride's own moving time must not leave
+// an understated TRIMP, stress score or zone table behind it unmarked — the
+// same rule trainingload.Derive enforces, wired through the ride's own stored
+// moving time rather than a value the caller made up.
+func TestDeriveWithholdsHeartRateLoadBelowMinSeriesCoverage(t *testing.T) {
+	t.Parallel()
+	store := &fakeDeriveStore{
+		owner: "rider-a",
+		profile: rider.Profile{
+			MaxHeartRateBPM: rider.Set(190), RestingHeartRateBPM: rider.Set(48),
+			ThresholdHeartRateBPM: rider.Set(170),
+		},
+		owed:          []int64{7},
+		rides:         map[int64]activity.RideSamples{7: {HeartRate: heartRateRide(600, 150)}},
+		movingSeconds: map[int64]float64{7: 3600},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+
+	load := store.written[7].Load
+	assert.False(t, load.HasZones)
+	assert.False(t, load.HasTRIMP)
+	assert.False(t, load.HasHeartRateTSS)
 }
 
 func TestNewDeriverNeedsAStore(t *testing.T) {

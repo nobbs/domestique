@@ -847,6 +847,26 @@ func TestActivityRecordsStateTellsPendingFromStored(t *testing.T) {
 	require.ErrorContains(t, err, "reading an activity records state")
 }
 
+func TestActivityMovingSecondsReadsAStoredTotal(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	seconds, found, err := store.ActivityMovingSeconds(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityMovingSeconds()")
+	require.True(t, found)
+	assert.InDelta(t, 3600, seconds, 1e-9)
+
+	_, found, err = store.ActivityMovingSeconds(t.Context(), "rider-a", 2)
+	require.NoError(t, err, "ActivityMovingSeconds() for an activity not stored")
+	assert.False(t, found)
+
+	require.NoError(t, store.Close(), "Close()")
+	_, _, err = store.ActivityMovingSeconds(t.Context(), "rider-a", 1)
+	require.ErrorContains(t, err, "reading an activity's moving time")
+}
+
 // ActivityCaloriesAccum decodes only the one field it names out of the stored
 // raw summary, and reports absent for a ride that never gave one at all.
 func TestActivityCaloriesAccumReadsTheOneFieldItNames(t *testing.T) {

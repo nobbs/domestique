@@ -139,6 +139,22 @@ func (q *Queries) DeleteTrainerCopyActivity(ctx context.Context, arg DeleteTrain
 	return result.RowsAffected()
 }
 
+const getActivityMovingSeconds = `-- name: GetActivityMovingSeconds :one
+SELECT moving_seconds FROM activities WHERE target_slot = ? AND workout_id = ?
+`
+
+type GetActivityMovingSecondsParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) GetActivityMovingSeconds(ctx context.Context, arg GetActivityMovingSecondsParams) (float64, error) {
+	row := q.db.QueryRowContext(ctx, getActivityMovingSeconds, arg.TargetSlot, arg.WorkoutID)
+	var moving_seconds float64
+	err := row.Scan(&moving_seconds)
+	return moving_seconds, err
+}
+
 const getActivityProviderSummary = `-- name: GetActivityProviderSummary :one
 SELECT provider, raw_summary_json
 FROM activities
