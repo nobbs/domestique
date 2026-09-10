@@ -18,7 +18,7 @@ func closedFormWithWind(speedMS, grade, mass, altitudeMetres, headwindMS float64
 	density := closedFormAirDensity(altitudeMetres, 15)
 	airspeed := speedMS + headwindMS
 
-	return speedMS * (weight*grade + weight*0.005 + 0.5*density*0.32*math.Abs(airspeed)*airspeed)
+	return speedMS * (weight*grade + weight*0.005 + 0.5*density*0.36*math.Abs(airspeed)*airspeed) / 0.977
 }
 
 // A zero headwind at every sample must reproduce EstimateSeries exactly: the

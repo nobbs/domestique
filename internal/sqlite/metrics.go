@@ -29,7 +29,10 @@ import (
 // 8: rows before it cannot hold the ride's maximum speed.
 // 9: rows before it were worked out over samples the version 2 re-read has
 // since replaced, at a time when a re-read left the metrics row in place.
-const derivationVersion = 9
+// 10: the estimate now carries the inertial term and the drivetrain loss the
+// model used to leave out, at a corrected drag area, which moves every
+// estimated figure a row before it holds.
+const derivationVersion = 10
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those

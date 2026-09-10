@@ -19,12 +19,21 @@ import (
 // rather than fixed. Wind is ignored entirely — the model has no idea which way
 // the rider was pointing relative to it.
 const (
-	gravity           = 9.80665 // m/s²
-	rollingResistance = 0.005
-	dragArea          = 0.32 // m², CdA
-	// Drivetrain loss is not modelled. It is a couple of per cent on a figure
-	// already labelled an estimate, and one more constant to defend.
+	gravity              = 9.80665 // m/s²
+	rollingResistance    = 0.005
+	dragArea             = 0.36 // m², CdA
+	drivetrainEfficiency = 0.977
+	// rotationalMassKG is the wheels' rotational inertia written as an
+	// equivalent linear mass. Only the inertial term carries it: gravity and
+	// rolling resistance act on the mass that is really there.
+	rotationalMassKG = 1.5
 )
+
+// accelerationBaseline is the time the inertial term differentiates the window
+// speed over. Differentiated against the sample before it instead, the term
+// reads as recorder noise rather than as a rider: the handover smooths speed
+// over eleven samples before differentiating for the same reason (§4).
+const accelerationBaseline = 10 * time.Second
 
 // defaultTemperatureCelsius is what a sample with no thermometer is assumed to
 // have been ridden at — the value the model's air density was fixed at before
@@ -159,6 +168,10 @@ func estimateSeries(samples []Sample, totalMassKG float64, headwindMS []float64)
 	bounds := Stretches(times, DefaultMaxGap)
 	windowMetres := gradeWindowMetres(samples)
 	known := false
+	// Each sample's own window speed, kept so the inertial term can
+	// differentiate this one against a sample a baseline behind it.
+	speeds := make([]float64, len(samples))
+	speedKnown := make([]bool, len(samples))
 	var (
 		deltaSum, deltaCount   float64
 		clipBiasSum, clipCount float64
@@ -177,6 +190,9 @@ func estimateSeries(samples []Sample, totalMassKG float64, headwindMS []float64)
 		if span <= 0 || run < 0 {
 			continue
 		}
+		speed := run / span
+		speeds[index], speedKnown[index] = speed, true
+		acceleration := accelerationAt(samples, speeds, speedKnown, index)
 		// Physics, not the numerical clamp below: no pedalling reads no power,
 		// checked before the clamp has any say and excluded from its own bias
 		// diagnostic — the clamp never had a chance to fire on this sample.
@@ -195,7 +211,7 @@ func estimateSeries(samples []Sample, totalMassKG float64, headwindMS []float64)
 			if headwindMS != nil {
 				headwind = headwindMS[high]
 			}
-			clamped, clipBias := watts(run/span, slope(samples[low], samples[high]), totalMassKG, density, headwind)
+			clamped, clipBias := watts(speed, slope(samples[low], samples[high]), totalMassKG, density, headwind, acceleration)
 			estimates[index] = Estimate{Watts: clamped, Known: true}
 			known = true
 			clipBiasSum += clipBias
@@ -217,6 +233,24 @@ func estimateSeries(samples []Sample, totalMassKG float64, headwindMS []float64)
 	quality.Autocorrelation1 = correlation(series, shifted)
 
 	return estimates, quality, known
+}
+
+// accelerationAt differentiates the window speed at index against the first
+// sample at least accelerationBaseline behind it, and reports nought where the
+// recording does not reach back that far. A stretch's own opening sample
+// carries no speed, so the walk stops at a pause without being told where one
+// is: the opening of a stretch has no baseline, the same way it has no speed.
+func accelerationAt(samples []Sample, speeds []float64, speedKnown []bool, index int) float64 {
+	for back := index - 1; back >= 0; back-- {
+		if !speedKnown[back] {
+			return 0
+		}
+		if elapsed := samples[index].At.Sub(samples[back].At); elapsed >= accelerationBaseline {
+			return (speeds[index] - speeds[back]) / elapsed.Seconds()
+		}
+	}
+
+	return 0
 }
 
 // safeMean is total / count, or zero for a zero count.
@@ -256,8 +290,9 @@ func correlation(a, b []float64) float64 {
 	return cov / math.Sqrt(varA*varB)
 }
 
-// watts is the model itself: what it costs to climb the grade, roll along it
-// and push the air aside, all at once. It reports the watts clamped at zero —
+// watts is the model itself: what it costs to climb the grade, roll along it,
+// push the air aside and get back up to speed, all at once, divided by the
+// drivetrain that carries it to the road. It reports the watts clamped at zero —
 // a rider freewheeling down a hill is putting nothing in, and the model has no
 // way to say they are taking something out — alongside how much the clamp
 // added, zero where it did not fire.
@@ -266,11 +301,13 @@ func correlation(a, b []float64) float64 {
 // the rider pushes rather than spuriously drags (handover §2); the mechanical
 // power is still force·v, since the wind moves air past the rider, not the
 // bicycle down the road.
-func watts(speed, grade, totalMassKG, density, headwindMS float64) (clamped, clipBias float64) {
+func watts(speed, grade, totalMassKG, density, headwindMS, accelerationMSS float64) (clamped, clipBias float64) {
 	weight := totalMassKG * gravity
 	airspeed := speed + headwindMS
-	force := weight*grade + weight*rollingResistance + 0.5*density*dragArea*math.Abs(airspeed)*airspeed
-	unclamped := force * speed
+	force := weight*grade + weight*rollingResistance +
+		0.5*density*dragArea*math.Abs(airspeed)*airspeed +
+		(totalMassKG+rotationalMassKG)*accelerationMSS
+	unclamped := force * speed / drivetrainEfficiency
 	if unclamped > 0 {
 		return unclamped, 0
 	}

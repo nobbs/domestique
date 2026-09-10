@@ -282,7 +282,11 @@ recorded speed over a recorded grade, for rides with no power meter.
 
 ~~~text
 P = 0                                              where cadence is known and zero
-P = v · (m·g·grade + m·g·Crr + ½·ρ·CdA·v²),  clamped at 0,   otherwise
+P = v · (m·g·grade + m·g·Crr + ½·ρ·CdA·v² + (m + m_rot)·a) / η,
+                                             clamped at 0,   otherwise
+
+a = (v here − v at the first sample at least 10 s behind it) / those seconds,
+    and nought where this stretch does not reach back that far
 
 p = 101325 · (1 - 2.25577e-5 · h)^5.25588          (h in metres)
 ρ = p / (287.058 · (T + 273.15))                   (T in °C)
@@ -298,22 +302,41 @@ below, since the clamp never had a chance to fire on it. ρ is evaluated at
 the window's high sample's altitude and its temperature where the sample
 carries one.
 
-**Constants.** g = 9.80665 m/s², Crr = 0.005, CdA = 0.32 m²
-(`internal/measure/estimate.go` `gravity`, `rollingResistance`, `dragArea`).
+**Constants.** g = 9.80665 m/s², Crr = 0.005, CdA = 0.36 m²,
+m_rot = 1.5 kg, η = 0.977 (`internal/measure/estimate.go` `gravity`,
+`rollingResistance`, `dragArea`, `rotationalMassKG`, `drivetrainEfficiency`).
+CdA is the handover's own road-hoods figure; the 0.32 m² this model used
+before sat between that table's hoods and drops rows while its comment
+claimed the hoods. m_rot is carried by the inertial term alone: gravity and
+rolling resistance act on the mass that is really there.
+
+The inertial term's 10 s baseline (`accelerationBaseline`) is not a smoothing
+taste. Differentiated against the sample before it instead, the term reads as
+recorder noise rather than as a rider: over the operator's own rides that
+costs the lag-1 autocorrelation its threshold (0.59 against a target of 0.8)
+and doubles the mean second-to-second change (43 W/s against a target of 40),
+while moving the served figure by 0.1 W. The handover smooths speed over
+eleven samples before differentiating for the same reason (§4).
 A sample with no temperature reading is evaluated at 15 °C, the value the
 model's density used to be fixed at
 (`internal/measure/estimate.go` `defaultTemperatureCelsius`).
 
-**Source.** Martin et al. 1998. The source model also carries three terms
-this service omits, each at the source's own value: drivetrain efficiency
-η = 0.977 (the source divides the whole force sum by η rather than omitting
-it); rotational inertia as an added 1.5 kg of equivalent linear mass in the
-inertial term; and wind as a signed `|v+w|·(v+w)` aerodynamic term rather
-than squaring `v` alone, so a tailwind faster than the rider still drags
-correctly instead of reading as a spurious push
-(`internal/measure/estimate.go`'s own comment already states drivetrain
-loss is left out as "a couple of per cent on a figure already labelled an
-estimate"). Air density follows the handover document's own formula
+**Source.** Martin et al. 1998, whose drivetrain efficiency and rotational
+inertia this model now carries at the source's own values. One term of the
+source's is still left out of the figure a ride is served: wind as a signed
+`|v+w|·(v+w)` aerodynamic term rather than `v²` alone, so that a tailwind
+faster than the rider pushes instead of reading as a spurious drag.
+`measure.EstimateSeriesWithWind` implements it and `dev/windstudy` scores it,
+but no shipped path supplies a headwind yet (#587).
+
+**Why the inertial term is not nought.** Over a ride the momentum a rider
+buys back comes to nothing, so the term looks like it should cancel. It does
+not, because the clamp below sits underneath it: an acceleration is charged
+and the braking that undoes it is refunded nothing, which is what a rider
+accelerating away from each junction actually spends. Measured over the
+operator's own rides the term nets +0.95 W before the clamp and, at the
+baseline above, lifts the served median from 90.0 W to 101.8 W
+(`dev/calorie-convention.sql` §5). Air density follows the handover document's own formula
 (§2) rather than the fixed sea-level, fifteen-degree constant this service
 used to use; the cadence gate is the handover's own §5 rule, kept distinct
 from the zero clamp for the same reason the handover gives: conflating them
@@ -340,9 +363,22 @@ service enforces: nothing in this service gates on the diagnostics yet.
 **Applied by.** `measure.EstimateSeries`, called by
 `activity.RideSamples.EstimatePower`.
 
-**Status.** Unvalidated against a power meter. The handover document's
-one-ride validation, on a different bicycle and rider than this service's
-own, is the only evidence behind the constants above.
+**Status.** Levelled against the operator's own measured power, not against
+a lookup table. Their indoor rides carry a meter, which gives two validators
+the outdoor estimate can be held to: the device's calories, which on 126
+measured rides imply a sane 0.25 gross efficiency and so cannot be dismissed
+as running high, and the rider's own heart-rate-to-power relation at matched
+heart rate. Before the inertial term, drivetrain loss and the corrected CdA,
+the estimate failed both by 1.3–1.4× (#623); with them the energy check moves
+from −39.6% to −31.4% and every §7 diagnostic stays inside its target, the
+clip bias improving on what it was. `dev/calorie-convention.sql` reproduces
+the measurement and `dev/windstudy` the diagnostics. A gap remains, and the
+constants are where it now sits.
+
+The constants themselves remain the handover's table rather than a fit, and
+the corpus cannot yet do better: 184 of 200 outdoor rides sit between 18 and
+26 km/h, too narrow a spread of speeds to separate CdA (which scales with v³)
+from Crr (which scales with v).
 
 ## Sustained climbs
 

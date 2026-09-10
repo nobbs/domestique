@@ -28,7 +28,7 @@ func closedFormAtTemperature(speedMS, grade, mass, altitudeMetres, temperatureCe
 	weight := mass * 9.80665
 	density := closedFormAirDensity(altitudeMetres, temperatureCelsius)
 
-	return speedMS * (weight*grade + weight*0.005 + 0.5*density*0.32*speedMS*speedMS)
+	return speedMS * (weight*grade + weight*0.005 + 0.5*density*0.36*speedMS*speedMS) / 0.977
 }
 
 // closedForm is closedFormAtTemperature at the model's default of fifteen
@@ -181,9 +181,51 @@ func TestEstimateSeriesIsNotInflatedByRecorderNoise(t *testing.T) {
 	// The derived window for this fixture is 100 m (see gradeWindowMetres),
 	// more than three times the old fixed 30 m, and the mean it produces sits
 	// within two tenths of a per cent of the closed form rather than merely
-	// within a tenth of it.
+	// within a tenth of it. The inertial term differentiates that window speed
+	// over a baseline wide enough to keep it there.
 	assert.InDelta(t, quietMean, roughMean, 0.002*quietMean,
 		"a wider derived window brings the noisy mean closer still")
+}
+
+// The inertial term, against the closed form written out by hand: a rider
+// gaining speed pays for the momentum as well as the air and the road, at the
+// mass they carry plus the wheels' own rotational share.
+// See docs/references/power-estimation-handover.md §2.
+func TestEstimateSeriesChargesForTheAccelerationOnFlatGround(t *testing.T) {
+	t.Parallel()
+	const speedMS, accelerationMSS, mass = 7.0, 0.01, 82.0
+	estimates, _, ok := measure.EstimateSeries(accelerating(300, speedMS, accelerationMSS), mass)
+	require.True(t, ok)
+
+	// Read away from either end, where the window stops being centred on its
+	// own sample and the window mean is no longer the speed at that instant.
+	for _, index := range []int{100, 150, 200} {
+		speed := speedMS + accelerationMSS*float64(index)
+		want := closedForm(speed, 0, mass, 100) + speed*(mass+1.5)*accelerationMSS/0.977
+		assert.InEpsilon(t, want, estimates[index].Watts, 0.01,
+			"the estimate at sample %d carries the inertial term", index)
+	}
+}
+
+// What #623 turned on. Over a surge and the deceleration undoing it the
+// inertial term nets to nothing, but the clamp refunds none of the braking, so
+// covering the same ground in the same time costs a surging rider more than a
+// steady one — which is what a rider accelerating away from every junction
+// actually pays. See docs/specs/measurement.md §Estimated power.
+func TestEstimateSeriesChargesASurgingRideAboveASteadyOne(t *testing.T) {
+	t.Parallel()
+	const speedMS, mass = 7.0, 82.0
+	steady, _, ok := measure.EstimateSeries(flat(600, speedMS), mass)
+	require.True(t, ok)
+	surging, _, ok := measure.EstimateSeries(surges(600, speedMS, 1.5), mass)
+	require.True(t, ok)
+
+	steadyMean, ok := measure.MeanEstimate(steady)
+	require.True(t, ok)
+	surgingMean, ok := measure.MeanEstimate(surging)
+	require.True(t, ok)
+
+	assert.Greater(t, surgingMean, steadyMean)
 }
 
 // The altitude either side of a pause is minutes of barometric drift apart, and
@@ -403,7 +445,8 @@ func TestEstimateSeriesQualityOnASteadyClimbReadsAsTrustworthy(t *testing.T) {
 // windowed grade past what their momentum could explain. The window this
 // fixture derives is 100 m (see gradeWindowMetres), more than three times as
 // wide, and over it the same noise averages out to nothing: this is the
-// deviation docs/specs/measurement.md §Gradient Status named as resolved.
+// deviation docs/specs/measurement.md §Gradient Status named as resolved. The
+// inertial term is differentiated over a baseline wide enough to keep it so.
 func TestEstimateSeriesQualityOnTheNoisyFixtureHasNoClipBiasAtTheDerivedWindow(t *testing.T) {
 	t.Parallel()
 	_, quality, ok := measure.EstimateSeries(withCadence(noisy(flat(600, 3.0)), 80), 82)

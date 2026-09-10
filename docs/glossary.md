@@ -216,10 +216,10 @@ own sensors came to, which it does not. Worked out once by `activity:derive` and
 stored beside the ride, never read from a provider.
 
 **estimated power** — power this service worked out from a ride's own track,
-for a bicycle carrying no meter: a physics model over grade, speed and mass at
-fixed road-bike constants save for air density, which follows the sample's own
-altitude and temperature, both grade and speed measured over a window of
-distance rather than between neighbouring samples. Always named as an estimate, never mixed with
+for a bicycle carrying no meter: a physics model over grade, speed, acceleration
+and mass at fixed road-bike constants save for air density, which follows the
+sample's own altitude and temperature, both grade and speed measured over a
+window of distance rather than between neighbouring samples. Always named as an estimate, never mixed with
 measured power, and never an input to a [[training load]].
 
 **recorded weather** — what a ride was actually ridden through, asked of the
