@@ -247,14 +247,25 @@ func fitBridge(rides []meteredRide, window int) (bridge, bool) {
 // wattsAt is the power this rider's heart rate says they were producing on a
 // date: the median level of the last window metered rides before it, or the
 // first window rides where the date comes before them, moved along the
-// shared slope. A median so one race or one unpaired strap moves nothing.
+// shared slope, never the ride on that date itself. A median so one race or
+// one unpaired strap moves nothing.
 func (b bridge) wattsAt(at time.Time, heartRateBPM float64) float64 {
-	end := sort.Search(len(b.levels), func(i int) bool { return b.levels[i].at.After(at) })
-	end = min(max(end, b.window), len(b.levels))
+	end := sort.Search(len(b.levels), func(i int) bool { return !b.levels[i].at.Before(at) })
 	start := max(end-b.window, 0)
+	if end < b.window {
+		// Too early for a window of its own: read the first window's rides,
+		// less the one being scored where it is among them.
+		end = min(b.window+1, len(b.levels))
+	}
 	intercepts := make([]float64, 0, end-start)
 	for _, level := range b.levels[start:end] {
+		if level.at.Equal(at) {
+			continue
+		}
 		intercepts = append(intercepts, level.watts-b.wattsPerBPM*level.heartRate)
+	}
+	if len(intercepts) == 0 {
+		return 0
 	}
 
 	return max(quantile(intercepts, 0.5)+b.wattsPerBPM*heartRateBPM, 0)
