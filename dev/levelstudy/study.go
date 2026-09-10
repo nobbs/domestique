@@ -14,10 +14,11 @@ import (
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
-// uprightPrior is the bicycle the fit starts from: the handover's upright
-// row with a wide-tyre Crr, for a flat-bar trekking bike. Its Crr is what the
-// fit holds fixed; its CdA is only the baseline candidate.
-var uprightPrior = measure.Coefficients{DragArea: 0.45, RollingResistance: 0.010} //nolint:gochecknoglobals // dev tool
+// uprightPrior is the bicycle the fit starts from: a drop-bar gravel bike
+// ridden on the hoods, on 47 mm WTB Byway tyres, whose Crr is the drum
+// figure Bicycle Rolling Resistance measured. Its Crr is what the fit holds
+// fixed; its CdA is only the baseline candidate.
+var uprightPrior = measure.Coefficients{DragArea: 0.40, RollingResistance: 0.008} //nolint:gochecknoglobals // dev tool
 
 // zwiftRollingResistance is what Zwift's own simulation rolls a road bike at,
 // so a drag area fitted on its rides is read against its physics, not ours.
