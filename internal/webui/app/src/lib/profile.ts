@@ -666,7 +666,12 @@ function measure(
 
 /** How many samples a stretch earns on its own raw geometry, not a fixed count. */
 function densitySampleCount(distances: number[], startMetres: number, endMetres: number): number {
-  const count = distances.filter((d) => d >= startMetres && d <= endMetres).length;
+  let count = 0;
+  for (const distance of distances) {
+    if (distance >= startMetres && distance <= endMetres) {
+      count++;
+    }
+  }
 
   return Math.max(MIN_SAMPLE_COUNT, count);
 }
@@ -681,7 +686,7 @@ function densitySampleCount(distances: number[], startMetres: number, endMetres:
  * divides by sampleCount - 1 and one sample describes no span to plot.
  */
 export function buildProfile(coordinates: Position[], sampleCount?: number): Profile | null {
-  if (sampleCount !== undefined && sampleCount < 2) {
+  if (sampleCount !== undefined && (!Number.isInteger(sampleCount) || sampleCount < 2)) {
     return null;
   }
   const measured = measure(coordinates);
@@ -743,7 +748,7 @@ export function buildActivityProfile(
   coordinates: Position[],
   sampleCount?: number,
 ): Profile | null {
-  if (sampleCount !== undefined && sampleCount < 2) {
+  if (sampleCount !== undefined && (!Number.isInteger(sampleCount) || sampleCount < 2)) {
     return null;
   }
   const track = keptWithAltitude(coordinates);
@@ -781,7 +786,7 @@ export function buildWindowedActivityProfile(
   window: DistanceWindow,
   sampleCount?: number,
 ): Profile | null {
-  if (sampleCount !== undefined && sampleCount < 2) {
+  if (sampleCount !== undefined && (!Number.isInteger(sampleCount) || sampleCount < 2)) {
     return null;
   }
   const track = keptWithAltitude(coordinates);
@@ -820,7 +825,7 @@ export function buildWindowedProfile(
   window: DistanceWindow,
   sampleCount?: number,
 ): Profile | null {
-  if (sampleCount !== undefined && sampleCount < 2) {
+  if (sampleCount !== undefined && (!Number.isInteger(sampleCount) || sampleCount < 2)) {
     return null;
   }
   const measured = measure(coordinates);
