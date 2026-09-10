@@ -210,6 +210,15 @@ describe("WeatherOverlayPicker", () => {
       });
       void client.fetchQuery({ queryKey: ["wind-grid", 0, null], queryFn: () => pending });
       await vi.waitFor(() => expect(container.querySelector(".animate-spin")).toBeInTheDocument());
+      // Dashed, not a solid traced ring: a gap is what makes the rotation
+      // this element's `animate-spin` drives actually visible against the
+      // button's own border, which is this same accent colour whenever a
+      // measure is checked — the case every fetch this ring shows for is in.
+      const spinning = container.querySelector(".animate-spin");
+      expect(spinning?.querySelector("[stroke-dasharray]")).toHaveAttribute(
+        "stroke-dasharray",
+        "30 70",
+      );
 
       resolve(1);
       await vi.waitFor(() =>
@@ -272,10 +281,10 @@ describe("WeatherOverlayPicker", () => {
           expect(container.querySelector(".animate-pulse")).toBeInTheDocument(),
         );
         expect(container.querySelector(".animate-spin")).not.toBeInTheDocument();
-        // A full ring, not the spinner's gapped arc: the fade this reader gets
-        // instead of rotation is meant to read as "still going", not as a
-        // stalled spinner stuck mid-turn.
-        expect(container.querySelector(".animate-pulse")).not.toHaveClass("border-t-transparent");
+        // A full ring, not the spinner's dashed gap: the fade this reader
+        // gets instead of rotation is meant to read as "still going", not as
+        // a stalled spinner stuck mid-turn.
+        expect(container.querySelector(".animate-pulse")).not.toHaveAttribute("stroke-dasharray");
       } finally {
         window.matchMedia = restore;
       }

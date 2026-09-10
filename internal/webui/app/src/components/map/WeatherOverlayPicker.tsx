@@ -95,16 +95,50 @@ export function WeatherOverlayPicker({
           aria-label={expanded ? "Hide the weather overlay choices" : "Show weather over the map"}
         />
         {loading ? (
-          <span
+          <svg
             aria-hidden="true"
+            viewBox="0 0 32 32"
             className={cn(
-              "pointer-events-none absolute -inset-1 rounded-full border-2 border-[var(--accent)]",
-              // A full ring fading in and out reads as "still going" without
-              // the rotation `animate-spin` needs a gap to show; the gap
-              // itself is motion the reader asked to have less of.
-              reducedMotion ? "animate-pulse" : "animate-spin border-t-transparent",
+              "pointer-events-none absolute inset-0 size-full",
+              reducedMotion ? "" : "animate-spin",
             )}
-          />
+          >
+            {/*
+             * A traced rect, not a masked gradient: this button's own border
+             * is already accent-coloured whenever a measure is checked —
+             * which is every time this ring shows — so a plain gap between
+             * dashes would show accent through accent and never look like it
+             * moved. This backing stroke covers the real border in panel's
+             * colour first, then the dashed one on top draws the moving mark
+             * against that rather than against whatever was already there.
+             */}
+            <rect
+              x="0.5"
+              y="0.5"
+              width="31"
+              height="31"
+              rx="9.5"
+              fill="none"
+              stroke="var(--panel)"
+              vectorEffect="non-scaling-stroke"
+            />
+            <rect
+              x="0.5"
+              y="0.5"
+              width="31"
+              height="31"
+              rx="9.5"
+              pathLength={100}
+              fill="none"
+              stroke="var(--accent)"
+              strokeDasharray={reducedMotion ? undefined : "30 70"}
+              // Keeps the stroke at a true 1px however the viewBox ends up
+              // scaled to the button's rendered size, e.g. under a root
+              // font-size change — otherwise it drifts off the real border.
+              vectorEffect="non-scaling-stroke"
+              className={reducedMotion ? "animate-pulse" : undefined}
+            />
+          </svg>
         ) : null}
       </span>
       <PopoverContent
