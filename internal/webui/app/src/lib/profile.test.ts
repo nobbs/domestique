@@ -179,6 +179,12 @@ describe("buildProfile", () => {
     }
   });
 
+  it("refuses a non-integer sample count rather than letting it corrupt the spacing", () => {
+    for (const sampleCount of [Number.NaN, Number.POSITIVE_INFINITY, 2.5]) {
+      expect(buildProfile(route([100, 200, 300]), sampleCount)).toBeNull();
+    }
+  });
+
   it("floors a sparse route's default sample count well under the old fixed 320", () => {
     const profile = buildProfile(route([100, 150, 200, 250, 300, 350, 400]));
 
