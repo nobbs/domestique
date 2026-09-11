@@ -88,15 +88,22 @@ holds it, report that and stop rather than working the issue in parallel.
    revise a specification in the same change when the contract changes.
 4. Add deterministic regression coverage. Run the current required validation
    from the repository instructions; report any unrun map visual inspection or
-   blocked external acceptance check plainly.
+   blocked external acceptance check plainly. Three things make a green run
+   less than it looks: `mise run quick` skips a task whose sources have not
+   moved, so a UI-only change can run no `ui-*` task at all and should force
+   them; `ui-browser-test` reuses a dev server it finds already listening, so
+   free ports 5173 and 8081 before it; and a full gate is run one at a time
+   machine-wide, because two at once have exhausted memory.
 5. Run `mise run patch-coverage` before the first push. `codecov/patch/go` is
    the one coverage verdict that blocks a merge, and it is the one that has
    historically cost several push-and-wait rounds per delivery. Answer it
    locally, where it costs seconds.
 6. When the user asked for end-to-end delivery, create a focused branch, commit
    and pull request following `AGENTS.md`, link the issue with `Closes #<n>`,
-   request formal Copilot review, and verify the requested-reviewer state. Do
-   not merge unless the user explicitly authorises it.
+   and verify the requested-reviewer state. This repository requests Copilot on
+   every push, so read the new head for a review before issuing a manual
+   request rather than assuming one is needed. Do not merge unless the user
+   explicitly authorises it.
 
 ## Update a delivery pull request
 
@@ -114,6 +121,11 @@ holds it, report that and stop rather than working the issue in parallel.
   a wake-up per check transition: each wake-up replays the whole context to
   answer "still running". Wait for the run to conclude, then read the result
   once.
+- A check set is empty for the first seconds after a push or a pull request is
+  created, before any status is reported. An empty result means not yet, never
+  finished: wait for at least one check to appear before a loop may treat the
+  set as terminal, or it exits immediately and reports a green that nothing
+  ever ran.
 - Read Codecov's own pull request comment for a coverage shortfall rather than
   re-measuring the tree by hand. It names the flag, the patch percentage and the
   uncovered lines; a hand-rolled count that omits partial branches reports a
