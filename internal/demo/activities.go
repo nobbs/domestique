@@ -48,9 +48,13 @@ const (
 	// settle: before them it has a position and no height.
 	barometricWarmUpRecords = 90
 
-	// trainerSampleSeconds is how often a ride with no geometry records, having
-	// no point spacing to take its interval from.
-	trainerSampleSeconds = 5.0
+	// sampleIntervalSeconds is how often one of these fixtures records: a real
+	// head unit's own rough cadence, and comfortably under
+	// measure.DefaultMaxGap so no ordinary stretch of riding reads as a
+	// recording gap. A stage's geometry is spaced by distance, which a slow
+	// climb would otherwise turn into a time gap between samples wide enough
+	// to be read as one.
+	sampleIntervalSeconds = 5.0
 
 	// riddenSlowerThanPredicted stretches the forward model's timing into a
 	// recorded one, so a demo ride is not its own prediction to the second.
@@ -213,8 +217,11 @@ func (s *rideSpec) startedAt(now time.Time) time.Time {
 	return time.Date(day.Year(), day.Month(), day.Day(), s.startHour, 0, 0, 0, time.UTC)
 }
 
-// records are the ride's samples, one per point of the stage it followed and
-// timed by internal/ridemodel over that same geometry.
+// records are the ride's samples, timed every sampleIntervalSeconds of the
+// stage's own predicted elapsed time rather than one per point of its
+// geometry: the geometry is spaced by distance, and a slow climb would
+// otherwise leave samples far enough apart in time to be read as a recording
+// gap, though nothing was ever missing from them.
 func (s *rideSpec) records(stages []route.Route, start time.Time) ([]activity.Record, error) {
 	if s.routeID == 0 {
 		return s.trainerRecords(start), nil
@@ -231,28 +238,68 @@ func (s *rideSpec) records(stages []route.Route, start time.Time) ([]activity.Re
 			s.workoutID, s.routeID, s.stageOrder)
 	}
 
-	records := make([]activity.Record, len(geometry))
-	distance := 0.0
-	for index := range geometry {
-		point := &geometry[index]
-		if index > 0 {
-			distance += measure.HaversineMetres(geometry[index-1].Coordinate(), geometry[index].Coordinate())
+	count := int(math.Ceil(prediction.MovingSeconds/sampleIntervalSeconds)) + 1
+	records := make([]activity.Record, count)
+	at, distance := 0, 0.0
+	for sampleIndex := range records {
+		// The last sample always lands exactly on the stage's own end, the way
+		// a ride actually finishes where the route does, rather than short of
+		// it by however much sampleIntervalSeconds did not divide evenly.
+		targetSeconds := float64(sampleIndex) * sampleIntervalSeconds
+		if sampleIndex == len(records)-1 {
+			targetSeconds = prediction.MovingSeconds
 		}
-		fraction := float64(index) / float64(len(geometry)-1)
-		elapsed := prediction.CumulativeSeconds[index] * riddenSlowerThanPredicted
+		// The geometry point this moment of riding falls on, distance and time
+		// both only ever moving forward: several time steps in a row can land
+		// on the same slow point, the way a real recorder would too. The
+		// odometer itself does not stand still for them, though: it is
+		// interpolated across the segment they share, the way a real one
+		// ticks up every sample, rather than snapped to the far end only once
+		// the segment finishes -- a ride's own moving intervals turn on it.
+		for at < len(geometry)-1 && prediction.CumulativeSeconds[at] < targetSeconds {
+			at++
+			distance += measure.HaversineMetres(geometry[at-1].Coordinate(), geometry[at].Coordinate())
+		}
+		point := &geometry[at]
+		// distance is the odometer once this sample's own segment is fully
+		// ridden; sampleDistance, latitude, longitude and altitude all back
+		// off by the same share of that segment still ahead of
+		// targetSeconds, without disturbing distance itself, which the next
+		// sample's advance still builds on.
+		sampleDistance, latitude, longitude, altitude := distance, point.Latitude, point.Longitude, point.Elevation
+		pointIndex := float64(at)
+		if at > 0 {
+			previous := &geometry[at-1]
+			segmentStart, segmentEnd := prediction.CumulativeSeconds[at-1], prediction.CumulativeSeconds[at]
+			if segmentEnd > segmentStart && targetSeconds < segmentEnd {
+				segmentFraction := (targetSeconds - segmentStart) / (segmentEnd - segmentStart)
+				segmentDistance := measure.HaversineMetres(previous.Coordinate(), point.Coordinate())
+				sampleDistance -= segmentDistance * (1 - segmentFraction)
+				latitude = previous.Latitude + segmentFraction*(point.Latitude-previous.Latitude)
+				longitude = previous.Longitude + segmentFraction*(point.Longitude-previous.Longitude)
+				pointIndex = float64(at-1) + segmentFraction
+				altitude = nil
+				if previous.Elevation != nil && point.Elevation != nil {
+					interpolated := *previous.Elevation + segmentFraction*(*point.Elevation-*previous.Elevation)
+					altitude = &interpolated
+				}
+			}
+		}
+		fraction := pointIndex / float64(len(geometry)-1)
+		elapsed := targetSeconds * riddenSlowerThanPredicted
 		record := activity.Record{
 			Time:           start.Add(time.Duration(elapsed * float64(time.Second))),
-			Latitude:       point.Latitude,
-			Longitude:      point.Longitude,
-			DistanceMetres: distance,
+			Latitude:       latitude,
+			Longitude:      longitude,
+			DistanceMetres: sampleDistance,
 			HasDistance:    true,
 			HasPosition:    true,
 		}
-		if point.Elevation != nil && index >= s.altitudeFrom {
-			record.AltitudeMetres, record.HasAltitude = *point.Elevation, true
+		if altitude != nil && sampleIndex >= s.altitudeFrom {
+			record.AltitudeMetres, record.HasAltitude = *altitude, true
 		}
-		s.fitSensors(&record, effortAt(fraction, gradientAt(geometry, index)), fraction)
-		records[index] = record
+		s.fitSensors(&record, effortAt(fraction, gradientAt(geometry, at)), fraction)
+		records[sampleIndex] = record
 	}
 
 	return records, nil
@@ -261,7 +308,7 @@ func (s *rideSpec) records(stages []route.Route, start time.Time) ([]activity.Re
 // trainerRecords are a ride with no ground: a virtual distance that accumulates
 // from the effort, and no position for a map to draw.
 func (s *rideSpec) trainerRecords(start time.Time) []activity.Record {
-	count := int(float64(s.trainerMinutes)*60/trainerSampleSeconds) + 1
+	count := int(float64(s.trainerMinutes)*60/sampleIntervalSeconds) + 1
 	records := make([]activity.Record, count)
 	distance := 0.0
 	for index := range records {
@@ -269,10 +316,10 @@ func (s *rideSpec) trainerRecords(start time.Time) []activity.Record {
 		effort := effortAt(fraction, 0)
 		if index > 0 {
 			// Kilometres per hour into metres per sample.
-			distance += (22 + 14*effort) / 3.6 * trainerSampleSeconds
+			distance += (22 + 14*effort) / 3.6 * sampleIntervalSeconds
 		}
 		record := activity.Record{
-			Time:           start.Add(time.Duration(float64(index) * trainerSampleSeconds * float64(time.Second))),
+			Time:           start.Add(time.Duration(float64(index) * sampleIntervalSeconds * float64(time.Second))),
 			DistanceMetres: distance,
 			HasDistance:    true,
 		}

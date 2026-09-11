@@ -362,28 +362,15 @@ description = "Run the whole stack against a synthetic library"
 depends = ["ui-install"]
 run = "./dev/demo.sh"
 
-# Answers #608's second bullet: for every recorded ride in a state database, how
-# each candidate ascent definition over the ride's own samples compares with
-# the ascent the device reported. Never built into the image and always
-# outside quick and check: it needs the operator's own snapshot of real
-# rides, and its own unit suite runs entirely
-# on in-module synthetic fixtures. The database path is required and has no
-# default: `mise run ascent-study -- -database .local/dev/state.db`. Its
-# report is aggregate numbers only and is safe to paste into an issue.
-[ascent-study]
-description = "Compare candidate ascent definitions against the device's own figure"
-run = "go run ./dev/ascentstudy"
-
-# Answers #587: for every recorded ride with a track and no power meter, how
-# three treatments of wind (none, injected forecast, fitted from heart rate)
-# compare on the handover's own diagnostics. Same offline-only shape as
-# ascent-study: never built into the image, never in quick or check, and
-# needs the operator's own snapshot of real rides. `-database` and `-mass`
-# have no default: `mise run wind-study -- -database .local/dev/state.db
-# -mass 90`.
-[wind-study]
-description = "Compare candidate wind treatments against the estimate's own diagnostics"
-run = "go run ./dev/windstudy"
+# Answers #623: for every recorded ride with a track and no power meter, how
+# the estimate's fitted coefficients compare with a rider's stated bicycle.
+# Same offline-only shape as the studies before it: never built into the
+# image, never in quick or check, and needs the operator's own snapshot of
+# real rides. `-database` has no default: `mise run level-study --
+# -database .local/dev/state.db`.
+[level-study]
+description = "Cross-validate a rider's bicycle numbers against their stated bicycle"
+run = "go run ./dev/levelstudy"
 
 # The only thing that installs node_modules. It declares the lockfile as its
 # source and the state file pnpm writes beside the installed tree as its output,

@@ -20,6 +20,11 @@ type Profile struct {
 	// it. A climb needs their sum, so both are kept rather than one total.
 	RiderMassKG Value
 	BikeMassKG  Value
+	// DragAreaM2 and RollingResistance are the bicycle's own CdA and Crr, the
+	// two terms the estimated-power model fits to a rider rather than reading
+	// off a lookup table.
+	DragAreaM2        Value
+	RollingResistance Value
 }
 
 // Value is one profile number, which is either set or absent.

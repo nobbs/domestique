@@ -3,12 +3,12 @@ INSERT INTO activity_metrics (
   target_slot, workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
+  estimated_power_watts, estimated_pedalling_share,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
-  input_total_mass, derivation_version, computed_at_unix
+  input_total_mass, input_drag_area, input_rolling_resistance, derivation_version, computed_at_unix
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
@@ -22,9 +22,7 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   intensity_factor = excluded.intensity_factor,
   power_tss = excluded.power_tss,
   estimated_power_watts = excluded.estimated_power_watts,
-  estimate_autocorrelation = excluded.estimate_autocorrelation,
-  estimate_delta_watts_per_second = excluded.estimate_delta_watts_per_second,
-  estimate_clip_bias_watts = excluded.estimate_clip_bias_watts,
+  estimated_pedalling_share = excluded.estimated_pedalling_share,
   average_heart_rate_bpm = excluded.average_heart_rate_bpm,
   max_heart_rate_bpm = excluded.max_heart_rate_bpm,
   average_cadence_rpm = excluded.average_cadence_rpm,
@@ -45,6 +43,8 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   input_threshold_heart_rate = excluded.input_threshold_heart_rate,
   input_threshold_power = excluded.input_threshold_power,
   input_total_mass = excluded.input_total_mass,
+  input_drag_area = excluded.input_drag_area,
+  input_rolling_resistance = excluded.input_rolling_resistance,
   derivation_version = excluded.derivation_version,
   computed_at_unix = excluded.computed_at_unix;
 
@@ -61,8 +61,8 @@ DELETE FROM activity_metrics WHERE target_slot = ?;
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
-  estimated_power_watts, estimate_autocorrelation, estimate_delta_watts_per_second, estimate_clip_bias_watts,
-  input_max_heart_rate, input_threshold_heart_rate,
+  estimated_power_watts, estimated_pedalling_share,
+  input_max_heart_rate, input_threshold_heart_rate, input_drag_area, input_rolling_resistance,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s
@@ -72,10 +72,11 @@ ORDER BY workout_id;
 
 -- Rides whose stored samples could still yield something this derivation now
 -- allows: those with no metrics row at all, those whose row was worked out
--- against different profile values, and those whose row an earlier derivation
+-- against different profile values, those holding an estimate worked out
+-- against a different bicycle, and those whose row an earlier derivation
 -- wrote and so cannot hold every figure this one produces. A ride still
--- awaiting its FIT has nothing to derive from and is left for the download to
--- bring in.
+-- awaiting its FIT has nothing to derive from and is left for the download
+-- to bring in.
 -- name: ListActivitiesAwaitingDerivation :many
 SELECT a.workout_id
 FROM activities AS a
@@ -88,6 +89,8 @@ WHERE a.target_slot = sqlc.arg(target_slot)
     OR m.input_threshold_heart_rate <> sqlc.arg(threshold_heart_rate)
     OR m.input_threshold_power <> sqlc.arg(threshold_power)
     OR m.input_total_mass <> sqlc.arg(total_mass)
+    OR (m.estimated_power_watts IS NOT NULL AND (m.input_drag_area <> sqlc.arg(drag_area)
+      OR m.input_rolling_resistance <> sqlc.arg(rolling_resistance)))
     OR m.derivation_version <> sqlc.arg(derivation_version))
 ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 
@@ -112,9 +115,13 @@ ORDER BY record_index;
 -- name: GetTargetOwner :one
 SELECT COALESCE(owner_subject, '') AS owner_subject FROM targets WHERE slot = ?;
 
--- name: ClearEstimatedPower :exec
+-- name: ClearEstimatedPower :execrows
 UPDATE activity_records SET estimated_power_watts = NULL
-WHERE target_slot = ? AND workout_id = ?;
+WHERE target_slot = ? AND workout_id = ? AND estimated_power_watts IS NOT NULL;
+
+-- name: ClearEstimatedPowerForTarget :execrows
+UPDATE activity_records SET estimated_power_watts = NULL
+WHERE target_slot = ? AND estimated_power_watts IS NOT NULL;
 
 -- Every derived ride of one target with the day it was ridden, which the
 -- fitness timeline is a fold over. Ordered so a fold reads it once.

@@ -84,3 +84,22 @@ ORDER BY a.started_at_unix DESC, c.climb_index;
 
 -- name: ClearActivityClimbAttempts :execrows
 DELETE FROM activity_climb_attempt WHERE target_slot = ?;
+
+-- A rider clearing their profile takes only the climbs and matches an
+-- estimate shaped with it: a metered ride's route match owes the profile
+-- nothing, and must survive a clear that names no bicycle or mass at all.
+-- name: ClearEstimatedActivityClimbAttemptsForTarget :execrows
+DELETE FROM activity_climb_attempt AS c
+WHERE c.target_slot = sqlc.arg(target_slot)
+  AND c.workout_id IN (
+    SELECT DISTINCT r.workout_id FROM activity_records AS r
+    WHERE r.target_slot = sqlc.arg(target_slot) AND r.estimated_power_watts IS NOT NULL
+  );
+
+-- name: ClearEstimatedActivityRouteMatchesForTarget :execrows
+DELETE FROM activity_route_match AS m
+WHERE m.target_slot = sqlc.arg(target_slot)
+  AND m.workout_id IN (
+    SELECT DISTINCT r.workout_id FROM activity_records AS r
+    WHERE r.target_slot = sqlc.arg(target_slot) AND r.estimated_power_watts IS NOT NULL
+  );

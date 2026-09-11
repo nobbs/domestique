@@ -13,7 +13,6 @@
 
 import type { ReactNode } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
-import { Badge } from "../../components/ui/badge";
 import { Separator } from "../../components/ui/separator";
 import { formatDuration } from "../../lib/format";
 
@@ -147,8 +146,6 @@ function averageSpeedKmh(ride: Activity, metrics: ActivityMetrics | undefined): 
 interface Groups {
   sensors: Scale[];
   power: Scale | undefined;
-  isEstimate: boolean;
-  diagnostics: Scale[];
   devicePower: Scale[];
   normalizedPower: Scale | undefined;
   load: Scale[];
@@ -167,45 +164,19 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
 
   // Never beside a measured average: the service serves one or the other, and
   // the label carries the estimate's provenance so it cannot read as a reading.
-  const isEstimate =
-    metrics?.averagePowerWatts === undefined && metrics?.estimatedPowerWatts !== undefined;
   const power: Scale | undefined =
     metrics?.averagePowerWatts !== undefined
       ? { label: "Power", scale: "watts average", value: metrics.averagePowerWatts }
       : metrics?.estimatedPowerWatts !== undefined
         ? {
             label: "Estimated power",
-            scale: "watts, from the track",
+            scale:
+              metrics.estimatedPedallingShare === undefined
+                ? "watts, from the track"
+                : `watts while pedalling, ${Math.round(metrics.estimatedPedallingShare * 100)}% of its estimated samples`,
             value: metrics.estimatedPowerWatts,
           }
         : undefined;
-
-  // estimateQuality's three fields arrive together or not at all, and only
-  // for an estimate — fixed positional order so the folded caption below can
-  // read it positionally: steadiness, jitter, clamp bias.
-  const diagnostics: Scale[] =
-    isEstimate && metrics?.estimateQuality
-      ? [
-          {
-            label: "Estimate steadiness",
-            scale: "lag-1 correlation",
-            value: metrics.estimateQuality.autocorrelation,
-            decimals: 2,
-          },
-          {
-            label: "Estimate jitter",
-            scale: "watts change per second",
-            value: metrics.estimateQuality.meanAbsDeltaWattsPerSecond,
-            decimals: 1,
-          },
-          {
-            label: "Clamp bias",
-            scale: "watts the zero clamp added",
-            value: metrics.estimateQuality.clipBiasWatts,
-            decimals: 1,
-          },
-        ]
-      : [];
 
   const devicePower: Scale[] = [
     { label: "Max power", scale: "watts", value: metrics?.maxPowerWatts },
@@ -252,8 +223,6 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   return {
     sensors,
     power,
-    isEstimate,
-    diagnostics,
     devicePower,
     normalizedPower,
     load,
@@ -273,72 +242,6 @@ function figureGrid(figures: Scale[]): ReactNode {
   );
 }
 
-/** Fixed positional order from `buildGroups`: steadiness, jitter, clamp bias. */
-function foldedCaption(diagnostics: Scale[]): string {
-  const [steadiness, jitter, bias] = diagnostics;
-  const steadyWord =
-    (steadiness?.value ?? 0) >= 0.85
-      ? "steady"
-      : (steadiness?.value ?? 0) >= 0.6
-        ? "some drift"
-        : "noisy";
-  const jitterWord =
-    (jitter?.value ?? 0) < 10
-      ? "low jitter"
-      : (jitter?.value ?? 0) < 20
-        ? "moderate jitter"
-        : "high jitter";
-  const biasValue = bias?.value ?? 0;
-  const biasWord = `${biasValue >= 0 ? "+" : ""}${biasValue.toFixed(0)} W clamp bias`;
-
-  return `${steadyWord}, ${jitterWord}, ${biasWord}`;
-}
-
-function estimateTier(diagnostics: Scale[]): "steady" | "rough" {
-  const [steadiness, jitter, bias] = diagnostics;
-  const good =
-    (steadiness?.value ?? 0) >= 0.85 && (jitter?.value ?? 0) < 12 && Math.abs(bias?.value ?? 0) < 5;
-
-  return good ? "steady" : "rough";
-}
-
-/**
- * The estimate's power tile, with its three diagnostics folded into a caption
- * and a quality badge rather than three tiles beside it. The caption's words
- * are decorative; the exact values stay reachable on touch and to assistive
- * technology as hidden text, not only through the hover title.
- */
-function EstimatedPowerTile({ power, diagnostics }: { power: Scale; diagnostics: Scale[] }) {
-  const hoverTitle = diagnostics
-    .map(
-      (diagnostic) =>
-        `${diagnostic.label} ${diagnostic.value?.toFixed(diagnostic.decimals ?? 0)} ${diagnostic.scale}`,
-    )
-    .join(" · ");
-
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[var(--ink-2)] text-xs">{power.label}</span>
-      <div className="flex items-baseline gap-1.5">
-        <span className="font-semibold text-lg tabular-nums">
-          {power.value?.toFixed(power.decimals ?? 0)}
-        </span>
-        <Badge
-          variant={estimateTier(diagnostics) === "steady" ? "secondary" : "outline"}
-          className="h-4 px-1.5 text-[9px]"
-        >
-          {estimateTier(diagnostics)}
-        </Badge>
-      </div>
-      <span className="text-[var(--ink-2)] text-xs">{power.scale}</span>
-      <span className="text-[10px] text-[var(--ink-2)] opacity-80" title={hoverTitle}>
-        <span aria-hidden="true">{foldedCaption(diagnostics)}</span>
-        <span className="sr-only">{hoverTitle}</span>
-      </span>
-    </div>
-  );
-}
-
 interface Group {
   title: string;
   content: ReactNode;
@@ -347,16 +250,7 @@ interface Group {
 function groupedSections(groups: Groups): Group[] {
   const powerContent: ReactNode[] = [];
   if (groups.power) {
-    if (groups.isEstimate && groups.diagnostics.length === 3) {
-      powerContent.push(
-        <EstimatedPowerTile key="power" power={groups.power} diagnostics={groups.diagnostics} />,
-      );
-    } else {
-      powerContent.push(<Figure key={groups.power.label} {...groups.power} />);
-      for (const diagnostic of groups.diagnostics) {
-        powerContent.push(<Figure key={diagnostic.label} {...diagnostic} />);
-      }
-    }
+    powerContent.push(<Figure key={groups.power.label} {...groups.power} />);
   }
   for (const figure of groups.devicePower) {
     powerContent.push(<Figure key={figure.label} {...figure} />);

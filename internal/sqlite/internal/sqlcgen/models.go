@@ -87,6 +87,9 @@ type ActivityMetric struct {
 	BestPower1200s              sql.NullFloat64
 	BestPower3600s              sql.NullFloat64
 	MaxSpeedKmh                 sql.NullFloat64
+	EstimatedPedallingShare     sql.NullFloat64
+	InputDragArea               float64
+	InputRollingResistance      float64
 }
 
 type ActivityRecord struct {
@@ -250,6 +253,8 @@ type RiderProfile struct {
 	RiderMassKg                   sql.NullFloat64
 	BikeMassKg                    sql.NullFloat64
 	UpdatedAtUnix                 int64
+	DragAreaM2                    sql.NullFloat64
+	RollingResistance             sql.NullFloat64
 }
 
 type RuntimeBasemap struct {

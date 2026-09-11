@@ -60,7 +60,9 @@ func BoundsFrom(thresholdHeartRate, maxHeartRate float64) (Bounds, bool) {
 
 // TimeInZones sums how long the ride held each zone. Each sample counts for as
 // long as it stands, up to measure.DefaultMaxGap: a recorder that paused must
-// not book the whole pause to whichever zone it stopped in.
+// not book the whole pause to whichever zone it stopped in, and a dropout the
+// strap wrote as a run of noughts must not be bridged into either zone it
+// falls between.
 func TimeInZones(samples []Sample, bounds Bounds) Zones {
 	zones := Zones{}
 	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(value, seconds float64) {

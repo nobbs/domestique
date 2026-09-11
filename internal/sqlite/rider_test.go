@@ -27,6 +27,9 @@ func TestRiderProfileRoundTripsAndIsNotAnotherSubjects(t *testing.T) {
 		RestingHeartRateBPM:           rider.Set(46),
 		FunctionalThresholdPowerWatts: rider.Set(268),
 		RiderMassKG:                   rider.Set(74.5),
+		BikeMassKG:                    rider.Set(8.4),
+		DragAreaM2:                    rider.Set(0.38),
+		RollingResistance:             rider.Set(0.007),
 	}
 	require.NoError(t, store.SetRiderProfile(t.Context(), "rider-a", stored), "SetRiderProfile()")
 
@@ -47,6 +50,7 @@ func TestSetRiderProfileReplacesTheWholeProfile(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.SetRiderProfile(t.Context(), "rider-a", rider.Profile{
 		MaxHeartRateBPM: rider.Set(188), BikeMassKG: rider.Set(8.4),
+		DragAreaM2: rider.Set(0.38), RollingResistance: rider.Set(0.007),
 	}), "SetRiderProfile()")
 	require.NoError(t, store.SetRiderProfile(t.Context(), "rider-a", rider.Profile{
 		MaxHeartRateBPM: rider.Set(190),
@@ -56,6 +60,8 @@ func TestSetRiderProfileReplacesTheWholeProfile(t *testing.T) {
 	require.NoError(t, err, "RiderProfile()")
 	assert.Equal(t, rider.Set(190), read.MaxHeartRateBPM)
 	assert.False(t, read.BikeMassKG.Set, "a parameter left out of the second write is cleared")
+	assert.False(t, read.DragAreaM2.Set, "the bicycle's drag area is cleared the same way")
+	assert.False(t, read.RollingResistance.Set, "and its rolling resistance too")
 }
 
 func TestRiderProfileReportsAnUnreadableStore(t *testing.T) {

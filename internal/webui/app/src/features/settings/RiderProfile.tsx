@@ -76,6 +76,19 @@ const PARAMETERS: Parameter[] = [
     unit: "kg",
     description: "The bicycle and everything carried on it.",
   },
+  {
+    field: "dragAreaM2",
+    label: "Drag area",
+    unit: "m²",
+    description:
+      "The bicycle's CdA: 0.36 on a road bike's hoods, 0.40 on a gravel bike's hoods, 0.45 sitting up.",
+  },
+  {
+    field: "rollingResistance",
+    label: "Rolling resistance",
+    unit: "",
+    description: "The tyres' Crr on tarmac: 0.005 for a road slick, 0.008 for a wide gravel tyre.",
+  },
 ];
 
 /**
@@ -174,7 +187,7 @@ export function RiderProfile() {
             return (
               <Field key={parameter.field}>
                 <FieldLabel htmlFor={`${id}-${parameter.field}`}>
-                  {parameter.label} ({parameter.unit})
+                  {parameter.unit ? `${parameter.label} (${parameter.unit})` : parameter.label}
                 </FieldLabel>
                 <Input
                   id={`${id}-${parameter.field}`}

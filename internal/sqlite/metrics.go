@@ -19,17 +19,21 @@ import (
 // input that changed under them. Those rows are listed again.
 //
 // 3: rows before it cannot hold the estimate's quality diagnostics.
-// 4: the estimate now follows a cadence gate and a per-sample air density, and
-// the heart-rate figures are now worked out from the capped series — both
+// 4: the estimate follows a cadence gate and a per-sample air density, and
+// the heart-rate figures are worked out from the capped series -- both
 // change every figure a row before it holds.
-// 5: the estimate's grade-and-speed window is now derived per ride from the
-// altimeter's own resolution instead of fixed at 30 m.
+// 5: the estimate's grade-and-speed window is derived per ride from the
+// altimeter's own resolution.
 // 6: rows before it cannot hold a ride's decoupling or its heat-drift reading.
 // 7: rows before it cannot hold the ride's power-duration bests.
 // 8: rows before it cannot hold the ride's maximum speed.
 // 9: rows before it were worked out over samples the version 2 re-read has
 // since replaced, at a time when a re-read left the metrics row in place.
-const derivationVersion = 9
+// 10: the estimate carries the inertial term and the drivetrain loss, which
+// moves every estimated figure a row before it holds.
+// 11: rows before it hold no pedalling share and were worked out at another
+// bicycle.
+const derivationVersion = 11
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
@@ -37,7 +41,7 @@ const derivationVersion = 9
 // wrote. Newest first, so a rider watching a long recompute sees the rides they
 // care about settle first.
 func (s *Store) ActivitiesAwaitingDerivation(
-	ctx context.Context, targetID string, inputs trainingload.Inputs,
+	ctx context.Context, targetID string, inputs trainingload.Inputs, coefficients measure.Coefficients,
 ) ([]int64, error) {
 	ids, err := s.queries.ListActivitiesAwaitingDerivation(ctx, sqlcgen.ListActivitiesAwaitingDerivationParams{
 		TargetSlot:         targetID,
@@ -46,6 +50,8 @@ func (s *Store) ActivitiesAwaitingDerivation(
 		ThresholdHeartRate: inputs.ThresholdHeartRateBPM,
 		ThresholdPower:     inputs.FunctionalThresholdPowerWatts,
 		TotalMass:          inputs.TotalMassKG,
+		DragArea:           coefficients.DragArea,
+		RollingResistance:  coefficients.RollingResistance,
 		DerivationVersion:  derivationVersion,
 	})
 	if err != nil {
@@ -73,7 +79,8 @@ func (s *Store) ActivityRideSamples(
 	for index := range rows {
 		row := &rows[index]
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
-		if row.HeartRateBpm.Valid {
+		// An unpaired strap writes nought, and nought is no heart rate.
+		if row.HeartRateBpm.Valid && row.HeartRateBpm.Float64 > 0 {
 			samples.HeartRate = append(samples.HeartRate, trainingload.Sample{At: at, Value: row.HeartRateBpm.Float64})
 		}
 		if row.CadenceRpm.Valid {
@@ -173,25 +180,68 @@ WHERE target_slot = ? AND workout_id = ? AND record_index = ?`
 // StoreEstimatedPower replaces one ride's estimated power series, in one
 // transaction so a partial rewrite is never left behind as complete. An empty
 // series clears whatever was there, which is what a ride that has stopped
-// yielding an estimate needs.
+// yielding an estimate needs. The ride's route match goes with it: its climb
+// attempts were read from the series being replaced, so the match is redone.
 func (s *Store) StoreEstimatedPower(
 	ctx context.Context, targetID string, id int64, recordIndices []int64, estimates []measure.Estimate,
 ) error {
-	if len(recordIndices) != len(estimates) {
-		return errors.New("an estimate per record or none")
-	}
 	transaction, beginErr := s.database.BeginTx(ctx, nil)
 	if beginErr != nil {
 		return fmt.Errorf("starting the estimated power write: %w", beginErr)
 	}
 	defer rollback(transaction)
-	queries := s.queries.WithTx(transaction)
-	// Cleared first, so a record that no longer yields an estimate does not keep
+	if err := storeEstimatedPower(ctx, transaction, s.queries.WithTx(transaction), targetID, id, recordIndices, estimates); err != nil {
+		return err
+	}
+	if commitErr := transaction.Commit(); commitErr != nil {
+		return fmt.Errorf("committing the estimated power: %w", commitErr)
+	}
+
+	return nil
+}
+
+// storeEstimatedPower is StoreEstimatedPower's body, run against a
+// transaction and queries the caller already opened, so StoreRideDerivation
+// can share one transaction with storeActivityMetrics.
+func storeEstimatedPower(
+	ctx context.Context, transaction *sql.Tx, queries *sqlcgen.Queries,
+	targetID string, id int64, recordIndices []int64, estimates []measure.Estimate,
+) error {
+	if len(recordIndices) != len(estimates) {
+		return errors.New("an estimate per record or none")
+	}
+	// Cleared first, so a record that yields no estimate does not keep
 	// the one it had from a mass the rider has since changed.
-	if clearErr := queries.ClearEstimatedPower(ctx, sqlcgen.ClearEstimatedPowerParams{
+	cleared, clearErr := queries.ClearEstimatedPower(ctx, sqlcgen.ClearEstimatedPowerParams{
 		TargetSlot: targetID, WorkoutID: id,
-	}); clearErr != nil {
+	})
+	if clearErr != nil {
 		return fmt.Errorf("clearing the estimated power: %w", clearErr)
+	}
+	writesAnEstimate := false
+	for _, estimate := range estimates {
+		if estimate.Known {
+			writesAnEstimate = true
+
+			break
+		}
+	}
+	// A ride whose series neither was nor becomes anything keeps its match:
+	// a metered ride's climbs owe the estimate nothing. len(estimates) alone
+	// is not that test -- it is nonzero whenever the track has samples, known
+	// or not, so a track that yielded no known estimate at all must not
+	// count as one that did.
+	if cleared > 0 || writesAnEstimate {
+		if err := queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
+			TargetSlot: targetID, WorkoutID: id,
+		}); err != nil {
+			return fmt.Errorf("forgetting the climb attempts: %w", err)
+		}
+		if err := queries.DeleteActivityRouteMatch(ctx, sqlcgen.DeleteActivityRouteMatchParams{
+			TargetSlot: targetID, WorkoutID: id,
+		}); err != nil {
+			return fmt.Errorf("forgetting the route match: %w", err)
+		}
 	}
 	// Prepared once for the whole ride, as the sample insert is: a long ride is
 	// thousands of these, and preparing each one costs more than running it.
@@ -208,9 +258,6 @@ func (s *Store) StoreEstimatedPower(
 			return fmt.Errorf("recording an estimated power: %w", execErr)
 		}
 	}
-	if commitErr := transaction.Commit(); commitErr != nil {
-		return fmt.Errorf("committing the estimated power: %w", commitErr)
-	}
 
 	return nil
 }
@@ -223,9 +270,20 @@ func (s *Store) StoreEstimatedPower(
 func (s *Store) StoreActivityMetrics(
 	ctx context.Context, targetID string, id int64, stored activity.RideMetrics,
 ) error {
+	return storeActivityMetrics(ctx, s.queries, targetID, id, stored)
+}
+
+// storeActivityMetrics is StoreActivityMetrics' body, run against the
+// queries the caller already opened, so StoreRideDerivation can share one
+// transaction with storeEstimatedPower.
+//
+//nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
+func storeActivityMetrics(
+	ctx context.Context, queries *sqlcgen.Queries, targetID string, id int64, stored activity.RideMetrics,
+) error {
 	metrics, averages := stored.Load, stored.Averages
 	if !stored.Derived() {
-		if err := s.queries.DeleteActivityMetrics(ctx, sqlcgen.DeleteActivityMetricsParams{
+		if err := queries.DeleteActivityMetrics(ctx, sqlcgen.DeleteActivityMetricsParams{
 			TargetSlot: targetID, WorkoutID: id,
 		}); err != nil {
 			return fmt.Errorf("clearing the activity metrics: %w", err)
@@ -237,10 +295,8 @@ func (s *Store) StoreActivityMetrics(
 	for index := range zones {
 		zones[index] = nullFloat(metrics.Zones[index], metrics.HasZones)
 	}
-	// A quality without an estimate is not one: the columns go together.
-	hasQuality := metrics.HasEstimatedPower && stored.HasEstimateQuality
 	bests := stored.PowerBests
-	if err := s.queries.UpsertActivityMetrics(ctx, sqlcgen.UpsertActivityMetricsParams{
+	if err := queries.UpsertActivityMetrics(ctx, sqlcgen.UpsertActivityMetricsParams{
 		TargetSlot: targetID, WorkoutID: id,
 		Zone1Seconds: zones[0], Zone2Seconds: zones[1], Zone3Seconds: zones[2],
 		Zone4Seconds: zones[3], Zone5Seconds: zones[4],
@@ -250,17 +306,14 @@ func (s *Store) StoreActivityMetrics(
 		IntensityFactor:         nullFloat(metrics.Power.IntensityFactor, metrics.HasPower),
 		PowerTss:                nullFloat(metrics.Power.TSS, metrics.HasPower),
 		EstimatedPowerWatts:     nullFloat(metrics.EstimatedPowerWatts, metrics.HasEstimatedPower),
-		EstimateAutocorrelation: nullFloat(stored.EstimateQuality.Autocorrelation1, hasQuality),
-		EstimateDeltaWattsPerSecond: nullFloat(
-			stored.EstimateQuality.MeanAbsDeltaWattsPerSecond, hasQuality),
-		EstimateClipBiasWatts: nullFloat(stored.EstimateQuality.ClipBiasWatts, hasQuality),
-		AverageHeartRateBpm:   nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
-		MaxHeartRateBpm:       nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
-		AverageCadenceRpm:     nullFloat(averages.CadenceRPM, averages.HasCadence),
-		AveragePowerWatts:     nullFloat(averages.PowerWatts, averages.HasPower),
-		MaxSpeedKmh:           nullFloat(averages.MaxSpeedKmh, averages.HasSpeed),
-		DecouplingPercent:     nullFloat(stored.Decoupling.Percent, stored.Decoupling.Known),
-		HeatDriftHeartRateBpm: nullFloat(stored.HeatDrift.HeartRateBPM, stored.HeatDrift.Known),
+		EstimatedPedallingShare: nullFloat(stored.EstimatedPedallingShare, stored.HasEstimatedPedallingShare),
+		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
+		MaxHeartRateBpm:         nullFloat(averages.MaxHeartRateBPM, averages.HasHeartRate),
+		AverageCadenceRpm:       nullFloat(averages.CadenceRPM, averages.HasCadence),
+		AveragePowerWatts:       nullFloat(averages.PowerWatts, averages.HasPower),
+		MaxSpeedKmh:             nullFloat(averages.MaxSpeedKmh, averages.HasSpeed),
+		DecouplingPercent:       nullFloat(stored.Decoupling.Percent, stored.Decoupling.Known),
+		HeatDriftHeartRateBpm:   nullFloat(stored.HeatDrift.HeartRateBPM, stored.HeatDrift.Known),
 		HeatDriftTemperatureCelsius: nullFloat(
 			stored.HeatDrift.TemperatureCelsius, stored.HeatDrift.Known),
 		HeatDriftSamples:        nullInt(int64(stored.HeatDrift.Samples), stored.HeatDrift.Known),
@@ -275,10 +328,43 @@ func (s *Store) StoreActivityMetrics(
 		InputThresholdHeartRate: metrics.Inputs.ThresholdHeartRateBPM,
 		InputThresholdPower:     metrics.Inputs.FunctionalThresholdPowerWatts,
 		InputTotalMass:          metrics.Inputs.TotalMassKG,
+		InputDragArea:           stored.Coefficients.DragArea,
+		InputRollingResistance:  stored.Coefficients.RollingResistance,
 		DerivationVersion:       derivationVersion,
 		ComputedAtUnix:          time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("storing the activity metrics: %w", err)
+	}
+
+	return nil
+}
+
+// StoreRideDerivation replaces one ride's estimated power series and its
+// derived metrics row together, in one transaction: written separately, a
+// failure between the two could leave the track endpoint serving an estimate
+// series no metrics row stands behind any longer, or the reverse.
+//
+//nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
+func (s *Store) StoreRideDerivation(
+	ctx context.Context, targetID string, id int64,
+	recordIndices []int64, estimates []measure.Estimate, metrics activity.RideMetrics,
+) error {
+	transaction, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return fmt.Errorf("starting the ride derivation write: %w", beginErr)
+	}
+	defer rollback(transaction)
+	queries := s.queries.WithTx(transaction)
+	// The series first: a metrics row is what says a ride has been derived,
+	// so it must not appear before the samples it describes are in place.
+	if err := storeEstimatedPower(ctx, transaction, queries, targetID, id, recordIndices, estimates); err != nil {
+		return err
+	}
+	if err := storeActivityMetrics(ctx, queries, targetID, id, metrics); err != nil {
+		return err
+	}
+	if commitErr := transaction.Commit(); commitErr != nil {
+		return fmt.Errorf("committing the ride derivation write: %w", commitErr)
 	}
 
 	return nil
@@ -331,16 +417,11 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 				HasPower:        row.AveragePowerWatts.Valid,
 				HasSpeed:        row.MaxSpeedKmh.Valid,
 			},
-			EstimateQuality: measure.Quality{
-				Autocorrelation1:           row.EstimateAutocorrelation.Float64,
-				MeanAbsDeltaWattsPerSecond: row.EstimateDeltaWattsPerSecond.Float64,
-				ClipBiasWatts:              row.EstimateClipBiasWatts.Float64,
+			EstimatedPedallingShare:    row.EstimatedPedallingShare.Float64,
+			HasEstimatedPedallingShare: row.EstimatedPedallingShare.Valid,
+			Coefficients: measure.Coefficients{
+				DragArea: row.InputDragArea, RollingResistance: row.InputRollingResistance,
 			},
-			// A row derived before the diagnostics existed holds nulls here
-			// until it is derived again; a null is not a quality of nought, and
-			// a quality without an estimate is not one either.
-			HasEstimateQuality: row.EstimatedPowerWatts.Valid && row.EstimateAutocorrelation.Valid &&
-				row.EstimateDeltaWattsPerSecond.Valid && row.EstimateClipBiasWatts.Valid,
 			Decoupling: activity.Decoupling{
 				Percent: row.DecouplingPercent.Float64,
 				Known:   row.DecouplingPercent.Valid,
@@ -381,13 +462,41 @@ func (s *Store) TargetOwner(ctx context.Context, targetID string) (string, error
 }
 
 // ClearActivityMetrics removes every derived row one target holds and reports
-// how many went. It is what a rider clearing their whole profile leaves behind:
-// numbers worked out from parameters nobody holds any more must not go on being
-// served.
+// how many went. It is what a rider clearing their whole profile leaves
+// behind: numbers worked out from parameters nobody holds any more must not
+// go on being served. The estimate series this same profile fed goes with
+// it, and the route matches and climb attempts an estimate shaped -- otherwise
+// the track and library endpoints would keep serving an estimate, and the
+// climbs it shaped, after the derivation that produced it has nothing left to
+// stand on. A metered ride's own match owes the profile nothing and is left
+// standing: only the estimate-dependent history is cleared, not the whole
+// target's. One transaction: a partial clear must never leave an estimate
+// outliving the metrics row it was derived beside.
 func (s *Store) ClearActivityMetrics(ctx context.Context, targetID string) (int, error) {
-	removed, err := s.queries.ClearActivityMetrics(ctx, targetID)
+	transaction, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return 0, fmt.Errorf("starting the activity metrics clear: %w", beginErr)
+	}
+	defer rollback(transaction)
+	queries := s.queries.WithTx(transaction)
+	removed, err := queries.ClearActivityMetrics(ctx, targetID)
 	if err != nil {
 		return 0, fmt.Errorf("clearing the activity metrics: %w", err)
+	}
+	// Cleared before the series it was read from, the same order
+	// StoreEstimatedPower keeps for one ride: a climb attempt naming an
+	// estimate that has since been cleared is never left standing.
+	if _, err := queries.ClearEstimatedActivityClimbAttemptsForTarget(ctx, targetID); err != nil {
+		return 0, fmt.Errorf("clearing activity climb attempts: %w", err)
+	}
+	if _, err := queries.ClearEstimatedActivityRouteMatchesForTarget(ctx, targetID); err != nil {
+		return 0, fmt.Errorf("clearing activity route matches: %w", err)
+	}
+	if _, err := queries.ClearEstimatedPowerForTarget(ctx, targetID); err != nil {
+		return 0, fmt.Errorf("clearing the estimated power: %w", err)
+	}
+	if err := transaction.Commit(); err != nil {
+		return 0, fmt.Errorf("committing the activity metrics clear: %w", err)
 	}
 
 	return int(removed), nil

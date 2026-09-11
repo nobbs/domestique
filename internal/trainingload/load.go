@@ -16,6 +16,27 @@ const (
 	trimpExponent = 1.92
 )
 
+// MinSeriesCoverage is the share of the ride's moving time a series must hold
+// a reading for before a figure built on it is trusted rather than marked
+// partial. Ninety percent absorbs an ordinary strap-pairing delay — a minute
+// or two is a small fraction of even a short ride — while still catching a
+// sensor that genuinely dropped out for a real part of the ride.
+const MinSeriesCoverage = 0.90
+
+// SeriesCoverage is the share of the ride's moving time one series held a
+// reading for: the same held-duration TRIMP and HeartRateTSS already fold
+// over, against the ride's own moving time rather than its elapsed one, so a
+// stop with the sensor detached does not count against it. Capped at 1.
+// False for a series with nothing to hold at all.
+func SeriesCoverage(samples []Sample, movingSeconds float64) (share float64, ok bool) {
+	if movingSeconds <= 0 || len(samples) == 0 {
+		return 0, false
+	}
+	_, held := measure.MeanHeld(samples, measure.DefaultMaxGap)
+
+	return min(max(held, 0)/movingSeconds, 1), true
+}
+
 // TRIMP is Banister's training impulse: how long the ride lasted, weighted by
 // how much of the rider's heart-rate reserve it held, in minutes. It needs a
 // maximum and a resting rate to have a reserve to measure against at all.

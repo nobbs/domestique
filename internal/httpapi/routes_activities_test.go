@@ -14,7 +14,6 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
-	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -88,10 +87,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 				PowerWatts: 196.25, HasPower: true,
 				MaxSpeedKmh: 54.2, HasSpeed: true,
 			},
-			HasEstimateQuality: true,
-			EstimateQuality: measure.Quality{
-				Autocorrelation1: 0.91, MeanAbsDeltaWattsPerSecond: 11.4, ClipBiasWatts: 2.1,
-			},
+			EstimatedPedallingShare:    0.87,
+			HasEstimatedPedallingShare: true,
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
@@ -112,10 +109,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.Nil(t, derived.Metrics.PowerTss, "the rider has entered no threshold power")
 	require.NotNil(t, derived.Metrics.EstimatedPowerWatts, "which is why it has an estimate at all")
 	assert.InDelta(t, 168.5, *derived.Metrics.EstimatedPowerWatts, 1e-9)
-	require.NotNil(t, derived.Metrics.EstimateQuality, "the estimate's own quality diagnostics")
-	assert.InDelta(t, 0.91, derived.Metrics.EstimateQuality.Autocorrelation, 1e-9)
-	assert.InDelta(t, 11.4, derived.Metrics.EstimateQuality.MeanAbsDeltaWattsPerSecond, 1e-9)
-	assert.InDelta(t, 2.1, derived.Metrics.EstimateQuality.ClipBiasWatts, 1e-9)
+	require.NotNil(t, derived.Metrics.EstimatedPedallingShare, "the share of the ride it was worked out over")
+	assert.InDelta(t, 0.87, *derived.Metrics.EstimatedPedallingShare, 1e-9)
 	require.NotNil(t, derived.Metrics.AverageHeartRateBpm)
 	assert.InDelta(t, 142.5, *derived.Metrics.AverageHeartRateBpm, 1e-9)
 	require.NotNil(t, derived.Metrics.MaxHeartRateBpm)
@@ -130,8 +125,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 }
 
 // A ride with a measured average power carries no estimate, and so no
-// quality diagnostics about one either.
-func TestGetActivitiesCarriesNoEstimateQualityWithoutAnEstimate(t *testing.T) {
+// pedalling share about one either.
+func TestGetActivitiesCarriesNoPedallingShareWithoutAnEstimate(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
 	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
@@ -147,28 +142,29 @@ func TestGetActivitiesCarriesNoEstimateQualityWithoutAnEstimate(t *testing.T) {
 	derived := list.Activities[0]
 	require.NotNil(t, derived.Metrics)
 	assert.Nil(t, derived.Metrics.EstimatedPowerWatts)
-	assert.Nil(t, derived.Metrics.EstimateQuality)
+	assert.Nil(t, derived.Metrics.EstimatedPedallingShare)
 	assert.Nil(t, derived.Metrics.MaxSpeedKmh, "no speed series behind this ride")
 }
 
-// A ride derived before the diagnostics existed carries an estimate and no
-// quality until it is derived again; nulls are not a quality of nought.
-func TestGetActivitiesCarriesNoEstimateQualityForAnEstimateDerivedBeforeItExisted(t *testing.T) {
+// A row written before migration 057 holds an estimate but no share, and must
+// be served without the field rather than a false zero.
+func TestGetActivitiesCarriesNoPedallingShareForAPreMigrationRow(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
 	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
-			Load: trainingload.Metrics{EstimatedPowerWatts: 150, HasEstimatedPower: true},
+			Load: trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
 
 	code, list := getActivities(t, handler, "/v1/activities")
 	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
 
 	derived := list.Activities[0]
 	require.NotNil(t, derived.Metrics)
 	require.NotNil(t, derived.Metrics.EstimatedPowerWatts)
-	assert.Nil(t, derived.Metrics.EstimateQuality)
+	assert.Nil(t, derived.Metrics.EstimatedPedallingShare, "no share was ever written for this row")
 }
 
 // The listing card gets one line about the ride: the range the temperature

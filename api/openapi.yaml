@@ -2240,14 +2240,24 @@ components:
           type: number
           format: double
           description: >-
-            The ride's average estimated power, for a bicycle carrying no meter.
-            An estimate from a physics model over the recorded track, never a
-            measurement: it feeds none of the figures above and must not be
-            presented as though it were one of them. Absent for a ride that
-            measured its own power, one with no usable track, and one whose
-            rider has entered no mass.
-        estimateQuality:
-          $ref: '#/components/schemas/EstimateQuality'
+            The ride's estimated power while pedalling, in watts, for a
+            bicycle carrying no meter: a physics model over the recorded
+            track, at the rider's own drag area and rolling resistance where
+            both are entered and a road bicycle's otherwise, never a
+            measurement, never an input to the figures above. Absent for a
+            ride that measured its own power, one with no usable track, and
+            one whose rider has not entered both their own mass and their
+            bicycle's mass.
+        estimatedPedallingShare:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: >-
+            The share of the ride's estimated samples the rider was pedalling
+            through, which the estimate is averaged over. Present only beside
+            estimatedPowerWatts, and absent for a ride whose estimate was
+            worked out before a share was kept, until it is derived again.
         averageSpeedKmh:
           type: number
           format: double
@@ -2385,40 +2395,6 @@ components:
           type: integer
           minimum: 1
           description: How many samples the pair was read from.
-    EstimateQuality:
-      type: object
-      additionalProperties: false
-      description: >-
-        What the estimate's own shape says about whether to trust it: a real
-        ride's power is strongly autocorrelated sample to sample and moves by
-        a few watts a second, and a series driven by recorder noise is
-        neither. Present beside estimatedPowerWatts once the ride has been
-        derived since these existed; a ride derived before then omits it
-        until it is derived again. See
-        docs/specs/measurement.md §Estimated power.
-      required:
-        - autocorrelation
-        - meanAbsDeltaWattsPerSecond
-        - clipBiasWatts
-      properties:
-        autocorrelation:
-          type: number
-          format: double
-          description: >-
-            The lag-1 Pearson correlation of the estimated watts with
-            themselves shifted by one sample.
-        meanAbsDeltaWattsPerSecond:
-          type: number
-          format: double
-          description: >-
-            The mean absolute change in watts per second of elapsed time
-            between consecutive samples.
-        clipBiasWatts:
-          type: number
-          format: double
-          description: >-
-            The mean amount the zero clamp added: clamped watts minus the
-            unclamped force times speed it would otherwise have reported.
     ActivityList:
       type: object
       additionalProperties: false
@@ -3074,6 +3050,20 @@ components:
           minimum: 1
           maximum: 500
           description: The bicycle and everything carried on it.
+        dragAreaM2:
+          type: number
+          minimum: 0.1
+          maximum: 1.5
+          description: >-
+            The bicycle's drag area, CdA, in square metres: 0.36 on a road
+            bike's hoods, 0.40 on a gravel bike's hoods, 0.45 sitting up.
+        rollingResistance:
+          type: number
+          minimum: 0.002
+          maximum: 0.03
+          description: >-
+            The tyres' rolling resistance coefficient on tarmac, Crr: 0.005
+            for a road slick, 0.008 for a wide gravel tyre.
     RiderSuggestions:
       type: object
       additionalProperties: false
@@ -3530,7 +3520,8 @@ components:
             from a physics model over position, altitude and time, never a
             measurement, and nothing may present it as one. Omitted entirely for
             a ride that carries real power, one with no usable track, and one
-            whose rider has entered no mass.
+            whose rider has not entered both their own mass and their
+            bicycle's mass.
           type: array
           items:
             type:

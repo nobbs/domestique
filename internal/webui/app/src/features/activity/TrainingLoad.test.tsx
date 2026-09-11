@@ -122,34 +122,12 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Power", { selector: "span" })).not.toBeInTheDocument();
   });
 
-  // A strap-only ride: the tile's caption and badge are the reader's summary,
-  // and the exact values stay reachable on touch and to assistive technology
-  // as hidden text beside them, not only through the caption's hover title.
-  it("folds the estimate's quality diagnostics into its power tile", () => {
-    show({
-      estimatedPowerWatts: 187.4,
-      estimateQuality: {
-        autocorrelation: 0.923,
-        meanAbsDeltaWattsPerSecond: 12.34,
-        clipBiasWatts: 3.456,
-      },
-    });
+  it("shows the estimate's pedalling share as its scale", () => {
+    show({ estimatedPowerWatts: 187.4, estimatedPedallingShare: 0.87 });
 
-    expect(screen.getByText("steady, moderate jitter, +3 W clamp bias")).toBeInTheDocument();
-    expect(screen.getByText("rough")).toBeInTheDocument();
-    const exact = screen.getByText(
-      "Estimate steadiness 0.92 lag-1 correlation · Estimate jitter 12.3 watts change per second · Clamp bias 3.5 watts the zero clamp added",
-    );
-    expect(exact).toHaveClass("sr-only");
-    expect(screen.queryByText("Estimate steadiness", { selector: "span" })).not.toBeInTheDocument();
-  });
-
-  it("leaves out the quality diagnostics when the ride has no estimate", () => {
-    show({ averagePowerWatts: 196.2 });
-
-    expect(screen.queryByText("Estimate steadiness")).not.toBeInTheDocument();
-    expect(screen.queryByText("Estimate jitter")).not.toBeInTheDocument();
-    expect(screen.queryByText("Clamp bias")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("watts while pedalling, 87% of its estimated samples"),
+    ).toBeInTheDocument();
   });
 
   it("names each zone and how long the ride held it", () => {

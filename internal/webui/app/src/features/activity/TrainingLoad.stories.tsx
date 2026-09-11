@@ -89,11 +89,7 @@ export const EstimatedPower: Story = {
       zoneSeconds: [420, 5400, 1440, 300, 60],
       zoneBoundsBpm: [144.5, 153, 161.5, 170],
       estimatedPowerWatts: 187.4,
-      estimateQuality: {
-        autocorrelation: 0.91,
-        meanAbsDeltaWattsPerSecond: 9.8,
-        clipBiasWatts: 2.1,
-      },
+      estimatedPedallingShare: 0.91,
       trimp: 132.4,
       heartRateTss: 84.6,
     }),

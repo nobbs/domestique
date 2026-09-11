@@ -25,7 +25,9 @@ const riderSubmission = `{
 	"thresholdHeartRateBpm": 172,
 	"functionalThresholdPowerWatts": 268,
 	"riderMassKg": 74.5,
-	"bikeMassKg": 8.4
+	"bikeMassKg": 8.4,
+	"dragAreaM2": 0.40,
+	"rollingResistance": 0.008
 }`
 
 // riderState is two riders with a target each, so a scoping test has another
@@ -81,6 +83,10 @@ func TestSetRiderProfileStoresItAndReadsItBack(t *testing.T) {
 	assert.InDelta(t, 188.0, *saved.Profile.MaxHeartRateBpm, 1e-9)
 	require.NotNil(t, saved.Profile.RiderMassKg, "the rider mass")
 	assert.InDelta(t, 74.5, *saved.Profile.RiderMassKg, 1e-9)
+	require.NotNil(t, saved.Profile.DragAreaM2, "the bicycle's drag area")
+	assert.InDelta(t, 0.40, *saved.Profile.DragAreaM2, 1e-9)
+	require.NotNil(t, saved.Profile.RollingResistance, "the bicycle's rolling resistance")
+	assert.InDelta(t, 0.008, *saved.Profile.RollingResistance, 1e-9)
 
 	read := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
 	assert.Equal(t, saved.Profile, read.Profile, "a read answers what the write stored")
@@ -201,6 +207,10 @@ func TestSetRiderProfileRefusesAValueOutsideItsRange(t *testing.T) {
 		"a heart rate no heart reaches": `{"maxHeartRateBpm": 400}`,
 		"a rider of no mass":            `{"riderMassKg": 0}`,
 		"a field this section has not":  `{"vo2Max": 60}`,
+		"a drag area below a bicycle's": `{"dragAreaM2": 0.05}`,
+		"a drag area no rider presents": `{"dragAreaM2": 2}`,
+		"tyres that roll for free":      `{"rollingResistance": 0.001}`,
+		"tyres of sand":                 `{"rollingResistance": 0.05}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			response := httptest.NewRecorder()
