@@ -87,6 +87,36 @@ func blockMean(readings []trainingload.Sample, start time.Time, block time.Durat
 	return means, counts
 }
 
+// blockHeldSeconds is how long a series of readings held within each block,
+// counted from start: a step no wider than measure.DefaultMaxGap is credited
+// to the block its own start falls in. Duration, not a reading count, is
+// what a block's own coverage gate must be judged against -- a coarser
+// sensor's ordinary sampling interval leaves it fewer readings without
+// leaving it any less covered.
+func blockHeldSeconds(times []time.Time, start time.Time, block time.Duration) map[int]float64 {
+	held := map[int]float64{}
+	for index := 0; index < len(times)-1; index++ {
+		step := times[index+1].Sub(times[index])
+		if step <= 0 || step > measure.DefaultMaxGap {
+			continue
+		}
+		key := int(times[index].Sub(start) / block)
+		held[key] += step.Seconds()
+	}
+
+	return held
+}
+
+// timesOf is the timestamps of a sensor series, in recorded order.
+func timesOf(readings []trainingload.Sample) []time.Time {
+	times := make([]time.Time, len(readings))
+	for index, reading := range readings {
+		times[index] = reading.At
+	}
+
+	return times
+}
+
 // cadenceMatchTolerance is how far a power reading may sit from the nearest
 // cadence reading and still be judged a coast by it: half a typical sensor's
 // broadcast interval, wide enough that the two independent series' ordinary
@@ -149,8 +179,10 @@ func meteredBlocksOf(power, heartRate, cadence []trainingload.Sample, block time
 		}
 		pedallingHeartRate = append(pedallingHeartRate, reading)
 	}
-	powerMeans, powerCounts := blockMean(pedallingPower, start, block)
-	heartRateMeans, heartRateCounts := blockMean(pedallingHeartRate, start, block)
+	powerMeans, _ := blockMean(pedallingPower, start, block)
+	heartRateMeans, _ := blockMean(pedallingHeartRate, start, block)
+	powerHeld := blockHeldSeconds(timesOf(pedallingPower), start, block)
+	heartRateHeld := blockHeldSeconds(timesOf(pedallingHeartRate), start, block)
 
 	keys := make([]int, 0, len(powerMeans))
 	for key := range powerMeans {
@@ -158,10 +190,10 @@ func meteredBlocksOf(power, heartRate, cadence []trainingload.Sample, block time
 	}
 	sort.Ints(keys)
 
-	half := int(block.Seconds() / 2)
+	halfBlockSeconds := block.Seconds() / 2
 	blocks := make([]MeasuredBlock, 0, len(keys))
 	for _, key := range keys {
-		if powerCounts[key] < half || heartRateCounts[key] < half {
+		if powerHeld[key] < halfBlockSeconds || heartRateHeld[key] < halfBlockSeconds {
 			continue
 		}
 		blocks = append(blocks, MeasuredBlock{
@@ -201,7 +233,14 @@ func unmeteredBlocksOf(
 		key := int(track[index].At.Sub(start) / block)
 		indicesByBlock[key] = append(indicesByBlock[key], index)
 	}
-	heartRateMeans, heartRateCounts := blockMean(heartRateOverTrack(heartRate, track), start, block)
+	pedallingHeartRate := heartRateOverTrack(heartRate, track)
+	heartRateMeans, _ := blockMean(pedallingHeartRate, start, block)
+	heartRateHeld := blockHeldSeconds(timesOf(pedallingHeartRate), start, block)
+	qualifyingTimes := make([]time.Time, len(whole.Indices))
+	for position, index := range whole.Indices {
+		qualifyingTimes[position] = track[index].At
+	}
+	trackHeld := blockHeldSeconds(qualifyingTimes, start, block)
 
 	keys := make([]int, 0, len(indicesByBlock))
 	for key := range indicesByBlock {
@@ -209,9 +248,9 @@ func unmeteredBlocksOf(
 	}
 	sort.Ints(keys)
 
-	half := int(block.Seconds() / 2)
+	halfBlockSeconds := block.Seconds() / 2
 	for _, key := range keys {
-		if len(indicesByBlock[key]) < half || heartRateCounts[key] < half {
+		if trackHeld[key] < halfBlockSeconds || heartRateHeld[key] < halfBlockSeconds {
 			continue
 		}
 		blocks = append(blocks, Block{Indices: indicesByBlock[key]})
@@ -222,9 +261,11 @@ func unmeteredBlocksOf(
 }
 
 // heartRateOverTrack is the heart-rate readings recorded within the track's
-// own span: a FIT file's readings from before or after the stretch that
-// carries a position (while GPS or altitude was unavailable, say) must not
-// enter a target the model is scored against by time it never covers.
+// own span, while the track says the rider was pedalling: a FIT file's
+// readings from before or after the stretch that carries a position (while
+// GPS or altitude was unavailable, say), or recorded through a coast the
+// model's own samples already exclude, must not enter a target the model is
+// scored against by time or effort it does not cover.
 func heartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) []trainingload.Sample {
 	if len(track) == 0 {
 		return nil
@@ -232,13 +273,43 @@ func heartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample)
 	trackStart, trackEnd := track[0].At, track[len(track)-1].At
 	kept := make([]trainingload.Sample, 0, len(heartRate))
 	for _, reading := range heartRate {
-		if reading.At.Before(trackStart) || reading.At.After(trackEnd) {
+		if reading.At.Before(trackStart) || reading.At.After(trackEnd) || !pedallingAt(reading.At, track) {
 			continue
 		}
 		kept = append(kept, reading)
 	}
 
 	return kept
+}
+
+// pedallingAt is whether the track sample nearest at, within
+// cadenceMatchTolerance, says the rider was pedalling. A heart-rate reading
+// with no track sample close enough to trust is kept rather than guessed at:
+// the track's own span and coverage requirements already bound how far that
+// can drift.
+func pedallingAt(at time.Time, track []measure.Sample) bool {
+	index := sort.Search(len(track), func(i int) bool { return !track[i].At.Before(at) })
+	nearest := (*measure.Sample)(nil)
+	if index < len(track) {
+		nearest = &track[index]
+	}
+	if index > 0 {
+		if before := &track[index-1]; nearest == nil || at.Sub(before.At) < nearest.At.Sub(at) {
+			nearest = before
+		}
+	}
+	if nearest == nil {
+		return true
+	}
+	gap := nearest.At.Sub(at)
+	if gap < 0 {
+		gap = -gap
+	}
+	if gap > cadenceMatchTolerance {
+		return true
+	}
+
+	return pedalling(nearest)
 }
 
 // meanHeartRateOverTrack is the mean of the heart-rate readings recorded
@@ -656,15 +727,20 @@ func meteredRideOf(
 		return Ride{}, Ride{}, nil, nil
 	}
 	all.TargetWatts /= float64(len(all.Indices))
+	qualifyingTimes := make([]time.Time, len(all.Indices))
+	for position, index := range all.Indices {
+		qualifyingTimes[position] = ride.track[index].At
+	}
+	held := blockHeldSeconds(qualifyingTimes, start, block)
 	keys := make([]int, 0, len(byBlock))
 	for key := range byBlock {
 		keys = append(keys, key)
 	}
 	sort.Ints(keys)
 	var cuts []Block
-	half := int(block.Seconds() / 2)
+	halfBlockSeconds := block.Seconds() / 2
 	for _, key := range keys {
-		if len(byBlock[key]) < half {
+		if held[key] < halfBlockSeconds {
 			continue
 		}
 		cuts = append(cuts, Block{Indices: byBlock[key], TargetWatts: sumByBlock[key] / float64(len(byBlock[key]))})

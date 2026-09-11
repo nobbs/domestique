@@ -69,10 +69,12 @@ func TestMeteredBlocksOfExcludesCoastingSamplesFromTheBlockMean(t *testing.T) {
 	power := make([]trainingload.Sample, 10)
 	heartRate := make([]trainingload.Sample, 10)
 	cadence := make([]trainingload.Sample, 10)
+	// Three seconds coasting, seven pedalling: comfortably over the block's
+	// own five-second held-duration threshold on the pedalling side alone.
 	for index := range power {
 		at := start().Add(time.Duration(index) * time.Second)
 		heartRate[index] = trainingload.Sample{At: at, Value: 140}
-		if index < 5 {
+		if index < 3 {
 			power[index] = trainingload.Sample{At: at, Value: 0}
 			cadence[index] = trainingload.Sample{At: at, Value: 0}
 		} else {
@@ -97,9 +99,11 @@ func TestMeteredBlocksOfExcludesCoastingAndOutOfSpanHeartRateFromTheTarget(t *te
 	power := make([]trainingload.Sample, 10)
 	heartRate := make([]trainingload.Sample, 10)
 	cadence := make([]trainingload.Sample, 10)
+	// Three seconds coasting, seven pedalling: comfortably over the block's
+	// own five-second held-duration threshold on the pedalling side alone.
 	for index := range power {
 		at := start().Add(time.Duration(index) * time.Second)
-		if index < 5 {
+		if index < 3 {
 			// Coasting: the power side excludes these already; the heart
 			// rate here is a spike that must not enter the target either.
 			power[index] = trainingload.Sample{At: at, Value: 0}
@@ -138,6 +142,29 @@ func TestMeteredBlocksOfKeepsEveryPowerSampleWithoutACadenceSeries(t *testing.T)
 	blocks := meteredBlocksOf(power, heartRate, nil, block)
 
 	require.Len(t, blocks, 1)
+	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9)
+}
+
+// The regression: a sensor sampling once every five seconds covers a
+// five-minute block in full with a sixth of the readings a one-second sensor
+// would need. Judging coverage by reading count rather than held duration
+// silently dropped every ride a coarser sensor recorded.
+func TestMeteredBlocksOfAdmitsABlockASparselySampledSensorFullyCovers(t *testing.T) {
+	t.Parallel()
+	const block = 5 * time.Minute
+	const interval = 5 * time.Second
+	count := int(block / interval)
+	power := make([]trainingload.Sample, count)
+	heartRate := make([]trainingload.Sample, count)
+	for index := range power {
+		at := start().Add(time.Duration(index) * interval)
+		power[index] = trainingload.Sample{At: at, Value: 200}
+		heartRate[index] = trainingload.Sample{At: at, Value: 140}
+	}
+
+	blocks := meteredBlocksOf(power, heartRate, nil, block)
+
+	require.Len(t, blocks, 1, "a 5s-interval sensor still covers the whole block")
 	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9)
 }
 

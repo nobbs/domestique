@@ -165,6 +165,29 @@ func TestMeanHeartRateOverTrackExcludesReadingsOutsideTheTracksSpan(t *testing.T
 	assert.InDelta(t, 140, mean, 1e-9)
 }
 
+// The regression: a heart-rate reading recorded while the track's own
+// cadence says the rider was coasting must not enter the target the
+// pedalling-only estimate is judged against, even though it falls within the
+// track's span.
+func TestMeanHeartRateOverTrackExcludesReadingsDuringACoast(t *testing.T) {
+	t.Parallel()
+	track := []measure.Sample{
+		{At: start(), HasCadence: true, CadenceRPM: 80},
+		{At: start().Add(10 * time.Second), HasCadence: true, CadenceRPM: 0}, // coasting
+		{At: start().Add(20 * time.Second), HasCadence: true, CadenceRPM: 80},
+	}
+	heartRate := []trainingload.Sample{
+		{At: start(), Value: 140},
+		{At: start().Add(10 * time.Second), Value: 200}, // during the coast: excluded
+		{At: start().Add(20 * time.Second), Value: 140},
+	}
+
+	mean, ok := meanHeartRateOverTrack(heartRate, track)
+
+	require.True(t, ok)
+	assert.InDelta(t, 140, mean, 1e-9, "the coasting spike must not shift the pedalling target")
+}
+
 func TestMeanHeartRateOverTrackRefusesAnEmptyTrack(t *testing.T) {
 	t.Parallel()
 	_, ok := meanHeartRateOverTrack([]trainingload.Sample{{At: start(), Value: 140}}, nil)
