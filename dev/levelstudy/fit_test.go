@@ -87,6 +87,41 @@ func TestMeteredBlocksOfExcludesCoastingSamplesFromTheBlockMean(t *testing.T) {
 	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9, "the coasting half must not lower the pedalling mean")
 }
 
+// The regression: the heart-rate target must apply the same two exclusions
+// the power side does -- coasting samples, and any reading outside the
+// powered ride's own span -- or the bridge learns a heart rate the pedalling
+// watts beside it never produced.
+func TestMeteredBlocksOfExcludesCoastingAndOutOfSpanHeartRateFromTheTarget(t *testing.T) {
+	t.Parallel()
+	const block = 10 * time.Second
+	power := make([]trainingload.Sample, 10)
+	heartRate := make([]trainingload.Sample, 10)
+	cadence := make([]trainingload.Sample, 10)
+	for index := range power {
+		at := start().Add(time.Duration(index) * time.Second)
+		if index < 5 {
+			// Coasting: the power side excludes these already; the heart
+			// rate here is a spike that must not enter the target either.
+			power[index] = trainingload.Sample{At: at, Value: 0}
+			cadence[index] = trainingload.Sample{At: at, Value: 0}
+			heartRate[index] = trainingload.Sample{At: at, Value: 200}
+		} else {
+			power[index] = trainingload.Sample{At: at, Value: 200}
+			cadence[index] = trainingload.Sample{At: at, Value: 80}
+			heartRate[index] = trainingload.Sample{At: at, Value: 140}
+		}
+	}
+	// A reading from before the powered ride started: must not shift the
+	// block mean by time the model never scores.
+	heartRate = append([]trainingload.Sample{{At: start().Add(-time.Hour), Value: 220}}, heartRate...)
+
+	blocks := meteredBlocksOf(power, heartRate, cadence, block)
+
+	require.Len(t, blocks, 1)
+	assert.InDelta(t, 140.0, blocks[0].HeartRateBPM, 1e-9,
+		"only the pedalling heart rate within the powered span, not the coast or the reading before it")
+}
+
 // A ride with no cadence recorded at all names no sample a coast, so every
 // power reading is kept exactly as it was before this filter existed.
 func TestMeteredBlocksOfKeepsEveryPowerSampleWithoutACadenceSeries(t *testing.T) {

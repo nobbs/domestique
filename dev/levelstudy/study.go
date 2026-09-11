@@ -137,9 +137,20 @@ func meteredBlocksOf(power, heartRate, cadence []trainingload.Sample, block time
 	if len(pedallingPower) == 0 {
 		return nil
 	}
-	start := power[0].At
+	start, end := power[0].At, power[len(power)-1].At
+	// The same two restrictions the power side already applies: a reading
+	// from outside the powered ride's own span, or one recorded while the
+	// rider coasted, must not shift the level the bridge learns from a heart
+	// rate the pedalling watts beside it never produced.
+	pedallingHeartRate := make([]trainingload.Sample, 0, len(heartRate))
+	for _, reading := range heartRate {
+		if reading.At.Before(start) || reading.At.After(end) || coastingAt(reading.At, cadence) {
+			continue
+		}
+		pedallingHeartRate = append(pedallingHeartRate, reading)
+	}
 	powerMeans, powerCounts := blockMean(pedallingPower, start, block)
-	heartRateMeans, heartRateCounts := blockMean(heartRate, start, block)
+	heartRateMeans, heartRateCounts := blockMean(pedallingHeartRate, start, block)
 
 	keys := make([]int, 0, len(powerMeans))
 	for key := range powerMeans {
