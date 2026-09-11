@@ -273,7 +273,7 @@ best-average pages show today.
 
 **Definition.** The power a rider was producing at each recorded sample, worked out from the ride's own track by a force balance, for a bicycle carrying no meter; and the ride's figure, the mean of it over the samples the rider was pedalling through, beside the share of the ride that was.
 
-**Formula.** Samples are cut into stretches wherever the clock advances by more than the recording gap (10 s); nothing is measured across a gap. Around sample $i$, the window $[lo, hi]$ is the smallest span of samples inside the stretch covering $W$ metres of distance (W from §Gradient, 100 m for a 0.2 m barometer). Then
+**Formula.** Samples are cut into stretches wherever the clock advances by more than the recording gap (10 s) or the recorded distance runs backward (an odometer reset); nothing is measured across either boundary. Around sample $i$, the window $[lo, hi]$ starts at $i$ and each round moves $lo$ down and $hi$ up by one sample together, stopping as soon as the covered distance reaches $W$ metres or an edge meets its own stretch's boundary (W from §Gradient, 100 m for a 0.2 m barometer) — centred on $i$ rather than the smallest span that would cover $W$, so unevenly spaced samples never bias the reading toward one side. Then
 
 $$v_i = \frac{d_{hi} - d_{lo}}{t_{hi} - t_{lo}}, \qquad \text{grade}_i = \frac{h_{hi} - h_{lo}}{d_{hi} - d_{lo}}, \qquad a_i = \frac{v_i - v_j}{t_i - t_j}$$
 
