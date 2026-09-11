@@ -295,7 +295,7 @@ func (s *rideSpec) records(stages []route.Route, start time.Time) ([]activity.Re
 			HasDistance:    true,
 			HasPosition:    true,
 		}
-		if altitude != nil && at >= s.altitudeFrom {
+		if altitude != nil && sampleIndex >= s.altitudeFrom {
 			record.AltitudeMetres, record.HasAltitude = *altitude, true
 		}
 		s.fitSensors(&record, effortAt(fraction, gradientAt(geometry, at)), fraction)
