@@ -131,10 +131,11 @@ holds it, report that and stop rather than working the issue in parallel.
   re-measuring the tree by hand. It names the flag, the patch percentage and the
   uncovered lines; a hand-rolled count that omits partial branches reports a
   number the gate does not use.
-- Treat material follow-up commits as a new review request: re-request formal
-  review through GitHub's requested-reviewer mechanism and verify it actually
-  registered. Report unavailable review automation rather than substituting a
-  comment or claiming it succeeded.
+- Treat material follow-up commits as a new review. This repository requests one
+  on every push, so read the new head first and issue a manual request only if
+  none arrived; verify either way that a review is registered against that head.
+  Report unavailable review automation rather than substituting a comment or
+  claiming it succeeded.
 - Keep one issue to one pull request by default. Create or maintain a stacked
   pull request only when the user asks or the issue naturally splits into an
   ordered chain of independently reviewable layers. Propose those layers before
