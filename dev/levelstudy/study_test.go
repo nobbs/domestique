@@ -159,33 +159,58 @@ func TestMeanHeartRateOverTrackExcludesReadingsOutsideTheTracksSpan(t *testing.T
 		{At: start().Add(30 * time.Second), Value: 200}, // after the track: excluded
 	}
 
-	mean, ok := meanHeartRateOverTrack(heartRate, track)
+	mean, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 1})
 
 	require.True(t, ok)
 	assert.InDelta(t, 140, mean, 1e-9)
 }
 
-// The regression: a heart-rate reading recorded while the track's own
-// cadence says the rider was coasting must not enter the target the
-// pedalling-only estimate is judged against, even though it falls within the
-// track's span.
-func TestMeanHeartRateOverTrackExcludesReadingsDuringACoast(t *testing.T) {
+// The regression: a heart-rate reading recorded near a track sample the
+// caller did not include in indices -- coasting, or one the model itself
+// could estimate nothing at -- must not enter the target the pedalling-only
+// estimate is judged against, even though it falls within the track's span.
+func TestMeanHeartRateOverTrackExcludesReadingsNearAnUnindexedSample(t *testing.T) {
 	t.Parallel()
 	track := []measure.Sample{
 		{At: start(), HasCadence: true, CadenceRPM: 80},
-		{At: start().Add(10 * time.Second), HasCadence: true, CadenceRPM: 0}, // coasting
+		{At: start().Add(10 * time.Second), HasCadence: true, CadenceRPM: 0}, // coasting, excluded from indices
 		{At: start().Add(20 * time.Second), HasCadence: true, CadenceRPM: 80},
 	}
 	heartRate := []trainingload.Sample{
 		{At: start(), Value: 140},
-		{At: start().Add(10 * time.Second), Value: 200}, // during the coast: excluded
+		{At: start().Add(10 * time.Second), Value: 200}, // near the excluded index
 		{At: start().Add(20 * time.Second), Value: 140},
 	}
 
-	mean, ok := meanHeartRateOverTrack(heartRate, track)
+	mean, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 2})
 
 	require.True(t, ok)
-	assert.InDelta(t, 140, mean, 1e-9, "the coasting spike must not shift the pedalling target")
+	assert.InDelta(t, 140, mean, 1e-9, "the reading near the excluded index must not shift the pedalling target")
+}
+
+// The regression: a heart-rate reading recorded during a track gap -- a
+// stretch the model itself could estimate nothing across, index 2 here,
+// left out of indices the same way an unknown estimate would be -- must not
+// enter the target, even though it falls inside the track's own overall span.
+func TestMeanHeartRateOverTrackExcludesReadingsDuringATrackGap(t *testing.T) {
+	t.Parallel()
+	track := []measure.Sample{
+		{At: start()},
+		{At: start().Add(10 * time.Second)},
+		{At: start().Add(20 * time.Second)}, // the gap: left out of indices
+		{At: start().Add(30 * time.Second)},
+		{At: start().Add(40 * time.Second)},
+	}
+	heartRate := []trainingload.Sample{
+		{At: start().Add(5 * time.Second), Value: 100},
+		{At: start().Add(20 * time.Second), Value: 999}, // during the gap: excluded
+		{At: start().Add(35 * time.Second), Value: 140},
+	}
+
+	mean, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 1, 3, 4})
+
+	require.True(t, ok)
+	assert.InDelta(t, 120, mean, 1e-9, "the reading during the gap must not shift the mean")
 }
 
 // nought is the invalid predicate a dropout's own value names: a strap that
@@ -247,7 +272,7 @@ func TestHeldSecondsAcrossRunsDoesNotBridgeAnyExcludedReading(t *testing.T) {
 
 func TestMeanHeartRateOverTrackRefusesAnEmptyTrack(t *testing.T) {
 	t.Parallel()
-	_, ok := meanHeartRateOverTrack([]trainingload.Sample{{At: start(), Value: 140}}, nil)
+	_, ok := meanHeartRateOverTrack([]trainingload.Sample{{At: start(), Value: 140}}, nil, nil)
 	assert.False(t, ok)
 }
 
@@ -256,7 +281,7 @@ func TestMeanHeartRateOverTrackRefusesNoHeartRateOverTheTrack(t *testing.T) {
 	track := []measure.Sample{{At: start()}, {At: start().Add(time.Second)}}
 	heartRate := []trainingload.Sample{{At: start().Add(time.Hour), Value: 140}}
 
-	_, ok := meanHeartRateOverTrack(heartRate, track)
+	_, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 1})
 
 	assert.False(t, ok)
 }

@@ -283,7 +283,7 @@ func unmeteredBlocksOf(
 		key := int(track[index].At.Sub(start) / block)
 		indicesByBlock[key] = append(indicesByBlock[key], index)
 	}
-	pedallingHeartRate := heartRateOverTrack(heartRate, track)
+	pedallingHeartRate := heartRateOverKnownTrack(heartRate, track, whole.Indices)
 	heartRateMeans, _ := blockMean(positive(pedallingHeartRate), start, block)
 	// Held duration reads the ORIGINAL series, invalid readings marked rather
 	// than spliced out first: see heldSecondsAcrossRuns.
@@ -310,23 +310,38 @@ func unmeteredBlocksOf(
 	return whole, blocks, blockHeartRate
 }
 
-// heartRateOverTrack is the heart-rate readings recorded within the track's
-// own span, while the track says the rider was pedalling: a FIT file's
-// readings from before or after the stretch that carries a position (while
-// GPS or altitude was unavailable, say), or recorded through a coast the
-// model's own samples already exclude, must not enter a target the model is
-// scored against by time or effort it does not cover.
-func heartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) []trainingload.Sample {
-	if len(track) == 0 {
+// heartRateOverKnownTrack is the heart-rate readings recorded within a
+// covered stretch of the track: indices -- the same known, pedalling set the
+// model was scored over -- grouped into runs of consecutive track positions
+// and read as the time range each run spans. A reading outside every run is
+// excluded: a FIT file's readings from before or after the stretch that
+// carries a position, recorded through a coast, or sitting in a gap the
+// model itself could estimate nothing across, must not enter a target
+// judged against effort the model does not cover.
+func heartRateOverKnownTrack(heartRate []trainingload.Sample, track []measure.Sample, indices []int) []trainingload.Sample {
+	if len(indices) == 0 {
 		return nil
 	}
-	trackStart, trackEnd := track[0].At, track[len(track)-1].At
-	kept := make([]trainingload.Sample, 0, len(heartRate))
-	for _, reading := range heartRate {
-		if reading.At.Before(trackStart) || reading.At.After(trackEnd) || !pedallingAt(reading.At, track) {
+	var covered []measure.Interval
+	runStart := indices[0]
+	for position := 1; position <= len(indices); position++ {
+		if position < len(indices) && indices[position] == indices[position-1]+1 {
 			continue
 		}
-		kept = append(kept, reading)
+		covered = append(covered, measure.Interval{Start: track[runStart].At, End: track[indices[position-1]].At})
+		if position < len(indices) {
+			runStart = indices[position]
+		}
+	}
+	kept := make([]trainingload.Sample, 0, len(heartRate))
+	for _, reading := range heartRate {
+		for _, interval := range covered {
+			if !reading.At.Before(interval.Start) && !reading.At.After(interval.End) {
+				kept = append(kept, reading)
+
+				break
+			}
+		}
 	}
 
 	return kept
@@ -362,11 +377,11 @@ func pedallingAt(at time.Time, track []measure.Sample) bool {
 	return pedalling(nearest)
 }
 
-// meanHeartRateOverTrack is the mean of the heart-rate readings recorded
-// within the track's own span. False for an empty track or one with no heart
-// rate over it.
-func meanHeartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) (mean float64, ok bool) {
-	kept := positive(heartRateOverTrack(heartRate, track))
+// meanHeartRateOverTrack is the mean of the heart-rate readings recorded near
+// one of the track's own known, pedalling samples -- indices, the same set
+// the model was scored over. False for no indices or no heart rate near them.
+func meanHeartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample, indices []int) (mean float64, ok bool) {
+	kept := positive(heartRateOverKnownTrack(heartRate, track, indices))
 	if len(kept) == 0 {
 		return 0, false
 	}
@@ -973,7 +988,7 @@ func study(
 			result.skipped++
 			continue
 		}
-		meanHeartRate, meanOK := meanHeartRateOverTrack(heartRate, samples.Track)
+		meanHeartRate, meanOK := meanHeartRateOverTrack(heartRate, samples.Track, whole.Indices)
 		if !meanOK {
 			result.skipped++
 			continue
