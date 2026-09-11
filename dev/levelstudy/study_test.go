@@ -6,6 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 func day(n int) time.Time { return start().Add(time.Duration(n) * 24 * time.Hour) }
@@ -89,6 +92,34 @@ func TestWattsAtExcludesTheRideOnItsOwnDatePastTheEarlyWindow(t *testing.T) {
 	assert.InDelta(t, 150, got, 1e-9, "intercept 0 from the two rides before it, plus the slope at 150 bpm")
 }
 
+// The regression: excluding the ride being scored must never be compensated
+// for by reading one ride further than the configured window, even in the
+// early-date branch where the whole corpus is otherwise in scope.
+func TestWattsAtNeverReachesPastTheWindowToReplaceTheExcludedRide(t *testing.T) {
+	t.Parallel()
+	b := bridge{
+		window:      4,
+		wattsPerBPM: 1.0,
+		levels: []rideLevel{
+			{at: day(0), heartRate: 100, watts: 110}, // intercept 10
+			{at: day(1), heartRate: 100, watts: 120}, // intercept 20
+			{at: day(2), heartRate: 100, watts: 130}, // intercept 30
+			{at: day(3), heartRate: 100, watts: 999}, // the ride being scored
+			// Outside the first window; must never be read. Its intercept (15)
+			// sits between two already-collected ones, so reading it would
+			// change which value lands at the median rank rather than simply
+			// appending past it -- the earlier draft of this test could not
+			// tell the two behaviours apart.
+			{at: day(4), heartRate: 100, watts: 115},
+		},
+	}
+
+	got := b.wattsAt(day(3), 150)
+
+	assert.InDelta(t, 170, got, 1e-9,
+		"the median of the first window's other intercepts (20), plus the slope, never reaching day(4)")
+}
+
 // A very negative intercept -- a rider far off the fitted line on a handful
 // of rides -- must not carry through as a negative power.
 func TestWattsAtNeverGoesNegative(t *testing.T) {
@@ -111,4 +142,41 @@ func TestWattsAtIsZeroWithNoLevels(t *testing.T) {
 	b := bridge{window: 2, wattsPerBPM: 1.0}
 
 	assert.Zero(t, b.wattsAt(day(0), 150))
+}
+
+// The regression: a heart-rate reading from before or after the stretch that
+// carried a position -- while GPS or altitude was unavailable, say -- must
+// not shift the mean the whole-ride block is judged against.
+func TestMeanHeartRateOverTrackExcludesReadingsOutsideTheTracksSpan(t *testing.T) {
+	t.Parallel()
+	track := []measure.Sample{
+		{At: start().Add(10 * time.Second)},
+		{At: start().Add(20 * time.Second)},
+	}
+	heartRate := []trainingload.Sample{
+		{At: start(), Value: 60},                        // before the track: excluded
+		{At: start().Add(15 * time.Second), Value: 140}, // within the track
+		{At: start().Add(30 * time.Second), Value: 200}, // after the track: excluded
+	}
+
+	mean, ok := meanHeartRateOverTrack(heartRate, track)
+
+	require.True(t, ok)
+	assert.InDelta(t, 140, mean, 1e-9)
+}
+
+func TestMeanHeartRateOverTrackRefusesAnEmptyTrack(t *testing.T) {
+	t.Parallel()
+	_, ok := meanHeartRateOverTrack([]trainingload.Sample{{At: start(), Value: 140}}, nil)
+	assert.False(t, ok)
+}
+
+func TestMeanHeartRateOverTrackRefusesNoHeartRateOverTheTrack(t *testing.T) {
+	t.Parallel()
+	track := []measure.Sample{{At: start()}, {At: start().Add(time.Second)}}
+	heartRate := []trainingload.Sample{{At: start().Add(time.Hour), Value: 140}}
+
+	_, ok := meanHeartRateOverTrack(heartRate, track)
+
+	assert.False(t, ok)
 }

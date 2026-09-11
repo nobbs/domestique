@@ -106,6 +106,37 @@ func TestMeteredBlocksOfKeepsEveryPowerSampleWithoutACadenceSeries(t *testing.T)
 	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9)
 }
 
+// The regression: cadence and power are two independent series and need not
+// share exact timestamps, so a coast recorded a moment off the power reading
+// it explains must still be matched to it.
+func TestCoastingAtMatchesACadenceReadingOffsetFromThePowerSample(t *testing.T) {
+	t.Parallel()
+	cadence := []trainingload.Sample{
+		{At: start().Add(4 * time.Second), Value: 80},
+		{At: start().Add(6 * time.Second), Value: 0},
+		{At: start().Add(8 * time.Second), Value: 80},
+	}
+
+	assert.True(t, coastingAt(start().Add(5500*time.Millisecond), cadence),
+		"the nearest reading, 500ms away, names a coast")
+	assert.False(t, coastingAt(start().Add(4200*time.Millisecond), cadence),
+		"the nearest reading here is still pedalling")
+}
+
+// A cadence reading further away than the tolerance is not close enough to
+// trust, whatever it says.
+func TestCoastingAtRefusesACadenceReadingTooFarAway(t *testing.T) {
+	t.Parallel()
+	cadence := []trainingload.Sample{{At: start(), Value: 0}}
+
+	assert.False(t, coastingAt(start().Add(10*time.Second), cadence))
+}
+
+func TestCoastingAtIsFalseWithNoCadenceSeries(t *testing.T) {
+	t.Parallel()
+	assert.False(t, coastingAt(start(), nil))
+}
+
 // The recovery test the handover asks of any fitter (§6): a target generated
 // from a known answer must lead back to it.
 func TestFitDragAreaRecoversTheDragAreaItsTargetsWereBuiltAt(t *testing.T) {

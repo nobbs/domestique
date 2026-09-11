@@ -85,6 +85,37 @@ func blockMean(readings []trainingload.Sample, start time.Time, block time.Durat
 	return means, counts
 }
 
+// cadenceMatchTolerance is how far a power reading may sit from the nearest
+// cadence reading and still be judged a coast by it: half a typical sensor's
+// broadcast interval, wide enough that the two independent series' ordinary
+// sampling offset never leaves a coast unmatched.
+const cadenceMatchTolerance = 2 * time.Second
+
+// coastingAt is whether the cadence reading nearest at, if one stands close
+// enough to trust, names a coast. A power reading with no cadence series
+// beside it at all is never judged a coast this way.
+func coastingAt(at time.Time, cadence []trainingload.Sample) bool {
+	index := sort.Search(len(cadence), func(i int) bool { return !cadence[i].At.Before(at) })
+	nearest := (*trainingload.Sample)(nil)
+	if index < len(cadence) {
+		nearest = &cadence[index]
+	}
+	if index > 0 {
+		if before := &cadence[index-1]; nearest == nil || at.Sub(before.At) < nearest.At.Sub(at) {
+			nearest = before
+		}
+	}
+	if nearest == nil {
+		return false
+	}
+	gap := nearest.At.Sub(at)
+	if gap < 0 {
+		gap = -gap
+	}
+
+	return gap <= cadenceMatchTolerance && nearest.Value == 0
+}
+
 // meteredBlocksOf cuts a metered ride into blocks: those holding at least
 // half their own length in both readings, over the samples the rider was
 // pedalling through -- the unmetered side is scored the same way, and a
@@ -95,15 +126,9 @@ func meteredBlocksOf(power, heartRate, cadence []trainingload.Sample, block time
 	if len(power) == 0 || len(heartRate) == 0 {
 		return nil
 	}
-	coasting := make(map[int64]bool, len(cadence))
-	for _, reading := range cadence {
-		if reading.Value == 0 {
-			coasting[reading.At.Unix()] = true
-		}
-	}
 	pedallingPower := make([]trainingload.Sample, 0, len(power))
 	for _, reading := range power {
-		if !coasting[reading.At.Unix()] {
+		if !coastingAt(reading.At, cadence) {
 			pedallingPower = append(pedallingPower, reading)
 		}
 	}
@@ -181,6 +206,31 @@ func unmeteredBlocksOf(
 	}
 
 	return whole, blocks, blockHeartRate
+}
+
+// meanHeartRateOverTrack is the mean of the heart-rate readings recorded
+// within the track's own span: a FIT file's readings from before or after
+// the stretch that carries a position (while GPS or altitude was
+// unavailable, say) must not shift the whole-ride target by time the model
+// never scores. False for an empty track or one with no heart rate over it.
+func meanHeartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) (mean float64, ok bool) {
+	if len(track) == 0 {
+		return 0, false
+	}
+	trackStart, trackEnd := track[0].At, track[len(track)-1].At
+	sum, count := 0.0, 0
+	for _, reading := range heartRate {
+		if reading.At.Before(trackStart) || reading.At.After(trackEnd) {
+			continue
+		}
+		sum += reading.Value
+		count++
+	}
+	if count == 0 {
+		return 0, false
+	}
+
+	return sum / float64(count), true
 }
 
 // A rideLevel is one metered ride's place on the rider's heart-rate-to-power
@@ -273,7 +323,10 @@ func (b bridge) wattsAt(at time.Time, heartRateBPM float64) float64 {
 	before := sort.Search(len(b.levels), func(i int) bool { return !b.levels[i].at.Before(at) })
 	start, limit := max(before-b.window, 0), before
 	if before < b.window {
-		start, limit = 0, len(b.levels)
+		// Too early for a window of its own: read the first window's rides,
+		// less the one being scored where it is among them, never reaching
+		// past the window into rides that came after at to make up the count.
+		start, limit = 0, min(b.window, len(b.levels))
 	}
 	intercepts := make([]float64, 0, b.window)
 	for index := start; index < limit && len(intercepts) < b.window; index++ {
@@ -728,16 +781,17 @@ func study(
 			result.skipped++
 			continue
 		}
-		heartRateSum := 0.0
-		for _, reading := range heartRate {
-			heartRateSum += reading.Value
+		meanHeartRate, meanOK := meanHeartRateOverTrack(heartRate, samples.Track)
+		if !meanOK {
+			result.skipped++
+			continue
 		}
 		held := unmeteredRide{
 			atUnix:         samples.Track[0].At.Unix(),
 			whole:          Ride{Samples: samples.Track, Blocks: []Block{whole}, TotalMassKG: mass},
 			blocks:         Ride{Samples: samples.Track, Blocks: blocks, TotalMassKG: mass},
 			blockHeartRate: heartRates,
-			meanHeartRate:  heartRateSum / float64(len(heartRate)),
+			meanHeartRate:  meanHeartRate,
 		}
 		steps, weatherErr := store.ActivityWeatherSteps(ctx, ride.TargetID, ride.WorkoutID)
 		if weatherErr != nil {
