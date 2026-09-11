@@ -1,24 +1,10 @@
-# Every command the repository runs. `.mise.toml` holds the pins; this file is
-# the work those tools do, already resolved to those pinned versions.
-# `mise tasks ls` lists them, `mise tasks deps` draws the graph.
-#
-# `depends` runs in parallel, so ordering that matters is spelled `wait_for`,
-# which orders two tasks when both are scheduled and does nothing when only one
-# is. A task that reads a generated file waits for the generator that rewrites
-# it in the worktree.
-#
-# `sources` lets mise skip a check whose inputs have not moved. A check earns
-# one only when its verdict is a function of the files it names — `vulncheck`
-# and `ui-audit` read advisory databases, `hygiene` and `secret-scan` read the
-# whole worktree — and a glob names a kind of file, not today's directories, so
-# it cannot stop noticing a new one. CI runs `mise run --force` regardless.
+# `depends` runs tasks in parallel; `wait_for` orders two tasks instead.
+# `sources` skips a check whose inputs haven't moved; CI always forces it anyway.
 
 [fmt]
 description = "Format the Go tree"
 run = "golangci-lint fmt"
 
-# The repository-wide pass the commit hook deliberately does not pay for: the
-# hook runs these same prek hooks over staged files alone.
 [hygiene]
 description = "Run every prek hook over the whole tree"
 wait_for = ["api-generate", "sql-generate"]
@@ -31,48 +17,37 @@ sources = ["**/*.go", "go.mod", "go.sum", ".golangci.yml", "internal/webui/app/d
 outputs = { auto = true }
 run = "golangci-lint run ./..."
 
-# Both scripts run somewhere a mistake is expensive: one against the deployed
-# state, the other as root on the deploying host.
 [shell-lint]
 description = "Lint the shell scripts"
 sources = ["deploy/*.sh", "dev/*.sh"]
 outputs = { auto = true }
 run = "shellcheck deploy/*.sh dev/*.sh"
 
-# actionlint shells out to shellcheck for every `run:` block, so the pinned
-# shellcheck above lints the workflow scripts too.
+# actionlint runs the pinned shellcheck for its `run:` blocks too.
 [workflow-lint]
 description = "Lint the GitHub Actions workflows"
 sources = [".github/workflows/*.yml"]
 outputs = { auto = true }
 run = "actionlint .github/workflows/*.yml"
 
-# Asserts the structure that keeps the commit hook cheap, rather than a
-# wall-clock number CI cannot measure reliably. See dev/check-hook-cost.sh.
 [hook-check]
 description = "Assert the commit hook stays cheap"
 sources = ["prek.toml", "dev/check-hook-cost.sh"]
 outputs = { auto = true }
 run = "./dev/check-hook-cost.sh"
 
-# `quick` is only trustworthy while it stays a strict subset of `check`, and the
-# work it defers exactly the documented set. See dev/gatecheck.
 [gate-check]
 description = "Assert `quick` is a strict subset of `check`"
 sources = ["mise-tasks.toml", ".mise.toml", "dev/gatecheck/*.go"]
 outputs = { auto = true }
 run = "go run ./dev/gatecheck"
 
-# Catches a cycle or a malformed definition, which the gate would otherwise
-# discover by failing somewhere less obvious.
 [task-check]
 description = "Validate the task definitions"
 sources = ["mise-tasks.toml", ".mise.toml"]
 outputs = { auto = true }
 run = "mise tasks validate"
 
-# One contract generates the Go models and the browser client. Generated files
-# are committed, so `api-check` makes drift a review-time failure.
 [api-generate]
 description = "Generate Go models and browser API bindings from OpenAPI"
 sources = ["api/openapi.yaml", "api/generate.go", "go.mod", "go.sum", "internal/webui/app/orval.config.ts", "internal/webui/app/src/api/request.ts", "internal/webui/app/package.json", "internal/webui/app/pnpm-lock.yaml"]
@@ -104,9 +79,6 @@ description = "Check SQLite schema and query bindings are current"
 depends = ["sql-generate"]
 run = ["atlas migrate validate --dir file://internal/sqlite/migrations", "./dev/check-sql-generated.sh"]
 
-# `standard-quiet` is what `go test` itself prints; the JUnit report beside it
-# is what CI uploads to Codecov's test analytics. `-timeout` is spelled out
-# because dev/gatecheck asserts this plus `test-race` against the CI job budget.
 [test]
 description = "Run the Go tests and write their JUnit report"
 wait_for = ["api-generate", "sql-generate"]
@@ -114,9 +86,7 @@ sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/
 outputs = { auto = true }
 run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
 
-# A separate invocation because the detector needs cgo, which the rest of this
-# file does without, and costs several times the plain run. It waits for `test`
-# rather than racing it: both drive the whole suite on one machine.
+# wait_for `test`, not depends: running both at once doubles the load on one CI machine.
 [test-race]
 description = "Run the Go tests under the race detector"
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
@@ -148,15 +118,10 @@ description = "Scan the working tree for secrets"
 wait_for = ["api-generate"]
 run = "gitleaks dir . --redact --no-banner"
 
-# Measured on demand: instrumenting the tree makes the suite slower. This
-# reports what a change leaves untested; `patch-coverage` below is what judges.
 [coverage]
 description = "Measure Go and UI coverage"
 depends = ["coverage-go", "coverage-ui"]
 
-# -coverpkg attributes coverage across the whole service, so the per-package
-# percentage on each line is the fraction of the service that package reached;
-# the real number is the summary after it. dev/ is tooling, not the service.
 [coverage-go]
 description = "Measure Go coverage and summarise it per package"
 wait_for = ["api-generate"]
@@ -166,38 +131,29 @@ run = [
   "go run ./dev/coveragesummary <.coverage/go.out",
 ]
 
-# Vitest writes its LCOV beside the Go report under .coverage, so one upload
-# step finds both; see the coverage block in internal/webui/app/vite.config.ts.
 [coverage-ui]
 description = "Measure UI coverage across the jsdom suite"
 depends = ["ui-install"]
 wait_for = ["api-generate"]
 run = "pnpm --dir internal/webui/app run test:coverage"
 
-# The one coverage verdict that blocks a merge, answered before the first push
-# rather than five minutes and one push later. Needs no base and no network;
-# see dev/patchcoverage. Outside `quick` and `check`, as `coverage` is.
+# Outside quick/check: needs a merge base and network access, unlike the rest of this file.
 [patch-coverage]
 description = "Judge the coverage of what this change adds, as Codecov will"
 depends = ["patch-coverage-go", "patch-coverage-ui"]
 
-# No `sources`: the verdict is the working tree against a merge base, which is
-# not a list of files mise can watch.
 [patch-coverage-go]
 description = "Judge the Go coverage of what this change adds"
 depends = ["coverage-go"]
 run = "go run ./dev/patchcoverage -flag go"
 
-# Reports and does not fail, because codecov.yml's ui patch status does not
-# either: the browser suite reaches code the LCOV file cannot see.
+# Never fails: the browser suite reaches UI code this LCOV file can't see.
 [patch-coverage-ui]
 description = "Report the UI coverage of what this change adds"
 depends = ["coverage-ui"]
 run = "go run ./dev/patchcoverage -flag ui"
 
-# bunx skills only manages .agents/skills/; the symlinks are what makes a
-# fetched skill visible to Claude Code. No `sources`: what it checks is which
-# symlinks exist on disk, not the files it would name.
+# The symlink loop is what makes a fetched skill visible to Claude Code.
 [skills-sync]
 description = "Fetch pinned skills and symlink them into .claude/skills for Claude Code"
 run = '''
@@ -216,34 +172,24 @@ for d in .agents/skills/*/; do
 done
 '''
 
-# Snapshots the deployed SQLite state and writes a configuration that reads real
-# VeloPlanner data but cannot reach Wahoo. See dev/setup.sh.
 [dev-setup]
 description = "Snapshot the deployed state into .local/dev"
 run = "./dev/setup.sh"
 
-# Serves on :8081 against the snapshot, so it never contends with the deployed
-# container for a SQLite file.
 [dev-api]
 description = "Serve the API against the .local/dev snapshot"
 run = "DOMESTIQUE_CONFIG_FILE={{config_root}}/.local/dev/config.toml CGO_ENABLED=0 go run ./cmd/domestique"
 
-# A throwaway configuration over a synthetic library: no account, no secret, no
-# copy of anyone's routes. See dev/demo.sh.
 [demo]
 description = "Run the whole stack against a synthetic library"
 depends = ["ui-install"]
 run = "./dev/demo.sh"
 
-# Answers #623. Offline only, never in the image or a gate, and needs the
-# operator's own snapshot: `mise run level-study -- -database .local/dev/state.db`.
 [level-study]
 description = "Cross-validate a rider's bicycle numbers against their stated bicycle"
 run = "go run ./dev/levelstudy"
 
-# The only thing that installs node_modules, which is why the routine loop can
-# afford to depend on it. The timestamp is bumped because an install with
-# nothing to do leaves that file alone and the task would never settle.
+# `touch` marks the output current even when the install itself changed nothing.
 [ui-install]
 description = "Install the UI dependency tree from the lockfile"
 sources = [
@@ -279,8 +225,6 @@ outputs = ["internal/webui/app/storybook-static/**"]
 wait_for = ["ui-install"]
 run = "pnpm --dir internal/webui/app run storybook:build"
 
-# The UI checks below read node_modules but do not install it. The three that
-# read src/api/generated.ts also follow `api-check`.
 [ui-typecheck]
 description = "Type-check the UI"
 sources = [
@@ -330,47 +274,34 @@ outputs = { auto = true }
 wait_for = ["ui-install", "api-check"]
 run = "pnpm --dir internal/webui/app run test"
 
-# Separate from running the suite so a failure names which of the two went
-# wrong. A host needing the browser's system libraries passes the escape hatch:
-# `mise run ui-browser-install -- --with-deps`. CI's image already has them.
 [ui-browser-install]
 description = "Download the browser the whole-page suite runs in"
 depends = ["ui-install"]
 run = "pnpm --dir internal/webui/app run test:browser:install"
 
-# What a WebGL map and a cross-component interaction cannot be asserted about in
-# jsdom. It starts the demo stack itself and reaches nothing else; see
-# internal/webui/app/playwright.config.ts.
 [ui-browser-test]
 description = "Run the browser UI suite over the demo stack"
 wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:browser"
 
-# Every story in that same browser: an interaction asserted against a component
-# with no jsdom test of its own, or a story that stopped matching its behaviour.
 [ui-storybook-test]
 description = "Run the Storybook component suite"
 wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook"
 
-# Neither Vitest project can ask this: a story reaching for something only the
-# test runner provides passes there and shows an error card in Storybook itself.
-# Ordered after the story suite, whose timed interactions a third browser
-# starting up alongside is enough to make miss.
+# Runs after `ui-storybook-test`: a second browser starting at the same time makes it flaky.
 [ui-storybook-sweep]
 description = "Open every story and docs page in a built Storybook"
 wait_for = ["ui-browser-install", "ui-storybook-test", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook:sweep"
 
-# govulncheck does not see npm packages, so the JavaScript tree needs its own
-# advisory check in the same gate.
+# govulncheck doesn't see npm packages; this is the UI tree's own advisory check.
 [ui-audit]
 description = "Check the UI dependency tree against the advisory database"
 wait_for = ["ui-install"]
 run = "pnpm --dir internal/webui/app audit --prod"
 
-# Waits for `ci-ui` because the browser suite in that group bundles into this
-# same directory, and two bundlers emptying it at once leave neither whole.
+# Waits for `ci-ui`: two bundlers writing into `dist` at once corrupt it.
 [ui-build]
 description = "Build the UI bundle"
 sources = [
@@ -381,15 +312,11 @@ sources = [
   "internal/webui/app/*.ts",
   "internal/webui/app/*.json",
 ]
-# The bundle alone: `dist` also holds the committed placeholder that keeps the
-# go:embed pattern valid, which the bundler neither writes nor reads.
 outputs = ["internal/webui/app/dist/bundle/**"]
 wait_for = ["ui-install", "ci-ui"]
 run = "pnpm --dir internal/webui/app run build"
 
-# A Docker build context carries no VCS metadata, so only a build input can say
-# which commit produced the running service. SOURCE_REVISION is empty for a
-# local build on purpose: reporting no revision is honest, a wrong one is not.
+# SOURCE_REVISION is empty locally on purpose: no revision beats a wrong one.
 [build]
 description = "Build the Linux service binary, UI bundle included"
 depends = ["ui-build"]
@@ -403,8 +330,6 @@ CGO_ENABLED=0 GOOS=linux GOARCH="${BUILD_ARCH:-$(go env GOARCH)}" \
 	go build -trimpath -buildvcs=true ${REVISION_FLAGS} -o build/domestique ./cmd/domestique
 """
 
-# The release image is published for linux/amd64 alone. RELEASE_ARCHES is a list
-# so publishing a second architecture is this line plus the workflow's platforms.
 [build-check]
 description = "Compile the published release target"
 sources = ["**/*.go", "go.mod", "go.sum", "internal/webui/app/dist/**"]
@@ -420,19 +345,11 @@ for arch in ${RELEASE_ARCHES}; do
 done
 """
 
-# The one check that runs the built container rather than reasoning about it.
-# Outside every gate: it needs an image, and building one needs a
-# `docker login dhi.io`. CI runs it in the `Image` job. See
-# dev/container-smoke.sh for pointing it at an image locally.
+# Outside every gate: needs a built image, which needs `docker login dhi.io`.
 [container-smoke]
 description = "Run the production image and assert it comes up"
 run = "./dev/container-smoke.sh"
 
-# CI runs the ci-* groups as separate jobs so a failure names the area it came
-# from; `check` runs the same work locally in one command. Every step of a gate
-# task is a task of its own, named in `depends`, and the gate carries no `run`:
-# an inline command would run as part of the gate while being invisible to a
-# dependency query, so `gate-check` rejects one.
 [ci-lint]
 description = "The lint half of the gate, as CI groups it"
 depends = [
@@ -454,8 +371,6 @@ depends = ["vet", "test", "test-race"]
 description = "The security half of the gate, as CI groups it"
 depends = ["mod-check", "vulncheck", "ui-audit", "secret-scan"]
 
-# Every UI task reads node_modules, so this group installs before it runs
-# anything and the checks that follow wait for it.
 [ci-ui]
 description = "The UI half of the gate, as CI groups it"
 depends = [
@@ -470,11 +385,6 @@ depends = [
   "ui-storybook-sweep",
 ]
 
-# The routine local loop: every check that reads the tree as it stands and needs
-# nothing beyond it. It defers `build-check` and `test-race`, the slowest,
-# `vulncheck` and `ui-audit`, which need the network, and the browser-driven
-# tasks, which need a browser. All still run in `check` and on every pull
-# request; `gate-check` names the difference and asserts it is the whole of it.
 [quick]
 description = "The routine local loop"
 depends = [
@@ -497,8 +407,6 @@ depends = [
   "ui-test",
 ]
 
-# GitHub Actions runs this same work on every pull request and is what gates the
-# merge, so this buys an earlier answer rather than a different one.
 [check]
 description = "The full gate, on demand"
 depends = ["ci-lint", "ci-test", "ci-security", "ci-ui", "build-check"]

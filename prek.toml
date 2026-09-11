@@ -1,6 +1,3 @@
-# A fast commit guard, not a second quality gate: whole-file safety checks that
-# cost nothing, plus formatting scoped to the staged files. Tests, full linting,
-# audits, cross-compilation and the browser suites belong to `mise run check`.
 [[repos]]
 repo = "builtin"
 
@@ -34,9 +31,6 @@ id = "detect-private-key"
 [[repos]]
 repo = "local"
 
-# `pass_filenames = true` judges a commit on what it stages. `mise run ci-lint`
-# runs these same hooks over every file with `prek run --all-files`.
-
 [[repos.hooks]]
 id = "golangci-format"
 name = "golangci-lint format"
@@ -45,8 +39,7 @@ language = "system"
 files = "\\.go$"
 pass_filenames = true
 
-# The file list comes from git rather than a filesystem glob: fetched skills are
-# gitignored but still on disk, and a glob walked into third-party Markdown.
+# Files come from git, not a filesystem glob: gitignored, fetched skill Markdown stays unlinted.
 [[repos.hooks]]
 id = "markdownlint"
 name = "Markdown lint"
@@ -55,8 +48,6 @@ language = "system"
 files = "\\.md$"
 pass_filenames = true
 
-# yamlfmt parses before it formats, so it answers what `check-yaml` used to.
-# What it will not touch is named in `.yamlfmt`'s exclude list.
 [[repos.hooks]]
 id = "yamlfmt"
 name = "YAML format"
@@ -65,8 +56,7 @@ language = "system"
 files = "\\.ya?ml$"
 pass_filenames = true
 
-# yamlfmt preserves flow mappings. Reject nonempty flow nodes separately while
-# allowing OpenAPI's idiomatic empty arrays (`[]`).
+# yamlfmt preserves flow mappings; this rejects the ones it leaves alone.
 [[repos.hooks]]
 id = "openapi-no-flow-style"
 name = "OpenAPI block style"
@@ -75,9 +65,7 @@ language = "system"
 files = "^api/openapi\\.yaml$"
 pass_filenames = true
 
-# biome.json lives in internal/webui/app, not the repo root, so the entry
-# shells out to a wrapper that cds there; biome isn't mise-pinned, so no
-# `mise exec --`.
+# biome.json lives in internal/webui/app; the wrapper cds there since biome isn't mise-pinned.
 [[repos.hooks]]
 id = "biome-format"
 name = "Biome format"

@@ -7,8 +7,7 @@ golangci-lint = "2.13.2"
 prek = "0.5.2"
 actionlint = "1.7.12"
 gitleaks = "8.30.1"
-# fastq, pulled in transitively, published 1.20.2 by hand and so carries no
-# provenance; mise reads that as a downgrade. Drop once it publishes by workflow.
+# fastq 1.20.2 was published by hand, so mise reads it as a downgrade; drop once it publishes by workflow.
 markdownlint-cli2 = { version = "0.23.2", trust_policy_excludes = ["fastq@1.20.2"] }
 shellcheck = "0.11.0"
 yamlfmt = "0.21.0"
@@ -19,8 +18,7 @@ yq = "4.53.6"
 atlas = "1.3.0"
 
 [env]
-# Resolved against the main checkout, not `config_root`: each linked worktree
-# would otherwise grow its own multi-gigabyte copy of these caches.
+# Resolved against the main checkout: a linked worktree would otherwise grow its own multi-gigabyte cache.
 GOCACHE = '{{ exec(command="git rev-parse --path-format=absolute --git-common-dir") | trim_end_matches(pat="/.git") }}/.cache/go-build'
 GOLANGCI_LINT_CACHE = '{{ exec(command="git rev-parse --path-format=absolute --git-common-dir") | trim_end_matches(pat="/.git") }}/.cache/golangci-lint'
 
