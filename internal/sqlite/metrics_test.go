@@ -530,7 +530,7 @@ func TestClearActivityMetricsRemovesEveryRowAndCountsThem(t *testing.T) {
 // outliving the metrics row it was derived beside.
 func TestClearActivityMetricsTakesTheEstimateSeriesAndTheRouteMatchWithIt(t *testing.T) {
 	t.Parallel()
-	store := metricsStore(t, 1)
+	store := metricsStore(t, 1, 2)
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{
 			{
@@ -548,6 +548,12 @@ func TestClearActivityMetricsTakesTheEstimateSeriesAndTheRouteMatchWithIt(t *tes
 	key := storeTestLibrary(t, store, 7, "hash-a")
 	require.NoError(t, store.StoreActivityRouteMatch(
 		t.Context(), "rider-a", 1, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	// A second, metered ride: its match owes the profile nothing and must
+	// survive a clear that names no bicycle or mass at all.
+	meteredKey := storeTestLibrary(t, store, 8, "hash-b")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 2, matchOf(meteredKey), []activity.ClimbAttempt{attemptOf(0, 600)}, "library-1", activityNow(),
 	), "StoreActivityRouteMatch()")
 	// Stored last: StoreActivityRecords and StoreEstimatedPower each clear a
 	// stale metrics row of their own, and this test means to clear a row that
@@ -567,6 +573,10 @@ func TestClearActivityMetricsTakesTheEstimateSeriesAndTheRouteMatchWithIt(t *tes
 	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
 	require.NoError(t, err, "RouteClimbAttempts()")
 	assert.Empty(t, attempts, "no profile, no match to attribute a climb attempt to")
+
+	meteredAttempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", meteredKey)
+	require.NoError(t, err, "RouteClimbAttempts() for the metered ride")
+	assert.Len(t, meteredAttempts, 1, "a metered ride's match owes the profile nothing and survives the clear")
 }
 
 // The whole of what the fitness timeline folds: one row per derived ride, with

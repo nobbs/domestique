@@ -398,11 +398,13 @@ func (s *Store) TargetOwner(ctx context.Context, targetID string) (string, error
 // how many went. It is what a rider clearing their whole profile leaves
 // behind: numbers worked out from parameters nobody holds any more must not
 // go on being served. The estimate series this same profile fed goes with
-// it, and the route matches and climb attempts read from that series --
-// otherwise the track and library endpoints would keep serving an estimate,
-// and the climbs it shaped, after the derivation that produced it has
-// nothing left to stand on. One transaction: a partial clear must never
-// leave an estimate outliving the metrics row it was derived beside.
+// it, and the route matches and climb attempts an estimate shaped -- otherwise
+// the track and library endpoints would keep serving an estimate, and the
+// climbs it shaped, after the derivation that produced it has nothing left to
+// stand on. A metered ride's own match owes the profile nothing and is left
+// standing: only the estimate-dependent history is cleared, not the whole
+// target's. One transaction: a partial clear must never leave an estimate
+// outliving the metrics row it was derived beside.
 func (s *Store) ClearActivityMetrics(ctx context.Context, targetID string) (int, error) {
 	transaction, beginErr := s.database.BeginTx(ctx, nil)
 	if beginErr != nil {
@@ -414,14 +416,17 @@ func (s *Store) ClearActivityMetrics(ctx context.Context, targetID string) (int,
 	if err != nil {
 		return 0, fmt.Errorf("clearing the activity metrics: %w", err)
 	}
-	if _, err := queries.ClearEstimatedPowerForTarget(ctx, targetID); err != nil {
-		return 0, fmt.Errorf("clearing the estimated power: %w", err)
-	}
-	if _, err := queries.ClearActivityClimbAttempts(ctx, targetID); err != nil {
+	// Cleared before the series it was read from, the same order
+	// StoreEstimatedPower keeps for one ride: a climb attempt naming an
+	// estimate that has since been cleared is never left standing.
+	if _, err := queries.ClearEstimatedActivityClimbAttemptsForTarget(ctx, targetID); err != nil {
 		return 0, fmt.Errorf("clearing activity climb attempts: %w", err)
 	}
-	if _, err := queries.DeleteActivityRouteMatchesForTarget(ctx, targetID); err != nil {
+	if _, err := queries.ClearEstimatedActivityRouteMatchesForTarget(ctx, targetID); err != nil {
 		return 0, fmt.Errorf("clearing activity route matches: %w", err)
+	}
+	if _, err := queries.ClearEstimatedPowerForTarget(ctx, targetID); err != nil {
+		return 0, fmt.Errorf("clearing the estimated power: %w", err)
 	}
 	if err := transaction.Commit(); err != nil {
 		return 0, fmt.Errorf("committing the activity metrics clear: %w", err)
