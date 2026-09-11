@@ -718,11 +718,13 @@ The read-only JSON surface is small:
   confused.
 
   Each activity that has one also carries its `analysis`: the plain text a
-  language model wrote about the ride, with the model and prompt revision
-  that produced it and when. It is absent for a ride not yet analysed, for a
-  ride its derivation yielded nothing for, and for every ride of a deployment
-  that configured no token. It is text for the rider to read and is never an
-  input to any figure this service serves.
+  language model wrote about the ride, at most two thousand characters, with
+  the model and prompt revision that produced it and when. It is absent for a
+  ride not yet analysed, for a ride its derivation yielded nothing for, and
+  for every ride of a deployment that configured no token. It is text for the
+  rider to read and is never an input to any figure this service serves. The
+  bound is what lets it ride on the list: it is asked for as a few short
+  paragraphs, and an answer over the bound is refused rather than stored.
 
   `estimatedPowerWatts` carries `estimateQuality` beside it, present once the
   ride has been derived since the diagnostics existed and never without the
@@ -1222,19 +1224,22 @@ Once a ride has been derived, and where the operator has configured a Claude
 Code OAuth token, `activity:analyse` asks a language model what to make of it
 ([the task](task-layer.md#the-registered-tasks)). What leaves the host is the
 ride's derived metrics and sensor means, the rider's profile and zone bounds,
-the rider's current fitness, fatigue and form, and the analyses of a bounded few
-preceding rides so the answer can speak to a trend; never the track, the
+the rider's current fitness, fatigue and form, and the analyses of the same
+target's five most recent earlier rides so the answer can speak to a trend —
+never another target's, whoever owns it; never the track, the
 weather, the provider's document or the rider's identity. The request goes
 through the `claude` executable bundled in the image, authenticated by the
 operator's own Claude subscription, with no tool enabled: the model sees the
 prompt and answers text. That text is stored beside the ride with the model
 and prompt revision that produced it, served on the activity contract, and
 read by nothing else — no load, no suggestion and no calibration ever reads
-it. A ride is analysed once; a profile edit re-derives it but does not
-re-analyse it, and an administrator's reprocess is the way to ask again. Only
-rides stored after the analysis was enabled are analysed at all: a history
-already held when the token arrives is never backfilled, so enabling it costs
-nothing until the next ride lands. Which
+it. A ride is analysed once. A profile edit re-derives it but does not
+re-analyse it, and a derivation that removes the ride's figures removes the
+analysis with them; nothing in this revision asks a second time, and the
+route-scoped reprocess does not reach a ride. Only rides stored after the
+analysis was enabled are analysed at all: a history already held when the
+token arrives is never backfilled, so enabling it costs nothing until the next
+ride lands. Which
 rider a ride belongs to does not change whose subscription answers: this is one
 deployment's operator paying for its riders, so the token is a static secret
 and not a rider credential.

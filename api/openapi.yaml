@@ -1825,6 +1825,35 @@ components:
           $ref: '#/components/schemas/ActivityWeatherSummary'
         routeMatch:
           $ref: '#/components/schemas/ActivityRouteMatch'
+        analysis:
+          $ref: '#/components/schemas/ActivityAnalysis'
+    ActivityAnalysis:
+      type: object
+      additionalProperties: false
+      description: >-
+        What a language model made of this ride. Absent for a ride not yet
+        analysed, for one whose derivation yielded nothing, and everywhere on a
+        deployment that configured no token. Text for the rider to read; never
+        an input to any figure served here.
+      required:
+        - text
+        - model
+        - promptRevision
+        - analysedAt
+      properties:
+        text:
+          type: string
+          maxLength: 2000
+          description: Plain text, at most 2000 characters.
+        model:
+          type: string
+          description: The model id that answered.
+        promptRevision:
+          type: integer
+          description: The revision of the prompt it was asked with.
+        analysedAt:
+          type: string
+          format: date-time
     ActivityRouteMatch:
       type: object
       additionalProperties: false

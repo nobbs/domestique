@@ -48,10 +48,13 @@ services:
       - ./config.toml:/etc/domestique/config.toml:ro
     # The two secrets the host hands the process. Every other credential the
     # service holds is entered on its settings page and stored encrypted under
-    # the state key.
+    # the state key. The optional third switches on the ride analysis; it is
+    # uncommented here and below together, with the [analysis] section of
+    # config.toml.
     secrets:
       - state_encryption_key
       - auth0_client_secret
+      # - claude_token
 
   # The only container on this host with a public port. It terminates TLS for
   # the hostname and forwards to domestique over the edge network; nothing else
@@ -108,6 +111,8 @@ secrets:
     file: ./secrets/state_encryption_key
   auth0_client_secret:
     file: ./secrets/auth0_client_secret
+    # claude_token:
+    #   file: ./secrets/claude_token
 
 # Named rather than left to the project prefix, because the Docker provider
 # above has to name it too and the project name is a deploy-script variable.

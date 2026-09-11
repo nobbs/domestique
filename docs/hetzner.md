@@ -76,9 +76,13 @@ host serves, with no path.
 
 Create `secrets/state_encryption_key`, containing base64url of 32 random bytes,
 and `secrets/auth0_client_secret`, holding the Auth0 application's client
-secret. Those are the only two secrets the service reads from the host: every
+secret. Those are the two secrets the service needs from the host: every
 other credential it reaches an upstream with is entered on its settings page
-after it is running, and stored encrypted under the state key.
+after it is running, and stored encrypted under the state key. One optional
+third, `secrets/claude_token`, holds the token `claude setup-token` issues for
+the operator's Claude subscription and switches the ride analysis on; leave it
+out and the service registers no analysis task. Its compose lines are
+commented out in the example and are uncommented together.
 
 Add `secrets/pushover_application_token` and `secrets/pushover_user_key` too if
 this host should alert on a failed deployment. Those two are the deploy

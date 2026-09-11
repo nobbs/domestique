@@ -618,10 +618,11 @@ The runtime image:
 - runs as an unprivileged non-root user;
 - has a declared persistent volume for `/var/lib/domestique`, which holds the
   SQLite database and, under its own subdirectory, the home directory the
-  `claude` executable insists on writing — its configuration and the transcript
-  of each one-shot run — which is why the root filesystem can stay read-only
-  with that executable aboard; the service points `HOME` there and disables
-  the executable's auto-update and telemetry through its environment;
+  `claude` executable insists on writing its configuration to, which is why
+  the root filesystem can stay read-only with that executable aboard; the
+  service points `HOME` there, runs every prompt with session persistence off
+  so no transcript of what was asked or answered is ever written there, and
+  disables the executable's auto-update and telemetry through its environment;
 - accepts secret files only at runtime under `/run/secrets`, never during the
   image build;
 - has no bundled reverse proxy, SSH service, shell requirement, or default

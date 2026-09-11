@@ -134,6 +134,18 @@ type Activity struct {
 	Metrics           *ActivityMetrics        `json:"metrics,omitempty"`
 	Weather           *ActivityWeatherSummary `json:"weather,omitempty"`
 	RouteMatch        *ActivityRouteMatch     `json:"routeMatch,omitempty"`
+	Analysis          *ActivityAnalysis       `json:"analysis,omitempty"`
+}
+
+// ActivityAnalysis What a language model made of this ride. Absent for a ride not yet analysed, for one whose derivation yielded nothing, and everywhere on a deployment that configured no token. Text for the rider to read; never an input to any figure served here.
+type ActivityAnalysis struct {
+	// Text Plain text, at most 2000 characters.
+	Text string `json:"text"`
+	// Model The model id that answered.
+	Model string `json:"model"`
+	// PromptRevision The revision of the prompt it was asked with.
+	PromptRevision int       `json:"promptRevision"`
+	AnalysedAt     time.Time `json:"analysedAt"`
 }
 
 // ActivityRouteMatch The library route this ride was ridden on. Absent where the ride was ridden on none of them, or has not been matched yet; the two are not distinguished, because neither gives a route to show.

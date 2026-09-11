@@ -49,7 +49,7 @@ private to this service.
 │   ├── surface/                    OSM surface classification and snapping
 │   ├── osmindex/                   OSM extract download, index build, schedule
 │   ├── ridemodel/                  predicted moving time from geometry
-│   ├── activity/                   recorded-activity polling and FIT decoding
+│   ├── activity/                   recorded-activity polling, FIT decoding, the analysis prompt
 │   ├── veloplanner/                VeloPlanner HTTP source adapter
 │   ├── komoot/                     Komoot HTTP source adapter
 │   ├── openmeteo/                  weather forecast HTTP adapter
@@ -58,6 +58,7 @@ private to this service.
 │   ├── zwift/                      Zwift authentication, activity and world-map HTTP adapter
 │   ├── sqlite/                     encrypted durable-state adapter
 │   ├── pushover/                   notification adapter
+│   ├── claude/                     bundled claude executable adapter, one prompt per run
 │   ├── build/                      revision and image digest, stamped at link
 │   ├── demo/                       synthetic library, reached only from dev/
 │   └── webui/                      embedded browser UI

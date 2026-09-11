@@ -35,8 +35,9 @@ browser UI with `mise run ui-dev`, which serves it with hot reload and proxies
 the API to a locally running service. See [CONTRIBUTING.md](CONTRIBUTING.md) for
 the contributor workflow. Copy [`config.example.toml`](config.example.toml)
 outside the repository when preparing a local deployment; it names two secret
-files, the state encryption key and the Auth0 client secret, and never embeds a
-secret value. Everything else the service is configured with is entered on its
+files, the state encryption key and the Auth0 client secret, plus an optional
+third, the Claude Code OAuth token that enables ride analysis, and never
+embeds a secret value. Everything else the service is configured with is entered on its
 own settings page once it is running.
 
 ## Deployment

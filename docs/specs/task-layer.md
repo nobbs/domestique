@@ -115,7 +115,7 @@ ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
 zwift:poll        stored indoor rides     ->  activity:derive
-activity:derive   derived stored rides    ->  activity:analyse
+activity:derive   derived stored rides    ->  activity:analyse   (only with a token)
 ~~~
 
 A calibration that fitted a new pair makes every stored prediction stale, so it
@@ -275,7 +275,7 @@ is checked rather than inferred.
 | `zwift:poll` | target slot, or none for every one | `activities` exclusive | every six hours |
 | `activity:derive` | target slot, or none for every one | `activities` exclusive | every hour |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
-| `activity:analyse` | target slot, or none for every one | `activities` exclusive | none |
+| `activity:analyse` | target slot, or none for every one | `activities` exclusive | every hour, and only when a token is configured |
 
 `zwift:poll` reads the same rows from a rider's own Zwift account, under the
 same exclusivity: it stores the indoor rides that account recorded and removes
@@ -355,8 +355,9 @@ the run reports whichever came to the more serious thing.
 
 `activity:analyse` asks a language model what to make of each ride that has
 been derived and not yet analysed ([what is sent and stored](service.md#recorded-activities)).
-It is registered only when the operator has configured a Claude Code OAuth
-token, so a deployment without one lists no such task and offers no decision
+It and the edge that reaches it are registered together, and only when the
+operator has configured a Claude Code OAuth token: a deployment without one
+lists no such task, resolves a graph with no such edge, and offers no decision
 about its alerts. It follows `activity:derive` and holds the same resource,
 because it reads exactly the rows the derivation writes, and it fans out over
 targets the same way. It is owed a ride that has a derived row, no analysis
@@ -364,17 +365,25 @@ row, and was first stored after the analysis was enabled — an instant this
 service records the first time it starts with a token and keeps as runtime
 state — so its edge carries no argument and a run with nothing owed asks
 nothing. There is no backfill: a history stored before that instant stays
-unanalysed, and an administrator's reprocess over a ride is the one way to ask
-for one. A ride whose derivation yielded nothing is not owed one. Unlike the weather,
+unanalysed, and nothing in this revision asks for an analysis a second time. A
+ride whose derivation yielded nothing is not owed one, and a derivation that
+removes a ride's derived row removes its analysis in the same transaction, so
+a profile edit that takes a ride's figures away takes what was said about them
+too. The analyses a prompt carries for context are the same target's, newest
+first, at most five. Unlike the weather,
 which is asked once and recorded either way, an analysis that fails is not
 recorded as asked: the subscription's monthly allowance running out is the
 usual reason, which passes, so the ride stays owed and the run faults into the
 ordinary backoff. Each ride costs one request, made through the bundled
 `claude` executable with a bounded timeout and no tool enabled, and a run
 analyses every ride it is owed, which is what the poll or webhook before it
-just stored — a week away is a week's rides, never a history. No schedule of
-its own: the hourly derivation sweeps up anything the chain missed, and a run
-that derived nothing chains nothing. The log and the alert carry counts and a
+just stored — a week away is a week's rides, never a history. It also runs
+hourly, because the edge alone would not try again: a derivation that already
+succeeded is not repeated, so a ride left owed by a failed request would wait
+for the next new ride rather than the next hour. A scheduled run with nothing
+owed asks nothing and costs a query per target. An answer is stored only when
+it fits the contract's bound of two thousand characters; a longer one is the
+`unusable` category and the ride stays owed. The log and the alert carry counts and a
 stable failure category — the token refused, the allowance exhausted, the
 executable failing, the answer unusable — and never the prompt or the answer.
 

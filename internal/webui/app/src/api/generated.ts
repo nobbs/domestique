@@ -361,6 +361,22 @@ export interface ActivityRouteMatch {
   direction: RouteRideDirection;
 }
 
+/**
+ * What a language model made of this ride. Absent for a ride not yet analysed, for one whose derivation yielded nothing, and everywhere on a deployment that configured no token. Text for the rider to read; never an input to any figure served here.
+ */
+export interface ActivityAnalysis {
+  /**
+   * Plain text, at most 2000 characters.
+   * @maxLength 2000
+   */
+  text: string;
+  /** The model id that answered. */
+  model: string;
+  /** The revision of the prompt it was asked with. */
+  promptRevision: number;
+  analysedAt: string;
+}
+
 export interface Activity {
   id: ActivityID;
   startedAt: string;
@@ -385,6 +401,7 @@ export interface Activity {
   metrics?: ActivityMetrics;
   weather?: ActivityWeatherSummary;
   routeMatch?: ActivityRouteMatch;
+  analysis?: ActivityAnalysis;
 }
 
 export interface ActivityList {
