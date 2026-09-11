@@ -86,14 +86,32 @@ func blockMean(readings []trainingload.Sample, start time.Time, block time.Durat
 }
 
 // meteredBlocksOf cuts a metered ride into blocks: those holding at least
-// half their own length in both readings. Only the power and the heart rate
-// are read. A trainer ride's speed and distance are a simulation.
-func meteredBlocksOf(power, heartRate []trainingload.Sample, block time.Duration) []MeasuredBlock {
+// half their own length in both readings, over the samples the rider was
+// pedalling through -- the unmetered side is scored the same way, and a
+// coasting-heavy trainer ride must not lower the bridge target against a
+// model that never sees its zero-power samples. Only the power and the heart
+// rate are read; a trainer ride's speed and distance are a simulation.
+func meteredBlocksOf(power, heartRate, cadence []trainingload.Sample, block time.Duration) []MeasuredBlock {
 	if len(power) == 0 || len(heartRate) == 0 {
 		return nil
 	}
+	coasting := make(map[int64]bool, len(cadence))
+	for _, reading := range cadence {
+		if reading.Value == 0 {
+			coasting[reading.At.Unix()] = true
+		}
+	}
+	pedallingPower := make([]trainingload.Sample, 0, len(power))
+	for _, reading := range power {
+		if !coasting[reading.At.Unix()] {
+			pedallingPower = append(pedallingPower, reading)
+		}
+	}
+	if len(pedallingPower) == 0 {
+		return nil
+	}
 	start := power[0].At
-	powerMeans, powerCounts := blockMean(power, start, block)
+	powerMeans, powerCounts := blockMean(pedallingPower, start, block)
 	heartRateMeans, heartRateCounts := blockMean(heartRate, start, block)
 
 	keys := make([]int, 0, len(powerMeans))
@@ -688,7 +706,7 @@ func study(
 		heartRate := positive(samples.HeartRate)
 
 		if len(samples.Power) > 0 {
-			blocks := meteredBlocksOf(samples.Power, heartRate, block)
+			blocks := meteredBlocksOf(samples.Power, heartRate, samples.Cadence, block)
 			if len(blocks) == 0 {
 				result.skipped++
 				continue

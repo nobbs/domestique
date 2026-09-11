@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 func start() time.Time { return time.Date(2026, 8, 24, 6, 0, 0, 0, time.UTC) }
@@ -57,6 +58,52 @@ func targetedAt(t *testing.T, ride Ride, coefficients measure.Coefficients) Ride
 	}
 
 	return ride
+}
+
+// The regression: a coasting half of the block must not lower the bridge
+// target the model is scored against, which is built from the pedalling
+// samples alone.
+func TestMeteredBlocksOfExcludesCoastingSamplesFromTheBlockMean(t *testing.T) {
+	t.Parallel()
+	const block = 10 * time.Second
+	power := make([]trainingload.Sample, 10)
+	heartRate := make([]trainingload.Sample, 10)
+	cadence := make([]trainingload.Sample, 10)
+	for index := range power {
+		at := start().Add(time.Duration(index) * time.Second)
+		heartRate[index] = trainingload.Sample{At: at, Value: 140}
+		if index < 5 {
+			power[index] = trainingload.Sample{At: at, Value: 0}
+			cadence[index] = trainingload.Sample{At: at, Value: 0}
+		} else {
+			power[index] = trainingload.Sample{At: at, Value: 200}
+			cadence[index] = trainingload.Sample{At: at, Value: 80}
+		}
+	}
+
+	blocks := meteredBlocksOf(power, heartRate, cadence, block)
+
+	require.Len(t, blocks, 1)
+	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9, "the coasting half must not lower the pedalling mean")
+}
+
+// A ride with no cadence recorded at all names no sample a coast, so every
+// power reading is kept exactly as it was before this filter existed.
+func TestMeteredBlocksOfKeepsEveryPowerSampleWithoutACadenceSeries(t *testing.T) {
+	t.Parallel()
+	const block = 10 * time.Second
+	power := make([]trainingload.Sample, 10)
+	heartRate := make([]trainingload.Sample, 10)
+	for index := range power {
+		at := start().Add(time.Duration(index) * time.Second)
+		power[index] = trainingload.Sample{At: at, Value: 200}
+		heartRate[index] = trainingload.Sample{At: at, Value: 140}
+	}
+
+	blocks := meteredBlocksOf(power, heartRate, nil, block)
+
+	require.Len(t, blocks, 1)
+	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9)
 }
 
 // The recovery test the handover asks of any fitter (§6): a target generated
