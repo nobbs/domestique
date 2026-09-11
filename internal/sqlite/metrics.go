@@ -121,10 +121,11 @@ func (s *Store) ActivityRideSamples(
 // requires: a device speed is an instantaneous reading, so a step only
 // counts as moving where both readings that bracket it are positive; the
 // odometer's own speed already names the rate of the step it ends. Nil
-// rather than a known-empty list where a device speed field was present but
-// never once positive throughout -- a real quirk of some trainers -- since
-// that says the field cannot be trusted to name when the ride moved at all,
-// not that it never did.
+// rather than a known-empty list where a device speed field never once
+// bracketed a moving step at all -- never positive throughout, a real quirk
+// of some trainers, or positive too sparsely to pair two readings either
+// side of a step -- since that says the field cannot be trusted to name when
+// the ride moved, not that it never did.
 func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainingload.Sample, moving []measure.Interval) {
 	hasDeviceSpeed := false
 	for index := range rows {
@@ -156,12 +157,14 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 		if everPositive {
 			// Each run breaks at a reading above the ceiling, the same way a
 			// heart-rate run breaks at a nought: the two readings either side
-			// of a dropped spike must not pair as one adjacent step.
+			// of a dropped spike must not pair as one adjacent step. moving
+			// is left nil rather than forced to a known-empty list where none
+			// of that bracketed into an interval at all: one isolated
+			// positive reading among mostly noughts says the field is too
+			// sparse to place a single moving stretch, not that the ride
+			// never moved.
 			for _, run := range speedRuns(samples) {
 				moving = append(moving, measure.MovingIntervalsFromInstantaneous(run)...)
-			}
-			if moving == nil {
-				moving = []measure.Interval{}
 			}
 		}
 	} else {

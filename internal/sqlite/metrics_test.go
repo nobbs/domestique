@@ -357,6 +357,26 @@ func TestActivityRideSamplesTreatsAnAlwaysZeroDeviceSpeedAsUnknownRatherThanStat
 	assert.Nil(t, samples.MovingIntervals, "an unreliable field, not a ride that never moved")
 }
 
+// The regression: a device speed field positive exactly once, with no other
+// reading beside it also positive, can never bracket a moving step -- the
+// same as never being positive at all, and just as untrustworthy a name for
+// when the ride moved. It must not read as a ride that held perfectly still.
+func TestActivityRideSamplesTreatsAnUnbracketedDeviceSpeedAsUnknownRatherThanStationary(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), SpeedMS: 0, HasSpeed: true},
+			{Time: activityNow().Add(time.Second), SpeedMS: 5, HasSpeed: true},
+			{Time: activityNow().Add(2 * time.Second), SpeedMS: 0, HasSpeed: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	assert.Nil(t, samples.MovingIntervals, "one isolated positive reading names no moving step at all")
+}
+
 // A ride with no device speed reading falls back to the odometer: distance
 // over time between consecutive records, the same rule speedSeries applies.
 func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing.T) {
