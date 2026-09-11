@@ -20,7 +20,11 @@ func (h *Handler) GetRiderProfile(writer http.ResponseWriter, request *http.Requ
 	h.writeRiderProfile(writer, request)
 }
 
-// SetRiderProfile replaces the caller's own parameters whole.
+// SetRiderProfile replaces the caller's own parameters whole. Every field's
+// minimum and maximum are the contract's own (api/openapi.yaml
+// RiderParameters), enforced by useContractValidation before this handler
+// runs at all -- not re-checked here, so a range the contract tightens or
+// loosens needs no matching change on this side.
 func (h *Handler) SetRiderProfile(writer http.ResponseWriter, request *http.Request) {
 	body, ok := settingsBody[openapi.RiderParameters](h, writer, request)
 	if !ok {
