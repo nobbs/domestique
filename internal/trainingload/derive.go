@@ -85,10 +85,10 @@ func (m *Metrics) Derived() bool {
 // judging held time against the whole recording.
 func Derive(heartRate, power []Sample, movingSeconds float64, movingIntervals []measure.Interval, inputs Inputs) Metrics {
 	metrics := Metrics{Inputs: inputs}
-	// A strap that wrote nought took no reading there; one that wrote nought
-	// throughout covered nothing, and is judged so rather than left unjudged.
+	// A strap that wrote nought took no reading there. One that wrote nought
+	// throughout has no positive run at all, so HeartRateCoverage already
+	// reads that ride as 0% covered below without a special case for it.
 	present := HeartRateReadings(heartRate)
-	strapWroteNought := len(heartRate) > 0 && len(present) == 0
 	if bounds, ok := BoundsFrom(inputs.ThresholdHeartRateBPM, inputs.MaxHeartRateBPM); ok && len(present) > 1 {
 		zones := TimeInZones(heartRate, bounds)
 		metrics.Zones, metrics.HasZones = zones, zones.Total() > 0
@@ -97,8 +97,7 @@ func Derive(heartRate, power []Sample, movingSeconds float64, movingIntervals []
 	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
-	if coverage, ok := HeartRateCoverage(heartRate, movingSeconds, movingIntervals); (ok && coverage < MinSeriesCoverage) ||
-		(strapWroteNought && movingSeconds > 0) {
+	if coverage, ok := HeartRateCoverage(heartRate, movingSeconds, movingIntervals); ok && coverage < MinSeriesCoverage {
 		metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
 	}
 	if coverage, ok := SeriesCoverage(power, movingSeconds, movingIntervals); ok && coverage < MinSeriesCoverage {
