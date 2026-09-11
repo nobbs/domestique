@@ -74,3 +74,14 @@ entry = "mise exec -- yq eval --exit-status '[.. | select(style == \"flow\" and 
 language = "system"
 files = "^api/openapi\\.yaml$"
 pass_filenames = true
+
+# biome.json lives in internal/webui/app, not the repo root, so the entry
+# shells out to a wrapper that cds there; biome isn't mise-pinned, so no
+# `mise exec --`.
+[[repos.hooks]]
+id = "biome-format"
+name = "Biome format"
+entry = "dev/check-ui-format.sh"
+language = "system"
+files = "^internal/webui/app/.*\\.(ts|tsx|json)$"
+pass_filenames = true
