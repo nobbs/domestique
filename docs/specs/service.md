@@ -707,9 +707,10 @@ The read-only JSON surface is small:
   `estimatedPowerWatts`, its estimated power while pedalling, from the force
   balance in [measurement.md](measurement.md) §Estimated power at the rider's
   own bicycle numbers, and `estimatedPedallingShare`, the share of the ride's
-  samples the rider pedalled through. Named as an estimate everywhere; never
-  normalised, never scored, never an input to a training load; absent for a
-  ride that measured its own power.
+  estimated samples the rider was pedalling through, which the estimate is
+  averaged over. Named as an estimate everywhere; never normalised, never
+  scored, never an input to a training load; absent for a ride that measured
+  its own power.
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
   maximum, resting and threshold heart rate, functional threshold power, rider
   and bike mass, and the bicycle's drag area and rolling resistance — every one
