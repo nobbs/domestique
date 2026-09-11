@@ -345,8 +345,36 @@ func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing
 
 	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.Speed, 1, "the first record has no interval behind it")
+	// The first record's own step is anchored at its start as well as its
+	// end, so a consumer pairing consecutive readings (measure.MovingIntervals)
+	// sees it too, not only the steps that follow it.
+	require.Len(t, samples.Speed, 2)
+	assert.Equal(t, activityNow(), samples.Speed[0].At)
 	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9)
+	assert.Equal(t, activityNow().Add(time.Second), samples.Speed[1].At)
+	assert.InDelta(t, 36.0, samples.Speed[1].Value, 1e-9)
+}
+
+// The regression: a two-record ride is the shortest one a rider can carry,
+// and its single step must still be a moving interval, not silently invisible
+// to measure.MovingIntervals for want of a start to pair its own reading
+// against.
+func TestActivityRideSamplesSpeedNamesAMovingIntervalForATwoRecordRide(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), DistanceMetres: 10, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+
+	intervals := measure.MovingIntervals(samples.Speed)
+	require.Len(t, intervals, 1, "the ride's one step must not vanish from its own moving intervals")
+	assert.Equal(t, measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, intervals[0])
 }
 
 // A single implausible spike — a clock or odometer hiccup, not a rider — is

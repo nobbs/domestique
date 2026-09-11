@@ -139,6 +139,7 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) []trainingload.S
 		}
 	} else {
 		var previous activity.DistanceStep
+		anchored := false
 		for index := range rows {
 			row := &rows[index]
 			current := activity.DistanceStep{
@@ -147,6 +148,16 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) []trainingload.S
 			}
 			if index > 0 {
 				if kmh, ok := activity.DistanceSpeedKmh(previous, current); ok {
+					if !anchored {
+						// A speed reading names the step it ends, not the one
+						// it starts: without a reading at the step's own
+						// start, a consumer pairing consecutive readings
+						// (measure.MovingIntervals) never sees this first
+						// step at all. One anchor, at the step's start with
+						// its own rate, gives it a start to pair from.
+						samples = append(samples, trainingload.Sample{At: previous.At, Value: kmh})
+						anchored = true
+					}
 					samples = append(samples, trainingload.Sample{At: current.At, Value: kmh})
 				}
 			}
