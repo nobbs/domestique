@@ -268,8 +268,8 @@ func slope(low, high Sample) float64 {
 // PedallingMean is the mean estimated power over the samples the rider was
 // pedalling through, and the share of the ride's known samples that was: a
 // bicycle produces nothing while it coasts, so the ride's own figure is the
-// power while pedalling, and the share says how much of the ride that was. ok
-// is false where nothing was estimated at all.
+// power while pedalling, and the share says how much of the ride that was.
+// ok is false where nothing was estimated at all.
 func PedallingMean(samples []Sample, estimates []Estimate) (watts, share float64, ok bool) {
 	if len(samples) != len(estimates) {
 		return 0, 0, false
