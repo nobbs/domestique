@@ -230,14 +230,19 @@ func watts(speed, grade, totalMassKG, density, accelerationMSS float64, coeffici
 // distance runs backward: an odometer reset marks a boundary a window must
 // not cross the same way a recording gap already does, or centredWindow
 // combines distance and altitude from before and after the reset into one
-// bogus speed and grade.
+// bogus speed and grade. A duplicate or backward clock is the same kind of
+// boundary, and for the same reason: gradeWindowMetres and the per-sample
+// step check both already require a strictly positive step, not merely one
+// no wider than a gap.
 func distanceStretches(samples []Sample, maxGap time.Duration) []Stretch {
 	stretches := make([]Stretch, len(samples))
 	for first := 0; first < len(samples); {
 		past := first + 1
-		for past < len(samples) &&
-			samples[past].At.Sub(samples[past-1].At) <= maxGap &&
-			samples[past].DistanceMetres >= samples[past-1].DistanceMetres {
+		for past < len(samples) {
+			step := samples[past].At.Sub(samples[past-1].At)
+			if step <= 0 || step > maxGap || samples[past].DistanceMetres < samples[past-1].DistanceMetres {
+				break
+			}
 			past++
 		}
 		for index := first; index < past; index++ {

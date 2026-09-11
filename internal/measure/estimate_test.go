@@ -329,6 +329,44 @@ func TestEstimateSeriesDoesNotWindowAcrossAnOdometerReset(t *testing.T) {
 		"the true 10 m/s pace on both sides of the reset, not a rate blended across it")
 }
 
+// The regression: a clock that runs backward marks a boundary the same way
+// an odometer reset does. Without it, a window several samples after the
+// glitch can still expand back across it, combining a stretch of distance
+// from before the glitch with one from after into a speed neither pace
+// alone produced.
+func TestEstimateSeriesDoesNotWindowAcrossABackwardClock(t *testing.T) {
+	t.Parallel()
+	type sample struct {
+		offsetSeconds  int
+		distanceMetres float64
+		altitudeMetres float64
+	}
+	// A steady 10 m/s pace before the glitch, at distance 0..30; the clock
+	// then jumps backward (index 4's own offset is behind index 3's) and a
+	// fresh, unrelated 10 m/s pace resumes from a distance far enough away
+	// (1000 m) that any bridging across the glitch reads as an obviously
+	// wrong speed rather than a coincidentally matching one.
+	fixture := []sample{
+		{0, 0, 100}, {1, 10, 100}, {2, 20, 100}, {3, 30, 100},
+		{1, 1000, 100}, {2, 1010, 100}, {3, 1020, 100}, {4, 1030, 100}, {5, 1040, 100}, {6, 1050, 100},
+	}
+	samples := make([]measure.Sample, len(fixture))
+	for index, s := range fixture {
+		samples[index] = measure.Sample{
+			At:             start().Add(time.Duration(s.offsetSeconds) * time.Second),
+			DistanceMetres: s.distanceMetres, AltitudeMetres: s.altitudeMetres,
+		}
+	}
+
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
+
+	require.True(t, ok)
+	require.True(t, estimates[5].Known)
+	want := closedForm(10, 0, 82, 100)
+	assert.InEpsilon(t, want, estimates[5].Watts, 0.03,
+		"the true 10 m/s pace after the glitch, not a rate blended with the distance from before it")
+}
+
 func TestEstimateSeriesNeedsAMassAndMoreThanOneSample(t *testing.T) {
 	t.Parallel()
 	_, ok := measure.EstimateSeries(ramp(300, 7.5, 0), 0, measure.DefaultCoefficients())
