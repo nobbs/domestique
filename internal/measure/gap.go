@@ -69,25 +69,26 @@ type Interval struct {
 	Start, End time.Time
 }
 
-// MovingIntervals is the time ranges a track was moving through: the odometer
-// advancing between two samples in a row no further apart than DefaultMaxGap,
-// the same rule a splits table cuts a stop's seconds out of its moving time
-// by, and Stretches/ForEachHeld cut a recording gap by. A step wider than
-// that is a missing stretch of track, not a stop within a recorded one, and
-// must not be read as moving however far the odometer jumped across it.
-// Adjacent moving steps merge into one stretch. Nil for an empty track; a
-// non-nil, possibly empty, slice for any other track (a single sample, or one
-// that never moved), so a caller can tell "no track to judge by" from "a
-// track that named no moving time".
-func MovingIntervals(track []Sample) []Interval {
-	if len(track) == 0 {
+// MovingIntervals is the time ranges a speed series reports as moving: a
+// positive reading, over a step no wider than DefaultMaxGap, the same rule a
+// splits table cuts a stop's seconds out of its moving time by, and
+// Stretches/ForEachHeld cut a recording gap by. A step wider than that is a
+// missing stretch of the series, not a stop within a recorded one, and must
+// not be read as moving. Adjacent moving steps merge into one stretch. Reads
+// neither position nor altitude, so a coverage judged against it never
+// depends on either. Nil for an empty series; a non-nil, possibly empty,
+// slice for any other (a single reading, or one that never moved), so a
+// caller can tell "no speed series to judge by" from "a series that named no
+// moving time".
+func MovingIntervals(speed []Reading) []Interval {
+	if len(speed) == 0 {
 		return nil
 	}
 	intervals := []Interval{}
-	for index := 1; index < len(track); index++ {
-		previous, current := &track[index-1], &track[index]
+	for index := 1; index < len(speed); index++ {
+		previous, current := &speed[index-1], &speed[index]
 		step := current.At.Sub(previous.At)
-		if step <= 0 || step > DefaultMaxGap || current.DistanceMetres <= previous.DistanceMetres {
+		if step <= 0 || step > DefaultMaxGap || current.Value <= 0 {
 			continue
 		}
 		if last := len(intervals) - 1; last >= 0 && !intervals[last].End.Before(previous.At) {

@@ -140,18 +140,18 @@ func TestMeanHeldWeightsByHowLongEachReadingStood(t *testing.T) {
 // A stop the odometer does not advance through must not count as moving, and
 // two moving steps in a row must merge into one stretch rather than two the
 // caller has to know are adjacent.
-func TestMovingIntervalsSkipsAStopWhereTheOdometerDidNotAdvance(t *testing.T) {
+func TestMovingIntervalsSkipsAStopWhereTheSpeedWasNought(t *testing.T) {
 	t.Parallel()
-	track := []measure.Sample{
-		{At: start(), DistanceMetres: 0},
-		{At: start().Add(time.Second), DistanceMetres: 5},
-		{At: start().Add(2 * time.Second), DistanceMetres: 5}, // stopped
-		{At: start().Add(3 * time.Second), DistanceMetres: 5}, // still stopped
-		{At: start().Add(4 * time.Second), DistanceMetres: 10},
-		{At: start().Add(5 * time.Second), DistanceMetres: 15}, // merges with the step before it
+	speed := []measure.Reading{
+		{At: start(), Value: 0},
+		{At: start().Add(time.Second), Value: 18},
+		{At: start().Add(2 * time.Second), Value: 0}, // stopped
+		{At: start().Add(3 * time.Second), Value: 0}, // still stopped
+		{At: start().Add(4 * time.Second), Value: 18},
+		{At: start().Add(5 * time.Second), Value: 18}, // merges with the step before it
 	}
 
-	intervals := measure.MovingIntervals(track)
+	intervals := measure.MovingIntervals(speed)
 
 	require.Len(t, intervals, 2)
 	assert.Equal(t, measure.Interval{Start: start(), End: start().Add(time.Second)}, intervals[0])
@@ -159,37 +159,38 @@ func TestMovingIntervalsSkipsAStopWhereTheOdometerDidNotAdvance(t *testing.T) {
 		measure.Interval{Start: start().Add(3 * time.Second), End: start().Add(5 * time.Second)}, intervals[1])
 }
 
-func TestMovingIntervalsIsEmptyForNoTrack(t *testing.T) {
+func TestMovingIntervalsIsEmptyForNoSpeedSeries(t *testing.T) {
 	t.Parallel()
-	assert.Nil(t, measure.MovingIntervals(nil), "no track is not the same as a track that never moved")
+	assert.Nil(t, measure.MovingIntervals(nil), "no series is not the same as a series that never moved")
 }
 
-// A track that never advances is a real answer -- zero moving time -- not the
-// same as having no track to judge by at all: the two must stay distinguishable.
-func TestMovingIntervalsIsNonNilButEmptyForATrackThatNeverMoved(t *testing.T) {
+// A series that never reports a positive speed is a real answer -- zero
+// moving time -- not the same as having no series to judge by at all: the
+// two must stay distinguishable.
+func TestMovingIntervalsIsNonNilButEmptyForASeriesThatNeverMoved(t *testing.T) {
 	t.Parallel()
-	track := []measure.Sample{
-		{At: start(), DistanceMetres: 5},
-		{At: start().Add(time.Second), DistanceMetres: 5},
+	speed := []measure.Reading{
+		{At: start(), Value: 0},
+		{At: start().Add(time.Second), Value: 0},
 	}
 
-	intervals := measure.MovingIntervals(track)
+	intervals := measure.MovingIntervals(speed)
 
 	assert.NotNil(t, intervals)
 	assert.Empty(t, intervals)
 }
 
-// The regression: a positive-distance step spanning a gap in the recording
-// itself -- the track skipped a stretch, the same as any other recording gap
-// -- must not be read as moving however far the odometer jumped across it.
+// The regression: a positive-speed step spanning a gap in the recording
+// itself -- the series skipped a stretch, the same as any other recording
+// gap -- must not be read as moving.
 func TestMovingIntervalsRejectsAStepWiderThanDefaultMaxGap(t *testing.T) {
 	t.Parallel()
-	track := []measure.Sample{
-		{At: start(), DistanceMetres: 0},
-		{At: start().Add(measure.DefaultMaxGap + time.Second), DistanceMetres: 1000},
+	speed := []measure.Reading{
+		{At: start(), Value: 0},
+		{At: start().Add(measure.DefaultMaxGap + time.Second), Value: 30},
 	}
 
-	assert.Empty(t, measure.MovingIntervals(track))
+	assert.Empty(t, measure.MovingIntervals(speed))
 }
 
 func TestHeldWithinIntervalsCountsOnlyTheOverlap(t *testing.T) {
