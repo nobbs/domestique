@@ -14,10 +14,15 @@ bury whatever else was found.
 
 ## Claims this review cannot verify
 
-Do not report that code fails to compile, that a symbol does not exist, or that a
-language or library feature is unavailable. Nothing here runs a compiler, CI
-compiles every pull request before it can merge, and every such claim made on this
-repository so far has been wrong.
+Do not report that code fails to compile, or that a language or library feature is
+unavailable, on the strength of your own reading of the language. Nothing here runs
+a compiler, and every such claim made on this repository so far has been wrong. A
+missing reference you established by searching the repository is different: say
+where you looked and report it.
+
+CI compiles the tree when a change touches Go. It is path-filtered, so a
+documentation or UI-only pull request skips those jobs entirely and nothing there
+will catch a Go mistake.
 
 Judge the code against the versions this repository pins, never against older ones.
 `.mise.toml` pins the toolchains and command-line tools, `go.mod` the language
@@ -34,7 +39,10 @@ rather than a type is the standing example.
 - Asking for more coverage. Codecov's patch status gates that and measures what this
   reviewer cannot see. A behaviour change carrying no regression test is still worth
   reporting, because `AGENTS.md` requires one.
-- Style, naming and formatting. Linters and formatters own those and run in CI.
+- Mechanical style and formatting. Linters and formatters own those and run in CI.
+  Domain naming is not mechanical: `docs/glossary.md` fixes each domain word's one
+  meaning and `docs/naming-drift.md` records where the code disagrees, and no linter
+  can judge either. A new name that contradicts the glossary is worth reporting.
 
 ## What is worth reporting
 
