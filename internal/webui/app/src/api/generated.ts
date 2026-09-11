@@ -276,7 +276,7 @@ export interface ActivityMetrics {
   normalizedPowerWatts?: number;
   intensityFactor?: number;
   powerTss?: number;
-  /** The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track at the rider's own bicycle numbers, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass. */
+  /** The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track at the rider's own bicycle numbers, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's. */
   estimatedPowerWatts?: number;
   /**
    * The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
@@ -505,7 +505,7 @@ export interface ActivityTrackProperties {
   weather?: RideWeatherStep[];
   /** The virtual world an indoor ride was ridden in, present only for a ride whose world this service knows the map of. Such a ride keeps `state: indoor` — it was ridden over no ground — but carries its line, which is drawn over the world's own artwork and never over a basemap. */
   world?: ActivityTrackWorld;
-  /** Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass. */
+  /** Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's. */
   estimatedPowerWatts?: (number | null)[];
 }
 
