@@ -572,6 +572,7 @@ type report struct {
 	checks       []meteredCheck
 	bridge       bridge
 	shipped      measure.Coefficients
+	shippedOK    bool
 	rideCount    int
 	blockCount   int
 	meteredRides int
@@ -637,7 +638,12 @@ func (r *report) String() string {
 		}
 		fmt.Fprintf(&b, "\ndrag area at Crr %.3f, fold to fold: CdA %.3f ±%.3f\n",
 			statedBicycle().RollingResistance, mean(drag), spread(drag))
-		fmt.Fprintf(&b, "fitted over the whole corpus: CdA %.3f, Crr %.3f\n", r.shipped.DragArea, r.shipped.RollingResistance)
+		if r.shippedOK {
+			fmt.Fprintf(&b, "fitted over the whole corpus: CdA %.3f, Crr %.3f\n",
+				r.shipped.DragArea, r.shipped.RollingResistance)
+		} else {
+			fmt.Fprintln(&b, "fitted over the whole corpus: unavailable (the fit collapsed to its search bound)")
+		}
 	}
 
 	if scores := r.rides["cda"]; len(scores) > 0 {
@@ -1029,7 +1035,7 @@ func study(
 	}
 	shipped, _, shipOK := FitDragArea(statedBicycle().RollingResistance, whole)
 	if shipOK {
-		result.shipped = shipped
+		result.shipped, result.shippedOK = shipped, true
 	}
 
 	if checkYear > 0 {

@@ -260,3 +260,19 @@ func TestMeanHeartRateOverTrackRefusesNoHeartRateOverTheTrack(t *testing.T) {
 
 	assert.False(t, ok)
 }
+
+// The regression: a whole-corpus fit that came back unavailable must read as
+// unavailable, not as a fitted CdA of 0.000 -- the report's own zero value
+// for a coefficient the fit never actually produced.
+func TestReportStringMarksAnUnavailableWholeCorpusFit(t *testing.T) {
+	t.Parallel()
+	r := report{
+		fitted:    map[string][]measure.Coefficients{"cda": {{DragArea: 0.40, RollingResistance: 0.008}}},
+		shippedOK: false,
+	}
+
+	out := r.String()
+
+	assert.Contains(t, out, "unavailable")
+	assert.NotContains(t, out, "CdA 0.000")
+}
