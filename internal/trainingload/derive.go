@@ -98,6 +98,10 @@ func Derive(heartRate, power []Sample, movingSeconds float64, movingIntervals []
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
 	if coverage, ok := HeartRateCoverage(heartRate, movingSeconds, movingIntervals); ok && coverage < MinSeriesCoverage {
+		// Zones is cleared alongside its flag: LoadOf reads it unconditionally,
+		// and a populated-but-disowned value would still reach Timeline and
+		// ZonesByWeek as if this ride's coverage had been enough.
+		metrics.Zones = Zones{}
 		metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
 	}
 	if coverage, ok := SeriesCoverage(power, movingSeconds, movingIntervals); ok && coverage < MinSeriesCoverage {

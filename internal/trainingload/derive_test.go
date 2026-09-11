@@ -341,6 +341,7 @@ func TestDeriveWithholdsTheHeartRateFiguresBelowMinSeriesCoverage(t *testing.T) 
 
 	partial := trainingload.Derive(steady(600, 150), steady(3601, 200), 3600, nil, inputs)
 	assert.False(t, partial.HasZones, "the strap held for a fifth of the ride's moving time")
+	assert.Zero(t, partial.Zones, "LoadOf reads Zones unconditionally, so a withheld ride must carry none")
 	assert.False(t, partial.HasTRIMP)
 	assert.False(t, partial.HasHeartRateTSS)
 	assert.True(t, partial.HasPower, "the meter's own coverage is unaffected by the strap's")
