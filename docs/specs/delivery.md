@@ -40,7 +40,7 @@ The repository provides these stable tasks:
 | `mise run dev-setup` | Snapshots the deployed state into an isolated development environment. |
 | `mise run dev-api` | Serves the API against that snapshot on `:8081`. |
 | `mise run container-smoke` | Starts the production image under the documented deployment runtime and asserts the runtime contract. Takes an image; builds none. |
-| `mise run quick` | Runs the routine local loop: every check in `mise run check` except the six it defers. |
+| `mise run quick` | Runs the routine local loop: every check in `mise run check` except the checks it defers, listed below. |
 | `mise run check` | Runs the full gate locally, on demand. |
 | `mise run coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
 | `mise run patch-coverage` | Measures both, then judges what the change adds the way the merge gate will, failing on a Go shortfall. |
@@ -50,8 +50,7 @@ tests, the same tests under the race detector, TypeScript type checking, the
 browser UI lint and test suites, the
 browser suite, Go module verification, vulnerability analysis for both Go and
 npm dependencies, a GitHub Actions workflow check, a shell-script check, a
-worktree secret scan, a commit-hook cost check, a task-definition check, a
-local-gate structure check, and the release-target binary compilation for the
+task-definition check, and the release-target binary compilation for the
 published architecture. `mise run fmt` applies Go formatting. A fixing `prek`
 hook exits non-zero after a safe mechanical repair so the resulting change can
 be reviewed and staged deliberately.
@@ -65,14 +64,14 @@ is removed from that gate, relaxed in it, or made optional in it.
 Local validation learns a result earlier, and comes at two depths:
 
 - `mise run quick` is the routine loop, and the expected gate before a
-  hand-over. It runs everything the full gate runs except the six checks named
+  hand-over. It runs everything the full gate runs except the checks named
   below.
 - `mise run check` is the full gate on demand. Reach for it when one of those
-  six checks is specifically implicated by the change in hand, not as a routine
-  step before pushing; each of them runs on every pull request.
+  is specifically implicated by the change in hand, not as a routine step
+  before pushing; each of them runs on every pull request.
 
-`mise run quick` defers exactly six checks, each of them slow or dependent on
-the network:
+`mise run quick` defers these checks, each of them slow or dependent on the
+network:
 
 | Deferred check | Cost |
 | --- | --- |
@@ -82,43 +81,40 @@ the network:
 | `ui-audit` | Needs the network and a current npm advisory database. |
 | `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
 | `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and requires the download above. |
+| `ui-storybook-test` | Runs every component's interaction test in that same browser. |
+| `ui-storybook-sweep` | Opens every story and docs page in a built Storybook, in that same browser. |
 
 One task installs the browser UI dependency tree, and every check that reads
 it waits for that task rather than installing anything itself. It reinstalls
 from the lockfile when the lockfile has moved or the tree is gone, and does
 nothing otherwise.
 
-That `mise run quick` is a strict subset of `mise run check`, and that the
-difference is exactly the deferred set above, is asserted. A check added to the
-full gate fails the assertion until it is either added to the routine loop or
-deferred deliberately. The routine loop may be narrower than the gate, never
-different from it. The assertion reads the declared task graph from
-`mise tasks ls --json`, which resolves every dependency without running
-anything, so it costs milliseconds and needs no network.
-
-The assertion also constrains the form the gate is written in. Every step of a
-gate task is a task of its own, named in `depends` or `depends_post`, and the
-gate task runs no command itself; the shape is checked first. Those two are the
-whole of membership. `wait_for` orders tasks that already run and never
-schedules one, so it cannot add a step.
+`mise run quick` is a strict subset of `mise run check` by convention, kept
+that way by hand: the routine loop should be narrower than the gate, never
+different from it, but nothing currently re-derives one from the other or
+fails a check that drifts.
 
 The three depths compose: the commit hook judges the staged files in about a
 second, `mise run quick` judges the working tree, and GitHub Actions judges the
-merge. Each is a strict subset of the one after it.
+merge. Each is meant to be a strict subset of the one after it.
 
 `prek` owns fast repository hygiene: whitespace and end-of-file checks,
 private-key and accidental-large-file checks, YAML, TOML, and Markdown
-validation where applicable, and Go formatting. Developers may install the
-`prek` hook, but the hook is a convenience rather than a substitute for
-`mise run check`. The project uses `prek`, never `pre-commit`.
+validation where applicable, Go and UI formatting, and a staged-diff secret
+scan (`gitleaks protect --staged`). Developers may install the `prek` hook,
+but the hook is a convenience rather than a substitute for `mise run check`.
+The project uses `prek`, never `pre-commit`.
 
 The installed hook is bounded by what it may do. A hook that runs a command
 takes its file list from `prek`, so a commit is judged on what it stages and not
 on the rest of the tree; the same configuration under `prek run --all-files`
-covers the repository. Tests, full linting, audits, cross-compilation, image
-work, and the browser suites stay out of the hook and belong to
-`mise run check` and GitHub Actions. Both properties are asserted. Wall-clock is
-not asserted.
+covers the repository with the staged files list widened to every tracked
+file. The secret scan is the one hook that ignores its file list regardless —
+it always reads the staged diff directly, so `prek run --all-files` runs the
+identical check, not a wider one; nothing here scans committed history or an
+unstaged working-tree change. Tests, full linting, audits, cross-compilation,
+image work, and the browser suites stay out of the hook and belong to
+`mise run check` and GitHub Actions.
 
 ### A local check may skip work its inputs have not changed
 
@@ -133,19 +129,18 @@ Three rules decide which checks may be skipped:
 - A check qualifies only when its verdict is a function of the files it names.
   `vulncheck` and `ui-audit` read an advisory database that moves without the
   tree, so an unchanged tree can still be newly vulnerable and they always run.
-- Its inputs must be nameable. `hygiene` and `secret-scan` read the whole
-  worktree, and a source list that broad is likelier to be wrong than those runs
-  are to be slow.
+- Its inputs must be nameable. `hygiene` reads the whole worktree, and a source
+  list that broad is likelier to be wrong than the run is to be slow.
 - A glob names a kind of file rather than the directories that hold it today —
   `**/*.go`, not a list of packages. A source list that misses a new file is a
   check that stops noticing it.
 
-Four properties make skipping safe. A task that failed is never recorded as up
+Three properties make skipping safe. A task that failed is never recorded as up
 to date, so a red check cannot be cached green. Editing a task's own definition
-invalidates it, so a check cannot change what it does and stay up to date. A
-glob matching no file would be up to date forever, so `gate-check` fails on one.
-The mechanism only removes work from a local run; the merge gate does not use
-it.
+invalidates it, so a check cannot change what it does and stay up to date. The
+mechanism only removes work from a local run; the merge gate does not use it. A
+`sources` glob matching no tracked file would be up to date forever regardless —
+worth checking by hand when adding one.
 
 ## Coverage
 
@@ -495,8 +490,10 @@ all, holds the merge. That makes it a gate rather than only a report, and it is
 not the control. The committed fixtures, logs, examples, and test data must
 themselves contain no credentials or personal routes; a scanner is pattern
 matching over what was written and cannot be relied on to notice a secret it has
-no pattern for. Repository-native secret scanning stays enabled alongside it as
-defence in depth.
+no pattern for. Repository-native scanning (`gitleaks`) runs at commit time
+against the staged diff instead of in this workflow — a bypassed hook
+(`--no-verify`), an uninstalled one, or history from before the hook existed
+has no second, repository-native check behind the required one above.
 
 No GitHub Actions workflow invokes the live VeloPlanner account, authorises a
 Wahoo account, uploads a route, or sends a Pushover notification. Sandbox FIT

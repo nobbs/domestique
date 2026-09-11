@@ -22,15 +22,15 @@ rather than convenient: there is no Makefile and no other entry point. Install
 it from [mise.jdx.dev](https://mise.jdx.dev) first; `mise tasks` then lists
 everything this repository offers.
 
-`mise run quick` runs everything the full gate runs except six checks it defers
-— `build-check`, `test-race`, `vulncheck`, `ui-audit`, `ui-browser-install` and
-`ui-browser-test` — so it stays worth running on every iteration and is not
+`mise run quick` runs everything the full gate runs except the checks it
+defers — `build-check`, `test-race`, `vulncheck`, `ui-audit`,
+`ui-browser-install`, `ui-browser-test`, `ui-storybook-test` and
+`ui-storybook-sweep` — so it stays worth running on every iteration and is not
 itself a full gate. Run the full gate yourself with `mise run check` when a
-change implicates one of the six: the release build, concurrent code, a
+change implicates one of those: the release build, concurrent code, a
 dependency, or the browser suite.
 [The delivery specification](docs/specs/delivery.md#the-authoritative-gate-is-github-actions)
-says why each is deferred, and how the difference is asserted rather than only
-documented.
+says why each is deferred.
 
 `mise run test-race` is the one to reach for after touching anything concurrent
 — the sync service and its reporter, the Wahoo client, the Access verifier, or
@@ -69,13 +69,14 @@ hook silently falls back to whatever `prek` is on your `PATH`.
 `mise run fmt` applies Go formatting. The Git hook may also make safe whitespace
 repairs and exits non-zero so they can be reviewed and staged deliberately.
 
-The hook judges a commit on the files it stages: Go formatting and Markdown lint
-see the staged files alone, so a commit never fails on a defect in a file it did
-not touch. It deliberately runs no tests, no full linting, no audit, no
-cross-compilation, no image build, and no browser suite — that work belongs to
-`mise run check` and to GitHub Actions, and `mise run hook-check` fails if it
-appears in `prek.toml`. Keeping the hook to roughly a second is what keeps it
-worth leaving installed.
+The hook judges a commit on the files it stages: Go formatting, UI formatting,
+and Markdown lint see the staged files alone, and the secret scan sees the
+staged diff, so a commit never fails on a defect in a file it did not touch.
+It deliberately runs
+no tests, no full linting, no full-tree audit, no cross-compilation, no image
+build, and no browser suite — that work belongs to `mise run check` and to
+GitHub Actions. Keeping the hook to roughly a second is what keeps it worth
+leaving installed.
 
 ## Coverage
 

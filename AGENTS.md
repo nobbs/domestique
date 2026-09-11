@@ -24,6 +24,7 @@ Toolchain pinned in [`.mise.toml`](.mise.toml); every command is a Mise task in
 | Patch coverage (before first push) | `mise run patch-coverage` |
 | Race detector (after concurrent changes) | `mise run test-race` |
 | Go format | `mise run fmt` |
+| UI format and autofix | `mise run ui-format` |
 | Unit coverage profiles | `mise run coverage` |
 | UI unit tests (jsdom) | `mise run ui-test` |
 | UI browser tests (Playwright) | `mise run ui-browser-test` |
@@ -41,9 +42,10 @@ mise run -q quick > .local/quick.log 2>&1 && echo OK || tail -40 .local/quick.lo
 - **GitHub Actions is the authoritative gate.** Local runs buy an earlier
   answer, not a different one.
 - **`quick` is not a full gate.** It defers `build-check`, `test-race`,
-  `vulncheck`, `ui-audit`, `ui-browser-install`, `ui-browser-test`. Run
-  `check` when a change implicates the release build, concurrent code, a
-  dependency, or the browser suite ([why](docs/specs/delivery.md)).
+  `vulncheck`, `ui-audit`, `ui-browser-install`, `ui-browser-test`,
+  `ui-storybook-test`, `ui-storybook-sweep`. Run `check` when a change
+  implicates the release build, concurrent code, a dependency, or the
+  browser suite ([why](docs/specs/delivery.md)).
 - **Report honestly.** Run `quick` before declaring work complete and say
   which checks you ran; never present a green `quick` as a full gate.
 - **`patch-coverage` before the first push.** CI's `patch/go` status blocks
