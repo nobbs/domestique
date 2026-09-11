@@ -424,6 +424,54 @@ func TestActivityRideSamplesDropsASpeedReadingAboveTheCeiling(t *testing.T) {
 	assert.InDelta(t, 43.2, averages.MaxSpeedKmh, 1e-9, "the peak of what remains")
 }
 
+// The regression: an odometer reset makes one step invalid (distance goes
+// backwards), and the segment before it must not bridge across the reset into
+// the segment after -- even though the two segments' own edges sit well
+// within the ordinary gap tolerance.
+func TestActivityRideSamplesTreatsAnInvalidOdometerStepAsASegmentBoundary(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), DistanceMetres: 10, HasDistance: true},
+			// The reset: distance drops, so this step is invalid.
+			{Time: activityNow().Add(2 * time.Second), DistanceMetres: 5, HasDistance: true},
+			{Time: activityNow().Add(3 * time.Second), DistanceMetres: 15, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.MovingIntervals, 2, "two segments, not one bridged across the reset")
+	assert.Equal(t,
+		measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, samples.MovingIntervals[0])
+	assert.Equal(t,
+		measure.Interval{Start: activityNow().Add(2 * time.Second), End: activityNow().Add(3 * time.Second)},
+		samples.MovingIntervals[1])
+}
+
+// The regression: a device-speed spike above the ceiling must not mark its
+// own surrounding step moving before it is dropped from the series that
+// coverage is judged against.
+func TestActivityRideSamplesBuildsMovingIntervalsFromCappedSpeedNotRaw(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), SpeedMS: 5, HasSpeed: true},                      // 18 km/h, real
+			{Time: activityNow().Add(time.Second), SpeedMS: 200, HasSpeed: true},   // above the ceiling
+			{Time: activityNow().Add(2 * time.Second), SpeedMS: 0, HasSpeed: true}, // stopped
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 2, "the spike is dropped")
+	assert.Empty(t, samples.MovingIntervals,
+		"the spike's own step must not read as moving once the spike itself is gone")
+}
+
 // A ride with no readable records has no speed series at all.
 func TestActivityRideSamplesHasNoSpeedWithoutRecords(t *testing.T) {
 	t.Parallel()

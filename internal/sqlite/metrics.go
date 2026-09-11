@@ -136,22 +136,49 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 	}
 	var samples []trainingload.Sample
 	if hasDeviceSpeed {
-		everPositive := false
 		for index := range rows {
 			row := &rows[index]
 			if !row.SpeedMs.Valid {
 				continue
 			}
-			kmh := row.SpeedMs.Float64 * 3.6
-			everPositive = everPositive || kmh > 0
-			samples = append(samples, trainingload.Sample{At: time.Unix(row.RecordedAtUnix, 0).UTC(), Value: kmh})
+			samples = append(samples, trainingload.Sample{
+				At: time.Unix(row.RecordedAtUnix, 0).UTC(), Value: row.SpeedMs.Float64 * 3.6,
+			})
+		}
+		// Capped before the interval and coverage checks read it: a spike
+		// capSpeedSamples would otherwise discard must not still mark its
+		// own interval moving, or a strap live only through it would read as
+		// covered by data the service never serves.
+		samples = capSpeedSamples(samples)
+		everPositive := false
+		for _, sample := range samples {
+			if sample.Value > 0 {
+				everPositive = true
+
+				break
+			}
 		}
 		if everPositive {
 			moving = measure.MovingIntervalsFromInstantaneous(samples)
 		}
 	} else {
 		var previous activity.DistanceStep
+		var segment []trainingload.Sample
 		anchored := false
+		// flush closes the segment built so far: an invalid step (the
+		// odometer went backwards, say) must end it here rather than let the
+		// next valid step's own anchor read as adjacent to whatever came
+		// before the gap. Each segment's moving intervals are built and
+		// capped on its own, never bridged across another segment's.
+		flush := func() {
+			if len(segment) > 0 {
+				capped := capSpeedSamples(segment)
+				moving = append(moving, measure.MovingIntervals(capped)...)
+				samples = append(samples, capped...)
+				segment = nil
+			}
+			anchored = false
+		}
 		for index := range rows {
 			row := &rows[index]
 			current := activity.DistanceStep{
@@ -167,18 +194,23 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 						// (measure.MovingIntervals) never sees this first
 						// step at all. One anchor, at the step's start with
 						// its own rate, gives it a start to pair from.
-						samples = append(samples, trainingload.Sample{At: previous.At, Value: kmh})
+						segment = append(segment, trainingload.Sample{At: previous.At, Value: kmh})
 						anchored = true
 					}
-					samples = append(samples, trainingload.Sample{At: current.At, Value: kmh})
+					segment = append(segment, trainingload.Sample{At: current.At, Value: kmh})
+				} else {
+					flush()
 				}
 			}
 			previous = current
 		}
-		moving = measure.MovingIntervals(samples)
+		flush()
+		if moving == nil && len(samples) > 0 {
+			moving = []measure.Interval{}
+		}
 	}
 
-	return capSpeedSamples(samples), moving
+	return samples, moving
 }
 
 // capSpeedSamples drops every reading above measure.MaxPlausibleSpeedKmh: a
