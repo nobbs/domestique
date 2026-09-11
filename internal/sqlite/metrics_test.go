@@ -472,6 +472,52 @@ func TestActivityRideSamplesBuildsMovingIntervalsFromCappedSpeedNotRaw(t *testin
 		"the spike's own step must not read as moving once the spike itself is gone")
 }
 
+// The regression: dropping a spike from the middle of an otherwise-moving
+// run must not leave the readings either side of it adjacent. Both sit well
+// within the ordinary gap tolerance of each other, so without an explicit
+// break at the dropped reading they would still pair as one moving step.
+func TestActivityRideSamplesDoesNotBridgeADeviceSpikeDroppedMidRun(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), SpeedMS: 5.5, HasSpeed: true},                      // ~20 km/h, real
+			{Time: activityNow().Add(time.Second), SpeedMS: 200, HasSpeed: true},     // above the ceiling
+			{Time: activityNow().Add(2 * time.Second), SpeedMS: 5.5, HasSpeed: true}, // ~20 km/h, real
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 2, "the spike is dropped")
+	assert.Empty(t, samples.MovingIntervals,
+		"a single dropped reading either side of the spike, never enough on its own to pair into a step")
+}
+
+// The same regression on the odometer branch: an implausible derived rate in
+// the middle of an otherwise-valid segment must break it there, not leave the
+// valid readings either side of it to pair across the gap it leaves behind.
+func TestActivityRideSamplesDoesNotBridgeAnOdometerSpikeDroppedMidSegment(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), DistanceMetres: 10, HasDistance: true},
+			// A 10km jump in one second: still an increase, so not an invalid
+			// step, but far above the plausible ceiling.
+			{Time: activityNow().Add(2 * time.Second), DistanceMetres: 10010, HasDistance: true},
+			{Time: activityNow().Add(3 * time.Second), DistanceMetres: 10020, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.MovingIntervals, 1, "only the run before the dropped spike, never bridged past it")
+	assert.Equal(t,
+		measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, samples.MovingIntervals[0])
+}
+
 // A ride with no readable records has no speed series at all.
 func TestActivityRideSamplesHasNoSpeedWithoutRecords(t *testing.T) {
 	t.Parallel()

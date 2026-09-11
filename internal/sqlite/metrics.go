@@ -145,21 +145,24 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 				At: time.Unix(row.RecordedAtUnix, 0).UTC(), Value: row.SpeedMs.Float64 * 3.6,
 			})
 		}
-		// Capped before the interval and coverage checks read it: a spike
-		// capSpeedSamples would otherwise discard must not still mark its
-		// own interval moving, or a strap live only through it would read as
-		// covered by data the service never serves.
-		samples = capSpeedSamples(samples)
 		everPositive := false
 		for _, sample := range samples {
-			if sample.Value > 0 {
+			if sample.Value > 0 && sample.Value <= measure.MaxPlausibleSpeedKmh {
 				everPositive = true
 
 				break
 			}
 		}
 		if everPositive {
-			moving = measure.MovingIntervalsFromInstantaneous(samples)
+			// Each run breaks at a reading above the ceiling, the same way a
+			// heart-rate run breaks at a nought: the two readings either side
+			// of a dropped spike must not pair as one adjacent step.
+			for _, run := range speedRuns(samples) {
+				moving = append(moving, measure.MovingIntervalsFromInstantaneous(run)...)
+			}
+			if moving == nil {
+				moving = []measure.Interval{}
+			}
 		}
 	} else {
 		var previous activity.DistanceStep
@@ -168,15 +171,14 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 		// flush closes the segment built so far: an invalid step (the
 		// odometer went backwards, say) must end it here rather than let the
 		// next valid step's own anchor read as adjacent to whatever came
-		// before the gap. Each segment's moving intervals are built and
-		// capped on its own, never bridged across another segment's.
+		// before the gap. speedRuns further breaks it at any reading above
+		// the ceiling, so a dropped spike cannot be bridged either.
 		flush := func() {
-			if len(segment) > 0 {
-				capped := capSpeedSamples(segment)
-				moving = append(moving, measure.MovingIntervals(capped)...)
-				samples = append(samples, capped...)
-				segment = nil
+			samples = append(samples, segment...)
+			for _, run := range speedRuns(segment) {
+				moving = append(moving, measure.MovingIntervals(run)...)
 			}
+			segment = nil
 			anchored = false
 		}
 		for index := range rows {
@@ -210,7 +212,34 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 		}
 	}
 
-	return samples, moving
+	return capSpeedSamples(samples), moving
+}
+
+// speedRuns splits samples into contiguous runs of readings at or under
+// measure.MaxPlausibleSpeedKmh: a reading above it is a data fault, and must
+// break the run there rather than let measure.MovingIntervals bridge across
+// it as an ordinary recording gap would.
+func speedRuns(samples []trainingload.Sample) [][]trainingload.Sample {
+	var runs [][]trainingload.Sample
+	start := -1
+	for index, sample := range samples {
+		if sample.Value <= measure.MaxPlausibleSpeedKmh {
+			if start == -1 {
+				start = index
+			}
+
+			continue
+		}
+		if start != -1 {
+			runs = append(runs, samples[start:index])
+			start = -1
+		}
+	}
+	if start != -1 {
+		runs = append(runs, samples[start:])
+	}
+
+	return runs
 }
 
 // capSpeedSamples drops every reading above measure.MaxPlausibleSpeedKmh: a
