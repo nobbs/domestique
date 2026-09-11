@@ -133,3 +133,58 @@ func TestGradeWindowMetresRequires(t *testing.T) {
 	require.Len(t, gwmFlat(2, 7.5), 2, "sanity: the fixture is as short as the caller intends")
 	assert.InDelta(t, minWindowMetres, gradeWindowMetres(gwmFlat(2, 7.5)), 0.001)
 }
+
+// The regression: a mid-stretch sample with no window speed of its own -- a
+// duplicate timestamp or a backward-distance glitch, say -- must be skipped
+// rather than treated as a stopping point, so an older valid speed still
+// within the same stretch is found instead of reading as no acceleration.
+func TestAccelerationAtSkipsAGlitchedSampleRatherThanStoppingAtIt(t *testing.T) {
+	t.Parallel()
+	const n = 13
+	samples := make([]Sample, n)
+	times := make([]time.Time, n)
+	for index := range samples {
+		samples[index] = Sample{At: gwmStart().Add(time.Duration(index) * time.Second)}
+		times[index] = samples[index].At
+	}
+	bounds := Stretches(times, DefaultMaxGap)
+
+	speeds := make([]float64, n)
+	speedKnown := make([]bool, n)
+	speeds[1], speedKnown[1] = 5.0, true
+	speeds[12] = 15.0
+	// Indices 2..11 carry no window speed of their own: the glitch this
+	// regression is about.
+
+	acceleration := accelerationAt(samples, speeds, speedKnown, 12, bounds)
+
+	assert.InDelta(t, (15.0-5.0)/11.0, acceleration, 1e-9)
+}
+
+// The stretch boundary itself still stops the search: a sample from before a
+// real recording gap may never serve as the baseline.
+func TestAccelerationAtStopsAtTheStretchBoundary(t *testing.T) {
+	t.Parallel()
+	samples := []Sample{
+		{At: gwmStart()},
+		{At: gwmStart().Add(DefaultMaxGap + time.Second)}, // a fresh stretch starts here
+	}
+	for index := 2; index < 13; index++ {
+		samples = append(samples, Sample{At: samples[1].At.Add(time.Duration(index-1) * time.Second)})
+	}
+	times := make([]time.Time, len(samples))
+	for index := range samples {
+		times[index] = samples[index].At
+	}
+	bounds := Stretches(times, DefaultMaxGap)
+
+	speeds := make([]float64, len(samples))
+	speedKnown := make([]bool, len(samples))
+	speeds[0], speedKnown[0] = 5.0, true // the earlier stretch, must never be read
+	last := len(samples) - 1
+	speeds[last] = 15.0
+
+	acceleration := accelerationAt(samples, speeds, speedKnown, last, bounds)
+
+	assert.Zero(t, acceleration, "index 0 sits in an earlier stretch and must not be used")
+}

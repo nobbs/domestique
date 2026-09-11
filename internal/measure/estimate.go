@@ -170,7 +170,7 @@ func estimateSeries(samples []Sample, totalMassKG float64, coefficients Coeffici
 		}
 		speed := run / span
 		speeds[index], speedKnown[index] = speed, true
-		acceleration := accelerationAt(samples, speeds, speedKnown, index)
+		acceleration := accelerationAt(samples, speeds, speedKnown, index, bounds)
 		// Physics, not the numerical clamp below: no pedalling reads no power,
 		// checked before the clamp has any say.
 		if samples[index].HasCadence && samples[index].CadenceRPM == 0 {
@@ -194,13 +194,15 @@ func estimateSeries(samples []Sample, totalMassKG float64, coefficients Coeffici
 
 // accelerationAt differentiates the window speed at index against the first
 // sample at least accelerationBaseline behind it, and reports nought where the
-// recording does not reach back that far. A stretch's own opening sample
-// carries no speed, so the walk stops at a pause without being told where one
-// is: the opening of a stretch has no baseline, the same way it has no speed.
-func accelerationAt(samples []Sample, speeds []float64, speedKnown []bool, index int) float64 {
-	for back := index - 1; back >= 0; back-- {
+// recording does not reach back that far. A sample with no window speed of
+// its own -- a duplicate timestamp, a backward-distance glitch, the stretch's
+// own opening sample -- is skipped rather than treated as the baseline; the
+// walk stops only at the stretch's own start, the actual recording gap
+// bounds[index] already names for this sample.
+func accelerationAt(samples []Sample, speeds []float64, speedKnown []bool, index int, bounds []Stretch) float64 {
+	for back := index - 1; back >= bounds[index].First; back-- {
 		if !speedKnown[back] {
-			return 0
+			continue
 		}
 		if elapsed := samples[index].At.Sub(samples[back].At); elapsed >= accelerationBaseline {
 			return (speeds[index] - speeds[back]) / elapsed.Seconds()
