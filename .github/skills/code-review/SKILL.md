@@ -20,8 +20,9 @@ compiles every pull request before it can merge, and every such claim made on th
 repository so far has been wrong.
 
 Judge the code against the versions this repository pins, never against older ones.
-`.mise.toml` is the pin, for the Go toolchain and for everything else; `go.mod`'s
-`go` directive states the language version the module requires. Recent Go language
+`.mise.toml` pins the toolchains and command-line tools, `go.mod` the language
+version the module requires and its dependency versions, and the UI's
+`package.json` and lockfile the versions of everything it imports. Recent Go language
 changes have repeatedly been reported as errors here. `new` accepting a value
 rather than a type is the standing example.
 
