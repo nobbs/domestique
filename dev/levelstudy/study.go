@@ -901,6 +901,7 @@ func study(
 	}
 	massCache := map[string]float64{}
 	bicycleCache := map[string]measure.Coefficients{}
+	maxHeartRateCache := map[string]float64{}
 	profile := measure.DefaultCoefficients()
 	if len(rides) > 0 {
 		for _, ride := range rides {
@@ -925,10 +926,18 @@ func study(
 		if massErr != nil {
 			return nil, massErr
 		}
-		// Raw, noughts included: the functions below split on a nought
+		maxHeartRate, maxHeartRateErr := maxHeartRateForTarget(ctx, store, ride.TargetID, maxHeartRateCache)
+		if maxHeartRateErr != nil {
+			return nil, maxHeartRateErr
+		}
+		// Capped at the rider's own maximum, the same as live derivation: a
+		// strap spike above it is a sensor fault, not a rider, and left raw
+		// could move the fitted bridge and the reported error. Noughts
+		// survive it unchanged -- CapHeartRate only touches readings above
+		// the ceiling -- so the functions below still split on a nought
 		// themselves where held duration is at stake, rather than having it
 		// stripped here and silently bridged across as continuously held.
-		heartRate := samples.HeartRate
+		heartRate := measure.CapHeartRate(samples.HeartRate, maxHeartRate)
 
 		if len(samples.Power) > 0 {
 			blocks := meteredBlocksOf(samples.Power, heartRate, samples.Cadence, block)
@@ -1146,4 +1155,30 @@ func massForTarget(
 	cache[targetID] = mass
 
 	return mass, nil
+}
+
+// maxHeartRateForTarget is one target's own configured maximum heart rate, or
+// zero where its rider has entered none: measure.CapHeartRate reads that as
+// no ceiling to cap against, the same as a rider who never set one sees live.
+func maxHeartRateForTarget(
+	ctx context.Context, store *sqlite.Store, targetID string, cache map[string]float64,
+) (float64, error) {
+	if cached, ok := cache[targetID]; ok {
+		return cached, nil
+	}
+	var maxHeartRate float64
+	subject, err := store.TargetOwner(ctx, targetID)
+	if err != nil {
+		return 0, fmt.Errorf("reading a target's owner: %w", err)
+	}
+	if subject != "" {
+		profile, profileErr := store.RiderProfile(ctx, subject)
+		if profileErr != nil {
+			return 0, fmt.Errorf("reading a rider profile: %w", profileErr)
+		}
+		maxHeartRate = profile.MaxHeartRateBPM.Number
+	}
+	cache[targetID] = maxHeartRate
+
+	return maxHeartRate, nil
 }
