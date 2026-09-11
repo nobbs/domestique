@@ -117,10 +117,25 @@ func TestSeriesCoverageIsPartialWhenTheSeriesDroppedOutPartway(t *testing.T) {
 	assert.InDelta(t, 599.0/3600, share, 1e-9)
 }
 
-func TestSeriesCoverageDoesNotCountAReadingOfNought(t *testing.T) {
+func TestDeriveWithholdsTheHeartRateFiguresOfAStrapThatWroteNought(t *testing.T) {
 	t.Parallel()
-	_, ok := trainingload.SeriesCoverage(steady(3600, 0), 3600)
-	assert.False(t, ok, "an unpaired strap writes nought for the whole ride")
+	inputs := trainingload.Inputs{
+		MaxHeartRateBPM: 190, RestingHeartRateBPM: 50,
+		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
+	}
+
+	unpaired := trainingload.Derive(steady(3601, 0), steady(3601, 200), 3600, inputs)
+	assert.False(t, unpaired.HasZones || unpaired.HasTRIMP || unpaired.HasHeartRateTSS,
+		"an unpaired strap writes nought for the whole ride")
+	assert.True(t, unpaired.HasPower)
+}
+
+// A meter's nought is a coast, not a dropout: it counts as a reading.
+func TestSeriesCoverageCountsAMetersNought(t *testing.T) {
+	t.Parallel()
+	share, ok := trainingload.SeriesCoverage(steady(3601, 0), 3600)
+	require.True(t, ok)
+	assert.InDelta(t, 1, share, 1e-9)
 }
 
 func TestSeriesCoverageIsUnknownForAnEmptySeries(t *testing.T) {

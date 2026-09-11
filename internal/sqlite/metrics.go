@@ -195,20 +195,25 @@ func (s *Store) StoreEstimatedPower(
 	queries := s.queries.WithTx(transaction)
 	// Cleared first, so a record that no longer yields an estimate does not keep
 	// the one it had from a mass the rider has since changed.
-	if clearErr := queries.ClearEstimatedPower(ctx, sqlcgen.ClearEstimatedPowerParams{
+	cleared, clearErr := queries.ClearEstimatedPower(ctx, sqlcgen.ClearEstimatedPowerParams{
 		TargetSlot: targetID, WorkoutID: id,
-	}); clearErr != nil {
+	})
+	if clearErr != nil {
 		return fmt.Errorf("clearing the estimated power: %w", clearErr)
 	}
-	if err := queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
-		TargetSlot: targetID, WorkoutID: id,
-	}); err != nil {
-		return fmt.Errorf("forgetting the climb attempts: %w", err)
-	}
-	if err := queries.DeleteActivityRouteMatch(ctx, sqlcgen.DeleteActivityRouteMatchParams{
-		TargetSlot: targetID, WorkoutID: id,
-	}); err != nil {
-		return fmt.Errorf("forgetting the route match: %w", err)
+	// A ride whose series neither was nor becomes anything keeps its match:
+	// a metered ride's climbs owe the estimate nothing.
+	if cleared > 0 || len(estimates) > 0 {
+		if err := queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
+			TargetSlot: targetID, WorkoutID: id,
+		}); err != nil {
+			return fmt.Errorf("forgetting the climb attempts: %w", err)
+		}
+		if err := queries.DeleteActivityRouteMatch(ctx, sqlcgen.DeleteActivityRouteMatchParams{
+			TargetSlot: targetID, WorkoutID: id,
+		}); err != nil {
+			return fmt.Errorf("forgetting the route match: %w", err)
+		}
 	}
 	// Prepared once for the whole ride, as the sample insert is: a long ride is
 	// thousands of these, and preparing each one costs more than running it.

@@ -28,24 +28,28 @@ const MinSeriesCoverage = 0.90
 // over, against the ride's own moving time rather than its elapsed one, so a
 // stop with the sensor detached does not count against it. Capped at 1: a
 // series held for the whole elapsed ride, stops included, still covers the
-// moving time in full. False for a series with nothing to hold at all. A
-// reading of nought is no reading: an unpaired strap writes nought.
+// moving time in full. False for a series with nothing to hold at all.
 func SeriesCoverage(samples []Sample, movingSeconds float64) (share float64, ok bool) {
-	if movingSeconds <= 0 {
+	if movingSeconds <= 0 || len(samples) == 0 {
 		return 0, false
 	}
+	_, held := measure.MeanHeld(samples, measure.DefaultMaxGap)
+
+	return min(max(held, 0)/movingSeconds, 1), true
+}
+
+// HeartRateReadings is a heart-rate series without the readings a strap never
+// took: an unpaired strap writes nought, and nought is no heart rate. A power
+// meter's nought is a reading, so this is for the strap alone.
+func HeartRateReadings(samples []Sample) []Sample {
 	present := make([]Sample, 0, len(samples))
 	for _, sample := range samples {
 		if sample.Value > 0 {
 			present = append(present, sample)
 		}
 	}
-	_, held := measure.MeanHeld(present, measure.DefaultMaxGap)
-	if held <= 0 {
-		return 0, false
-	}
 
-	return min(held/movingSeconds, 1), true
+	return present
 }
 
 // TRIMP is Banister's training impulse: how long the ride lasted, weighted by

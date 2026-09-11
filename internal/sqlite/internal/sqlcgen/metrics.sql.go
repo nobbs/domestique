@@ -26,9 +26,9 @@ func (q *Queries) ClearActivityMetrics(ctx context.Context, targetSlot string) (
 	return result.RowsAffected()
 }
 
-const clearEstimatedPower = `-- name: ClearEstimatedPower :exec
+const clearEstimatedPower = `-- name: ClearEstimatedPower :execrows
 UPDATE activity_records SET estimated_power_watts = NULL
-WHERE target_slot = ? AND workout_id = ?
+WHERE target_slot = ? AND workout_id = ? AND estimated_power_watts IS NOT NULL
 `
 
 type ClearEstimatedPowerParams struct {
@@ -36,9 +36,12 @@ type ClearEstimatedPowerParams struct {
 	WorkoutID  int64
 }
 
-func (q *Queries) ClearEstimatedPower(ctx context.Context, arg ClearEstimatedPowerParams) error {
-	_, err := q.db.ExecContext(ctx, clearEstimatedPower, arg.TargetSlot, arg.WorkoutID)
-	return err
+func (q *Queries) ClearEstimatedPower(ctx context.Context, arg ClearEstimatedPowerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearEstimatedPower, arg.TargetSlot, arg.WorkoutID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteActivityMetrics = `-- name: DeleteActivityMetrics :exec

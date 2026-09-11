@@ -115,9 +115,9 @@ ORDER BY record_index;
 -- name: GetTargetOwner :one
 SELECT COALESCE(owner_subject, '') AS owner_subject FROM targets WHERE slot = ?;
 
--- name: ClearEstimatedPower :exec
+-- name: ClearEstimatedPower :execrows
 UPDATE activity_records SET estimated_power_watts = NULL
-WHERE target_slot = ? AND workout_id = ?;
+WHERE target_slot = ? AND workout_id = ? AND estimated_power_watts IS NOT NULL;
 
 -- Every derived ride of one target with the day it was ridden, which the
 -- fitness timeline is a fold over. Ordered so a fold reads it once.

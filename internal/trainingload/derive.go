@@ -86,7 +86,14 @@ func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Met
 	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
-	if coverage, ok := SeriesCoverage(heartRate, movingSeconds); ok && coverage < MinSeriesCoverage {
+	// A strap that wrote nought throughout covered nothing, and is judged so
+	// rather than left unjudged as a series with no readings would be.
+	strap := HeartRateReadings(heartRate)
+	if len(strap) == 0 {
+		strap = heartRate[:0]
+	}
+	if coverage, ok := SeriesCoverage(strap, movingSeconds); (ok && coverage < MinSeriesCoverage) ||
+		(!ok && len(heartRate) > 0 && movingSeconds > 0) {
 		metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
 	}
 	if coverage, ok := SeriesCoverage(power, movingSeconds); ok && coverage < MinSeriesCoverage {

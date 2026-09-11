@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/wahoo"
 	"github.com/stretchr/testify/assert"
@@ -59,8 +60,13 @@ func TestStoreEstimatedPowerForgetsTheRideRouteMatch(t *testing.T) {
 	), "StoreActivityRouteMatch()")
 
 	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 11, nil, nil), "StoreEstimatedPower()")
-
 	matches, err := store.ActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityRouteMatches()")
+	assert.Contains(t, matches, int64(11), "a ride that never had a series keeps its match")
+
+	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 11,
+		[]int64{0}, []measure.Estimate{{Watts: 150, Known: true}}), "StoreEstimatedPower()")
+	matches, err = store.ActivityRouteMatches(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityRouteMatches()")
 	assert.NotContains(t, matches, int64(11), "a new series needs its climb attempts read again")
 }
