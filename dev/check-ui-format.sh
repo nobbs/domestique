@@ -5,10 +5,14 @@ set -eu
 # repo-root-relative prefix prek supplies from each staged path.
 cd "$(dirname "$0")/../internal/webui/app"
 
-stripped=
-for f in "$@"; do
-	stripped="$stripped ${f#internal/webui/app/}"
+# Rebuilds "$@" prefix-stripped, one quoted argument at a time: a POSIX shell
+# has no arrays, and an unquoted rebuild would word-split or glob-expand a path.
+count=$#
+while [ "$count" -gt 0 ]; do
+	stripped="${1#internal/webui/app/}"
+	shift
+	set -- "$@" "$stripped"
+	count=$((count - 1))
 done
 
-# shellcheck disable=SC2086 # word-splitting is the point: rebuilding args.
-exec ./node_modules/.bin/biome format $stripped
+exec ./node_modules/.bin/biome format "$@"

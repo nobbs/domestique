@@ -634,8 +634,8 @@ jobs:
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
       needs.changes.outputs.image == 'true'
 
-    # Keyed by commit: two pushes in quick succession must not publish in
-    # parallel, where the older one could land last.
+    # Keyed by branch, not commit: two pushes to it in quick succession must
+    # not publish in parallel, where the older one could land last.
     concurrency:
       group: publish-${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
