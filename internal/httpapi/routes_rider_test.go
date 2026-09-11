@@ -207,6 +207,10 @@ func TestSetRiderProfileRefusesAValueOutsideItsRange(t *testing.T) {
 		"a heart rate no heart reaches": `{"maxHeartRateBpm": 400}`,
 		"a rider of no mass":            `{"riderMassKg": 0}`,
 		"a field this section has not":  `{"vo2Max": 60}`,
+		"a drag area below a bicycle's": `{"dragAreaM2": 0.05}`,
+		"a drag area no rider presents": `{"dragAreaM2": 2}`,
+		"tyres that roll for free":      `{"rollingResistance": 0.001}`,
+		"tyres of sand":                 `{"rollingResistance": 0.05}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			response := httptest.NewRecorder()

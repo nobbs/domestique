@@ -250,19 +250,19 @@ func fitBridge(rides []meteredRide, window int) (bridge, bool) {
 // shared slope, never the ride on that date itself. A median so one race or
 // one unpaired strap moves nothing.
 func (b bridge) wattsAt(at time.Time, heartRateBPM float64) float64 {
-	end := sort.Search(len(b.levels), func(i int) bool { return !b.levels[i].at.Before(at) })
-	start := max(end-b.window, 0)
-	if end < b.window {
-		// Too early for a window of its own: read the first window's rides,
-		// less the one being scored where it is among them.
-		end = min(b.window+1, len(b.levels))
+	// The window rides strictly before at, or the first window rides where
+	// at comes before them; the ride on that date itself is never among them.
+	before := sort.Search(len(b.levels), func(i int) bool { return !b.levels[i].at.Before(at) })
+	start, limit := max(before-b.window, 0), before
+	if before < b.window {
+		start, limit = 0, len(b.levels)
 	}
-	intercepts := make([]float64, 0, end-start)
-	for _, level := range b.levels[start:end] {
-		if level.at.Equal(at) {
+	intercepts := make([]float64, 0, b.window)
+	for index := start; index < limit && len(intercepts) < b.window; index++ {
+		if b.levels[index].at.Equal(at) {
 			continue
 		}
-		intercepts = append(intercepts, level.watts-b.wattsPerBPM*level.heartRate)
+		intercepts = append(intercepts, b.levels[index].watts-b.wattsPerBPM*b.levels[index].heartRate)
 	}
 	if len(intercepts) == 0 {
 		return 0

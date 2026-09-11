@@ -39,7 +39,7 @@ func main() {
 	window := flag.Int("window", 30, "how many metered rides before a road ride its bridge level is the median of")
 	checkYear := flag.Int("check-year", 0, "hold the fitted model against the meter on that year's metered rides (0: skip)")
 	mass := flag.Float64("mass", 0, "total system mass in kg, used for a target with no rider profile")
-	target := flag.String("target", "", "restrict recorded rides to one target slot (default: every target)")
+	target := flag.String("target", "", "the target slot to read rides from; required where the database holds several")
 	flag.Parse()
 
 	if err := run(*database, *minSamples, *block, *folds, *window, *checkYear, *mass, *target); err != nil {
