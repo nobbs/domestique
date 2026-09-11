@@ -6,7 +6,7 @@ description: >
   under review to a file and name it in the prompt. Returns ranked defects, each
   with a concrete failure scenario. Use before opening a PR, or to re-review a
   branch after fixes. Not for style, naming, or test-coverage opinions.
-tools: [Read, Grep, Glob]
+tools: Read, Grep, Glob
 model: opus
 ---
 
