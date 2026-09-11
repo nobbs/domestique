@@ -152,34 +152,31 @@ func (s *fakeDeriveStore) ActivityMovingSeconds(
 	return seconds, found, nil
 }
 
-func (s *fakeDeriveStore) StoreEstimatedPower(
-	_ context.Context, _ string, id int64, records []int64, estimates []measure.Estimate,
-) error {
-	if s.estimateErr != nil {
-		return s.estimateErr
-	}
-	if s.estimated == nil {
-		s.estimated = map[int64][]measure.Estimate{}
-	}
-	s.estimated[id] = estimates
-	s.estimatedRecords = records
-
-	return nil
-}
-
 func (s *fakeDeriveStore) ClearActivityMetrics(context.Context, string) (int, error) {
 	s.cleared++
 
 	return s.clearedRows, s.clearErr
 }
 
+// StoreRideDerivation writes both halves together, or neither: a real
+// transaction rolls the estimate series back too when the metrics half
+// fails, so this fake never records one without the other.
+//
 //nolint:gocritic // value param: this method conforms to the activity.DeriveStore contract.
-func (s *fakeDeriveStore) StoreActivityMetrics(
-	_ context.Context, _ string, id int64, metrics activity.RideMetrics,
+func (s *fakeDeriveStore) StoreRideDerivation(
+	_ context.Context, _ string, id int64, records []int64, estimates []measure.Estimate, metrics activity.RideMetrics,
 ) error {
+	if s.estimateErr != nil {
+		return s.estimateErr
+	}
 	if s.storeErr != nil {
 		return s.storeErr
 	}
+	if s.estimated == nil {
+		s.estimated = map[int64][]measure.Estimate{}
+	}
+	s.estimated[id] = estimates
+	s.estimatedRecords = records
 	if s.written == nil {
 		s.written = map[int64]activity.RideMetrics{}
 	}

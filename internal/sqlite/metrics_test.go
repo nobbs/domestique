@@ -427,6 +427,41 @@ func TestStoreEstimatedPowerRefusesMismatchedSeries(t *testing.T) {
 		[]int64{0}, []measure.Estimate{{}, {}}), "an estimate per record or none")
 }
 
+// The regression: written separately, a metrics failure after a successful
+// estimate write would leave the track endpoint serving an estimate no
+// metrics row stands behind. One transaction rolls both back together.
+func TestStoreRideDerivationRollsBackTheEstimateWhenTheMetricsWriteFails(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{
+				Time: activityNow(), Latitude: 49, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 100, HasAltitude: true,
+			},
+			{
+				Time: activityNow().Add(time.Second), Latitude: 49.001, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 101, HasAltitude: true,
+			},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	_, err := store.database.ExecContext(t.Context(), `
+		CREATE TRIGGER reject_activity_metrics_write BEFORE INSERT ON activity_metrics
+		BEGIN SELECT RAISE(ABORT, 'metrics write failed'); END
+	`)
+	require.NoError(t, err)
+
+	err = store.StoreRideDerivation(t.Context(), "rider-a", 1,
+		[]int64{0, 1}, []measure.Estimate{{}, {Watts: 214, Known: true}},
+		derivedMetrics(testInputs(), testCoefficients()))
+	require.Error(t, err)
+
+	track, trackErr := store.ActivityTrack(t.Context(), "rider-a", 1)
+	require.NoError(t, trackErr, "ActivityTrack()")
+	require.Len(t, track, 2)
+	assert.False(t, track[1].HasEstimatedPower, "the estimate must not survive a metrics write that failed beside it")
+}
+
 // A mass change makes every estimate stale, so a row worked out against another
 // mass is owed a derivation again.
 func TestActivitiesAwaitingDerivationNoticesAMassChange(t *testing.T) {
@@ -633,6 +668,8 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 		"storing the activity metrics")
 	require.ErrorContains(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{}),
 		"clearing the activity metrics")
+	require.ErrorContains(t, store.StoreRideDerivation(t.Context(), "rider-a", 1, nil, nil, activity.RideMetrics{}),
+		"starting the ride derivation write")
 	_, err = store.TargetOwner(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the target owner")
 	_, err = store.ClearActivityMetrics(t.Context(), "rider-a")

@@ -76,11 +76,11 @@ type DeriveStore interface {
 	// ActivityMovingSeconds is one ride's own moving time, which a load
 	// figure's series coverage is judged against.
 	ActivityMovingSeconds(ctx context.Context, targetID string, id int64) (movingSeconds float64, found bool, err error)
-	StoreActivityMetrics(ctx context.Context, targetID string, id int64, metrics RideMetrics) error
-	// StoreEstimatedPower replaces one ride's estimated power series. An empty
-	// series clears whatever was there.
-	StoreEstimatedPower(ctx context.Context, targetID string, id int64,
-		recordIndices []int64, estimates []measure.Estimate) error
+	// StoreRideDerivation replaces one ride's estimated power series and its
+	// derived metrics row together, in one transaction: an empty series
+	// clears whatever estimate was there.
+	StoreRideDerivation(ctx context.Context, targetID string, id int64,
+		recordIndices []int64, estimates []measure.Estimate, metrics RideMetrics) error
 	// ClearActivityMetrics removes every derived row one target holds and
 	// reports how many went.
 	ClearActivityMetrics(ctx context.Context, targetID string) (int, error)
@@ -242,7 +242,7 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
 		heartRate := measure.CapHeartRate(samples.HeartRate, inputs.MaxHeartRateBPM)
-		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, measure.MovingIntervals(samples.Track), inputs)
+		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, measure.MovingIntervals(samples.Speed), inputs)
 		records, estimates, watts, share, estimated := samples.EstimatePower(inputs.TotalMassKG, coefficients)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = watts, estimated
 		metrics := RideMetrics{
@@ -255,12 +255,7 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 			HasEstimatedPedallingShare: estimated,
 			Coefficients:               coefficients,
 		}
-		// The series first: a metrics row is what says a ride has been derived,
-		// so it must not appear before the samples it describes are in place.
-		if storeErr := d.store.StoreEstimatedPower(ctx, targetID, id, records, estimates); storeErr != nil {
-			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
-		}
-		if storeErr := d.store.StoreActivityMetrics(ctx, targetID, id, metrics); storeErr != nil {
+		if storeErr := d.store.StoreRideDerivation(ctx, targetID, id, records, estimates, metrics); storeErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
 		derived++

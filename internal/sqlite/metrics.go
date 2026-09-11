@@ -184,15 +184,31 @@ WHERE target_slot = ? AND workout_id = ? AND record_index = ?`
 func (s *Store) StoreEstimatedPower(
 	ctx context.Context, targetID string, id int64, recordIndices []int64, estimates []measure.Estimate,
 ) error {
-	if len(recordIndices) != len(estimates) {
-		return errors.New("an estimate per record or none")
-	}
 	transaction, beginErr := s.database.BeginTx(ctx, nil)
 	if beginErr != nil {
 		return fmt.Errorf("starting the estimated power write: %w", beginErr)
 	}
 	defer rollback(transaction)
-	queries := s.queries.WithTx(transaction)
+	if err := storeEstimatedPower(ctx, transaction, s.queries.WithTx(transaction), targetID, id, recordIndices, estimates); err != nil {
+		return err
+	}
+	if commitErr := transaction.Commit(); commitErr != nil {
+		return fmt.Errorf("committing the estimated power: %w", commitErr)
+	}
+
+	return nil
+}
+
+// storeEstimatedPower is StoreEstimatedPower's body, run against a
+// transaction and queries the caller already opened, so StoreRideDerivation
+// can share one transaction with storeActivityMetrics.
+func storeEstimatedPower(
+	ctx context.Context, transaction *sql.Tx, queries *sqlcgen.Queries,
+	targetID string, id int64, recordIndices []int64, estimates []measure.Estimate,
+) error {
+	if len(recordIndices) != len(estimates) {
+		return errors.New("an estimate per record or none")
+	}
 	// Cleared first, so a record that no longer yields an estimate does not keep
 	// the one it had from a mass the rider has since changed.
 	cleared, clearErr := queries.ClearEstimatedPower(ctx, sqlcgen.ClearEstimatedPowerParams{
@@ -230,9 +246,6 @@ func (s *Store) StoreEstimatedPower(
 			return fmt.Errorf("recording an estimated power: %w", execErr)
 		}
 	}
-	if commitErr := transaction.Commit(); commitErr != nil {
-		return fmt.Errorf("committing the estimated power: %w", commitErr)
-	}
 
 	return nil
 }
@@ -245,9 +258,20 @@ func (s *Store) StoreEstimatedPower(
 func (s *Store) StoreActivityMetrics(
 	ctx context.Context, targetID string, id int64, stored activity.RideMetrics,
 ) error {
+	return storeActivityMetrics(ctx, s.queries, targetID, id, stored)
+}
+
+// storeActivityMetrics is StoreActivityMetrics' body, run against the
+// queries the caller already opened, so StoreRideDerivation can share one
+// transaction with storeEstimatedPower.
+//
+//nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
+func storeActivityMetrics(
+	ctx context.Context, queries *sqlcgen.Queries, targetID string, id int64, stored activity.RideMetrics,
+) error {
 	metrics, averages := stored.Load, stored.Averages
 	if !stored.Derived() {
-		if err := s.queries.DeleteActivityMetrics(ctx, sqlcgen.DeleteActivityMetricsParams{
+		if err := queries.DeleteActivityMetrics(ctx, sqlcgen.DeleteActivityMetricsParams{
 			TargetSlot: targetID, WorkoutID: id,
 		}); err != nil {
 			return fmt.Errorf("clearing the activity metrics: %w", err)
@@ -260,7 +284,7 @@ func (s *Store) StoreActivityMetrics(
 		zones[index] = nullFloat(metrics.Zones[index], metrics.HasZones)
 	}
 	bests := stored.PowerBests
-	if err := s.queries.UpsertActivityMetrics(ctx, sqlcgen.UpsertActivityMetricsParams{
+	if err := queries.UpsertActivityMetrics(ctx, sqlcgen.UpsertActivityMetricsParams{
 		TargetSlot: targetID, WorkoutID: id,
 		Zone1Seconds: zones[0], Zone2Seconds: zones[1], Zone3Seconds: zones[2],
 		Zone4Seconds: zones[3], Zone5Seconds: zones[4],
@@ -298,6 +322,37 @@ func (s *Store) StoreActivityMetrics(
 		ComputedAtUnix:          time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("storing the activity metrics: %w", err)
+	}
+
+	return nil
+}
+
+// StoreRideDerivation replaces one ride's estimated power series and its
+// derived metrics row together, in one transaction: written separately, a
+// failure between the two could leave the track endpoint serving an estimate
+// series no metrics row stands behind any longer, or the reverse.
+//
+//nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
+func (s *Store) StoreRideDerivation(
+	ctx context.Context, targetID string, id int64,
+	recordIndices []int64, estimates []measure.Estimate, metrics activity.RideMetrics,
+) error {
+	transaction, beginErr := s.database.BeginTx(ctx, nil)
+	if beginErr != nil {
+		return fmt.Errorf("starting the ride derivation write: %w", beginErr)
+	}
+	defer rollback(transaction)
+	queries := s.queries.WithTx(transaction)
+	// The series first: a metrics row is what says a ride has been derived,
+	// so it must not appear before the samples it describes are in place.
+	if err := storeEstimatedPower(ctx, transaction, queries, targetID, id, recordIndices, estimates); err != nil {
+		return err
+	}
+	if err := storeActivityMetrics(ctx, queries, targetID, id, metrics); err != nil {
+		return err
+	}
+	if commitErr := transaction.Commit(); commitErr != nil {
+		return fmt.Errorf("committing the ride derivation write: %w", commitErr)
 	}
 
 	return nil
