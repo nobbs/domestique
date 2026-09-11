@@ -419,6 +419,26 @@ func TestStoreEstimatedPowerWritesTheSeriesAndClearsItAgain(t *testing.T) {
 	assert.False(t, track[1].HasEstimatedPower)
 }
 
+// The regression: a track with samples but no known estimate among them --
+// every step fell in a recording gap, say -- is not "a ride that now yields
+// an estimate". Its existing match must survive, not be redone against a
+// series that was never actually written.
+func TestStoreEstimatedPowerKeepsTheMatchWhenNoEstimateWasKnown(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 1, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
+		[]int64{0, 1}, []measure.Estimate{{}, {}}), "StoreEstimatedPower() with a track but no known estimate")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	assert.Len(t, attempts, 1, "no estimate was ever written, so the existing match owes it nothing")
+}
+
 func TestStoreEstimatedPowerRefusesMismatchedSeries(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)

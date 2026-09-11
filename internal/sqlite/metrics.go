@@ -217,9 +217,20 @@ func storeEstimatedPower(
 	if clearErr != nil {
 		return fmt.Errorf("clearing the estimated power: %w", clearErr)
 	}
+	writesAnEstimate := false
+	for _, estimate := range estimates {
+		if estimate.Known {
+			writesAnEstimate = true
+
+			break
+		}
+	}
 	// A ride whose series neither was nor becomes anything keeps its match:
-	// a metered ride's climbs owe the estimate nothing.
-	if cleared > 0 || len(estimates) > 0 {
+	// a metered ride's climbs owe the estimate nothing. len(estimates) alone
+	// is not that test -- it is nonzero whenever the track has samples, known
+	// or not, so a track that yielded no known estimate at all must not
+	// count as one that did.
+	if cleared > 0 || writesAnEstimate {
 		if err := queries.DeleteActivityClimbAttempts(ctx, sqlcgen.DeleteActivityClimbAttemptsParams{
 			TargetSlot: targetID, WorkoutID: id,
 		}); err != nil {
