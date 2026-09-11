@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
@@ -95,7 +96,7 @@ func TestTimeInZonesWillNotBookARecordingGap(t *testing.T) {
 
 func TestSeriesCoverageIsFullWhenTheSeriesHeldForTheWholeMovingTime(t *testing.T) {
 	t.Parallel()
-	share, ok := trainingload.SeriesCoverage(steady(3600, 140), 3599)
+	share, ok := trainingload.SeriesCoverage(steady(3600, 140), 3599, nil)
 	require.True(t, ok)
 	assert.InDelta(t, 1, share, 1e-9)
 }
@@ -104,7 +105,7 @@ func TestSeriesCoverageIsFullWhenTheSeriesHeldForTheWholeMovingTime(t *testing.T
 // covers the moving time in full — coverage is never claimed above it.
 func TestSeriesCoverageIsCappedAtOneWhenHeldExceedsMovingTime(t *testing.T) {
 	t.Parallel()
-	share, ok := trainingload.SeriesCoverage(steady(3600, 140), 1800)
+	share, ok := trainingload.SeriesCoverage(steady(3600, 140), 1800, nil)
 	require.True(t, ok)
 	assert.InDelta(t, 1.0, share, 1e-9)
 }
@@ -112,7 +113,7 @@ func TestSeriesCoverageIsCappedAtOneWhenHeldExceedsMovingTime(t *testing.T) {
 func TestSeriesCoverageIsPartialWhenTheSeriesDroppedOutPartway(t *testing.T) {
 	t.Parallel()
 	// 600 samples a second apart hold for 599 seconds: the last stands for nothing.
-	share, ok := trainingload.SeriesCoverage(steady(600, 140), 3600)
+	share, ok := trainingload.SeriesCoverage(steady(600, 140), 3600, nil)
 	require.True(t, ok)
 	assert.InDelta(t, 599.0/3600, share, 1e-9)
 }
@@ -124,7 +125,7 @@ func TestDeriveWithholdsTheHeartRateFiguresOfAStrapThatWroteNought(t *testing.T)
 		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
 	}
 
-	unpaired := trainingload.Derive(steady(3601, 0), steady(3601, 200), 3600, inputs)
+	unpaired := trainingload.Derive(steady(3601, 0), steady(3601, 200), 3600, nil, inputs)
 	assert.False(t, unpaired.HasZones || unpaired.HasTRIMP || unpaired.HasHeartRateTSS,
 		"an unpaired strap writes nought for the whole ride")
 	assert.True(t, unpaired.HasPower)
@@ -133,21 +134,62 @@ func TestDeriveWithholdsTheHeartRateFiguresOfAStrapThatWroteNought(t *testing.T)
 // A meter's nought is a coast, not a dropout: it counts as a reading.
 func TestSeriesCoverageCountsAMetersNought(t *testing.T) {
 	t.Parallel()
-	share, ok := trainingload.SeriesCoverage(steady(3601, 0), 3600)
+	share, ok := trainingload.SeriesCoverage(steady(3601, 0), 3600, nil)
 	require.True(t, ok)
 	assert.InDelta(t, 1, share, 1e-9)
 }
 
+// The regression: a dropout the strap wrote as a run of noughts must break
+// held time there, not bridge across it within the ordinary ten-second
+// recording-gap tolerance the way a reading it simply never took would.
+func TestHeartRateCoverageDoesNotBridgeADropoutWrittenAsNought(t *testing.T) {
+	t.Parallel()
+	values := []float64{150, 150, 0, 0, 0, 0, 0, 0, 150, 150}
+	samples := make([]trainingload.Sample, len(values))
+	for index, value := range values {
+		samples[index] = trainingload.Sample{At: rideStart().Add(time.Duration(index) * time.Second), Value: value}
+	}
+
+	share, ok := trainingload.HeartRateCoverage(samples, 9, nil)
+	require.True(t, ok)
+	// One held second either side of the six-second dropout: two out of the
+	// ride's nine seconds, not the whole span bridged across it.
+	assert.InDelta(t, 2.0/9.0, share, 1e-9)
+}
+
 func TestSeriesCoverageIsUnknownForAnEmptySeries(t *testing.T) {
 	t.Parallel()
-	_, ok := trainingload.SeriesCoverage(nil, 3600)
+	_, ok := trainingload.SeriesCoverage(nil, 3600, nil)
 	assert.False(t, ok)
 }
 
 func TestSeriesCoverageIsUnknownWithoutAMovingTimeToShareOf(t *testing.T) {
 	t.Parallel()
-	_, ok := trainingload.SeriesCoverage(steady(600, 140), 0)
+	_, ok := trainingload.SeriesCoverage(steady(600, 140), 0, nil)
 	assert.False(t, ok)
+}
+
+// The regression: a sensor live only through a stop must not be credited with
+// covering the moving portion of the ride it never saw. Without moving
+// intervals to judge it against, held time is still read against the whole
+// recording, which is the ride's only account of when it moved.
+func TestSeriesCoverageOnlyCountsHeldTimeWithinMovingIntervals(t *testing.T) {
+	t.Parallel()
+	// The sensor pairs for twenty seconds starting ten seconds in; the ride's
+	// five moving seconds happened first and saw no reading at all.
+	stop := make([]trainingload.Sample, 20)
+	for index := range stop {
+		stop[index] = trainingload.Sample{At: rideStart().Add(time.Duration(10+index) * time.Second), Value: 150}
+	}
+
+	withoutIntervals, ok := trainingload.SeriesCoverage(stop, 5, nil)
+	require.True(t, ok)
+	assert.InDelta(t, 1.0, withoutIntervals, 1e-9, "with no track, held time is read against the whole recording")
+
+	movingIntervals := []measure.Interval{{Start: rideStart(), End: rideStart().Add(5 * time.Second)}}
+	share, ok := trainingload.SeriesCoverage(stop, 5, movingIntervals)
+	require.True(t, ok)
+	assert.InDelta(t, 0, share, 1e-9, "none of the sensor's held time falls inside the moving interval")
 }
 
 func TestTRIMPNeedsAReserveToMeasureAgainst(t *testing.T) {
@@ -261,20 +303,20 @@ func TestDeriveYieldsOnlyWhatTheSensorsAndProfileAllow(t *testing.T) {
 	heartRate := steady(3601, 150)
 	power := steady(3601, 200)
 
-	full := trainingload.Derive(heartRate, power, 3600, trainingload.Inputs{
+	full := trainingload.Derive(heartRate, power, 3600, nil, trainingload.Inputs{
 		MaxHeartRateBPM: 190, RestingHeartRateBPM: 50,
 		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
 	})
 	assert.True(t, full.HasZones && full.HasTRIMP && full.HasHeartRateTSS && full.HasPower)
 	assert.True(t, full.Derived())
 
-	heartOnly := trainingload.Derive(heartRate, nil, 3600, trainingload.Inputs{MaxHeartRateBPM: 190})
+	heartOnly := trainingload.Derive(heartRate, nil, 3600, nil, trainingload.Inputs{MaxHeartRateBPM: 190})
 	assert.True(t, heartOnly.HasZones, "a maximum alone still cuts zones")
 	assert.False(t, heartOnly.HasTRIMP, "but without a resting rate there is no reserve")
 	assert.False(t, heartOnly.HasHeartRateTSS, "and without a threshold no stress score")
 	assert.False(t, heartOnly.HasPower, "and no ride carried a meter")
 
-	nothing := trainingload.Derive(nil, nil, 3600, trainingload.Inputs{})
+	nothing := trainingload.Derive(nil, nil, 3600, nil, trainingload.Inputs{})
 	assert.False(t, nothing.Derived(), "no sensor and no profile yields no row at all")
 }
 
@@ -287,7 +329,7 @@ func TestDeriveWithholdsTheHeartRateFiguresBelowMinSeriesCoverage(t *testing.T) 
 		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
 	}
 
-	partial := trainingload.Derive(steady(600, 150), steady(3601, 200), 3600, inputs)
+	partial := trainingload.Derive(steady(600, 150), steady(3601, 200), 3600, nil, inputs)
 	assert.False(t, partial.HasZones, "the strap held for a fifth of the ride's moving time")
 	assert.False(t, partial.HasTRIMP)
 	assert.False(t, partial.HasHeartRateTSS)
@@ -301,12 +343,12 @@ func TestDeriveWithholdsThePowerFiguresBelowMinSeriesCoverage(t *testing.T) {
 		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
 	}
 
-	partial := trainingload.Derive(steady(3601, 150), steady(600, 200), 3600, inputs)
+	partial := trainingload.Derive(steady(3601, 150), steady(600, 200), 3600, nil, inputs)
 	assert.False(t, partial.HasPower, "the meter held for a fifth of the ride's moving time")
 	assert.True(t, partial.HasZones && partial.HasTRIMP && partial.HasHeartRateTSS,
 		"the strap's own coverage is unaffected by the meter's")
 
-	full := trainingload.Derive(steady(3601, 150), steady(3601, 200), 3600, inputs)
+	full := trainingload.Derive(steady(3601, 150), steady(3601, 200), 3600, nil, inputs)
 	assert.True(t, full.HasPower)
 }
 
@@ -314,7 +356,7 @@ func TestDeriveWithholdsThePowerFiguresBelowMinSeriesCoverage(t *testing.T) {
 // nothing is withheld that the sensors and profile would otherwise allow.
 func TestDeriveWithholdsNothingWhenMovingSecondsIsUnknown(t *testing.T) {
 	t.Parallel()
-	full := trainingload.Derive(steady(600, 150), steady(600, 200), 0, trainingload.Inputs{
+	full := trainingload.Derive(steady(600, 150), steady(600, 200), 0, nil, trainingload.Inputs{
 		MaxHeartRateBPM: 190, RestingHeartRateBPM: 50,
 		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
 	})

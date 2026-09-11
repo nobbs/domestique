@@ -26,16 +26,49 @@ const MinSeriesCoverage = 0.90
 // SeriesCoverage is the share of the ride's moving time one series held a
 // reading for: the same held-duration TRIMP and HeartRateTSS already fold
 // over, against the ride's own moving time rather than its elapsed one, so a
-// stop with the sensor detached does not count against it. Capped at 1: a
-// series held for the whole elapsed ride, stops included, still covers the
-// moving time in full. False for a series with nothing to hold at all.
-func SeriesCoverage(samples []Sample, movingSeconds float64) (share float64, ok bool) {
+// stop with the sensor detached does not count against it. Held time outside
+// movingIntervals never counts either -- a sensor live only through a stop
+// must not cover a moving portion it never saw -- but where the ride carries
+// no such intervals (no track to derive them from, an indoor trainer say)
+// held time is judged against the whole recording instead, which is the
+// ride's only account of when it moved. Capped at 1. False for a series with
+// nothing to hold at all.
+func SeriesCoverage(samples []Sample, movingSeconds float64, movingIntervals []measure.Interval) (share float64, ok bool) {
 	if movingSeconds <= 0 || len(samples) == 0 {
 		return 0, false
 	}
-	_, held := measure.MeanHeld(samples, measure.DefaultMaxGap)
+
+	return min(max(heldSeconds(samples, movingIntervals), 0)/movingSeconds, 1), true
+}
+
+// HeartRateCoverage is SeriesCoverage for a heart-rate series specifically: a
+// nought the strap wrote breaks the held time there, the same as any other
+// dropout it represents this way, rather than being bridged across within the
+// ordinary recording-gap tolerance the way a reading it simply never took
+// would be.
+func HeartRateCoverage(samples []Sample, movingSeconds float64, movingIntervals []measure.Interval) (share float64, ok bool) {
+	if movingSeconds <= 0 || len(samples) == 0 {
+		return 0, false
+	}
+	held := 0.0
+	for _, run := range heartRateRuns(samples) {
+		held += heldSeconds(run, movingIntervals)
+	}
 
 	return min(max(held, 0)/movingSeconds, 1), true
+}
+
+// heldSeconds is the held time of a run of readings, restricted to
+// movingIntervals where the ride carries any, else read against the whole
+// recording the way SeriesCoverage always used to.
+func heldSeconds(samples []Sample, movingIntervals []measure.Interval) float64 {
+	if len(movingIntervals) == 0 {
+		_, held := measure.MeanHeld(samples, measure.DefaultMaxGap)
+
+		return held
+	}
+
+	return measure.HeldWithinIntervals(samples, measure.DefaultMaxGap, movingIntervals)
 }
 
 // HeartRateReadings is a heart-rate series without the readings a strap never
@@ -52,6 +85,33 @@ func HeartRateReadings(samples []Sample) []Sample {
 	return present
 }
 
+// heartRateRuns splits a heart-rate series into runs of positive readings,
+// cut at every nought: a dropout the strap wrote this way must break the held
+// time there, never bridge across it within the ordinary recording-gap
+// tolerance the way a reading it simply never took would.
+func heartRateRuns(samples []Sample) [][]Sample {
+	var runs [][]Sample
+	start := -1
+	for index, sample := range samples {
+		if sample.Value > 0 {
+			if start == -1 {
+				start = index
+			}
+
+			continue
+		}
+		if start != -1 {
+			runs = append(runs, samples[start:index])
+			start = -1
+		}
+	}
+	if start != -1 {
+		runs = append(runs, samples[start:])
+	}
+
+	return runs
+}
+
 // TRIMP is Banister's training impulse: how long the ride lasted, weighted by
 // how much of the rider's heart-rate reserve it held, in minutes. It needs a
 // maximum and a resting rate to have a reserve to measure against at all.
@@ -64,13 +124,15 @@ func TRIMP(samples []Sample, maxHeartRate, restingHeartRate float64) (float64, b
 	}
 	impulse := 0.0
 	held := 0.0
-	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(heartRate, seconds float64) {
-		held += seconds
-		// Clamped: a rate above the entered maximum is a maximum entered too
-		// low, and an unclamped exponential turns that into a wild number.
-		fraction := math.Min(math.Max((heartRate-restingHeartRate)/reserve, 0), 1)
-		impulse += (seconds / 60) * fraction * trimpFactor * math.Exp(trimpExponent*fraction)
-	})
+	for _, run := range heartRateRuns(samples) {
+		measure.ForEachHeld(run, measure.DefaultMaxGap, func(heartRate, seconds float64) {
+			held += seconds
+			// Clamped: a rate above the entered maximum is a maximum entered too
+			// low, and an unclamped exponential turns that into a wild number.
+			fraction := math.Min(math.Max((heartRate-restingHeartRate)/reserve, 0), 1)
+			impulse += (seconds / 60) * fraction * trimpFactor * math.Exp(trimpExponent*fraction)
+		})
+	}
 	if held <= 0 {
 		return 0, false
 	}
@@ -92,13 +154,18 @@ func HeartRateTSS(samples []Sample, thresholdHeartRate, restingHeartRate float64
 	if restingHeartRate <= 0 || reserve <= 0 {
 		return 0, false
 	}
-	mean, seconds := measure.MeanHeld(samples, measure.DefaultMaxGap)
+	total, seconds := 0.0, 0.0
+	for _, run := range heartRateRuns(samples) {
+		mean, held := measure.MeanHeld(run, measure.DefaultMaxGap)
+		total += mean * held
+		seconds += held
+	}
 	if seconds <= 0 {
 		return 0, false
 	}
 	// Clamped: a mean below the entered resting rate is a resting rate entered
 	// too high, and a negative reserve is not an intensity.
-	intensity := math.Max((mean-restingHeartRate)/reserve, 0)
+	intensity := math.Max((total/seconds-restingHeartRate)/reserve, 0)
 
 	return seconds / 3600 * intensity * intensity * 100, true
 }

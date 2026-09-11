@@ -137,6 +137,59 @@ func TestMeanHeldWeightsByHowLongEachReadingStood(t *testing.T) {
 	assert.InDelta(t, (100*9+300*9)/18.0, mean, 1e-9)
 }
 
+// A stop the odometer does not advance through must not count as moving, and
+// two moving steps in a row must merge into one stretch rather than two the
+// caller has to know are adjacent.
+func TestMovingIntervalsSkipsAStopWhereTheOdometerDidNotAdvance(t *testing.T) {
+	t.Parallel()
+	track := []measure.Sample{
+		{At: start(), DistanceMetres: 0},
+		{At: start().Add(time.Second), DistanceMetres: 5},
+		{At: start().Add(2 * time.Second), DistanceMetres: 5}, // stopped
+		{At: start().Add(3 * time.Second), DistanceMetres: 5}, // still stopped
+		{At: start().Add(4 * time.Second), DistanceMetres: 10},
+		{At: start().Add(5 * time.Second), DistanceMetres: 15}, // merges with the step before it
+	}
+
+	intervals := measure.MovingIntervals(track)
+
+	require.Len(t, intervals, 2)
+	assert.Equal(t, measure.Interval{Start: start(), End: start().Add(time.Second)}, intervals[0])
+	assert.Equal(t,
+		measure.Interval{Start: start().Add(3 * time.Second), End: start().Add(5 * time.Second)}, intervals[1])
+}
+
+func TestMovingIntervalsIsEmptyForNoTrack(t *testing.T) {
+	t.Parallel()
+	assert.Empty(t, measure.MovingIntervals(nil))
+}
+
+func TestHeldWithinIntervalsCountsOnlyTheOverlap(t *testing.T) {
+	t.Parallel()
+	readings := []measure.Reading{
+		{At: start(), Value: 100},
+		{At: start().Add(10 * time.Second), Value: 100},
+	}
+	intervals := []measure.Interval{{Start: start().Add(2 * time.Second), End: start().Add(6 * time.Second)}}
+
+	held := measure.HeldWithinIntervals(readings, measure.DefaultMaxGap, intervals)
+
+	assert.InDelta(t, 4, held, 1e-9)
+}
+
+func TestHeldWithinIntervalsIsZeroOutsideEveryInterval(t *testing.T) {
+	t.Parallel()
+	readings := []measure.Reading{
+		{At: start(), Value: 100},
+		{At: start().Add(time.Second), Value: 100},
+	}
+	intervals := []measure.Interval{{Start: start().Add(time.Hour), End: start().Add(2 * time.Hour)}}
+
+	held := measure.HeldWithinIntervals(readings, measure.DefaultMaxGap, intervals)
+
+	assert.Zero(t, held)
+}
+
 func TestGapFunctionsMatchTheTrainingLoadReferenceOverEveryBuilder(t *testing.T) {
 	t.Parallel()
 	for name, samples := range buildersForCoverage() {

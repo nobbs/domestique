@@ -1,6 +1,9 @@
 package trainingload
 
-import "github.com/nobbs/domestique/internal/rider"
+import (
+	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/rider"
+)
 
 // Inputs are the profile values a derivation reads. They are recorded on the
 // row beside the numbers, so a row worked out against a profile the rider has
@@ -75,15 +78,18 @@ func (m *Metrics) Derived() bool {
 // against; a figure whose series measurably held for less than
 // MinSeriesCoverage of it is withheld rather than served understated. Zero
 // or negative leaves coverage unmeasured rather than failed, so a caller that
-// cannot supply it yet gets today's behaviour rather than everything withheld.
-func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Metrics {
+// cannot supply it yet gets today's behaviour rather than everything
+// withheld. movingIntervals are the same moving time, broken into the
+// stretches it happened in, so a sensor live only through a stop is not
+// credited with covering the riding that surrounded it; nil falls back to
+// judging held time against the whole recording.
+func Derive(heartRate, power []Sample, movingSeconds float64, movingIntervals []measure.Interval, inputs Inputs) Metrics {
 	metrics := Metrics{Inputs: inputs}
 	// A strap that wrote nought took no reading there; one that wrote nought
 	// throughout covered nothing, and is judged so rather than left unjudged.
-	strapWroteNought := len(heartRate) > 0
-	heartRate = HeartRateReadings(heartRate)
-	strapWroteNought = strapWroteNought && len(heartRate) == 0
-	if bounds, ok := BoundsFrom(inputs.ThresholdHeartRateBPM, inputs.MaxHeartRateBPM); ok && len(heartRate) > 1 {
+	present := HeartRateReadings(heartRate)
+	strapWroteNought := len(heartRate) > 0 && len(present) == 0
+	if bounds, ok := BoundsFrom(inputs.ThresholdHeartRateBPM, inputs.MaxHeartRateBPM); ok && len(present) > 1 {
 		zones := TimeInZones(heartRate, bounds)
 		metrics.Zones, metrics.HasZones = zones, zones.Total() > 0
 	}
@@ -91,11 +97,11 @@ func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Met
 	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
-	if coverage, ok := SeriesCoverage(heartRate, movingSeconds); (ok && coverage < MinSeriesCoverage) ||
+	if coverage, ok := HeartRateCoverage(heartRate, movingSeconds, movingIntervals); (ok && coverage < MinSeriesCoverage) ||
 		(strapWroteNought && movingSeconds > 0) {
 		metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
 	}
-	if coverage, ok := SeriesCoverage(power, movingSeconds); ok && coverage < MinSeriesCoverage {
+	if coverage, ok := SeriesCoverage(power, movingSeconds, movingIntervals); ok && coverage < MinSeriesCoverage {
 		metrics.HasPower = false
 	}
 
