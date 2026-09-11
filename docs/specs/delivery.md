@@ -50,8 +50,7 @@ tests, the same tests under the race detector, TypeScript type checking, the
 browser UI lint and test suites, the
 browser suite, Go module verification, vulnerability analysis for both Go and
 npm dependencies, a GitHub Actions workflow check, a shell-script check, a
-worktree secret scan, a commit-hook cost check, a task-definition check, a
-local-gate structure check, and the release-target binary compilation for the
+task-definition check, and the release-target binary compilation for the
 published architecture. `mise run fmt` applies Go formatting. A fixing `prek`
 hook exits non-zero after a safe mechanical repair so the resulting change can
 be reviewed and staged deliberately.
@@ -65,14 +64,14 @@ is removed from that gate, relaxed in it, or made optional in it.
 Local validation learns a result earlier, and comes at two depths:
 
 - `mise run quick` is the routine loop, and the expected gate before a
-  hand-over. It runs everything the full gate runs except the six checks named
+  hand-over. It runs everything the full gate runs except the checks named
   below.
 - `mise run check` is the full gate on demand. Reach for it when one of those
-  six checks is specifically implicated by the change in hand, not as a routine
-  step before pushing; each of them runs on every pull request.
+  is specifically implicated by the change in hand, not as a routine step
+  before pushing; each of them runs on every pull request.
 
-`mise run quick` defers exactly six checks, each of them slow or dependent on
-the network:
+`mise run quick` defers these checks, each of them slow or dependent on the
+network:
 
 | Deferred check | Cost |
 | --- | --- |
@@ -82,43 +81,37 @@ the network:
 | `ui-audit` | Needs the network and a current npm advisory database. |
 | `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
 | `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and requires the download above. |
+| `ui-storybook-test` | Runs every component's interaction test in that same browser. |
+| `ui-storybook-sweep` | Opens every story and docs page in a built Storybook, in that same browser. |
 
 One task installs the browser UI dependency tree, and every check that reads
 it waits for that task rather than installing anything itself. It reinstalls
 from the lockfile when the lockfile has moved or the tree is gone, and does
 nothing otherwise.
 
-That `mise run quick` is a strict subset of `mise run check`, and that the
-difference is exactly the deferred set above, is asserted. A check added to the
-full gate fails the assertion until it is either added to the routine loop or
-deferred deliberately. The routine loop may be narrower than the gate, never
-different from it. The assertion reads the declared task graph from
-`mise tasks ls --json`, which resolves every dependency without running
-anything, so it costs milliseconds and needs no network.
-
-The assertion also constrains the form the gate is written in. Every step of a
-gate task is a task of its own, named in `depends` or `depends_post`, and the
-gate task runs no command itself; the shape is checked first. Those two are the
-whole of membership. `wait_for` orders tasks that already run and never
-schedules one, so it cannot add a step.
+`mise run quick` is a strict subset of `mise run check` by convention, kept
+that way by hand: the routine loop should be narrower than the gate, never
+different from it, but nothing currently re-derives one from the other or
+fails a check that drifts.
 
 The three depths compose: the commit hook judges the staged files in about a
 second, `mise run quick` judges the working tree, and GitHub Actions judges the
-merge. Each is a strict subset of the one after it.
+merge. Each is meant to be a strict subset of the one after it.
 
 `prek` owns fast repository hygiene: whitespace and end-of-file checks,
 private-key and accidental-large-file checks, YAML, TOML, and Markdown
-validation where applicable, and Go formatting. Developers may install the
-`prek` hook, but the hook is a convenience rather than a substitute for
-`mise run check`. The project uses `prek`, never `pre-commit`.
+validation where applicable, Go and UI formatting, and a staged-diff secret
+scan (`gitleaks protect --staged`). Developers may install the `prek` hook,
+but the hook is a convenience rather than a substitute for `mise run check`.
+The project uses `prek`, never `pre-commit`.
 
 The installed hook is bounded by what it may do. A hook that runs a command
 takes its file list from `prek`, so a commit is judged on what it stages and not
-on the rest of the tree; the same configuration under `prek run --all-files`
-covers the repository. Tests, full linting, audits, cross-compilation, image
-work, and the browser suites stay out of the hook and belong to
-`mise run check` and GitHub Actions. Both properties are asserted. Wall-clock is
-not asserted.
+on the rest of the tree — the secret scan is the one exception, reading the
+staged diff directly instead; the same configuration under
+`prek run --all-files` covers the repository. Tests, full linting, audits,
+cross-compilation, image work, and the browser suites stay out of the hook and
+belong to `mise run check` and GitHub Actions.
 
 ### A local check may skip work its inputs have not changed
 
@@ -494,8 +487,10 @@ all, holds the merge. That makes it a gate rather than only a report, and it is
 not the control. The committed fixtures, logs, examples, and test data must
 themselves contain no credentials or personal routes; a scanner is pattern
 matching over what was written and cannot be relied on to notice a secret it has
-no pattern for. Repository-native secret scanning stays enabled alongside it as
-defence in depth.
+no pattern for. Repository-native scanning (`gitleaks`) runs at commit time
+against the staged diff instead of in this workflow — a bypassed hook
+(`--no-verify`), an uninstalled one, or history from before the hook existed
+has no second, repository-native check behind the required one above.
 
 No GitHub Actions workflow invokes the live VeloPlanner account, authorises a
 Wahoo account, uploads a route, or sends a Pushover notification. Sandbox FIT

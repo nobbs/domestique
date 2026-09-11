@@ -74,9 +74,11 @@ language = "system"
 files = "^internal/webui/app/.*\\.(ts|tsx|json)$"
 pass_filenames = true
 
-# No files/pass_filenames: gitleaks reads the staged diff itself, not a file list.
+# gitleaks reads the staged diff itself; pass_filenames would only hand it
+# positional arguments protect ignores, so it's explicitly off, not omitted.
 [[repos.hooks]]
 id = "gitleaks-protect"
 name = "Secret scan"
 entry = "mise exec -- gitleaks protect --staged --redact --no-banner"
 language = "system"
+pass_filenames = false

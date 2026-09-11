@@ -22,15 +22,15 @@ rather than convenient: there is no Makefile and no other entry point. Install
 it from [mise.jdx.dev](https://mise.jdx.dev) first; `mise tasks` then lists
 everything this repository offers.
 
-`mise run quick` runs everything the full gate runs except six checks it defers
-— `build-check`, `test-race`, `vulncheck`, `ui-audit`, `ui-browser-install` and
-`ui-browser-test` — so it stays worth running on every iteration and is not
+`mise run quick` runs everything the full gate runs except the checks it
+defers — `build-check`, `test-race`, `vulncheck`, `ui-audit`,
+`ui-browser-install`, `ui-browser-test`, `ui-storybook-test` and
+`ui-storybook-sweep` — so it stays worth running on every iteration and is not
 itself a full gate. Run the full gate yourself with `mise run check` when a
-change implicates one of the six: the release build, concurrent code, a
+change implicates one of those: the release build, concurrent code, a
 dependency, or the browser suite.
 [The delivery specification](docs/specs/delivery.md#the-authoritative-gate-is-github-actions)
-says why each is deferred, and how the difference is asserted rather than only
-documented.
+says why each is deferred.
 
 `mise run test-race` is the one to reach for after touching anything concurrent
 — the sync service and its reporter, the Wahoo client, the Access verifier, or
