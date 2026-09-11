@@ -15,4 +15,7 @@ while [ "$count" -gt 0 ]; do
 	count=$((count - 1))
 done
 
-exec ./node_modules/.bin/biome format "$@"
+# pnpm's shim falls back to `command -v node`; git invokes hooks with
+# whatever PATH the client gave it, which may have no shell profile behind
+# it at all, so run it through mise's own environment instead of trusting that.
+exec mise exec -- ./node_modules/.bin/biome format "$@"
