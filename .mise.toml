@@ -1,20 +1,14 @@
 [tools]
 go = "1.27.1"
 node = "24.20.0"
-# Kept in step with the `packageManager` field in internal/webui/app/package.json,
-# which is what establishes the same pnpm inside the container build.
+# Kept in step with the `packageManager` field in internal/webui/app/package.json.
 pnpm = "11.26.0"
 golangci-lint = "2.13.2"
 prek = "0.5.2"
 actionlint = "1.7.12"
 gitleaks = "8.30.1"
-# fastq, which markdownlint-cli2 pulls in transitively, published 1.20.2 by
-# hand on 2026-08-28 after eight months of workflow releases, so it carries no
-# provenance where 1.20.0 and 1.20.1 do. mise reads that lost trust evidence as
-# a downgrade and refuses the install. The release is what it claims to be —
-# every file in the tarball is byte-identical to mcollina/fastq at v1.20.2, a
-# four-line fix and its tests — so this names that one version and nothing
-# else. Drop it once fastq publishes through its workflow again.
+# fastq, pulled in transitively, published 1.20.2 by hand and so carries no
+# provenance; mise reads that as a downgrade. Drop once it publishes by workflow.
 markdownlint-cli2 = { version = "0.23.2", trust_policy_excludes = ["fastq@1.20.2"] }
 shellcheck = "0.11.0"
 yamlfmt = "0.21.0"
@@ -25,13 +19,10 @@ yq = "4.53.6"
 atlas = "1.3.0"
 
 [env]
-# Resolved against the main checkout, not `config_root`: a linked worktree's
-# config_root is the worktree, and each one would then grow its own
-# multi-gigabyte copy of these caches.
+# Resolved against the main checkout, not `config_root`: each linked worktree
+# would otherwise grow its own multi-gigabyte copy of these caches.
 GOCACHE = '{{ exec(command="git rev-parse --path-format=absolute --git-common-dir") | trim_end_matches(pat="/.git") }}/.cache/go-build'
 GOLANGCI_LINT_CACHE = '{{ exec(command="git rev-parse --path-format=absolute --git-common-dir") | trim_end_matches(pat="/.git") }}/.cache/golangci-lint'
 
-# Every task lives in mise-tasks.toml, so this file stays what it has always
-# been: the pins. See that file for the tasks themselves.
 [task_config]
 includes = ["mise-tasks.toml"]
