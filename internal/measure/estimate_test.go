@@ -302,6 +302,33 @@ func TestEstimateSeriesSkipsAStepWhereDistanceWentBackward(t *testing.T) {
 	assert.False(t, estimates[1].Known)
 }
 
+// The regression: a backward distance step within the same recording
+// stretch -- an odometer reset, not a pause -- must break the grade window
+// there too, the same way a recording gap already does. Without that, a
+// window several samples after the reset can still expand back across it,
+// combining a stretch of distance from before the reset with one from after
+// into a speed neither pace on its own produced.
+func TestEstimateSeriesDoesNotWindowAcrossAnOdometerReset(t *testing.T) {
+	t.Parallel()
+	// A steady 10 m/s pace throughout, on flat ground, but the device's own
+	// distance resets partway through (index 4) rather than pausing.
+	distances := []float64{0, 10, 20, 30, 5, 15, 25, 35, 45, 55}
+	samples := make([]measure.Sample, len(distances))
+	for index, distance := range distances {
+		samples[index] = measure.Sample{
+			At: start().Add(time.Duration(index) * time.Second), DistanceMetres: distance, AltitudeMetres: 100,
+		}
+	}
+
+	estimates, ok := measure.EstimateSeries(samples, 82, measure.DefaultCoefficients())
+
+	require.True(t, ok)
+	require.True(t, estimates[5].Known)
+	want := closedForm(10, 0, 82, 100)
+	assert.InEpsilon(t, want, estimates[5].Watts, 0.03,
+		"the true 10 m/s pace on both sides of the reset, not a rate blended across it")
+}
+
 func TestEstimateSeriesNeedsAMassAndMoreThanOneSample(t *testing.T) {
 	t.Parallel()
 	_, ok := measure.EstimateSeries(ramp(300, 7.5, 0), 0, measure.DefaultCoefficients())

@@ -144,11 +144,7 @@ func estimateSeries(samples []Sample, totalMassKG float64, coefficients Coeffici
 		return nil, false
 	}
 	estimates := make([]Estimate, len(samples))
-	times := make([]time.Time, len(samples))
-	for index, sample := range samples {
-		times[index] = sample.At
-	}
-	bounds := Stretches(times, DefaultMaxGap)
+	bounds := distanceStretches(samples, DefaultMaxGap)
 	windowMetres := gradeWindowMetres(samples)
 	known := false
 	// Each sample's own window speed, kept so the inertial term can
@@ -224,6 +220,29 @@ func watts(speed, grade, totalMassKG, density, accelerationMSS float64, coeffici
 		(totalMassKG+rotationalMassKG)*accelerationMSS
 
 	return max(force*speed/drivetrainEfficiency, 0)
+}
+
+// distanceStretches is Stretches further split wherever a sample's own
+// distance runs backward: an odometer reset marks a boundary a window must
+// not cross the same way a recording gap already does, or centredWindow
+// combines distance and altitude from before and after the reset into one
+// bogus speed and grade.
+func distanceStretches(samples []Sample, maxGap time.Duration) []Stretch {
+	stretches := make([]Stretch, len(samples))
+	for first := 0; first < len(samples); {
+		past := first + 1
+		for past < len(samples) &&
+			samples[past].At.Sub(samples[past-1].At) <= maxGap &&
+			samples[past].DistanceMetres >= samples[past-1].DistanceMetres {
+			past++
+		}
+		for index := first; index < past; index++ {
+			stretches[index] = Stretch{First: first, Past: past}
+		}
+		first = past
+	}
+
+	return stretches
 }
 
 // centredWindow is the span of samples around one sample that covers
