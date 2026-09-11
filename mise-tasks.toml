@@ -189,6 +189,7 @@ run = [
 
 [ui-dev]
 description = "Serve the UI with hot reload"
+depends = ["ui-install"]
 run = "pnpm --dir internal/webui/app run dev"
 
 [storybook]
@@ -241,7 +242,7 @@ run = "pnpm --dir internal/webui/app run lint"
 
 [ui-format]
 description = "Format the UI"
-wait_for = ["ui-install"]
+depends = ["ui-install"]
 run = "pnpm --dir internal/webui/app run format"
 
 [ui-test]
@@ -255,7 +256,8 @@ sources = [
   "internal/webui/app/*.json",
 ]
 outputs = { auto = true }
-wait_for = ["ui-install", "api-check"]
+depends = ["ui-install"]
+wait_for = ["api-check"]
 run = "pnpm --dir internal/webui/app run test"
 
 [ui-browser-install]
@@ -265,7 +267,8 @@ run = "pnpm --dir internal/webui/app run test:browser:install"
 
 [ui-browser-test]
 description = "Run the browser UI suite over the demo stack"
-wait_for = ["ui-browser-install", "api-generate"]
+depends = ["ui-browser-install"]
+wait_for = ["api-generate"]
 run = "pnpm --dir internal/webui/app run test:browser"
 
 [ui-storybook-test]
