@@ -1232,11 +1232,13 @@ through the `claude` executable bundled in the image, authenticated by the
 operator's own Claude subscription, with no tool enabled: the model sees the
 prompt and answers text. That text is stored beside the ride with the model
 and prompt revision that produced it, served on the activity contract, and
-read by nothing else — no load, no suggestion and no calibration ever reads
-it. A ride is analysed once. A profile edit re-derives it but does not
-re-analyse it, and a derivation that removes the ride's figures removes the
-analysis with them; nothing in this revision asks a second time, and the
-route-scoped reprocess does not reach a ride. Only rides stored after the
+read back by later prompts alone — no load, no suggestion and no calibration
+ever reads it. A ride whose analysis stands is not asked about again. A
+profile edit re-derives it but does not re-analyse it; a derivation that
+removes the ride's figures removes the analysis with them, and only a later
+derivation that gives the ride figures again asks once more. No request or
+operation asks on demand, and the route-scoped reprocess does not reach a
+ride. Only rides stored after the
 analysis was enabled are analysed at all: a history already held when the
 token arrives is never backfilled, so enabling it costs nothing until the next
 ride lands. Which

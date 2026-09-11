@@ -366,7 +366,8 @@ export interface ActivityRouteMatch {
  */
 export interface ActivityAnalysis {
   /**
-   * Plain text, at most 2000 characters.
+   * Plain text, never empty, at most 2000 characters.
+   * @minLength 1
    * @maxLength 2000
    */
   text: string;

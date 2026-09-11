@@ -139,7 +139,7 @@ type Activity struct {
 
 // ActivityAnalysis What a language model made of this ride. Absent for a ride not yet analysed, for one whose derivation yielded nothing, and everywhere on a deployment that configured no token. Text for the rider to read; never an input to any figure served here.
 type ActivityAnalysis struct {
-	// Text Plain text, at most 2000 characters.
+	// Text Plain text, never empty, at most 2000 characters.
 	Text string `json:"text"`
 	// Model The model id that answered.
 	Model string `json:"model"`

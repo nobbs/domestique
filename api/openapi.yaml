@@ -1843,8 +1843,9 @@ components:
       properties:
         text:
           type: string
+          minLength: 1
           maxLength: 2000
-          description: Plain text, at most 2000 characters.
+          description: Plain text, never empty, at most 2000 characters.
         model:
           type: string
           description: The model id that answered.

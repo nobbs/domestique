@@ -365,16 +365,19 @@ row, and was first stored after the analysis was enabled — an instant this
 service records the first time it starts with a token and keeps as runtime
 state — so its edge carries no argument and a run with nothing owed asks
 nothing. There is no backfill: a history stored before that instant stays
-unanalysed, and nothing in this revision asks for an analysis a second time. A
+unanalysed, and a ride whose analysis stands is never asked about again. A
 ride whose derivation yielded nothing is not owed one, and a derivation that
 removes a ride's derived row removes its analysis in the same transaction, so
 a profile edit that takes a ride's figures away takes what was said about them
-too. The analyses a prompt carries for context are the same target's, newest
+too — and a later derivation that gives the ride figures again leaves it owed
+again, because what was said before was about figures that no longer exist.
+That is the one way a ride is analysed twice, and it costs one request per
+such edit. The analyses a prompt carries for context are the same target's, newest
 first, at most five. Unlike the weather,
 which is asked once and recorded either way, an analysis that fails is not
-recorded as asked: the subscription's monthly allowance running out is the
-usual reason, which passes, so the ride stays owed and the run faults into the
-ordinary backoff. Each ride costs one request, made through the bundled
+recorded as asked: the usual reason is the subscription's monthly allowance
+running out, which is temporary, so the ride stays owed and the run faults
+into the ordinary backoff. Each ride costs one request, made through the bundled
 `claude` executable with a bounded timeout and no tool enabled, and a run
 analyses every ride it is owed, which is what the poll or webhook before it
 just stored — a week away is a week's rides, never a history. It also runs
@@ -382,8 +385,8 @@ hourly, because the edge alone would not try again: a derivation that already
 succeeded is not repeated, so a ride left owed by a failed request would wait
 for the next new ride rather than the next hour. A scheduled run with nothing
 owed asks nothing and costs a query per target. An answer is stored only when
-it fits the contract's bound of two thousand characters; a longer one is the
-`unusable` category and the ride stays owed. The log and the alert carry counts and a
+it fits the contract's bound: non-empty and at most two thousand characters.
+An empty or longer one is the `unusable` category and the ride stays owed. The log and the alert carry counts and a
 stable failure category — the token refused, the allowance exhausted, the
 executable failing, the answer unusable — and never the prompt or the answer.
 

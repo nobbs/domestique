@@ -81,8 +81,8 @@ other credential it reaches an upstream with is entered on its settings page
 after it is running, and stored encrypted under the state key. One optional
 third, `secrets/claude_token`, holds the token `claude setup-token` issues for
 the operator's Claude subscription and switches the ride analysis on; leave it
-out and the service registers no analysis task. Its compose lines are
-commented out in the example and are uncommented together.
+out and the service registers no analysis task. The compose example says
+where its two lines go; add both, or neither.
 
 Add `secrets/pushover_application_token` and `secrets/pushover_user_key` too if
 this host should alert on a failed deployment. Those two are the deploy
