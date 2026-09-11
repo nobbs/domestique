@@ -377,6 +377,33 @@ func TestActivityRideSamplesTreatsAnUnbracketedDeviceSpeedAsUnknownRatherThanSta
 	assert.Nil(t, samples.MovingIntervals, "one isolated positive reading names no moving step at all")
 }
 
+// The regression: a device speed field too sparse to bracket a moving step
+// of its own must not leave a genuinely-moving ride reading as unknown when
+// the odometer's own distance can say when it moved. Falling back to unknown
+// there would judge sensor coverage against the whole recording rather than
+// the ride's real moving time, which a dropout during the moving part could
+// then pass through.
+func TestActivityRideSamplesFallsBackToTheOdometerWhenDeviceSpeedCannotBracketAMovingStep(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			// One isolated positive device-speed reading, unbracketed on
+			// either side, but the odometer's own distance rises steadily
+			// throughout: a real ride the device field alone cannot see.
+			{Time: activityNow(), SpeedMS: 0, HasSpeed: true, DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), SpeedMS: 5, HasSpeed: true, DistanceMetres: 10, HasDistance: true},
+			{Time: activityNow().Add(2 * time.Second), SpeedMS: 0, HasSpeed: true, DistanceMetres: 20, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.MovingIntervals, 1, "the odometer's own distance names the ride as moving throughout")
+	assert.Equal(t,
+		measure.Interval{Start: activityNow(), End: activityNow().Add(2 * time.Second)}, samples.MovingIntervals[0])
+}
+
 // The regression: an odometer whose every derived rate exceeds the ceiling
 // has no usable reading at all, the same as a device speed field never once
 // positive. It must read as unknown, not as a ride confidently held still.

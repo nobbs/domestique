@@ -116,16 +116,19 @@ func (s *Store) ActivityRideSamples(
 }
 
 // speedFromRows is the device's own speed where any row carried one, else the
-// odometer's distance over time; never a mix of the two within one ride.
-// moving is the same ride's moving intervals, read the way each source
-// requires: a device speed is an instantaneous reading, so a step only
-// counts as moving where both readings that bracket it are positive; the
-// odometer's own speed already names the rate of the step it ends. Nil
-// rather than a known-empty list where a device speed field never once
-// bracketed a moving step at all -- never positive throughout, a real quirk
-// of some trainers, or positive too sparsely to pair two readings either
-// side of a step -- since that says the field cannot be trusted to name when
-// the ride moved, not that it never did.
+// odometer's distance over time; never a mix of the two within one ride's
+// returned series. moving is the same ride's moving intervals, read the way
+// each source requires: a device speed is an instantaneous reading, so a
+// step only counts as moving where both readings that bracket it are
+// positive; the odometer's own speed already names the rate of the step it
+// ends. Where a device speed field is present but too sparse to bracket a
+// single moving step of its own -- never positive throughout, a real quirk
+// of some trainers, or just too few positive readings to pair -- the
+// odometer's own distance is asked for moving intervals instead, the one
+// piece of the per-record fallback activity.Series(SeriesSpeed) already
+// applies that speedFromRows otherwise does not: a ride the odometer knows
+// was moving throughout must not be judged against its whole recording
+// merely because the device field could not say so on its own.
 func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainingload.Sample, moving []measure.Interval) {
 	hasDeviceSpeed := false
 	for index := range rows {
@@ -157,69 +160,79 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 		if everPositive {
 			// Each run breaks at a reading above the ceiling, the same way a
 			// heart-rate run breaks at a nought: the two readings either side
-			// of a dropped spike must not pair as one adjacent step. moving
-			// is left nil rather than forced to a known-empty list where none
-			// of that bracketed into an interval at all: one isolated
-			// positive reading among mostly noughts says the field is too
-			// sparse to place a single moving stretch, not that the ride
-			// never moved.
+			// of a dropped spike must not pair as one adjacent step.
 			for _, run := range speedRuns(samples) {
 				moving = append(moving, measure.MovingIntervalsFromInstantaneous(run)...)
 			}
 		}
+		if moving == nil {
+			_, moving = odometerSpeedAndMoving(rows)
+		}
 	} else {
-		var previous activity.DistanceStep
-		var segment []trainingload.Sample
-		anchored := false
-		// flush closes the segment built so far: an invalid step (the
-		// odometer went backwards, say) must end it here rather than let the
-		// next valid step's own anchor read as adjacent to whatever came
-		// before the gap. speedRuns further breaks it at any reading above
-		// the ceiling, so a dropped spike cannot be bridged either.
-		flush := func() {
-			samples = append(samples, segment...)
-			for _, run := range speedRuns(segment) {
-				moving = append(moving, measure.MovingIntervals(run)...)
-			}
-			segment = nil
-			anchored = false
-		}
-		for index := range rows {
-			row := &rows[index]
-			current := activity.DistanceStep{
-				At:       time.Unix(row.RecordedAtUnix, 0).UTC(),
-				Distance: row.DistanceMetres.Float64, Known: row.DistanceMetres.Valid,
-			}
-			if index > 0 {
-				if kmh, ok := activity.DistanceSpeedKmh(previous, current); ok {
-					if !anchored {
-						// A speed reading names the step it ends, not the one
-						// it starts: without a reading at the step's own
-						// start, a consumer pairing consecutive readings
-						// (measure.MovingIntervals) never sees this first
-						// step at all. One anchor, at the step's start with
-						// its own rate, gives it a start to pair from.
-						segment = append(segment, trainingload.Sample{At: previous.At, Value: kmh})
-						anchored = true
-					}
-					segment = append(segment, trainingload.Sample{At: current.At, Value: kmh})
-				} else {
-					flush()
-				}
-			}
-			previous = current
-		}
-		flush()
-		// Checked against the CAPPED series: an odometer whose every derived
-		// rate exceeded the ceiling has no usable reading at all, and must
-		// fall back to unknown the same way an all-noughts device speed
-		// field does, not read as a ride confidently held still.
-		if moving == nil && len(capSpeedSamples(samples)) > 0 {
-			moving = []measure.Interval{}
-		}
+		samples, moving = odometerSpeedAndMoving(rows)
 	}
 
 	return capSpeedSamples(samples), moving
+}
+
+// odometerSpeedAndMoving is the odometer's own distance-over-time speed
+// series and the moving intervals it names, independent of any device speed
+// field: speedFromRows' own else branch, and the fallback its device branch
+// reaches for when the device field alone could not bracket a moving step.
+func odometerSpeedAndMoving(
+	rows []sqlcgen.ListActivitySensorRecordsRow,
+) (samples []trainingload.Sample, moving []measure.Interval) {
+	var previous activity.DistanceStep
+	var segment []trainingload.Sample
+	anchored := false
+	// flush closes the segment built so far: an invalid step (the odometer
+	// went backwards, say) must end it here rather than let the next valid
+	// step's own anchor read as adjacent to whatever came before the gap.
+	// speedRuns further breaks it at any reading above the ceiling, so a
+	// dropped spike cannot be bridged either.
+	flush := func() {
+		samples = append(samples, segment...)
+		for _, run := range speedRuns(segment) {
+			moving = append(moving, measure.MovingIntervals(run)...)
+		}
+		segment = nil
+		anchored = false
+	}
+	for index := range rows {
+		row := &rows[index]
+		current := activity.DistanceStep{
+			At:       time.Unix(row.RecordedAtUnix, 0).UTC(),
+			Distance: row.DistanceMetres.Float64, Known: row.DistanceMetres.Valid,
+		}
+		if index > 0 {
+			if kmh, ok := activity.DistanceSpeedKmh(previous, current); ok {
+				if !anchored {
+					// A speed reading names the step it ends, not the one it
+					// starts: without a reading at the step's own start, a
+					// consumer pairing consecutive readings
+					// (measure.MovingIntervals) never sees this first step at
+					// all. One anchor, at the step's start with its own rate,
+					// gives it a start to pair from.
+					segment = append(segment, trainingload.Sample{At: previous.At, Value: kmh})
+					anchored = true
+				}
+				segment = append(segment, trainingload.Sample{At: current.At, Value: kmh})
+			} else {
+				flush()
+			}
+		}
+		previous = current
+	}
+	flush()
+	// Checked against the CAPPED series: an odometer whose every derived rate
+	// exceeded the ceiling has no usable reading at all, and must fall back
+	// to unknown the same way an all-noughts device speed field does, not
+	// read as a ride confidently held still.
+	if moving == nil && len(capSpeedSamples(samples)) > 0 {
+		moving = []measure.Interval{}
+	}
+
+	return samples, moving
 }
 
 // speedRuns splits samples into contiguous runs of readings at or under
