@@ -44,6 +44,19 @@ func (q *Queries) ClearEstimatedPower(ctx context.Context, arg ClearEstimatedPow
 	return result.RowsAffected()
 }
 
+const clearEstimatedPowerForTarget = `-- name: ClearEstimatedPowerForTarget :execrows
+UPDATE activity_records SET estimated_power_watts = NULL
+WHERE target_slot = ? AND estimated_power_watts IS NOT NULL
+`
+
+func (q *Queries) ClearEstimatedPowerForTarget(ctx context.Context, targetSlot string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearEstimatedPowerForTarget, targetSlot)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteActivityMetrics = `-- name: DeleteActivityMetrics :exec
 DELETE FROM activity_metrics WHERE target_slot = ? AND workout_id = ?
 `

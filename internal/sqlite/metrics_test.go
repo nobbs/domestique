@@ -525,6 +525,50 @@ func TestClearActivityMetricsRemovesEveryRowAndCountsThem(t *testing.T) {
 	assert.Zero(t, again, "a rider who never had a profile is not a rider who cleared one")
 }
 
+// The regression: clearing every profile parameter must not leave the
+// estimate series, or the route match and climb attempt read from it,
+// outliving the metrics row it was derived beside.
+func TestClearActivityMetricsTakesTheEstimateSeriesAndTheRouteMatchWithIt(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{
+				Time: activityNow(), Latitude: 49, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 100, HasAltitude: true,
+			},
+			{
+				Time: activityNow().Add(time.Second), Latitude: 49.001, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 101, HasAltitude: true,
+			},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
+		[]int64{0, 1}, []measure.Estimate{{}, {Watts: 214, Known: true}}), "StoreEstimatedPower()")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 1, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	// Stored last: StoreActivityRecords and StoreEstimatedPower each clear a
+	// stale metrics row of their own, and this test means to clear a row that
+	// still stands for what it just wrote.
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1,
+		derivedMetrics(testInputs(), testCoefficients())), "StoreActivityMetrics()")
+
+	removed, err := store.ClearActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ClearActivityMetrics()")
+	assert.Equal(t, 1, removed)
+
+	track, err := store.ActivityTrack(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityTrack()")
+	require.Len(t, track, 2)
+	assert.False(t, track[1].HasEstimatedPower, "the estimate must not outlive the profile it was derived from")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	assert.Empty(t, attempts, "no profile, no match to attribute a climb attempt to")
+}
+
 // The whole of what the fitness timeline folds: one row per derived ride, with
 // the moment it was ridden, oldest first.
 func TestActivityRideLoadsCarryTheDayAndTheLoadOfEachRide(t *testing.T) {
@@ -582,7 +626,7 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 	_, err = store.TargetOwner(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the target owner")
 	_, err = store.ClearActivityMetrics(t.Context(), "rider-a")
-	require.ErrorContains(t, err, "clearing the activity metrics")
+	require.ErrorContains(t, err, "starting the activity metrics clear")
 	_, err = store.ActivityRideLoads(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the activity ride loads")
 }

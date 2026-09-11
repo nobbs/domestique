@@ -119,6 +119,10 @@ SELECT COALESCE(owner_subject, '') AS owner_subject FROM targets WHERE slot = ?;
 UPDATE activity_records SET estimated_power_watts = NULL
 WHERE target_slot = ? AND workout_id = ? AND estimated_power_watts IS NOT NULL;
 
+-- name: ClearEstimatedPowerForTarget :execrows
+UPDATE activity_records SET estimated_power_watts = NULL
+WHERE target_slot = ? AND estimated_power_watts IS NOT NULL;
+
 -- Every derived ride of one target with the day it was ridden, which the
 -- fitness timeline is a fold over. Ordered so a fold reads it once.
 -- name: ListActivityRideLoads :many
