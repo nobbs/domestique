@@ -110,14 +110,22 @@ func (s *Store) ActivityRideSamples(
 			samples.TrackRecords = append(samples.TrackRecords, row.RecordIndex)
 		}
 	}
-	samples.Speed = speedFromRows(rows)
+	samples.Speed, samples.MovingIntervals = speedFromRows(rows)
 
 	return samples, nil
 }
 
 // speedFromRows is the device's own speed where any row carried one, else the
 // odometer's distance over time; never a mix of the two within one ride.
-func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) []trainingload.Sample {
+// moving is the same ride's moving intervals, read the way each source
+// requires: a device speed is an instantaneous reading, so a step only
+// counts as moving where both readings that bracket it are positive; the
+// odometer's own speed already names the rate of the step it ends. Nil
+// rather than a known-empty list where a device speed field was present but
+// never once positive throughout -- a real quirk of some trainers -- since
+// that says the field cannot be trusted to name when the ride moved at all,
+// not that it never did.
+func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainingload.Sample, moving []measure.Interval) {
 	hasDeviceSpeed := false
 	for index := range rows {
 		if rows[index].SpeedMs.Valid {
@@ -128,14 +136,18 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) []trainingload.S
 	}
 	var samples []trainingload.Sample
 	if hasDeviceSpeed {
+		everPositive := false
 		for index := range rows {
 			row := &rows[index]
 			if !row.SpeedMs.Valid {
 				continue
 			}
-			samples = append(samples, trainingload.Sample{
-				At: time.Unix(row.RecordedAtUnix, 0).UTC(), Value: row.SpeedMs.Float64 * 3.6,
-			})
+			kmh := row.SpeedMs.Float64 * 3.6
+			everPositive = everPositive || kmh > 0
+			samples = append(samples, trainingload.Sample{At: time.Unix(row.RecordedAtUnix, 0).UTC(), Value: kmh})
+		}
+		if everPositive {
+			moving = measure.MovingIntervalsFromInstantaneous(samples)
 		}
 	} else {
 		var previous activity.DistanceStep
@@ -163,9 +175,10 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) []trainingload.S
 			}
 			previous = current
 		}
+		moving = measure.MovingIntervals(samples)
 	}
 
-	return capSpeedSamples(samples)
+	return capSpeedSamples(samples), moving
 }
 
 // capSpeedSamples drops every reading above measure.MaxPlausibleSpeedKmh: a

@@ -69,10 +69,12 @@ type Interval struct {
 	Start, End time.Time
 }
 
-// MovingIntervals is the time ranges a speed series reports as moving: a
-// positive reading, over a step no wider than DefaultMaxGap, the same rule a
-// splits table cuts a stop's seconds out of its moving time by, and
-// Stretches/ForEachHeld cut a recording gap by. A step wider than that is a
+// MovingIntervals is the time ranges a step-rate speed series reports as
+// moving: a series whose reading at each timestamp names the rate of the
+// step ending there (as an odometer-derived speed does), not an instantaneous
+// reading. A positive rate, over a step no wider than DefaultMaxGap, is what
+// a splits table cuts a stop's seconds out of its moving time by, and
+// Stretches/ForEachHeld cut a recording gap by; a step wider than that is a
 // missing stretch of the series, not a stop within a recorded one, and must
 // not be read as moving. Adjacent moving steps merge into one stretch. Reads
 // neither position nor altitude, so a coverage judged against it never
@@ -89,6 +91,35 @@ func MovingIntervals(speed []Reading) []Interval {
 		previous, current := &speed[index-1], &speed[index]
 		step := current.At.Sub(previous.At)
 		if step <= 0 || step > DefaultMaxGap || current.Value <= 0 {
+			continue
+		}
+		if last := len(intervals) - 1; last >= 0 && !intervals[last].End.Before(previous.At) {
+			intervals[last].End = current.At
+
+			continue
+		}
+		intervals = append(intervals, Interval{Start: previous.At, End: current.At})
+	}
+
+	return intervals
+}
+
+// MovingIntervalsFromInstantaneous is MovingIntervals for a point-observation
+// speed series instead -- an instantaneous reading at each timestamp, a
+// device's own speed field say, rather than a rate already attributed to the
+// step before it. A step counts as moving only when both readings that
+// bracket it are positive: a transition through zero at either end means the
+// exact moment movement started or stopped within the step is not known, and
+// a coverage gate must not guess in the direction that credits it.
+func MovingIntervalsFromInstantaneous(speed []Reading) []Interval {
+	if len(speed) == 0 {
+		return nil
+	}
+	intervals := []Interval{}
+	for index := 1; index < len(speed); index++ {
+		previous, current := &speed[index-1], &speed[index]
+		step := current.At.Sub(previous.At)
+		if step <= 0 || step > DefaultMaxGap || previous.Value <= 0 || current.Value <= 0 {
 			continue
 		}
 		if last := len(intervals) - 1; last >= 0 && !intervals[last].End.Before(previous.At) {

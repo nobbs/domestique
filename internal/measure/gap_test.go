@@ -193,6 +193,32 @@ func TestMovingIntervalsRejectsAStepWiderThanDefaultMaxGap(t *testing.T) {
 	assert.Empty(t, measure.MovingIntervals(speed))
 }
 
+// MovingIntervalsFromInstantaneous reads each reading as a point observation
+// rather than a step's own rate, so a step only counts as moving when both
+// readings that bracket it are positive.
+func TestMovingIntervalsFromInstantaneousNeedsBothEndpointsPositive(t *testing.T) {
+	t.Parallel()
+	speed := []measure.Reading{
+		{At: start(), Value: 10},                      // moving into the next reading
+		{At: start().Add(time.Second), Value: 10},     // both positive: counts
+		{At: start().Add(2 * time.Second), Value: 0},  // stopping: the step into it does not count
+		{At: start().Add(3 * time.Second), Value: 10}, // starting again: the step out of the stop does not count either
+		{At: start().Add(4 * time.Second), Value: 10},
+	}
+
+	intervals := measure.MovingIntervalsFromInstantaneous(speed)
+
+	require.Len(t, intervals, 2)
+	assert.Equal(t, measure.Interval{Start: start(), End: start().Add(time.Second)}, intervals[0])
+	assert.Equal(t,
+		measure.Interval{Start: start().Add(3 * time.Second), End: start().Add(4 * time.Second)}, intervals[1])
+}
+
+func TestMovingIntervalsFromInstantaneousIsEmptyForNoSpeedSeries(t *testing.T) {
+	t.Parallel()
+	assert.Nil(t, measure.MovingIntervalsFromInstantaneous(nil))
+}
+
 func TestHeldWithinIntervalsCountsOnlyTheOverlap(t *testing.T) {
 	t.Parallel()
 	readings := []measure.Reading{

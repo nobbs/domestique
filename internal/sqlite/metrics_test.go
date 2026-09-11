@@ -329,6 +329,32 @@ func TestActivityRideSamplesReadsSpeedFromTheDeviceWhereRecorded(t *testing.T) {
 	require.Len(t, samples.Speed, 2, "the device's own reading, not the odometer's")
 	assert.InDelta(t, 28.8, samples.Speed[0].Value, 1e-9)
 	assert.InDelta(t, 72.0, samples.Speed[1].Value, 1e-9)
+	require.Len(t, samples.MovingIntervals, 1, "an instantaneous reading positive at both ends of the step")
+	assert.Equal(t,
+		measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, samples.MovingIntervals[0])
+}
+
+// The regression: a device speed field present but never once positive
+// throughout -- a real quirk of some trainers -- cannot be trusted to say
+// when the ride moved at all. It must not be read as a ride that never did,
+// which would withhold otherwise complete heart-rate and power figures.
+func TestActivityRideSamplesTreatsAnAlwaysZeroDeviceSpeedAsUnknownRatherThanStationary(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), SpeedMS: 0, HasSpeed: true, HeartRateBPM: 140, HasHeartRate: true},
+			{
+				Time: activityNow().Add(time.Second), SpeedMS: 0, HasSpeed: true,
+				HeartRateBPM: 140, HasHeartRate: true,
+			},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 2)
+	assert.Nil(t, samples.MovingIntervals, "an unreliable field, not a ride that never moved")
 }
 
 // A ride with no device speed reading falls back to the odometer: distance
