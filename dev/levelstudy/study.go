@@ -58,7 +58,10 @@ type unmeteredRide struct {
 }
 
 // positive is a series without the readings a sensor never took: a strap
-// that was not paired writes nought, and nought is not a heart rate.
+// that was not paired writes nought, and nought is not a heart rate. For a
+// mean alone: held duration must split on a nought instead, see
+// heartRateRuns, or a dropout it wrote this way bridges across as
+// continuously covered.
 func positive(readings []trainingload.Sample) []trainingload.Sample {
 	kept := make([]trainingload.Sample, 0, len(readings))
 	for _, reading := range readings {
@@ -68,6 +71,60 @@ func positive(readings []trainingload.Sample) []trainingload.Sample {
 	}
 
 	return kept
+}
+
+// heartRateRuns splits a heart-rate series into runs of positive readings,
+// cut at every nought: a dropout the strap wrote this way must break the
+// held time there, never bridge across it within the ordinary recording-gap
+// tolerance the way a reading it simply never took would.
+func heartRateRuns(readings []trainingload.Sample) [][]trainingload.Sample {
+	var runs [][]trainingload.Sample
+	start := -1
+	for index, reading := range readings {
+		if reading.Value > 0 {
+			if start == -1 {
+				start = index
+			}
+
+			continue
+		}
+		if start != -1 {
+			runs = append(runs, readings[start:index])
+			start = -1
+		}
+	}
+	if start != -1 {
+		runs = append(runs, readings[start:])
+	}
+
+	return runs
+}
+
+// heartRateHeldSeconds is the held duration of a heart-rate series, summed
+// across the runs a nought splits it into.
+func heartRateHeldSeconds(readings []trainingload.Sample) float64 {
+	held := 0.0
+	for _, run := range heartRateRuns(readings) {
+		_, seconds := measure.MeanHeld(run, measure.DefaultMaxGap)
+		held += seconds
+	}
+
+	return held
+}
+
+// blockHeldSecondsAcrossHeartRateRuns is blockHeldSeconds for a heart-rate
+// series that may still carry the noughts a dropout wrote: held duration is
+// summed across the runs of positive readings a nought splits it into,
+// rather than the whole series read as one.
+func blockHeldSecondsAcrossHeartRateRuns(readings []trainingload.Sample, start time.Time, block time.Duration) map[int]float64 {
+	held := map[int]float64{}
+	for _, run := range heartRateRuns(readings) {
+		for key, seconds := range blockHeldSeconds(timesOf(run), start, block) {
+			held[key] += seconds
+		}
+	}
+
+	return held
 }
 
 // blockMean averages a sensor series into blocks of the given length, counted
@@ -180,9 +237,9 @@ func meteredBlocksOf(power, heartRate, cadence []trainingload.Sample, block time
 		pedallingHeartRate = append(pedallingHeartRate, reading)
 	}
 	powerMeans, _ := blockMean(pedallingPower, start, block)
-	heartRateMeans, _ := blockMean(pedallingHeartRate, start, block)
+	heartRateMeans, _ := blockMean(positive(pedallingHeartRate), start, block)
 	powerHeld := blockHeldSeconds(timesOf(pedallingPower), start, block)
-	heartRateHeld := blockHeldSeconds(timesOf(pedallingHeartRate), start, block)
+	heartRateHeld := blockHeldSecondsAcrossHeartRateRuns(pedallingHeartRate, start, block)
 
 	keys := make([]int, 0, len(powerMeans))
 	for key := range powerMeans {
@@ -234,8 +291,8 @@ func unmeteredBlocksOf(
 		indicesByBlock[key] = append(indicesByBlock[key], index)
 	}
 	pedallingHeartRate := heartRateOverTrack(heartRate, track)
-	heartRateMeans, _ := blockMean(pedallingHeartRate, start, block)
-	heartRateHeld := blockHeldSeconds(timesOf(pedallingHeartRate), start, block)
+	heartRateMeans, _ := blockMean(positive(pedallingHeartRate), start, block)
+	heartRateHeld := blockHeldSecondsAcrossHeartRateRuns(pedallingHeartRate, start, block)
 	qualifyingTimes := make([]time.Time, len(whole.Indices))
 	for position, index := range whole.Indices {
 		qualifyingTimes[position] = track[index].At
@@ -316,7 +373,7 @@ func pedallingAt(at time.Time, track []measure.Sample) bool {
 // within the track's own span. False for an empty track or one with no heart
 // rate over it.
 func meanHeartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) (mean float64, ok bool) {
-	kept := heartRateOverTrack(heartRate, track)
+	kept := positive(heartRateOverTrack(heartRate, track))
 	if len(kept) == 0 {
 		return 0, false
 	}
@@ -856,7 +913,10 @@ func study(
 		if massErr != nil {
 			return nil, massErr
 		}
-		heartRate := positive(samples.HeartRate)
+		// Raw, noughts included: the functions below split on a nought
+		// themselves where held duration is at stake, rather than having it
+		// stripped here and silently bridged across as continuously held.
+		heartRate := samples.HeartRate
 
 		if len(samples.Power) > 0 {
 			blocks := meteredBlocksOf(samples.Power, heartRate, samples.Cadence, block)
@@ -877,7 +937,7 @@ func study(
 			continue
 		}
 		elapsedSeconds := samples.Track[len(samples.Track)-1].At.Sub(samples.Track[0].At).Seconds()
-		_, heldSeconds := measure.MeanHeld(heartRateOverTrack(heartRate, samples.Track), measure.DefaultMaxGap)
+		heldSeconds := heartRateHeldSeconds(heartRateOverTrack(heartRate, samples.Track))
 		if elapsedSeconds <= 0 || heldSeconds < minHeartRateCoverage*elapsedSeconds {
 			result.skipped++
 			continue

@@ -188,6 +188,40 @@ func TestMeanHeartRateOverTrackExcludesReadingsDuringACoast(t *testing.T) {
 	assert.InDelta(t, 140, mean, 1e-9, "the coasting spike must not shift the pedalling target")
 }
 
+// The regression: a dropout the strap wrote as a run of noughts must break
+// held time there, not bridge across it within the ordinary ten-second
+// recording-gap tolerance the way a reading it simply never took would.
+func TestHeartRateHeldSecondsDoesNotBridgeADropoutWrittenAsNought(t *testing.T) {
+	t.Parallel()
+	values := []float64{150, 150, 0, 0, 0, 0, 0, 0, 150, 150}
+	samples := make([]trainingload.Sample, len(values))
+	for index, value := range values {
+		samples[index] = trainingload.Sample{At: start().Add(time.Duration(index) * time.Second), Value: value}
+	}
+
+	held := heartRateHeldSeconds(samples)
+
+	// One held second either side of the six-second dropout: two, not the
+	// whole nine-second span bridged across it.
+	assert.InDelta(t, 2.0, held, 1e-9)
+}
+
+// The same regression, bucketed per block: a dropout must not inflate the
+// held duration of whichever block it falls in.
+func TestBlockHeldSecondsAcrossHeartRateRunsDoesNotBridgeADropout(t *testing.T) {
+	t.Parallel()
+	const block = 10 * time.Second
+	values := []float64{150, 150, 0, 0, 0, 0, 0, 0, 150, 150}
+	samples := make([]trainingload.Sample, len(values))
+	for index, value := range values {
+		samples[index] = trainingload.Sample{At: start().Add(time.Duration(index) * time.Second), Value: value}
+	}
+
+	held := blockHeldSecondsAcrossHeartRateRuns(samples, start(), block)
+
+	assert.InDelta(t, 2.0, held[0], 1e-9)
+}
+
 func TestMeanHeartRateOverTrackRefusesAnEmptyTrack(t *testing.T) {
 	t.Parallel()
 	_, ok := meanHeartRateOverTrack([]trainingload.Sample{{At: start(), Value: 140}}, nil)
