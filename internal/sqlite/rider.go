@@ -38,7 +38,7 @@ func (s *Store) RiderProfile(ctx context.Context, subject string) (rider.Profile
 // SetRiderProfile replaces one subject's parameters whole, the way every
 // settings section is replaced whole.
 //
-//nolint:gocritic // value param: a profile is six optional numbers, copied as cheaply as a pointer.
+//nolint:gocritic // value param: a profile is eight optional numbers, copied as cheaply as a pointer.
 func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rider.Profile) error {
 	if err := s.queries.UpsertRiderProfile(ctx, sqlcgen.UpsertRiderProfileParams{
 		Subject:                       subject,
