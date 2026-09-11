@@ -24,6 +24,7 @@ Toolchain pinned in [`.mise.toml`](.mise.toml); every command is a Mise task in
 | Patch coverage (before first push) | `mise run patch-coverage` |
 | Race detector (after concurrent changes) | `mise run test-race` |
 | Go format | `mise run fmt` |
+| UI format and autofix | `mise run ui-format` |
 | Unit coverage profiles | `mise run coverage` |
 | UI unit tests (jsdom) | `mise run ui-test` |
 | UI browser tests (Playwright) | `mise run ui-browser-test` |
