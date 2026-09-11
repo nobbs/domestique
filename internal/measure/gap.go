@@ -70,14 +70,24 @@ type Interval struct {
 }
 
 // MovingIntervals is the time ranges a track was moving through: the odometer
-// advancing between two samples in a row, the same rule a splits table cuts a
-// stop's seconds out of its moving time by. Adjacent moving steps merge into
-// one stretch.
+// advancing between two samples in a row no further apart than DefaultMaxGap,
+// the same rule a splits table cuts a stop's seconds out of its moving time
+// by, and Stretches/ForEachHeld cut a recording gap by. A step wider than
+// that is a missing stretch of track, not a stop within a recorded one, and
+// must not be read as moving however far the odometer jumped across it.
+// Adjacent moving steps merge into one stretch. Nil for an empty track; a
+// non-nil, possibly empty, slice for any other track (a single sample, or one
+// that never moved), so a caller can tell "no track to judge by" from "a
+// track that named no moving time".
 func MovingIntervals(track []Sample) []Interval {
-	var intervals []Interval
+	if len(track) == 0 {
+		return nil
+	}
+	intervals := []Interval{}
 	for index := 1; index < len(track); index++ {
 		previous, current := &track[index-1], &track[index]
-		if !current.At.After(previous.At) || current.DistanceMetres <= previous.DistanceMetres {
+		step := current.At.Sub(previous.At)
+		if step <= 0 || step > DefaultMaxGap || current.DistanceMetres <= previous.DistanceMetres {
 			continue
 		}
 		if last := len(intervals) - 1; last >= 0 && !intervals[last].End.Before(previous.At) {

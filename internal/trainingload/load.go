@@ -28,11 +28,12 @@ const MinSeriesCoverage = 0.90
 // over, against the ride's own moving time rather than its elapsed one, so a
 // stop with the sensor detached does not count against it. Held time outside
 // movingIntervals never counts either -- a sensor live only through a stop
-// must not cover a moving portion it never saw -- but where the ride carries
-// no such intervals (no track to derive them from, an indoor trainer say)
-// held time is judged against the whole recording instead, which is the
-// ride's only account of when it moved. Capped at 1. False for a series with
-// nothing to hold at all.
+// must not cover a moving portion it never saw -- but where movingIntervals
+// is nil (no track to derive them from, an indoor trainer say) held time is
+// judged against the whole recording instead, which is the ride's only
+// account of when it moved. A non-nil, empty movingIntervals -- a track that
+// named no moving time at all -- is read as no coverage rather than that
+// fallback. Capped at 1. False for a series with nothing to hold at all.
 func SeriesCoverage(samples []Sample, movingSeconds float64, movingIntervals []measure.Interval) (share float64, ok bool) {
 	if movingSeconds <= 0 || len(samples) == 0 {
 		return 0, false
@@ -62,7 +63,11 @@ func HeartRateCoverage(samples []Sample, movingSeconds float64, movingIntervals 
 // movingIntervals where the ride carries any, else read against the whole
 // recording the way SeriesCoverage always used to.
 func heldSeconds(samples []Sample, movingIntervals []measure.Interval) float64 {
-	if len(movingIntervals) == 0 {
+	// Nil is "no track to judge by" -- measure.MovingIntervals's own contract
+	// -- and falls back to the whole recording; a track that named no moving
+	// time at all comes back non-nil and empty, and must read as zero held
+	// seconds rather than the same fallback.
+	if movingIntervals == nil {
 		_, held := measure.MeanHeld(samples, measure.DefaultMaxGap)
 
 		return held

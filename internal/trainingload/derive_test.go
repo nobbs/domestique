@@ -192,6 +192,16 @@ func TestSeriesCoverageOnlyCountsHeldTimeWithinMovingIntervals(t *testing.T) {
 	assert.InDelta(t, 0, share, 1e-9, "none of the sensor's held time falls inside the moving interval")
 }
 
+// The regression: a non-nil but empty movingIntervals -- a track that itself
+// named no moving time at all, distinct from having no track to judge by --
+// must read as no coverage, not fall back to judging the whole recording.
+func TestSeriesCoverageReadsAnEmptyButKnownMovingIntervalsAsNoCoverage(t *testing.T) {
+	t.Parallel()
+	share, ok := trainingload.SeriesCoverage(steady(3600, 140), 3600, []measure.Interval{})
+	require.True(t, ok)
+	assert.Zero(t, share, "a track that named no moving time credits no coverage")
+}
+
 func TestTRIMPNeedsAReserveToMeasureAgainst(t *testing.T) {
 	t.Parallel()
 	_, ok := trainingload.TRIMP(steady(600, 150), 0, 50)

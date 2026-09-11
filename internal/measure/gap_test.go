@@ -161,7 +161,35 @@ func TestMovingIntervalsSkipsAStopWhereTheOdometerDidNotAdvance(t *testing.T) {
 
 func TestMovingIntervalsIsEmptyForNoTrack(t *testing.T) {
 	t.Parallel()
-	assert.Empty(t, measure.MovingIntervals(nil))
+	assert.Nil(t, measure.MovingIntervals(nil), "no track is not the same as a track that never moved")
+}
+
+// A track that never advances is a real answer -- zero moving time -- not the
+// same as having no track to judge by at all: the two must stay distinguishable.
+func TestMovingIntervalsIsNonNilButEmptyForATrackThatNeverMoved(t *testing.T) {
+	t.Parallel()
+	track := []measure.Sample{
+		{At: start(), DistanceMetres: 5},
+		{At: start().Add(time.Second), DistanceMetres: 5},
+	}
+
+	intervals := measure.MovingIntervals(track)
+
+	assert.NotNil(t, intervals)
+	assert.Empty(t, intervals)
+}
+
+// The regression: a positive-distance step spanning a gap in the recording
+// itself -- the track skipped a stretch, the same as any other recording gap
+// -- must not be read as moving however far the odometer jumped across it.
+func TestMovingIntervalsRejectsAStepWiderThanDefaultMaxGap(t *testing.T) {
+	t.Parallel()
+	track := []measure.Sample{
+		{At: start(), DistanceMetres: 0},
+		{At: start().Add(measure.DefaultMaxGap + time.Second), DistanceMetres: 1000},
+	}
+
+	assert.Empty(t, measure.MovingIntervals(track))
 }
 
 func TestHeldWithinIntervalsCountsOnlyTheOverlap(t *testing.T) {
