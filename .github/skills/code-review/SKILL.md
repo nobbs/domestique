@@ -19,16 +19,20 @@ language or library feature is unavailable. Nothing here runs a compiler, CI
 compiles every pull request before it can merge, and every such claim made on this
 repository so far has been wrong.
 
-Judge the code against the versions this repository pins, never against older ones:
-the Go toolchain in `go.mod`, everything else in `.mise.toml`. Recent Go language
-changes have repeatedly been reported as errors. `new` accepting a value rather
-than a type is the standing example.
+Judge the code against the versions this repository pins, never against older ones.
+`.mise.toml` is the pin, for the Go toolchain and for everything else; `go.mod`'s
+`go` directive states the language version the module requires. Recent Go language
+changes have repeatedly been reported as errors here. `new` accepting a value
+rather than a type is the standing example.
 
 ## Out of scope
 
-- The pull request description. Review the code.
-- Asking for more tests or more coverage. Codecov's patch status gates that, and it
-  measures what this reviewer cannot see.
+- Wording in the pull request description. Review the code. The exception is a
+  description that contradicts the change where a specification or a safety gate is
+  involved: say so, because that misleads every later reader.
+- Asking for more coverage. Codecov's patch status gates that and measures what this
+  reviewer cannot see. A behaviour change carrying no regression test is still worth
+  reporting, because `AGENTS.md` requires one.
 - Style, naming and formatting. Linters and formatters own those and run in CI.
 
 ## What is worth reporting
