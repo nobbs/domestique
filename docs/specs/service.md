@@ -528,11 +528,11 @@ The read-only JSON surface is small:
   each coordinate, indexed the same way and named `estimatedPowerWatts` rather
   than any name a measurement could carry. It is omitted entirely for a ride
   that measured its own power, one with no usable track, and one whose rider
-  has not entered both their own mass and their bicycle's. Nothing else the
-  samples hold is served here, and the
-  estimate is never served as though it were a reading. It is scoped exactly as
-  the list above is. An activity with fewer than
-  two positioned samples is served as an unlocated Feature — a null `geometry`
+  has not entered both their own mass and their bicycle's mass. Nothing else
+  the samples hold is served here, and the estimate is never served as though
+  it were a reading. It is scoped exactly as the list above is. An activity
+  with fewer than two positioned samples is served as an unlocated Feature — a
+  null `geometry`
   and no box — whose `properties.state` says why: `pending` for samples not
   downloaded yet, `empty` for samples too few of which carried a position to
   draw a line, `unreadable` for a file that did not decode, and `indoor` for a

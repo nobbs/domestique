@@ -2245,7 +2245,8 @@ components:
             track at the rider's own bicycle numbers, never a measurement,
             never an input to the figures above. Absent for a ride that
             measured its own power, one with no usable track, and one whose
-            rider has not entered both their own mass and their bicycle's.
+            rider has not entered both their own mass and their bicycle's
+            mass.
         estimatedPedallingShare:
           type: number
           format: double
@@ -3518,7 +3519,8 @@ components:
             from a physics model over position, altitude and time, never a
             measurement, and nothing may present it as one. Omitted entirely for
             a ride that carries real power, one with no usable track, and one
-            whose rider has not entered both their own mass and their bicycle's.
+            whose rider has not entered both their own mass and their
+            bicycle's mass.
           type: array
           items:
             type:
