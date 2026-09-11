@@ -535,25 +535,36 @@ type meteredCheck struct {
 	coefficients      measure.Coefficients
 	secondCorrelation float64
 	secondRMS         float64
-	// The same two figures with both series smoothed over smoothingSeconds,
+	// The same two figures with both series smoothed over smoothingWindow,
 	// which is the resolution the model's own windowing works at.
 	smoothCorrelation float64
 	smoothRMS         float64
 	seconds           int
 }
 
-// smoothingSeconds is the rolling mean the per-second check is also read
+// smoothingWindow is the rolling mean the per-second check is also read
 // at: the model measures speed and grade over a 100 m window, a quarter of a
 // minute at road speeds, so a meter's second-to-second jitter is beneath it.
-const smoothingSeconds = 30
+const smoothingWindow = 30 * time.Second
 
-// smoothed is values under a centred rolling mean of width samples.
-func smoothed(values []float64, width int) []float64 {
+// smoothed is values under a centred rolling mean spanning window seconds
+// either side of each sample's own timestamp -- named in time, not a count
+// of retained samples: coasting removed from between them leaves the series
+// unevenly spaced, so a fixed sample count would not name the seconds its
+// own label claims.
+func smoothed(times []time.Time, values []float64, window time.Duration) []float64 {
 	out := make([]float64, len(values))
-	half := width / 2
-	for index := range values {
-		low, high := max(index-half, 0), min(index+width-half-1, len(values)-1)
+	half := window / 2
+	for index, at := range times {
 		total := 0.0
+		low := index
+		for low > 0 && at.Sub(times[low-1]) <= half {
+			low--
+		}
+		high := index
+		for high < len(times)-1 && times[high+1].Sub(at) <= half {
+			high++
+		}
 		for held := low; held <= high; held++ {
 			total += values[held]
 		}
@@ -827,14 +838,16 @@ func checkAgainstMeter(
 		if !estimateOK {
 			continue
 		}
+		rideTimes := make([]time.Time, 0, len(indices[index]))
 		modelledRide := make([]float64, 0, len(indices[index]))
 		for _, sampleIndex := range indices[index] {
+			rideTimes = append(rideTimes, wholes[index].Samples[sampleIndex].At)
 			modelledRide = append(modelledRide, estimates[sampleIndex].Watts)
 		}
 		modelledSeconds = append(modelledSeconds, modelledRide...)
 		measuredSeconds = append(measuredSeconds, measured[index]...)
-		modelledSmooth = append(modelledSmooth, smoothed(modelledRide, smoothingSeconds)...)
-		measuredSmooth = append(measuredSmooth, smoothed(measured[index], smoothingSeconds)...)
+		modelledSmooth = append(modelledSmooth, smoothed(rideTimes, modelledRide, smoothingWindow)...)
+		measuredSmooth = append(measuredSmooth, smoothed(rideTimes, measured[index], smoothingWindow)...)
 	}
 	check.blocks, _ = Evaluate(blocks, coefficients)
 	check.seconds = len(modelledSeconds)

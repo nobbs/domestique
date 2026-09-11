@@ -286,6 +286,55 @@ func TestFitDragAreaRefusesAFitThatCollapsesToTheSearchBound(t *testing.T) {
 	assert.False(t, fitOK, "a fit that lands on the search bound is the failure itself, not a measurement")
 }
 
+// smoothedTimes is a helper for one-second-apart timestamps, from as many
+// seconds after start() as each offset names.
+func smoothedTimes(offsetsSeconds ...int) []time.Time {
+	times := make([]time.Time, len(offsetsSeconds))
+	for index, offset := range offsetsSeconds {
+		times[index] = start().Add(time.Duration(offset) * time.Second)
+	}
+
+	return times
+}
+
+// The acceptance criterion: an evenly one-second-apart series smoothed over
+// a thirty-second window averages every sample within fifteen seconds either
+// side, the count a fixed-sample window would also have reached.
+func TestSmoothedMatchesAFixedCountOnAnEvenlySpacedSeries(t *testing.T) {
+	t.Parallel()
+	times := smoothedTimes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+	values := []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+
+	out := smoothed(times, values, smoothingWindow)
+
+	// Every sample sits within fifteen seconds of every other in a ten-second
+	// span, so the window reaches the whole series and every mean is 4.5.
+	for index, value := range out {
+		assert.InDelta(t, 4.5, value, 1e-9, "index %d", index)
+	}
+}
+
+// The regression: a gap left by coasting removed from between two clusters
+// of samples must not let the window blend one cluster's values into the
+// other's mean just because a fixed sample count would still reach across it.
+func TestSmoothedDoesNotBlendAcrossAGapLeftByRemovedSamples(t *testing.T) {
+	t.Parallel()
+	// Five samples a second apart, then a 96-second gap (coasting removed),
+	// then five more a second apart -- ten samples total, the same count a
+	// fixed thirty-sample window would have reached from either cluster.
+	times := smoothedTimes(0, 1, 2, 3, 4, 100, 101, 102, 103, 104)
+	values := []float64{10, 10, 10, 10, 10, 20, 20, 20, 20, 20}
+
+	out := smoothed(times, values, smoothingWindow)
+
+	for index := 0; index < 5; index++ {
+		assert.InDelta(t, 10, out[index], 1e-9, "index %d: the first cluster alone", index)
+	}
+	for index := 5; index < 10; index++ {
+		assert.InDelta(t, 20, out[index], 1e-9, "index %d: the second cluster alone", index)
+	}
+}
+
 func TestEvaluateReportsTheSignedBiasOfACandidate(t *testing.T) {
 	t.Parallel()
 	base := rideAtSpeeds([]float64{6, 10, 14}, 300, 92)
