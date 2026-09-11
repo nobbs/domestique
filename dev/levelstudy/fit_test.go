@@ -327,7 +327,7 @@ func TestSmoothedDoesNotBlendAcrossAGapLeftByRemovedSamples(t *testing.T) {
 
 	out := smoothed(times, values, smoothingWindow)
 
-	for index := 0; index < 5; index++ {
+	for index := range 5 {
 		assert.InDelta(t, 10, out[index], 1e-9, "index %d: the first cluster alone", index)
 	}
 	for index := 5; index < 10; index++ {
