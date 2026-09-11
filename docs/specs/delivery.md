@@ -40,7 +40,7 @@ The repository provides these stable tasks:
 | `mise run dev-setup` | Snapshots the deployed state into an isolated development environment. |
 | `mise run dev-api` | Serves the API against that snapshot on `:8081`. |
 | `mise run container-smoke` | Starts the production image under the documented deployment runtime and asserts the runtime contract. Takes an image; builds none. |
-| `mise run quick` | Runs the routine local loop: every check in `mise run check` except the six it defers. |
+| `mise run quick` | Runs the routine local loop: every check in `mise run check` except the checks it defers, listed below. |
 | `mise run check` | Runs the full gate locally, on demand. |
 | `mise run coverage` | Writes a Go coverage profile and the browser UI's LCOV report to a gitignored directory and summarises both. |
 | `mise run patch-coverage` | Measures both, then judges what the change adds the way the merge gate will, failing on a Go shortfall. |
@@ -107,11 +107,14 @@ The project uses `prek`, never `pre-commit`.
 
 The installed hook is bounded by what it may do. A hook that runs a command
 takes its file list from `prek`, so a commit is judged on what it stages and not
-on the rest of the tree — the secret scan is the one exception, reading the
-staged diff directly instead; the same configuration under
-`prek run --all-files` covers the repository. Tests, full linting, audits,
-cross-compilation, image work, and the browser suites stay out of the hook and
-belong to `mise run check` and GitHub Actions.
+on the rest of the tree; the same configuration under `prek run --all-files`
+covers the repository with the staged files list widened to every tracked
+file. The secret scan is the one hook that ignores its file list regardless —
+it always reads the staged diff directly, so `prek run --all-files` runs the
+identical check, not a wider one; nothing here scans committed history or an
+unstaged working-tree change. Tests, full linting, audits, cross-compilation,
+image work, and the browser suites stay out of the hook and belong to
+`mise run check` and GitHub Actions.
 
 ### A local check may skip work its inputs have not changed
 
