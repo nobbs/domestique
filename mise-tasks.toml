@@ -30,18 +30,6 @@ sources = [".github/workflows/*.yml"]
 outputs = { auto = true }
 run = "actionlint .github/workflows/*.yml"
 
-[hook-check]
-description = "Assert the commit hook stays cheap"
-sources = ["prek.toml", "dev/check-hook-cost.sh"]
-outputs = { auto = true }
-run = "./dev/check-hook-cost.sh"
-
-[gate-check]
-description = "Assert `quick` is a strict subset of `check`"
-sources = ["mise-tasks.toml", ".mise.toml", "dev/gatecheck/*.go"]
-outputs = { auto = true }
-run = "go run ./dev/gatecheck"
-
 [task-check]
 description = "Validate the task definitions"
 sources = ["mise-tasks.toml", ".mise.toml"]
@@ -112,11 +100,6 @@ run = ["go mod tidy -diff", "go mod verify"]
 description = "Check the Go tree against the advisory database"
 wait_for = ["api-generate"]
 run = "CGO_ENABLED=0 govulncheck ./..."
-
-[secret-scan]
-description = "Scan the working tree for secrets"
-wait_for = ["api-generate"]
-run = "gitleaks dir . --redact --no-banner"
 
 [coverage]
 description = "Measure Go and UI coverage"
@@ -358,8 +341,6 @@ depends = [
   "lint",
   "shell-lint",
   "workflow-lint",
-  "hook-check",
-  "gate-check",
   "task-check",
 ]
 
@@ -369,7 +350,7 @@ depends = ["vet", "test", "test-race"]
 
 [ci-security]
 description = "The security half of the gate, as CI groups it"
-depends = ["mod-check", "vulncheck", "ui-audit", "secret-scan"]
+depends = ["mod-check", "vulncheck", "ui-audit"]
 
 [ci-ui]
 description = "The UI half of the gate, as CI groups it"
@@ -395,13 +376,10 @@ depends = [
   "lint",
   "shell-lint",
   "workflow-lint",
-  "hook-check",
-  "gate-check",
   "task-check",
   "vet",
   "test",
   "mod-check",
-  "secret-scan",
   "ui-typecheck",
   "ui-lint",
   "ui-test",

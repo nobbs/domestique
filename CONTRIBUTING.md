@@ -70,12 +70,12 @@ hook silently falls back to whatever `prek` is on your `PATH`.
 repairs and exits non-zero so they can be reviewed and staged deliberately.
 
 The hook judges a commit on the files it stages: Go formatting and Markdown lint
-see the staged files alone, so a commit never fails on a defect in a file it did
-not touch. It deliberately runs no tests, no full linting, no audit, no
-cross-compilation, no image build, and no browser suite — that work belongs to
-`mise run check` and to GitHub Actions, and `mise run hook-check` fails if it
-appears in `prek.toml`. Keeping the hook to roughly a second is what keeps it
-worth leaving installed.
+see the staged files alone, and the secret scan sees the staged diff, so a
+commit never fails on a defect in a file it did not touch. It deliberately runs
+no tests, no full linting, no full-tree audit, no cross-compilation, no image
+build, and no browser suite — that work belongs to `mise run check` and to
+GitHub Actions. Keeping the hook to roughly a second is what keeps it worth
+leaving installed.
 
 ## Coverage
 

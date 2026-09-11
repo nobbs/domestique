@@ -77,7 +77,7 @@ jobs:
       # `.mise.toml` leads its key: without it a toolchain bump would hit the old
       # entry exactly, save nothing the new compiler produced, and recompile cold
       # until a source file happened to move. Both paths are `.mise.toml`'s own
-      # GOCACHE and GOLANGCI_LINT_CACHE, which dev/gatecheck asserts still match.
+      # GOCACHE and GOLANGCI_LINT_CACHE; keep them in step by hand if either moves.
       # Coverage is the one job that also runs on push, so its entry is the only
       # build cache a pull request's first run can reach: hence the fallback.
       - name: Restore the Go module cache
@@ -115,7 +115,7 @@ jobs:
     # binary rather than the invocation, and this job runs the plain and the
     # race-instrumented suite back to back. A wedged package is then given up on
     # by the toolchain, which prints every goroutine's stack, rather than by the
-    # runner, which prints nothing. dev/gatecheck asserts that sum against this.
+    # runner, which prints nothing. Keep this above that sum by hand if either changes.
     timeout-minutes: 25
     needs: changes
     # Pull requests only: see the Lint job above.

@@ -73,3 +73,10 @@ entry = "dev/check-ui-format.sh"
 language = "system"
 files = "^internal/webui/app/.*\\.(ts|tsx|json)$"
 pass_filenames = true
+
+# No files/pass_filenames: gitleaks reads the staged diff itself, not a file list.
+[[repos.hooks]]
+id = "gitleaks-protect"
+name = "Secret scan"
+entry = "mise exec -- gitleaks protect --staged --redact --no-banner"
+language = "system"

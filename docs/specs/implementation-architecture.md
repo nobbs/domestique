@@ -69,7 +69,6 @@ private to this service.
 ├── dev/
 │   ├── demoapi/                    the demo service, over internal/demo
 │   ├── session/                    mints a session row for a dev-setup snapshot
-│   ├── gatecheck/                  asserts what `quick` defers against `check`
 │   ├── patchcoverage/              grades a patch the way Codecov will
 │   ├── coveragesummary/            prints a profile's summary
 │   ├── levelstudy/                 the offline bicycle-coefficient study over recorded rides

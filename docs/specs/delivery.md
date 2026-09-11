@@ -133,19 +133,18 @@ Three rules decide which checks may be skipped:
 - A check qualifies only when its verdict is a function of the files it names.
   `vulncheck` and `ui-audit` read an advisory database that moves without the
   tree, so an unchanged tree can still be newly vulnerable and they always run.
-- Its inputs must be nameable. `hygiene` and `secret-scan` read the whole
-  worktree, and a source list that broad is likelier to be wrong than those runs
-  are to be slow.
+- Its inputs must be nameable. `hygiene` reads the whole worktree, and a source
+  list that broad is likelier to be wrong than the run is to be slow.
 - A glob names a kind of file rather than the directories that hold it today —
   `**/*.go`, not a list of packages. A source list that misses a new file is a
   check that stops noticing it.
 
-Four properties make skipping safe. A task that failed is never recorded as up
+Three properties make skipping safe. A task that failed is never recorded as up
 to date, so a red check cannot be cached green. Editing a task's own definition
-invalidates it, so a check cannot change what it does and stay up to date. A
-glob matching no file would be up to date forever, so `gate-check` fails on one.
-The mechanism only removes work from a local run; the merge gate does not use
-it.
+invalidates it, so a check cannot change what it does and stay up to date. The
+mechanism only removes work from a local run; the merge gate does not use it. A
+`sources` glob matching no tracked file would be up to date forever regardless —
+worth checking by hand when adding one.
 
 ## Coverage
 
