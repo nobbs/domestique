@@ -59,8 +59,8 @@ type unmeteredRide struct {
 
 // positive is a series without the readings a sensor never took: a strap
 // that was not paired writes nought, and nought is not a heart rate. For a
-// mean alone: held duration must split on a nought instead, see
-// heartRateRuns, or a dropout it wrote this way bridges across as
+// mean alone: held duration must treat a nought as invalid instead, see
+// heldSecondsAcrossRuns, or a dropout it wrote this way bridges across as
 // continuously covered.
 func positive(readings []trainingload.Sample) []trainingload.Sample {
 	kept := make([]trainingload.Sample, 0, len(readings))
@@ -73,55 +73,68 @@ func positive(readings []trainingload.Sample) []trainingload.Sample {
 	return kept
 }
 
-// heartRateRuns splits a heart-rate series into runs of positive readings,
-// cut at every nought: a dropout the strap wrote this way must break the
-// held time there, never bridge across it within the ordinary recording-gap
-// tolerance the way a reading it simply never took would.
-func heartRateRuns(readings []trainingload.Sample) [][]trainingload.Sample {
-	var runs [][]trainingload.Sample
-	start := -1
-	for index, reading := range readings {
-		if reading.Value > 0 {
-			if start == -1 {
-				start = index
-			}
-
+// heldSecondsAcrossRuns is how long readings held within each block, counted
+// from start: a step no wider than measure.DefaultMaxGap is credited to the
+// block its own start falls in. Duration, not a reading count, is what a
+// block's own coverage gate must be judged against -- a coarser sensor's
+// ordinary sampling interval leaves it fewer readings without leaving it any
+// less covered. A step whose reading on either end invalid reports true for
+// is never counted: an excluded reading -- a dropout's nought, a coast, one
+// outside the span being judged -- must break held time there, not let the
+// ordinary gap tolerance bridge across it the way a reading simply never
+// taken would.
+func heldSecondsAcrossRuns(
+	readings []trainingload.Sample, invalid func(trainingload.Sample) bool, start time.Time, block time.Duration,
+) map[int]float64 {
+	held := map[int]float64{}
+	for index := 0; index < len(readings)-1; index++ {
+		if invalid(readings[index]) || invalid(readings[index+1]) {
 			continue
 		}
-		if start != -1 {
-			runs = append(runs, readings[start:index])
-			start = -1
+		step := readings[index+1].At.Sub(readings[index].At)
+		if step <= 0 || step > measure.DefaultMaxGap {
+			continue
 		}
-	}
-	if start != -1 {
-		runs = append(runs, readings[start:])
-	}
-
-	return runs
-}
-
-// heartRateHeldSeconds is the held duration of a heart-rate series, summed
-// across the runs a nought splits it into.
-func heartRateHeldSeconds(readings []trainingload.Sample) float64 {
-	held := 0.0
-	for _, run := range heartRateRuns(readings) {
-		_, seconds := measure.MeanHeld(run, measure.DefaultMaxGap)
-		held += seconds
+		key := int(readings[index].At.Sub(start) / block)
+		held[key] += step.Seconds()
 	}
 
 	return held
 }
 
-// blockHeldSecondsAcrossHeartRateRuns is blockHeldSeconds for a heart-rate
-// series that may still carry the noughts a dropout wrote: held duration is
-// summed across the runs of positive readings a nought splits it into,
-// rather than the whole series read as one.
-func blockHeldSecondsAcrossHeartRateRuns(readings []trainingload.Sample, start time.Time, block time.Duration) map[int]float64 {
-	held := map[int]float64{}
-	for _, run := range heartRateRuns(readings) {
-		for key, seconds := range blockHeldSeconds(timesOf(run), start, block) {
-			held[key] += seconds
+// totalHeldSeconds is heldSecondsAcrossRuns summed over the whole series
+// rather than bucketed into blocks.
+func totalHeldSeconds(readings []trainingload.Sample, invalid func(trainingload.Sample) bool) float64 {
+	held := 0.0
+	for index := 0; index < len(readings)-1; index++ {
+		if invalid(readings[index]) || invalid(readings[index+1]) {
+			continue
 		}
+		step := readings[index+1].At.Sub(readings[index].At)
+		if step > 0 && step <= measure.DefaultMaxGap {
+			held += step.Seconds()
+		}
+	}
+
+	return held
+}
+
+// heldSecondsAcrossTrackRuns is heldSecondsAcrossRuns for a track series,
+// where invalid is precomputed once per sample rather than read off the
+// sample itself: a track sample's validity turns on the estimate and cadence
+// beside it, not on any field of its own.
+func heldSecondsAcrossTrackRuns(track []measure.Sample, invalid []bool, start time.Time, block time.Duration) map[int]float64 {
+	held := map[int]float64{}
+	for index := 0; index < len(track)-1; index++ {
+		if invalid[index] || invalid[index+1] {
+			continue
+		}
+		step := track[index+1].At.Sub(track[index].At)
+		if step <= 0 || step > measure.DefaultMaxGap {
+			continue
+		}
+		key := int(track[index].At.Sub(start) / block)
+		held[key] += step.Seconds()
 	}
 
 	return held
@@ -142,36 +155,6 @@ func blockMean(readings []trainingload.Sample, start time.Time, block time.Durat
 	}
 
 	return means, counts
-}
-
-// blockHeldSeconds is how long a series of readings held within each block,
-// counted from start: a step no wider than measure.DefaultMaxGap is credited
-// to the block its own start falls in. Duration, not a reading count, is
-// what a block's own coverage gate must be judged against -- a coarser
-// sensor's ordinary sampling interval leaves it fewer readings without
-// leaving it any less covered.
-func blockHeldSeconds(times []time.Time, start time.Time, block time.Duration) map[int]float64 {
-	held := map[int]float64{}
-	for index := 0; index < len(times)-1; index++ {
-		step := times[index+1].Sub(times[index])
-		if step <= 0 || step > measure.DefaultMaxGap {
-			continue
-		}
-		key := int(times[index].Sub(start) / block)
-		held[key] += step.Seconds()
-	}
-
-	return held
-}
-
-// timesOf is the timestamps of a sensor series, in recorded order.
-func timesOf(readings []trainingload.Sample) []time.Time {
-	times := make([]time.Time, len(readings))
-	for index, reading := range readings {
-		times[index] = reading.At
-	}
-
-	return times
 }
 
 // cadenceMatchTolerance is how far a power reading may sit from the nearest
@@ -238,8 +221,16 @@ func meteredBlocksOf(power, heartRate, cadence []trainingload.Sample, block time
 	}
 	powerMeans, _ := blockMean(pedallingPower, start, block)
 	heartRateMeans, _ := blockMean(positive(pedallingHeartRate), start, block)
-	powerHeld := blockHeldSeconds(timesOf(pedallingPower), start, block)
-	heartRateHeld := blockHeldSecondsAcrossHeartRateRuns(pedallingHeartRate, start, block)
+	// Held duration is judged over the ORIGINAL series, coasting/window/nought
+	// marked invalid rather than spliced out first: two readings either side
+	// of an excluded one must not pair across it just because the gap between
+	// them, once it is gone, sits within the ordinary tolerance.
+	powerHeld := heldSecondsAcrossRuns(power, func(r trainingload.Sample) bool {
+		return coastingAt(r.At, cadence)
+	}, start, block)
+	heartRateHeld := heldSecondsAcrossRuns(heartRate, func(r trainingload.Sample) bool {
+		return r.At.Before(start) || r.At.After(end) || coastingAt(r.At, cadence) || r.Value <= 0
+	}, start, block)
 
 	keys := make([]int, 0, len(powerMeans))
 	for key := range powerMeans {
@@ -280,10 +271,12 @@ func unmeteredBlocksOf(
 	if !ok || len(track) == 0 {
 		return Block{}, nil, nil
 	}
-	start := track[0].At
+	start, trackEnd := track[0].At, track[len(track)-1].At
+	trackInvalid := make([]bool, len(track))
 	indicesByBlock := map[int][]int{}
 	for index := range track {
-		if !estimates[index].Known || !pedalling(&track[index]) {
+		trackInvalid[index] = !estimates[index].Known || !pedalling(&track[index])
+		if trackInvalid[index] {
 			continue
 		}
 		whole.Indices = append(whole.Indices, index)
@@ -292,12 +285,12 @@ func unmeteredBlocksOf(
 	}
 	pedallingHeartRate := heartRateOverTrack(heartRate, track)
 	heartRateMeans, _ := blockMean(positive(pedallingHeartRate), start, block)
-	heartRateHeld := blockHeldSecondsAcrossHeartRateRuns(pedallingHeartRate, start, block)
-	qualifyingTimes := make([]time.Time, len(whole.Indices))
-	for position, index := range whole.Indices {
-		qualifyingTimes[position] = track[index].At
-	}
-	trackHeld := blockHeldSeconds(qualifyingTimes, start, block)
+	// Held duration reads the ORIGINAL series, invalid readings marked rather
+	// than spliced out first: see heldSecondsAcrossRuns.
+	heartRateHeld := heldSecondsAcrossRuns(heartRate, func(r trainingload.Sample) bool {
+		return r.At.Before(start) || r.At.After(trackEnd) || !pedallingAt(r.At, track) || r.Value <= 0
+	}, start, block)
+	trackHeld := heldSecondsAcrossTrackRuns(track, trackInvalid, start, block)
 
 	keys := make([]int, 0, len(indicesByBlock))
 	for key := range indicesByBlock {
@@ -766,10 +759,12 @@ func meteredRideOf(
 	}
 	start := ride.track[0].At
 	all := Block{}
+	trackInvalid := make([]bool, len(ride.track))
 	byBlock, sumByBlock := map[int][]int{}, map[int]float64{}
 	for index := range ride.track {
 		watts, present := wattsAt[ride.track[index].At.Unix()]
-		if !present || !estimates[index].Known || !pedalling(&ride.track[index]) {
+		trackInvalid[index] = !present || !estimates[index].Known || !pedalling(&ride.track[index])
+		if trackInvalid[index] {
 			continue
 		}
 		indices = append(indices, index)
@@ -784,11 +779,9 @@ func meteredRideOf(
 		return Ride{}, Ride{}, nil, nil
 	}
 	all.TargetWatts /= float64(len(all.Indices))
-	qualifyingTimes := make([]time.Time, len(all.Indices))
-	for position, index := range all.Indices {
-		qualifyingTimes[position] = ride.track[index].At
-	}
-	held := blockHeldSeconds(qualifyingTimes, start, block)
+	// Held duration reads the ORIGINAL track, invalid samples marked rather
+	// than spliced out first: see heldSecondsAcrossRuns.
+	held := heldSecondsAcrossTrackRuns(ride.track, trackInvalid, start, block)
 	keys := make([]int, 0, len(byBlock))
 	for key := range byBlock {
 		keys = append(keys, key)
@@ -936,8 +929,13 @@ func study(
 			result.skipped++
 			continue
 		}
-		elapsedSeconds := samples.Track[len(samples.Track)-1].At.Sub(samples.Track[0].At).Seconds()
-		heldSeconds := heartRateHeldSeconds(heartRateOverTrack(heartRate, samples.Track))
+		trackStart, trackEnd := samples.Track[0].At, samples.Track[len(samples.Track)-1].At
+		elapsedSeconds := trackEnd.Sub(trackStart).Seconds()
+		// Read over the ORIGINAL heart-rate series, invalid readings marked
+		// rather than spliced out first: see heldSecondsAcrossRuns.
+		heldSeconds := totalHeldSeconds(heartRate, func(r trainingload.Sample) bool {
+			return r.At.Before(trackStart) || r.At.After(trackEnd) || !pedallingAt(r.At, samples.Track) || r.Value <= 0
+		})
 		if elapsedSeconds <= 0 || heldSeconds < minHeartRateCoverage*elapsedSeconds {
 			result.skipped++
 			continue
