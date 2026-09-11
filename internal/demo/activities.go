@@ -251,19 +251,35 @@ func (s *rideSpec) records(stages []route.Route, start time.Time) ([]activity.Re
 		}
 		// The geometry point this moment of riding falls on, distance and time
 		// both only ever moving forward: several time steps in a row can land
-		// on the same slow point, the way a real recorder would too.
+		// on the same slow point, the way a real recorder would too. The
+		// odometer itself does not stand still for them, though: it is
+		// interpolated across the segment they share, the way a real one
+		// ticks up every sample, rather than snapped to the far end only once
+		// the segment finishes -- a ride's own moving intervals turn on it.
 		for at < len(geometry)-1 && prediction.CumulativeSeconds[at] < targetSeconds {
 			at++
 			distance += measure.HaversineMetres(geometry[at-1].Coordinate(), geometry[at].Coordinate())
 		}
 		point := &geometry[at]
+		// distance is the odometer once this sample's own segment is fully
+		// ridden; sampleDistance backs it off by whatever share of that
+		// segment is still ahead of targetSeconds, without disturbing
+		// distance itself, which the next sample's advance still builds on.
+		sampleDistance := distance
+		if at > 0 {
+			segmentStart, segmentEnd := prediction.CumulativeSeconds[at-1], prediction.CumulativeSeconds[at]
+			if segmentEnd > segmentStart && targetSeconds < segmentEnd {
+				segmentDistance := measure.HaversineMetres(geometry[at-1].Coordinate(), point.Coordinate())
+				sampleDistance -= segmentDistance * (1 - (targetSeconds-segmentStart)/(segmentEnd-segmentStart))
+			}
+		}
 		fraction := float64(at) / float64(len(geometry)-1)
 		elapsed := targetSeconds * riddenSlowerThanPredicted
 		record := activity.Record{
 			Time:           start.Add(time.Duration(elapsed * float64(time.Second))),
 			Latitude:       point.Latitude,
 			Longitude:      point.Longitude,
-			DistanceMetres: distance,
+			DistanceMetres: sampleDistance,
 			HasDistance:    true,
 			HasPosition:    true,
 		}

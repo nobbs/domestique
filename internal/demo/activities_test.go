@@ -66,6 +66,24 @@ func TestRidesCoverTheShapesTheActivityViewsHaveToDraw(t *testing.T) {
 
 // The totals a ride is listed by have to agree with the samples underneath it,
 // or the ride page contradicts the list that opened it.
+// The regression: a geometry segment that outlasts several samples must not
+// leave the odometer standing still for them, the way snapping distance
+// forward only once the segment finished used to. A ride's own moving
+// intervals are read off exactly this, and a stall an outdoor recording
+// never actually had would wrongly withhold coverage built on it.
+func TestRideDistanceNeverStandsStillWhileMoving(t *testing.T) {
+	t.Parallel()
+
+	rides, err := demo.Rides(seededAt())
+	require.NoError(t, err)
+
+	full := rideByID(t, rides, 90_101)
+	for index := 1; index < len(full.FIT.Records); index++ {
+		assert.Greater(t, full.FIT.Records[index].DistanceMetres, full.FIT.Records[index-1].DistanceMetres,
+			"record %d must cover more ground than the one before it", index)
+	}
+}
+
 func TestEachRidesTotalsAgreeWithItsOwnSamples(t *testing.T) {
 	t.Parallel()
 
