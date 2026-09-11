@@ -113,6 +113,27 @@ func TestGradeWindowMetresIgnoresAnAltitudeStepAcrossAPause(t *testing.T) {
 	assert.InDelta(t, 30, gradeWindowMetres(samples), 0.001)
 }
 
+// The regression: an odometer reset marks a boundary the same way a pause
+// does. Distance running backward at the boundary sample, not a gap in the
+// clock, must still keep the altitude step across it out of the resolution
+// reading -- an invalid pair like that can otherwise shrink or widen the
+// window for the whole ride regardless of what the altimeter actually resolves.
+func TestGradeWindowMetresIgnoresAnAltitudeStepAcrossAnOdometerReset(t *testing.T) {
+	t.Parallel()
+	before := gwmFlat(120, 7.5)
+	after := gwmFlat(120, 7.5)
+	for index := range after {
+		// The clock keeps advancing normally -- no pause -- but the odometer
+		// resets to a lower distance than the ride had already reached.
+		after[index].At = before[len(before)-1].At.Add(time.Duration(index+1) * time.Second)
+		after[index].DistanceMetres += 5
+		after[index].AltitudeMetres += 40
+	}
+	samples := append(append([]Sample{}, before...), after...)
+
+	assert.InDelta(t, 30, gradeWindowMetres(samples), 0.001)
+}
+
 // A clock that did not advance is no step the series measures over, so an
 // altitude change across one is no reading of the altimeter's resolution.
 func TestGradeWindowMetresIgnoresAnAltitudeStepAcrossANonAdvancingClock(t *testing.T) {
