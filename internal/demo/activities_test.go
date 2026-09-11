@@ -84,6 +84,26 @@ func TestRideDistanceNeverStandsStillWhileMoving(t *testing.T) {
 	}
 }
 
+// The regression: a slow geometry segment must not leave position, altitude
+// and effort pinned to its far endpoint for the several samples that share
+// it while only the odometer moved -- the position, and what feeds the
+// estimator, are interpolated across the same segment the distance is.
+func TestRidePositionMovesWithTheOdometerRatherThanStandingStill(t *testing.T) {
+	t.Parallel()
+
+	rides, err := demo.Rides(seededAt())
+	require.NoError(t, err)
+
+	full := rideByID(t, rides, 90_101)
+	for index := 1; index < len(full.FIT.Records); index++ {
+		previous, current := full.FIT.Records[index-1], full.FIT.Records[index]
+		if current.DistanceMetres > previous.DistanceMetres {
+			moved := current.Latitude != previous.Latitude || current.Longitude != previous.Longitude
+			assert.True(t, moved, "record %d covers more ground but sits at the same point as %d", index, index-1)
+		}
+	}
+}
+
 func TestEachRidesTotalsAgreeWithItsOwnSamples(t *testing.T) {
 	t.Parallel()
 

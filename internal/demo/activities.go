@@ -262,29 +262,41 @@ func (s *rideSpec) records(stages []route.Route, start time.Time) ([]activity.Re
 		}
 		point := &geometry[at]
 		// distance is the odometer once this sample's own segment is fully
-		// ridden; sampleDistance backs it off by whatever share of that
-		// segment is still ahead of targetSeconds, without disturbing
-		// distance itself, which the next sample's advance still builds on.
-		sampleDistance := distance
+		// ridden; sampleDistance, latitude, longitude and altitude all back
+		// off by the same share of that segment still ahead of
+		// targetSeconds, without disturbing distance itself, which the next
+		// sample's advance still builds on.
+		sampleDistance, latitude, longitude, altitude := distance, point.Latitude, point.Longitude, point.Elevation
+		pointIndex := float64(at)
 		if at > 0 {
+			previous := &geometry[at-1]
 			segmentStart, segmentEnd := prediction.CumulativeSeconds[at-1], prediction.CumulativeSeconds[at]
 			if segmentEnd > segmentStart && targetSeconds < segmentEnd {
-				segmentDistance := measure.HaversineMetres(geometry[at-1].Coordinate(), point.Coordinate())
-				sampleDistance -= segmentDistance * (1 - (targetSeconds-segmentStart)/(segmentEnd-segmentStart))
+				segmentFraction := (targetSeconds - segmentStart) / (segmentEnd - segmentStart)
+				segmentDistance := measure.HaversineMetres(previous.Coordinate(), point.Coordinate())
+				sampleDistance -= segmentDistance * (1 - segmentFraction)
+				latitude = previous.Latitude + segmentFraction*(point.Latitude-previous.Latitude)
+				longitude = previous.Longitude + segmentFraction*(point.Longitude-previous.Longitude)
+				pointIndex = float64(at-1) + segmentFraction
+				altitude = nil
+				if previous.Elevation != nil && point.Elevation != nil {
+					interpolated := *previous.Elevation + segmentFraction*(*point.Elevation-*previous.Elevation)
+					altitude = &interpolated
+				}
 			}
 		}
-		fraction := float64(at) / float64(len(geometry)-1)
+		fraction := pointIndex / float64(len(geometry)-1)
 		elapsed := targetSeconds * riddenSlowerThanPredicted
 		record := activity.Record{
 			Time:           start.Add(time.Duration(elapsed * float64(time.Second))),
-			Latitude:       point.Latitude,
-			Longitude:      point.Longitude,
+			Latitude:       latitude,
+			Longitude:      longitude,
 			DistanceMetres: sampleDistance,
 			HasDistance:    true,
 			HasPosition:    true,
 		}
-		if point.Elevation != nil && at >= s.altitudeFrom {
-			record.AltitudeMetres, record.HasAltitude = *point.Elevation, true
+		if altitude != nil && at >= s.altitudeFrom {
+			record.AltitudeMetres, record.HasAltitude = *altitude, true
 		}
 		s.fitSensors(&record, effortAt(fraction, gradientAt(geometry, at)), fraction)
 		records[sampleIndex] = record
