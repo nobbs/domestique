@@ -48,8 +48,13 @@ func (h *Handler) SetRiderProfile(writer http.ResponseWriter, request *http.Requ
 	}
 	// Everything derived from these numbers is now worked out against values
 	// nobody holds any more, so the derivation is started over this rider's own
-	// targets. A refused start means that work is already happening, and the
-	// task recomputes against the profile as it stands when it runs.
+	// targets. A refused start means that work is already happening -- but a
+	// run already under way read the profile before this write committed, so
+	// it still derives every ride in its own batch at the values as they
+	// stood then. That is not permanent: ActivitiesAwaitingDerivation compares
+	// each stored row's own inputs against the profile as it now stands, so
+	// the next trigger for this target, scheduled or manual, re-derives what
+	// this one left stale rather than skipping it as already done.
 	if targetIDs, err := h.ownTargetIDs(ctx); err == nil {
 		for _, targetID := range targetIDs {
 			h.tasks.Run(TaskActivityDerive, targetID)
