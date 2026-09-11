@@ -107,6 +107,13 @@ const (
 // coefficients move the model along nearly the same direction — over the
 // operator's own rides the rolling and aerodynamic bases correlate at 0.93 —
 // so their sum is well determined and their split is not.
+//
+// A fit that lands on the edge of the range it searched is refused rather
+// than reported: the handover's own recovery test found the HR objective
+// collapses CdA to the scan's own edge whatever the rider's true value is
+// (docs/references/power-estimation-handover.md §8), because the objective
+// has no interior minimum to find. A boundary result is that failure's own
+// signature, not a rider's number.
 func FitDragArea(rollingResistance float64, rides []Ride) (measure.Coefficients, Result, bool) {
 	best, ok := minimise1D(minDragArea, maxDragArea, func(dragArea float64) (float64, bool) {
 		result, evalOK := Evaluate(rides, measure.Coefficients{
@@ -114,7 +121,7 @@ func FitDragArea(rollingResistance float64, rides []Ride) (measure.Coefficients,
 		})
 		return result.RMSWatts, evalOK
 	})
-	if !ok {
+	if !ok || best <= minDragArea || best >= maxDragArea {
 		return measure.Coefficients{}, Result{}, false
 	}
 	coefficients := measure.Coefficients{DragArea: best, RollingResistance: rollingResistance}

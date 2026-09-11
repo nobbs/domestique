@@ -168,6 +168,41 @@ func TestMeteredBlocksOfAdmitsABlockASparselySampledSensorFullyCovers(t *testing
 	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9)
 }
 
+// The regression: an isolated coast between two pedalling stretches must
+// break held time there. Bridging across it -- pairing the readings either
+// side of the dropped coast because the gap between them, once it is gone,
+// sits within the ordinary gap tolerance -- can credit a block with more held
+// time than either pedalling stretch holds on its own, admitting a block
+// whose true pedalling coverage sits below the half-block threshold.
+func TestMeteredBlocksOfDoesNotBridgeHeldDurationAcrossAnIsolatedCoast(t *testing.T) {
+	t.Parallel()
+	const block = 10 * time.Second
+	power := make([]trainingload.Sample, 10)
+	heartRate := make([]trainingload.Sample, 10)
+	cadence := make([]trainingload.Sample, 10)
+	// Pedalling at 0,1,2 (2 held seconds) and 4,5 (1 held second): 3 true held
+	// seconds, well under the 5-second half-block threshold. Coasting at 3
+	// leaves only a 2-second gap between the two pedalling stretches once it
+	// is dropped -- inside the ordinary 10-second gap tolerance, so bridging
+	// across it would read as 5 held seconds and wrongly admit the block.
+	coasting := map[int]bool{3: true, 6: true, 7: true, 8: true, 9: true}
+	for index := range power {
+		at := start().Add(time.Duration(index) * time.Second)
+		heartRate[index] = trainingload.Sample{At: at, Value: 140}
+		if coasting[index] {
+			power[index] = trainingload.Sample{At: at, Value: 0}
+			cadence[index] = trainingload.Sample{At: at, Value: 0}
+		} else {
+			power[index] = trainingload.Sample{At: at, Value: 200}
+			cadence[index] = trainingload.Sample{At: at, Value: 80}
+		}
+	}
+
+	blocks := meteredBlocksOf(power, heartRate, cadence, block)
+
+	assert.Empty(t, blocks, "true pedalling coverage sits under half the block, coast or no")
+}
+
 // The regression: cadence and power are two independent series and need not
 // share exact timestamps, so a coast recorded a moment off the power reading
 // it explains must still be matched to it.
@@ -220,6 +255,37 @@ func TestFitDragAreaRecoversTheDragAreaItsTargetsWereBuiltAt(t *testing.T) {
 	}
 }
 
+// The regression: the handover's own recovery test found the HR objective
+// can have no interior minimum at all, collapsing CdA to the scan range's
+// edge whatever the rider's true value is. A target below what even the
+// least-draggy candidate bicycle would produce leaves the search with
+// nowhere to turn but that edge, and the fit must refuse rather than report it.
+func TestFitDragAreaRefusesAFitThatCollapsesToTheSearchBound(t *testing.T) {
+	t.Parallel()
+	const crr = 0.005
+	ride := rideAtSpeeds([]float64{6, 10, 14}, 300, 92)
+	floorEstimates, ok := measure.EstimateSeries(ride.Samples, ride.TotalMassKG,
+		measure.Coefficients{DragArea: minDragArea, RollingResistance: crr})
+	require.True(t, ok)
+	for blockIndex, block := range ride.Blocks {
+		total, count := 0.0, 0
+		for _, index := range block.Indices {
+			if floorEstimates[index].Known {
+				total += floorEstimates[index].Watts
+				count++
+			}
+		}
+		require.Positive(t, count)
+		// Below even the floor bicycle's own output: RMS only grows as drag
+		// area rises, so the search has no interior minimum to find.
+		ride.Blocks[blockIndex].TargetWatts = total/float64(count) - 50
+	}
+
+	_, _, fitOK := FitDragArea(crr, []Ride{ride})
+
+	assert.False(t, fitOK, "a fit that lands on the search bound is the failure itself, not a measurement")
+}
+
 func TestEvaluateReportsTheSignedBiasOfACandidate(t *testing.T) {
 	t.Parallel()
 	base := rideAtSpeeds([]float64{6, 10, 14}, 300, 92)
@@ -255,17 +321,27 @@ func TestFitRefusesCoefficientsNoBicycleCouldHave(t *testing.T) {
 // A search that refines around its best point must not refine its way out of
 // the bounds it was given: those say what a bicycle can be, and a drag area
 // beyond them is a fit that ran away rather than an answer.
-func TestFitDragAreaStaysInsideTheBoundsABicycleCouldHave(t *testing.T) {
+// minimise1D must never wander outside the bounds it started from, even when
+// pulled hard toward one edge: those are what a bicycle can be, not a hint.
+// This is the search primitive's own contract; FitDragArea layers a further,
+// stricter one on top of it -- see
+// TestFitDragAreaRefusesAFitThatCollapsesToTheSearchBound -- refusing a fit
+// that lands on the edge rather than reporting it.
+func TestMinimise1DStaysInsideTheBoundsItStartedFrom(t *testing.T) {
 	t.Parallel()
 	// Targets built at a drag area far under anything rideable, so the search
 	// is pulled hard at its own floor.
 	base := rideAtSpeeds([]float64{4, 8, 12}, 300, 92)
 	rides := []Ride{targetedAt(t, base, measure.Coefficients{DragArea: 0.05, RollingResistance: 0.010})}
 
-	got, _, ok := FitDragArea(0.010, rides)
-	require.True(t, ok)
+	best, ok := minimise1D(minDragArea, maxDragArea, func(dragArea float64) (float64, bool) {
+		result, evalOK := Evaluate(rides, measure.Coefficients{DragArea: dragArea, RollingResistance: 0.010})
+		return result.RMSWatts, evalOK
+	})
 
-	assert.GreaterOrEqual(t, got.DragArea, 0.15)
+	require.True(t, ok)
+	assert.GreaterOrEqual(t, best, minDragArea)
+	assert.LessOrEqual(t, best, maxDragArea)
 }
 
 // minimise1D had no direct test of its own: only FitDragArea's coarser
