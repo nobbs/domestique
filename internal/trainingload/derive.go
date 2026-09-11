@@ -78,6 +78,11 @@ func (m *Metrics) Derived() bool {
 // cannot supply it yet gets today's behaviour rather than everything withheld.
 func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Metrics {
 	metrics := Metrics{Inputs: inputs}
+	// A strap that wrote nought took no reading there; one that wrote nought
+	// throughout covered nothing, and is judged so rather than left unjudged.
+	strapWroteNought := len(heartRate) > 0
+	heartRate = HeartRateReadings(heartRate)
+	strapWroteNought = strapWroteNought && len(heartRate) == 0
 	if bounds, ok := BoundsFrom(inputs.ThresholdHeartRateBPM, inputs.MaxHeartRateBPM); ok && len(heartRate) > 1 {
 		zones := TimeInZones(heartRate, bounds)
 		metrics.Zones, metrics.HasZones = zones, zones.Total() > 0
@@ -86,14 +91,8 @@ func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Met
 	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
-	// A strap that wrote nought throughout covered nothing, and is judged so
-	// rather than left unjudged as a series with no readings would be.
-	strap := HeartRateReadings(heartRate)
-	if len(strap) == 0 {
-		strap = heartRate[:0]
-	}
-	if coverage, ok := SeriesCoverage(strap, movingSeconds); (ok && coverage < MinSeriesCoverage) ||
-		(!ok && len(heartRate) > 0 && movingSeconds > 0) {
+	if coverage, ok := SeriesCoverage(heartRate, movingSeconds); (ok && coverage < MinSeriesCoverage) ||
+		(strapWroteNought && movingSeconds > 0) {
 		metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
 	}
 	if coverage, ok := SeriesCoverage(power, movingSeconds); ok && coverage < MinSeriesCoverage {
