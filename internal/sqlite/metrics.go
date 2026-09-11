@@ -210,7 +210,11 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 			previous = current
 		}
 		flush()
-		if moving == nil && len(samples) > 0 {
+		// Checked against the CAPPED series: an odometer whose every derived
+		// rate exceeded the ceiling has no usable reading at all, and must
+		// fall back to unknown the same way an all-noughts device speed
+		// field does, not read as a ride confidently held still.
+		if moving == nil && len(capSpeedSamples(samples)) > 0 {
 			moving = []measure.Interval{}
 		}
 	}

@@ -377,6 +377,26 @@ func TestActivityRideSamplesTreatsAnUnbracketedDeviceSpeedAsUnknownRatherThanSta
 	assert.Nil(t, samples.MovingIntervals, "one isolated positive reading names no moving step at all")
 }
 
+// The regression: an odometer whose every derived rate exceeds the ceiling
+// has no usable reading at all, the same as a device speed field never once
+// positive. It must read as unknown, not as a ride confidently held still.
+func TestActivityRideSamplesTreatsAnAllExcessiveOdometerRateAsUnknownRatherThanStationary(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			// 10 km in one second: the only derived rate, and implausible.
+			{Time: activityNow().Add(time.Second), DistanceMetres: 10000, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	assert.Empty(t, samples.Speed, "the only derived rate was implausible and dropped")
+	assert.Nil(t, samples.MovingIntervals, "no usable reading at all, not a ride confidently held still")
+}
+
 // A ride with no device speed reading falls back to the odometer: distance
 // over time between consecutive records, the same rule speedSeries applies.
 func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing.T) {
