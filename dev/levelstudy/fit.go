@@ -129,18 +129,24 @@ func FitDragArea(rollingResistance float64, rides []Ride) (measure.Coefficients,
 // hint, and a search that leaves them has stopped answering the question.
 func minimise1D(low, high float64, score func(float64) (float64, bool)) (float64, bool) {
 	floor, ceiling := low, high
-	best, bestScore, found := 0.0, math.Inf(1), false
+	best, found := 0.0, false
 	for range searchRounds {
+		// Reset each round: a refined round's grid sits inside the interval
+		// the round before it narrowed to, so its own points must be judged
+		// against each other, not held to the coarser grid's best.
+		bestScore := math.Inf(1)
+		roundFound := false
 		step := (high - low) / searchSteps
 		for index := range searchSteps + 1 {
 			at := low + step*float64(index)
 			if scored, ok := score(at); ok && scored < bestScore {
-				best, bestScore, found = at, scored, true
+				best, bestScore, roundFound = at, scored, true
 			}
 		}
-		if !found {
+		if !roundFound {
 			return 0, false
 		}
+		found = true
 		low, high = max(best-step, floor), min(best+step, ceiling)
 	}
 

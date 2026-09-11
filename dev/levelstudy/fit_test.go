@@ -240,3 +240,19 @@ func TestFitDragAreaStaysInsideTheBoundsABicycleCouldHave(t *testing.T) {
 
 	assert.GreaterOrEqual(t, got.DragArea, 0.15)
 }
+
+// minimise1D had no direct test of its own: only FitDragArea's coarser
+// end-to-end tolerance ever exercised it. A minimum sitting between two
+// coarse grid points ((0.75-0.15)/16 = 0.0375 apart, so the coarse grid alone
+// can do no better than half that step, 0.01875) proves the later rounds
+// narrow the answer well past the first grid's own resolution.
+func TestMinimise1DRefinesPastTheCoarseGridsOwnStep(t *testing.T) {
+	t.Parallel()
+	const trueMinimum = 0.43125
+	best, ok := minimise1D(0.15, 0.75, func(at float64) (float64, bool) {
+		return (at - trueMinimum) * (at - trueMinimum), true
+	})
+
+	require.True(t, ok)
+	assert.InDelta(t, trueMinimum, best, 0.001, "refinement must resolve well past the coarse grid's own step")
+}
