@@ -115,6 +115,7 @@ ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
 zwift:poll        stored indoor rides     ->  activity:derive
+activity:derive   derived stored rides    ->  activity:analyse
 ~~~
 
 A calibration that fitted a new pair makes every stored prediction stale, so it
@@ -274,6 +275,7 @@ is checked rather than inferred.
 | `zwift:poll` | target slot, or none for every one | `activities` exclusive | every six hours |
 | `activity:derive` | target slot, or none for every one | `activities` exclusive | every hour |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
+| `activity:analyse` | target slot, or none for every one | `activities` exclusive | none |
 
 `zwift:poll` reads the same rows from a rider's own Zwift account, under the
 same exclusivity: it stores the indoor rides that account recorded and removes
@@ -350,6 +352,31 @@ along the whole of it — a headwind that became a tailwind is the point. A
 weather code is not a quantity: where a step was asked at more than one
 coordinate, it keeps the worst of them. Neither pass holds the other back, and
 the run reports whichever came to the more serious thing.
+
+`activity:analyse` asks a language model what to make of each ride that has
+been derived and not yet analysed ([what is sent and stored](service.md#recorded-activities)).
+It is registered only when the operator has configured a Claude Code OAuth
+token, so a deployment without one lists no such task and offers no decision
+about its alerts. It follows `activity:derive` and holds the same resource,
+because it reads exactly the rows the derivation writes, and it fans out over
+targets the same way. It is owed a ride that has a derived row, no analysis
+row, and was first stored after the analysis was enabled — an instant this
+service records the first time it starts with a token and keeps as runtime
+state — so its edge carries no argument and a run with nothing owed asks
+nothing. There is no backfill: a history stored before that instant stays
+unanalysed, and an administrator's reprocess over a ride is the one way to ask
+for one. A ride whose derivation yielded nothing is not owed one. Unlike the weather,
+which is asked once and recorded either way, an analysis that fails is not
+recorded as asked: the subscription's monthly allowance running out is the
+usual reason, which passes, so the ride stays owed and the run faults into the
+ordinary backoff. Each ride costs one request, made through the bundled
+`claude` executable with a bounded timeout and no tool enabled, and a run
+analyses every ride it is owed, which is what the poll or webhook before it
+just stored — a week away is a week's rides, never a history. No schedule of
+its own: the hourly derivation sweeps up anything the chain missed, and a run
+that derived nothing chains nothing. The log and the alert carry counts and a
+stable failure category — the token refused, the allowance exhausted, the
+executable failing, the answer unusable — and never the prompt or the answer.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery

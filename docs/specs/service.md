@@ -717,6 +717,13 @@ The read-only JSON surface is small:
   none, because an estimate beside a reading only invites the two to be
   confused.
 
+  Each activity that has one also carries its `analysis`: the plain text a
+  language model wrote about the ride, with the model and prompt revision
+  that produced it and when. It is absent for a ride not yet analysed, for a
+  ride its derivation yielded nothing for, and for every ride of a deployment
+  that configured no token. It is text for the rider to read and is never an
+  input to any figure this service serves.
+
   `estimatedPowerWatts` carries `estimateQuality` beside it, present once the
   ride has been derived since the diagnostics existed and never without the
   estimate; a ride derived before then omits it until it is derived again. It
@@ -926,7 +933,9 @@ The service has a provider-neutral configuration contract:
   are read and written per request over the subject that asked.
 - Two sensitive static values are loaded by Koanf from a Docker-style file or
   the documented direct environment variables: the 32-byte state-encryption
-  key and the Auth0 client secret. Every other credential — the source
+  key and the Auth0 client secret. A third, optional one is the operator's
+  Claude Code OAuth token, which enables the ride analysis below and reaches
+  nothing but the bundled `claude` executable. Every other credential — the source
   accounts, the Wahoo client secret, and the Pushover pair — is entered on the
   settings page and encrypted under the state key.
 - Dynamic Wahoo refresh tokens are not static configuration. They are encrypted
@@ -1208,6 +1217,27 @@ is the only map its coordinates are true against. Which rides those are follows
 from the recorded workout type, so a Wahoo trainer ride is treated the same as a
 Zwift one. Its samples, including power and heart rate, are stored and derived
 exactly as an outdoor ride's are.
+
+Once a ride has been derived, and where the operator has configured a Claude
+Code OAuth token, `activity:analyse` asks a language model what to make of it
+([the task](task-layer.md#the-registered-tasks)). What leaves the host is the
+ride's derived metrics and sensor means, the rider's profile and zone bounds,
+the rider's current fitness, fatigue and form, and the analyses of a bounded few
+preceding rides so the answer can speak to a trend; never the track, the
+weather, the provider's document or the rider's identity. The request goes
+through the `claude` executable bundled in the image, authenticated by the
+operator's own Claude subscription, with no tool enabled: the model sees the
+prompt and answers text. That text is stored beside the ride with the model
+and prompt revision that produced it, served on the activity contract, and
+read by nothing else — no load, no suggestion and no calibration ever reads
+it. A ride is analysed once; a profile edit re-derives it but does not
+re-analyse it, and an administrator's reprocess is the way to ask again. Only
+rides stored after the analysis was enabled are analysed at all: a history
+already held when the token arrives is never backfilled, so enabling it costs
+nothing until the next ride lands. Which
+rider a ride belongs to does not change whose subscription answers: this is one
+deployment's operator paying for its riders, so the token is a static secret
+and not a rider credential.
 
 The Zwift adapter stores the rider's own ride and nothing else. The activity
 document names other riders — who rode alongside, who gave a ride-on, a

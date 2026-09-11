@@ -90,7 +90,7 @@ the runtime image carries.
 
 ## Secret input
 
-The file names exactly two secrets. Each has one active input: a TOML
+The file names two required secrets and one optional one. Each has one active input: a TOML
 file path, an overriding `*_FILE` environment value, or a direct environment
 value. The file input is preferred for Docker deployments; the direct
 environment value supports a simple local setup.
@@ -99,9 +99,10 @@ environment value supports a simple local setup.
 | --- | --- | --- | --- |
 | state encryption key | `state.encryption_key_file` | `DOMESTIQUE_STATE__ENCRYPTION_KEY` | `DOMESTIQUE_STATE__ENCRYPTION_KEY_FILE` |
 | Auth0 client secret | `auth.auth0.client_secret_file` | `DOMESTIQUE_AUTH__AUTH0__CLIENT_SECRET` | `DOMESTIQUE_AUTH__AUTH0__CLIENT_SECRET_FILE` |
+| Claude Code OAuth token | `analysis.claude_token_file` | `DOMESTIQUE_ANALYSIS__CLAUDE_TOKEN` | `DOMESTIQUE_ANALYSIS__CLAUDE_TOKEN_FILE` |
 
-A literal `state.encryption_key` or `auth.auth0.client_secret` is invalid in
-the TOML file. Each is accepted only from its documented direct environment
+A literal `state.encryption_key`, `auth.auth0.client_secret` or
+`analysis.claude_token` is invalid in the TOML file. Each is accepted only from its documented direct environment
 variable. A `*_FILE` environment variable overrides the matching TOML file
 path, but it must not accompany the direct value.
 
@@ -109,7 +110,14 @@ A file secret must be an absolute path to a regular readable file, non-empty
 after one terminal line break is trimmed. The state encryption key is
 additionally validated as a base64url encoding of exactly 32 random bytes;
 the Auth0 client secret carries no such shape requirement, being opaque to
-this service and checked only by Auth0 on exchange. The service reads each
+this service and checked only by Auth0 on exchange. The Claude Code OAuth token
+is the long-lived token `claude setup-token` issues for one Claude subscription;
+it is opaque here too, is handed only to the bundled `claude` executable
+through that child's environment, and is optional: a deployment that names none
+registers no analysis task and sends nothing to Anthropic
+([the task](task-layer.md#the-registered-tasks)). It is a static secret rather
+than a settings-page credential because it is the operator's own subscription,
+shared by every rider of this single-tenant deployment, not a rider's account. The service reads each
 once at startup, does not log the value or the path, and clears the direct
 secret environment value from its own process environment after loading.
 
@@ -557,6 +565,12 @@ The request quota Wahoo last advertised is runtime state of the same kind. It is
 stored with the instant it expires, so a restart resumes with a window it already
 found spent; a reading past its expiry is discarded rather than honoured, and a
 lost database only means the next request finds the quota out again.
+
+The instant the ride analysis was first enabled is runtime state too: written
+the first time the service starts with a Claude Code OAuth token, never moved,
+and read to decide which rides are owed an analysis
+([the task](task-layer.md#the-registered-tasks)). A lost database means the
+next start records a new one, and the rides before it stay unanalysed.
 
 Browser sessions are the same kind of runtime state: `web_sessions` lives in
 the same database and shares its fate. A lost database signs every subject

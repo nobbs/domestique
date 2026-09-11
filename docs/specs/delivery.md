@@ -578,6 +578,20 @@ rather than a rewrite. A first stage builds the browser UI bundle with Node.js,
 which the Go stage then embeds; Node reaches no further than that stage and is
 absent from the runtime image.
 
+The runtime image carries a second executable beside the service: the native
+`claude` build Anthropic publishes for `linux-x64-musl`, which the ride analysis
+runs ([the task](task-layer.md#the-registered-tasks)). It is a single
+self-contained binary with no Node runtime behind it. A build stage downloads
+it from `downloads.claude.ai/claude-code-releases` at a version pinned in the
+Dockerfile and verifies it against the checksum that version's manifest
+publishes, so the image is reproducible and a tampered download fails the
+build. The pin is a dependency like any other: Renovate moves it through a
+custom manager, and it is not automerged, because the executable's behaviour is
+what the analysis task's contract rests on and no test here exercises it. The
+service runs it only as a child process with a bounded timeout, no tool
+enabled, and the operator's token in that child's environment alone; the
+image's entrypoint is still the service and nothing else.
+
 Every base image is a **Docker Hardened Image** from `dhi.io`, pinned by digest:
 the `-dev` variants for the Node and Go build stages, which need a shell and a
 toolchain, and the minimal `static` image for the runtime. They carry SBOMs,
@@ -603,7 +617,11 @@ The runtime image:
   genuinely needs;
 - runs as an unprivileged non-root user;
 - has a declared persistent volume for `/var/lib/domestique`, which holds the
-  SQLite database;
+  SQLite database and, under its own subdirectory, the home directory the
+  `claude` executable insists on writing — its configuration and the transcript
+  of each one-shot run — which is why the root filesystem can stay read-only
+  with that executable aboard; the service points `HOME` there and disables
+  the executable's auto-update and telemetry through its environment;
 - accepts secret files only at runtime under `/run/secrets`, never during the
   image build;
 - has no bundled reverse proxy, SSH service, shell requirement, or default
@@ -652,6 +670,11 @@ replaced on the way out. The service keeping a secret value out of a log line is
 asserted separately, over the log as it really is. A run can fail long before it
 reaches that assertion, including while starting, so what a failure prints is
 filtered rather than trusted.
+
+The smoke test asserts that the `claude` executable is present in the image
+and nothing about what it does: running it would contact Anthropic, and the
+configured token is a placeholder. What the executable answers is proved by the
+analysis task's acceptance check, behind a build tag and never in CI.
 
 The smoke test contacts nothing. Every credential it mounts is a placeholder it
 wrote itself, each provider points at an unroutable address, no region is

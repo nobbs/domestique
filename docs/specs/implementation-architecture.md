@@ -106,13 +106,14 @@ owns a distinct responsibility in this tree.
 | surface | OSM surface and tracktype classification, snapping a route to the ways under it, caching policy | SQL, HTTP routing, what the UI draws, where the ways come from |
 | osmindex | downloading regional OSM extracts, packing them into a cell-partitioned surface index, the rebuild schedule, serving the ways near a route | classification rules, SQL of the state store, what a route is |
 | ridemodel | the calibrated coefficient pair and its built-in default, fitting the pair from recorded rides, the forward model — distance and ascent priced by those two terms — that turns a route's geometry into a predicted moving time, caching that prediction against geometry and coefficient fingerprints | reading the rides to fit (SQL), HTTP routing, how a route's surface is classified |
-| activity | decoded activity FIT values and their validation, and polling a target's activity summaries into the store | SQL, Wahoo URLs, OAuth, scheduling, HTTP routing |
+| activity | decoded activity FIT values and their validation, polling a target's activity summaries into the store, and composing the prompt one ride's analysis is asked with | SQL, Wahoo URLs, OAuth, scheduling, HTTP routing, how the `claude` executable is run |
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | fit | deterministic FIT bytes for one valid route | VeloPlanner or Komoot requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route and activity reads, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |
 | pushover | delivery of an already safe notification | run aggregation or secret resolution |
+| claude | running the bundled `claude` executable for one prompt over `os/exec`: the child's environment and arguments, a bounded timeout, decoding its JSON answer, mapping its failures to a stable category | what a prompt says, SQL, HTTP routing, scheduling, anything about rides |
 | session | the sign-in flow's one-time state, nonce, and PKCE verifier; the sessions it issues; sliding expiry; revocation; the allowed-subject check | HTTP routing, SQL, how the issuer is spoken to |
 | auth0 | building the authorisation URL, exchanging the code, validating the ID token Auth0 returns | routing, sessions, who is allowed |
 | openmeteo | the forecast HTTP adapter: requesting points along a route and decoding the reply | which points are worth asking about, caching, or what the UI draws |
@@ -324,6 +325,7 @@ flowchart LR
     Main --> Wahoo["wahoo"]
     Main --> SQLite["sqlite"]
     Main --> Pushover["pushover"]
+    Main --> Claude["claude"]
 ~~~
 
 Only main imports an application use case and its concrete adapters together.
