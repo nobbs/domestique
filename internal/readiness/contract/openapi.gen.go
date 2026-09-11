@@ -275,7 +275,7 @@ type ActivityMetrics struct {
 	NormalizedPowerWatts *float64 `json:"normalizedPowerWatts,omitempty"`
 	IntensityFactor      *float64 `json:"intensityFactor,omitempty"`
 	PowerTss             *float64 `json:"powerTss,omitempty"`
-	// EstimatedPowerWatts The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track at the rider's own bicycle numbers, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass.
+	// EstimatedPowerWatts The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track, at the rider's own drag area and rolling resistance where both are entered and a road bicycle's otherwise, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass.
 	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
 	// EstimatedPedallingShare The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
 	EstimatedPedallingShare *float64 `json:"estimatedPedallingShare,omitempty"`
