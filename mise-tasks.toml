@@ -7,6 +7,7 @@ run = "golangci-lint fmt"
 
 [hygiene]
 description = "Run every prek hook over the whole tree"
+depends = ["ui-install"]
 wait_for = ["api-generate", "sql-generate"]
 run = "prek run --all-files"
 
