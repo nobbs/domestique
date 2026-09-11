@@ -92,8 +92,9 @@ holds it, report that and stop rather than working the issue in parallel.
    less than it looks: `mise run quick` skips a task whose sources have not
    moved, so a UI-only change can run no `ui-*` task at all and should force
    them; `ui-browser-test` reuses a dev server it finds already listening, so
-   free ports 5173 and 8081 before it; and a full gate is run one at a time
-   machine-wide, because two at once have exhausted memory.
+   free ports 5173 and 8082 before it — 8081 is `dev-api`'s, deliberately not
+   the demo's, so the two can run side by side; and a full gate is run one at a
+   time machine-wide, because two at once have exhausted memory.
 5. Run `mise run patch-coverage` before the first push. `codecov/patch/go` is
    the one coverage verdict that blocks a merge, and it is the one that has
    historically cost several push-and-wait rounds per delivery. Answer it
