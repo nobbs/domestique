@@ -26,8 +26,10 @@ func statedBicycle() measure.Coefficients {
 // so a drag area fitted on its rides is read against its physics, not ours.
 const zwiftRollingResistance = 0.004
 
-// minHeartRateCoverage is the share of a ride's track samples that must carry
-// a heart rate before the ride's mean heart rate is trusted as its target.
+// minHeartRateCoverage is the share of the track's own elapsed span a strap
+// must hold a reading for, within the track's span alone, before the ride's
+// mean heart rate is trusted as its target: a duration, not a sample count,
+// so two sensors sampling at different rates are judged the same way.
 const minHeartRateCoverage = 0.8
 
 // A meteredRide is one ride that carried a meter: its blocks for the bridge,
@@ -188,7 +190,7 @@ func unmeteredBlocksOf(
 		key := int(track[index].At.Sub(start) / block)
 		indicesByBlock[key] = append(indicesByBlock[key], index)
 	}
-	heartRateMeans, heartRateCounts := blockMean(heartRate, start, block)
+	heartRateMeans, heartRateCounts := blockMean(heartRateOverTrack(heartRate, track), start, block)
 
 	keys := make([]int, 0, len(indicesByBlock))
 	for key := range indicesByBlock {
@@ -208,29 +210,40 @@ func unmeteredBlocksOf(
 	return whole, blocks, blockHeartRate
 }
 
-// meanHeartRateOverTrack is the mean of the heart-rate readings recorded
-// within the track's own span: a FIT file's readings from before or after
-// the stretch that carries a position (while GPS or altitude was
-// unavailable, say) must not shift the whole-ride target by time the model
-// never scores. False for an empty track or one with no heart rate over it.
-func meanHeartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) (mean float64, ok bool) {
+// heartRateOverTrack is the heart-rate readings recorded within the track's
+// own span: a FIT file's readings from before or after the stretch that
+// carries a position (while GPS or altitude was unavailable, say) must not
+// enter a target the model is scored against by time it never covers.
+func heartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) []trainingload.Sample {
 	if len(track) == 0 {
-		return 0, false
+		return nil
 	}
 	trackStart, trackEnd := track[0].At, track[len(track)-1].At
-	sum, count := 0.0, 0
+	kept := make([]trainingload.Sample, 0, len(heartRate))
 	for _, reading := range heartRate {
 		if reading.At.Before(trackStart) || reading.At.After(trackEnd) {
 			continue
 		}
-		sum += reading.Value
-		count++
-	}
-	if count == 0 {
-		return 0, false
+		kept = append(kept, reading)
 	}
 
-	return sum / float64(count), true
+	return kept
+}
+
+// meanHeartRateOverTrack is the mean of the heart-rate readings recorded
+// within the track's own span. False for an empty track or one with no heart
+// rate over it.
+func meanHeartRateOverTrack(heartRate []trainingload.Sample, track []measure.Sample) (mean float64, ok bool) {
+	kept := heartRateOverTrack(heartRate, track)
+	if len(kept) == 0 {
+		return 0, false
+	}
+	sum := 0.0
+	for _, reading := range kept {
+		sum += reading.Value
+	}
+
+	return sum / float64(len(kept)), true
 }
 
 // A rideLevel is one metered ride's place on the rider's heart-rate-to-power
@@ -772,7 +785,13 @@ func study(
 			continue
 		}
 
-		if len(samples.Track) < minSamples || float64(len(heartRate)) < minHeartRateCoverage*float64(len(samples.Track)) {
+		if len(samples.Track) < minSamples {
+			result.skipped++
+			continue
+		}
+		elapsedSeconds := samples.Track[len(samples.Track)-1].At.Sub(samples.Track[0].At).Seconds()
+		_, heldSeconds := measure.MeanHeld(heartRateOverTrack(heartRate, samples.Track), measure.DefaultMaxGap)
+		if elapsedSeconds <= 0 || heldSeconds < minHeartRateCoverage*elapsedSeconds {
 			result.skipped++
 			continue
 		}
