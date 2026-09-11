@@ -79,7 +79,8 @@ func (s *Store) ActivityRideSamples(
 	for index := range rows {
 		row := &rows[index]
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
-		if row.HeartRateBpm.Valid {
+		// An unpaired strap writes nought, and nought is no heart rate.
+		if row.HeartRateBpm.Valid && row.HeartRateBpm.Float64 > 0 {
 			samples.HeartRate = append(samples.HeartRate, trainingload.Sample{At: at, Value: row.HeartRateBpm.Float64})
 		}
 		if row.CadenceRpm.Valid {
@@ -110,26 +111,14 @@ func (s *Store) ActivityRideSamples(
 			samples.TrackRecords = append(samples.TrackRecords, row.RecordIndex)
 		}
 	}
-	samples.Speed, samples.MovingIntervals = speedFromRows(rows)
+	samples.Speed = speedFromRows(rows)
 
 	return samples, nil
 }
 
 // speedFromRows is the device's own speed where any row carried one, else the
-// odometer's distance over time; never a mix of the two within one ride's
-// returned series. moving is the same ride's moving intervals, read the way
-// each source requires: a device speed is an instantaneous reading, so a
-// step only counts as moving where both readings that bracket it are
-// positive; the odometer's own speed already names the rate of the step it
-// ends. Where a device speed field is present but too sparse to bracket a
-// single moving step of its own -- never positive throughout, a real quirk
-// of some trainers, or just too few positive readings to pair -- the
-// odometer's own distance is asked for moving intervals instead, the one
-// piece of the per-record fallback activity.Series(SeriesSpeed) already
-// applies that speedFromRows otherwise does not: a ride the odometer knows
-// was moving throughout must not be judged against its whole recording
-// merely because the device field could not say so on its own.
-func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainingload.Sample, moving []measure.Interval) {
+// odometer's distance over time; never a mix of the two within one ride.
+func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) []trainingload.Sample {
 	hasDeviceSpeed := false
 	for index := range rows {
 		if rows[index].SpeedMs.Valid {
@@ -149,117 +138,24 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) (speed []trainin
 				At: time.Unix(row.RecordedAtUnix, 0).UTC(), Value: row.SpeedMs.Float64 * 3.6,
 			})
 		}
-		everPositive := false
-		for _, sample := range samples {
-			if sample.Value > 0 && sample.Value <= measure.MaxPlausibleSpeedKmh {
-				everPositive = true
-
-				break
-			}
-		}
-		if everPositive {
-			// Each run breaks at a reading above the ceiling, the same way a
-			// heart-rate run breaks at a nought: the two readings either side
-			// of a dropped spike must not pair as one adjacent step.
-			for _, run := range speedRuns(samples) {
-				moving = append(moving, measure.MovingIntervalsFromInstantaneous(run)...)
-			}
-		}
-		if moving == nil {
-			_, moving = odometerSpeedAndMoving(rows)
-		}
 	} else {
-		samples, moving = odometerSpeedAndMoving(rows)
-	}
-
-	return capSpeedSamples(samples), moving
-}
-
-// odometerSpeedAndMoving is the odometer's own distance-over-time speed
-// series and the moving intervals it names, independent of any device speed
-// field: speedFromRows' own else branch, and the fallback its device branch
-// reaches for when the device field alone could not bracket a moving step.
-func odometerSpeedAndMoving(
-	rows []sqlcgen.ListActivitySensorRecordsRow,
-) (samples []trainingload.Sample, moving []measure.Interval) {
-	var previous activity.DistanceStep
-	var segment []trainingload.Sample
-	anchored := false
-	// flush closes the segment built so far: an invalid step (the odometer
-	// went backwards, say) must end it here rather than let the next valid
-	// step's own anchor read as adjacent to whatever came before the gap.
-	// speedRuns further breaks it at any reading above the ceiling, so a
-	// dropped spike cannot be bridged either.
-	flush := func() {
-		samples = append(samples, segment...)
-		for _, run := range speedRuns(segment) {
-			moving = append(moving, measure.MovingIntervals(run)...)
-		}
-		segment = nil
-		anchored = false
-	}
-	for index := range rows {
-		row := &rows[index]
-		current := activity.DistanceStep{
-			At:       time.Unix(row.RecordedAtUnix, 0).UTC(),
-			Distance: row.DistanceMetres.Float64, Known: row.DistanceMetres.Valid,
-		}
-		if index > 0 {
-			if kmh, ok := activity.DistanceSpeedKmh(previous, current); ok {
-				if !anchored {
-					// A speed reading names the step it ends, not the one it
-					// starts: without a reading at the step's own start, a
-					// consumer pairing consecutive readings
-					// (measure.MovingIntervals) never sees this first step at
-					// all. One anchor, at the step's start with its own rate,
-					// gives it a start to pair from.
-					segment = append(segment, trainingload.Sample{At: previous.At, Value: kmh})
-					anchored = true
+		var previous activity.DistanceStep
+		for index := range rows {
+			row := &rows[index]
+			current := activity.DistanceStep{
+				At:       time.Unix(row.RecordedAtUnix, 0).UTC(),
+				Distance: row.DistanceMetres.Float64, Known: row.DistanceMetres.Valid,
+			}
+			if index > 0 {
+				if kmh, ok := activity.DistanceSpeedKmh(previous, current); ok {
+					samples = append(samples, trainingload.Sample{At: current.At, Value: kmh})
 				}
-				segment = append(segment, trainingload.Sample{At: current.At, Value: kmh})
-			} else {
-				flush()
 			}
-		}
-		previous = current
-	}
-	flush()
-	// Checked against the CAPPED series: an odometer whose every derived rate
-	// exceeded the ceiling has no usable reading at all, and must fall back
-	// to unknown the same way an all-noughts device speed field does, not
-	// read as a ride confidently held still.
-	if moving == nil && len(capSpeedSamples(samples)) > 0 {
-		moving = []measure.Interval{}
-	}
-
-	return samples, moving
-}
-
-// speedRuns splits samples into contiguous runs of readings at or under
-// measure.MaxPlausibleSpeedKmh: a reading above it is a data fault, and must
-// break the run there rather than let measure.MovingIntervals bridge across
-// it as an ordinary recording gap would.
-func speedRuns(samples []trainingload.Sample) [][]trainingload.Sample {
-	var runs [][]trainingload.Sample
-	start := -1
-	for index, sample := range samples {
-		if sample.Value <= measure.MaxPlausibleSpeedKmh {
-			if start == -1 {
-				start = index
-			}
-
-			continue
-		}
-		if start != -1 {
-			runs = append(runs, samples[start:index])
-			start = -1
+			previous = current
 		}
 	}
-	if start != -1 {
-		runs = append(runs, samples[start:])
-	}
 
-	return runs
+	return capSpeedSamples(samples)
 }
 
 // capSpeedSamples drops every reading above measure.MaxPlausibleSpeedKmh: a
@@ -314,7 +210,7 @@ func storeEstimatedPower(
 	if len(recordIndices) != len(estimates) {
 		return errors.New("an estimate per record or none")
 	}
-	// Cleared first, so a record that no longer yields an estimate does not keep
+	// Cleared first, so a record that yields no estimate does not keep
 	// the one it had from a mass the rider has since changed.
 	cleared, clearErr := queries.ClearEstimatedPower(ctx, sqlcgen.ClearEstimatedPowerParams{
 		TargetSlot: targetID, WorkoutID: id,

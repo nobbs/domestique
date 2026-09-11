@@ -309,6 +309,24 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 	assert.False(t, samples.Track[1].HasTemperature)
 }
 
+// An unpaired strap writes nought, and nought is no heart rate: it must not
+// enter the series as a reading a rider never took.
+func TestActivityRideSamplesLeavesOutAZeroHeartRate(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), HeartRateBPM: 0, HasHeartRate: true},
+			{Time: activityNow().Add(time.Second), HeartRateBPM: 140, HasHeartRate: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.HeartRate, 1, "the nought is not a reading")
+	assert.InDelta(t, 140.0, samples.HeartRate[0].Value, 1e-9)
+}
+
 // A device that records its own speed is trusted over the odometer: the
 // series is built from speed_ms per row, converted to km/h.
 func TestActivityRideSamplesReadsSpeedFromTheDeviceWhereRecorded(t *testing.T) {
@@ -329,85 +347,11 @@ func TestActivityRideSamplesReadsSpeedFromTheDeviceWhereRecorded(t *testing.T) {
 	require.Len(t, samples.Speed, 2, "the device's own reading, not the odometer's")
 	assert.InDelta(t, 28.8, samples.Speed[0].Value, 1e-9)
 	assert.InDelta(t, 72.0, samples.Speed[1].Value, 1e-9)
-	require.Len(t, samples.MovingIntervals, 1, "an instantaneous reading positive at both ends of the step")
-	assert.Equal(t,
-		measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, samples.MovingIntervals[0])
-}
-
-// The regression: a device speed field present but never once positive
-// throughout -- a real quirk of some trainers -- cannot be trusted to say
-// when the ride moved at all. It must not be read as a ride that never did,
-// which would withhold otherwise complete heart-rate and power figures.
-func TestActivityRideSamplesTreatsAnAlwaysZeroDeviceSpeedAsUnknownRatherThanStationary(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			{Time: activityNow(), SpeedMS: 0, HasSpeed: true, HeartRateBPM: 140, HasHeartRate: true},
-			{
-				Time: activityNow().Add(time.Second), SpeedMS: 0, HasSpeed: true,
-				HeartRateBPM: 140, HasHeartRate: true,
-			},
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.Speed, 2)
-	assert.Nil(t, samples.MovingIntervals, "an unreliable field, not a ride that never moved")
-}
-
-// The regression: a device speed field positive exactly once, with no other
-// reading beside it also positive, can never bracket a moving step -- the
-// same as never being positive at all, and just as untrustworthy a name for
-// when the ride moved. It must not read as a ride that held perfectly still.
-func TestActivityRideSamplesTreatsAnUnbracketedDeviceSpeedAsUnknownRatherThanStationary(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			{Time: activityNow(), SpeedMS: 0, HasSpeed: true},
-			{Time: activityNow().Add(time.Second), SpeedMS: 5, HasSpeed: true},
-			{Time: activityNow().Add(2 * time.Second), SpeedMS: 0, HasSpeed: true},
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-	assert.Nil(t, samples.MovingIntervals, "one isolated positive reading names no moving step at all")
-}
-
-// The regression: a device speed field too sparse to bracket a moving step
-// of its own must not leave a genuinely-moving ride reading as unknown when
-// the odometer's own distance can say when it moved. Falling back to unknown
-// there would judge sensor coverage against the whole recording rather than
-// the ride's real moving time, which a dropout during the moving part could
-// then pass through.
-func TestActivityRideSamplesFallsBackToTheOdometerWhenDeviceSpeedCannotBracketAMovingStep(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			// One isolated positive device-speed reading, unbracketed on
-			// either side, but the odometer's own distance rises steadily
-			// throughout: a real ride the device field alone cannot see.
-			{Time: activityNow(), SpeedMS: 0, HasSpeed: true, DistanceMetres: 0, HasDistance: true},
-			{Time: activityNow().Add(time.Second), SpeedMS: 5, HasSpeed: true, DistanceMetres: 10, HasDistance: true},
-			{Time: activityNow().Add(2 * time.Second), SpeedMS: 0, HasSpeed: true, DistanceMetres: 20, HasDistance: true},
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.MovingIntervals, 1, "the odometer's own distance names the ride as moving throughout")
-	assert.Equal(t,
-		measure.Interval{Start: activityNow(), End: activityNow().Add(2 * time.Second)}, samples.MovingIntervals[0])
 }
 
 // The regression: an odometer whose every derived rate exceeds the ceiling
-// has no usable reading at all, the same as a device speed field never once
-// positive. It must read as unknown, not as a ride confidently held still.
-func TestActivityRideSamplesTreatsAnAllExcessiveOdometerRateAsUnknownRatherThanStationary(t *testing.T) {
+// has no usable reading at all.
+func TestActivityRideSamplesTreatsAnAllExcessiveOdometerRateAsUnknown(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
@@ -421,7 +365,6 @@ func TestActivityRideSamplesTreatsAnAllExcessiveOdometerRateAsUnknownRatherThanS
 	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRideSamples()")
 	assert.Empty(t, samples.Speed, "the only derived rate was implausible and dropped")
-	assert.Nil(t, samples.MovingIntervals, "no usable reading at all, not a ride confidently held still")
 }
 
 // A ride with no device speed reading falls back to the odometer: distance
@@ -438,36 +381,9 @@ func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing
 
 	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRideSamples()")
-	// The first record's own step is anchored at its start as well as its
-	// end, so a consumer pairing consecutive readings (measure.MovingIntervals)
-	// sees it too, not only the steps that follow it.
-	require.Len(t, samples.Speed, 2)
-	assert.Equal(t, activityNow(), samples.Speed[0].At)
+	require.Len(t, samples.Speed, 1, "the rate names the step it ends, not the one it starts")
+	assert.Equal(t, activityNow().Add(time.Second), samples.Speed[0].At)
 	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9)
-	assert.Equal(t, activityNow().Add(time.Second), samples.Speed[1].At)
-	assert.InDelta(t, 36.0, samples.Speed[1].Value, 1e-9)
-}
-
-// The regression: a two-record ride is the shortest one a rider can carry,
-// and its single step must still be a moving interval, not silently invisible
-// to measure.MovingIntervals for want of a start to pair its own reading
-// against.
-func TestActivityRideSamplesSpeedNamesAMovingIntervalForATwoRecordRide(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
-			{Time: activityNow().Add(time.Second), DistanceMetres: 10, HasDistance: true},
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-
-	intervals := measure.MovingIntervals(samples.Speed)
-	require.Len(t, intervals, 1, "the ride's one step must not vanish from its own moving intervals")
-	assert.Equal(t, measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, intervals[0])
 }
 
 // A single implausible spike — a clock or odometer hiccup, not a rider — is
@@ -489,100 +405,6 @@ func TestActivityRideSamplesDropsASpeedReadingAboveTheCeiling(t *testing.T) {
 	averages := samples.Averages()
 	assert.True(t, averages.HasSpeed)
 	assert.InDelta(t, 43.2, averages.MaxSpeedKmh, 1e-9, "the peak of what remains")
-}
-
-// The regression: an odometer reset makes one step invalid (distance goes
-// backwards), and the segment before it must not bridge across the reset into
-// the segment after -- even though the two segments' own edges sit well
-// within the ordinary gap tolerance.
-func TestActivityRideSamplesTreatsAnInvalidOdometerStepAsASegmentBoundary(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
-			{Time: activityNow().Add(time.Second), DistanceMetres: 10, HasDistance: true},
-			// The reset: distance drops, so this step is invalid.
-			{Time: activityNow().Add(2 * time.Second), DistanceMetres: 5, HasDistance: true},
-			{Time: activityNow().Add(3 * time.Second), DistanceMetres: 15, HasDistance: true},
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.MovingIntervals, 2, "two segments, not one bridged across the reset")
-	assert.Equal(t,
-		measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, samples.MovingIntervals[0])
-	assert.Equal(t,
-		measure.Interval{Start: activityNow().Add(2 * time.Second), End: activityNow().Add(3 * time.Second)},
-		samples.MovingIntervals[1])
-}
-
-// The regression: a device-speed spike above the ceiling must not mark its
-// own surrounding step moving before it is dropped from the series that
-// coverage is judged against.
-func TestActivityRideSamplesBuildsMovingIntervalsFromCappedSpeedNotRaw(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			{Time: activityNow(), SpeedMS: 5, HasSpeed: true},                      // 18 km/h, real
-			{Time: activityNow().Add(time.Second), SpeedMS: 200, HasSpeed: true},   // above the ceiling
-			{Time: activityNow().Add(2 * time.Second), SpeedMS: 0, HasSpeed: true}, // stopped
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.Speed, 2, "the spike is dropped")
-	assert.Empty(t, samples.MovingIntervals,
-		"the spike's own step must not read as moving once the spike itself is gone")
-}
-
-// The regression: dropping a spike from the middle of an otherwise-moving
-// run must not leave the readings either side of it adjacent. Both sit well
-// within the ordinary gap tolerance of each other, so without an explicit
-// break at the dropped reading they would still pair as one moving step.
-func TestActivityRideSamplesDoesNotBridgeADeviceSpikeDroppedMidRun(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			{Time: activityNow(), SpeedMS: 5.5, HasSpeed: true},                      // ~20 km/h, real
-			{Time: activityNow().Add(time.Second), SpeedMS: 200, HasSpeed: true},     // above the ceiling
-			{Time: activityNow().Add(2 * time.Second), SpeedMS: 5.5, HasSpeed: true}, // ~20 km/h, real
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.Speed, 2, "the spike is dropped")
-	assert.Empty(t, samples.MovingIntervals,
-		"a single dropped reading either side of the spike, never enough on its own to pair into a step")
-}
-
-// The same regression on the odometer branch: an implausible derived rate in
-// the middle of an otherwise-valid segment must break it there, not leave the
-// valid readings either side of it to pair across the gap it leaves behind.
-func TestActivityRideSamplesDoesNotBridgeAnOdometerSpikeDroppedMidSegment(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
-		Records: []activity.Record{
-			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
-			{Time: activityNow().Add(time.Second), DistanceMetres: 10, HasDistance: true},
-			// A 10km jump in one second: still an increase, so not an invalid
-			// step, but far above the plausible ceiling.
-			{Time: activityNow().Add(2 * time.Second), DistanceMetres: 10010, HasDistance: true},
-			{Time: activityNow().Add(3 * time.Second), DistanceMetres: 10020, HasDistance: true},
-		},
-	}, activity.RecordsVersion), "StoreActivityRecords()")
-
-	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
-	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.MovingIntervals, 1, "only the run before the dropped spike, never bridged past it")
-	assert.Equal(t,
-		measure.Interval{Start: activityNow(), End: activityNow().Add(time.Second)}, samples.MovingIntervals[0])
 }
 
 // A ride with no readable records has no speed series at all.

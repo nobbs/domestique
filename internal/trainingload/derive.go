@@ -1,7 +1,6 @@
 package trainingload
 
 import (
-	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
 )
 
@@ -79,17 +78,10 @@ func (m *Metrics) Derived() bool {
 // MinSeriesCoverage of it is withheld rather than served understated. Zero
 // or negative leaves coverage unmeasured rather than failed, so a caller that
 // cannot supply it yet gets today's behaviour rather than everything
-// withheld. movingIntervals are the same moving time, broken into the
-// stretches it happened in, so a sensor live only through a stop is not
-// credited with covering the riding that surrounded it; nil falls back to
-// judging held time against the whole recording.
-func Derive(heartRate, power []Sample, movingSeconds float64, movingIntervals []measure.Interval, inputs Inputs) Metrics {
+// withheld.
+func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Metrics {
 	metrics := Metrics{Inputs: inputs}
-	// A strap that wrote nought took no reading there. One that wrote nought
-	// throughout has no positive run at all, so HeartRateCoverage already
-	// reads that ride as 0% covered below without a special case for it.
-	present := HeartRateReadings(heartRate)
-	if bounds, ok := BoundsFrom(inputs.ThresholdHeartRateBPM, inputs.MaxHeartRateBPM); ok && len(present) > 1 {
+	if bounds, ok := BoundsFrom(inputs.ThresholdHeartRateBPM, inputs.MaxHeartRateBPM); ok && len(heartRate) > 1 {
 		zones := TimeInZones(heartRate, bounds)
 		metrics.Zones, metrics.HasZones = zones, zones.Total() > 0
 	}
@@ -97,14 +89,14 @@ func Derive(heartRate, power []Sample, movingSeconds float64, movingIntervals []
 	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
-	if coverage, ok := HeartRateCoverage(heartRate, movingSeconds, movingIntervals); ok && coverage < MinSeriesCoverage {
+	if coverage, ok := SeriesCoverage(heartRate, movingSeconds); ok && coverage < MinSeriesCoverage {
 		// Zones is cleared alongside its flag: LoadOf reads it unconditionally,
 		// and a populated-but-disowned value would still reach Timeline and
 		// ZonesByWeek as if this ride's coverage had been enough.
 		metrics.Zones = Zones{}
 		metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
 	}
-	if coverage, ok := SeriesCoverage(power, movingSeconds, movingIntervals); ok && coverage < MinSeriesCoverage {
+	if coverage, ok := SeriesCoverage(power, movingSeconds); ok && coverage < MinSeriesCoverage {
 		metrics.HasPower = false
 	}
 

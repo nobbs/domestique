@@ -60,15 +60,14 @@ func targetedAt(t *testing.T, ride Ride, coefficients measure.Coefficients) Ride
 	return ride
 }
 
-// The regression: a coasting half of the block must not lower the bridge
-// target the model is scored against, which is built from the pedalling
-// samples alone.
+// The regression: a coasting half of the block -- a power meter reads
+// nought while the rider coasts -- must not lower the bridge target the
+// model is scored against, which is built from the pedalling samples alone.
 func TestMeteredBlocksOfExcludesCoastingSamplesFromTheBlockMean(t *testing.T) {
 	t.Parallel()
 	const block = 10 * time.Second
 	power := make([]trainingload.Sample, 10)
 	heartRate := make([]trainingload.Sample, 10)
-	cadence := make([]trainingload.Sample, 10)
 	// Three seconds coasting, seven pedalling: comfortably over the block's
 	// own five-second held-duration threshold on the pedalling side alone.
 	for index := range power {
@@ -76,59 +75,20 @@ func TestMeteredBlocksOfExcludesCoastingSamplesFromTheBlockMean(t *testing.T) {
 		heartRate[index] = trainingload.Sample{At: at, Value: 140}
 		if index < 3 {
 			power[index] = trainingload.Sample{At: at, Value: 0}
-			cadence[index] = trainingload.Sample{At: at, Value: 0}
 		} else {
 			power[index] = trainingload.Sample{At: at, Value: 200}
-			cadence[index] = trainingload.Sample{At: at, Value: 80}
 		}
 	}
 
-	blocks := meteredBlocksOf(power, heartRate, cadence, block)
+	blocks := meteredBlocksOf(power, heartRate, block)
 
 	require.Len(t, blocks, 1)
 	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9, "the coasting half must not lower the pedalling mean")
 }
 
-// The regression: the heart-rate target must apply the same two exclusions
-// the power side does -- coasting samples, and any reading outside the
-// powered ride's own span -- or the bridge learns a heart rate the pedalling
-// watts beside it never produced.
-func TestMeteredBlocksOfExcludesCoastingAndOutOfSpanHeartRateFromTheTarget(t *testing.T) {
-	t.Parallel()
-	const block = 10 * time.Second
-	power := make([]trainingload.Sample, 10)
-	heartRate := make([]trainingload.Sample, 10)
-	cadence := make([]trainingload.Sample, 10)
-	// Three seconds coasting, seven pedalling: comfortably over the block's
-	// own five-second held-duration threshold on the pedalling side alone.
-	for index := range power {
-		at := start().Add(time.Duration(index) * time.Second)
-		if index < 3 {
-			// Coasting: the power side excludes these already; the heart
-			// rate here is a spike that must not enter the target either.
-			power[index] = trainingload.Sample{At: at, Value: 0}
-			cadence[index] = trainingload.Sample{At: at, Value: 0}
-			heartRate[index] = trainingload.Sample{At: at, Value: 200}
-		} else {
-			power[index] = trainingload.Sample{At: at, Value: 200}
-			cadence[index] = trainingload.Sample{At: at, Value: 80}
-			heartRate[index] = trainingload.Sample{At: at, Value: 140}
-		}
-	}
-	// A reading from before the powered ride started: must not shift the
-	// block mean by time the model never scores.
-	heartRate = append([]trainingload.Sample{{At: start().Add(-time.Hour), Value: 220}}, heartRate...)
-
-	blocks := meteredBlocksOf(power, heartRate, cadence, block)
-
-	require.Len(t, blocks, 1)
-	assert.InDelta(t, 140.0, blocks[0].HeartRateBPM, 1e-9,
-		"only the pedalling heart rate within the powered span, not the coast or the reading before it")
-}
-
-// A ride with no cadence recorded at all names no sample a coast, so every
-// power reading is kept exactly as it was before this filter existed.
-func TestMeteredBlocksOfKeepsEveryPowerSampleWithoutACadenceSeries(t *testing.T) {
+// The regression: a heart-rate reading from before the powered ride started
+// must not shift the block mean by time the model never scores.
+func TestMeteredBlocksOfExcludesHeartRateOutsideThePoweredSpan(t *testing.T) {
 	t.Parallel()
 	const block = 10 * time.Second
 	power := make([]trainingload.Sample, 10)
@@ -138,11 +98,12 @@ func TestMeteredBlocksOfKeepsEveryPowerSampleWithoutACadenceSeries(t *testing.T)
 		power[index] = trainingload.Sample{At: at, Value: 200}
 		heartRate[index] = trainingload.Sample{At: at, Value: 140}
 	}
+	heartRate = append([]trainingload.Sample{{At: start().Add(-time.Hour), Value: 220}}, heartRate...)
 
-	blocks := meteredBlocksOf(power, heartRate, nil, block)
+	blocks := meteredBlocksOf(power, heartRate, block)
 
 	require.Len(t, blocks, 1)
-	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9)
+	assert.InDelta(t, 140.0, blocks[0].HeartRateBPM, 1e-9, "the reading from before the powered span is excluded")
 }
 
 // The regression: a sensor sampling once every five seconds covers a
@@ -162,76 +123,10 @@ func TestMeteredBlocksOfAdmitsABlockASparselySampledSensorFullyCovers(t *testing
 		heartRate[index] = trainingload.Sample{At: at, Value: 140}
 	}
 
-	blocks := meteredBlocksOf(power, heartRate, nil, block)
+	blocks := meteredBlocksOf(power, heartRate, block)
 
 	require.Len(t, blocks, 1, "a 5s-interval sensor still covers the whole block")
 	assert.InDelta(t, 200.0, blocks[0].WattsMeasured, 1e-9)
-}
-
-// The regression: an isolated coast between two pedalling stretches must
-// break held time there. Bridging across it -- pairing the readings either
-// side of the dropped coast because the gap between them, once it is gone,
-// sits within the ordinary gap tolerance -- can credit a block with more held
-// time than either pedalling stretch holds on its own, admitting a block
-// whose true pedalling coverage sits below the half-block threshold.
-func TestMeteredBlocksOfDoesNotBridgeHeldDurationAcrossAnIsolatedCoast(t *testing.T) {
-	t.Parallel()
-	const block = 10 * time.Second
-	power := make([]trainingload.Sample, 10)
-	heartRate := make([]trainingload.Sample, 10)
-	cadence := make([]trainingload.Sample, 10)
-	// Pedalling at 0,1,2 (2 held seconds) and 4,5 (1 held second): 3 true held
-	// seconds, well under the 5-second half-block threshold. Coasting at 3
-	// leaves only a 2-second gap between the two pedalling stretches once it
-	// is dropped -- inside the ordinary 10-second gap tolerance, so bridging
-	// across it would read as 5 held seconds and wrongly admit the block.
-	coasting := map[int]bool{3: true, 6: true, 7: true, 8: true, 9: true}
-	for index := range power {
-		at := start().Add(time.Duration(index) * time.Second)
-		heartRate[index] = trainingload.Sample{At: at, Value: 140}
-		if coasting[index] {
-			power[index] = trainingload.Sample{At: at, Value: 0}
-			cadence[index] = trainingload.Sample{At: at, Value: 0}
-		} else {
-			power[index] = trainingload.Sample{At: at, Value: 200}
-			cadence[index] = trainingload.Sample{At: at, Value: 80}
-		}
-	}
-
-	blocks := meteredBlocksOf(power, heartRate, cadence, block)
-
-	assert.Empty(t, blocks, "true pedalling coverage sits under half the block, coast or no")
-}
-
-// The regression: cadence and power are two independent series and need not
-// share exact timestamps, so a coast recorded a moment off the power reading
-// it explains must still be matched to it.
-func TestCoastingAtMatchesACadenceReadingOffsetFromThePowerSample(t *testing.T) {
-	t.Parallel()
-	cadence := []trainingload.Sample{
-		{At: start().Add(4 * time.Second), Value: 80},
-		{At: start().Add(6 * time.Second), Value: 0},
-		{At: start().Add(8 * time.Second), Value: 80},
-	}
-
-	assert.True(t, coastingAt(start().Add(5500*time.Millisecond), cadence),
-		"the nearest reading, 500ms away, names a coast")
-	assert.False(t, coastingAt(start().Add(4200*time.Millisecond), cadence),
-		"the nearest reading here is still pedalling")
-}
-
-// A cadence reading further away than the tolerance is not close enough to
-// trust, whatever it says.
-func TestCoastingAtRefusesACadenceReadingTooFarAway(t *testing.T) {
-	t.Parallel()
-	cadence := []trainingload.Sample{{At: start(), Value: 0}}
-
-	assert.False(t, coastingAt(start().Add(10*time.Second), cadence))
-}
-
-func TestCoastingAtIsFalseWithNoCadenceSeries(t *testing.T) {
-	t.Parallel()
-	assert.False(t, coastingAt(start(), nil))
 }
 
 // The recovery test the handover asks of any fitter (§6): a target generated
@@ -284,55 +179,6 @@ func TestFitDragAreaRefusesAFitThatCollapsesToTheSearchBound(t *testing.T) {
 	_, _, fitOK := FitDragArea(crr, []Ride{ride})
 
 	assert.False(t, fitOK, "a fit that lands on the search bound is the failure itself, not a measurement")
-}
-
-// smoothedTimes is a helper for one-second-apart timestamps, from as many
-// seconds after start() as each offset names.
-func smoothedTimes(offsetsSeconds ...int) []time.Time {
-	times := make([]time.Time, len(offsetsSeconds))
-	for index, offset := range offsetsSeconds {
-		times[index] = start().Add(time.Duration(offset) * time.Second)
-	}
-
-	return times
-}
-
-// The acceptance criterion: an evenly one-second-apart series smoothed over
-// a thirty-second window averages every sample within fifteen seconds either
-// side, the count a fixed-sample window would also have reached.
-func TestSmoothedMatchesAFixedCountOnAnEvenlySpacedSeries(t *testing.T) {
-	t.Parallel()
-	times := smoothedTimes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-	values := []float64{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-
-	out := smoothed(times, values, smoothingWindow)
-
-	// Every sample sits within fifteen seconds of every other in a ten-second
-	// span, so the window reaches the whole series and every mean is 4.5.
-	for index, value := range out {
-		assert.InDelta(t, 4.5, value, 1e-9, "index %d", index)
-	}
-}
-
-// The regression: a gap left by coasting removed from between two clusters
-// of samples must not let the window blend one cluster's values into the
-// other's mean just because a fixed sample count would still reach across it.
-func TestSmoothedDoesNotBlendAcrossAGapLeftByRemovedSamples(t *testing.T) {
-	t.Parallel()
-	// Five samples a second apart, then a 96-second gap (coasting removed),
-	// then five more a second apart -- ten samples total, the same count a
-	// fixed thirty-sample window would have reached from either cluster.
-	times := smoothedTimes(0, 1, 2, 3, 4, 100, 101, 102, 103, 104)
-	values := []float64{10, 10, 10, 10, 10, 20, 20, 20, 20, 20}
-
-	out := smoothed(times, values, smoothingWindow)
-
-	for index := range 5 {
-		assert.InDelta(t, 10, out[index], 1e-9, "index %d: the first cluster alone", index)
-	}
-	for index := 5; index < 10; index++ {
-		assert.InDelta(t, 20, out[index], 1e-9, "index %d: the second cluster alone", index)
-	}
 }
 
 func TestEvaluateReportsTheSignedBiasOfACandidate(t *testing.T) {

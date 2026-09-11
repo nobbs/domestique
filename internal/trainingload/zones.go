@@ -65,11 +65,9 @@ func BoundsFrom(thresholdHeartRate, maxHeartRate float64) (Bounds, bool) {
 // falls between.
 func TimeInZones(samples []Sample, bounds Bounds) Zones {
 	zones := Zones{}
-	for _, run := range heartRateRuns(samples) {
-		measure.ForEachHeld(run, measure.DefaultMaxGap, func(value, seconds float64) {
-			zones[zoneOf(value, bounds)] += seconds
-		})
-	}
+	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(value, seconds float64) {
+		zones[zoneOf(value, bounds)] += seconds
+	})
 
 	return zones
 }

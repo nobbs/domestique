@@ -364,18 +364,12 @@ run = "./dev/demo.sh"
 
 # Answers #623: for every recorded ride with a track and no power meter, how
 # the estimate's fitted coefficients compare with a rider's stated bicycle.
-# The meter comparison is opt-in: `-check-year` defaults to 0, which skips
-# it, so a metered year must be named to hold the model against a meter --
-# this command alone only runs the cross-validated study. That year's own
-# metered rides are whatever the rider recorded with a power meter, indoor
-# or outdoor alike; there is no workout type or location to tell them apart
-# by, so this is not a trainer-only check. Same offline-only shape as the
-# studies before it: never built into the image, never in quick or check,
-# and needs the operator's own snapshot of real rides. `-database` has no
-# default: `mise run level-study -- -database .local/dev/state.db
-# -check-year 2026`.
+# Same offline-only shape as the studies before it: never built into the
+# image, never in quick or check, and needs the operator's own snapshot of
+# real rides. `-database` has no default: `mise run level-study --
+# -database .local/dev/state.db`.
 [level-study]
-description = "Cross-validate a rider's bicycle numbers; add -check-year to hold it against a meter"
+description = "Cross-validate a rider's bicycle numbers against their stated bicycle"
 run = "go run ./dev/levelstudy"
 
 # The only thing that installs node_modules. It declares the lockfile as its

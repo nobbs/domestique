@@ -1,7 +1,6 @@
 // Command levelstudy measures how far a drag area fitted to the rider brings
 // the estimated-power model's level to what their own heart rate says, judged
-// whole ride by whole ride on rides the fit never saw, and how the model then
-// sits against a real meter on the trainer rides that had one.
+// whole ride by whole ride on rides the fit never saw.
 //
 // The rider's own trainer rides carry a measured power and a heart rate; their
 // road rides carry a track and a heart rate. Heart rate is the only quantity
@@ -15,8 +14,8 @@
 // value — and is safe to paste into an issue.
 //
 // A database holding several riders' rides should be run once per target with
-// -target: the "profile" candidate and the metered check both read one
-// bicycle for the whole run, so mixing targets mixes their bicycles too.
+// -target: the "profile" candidate reads one bicycle for the whole run, so
+// mixing targets mixes their bicycles too.
 package main
 
 import (
@@ -37,18 +36,17 @@ func main() {
 	block := flag.Duration("block", 5*time.Minute, "block length both sides of the bridge are averaged over")
 	folds := flag.Int("folds", 5, "how many held-out folds the candidates are scored over")
 	window := flag.Int("window", 30, "how many metered rides before a road ride its bridge level is the median of")
-	checkYear := flag.Int("check-year", 0, "hold the fitted model against the meter on that year's metered rides (0: skip)")
 	mass := flag.Float64("mass", 0, "total system mass in kg, used for a target with no rider profile")
 	target := flag.String("target", "", "the target slot to read rides from; required where the database holds several")
 	flag.Parse()
 
-	if err := run(*database, *minSamples, *block, *folds, *window, *checkYear, *mass, *target); err != nil {
+	if err := run(*database, *minSamples, *block, *folds, *window, *mass, *target); err != nil {
 		fmt.Fprintf(os.Stderr, "levelstudy: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(database string, minSamples int, block time.Duration, folds, window, checkYear int, massFlag float64, target string) error {
+func run(database string, minSamples int, block time.Duration, folds, window int, massFlag float64, target string) error {
 	switch {
 	case database == "":
 		return errors.New("-database is required")
@@ -81,7 +79,7 @@ func run(database string, minSamples int, block time.Duration, folds, window, ch
 		}
 	}()
 
-	result, err := study(ctx, store, minSamples, block, folds, window, checkYear, massFlag, target)
+	result, err := study(ctx, store, minSamples, block, folds, window, massFlag, target)
 	if err != nil {
 		return err
 	}

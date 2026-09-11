@@ -24,17 +24,9 @@ type RideSamples struct {
 	Temperature []trainingload.Sample
 	// Speed is km/h, already capped at measure.MaxPlausibleSpeedKmh by the
 	// reader that built it.
-	Speed []trainingload.Sample
-	// MovingIntervals are this same ride's moving intervals, read from
-	// whichever source Speed came from and by that source's own rule: never
-	// simply measure.MovingIntervals(Speed), which would apply the wrong
-	// rule to a device's instantaneous reading. Nil where Speed cannot be
-	// trusted to say when the ride moved (a device speed field present but
-	// never once positive, a trainer quirk); a caller judging coverage
-	// against it falls back to the ride's own stored moving time instead.
-	MovingIntervals []measure.Interval
-	Track           []measure.Sample
-	TrackRecords    []int64
+	Speed        []trainingload.Sample
+	Track        []measure.Sample
+	TrackRecords []int64
 }
 
 // EstimatePower works out the ride's estimated power series and its
@@ -255,7 +247,7 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		// whose moving time this derivation cannot yet supply.
 		movingSeconds := movingSecondsByID[id]
 		heartRate := measure.CapHeartRate(samples.HeartRate, inputs.MaxHeartRateBPM)
-		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, samples.MovingIntervals, inputs)
+		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, inputs)
 		records, estimates, watts, share, estimated := samples.EstimatePower(inputs.TotalMassKG, coefficients)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = watts, estimated
 		metrics := RideMetrics{

@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/nobbs/domestique/internal/measure"
-	"github.com/nobbs/domestique/internal/trainingload"
 )
 
 func day(n int) time.Time { return start().Add(time.Duration(n) * 24 * time.Hour) }
@@ -144,145 +143,11 @@ func TestWattsAtIsZeroWithNoLevels(t *testing.T) {
 	assert.Zero(t, b.wattsAt(day(0), 150))
 }
 
-// The regression: a heart-rate reading from before or after the stretch that
-// carried a position -- while GPS or altitude was unavailable, say -- must
-// not shift the mean the whole-ride block is judged against.
-func TestMeanHeartRateOverTrackExcludesReadingsOutsideTheTracksSpan(t *testing.T) {
+// meanOf refuses an empty series, the same as any other series with nothing
+// to hold.
+func TestMeanOfRefusesAnEmptySeries(t *testing.T) {
 	t.Parallel()
-	track := []measure.Sample{
-		{At: start().Add(10 * time.Second)},
-		{At: start().Add(20 * time.Second)},
-	}
-	heartRate := []trainingload.Sample{
-		{At: start(), Value: 60},                        // before the track: excluded
-		{At: start().Add(15 * time.Second), Value: 140}, // within the track
-		{At: start().Add(30 * time.Second), Value: 200}, // after the track: excluded
-	}
-
-	mean, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 1})
-
-	require.True(t, ok)
-	assert.InDelta(t, 140, mean, 1e-9)
-}
-
-// The regression: a heart-rate reading recorded near a track sample the
-// caller did not include in indices -- coasting, or one the model itself
-// could estimate nothing at -- must not enter the target the pedalling-only
-// estimate is judged against, even though it falls within the track's span.
-func TestMeanHeartRateOverTrackExcludesReadingsNearAnUnindexedSample(t *testing.T) {
-	t.Parallel()
-	track := []measure.Sample{
-		{At: start(), HasCadence: true, CadenceRPM: 80},
-		{At: start().Add(10 * time.Second), HasCadence: true, CadenceRPM: 0}, // coasting, excluded from indices
-		{At: start().Add(20 * time.Second), HasCadence: true, CadenceRPM: 80},
-	}
-	heartRate := []trainingload.Sample{
-		{At: start(), Value: 140},
-		{At: start().Add(10 * time.Second), Value: 200}, // near the excluded index
-		{At: start().Add(20 * time.Second), Value: 140},
-	}
-
-	mean, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 2})
-
-	require.True(t, ok)
-	assert.InDelta(t, 140, mean, 1e-9, "the reading near the excluded index must not shift the pedalling target")
-}
-
-// The regression: a heart-rate reading recorded during a track gap -- a
-// stretch the model itself could estimate nothing across, index 2 here,
-// left out of indices the same way an unknown estimate would be -- must not
-// enter the target, even though it falls inside the track's own overall span.
-func TestMeanHeartRateOverTrackExcludesReadingsDuringATrackGap(t *testing.T) {
-	t.Parallel()
-	track := []measure.Sample{
-		{At: start()},
-		{At: start().Add(10 * time.Second)},
-		{At: start().Add(20 * time.Second)}, // the gap: left out of indices
-		{At: start().Add(30 * time.Second)},
-		{At: start().Add(40 * time.Second)},
-	}
-	heartRate := []trainingload.Sample{
-		{At: start().Add(5 * time.Second), Value: 100},
-		{At: start().Add(20 * time.Second), Value: 999}, // during the gap: excluded
-		{At: start().Add(35 * time.Second), Value: 140},
-	}
-
-	mean, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 1, 3, 4})
-
-	require.True(t, ok)
-	assert.InDelta(t, 120, mean, 1e-9, "the reading during the gap must not shift the mean")
-}
-
-// nought is the invalid predicate a dropout's own value names: a strap that
-// wrote nought took no reading there.
-func nought(r trainingload.Sample) bool { return r.Value <= 0 }
-
-// The regression: a dropout the strap wrote as a run of noughts must break
-// held time there, not bridge across it within the ordinary ten-second
-// recording-gap tolerance the way a reading it simply never took would.
-func TestTotalHeldSecondsDoesNotBridgeADropoutWrittenAsNought(t *testing.T) {
-	t.Parallel()
-	values := []float64{150, 150, 0, 0, 0, 0, 0, 0, 150, 150}
-	samples := make([]trainingload.Sample, len(values))
-	for index, value := range values {
-		samples[index] = trainingload.Sample{At: start().Add(time.Duration(index) * time.Second), Value: value}
-	}
-
-	held := totalHeldSeconds(samples, nought)
-
-	// One held second either side of the six-second dropout: two, not the
-	// whole nine-second span bridged across it.
-	assert.InDelta(t, 2.0, held, 1e-9)
-}
-
-// The same regression, bucketed per block: a dropout must not inflate the
-// held duration of whichever block it falls in.
-func TestHeldSecondsAcrossRunsDoesNotBridgeADropout(t *testing.T) {
-	t.Parallel()
-	const block = 10 * time.Second
-	values := []float64{150, 150, 0, 0, 0, 0, 0, 0, 150, 150}
-	samples := make([]trainingload.Sample, len(values))
-	for index, value := range values {
-		samples[index] = trainingload.Sample{At: start().Add(time.Duration(index) * time.Second), Value: value}
-	}
-
-	held := heldSecondsAcrossRuns(samples, nought, start(), block)
-
-	assert.InDelta(t, 2.0, held[0], 1e-9)
-}
-
-// The regression: an excluded reading in the middle of an otherwise-held run
-// must break held time there too, even when it is not a nought -- a coast, or
-// a reading outside the span being judged, breaks it exactly the same way.
-func TestHeldSecondsAcrossRunsDoesNotBridgeAnyExcludedReading(t *testing.T) {
-	t.Parallel()
-	const block = 10 * time.Second
-	samples := []trainingload.Sample{
-		{At: start(), Value: 150},
-		{At: start().Add(time.Second), Value: 150},
-		{At: start().Add(2 * time.Second), Value: 999}, // excluded, not a nought
-		{At: start().Add(3 * time.Second), Value: 150},
-	}
-	excludeSpike := func(r trainingload.Sample) bool { return r.Value == 999 }
-
-	held := heldSecondsAcrossRuns(samples, excludeSpike, start(), block)
-
-	assert.InDelta(t, 1.0, held[0], 1e-9, "only the one second before the excluded reading")
-}
-
-func TestMeanHeartRateOverTrackRefusesAnEmptyTrack(t *testing.T) {
-	t.Parallel()
-	_, ok := meanHeartRateOverTrack([]trainingload.Sample{{At: start(), Value: 140}}, nil, nil)
-	assert.False(t, ok)
-}
-
-func TestMeanHeartRateOverTrackRefusesNoHeartRateOverTheTrack(t *testing.T) {
-	t.Parallel()
-	track := []measure.Sample{{At: start()}, {At: start().Add(time.Second)}}
-	heartRate := []trainingload.Sample{{At: start().Add(time.Hour), Value: 140}}
-
-	_, ok := meanHeartRateOverTrack(heartRate, track, []int{0, 1})
-
+	_, ok := meanOf(nil)
 	assert.False(t, ok)
 }
 
