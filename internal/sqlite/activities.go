@@ -234,23 +234,25 @@ func (s *Store) ActivityRecordsState(
 	return activity.RecordsState(stored.RecordsState), int(stored.WorkoutTypeID), true, nil
 }
 
-// ActivityMovingSeconds is one ride's own moving time, the derivation's share
-// of a series' coverage is judged against. found is false when the target has
-// no such activity.
-func (s *Store) ActivityMovingSeconds(
-	ctx context.Context, targetID string, id int64,
-) (movingSeconds float64, found bool, err error) {
-	movingSeconds, err = s.queries.GetActivityMovingSeconds(ctx, sqlcgen.GetActivityMovingSecondsParams{
-		TargetSlot: targetID, WorkoutID: id,
+// ActivityMovingSecondsFor is every one of ids' own moving time, the
+// derivation's share of a series' coverage is judged against, read in one
+// query rather than one per ride. An id with no such activity is simply
+// absent from the map, which a lookup reads as zero -- unmeasured, not failed.
+func (s *Store) ActivityMovingSecondsFor(
+	ctx context.Context, targetID string, ids []int64,
+) (map[int64]float64, error) {
+	rows, err := s.queries.ListActivityMovingSeconds(ctx, sqlcgen.ListActivityMovingSecondsParams{
+		TargetSlot: targetID, WorkoutIds: ids,
 	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, false, nil
-	}
 	if err != nil {
-		return 0, false, fmt.Errorf("reading an activity's moving time: %w", err)
+		return nil, fmt.Errorf("reading activities' moving time: %w", err)
+	}
+	movingSeconds := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		movingSeconds[row.WorkoutID] = row.MovingSeconds
 	}
 
-	return movingSeconds, true, nil
+	return movingSeconds, nil
 }
 
 // ActivityProviderSummary is which provider recorded one target's activity and

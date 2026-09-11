@@ -116,6 +116,10 @@ SELECT records_state, workout_type_id FROM activities WHERE target_slot = ? AND 
 -- name: GetActivityMovingSeconds :one
 SELECT moving_seconds FROM activities WHERE target_slot = ? AND workout_id = ?;
 
+-- name: ListActivityMovingSeconds :many
+SELECT workout_id, moving_seconds FROM activities
+WHERE target_slot = sqlc.arg(target_slot) AND workout_id IN (sqlc.slice(workout_ids));
+
 -- name: ListActivityTrack :many
 SELECT recorded_at_unix, latitude, longitude, altitude_metres, estimated_power_watts
 FROM activity_records

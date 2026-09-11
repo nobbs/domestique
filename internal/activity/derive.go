@@ -81,9 +81,10 @@ type DeriveStore interface {
 	// ActivityRideSamples reads one ride's recorded series, split by what each
 	// is for.
 	ActivityRideSamples(ctx context.Context, targetID string, id int64) (RideSamples, error)
-	// ActivityMovingSeconds is one ride's own moving time, which a load
-	// figure's series coverage is judged against.
-	ActivityMovingSeconds(ctx context.Context, targetID string, id int64) (movingSeconds float64, found bool, err error)
+	// ActivityMovingSecondsFor is every one of ids' own moving time, which a
+	// load figure's series coverage is judged against, read in one query
+	// rather than one per ride owed a derivation.
+	ActivityMovingSecondsFor(ctx context.Context, targetID string, ids []int64) (map[int64]float64, error)
 	// StoreRideDerivation replaces one ride's estimated power series and its
 	// derived metrics row together, in one transaction: an empty series
 	// clears whatever estimate was there.
@@ -232,6 +233,13 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
+	// Read once for every ride owed a derivation, not once per ride: a
+	// profile save that re-derives a long history would otherwise cost one
+	// extra round trip per ride for a figure this reads from a single row.
+	movingSecondsByID, movingErr := d.store.ActivityMovingSecondsFor(ctx, targetID, ids)
+	if movingErr != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
 
 	derived := 0
 	for _, id := range ids {
@@ -242,13 +250,10 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		if samplesErr != nil {
 			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
 		}
-		// Not found leaves it at zero, which a coverage share judged against it
+		// Absent leaves it at zero, which a coverage share judged against it
 		// reads as unmeasured rather than failed — the same as any other ride
 		// whose moving time this derivation cannot yet supply.
-		movingSeconds, _, movingErr := d.store.ActivityMovingSeconds(ctx, targetID, id)
-		if movingErr != nil {
-			return Result{Outcome: Failed, Failure: FailureState, Derived: derived}
-		}
+		movingSeconds := movingSecondsByID[id]
 		heartRate := measure.CapHeartRate(samples.HeartRate, inputs.MaxHeartRateBPM)
 		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, samples.MovingIntervals, inputs)
 		records, estimates, watts, share, estimated := samples.EstimatePower(inputs.TotalMassKG, coefficients)

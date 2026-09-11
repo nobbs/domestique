@@ -141,15 +141,20 @@ func (s *fakeDeriveStore) ActivityRideSamples(
 	return s.rides[id], s.samplesErr
 }
 
-func (s *fakeDeriveStore) ActivityMovingSeconds(
-	_ context.Context, _ string, id int64,
-) (movingSeconds float64, found bool, err error) {
+func (s *fakeDeriveStore) ActivityMovingSecondsFor(
+	_ context.Context, _ string, ids []int64,
+) (map[int64]float64, error) {
 	if s.movingErr != nil {
-		return 0, false, s.movingErr
+		return nil, s.movingErr
 	}
-	seconds, found := s.movingSeconds[id]
+	movingSeconds := make(map[int64]float64, len(ids))
+	for _, id := range ids {
+		if seconds, ok := s.movingSeconds[id]; ok {
+			movingSeconds[id] = seconds
+		}
+	}
 
-	return seconds, found, nil
+	return movingSeconds, nil
 }
 
 func (s *fakeDeriveStore) ClearActivityMetrics(context.Context, string) (int, error) {
