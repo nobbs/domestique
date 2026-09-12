@@ -8,9 +8,17 @@ import (
 
 // The shape that marks a ride as a Zwift ramp test rather than any other ride
 // holding a hard minute: 20-40 minutes of unbroken recording, with a best
-// minute within 1.25x of the best five. Recorded ramp tests sit at 1.14; a
-// session built on one-minute intervals sits at 1.56 and above, and a longer
-// training ride runs past the length.
+// minute standing 1.08 to 1.25 times the best five. Recorded ramp tests sit at
+// 1.14; a session built on one-minute intervals sits at 1.56 and above, and a
+// longer training ride runs past the length.
+//
+// The band is closed at the bottom because a ramp is ridden until the next step
+// cannot be held, so its last minute necessarily stands above the five it
+// closes. Twenty watts a minute onto a peak of 250 to 400 puts the protocol's
+// own ratio between 1.11 and 1.19; a ride held flat sits at 1.00, and a steady
+// half hour is the opposite of a ramp however near threshold it was ridden.
+// That matters beyond admission: a flat ride excluded here is a sustained
+// effort, and so is left free to witness a ramp reading elsewhere.
 //
 // The shape is loose, and deliberately does not decide anything by itself. The
 // ratio bounds what one ride can claim — an estimate is 75% of a minute that is
@@ -28,6 +36,7 @@ import (
 const (
 	RampTestMinMovingTime = 20 * time.Minute
 	RampTestMaxMovingTime = 40 * time.Minute
+	rampTestPowerRatioMin = 1.08
 	rampTestPowerRatioMax = 1.25
 	rampTestRatioWindow   = 5 * time.Minute
 	// rampThresholdShare is the ramp test protocol's own scaling: 75% of the
@@ -61,7 +70,10 @@ func RampThresholdPower(times []time.Time, watts []float64) (float64, bool) {
 		return 0, false
 	}
 	bestFive, found := BestAverage(times, watts, rampTestRatioWindow)
-	if !found || bestFive <= 0 || bestMinute/bestFive > rampTestPowerRatioMax {
+	if !found || bestFive <= 0 {
+		return 0, false
+	}
+	if ratio := bestMinute / bestFive; ratio < rampTestPowerRatioMin || ratio > rampTestPowerRatioMax {
 		return 0, false
 	}
 

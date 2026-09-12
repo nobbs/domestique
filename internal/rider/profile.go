@@ -119,9 +119,11 @@ func PowerCurveDurations() [PowerCurvePoints]time.Duration {
 }
 
 // ThresholdPowerPoint is where ThresholdPowerWindow sits in the curve. The
-// suggestion is worked out from the samples rather than read off the curve, for
-// the reason measurement.md gives; this pins both to the one window constant so
-// they cannot come to describe different twenty minutes.
+// twenty-minute suggestion is worked out from the samples rather than read off
+// the curve, for the reason measurement.md gives; this pins both to the one
+// window constant so they cannot come to describe different twenty minutes.
+// The suggestion the page shows need not be that one: a ramp reading has no
+// point on the curve at all, so it is no part of what this pins together.
 const ThresholdPowerPoint = 4
 
 // PowerCurve is the best mean power held over each of those durations, over

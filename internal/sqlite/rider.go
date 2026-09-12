@@ -201,8 +201,11 @@ func (s *Store) riderStopping(
 // curve, though the twenty-minute one is 95% of the same best twenty minutes. A
 // derivation runs only for a rider who has entered something, so a curve is
 // empty for the rider with no profile at all — who is exactly the rider a
-// threshold is suggested to. The two can differ only while a ride's samples are
-// stored and its derivation is still owed.
+// threshold is suggested to. Where the suggestion is that twenty-minute one,
+// the two can differ only while a ride's samples are stored and its derivation
+// is still owed; where a ramp reading wins, they differ for good, because the
+// curve holds durations and a ramp reading is a protocol the curve has no
+// point for.
 func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Suggestions {
 	suggestions := rider.Suggestions{}
 	var heartRate, power sensorSeries
@@ -256,33 +259,36 @@ type rideEffort struct {
 // that protocol, so the higher stands whichever test they ran.
 //
 // A ramp reading stands only where another ride supplies a twenty for it to be
-// read beside. The reading is a claim that this ride was maximal, and a ride
-// cannot witness that about itself: an easy ride whose hardest minute merely
-// sits near its hardest five clears the shape, and read against its own
-// twenty it wins. Judged against a ride the rider actually sustained, it does
-// not. A rider with nothing else recorded has no such witness, and keeps the
-// twenty-minute estimate rather than a claim nothing corroborates.
-//
-// What this still cannot do is tell a ramp test from an easy ride when every
-// ride is easy. No reading inside a corpus can, and a rider whose riding says
-// nothing about their threshold is owed no estimate that pretends otherwise.
+// read beside, and that ride must not be ramp-shaped itself. The reading is a
+// claim that this ride was maximal, and neither the ride making the claim nor
+// another ride making the same one can corroborate it: an easy ride whose
+// hardest minute merely sits near its hardest five clears the shape, and a
+// corpus of nothing but such rides would otherwise authorise itself. Judged
+// against a twenty the rider plainly sustained, an easy ride loses. A rider
+// with no such ride recorded keeps the twenty-minute estimate rather than a
+// claim nothing corroborates.
 func thresholdPowerFrom(efforts []rideEffort) rider.Value {
-	best, sustained := rider.Value{}, 0
+	best, witnesses := rider.Value{}, 0
 	for _, effort := range efforts {
 		if !effort.bestTwentyMinutePower.Set {
 			continue
 		}
-		sustained++
 		if watts := rider.ThresholdPower(effort.bestTwentyMinutePower.Number); !best.Set || watts > best.Number {
 			best = rider.Set(watts)
 		}
+		// A ride making the same claim cannot corroborate it. Two easy rides
+		// that both clear the loose shape would otherwise witness each other,
+		// and a corpus of nothing but easy rides would authorise itself.
+		if effort.rampThresholdWatts.Set {
+			continue
+		}
+		witnesses++
+	}
+	if witnesses == 0 {
+		return best
 	}
 	for _, effort := range efforts {
-		witnesses := sustained
-		if effort.bestTwentyMinutePower.Set {
-			witnesses--
-		}
-		if !effort.rampThresholdWatts.Set || witnesses == 0 {
+		if !effort.rampThresholdWatts.Set {
 			continue
 		}
 		if !best.Set || effort.rampThresholdWatts.Number > best.Number {

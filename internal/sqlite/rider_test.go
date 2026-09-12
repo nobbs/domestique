@@ -264,6 +264,28 @@ func TestRiderSuggestionsWithholdARampNoOtherRideCorroborates(t *testing.T) {
 		"the twenty-minute estimate, not the 94 W the ramp shape offered")
 }
 
+// Nor can two rides making the same claim corroborate each other. Both of these
+// clear the loose ramp shape, so neither is a witness, and a corpus of nothing
+// but easy rides does not authorise itself.
+func TestRiderSuggestionsWithholdRampsThatOnlyWitnessEachOther(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 2, 100), "StoreActivity()")
+	for _, workoutID := range []int64{1, 2} {
+		require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", workoutID,
+			shaped([][2]float64{{960, 50}, {240, 100}, {60, 125}}), activity.RecordsVersion),
+			"StoreActivityRecords()")
+	}
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	require.True(t, suggestions.FunctionalThresholdPowerWatts.Set, "the twenty minutes they did ride still stand")
+	assert.Less(t, suggestions.FunctionalThresholdPowerWatts.Number, 75.0,
+		"neither ride witnesses the other, so neither ramp reading stands")
+}
+
 // strapped records a heart rate that is present but not beating, which is what
 // an unpaired strap writes: the reading is there, and it is nought.
 func strapped(seconds int, heartRate, power float64) activity.FIT {
@@ -350,10 +372,13 @@ func shaped(stretches [][2]float64) activity.FIT {
 // rampRide climbs ten watts a minute for 28 minutes, the shape a Zwift ramp
 // test drives: a best minute of 369.8 W, so 277.4 W at the protocol's 75%, over
 // a best twenty minutes of 274.8 W, so 261.1 W at Coggan's 95%.
+// rampRide is the protocol's own shape: seventeen minutes warm, then
+// one-minute steps of twenty watts to a peak of 330, which is where a recorded
+// ramp test's one-to-five-minute ratio of 1.14 comes from.
 func rampRide() activity.FIT {
-	stretches := make([][2]float64, 0, 28)
-	for step := range 28 {
-		stretches = append(stretches, [2]float64{60, 100 + 10*float64(step)})
+	stretches := [][2]float64{{17 * 60, 110}}
+	for watts := 130.0; watts <= 330; watts += 20 {
+		stretches = append(stretches, [2]float64{60, watts})
 	}
 
 	return shaped(stretches)
@@ -361,7 +386,8 @@ func rampRide() activity.FIT {
 
 // Both the twenty-minute estimate and the ramp estimate are floors on the same
 // number, true only for a rider who performed that protocol, so the higher one
-// is offered.
+// is offered. The steady ride is what witnesses the ramp: held flat, it is no
+// ramp itself, which is exactly what qualifies it to corroborate one.
 func TestRiderSuggestionsPreferTheRampEstimateWhenItIsHigher(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
@@ -375,8 +401,8 @@ func TestRiderSuggestionsPreferTheRampEstimateWhenItIsHigher(t *testing.T) {
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
-	assert.InDelta(t, 277.4, suggestions.FunctionalThresholdPowerWatts.Number, 0.5,
-		"the ramp estimate beats every twenty-minute one")
+	assert.InDelta(t, 247.25, suggestions.FunctionalThresholdPowerWatts.Number, 0.5,
+		"75% of the ramp's 330 W peak minute, over the steady ride's 194.75 W")
 }
 
 // A maximal five-minute effort sits inside the ratio band and is read as a ramp

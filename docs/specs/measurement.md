@@ -572,16 +572,29 @@ and the curve's own point are both 95% of the same best twenty minutes. A
 derivation runs only for a rider who has entered something, so the curve is
 empty for a rider with no profile at all — who is exactly the rider a threshold
 is suggested to. Every suggestion is therefore worked out from the stored
-samples, the ramp-test estimate below included. The two can differ only while a
-ride's samples are stored and its derivation is still owed.
+samples, the ramp-test estimate below included.
+
+Where the suggestion is the twenty-minute estimate, it and the curve's point can
+differ only while a ride's samples are stored and its derivation is still owed.
+Where a ramp reading wins, they differ for good: the curve holds durations, and
+a ramp reading is a protocol rather than a duration, so the curve carries no
+point that could agree with it.
 
 **Ramp test.** A rider who tests on a ramp never rides the twenty minutes the
 estimate above scales, so a second estimate reads that protocol instead: 75% of
 the ride's best minute, over a ride shaped like a ramp test — 20 to 40 minutes
-of recorded span, holding a best minute within 1.25 times its best five
-(`internal/rider/ramp.go` `RampThresholdPower`). The suggestion is whichever of
-the two estimates is higher, because each is a floor that only a rider who
-performed that protocol reaches.
+of unbroken recorded span, holding a best minute 1.08 to 1.25 times its best
+five (`internal/rider/ramp.go` `RampThresholdPower`). The suggestion is
+whichever of the two estimates is higher, because each is a floor that only a
+rider who performed that protocol reaches.
+
+The band is closed at the bottom because a ramp is ridden until the next step
+cannot be held, so its last minute necessarily stands above the five it closes.
+Twenty watts a minute onto a peak of 250 to 400 puts the protocol's own ratio
+between 1.11 and 1.19; a ride held flat sits at 1.00, and a steady half hour is
+the opposite of a ramp however near threshold it was ridden. A gentler climb
+than the protocol's own reads as no ramp and falls back to the twenty-minute
+estimate, which is the safe direction to be wrong in.
 
 The shape is deliberately loose and settles nothing on its own. The ratio bounds
 what one ride can claim — an estimate is 75% of a minute that is itself at most
@@ -590,14 +603,18 @@ read over — but that bound is on the ride, not on the rider. An easy ride clea
 it: sixteen minutes at 50 W, four at 100 and a closing minute at 125 is a ratio
 of 1.19 and offers 94 W to a rider who never held 60.
 
-**A ramp reading stands only where another ride supplies a twenty to read it
-beside** (`internal/sqlite/rider.go` `thresholdPowerFrom`). The reading is a
-claim that this ride was maximal, and no ride witnesses that about itself:
-against its own twenty the easy ride above wins, and against a twenty the rider
-actually sustained it does not. A rider with nothing else recorded keeps the
-twenty-minute estimate rather than a claim nothing corroborates. Comparing a
-reading against the corpus best twenty *including its own ride* was tried
-instead and is inert — wherever it rejects, the ratio has already put the
+**A ramp reading stands only where another ride that is not itself ramp-shaped
+supplies a twenty to read it beside** (`internal/sqlite/rider.go`
+`thresholdPowerFrom`). The reading is a claim that this ride was maximal, and
+neither the ride making the claim nor another ride making the same one can
+corroborate it: against its own twenty the easy ride above wins, and two such
+rides would otherwise witness each other and let a corpus of nothing but easy
+rides authorise itself. Against a twenty the rider plainly sustained, an easy
+ride loses. A rider with no such ride recorded keeps the twenty-minute estimate
+rather than a claim nothing corroborates.
+
+Comparing a reading against the corpus best twenty *including its own ride* was
+tried instead and is inert — wherever it rejects, the ratio has already put the
 estimate under the twenty-minute one.
 
 What no rule here can do is tell a ramp test from an easy ride when every ride

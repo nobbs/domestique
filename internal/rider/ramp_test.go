@@ -19,16 +19,20 @@ func hold(seconds int, watts float64) []float64 {
 	return stretch
 }
 
-// rampSteps climbs ten watts a minute from the given start, the shape a Zwift
-// ramp test drives.
-func rampSteps(minutes int, firstWatts float64) []float64 {
-	watts := make([]float64, 0, minutes*60)
-	for step := range minutes {
-		watts = append(watts, hold(60, firstWatts+10*float64(step))...)
+// rampSteps is the shape a Zwift ramp test drives: a warm-up, then one-minute
+// steps of twenty watts ridden until the next cannot be held. Twenty watts onto
+// a peak near 330 is where a recorded ramp test's one-to-five-minute ratio of
+// 1.14 comes from — a gentler climb would not read as a ramp, and does not.
+func rampSteps(warmUpMinutes int, warmUpWatts, peakWatts float64) []float64 {
+	watts := hold(warmUpMinutes*60, warmUpWatts)
+	for step := warmUpWatts + rampStepWatts; step <= peakWatts; step += rampStepWatts {
+		watts = append(watts, hold(60, step)...)
 	}
 
 	return watts
 }
+
+const rampStepWatts = 20.0
 
 // recorded times the watts one a second, the rate a trainer records at.
 func recorded(watts []float64) []time.Time {
@@ -43,7 +47,7 @@ func recorded(watts []float64) []time.Time {
 
 func TestRampThresholdPowerAcceptsARideShapedLikeARampTest(t *testing.T) {
 	t.Parallel()
-	series := rampSteps(28, 100)
+	series := rampSteps(17, 110, 330) // Seventeen minutes warm, eleven climbing: 28 in all.
 	times := recorded(series)
 	bestMinute, found := rider.BestAverage(times, series, time.Minute)
 	require.True(t, found, "a 28-minute series holds a minute")
@@ -60,7 +64,7 @@ func TestRampThresholdPowerAcceptsARideShapedLikeARampTest(t *testing.T) {
 // is the ride's last rejected every genuine ramp test in the corpus.
 func TestRampThresholdPowerAcceptsARampFollowedByItsCooldown(t *testing.T) {
 	t.Parallel()
-	series := rampSteps(18, 100)
+	series := rampSteps(7, 110, 330)
 	series = append(series, hold(12*60, 90)...) // Twelve minutes spinning it out.
 	times := recorded(series)
 	bestMinute, found := rider.BestAverage(times, series, time.Minute)
@@ -96,7 +100,7 @@ func TestRampThresholdPowerHoldsUnderAShareOfTheBestFiveMinutes(t *testing.T) {
 // must not present themselves as a ride of the right length.
 func TestRampThresholdPowerRejectsASeriesBrokenByAPause(t *testing.T) {
 	t.Parallel()
-	series := rampSteps(21, 100)
+	series := rampSteps(10, 110, 330)
 	times := recorded(series)
 	// One step of eleven seconds, past the ten the recording gap allows. The
 	// span still reads inside the bound and every window either side is still
@@ -110,9 +114,21 @@ func TestRampThresholdPowerRejectsASeriesBrokenByAPause(t *testing.T) {
 	assert.False(t, ok, "an eleven-second step is a pause, and a ramp is one stretch")
 }
 
+// A steady half hour is the opposite of a ramp, however near threshold it was
+// ridden: its best minute is its best five. Rejecting it is what leaves it free
+// to witness a ramp reading from another ride.
+func TestRampThresholdPowerRejectsARideHeldFlat(t *testing.T) {
+	t.Parallel()
+	series := hold(30*60, 205)
+
+	_, ok := rider.RampThresholdPower(recorded(series), series)
+
+	assert.False(t, ok, "a ratio of 1.00 is a ride that never climbed")
+}
+
 func TestRampThresholdPowerRejectsAnHourLongRide(t *testing.T) {
 	t.Parallel()
-	series := rampSteps(60, 100)
+	series := rampSteps(49, 110, 330)
 
 	_, ok := rider.RampThresholdPower(recorded(series), series)
 
@@ -131,7 +147,7 @@ func TestRampThresholdPowerRejectsAHardMinuteEndingAnEasyRide(t *testing.T) {
 
 func TestRampThresholdPowerRejectsASeriesItCannotRead(t *testing.T) {
 	t.Parallel()
-	series := rampSteps(28, 100)
+	series := rampSteps(17, 110, 330)
 
 	_, ok := rider.RampThresholdPower(recorded(series), series[:len(series)-1])
 
