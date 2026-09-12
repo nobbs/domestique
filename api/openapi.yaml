@@ -3126,7 +3126,9 @@ components:
             or low depending on what was ridden.
         functionalThresholdPowerWatts:
           type: number
-          description: The best twenty-minute average power, taken at 95%.
+          description: >-
+            The greater of two estimates: the best twenty-minute average power
+            taken at 95%, and a ramp-test estimate off the best minute.
         stopping:
           $ref: '#/components/schemas/StoppingSuggestion'
     StoppingSuggestion:

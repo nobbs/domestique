@@ -461,14 +461,17 @@ A day with no ride still carries a load of zero into this update, which is
 what lets rest turn accumulated load into form.
 
 **Heart-rate zones.** Five zones cut by four bounds, from a threshold rate
-where the rider has entered one (0.85, 0.90, 0.95, 1.00 of threshold) or
+where the rider has entered one (0.81, 0.90, 0.94, 1.00 of threshold) or
 from a maximum rate otherwise (0.60, 0.70, 0.80, 0.90 of maximum)
 (`internal/trainingload/zones.go` `thresholdShares`, `maximumShares`,
 `BoundsFrom`). The threshold scheme is preferred because a threshold is
-measured and a maximum is often guessed.
+measured and a maximum is often guessed. These are Friel's **cycling** cuts;
+his running scheme cuts the same five zones at 0.85, 0.90, 0.95, 1.00 of
+threshold instead, and that scheme is not this one — a bike app has no use
+for run zones.
 
 **Source.** TRIMP: Banister 1991. Heart-rate TSS and power TSS/IF/NP:
-Coggan, in Allen and Coggan 2010.
+Coggan, in Allen and Coggan 2010. Heart-rate zones: Friel 2009.
 
 **Applied by.** `internal/trainingload/load.go` (`TRIMP`, `HeartRateTSS`,
 `PowerLoad`), `internal/trainingload/zones.go` (`BoundsFrom`, `TimeInZones`),
@@ -564,11 +567,33 @@ A ride shorter than a duration holds no best for it, which is what leaves the
 long end of a curve empty until a long ride arrives. A duration no ride reached
 carries no point rather than a nought.
 
-**The threshold suggestion is not read off the curve**, though both are 95% of
-the same best twenty minutes. A derivation runs only for a rider who has entered
-something, so the curve is empty for a rider with no profile at all — who is
-exactly the rider a threshold is suggested to. The two can differ only while a
+**No threshold suggestion is read off the curve**, though the twenty-minute one
+and the curve's own point are both 95% of the same best twenty minutes. A
+derivation runs only for a rider who has entered something, so the curve is
+empty for a rider with no profile at all — who is exactly the rider a threshold
+is suggested to. Every suggestion is therefore worked out from the stored
+samples, the ramp-test estimate below included. The two can differ only while a
 ride's samples are stored and its derivation is still owed.
+
+**Ramp test.** A rider who tests on a ramp never rides the twenty minutes the
+estimate above scales, so a second estimate reads that protocol instead: 75% of
+the ride's best minute, over a ride shaped like a ramp test — 20 to 40 minutes
+of recorded span, holding a best minute within 1.25 times its best five
+(`internal/rider/ramp.go` `RampThresholdPower`). The suggestion is whichever of
+the two estimates is higher, because each is a floor that only a rider who
+performed that protocol reaches.
+
+The shape is deliberately loose, and the ratio is what makes that safe rather
+than the shape: an estimate is 75% of a minute that is itself at most 1.25 times
+the best five, so it can never exceed 94% of a rider's best five-minute power. A
+steady ride mistaken for a ramp therefore estimates below the threshold it is
+compared against and loses. There is deliberately no test that the hardest
+minute is the ride's last: a ramp is ridden to failure, but the file carries the
+cooldown after it, so a real one's peak minute ends eleven to sixteen minutes
+before its last sample.
+
+**Source.** Ramp test: 75% of best-minute power, the scaling Zwift's own ramp
+test applies.
 
 **Applied by.** `internal/activity/powercurve.go` (`PowerBests`),
 `internal/sqlite/metrics.go` (`PowerCurve`).

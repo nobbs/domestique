@@ -5,7 +5,7 @@
  * service's setting: these numbers are this rider's, read and written over
  * their own subject, and every derived training metric downstream needs them.
  *
- * Beside two of the fields sits what the rider's own recent rides suggest.
+ * Beside three of the fields sits what the rider's own recent rides suggest.
  * A suggestion is offered, never applied: nothing uses one until the rider has
  * typed it in and saved it as their own.
  */
@@ -56,7 +56,7 @@ const PARAMETERS: Parameter[] = [
     label: "Threshold heart rate",
     unit: "bpm",
     description:
-      "The lactate threshold rate, where a zone scheme cuts hard from moderate. Only genuine if measured over a maximal, evenly paced effort of about this length.",
+      "The lactate threshold rate, where a zone scheme cuts hard from moderate. Only genuine if measured over a maximal, evenly paced twenty-minute effort.",
     suggested: "thresholdHeartRateBpm",
   },
   {
