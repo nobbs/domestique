@@ -2258,6 +2258,17 @@ components:
             through, which the estimate is averaged over. Present only beside
             estimatedPowerWatts, and absent for a ride whose estimate was
             worked out before a share was kept, until it is derived again.
+        estimatedCaloriesKcal:
+          type: number
+          format: double
+          description: >-
+            The ride's energy at a fixed 22% gross efficiency, from
+            averagePowerWatts where the ride measured its own power, else
+            estimatedPowerWatts: a comparison figure only, never a
+            measurement, never the same figure as the activity's own
+            caloriesKcal, which a device usually derives from heart rate
+            rather than power. Absent where the ride has neither power
+            figure.
         averageSpeedKmh:
           type: number
           format: double

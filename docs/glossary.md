@@ -223,6 +223,12 @@ reported as the mean while pedalling beside the share of the ride that was.
 Always named as an estimate, never mixed with measured power, and never an
 input to a [[training load]].
 
+**estimated calories** — energy worked out from a ride's own average power,
+measured where the ride carried a meter and [[estimated power]] otherwise, at
+a fixed gross efficiency. Served beside a ride's own `caloriesKcal`, which a
+device usually derives from heart rate, purely so a rider can compare the
+two; never mixed with it, never an input to a [[training load]].
+
 **recorded weather** — what a ride was actually ridden through, asked of the
 weather provider once after the ride's samples were stored and kept per hour.
 Distinct from a *forecast*, which is about a course somebody is planning to

@@ -87,6 +87,21 @@ describe("RideFigures", () => {
     expect(screen.queryByText("Calories")).not.toBeInTheDocument();
   });
 
+  it("notes the power-based estimate beside the file's own calories", () => {
+    render(<RideFigures ride={ride({ estimatedCaloriesKcal: 1381.2 }, { caloriesKcal: 1420 })} />);
+
+    expect(screen.getByText("Calories")).toBeInTheDocument();
+    expect(screen.getByText("1420")).toBeInTheDocument();
+    expect(screen.getByText("~1381 kcal estimated")).toBeInTheDocument();
+  });
+
+  it("shows the estimate alone for a ride whose file gave no calories", () => {
+    render(<RideFigures ride={ride({ estimatedCaloriesKcal: 1381.2 })} />);
+
+    expect(screen.getByText("Calories (est.)")).toBeInTheDocument();
+    expect(screen.getByText("1381")).toBeInTheDocument();
+  });
+
   it("badges a Zwift ride and no other", () => {
     render(<RideFigures ride={ride(undefined, { provider: "zwift" })} />);
     expect(screen.getByText("Zwift")).toBeInTheDocument();

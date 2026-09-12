@@ -14,6 +14,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -165,6 +166,66 @@ func TestGetActivitiesCarriesNoPedallingShareForAPreMigrationRow(t *testing.T) {
 	require.NotNil(t, derived.Metrics)
 	require.NotNil(t, derived.Metrics.EstimatedPowerWatts)
 	assert.Nil(t, derived.Metrics.EstimatedPedallingShare, "no share was ever written for this row")
+}
+
+// A ride that measured its own power gets its calorie comparison figure from
+// that, even where an estimate also happens to be stored.
+func TestGetActivitiesEstimatesCaloriesFromMeasuredPowerOverAnEstimate(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:     trainingload.Metrics{EstimatedPowerWatts: 300, HasEstimatedPower: true},
+			Averages: activities.RideAverages{PowerWatts: 196.25, HasPower: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
+	assert.InDelta(t, measure.EstimatedCalories(196.25, 60), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+}
+
+// A ride with no meter falls back to the estimate for its calorie comparison
+// figure.
+func TestGetActivitiesEstimatesCaloriesFromEstimatedPowerWithoutAMeter(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
+	assert.InDelta(t, measure.EstimatedCalories(168.5, 60), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+}
+
+// A ride with neither a meter nor an estimate carries no calorie comparison
+// figure at all.
+func TestGetActivitiesCarriesNoEstimatedCaloriesWithoutEitherPowerFigure(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Averages: activities.RideAverages{HeartRateBPM: 142.5, HasHeartRate: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
 }
 
 // The listing card gets one line about the ride: the range the temperature

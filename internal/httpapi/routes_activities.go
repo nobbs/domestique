@@ -10,6 +10,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -61,7 +62,7 @@ func rideWeatherSteps(steps []activities.WeatherStep) []openapi.RideWeatherStep 
 // out".
 //
 //nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
-func activityMetrics(stored activities.RideMetrics, session *activities.Session) *openapi.ActivityMetrics {
+func activityMetrics(stored activities.RideMetrics, session *activities.Session, movingSeconds float64) *openapi.ActivityMetrics {
 	metrics, averages := stored.Load, stored.Averages
 	view := &openapi.ActivityMetrics{}
 	if metrics.HasZones {
@@ -114,6 +115,15 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session)
 	}
 	if session != nil {
 		applySession(view, session)
+	}
+	// Measured power, else the estimate; a comparison figure only, never
+	// stored, never mixed with the device's own reported calories.
+	if watts := view.AveragePowerWatts; watts != nil {
+		kcal := measure.EstimatedCalories(*watts, movingSeconds)
+		view.EstimatedCaloriesKcal = &kcal
+	} else if watts := view.EstimatedPowerWatts; watts != nil {
+		kcal := measure.EstimatedCalories(*watts, movingSeconds)
+		view.EstimatedCaloriesKcal = &kcal
 	}
 
 	return view
@@ -271,7 +281,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				if hasSession {
 					sessionArg = &session
 				}
-				activity.Metrics = activityMetrics(metrics, sessionArg)
+				activity.Metrics = activityMetrics(metrics, sessionArg, recorded.MovingSeconds)
 			}
 			if hasSession {
 				if session.DescentMetres.Known {

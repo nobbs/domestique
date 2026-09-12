@@ -297,6 +297,27 @@ $$\bar P = \frac{1}{|S|}\sum_{i \in S} P_i, \qquad \text{share} = \frac{|S|}{\te
 
 **Status.** Validated against the operator's own trainer power at matched heart rate: ride means within 6% on rides held out from the check, which `dev/levelstudy` reproduces from a state snapshot.
 
+## Estimated calories
+
+**Definition.** The energy a ride's average power implies at a fixed gross efficiency, served beside the calorie figure the device itself reported, purely so a rider can compare the two.
+
+**Formula.** In symbols:
+
+~~~text
+kJ   = averageWatts · movingSeconds / 1000
+kcal = kJ / 4.184 / 0.22
+~~~
+
+`averageWatts` is the ride's measured average power where it carried a meter, else the ride's own Estimated power above; absent when neither is known.
+
+**Constants.** 4.184 (kJ per kcal, physical) and 0.22 (assumed gross cycling efficiency), both from the handover document's own cross-check. Code: `internal/measure/energy.go` (`kilojoulesPerKilocalorie`, `grossCyclingEfficiency`).
+
+**Source.** The handover document [5] §10, "Cross-checks to implement".
+
+**Applied by.** `measure.EstimatedCalories`, called from `internal/httpapi/routes_activities.go` when an activity is served; never stored, never an input to a training load. Served as `estimatedCaloriesKcal`, always beside the activity's own `caloriesKcal` rather than in place of it.
+
+**Status.** Unvalidated, and not fully validatable: the handover document's own worked example notes the device's reported calories is itself usually heart-rate-derived rather than an independent measurement of the same thing this formula estimates. A comparison aid, not a checked figure.
+
 ## Sustained climbs
 
 **Definition.** A run of the route where the signed gradient, measured back

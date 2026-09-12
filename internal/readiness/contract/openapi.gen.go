@@ -279,6 +279,8 @@ type ActivityMetrics struct {
 	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
 	// EstimatedPedallingShare The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
 	EstimatedPedallingShare *float64 `json:"estimatedPedallingShare,omitempty"`
+	// EstimatedCaloriesKcal The ride's energy at a fixed 22% gross efficiency, from averagePowerWatts where the ride measured its own power, else estimatedPowerWatts: a comparison figure only, never a measurement, never the same figure as the activity's own caloriesKcal, which a device usually derives from heart rate rather than power. Absent where the ride has neither power figure.
+	EstimatedCaloriesKcal *float64 `json:"estimatedCaloriesKcal,omitempty"`
 	// AverageSpeedKmh The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries.
 	AverageSpeedKmh *float64 `json:"averageSpeedKmh,omitempty"`
 	// AverageHeartRateBpm The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap.
