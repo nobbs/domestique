@@ -276,9 +276,16 @@ description = "Run the Storybook component suite"
 wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook"
 
+[ui-storybook-build]
+description = "Build the static Storybook the sweep and Chromatic read"
+depends = ["ui-install"]
+wait_for = ["api-generate"]
+run = "pnpm --dir internal/webui/app run storybook:build --quiet"
+
 # Runs after `ui-storybook-test`: a second browser starting at the same time makes it flaky.
 [ui-storybook-sweep]
 description = "Open every story and docs page in a built Storybook"
+depends = ["ui-storybook-build"]
 wait_for = ["ui-browser-install", "ui-storybook-test", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook:sweep"
 

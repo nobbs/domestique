@@ -62,13 +62,12 @@ function serve() {
 const server = await serve();
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await chromium.launch();
-const page = await browser.newPage();
 
 const index = await (await fetch(`${origin}/index.json`)).json();
 const entries = Object.values(index.entries);
 const broken = [];
 
-for (const entry of entries) {
+async function visit(page, entry) {
   const view = entry.type === "docs" ? "docs" : "story";
   await page.goto(`${origin}/iframe.html?id=${encodeURIComponent(entry.id)}&viewMode=${view}`);
   try {
@@ -93,6 +92,20 @@ for (const entry of entries) {
     broken.push({ id: entry.id, reason: `never settled: ${error.message.split("\n")[0]}` });
   }
 }
+
+// A few tabs in one browser: the pages are cheap to render but serial loads
+// left a runner core idle for the whole sweep.
+const TABS = 4;
+let next = 0;
+await Promise.all(
+  Array.from({ length: TABS }, async () => {
+    const page = await browser.newPage();
+    while (next < entries.length) {
+      await visit(page, entries[next++]);
+    }
+    await page.close();
+  }),
+);
 
 await browser.close();
 server.close();
