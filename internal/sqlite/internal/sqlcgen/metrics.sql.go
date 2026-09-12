@@ -328,7 +328,8 @@ WHERE target_slot = ?1 AND workout_id = ?2
     OR cadence_rpm IS NOT NULL
     OR power_watts IS NOT NULL
     OR speed_ms IS NOT NULL
-    OR distance_metres IS NOT NULL)
+    OR distance_metres IS NOT NULL
+    OR temperature_celsius IS NOT NULL)
 ORDER BY record_index
 `
 

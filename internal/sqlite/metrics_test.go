@@ -319,6 +319,24 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 
 // An unpaired strap writes nought, and nought is no heart rate: it must not
 // enter the series as a reading a rider never took.
+// A record carrying only a temperature reading -- no heart rate, power,
+// cadence, speed or distance -- must still reach the temperature series: the
+// query's own filter is a sensor test, and temperature is one, even alone.
+func TestActivityRideSamplesKeepsARecordWithOnlyATemperatureReading(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), TemperatureCelsius: 18, HasTemperatureCelsius: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Temperature, 1, "the record's only reading must not be filtered out")
+	assert.InDelta(t, 18.0, samples.Temperature[0].Value, 1e-9)
+}
+
 func TestActivityRideSamplesLeavesOutAZeroHeartRate(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
