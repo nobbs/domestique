@@ -129,6 +129,21 @@ func TestGetRiderProfileSuggestsFromTheCallersOwnRidesOnly(t *testing.T) {
 	assert.Equal(t, activityClock().Add(-rider.SuggestionWindow), state.riderSuggestionSince)
 }
 
+// The threshold heart rate suggestion is served the same way the others are:
+// read from the caller's own targets and passed straight through.
+func TestGetRiderProfileServesTheThresholdHeartRateSuggestion(t *testing.T) {
+	state := riderState()
+	state.riderSuggestions["rider-a"] = rider.Suggestions{
+		MaxHeartRateBPM:       rider.Set(183),
+		ThresholdHeartRateBPM: rider.Set(168),
+	}
+	handler := riderHandler(t, state, "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	require.NotNil(t, view.Suggestions.ThresholdHeartRateBpm)
+	assert.InDelta(t, 168.0, *view.Suggestions.ThresholdHeartRateBpm, 1e-9)
+}
+
 // A suggestion is the best across every target the caller owns, not the last
 // one looked at, so a rider with two accounts is offered their better effort.
 func TestGetRiderProfileSuggestsTheBestAcrossTheCallersTargets(t *testing.T) {

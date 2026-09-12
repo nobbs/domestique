@@ -34,7 +34,11 @@ import (
 // 11: rows before it hold no pedalling share and were worked out at another
 // bicycle.
 // 12: rows before it hold no per-series coverage share.
-const derivationVersion = 12
+// 13: the heart-rate zone bounds moved from Friel's running cuts to his
+// cycling cuts, so rows before it cut from a threshold rate at the wrong
+// rates. A rider with no threshold falls back to maximumShares, unchanged, so
+// a row cut from a maximum alone was and remains correct.
+const derivationVersion = 13
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those

@@ -43,7 +43,7 @@ func TestBoundsPreferTheThresholdOverTheMaximum(t *testing.T) {
 	t.Parallel()
 	fromThreshold, ok := trainingload.BoundsFrom(170, 190)
 	require.True(t, ok)
-	assert.InDelta(t, 144.5, fromThreshold[0], 0.01, "85% of the threshold, not a share of the maximum")
+	assert.InDelta(t, 137.7, fromThreshold[0], 0.01, "81% of the threshold, not a share of the maximum")
 
 	fromMaximum, ok := trainingload.BoundsFrom(0, 190)
 	require.True(t, ok)
@@ -51,6 +51,30 @@ func TestBoundsPreferTheThresholdOverTheMaximum(t *testing.T) {
 
 	_, ok = trainingload.BoundsFrom(0, 0)
 	assert.False(t, ok, "a profile with neither rate cuts no zones")
+}
+
+// The regression: Friel publishes a running scheme (85, 90, 95, 100) that
+// looks like the obvious five-zone cut but is not this app's, because this app
+// is for cycling. A revert to those numbers would pass every other test here,
+// since they only probe zone 3 and up; this one pins the bike cut at the
+// boundary the two schemes disagree on.
+func TestBoundsFromThresholdUsesFrielsBikeSchemeNotHisRunScheme(t *testing.T) {
+	t.Parallel()
+	const lactateThresholdHeartRate = 150.0
+
+	bounds, ok := trainingload.BoundsFrom(lactateThresholdHeartRate, 0)
+	require.True(t, ok)
+	assert.InDelta(t, 121.5, bounds[0], 0.01, "81% of threshold")
+	assert.InDelta(t, 135.0, bounds[1], 0.01, "90% of threshold")
+	assert.InDelta(t, 141.0, bounds[2], 0.01, "94% of threshold")
+	assert.InDelta(t, 150.0, bounds[3], 0.01, "100% of threshold")
+
+	// 82% of threshold sits above the bike cut's 81% but below the run cut's
+	// 85%, so it lands in zone two under Friel's bike scheme and would have
+	// landed in zone one under his run scheme.
+	zones := trainingload.TimeInZones(steady(10, 0.82*lactateThresholdHeartRate), bounds)
+	assert.InDelta(t, 9.0, zones[1], 0.5, "82% of threshold falls in zone two on the bike cut")
+	assert.Zero(t, zones[0], "not zone one, which is where the run cut would have put it")
 }
 
 // The acceptance criterion: the zone times account for the ride, to within the

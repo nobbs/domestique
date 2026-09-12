@@ -30,13 +30,15 @@ type Bounds [4]float64
 
 // The two zone schemes, as shares of the rate they are cut from.
 //
-// From the lactate threshold, the usual five-zone cut: below 85% of it, then
-// 85, 90, 95 and 100. From the maximum instead, the classic percentage-of-max
-// cut at 60, 70, 80 and 90. The threshold scheme is preferred where the rider
-// has entered one, because a threshold is measured and a maximum is often
+// From the lactate threshold, Friel's cycling cut: below 81% of it, then 81,
+// 90, 94 and 100. Friel publishes a separate cut for running (85, 90, 95,
+// 100); that scheme is not this one, because a bike app has no use for run
+// zones. From the maximum instead, the classic percentage-of-max cut at 60,
+// 70, 80 and 90. The threshold scheme is preferred where the rider has
+// entered one, because a threshold is measured and a maximum is often
 // guessed.
 var (
-	thresholdShares = [4]float64{0.85, 0.90, 0.95, 1.00} //nolint:gochecknoglobals // the scheme itself, read-only.
+	thresholdShares = [4]float64{0.81, 0.90, 0.94, 1.00} //nolint:gochecknoglobals // the scheme itself, read-only.
 	maximumShares   = [4]float64{0.60, 0.70, 0.80, 0.90} //nolint:gochecknoglobals // the scheme itself, read-only.
 )
 

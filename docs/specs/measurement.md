@@ -461,14 +461,17 @@ A day with no ride still carries a load of zero into this update, which is
 what lets rest turn accumulated load into form.
 
 **Heart-rate zones.** Five zones cut by four bounds, from a threshold rate
-where the rider has entered one (0.85, 0.90, 0.95, 1.00 of threshold) or
+where the rider has entered one (0.81, 0.90, 0.94, 1.00 of threshold) or
 from a maximum rate otherwise (0.60, 0.70, 0.80, 0.90 of maximum)
 (`internal/trainingload/zones.go` `thresholdShares`, `maximumShares`,
 `BoundsFrom`). The threshold scheme is preferred because a threshold is
-measured and a maximum is often guessed.
+measured and a maximum is often guessed. These are Friel's **cycling** cuts;
+his running scheme cuts the same five zones at 0.85, 0.90, 0.95, 1.00 of
+threshold instead, and that scheme is not this one — a bike app has no use
+for run zones.
 
 **Source.** TRIMP: Banister 1991. Heart-rate TSS and power TSS/IF/NP:
-Coggan, in Allen and Coggan 2010.
+Coggan, in Allen and Coggan 2010. Heart-rate zones: Friel 2009.
 
 **Applied by.** `internal/trainingload/load.go` (`TRIMP`, `HeartRateTSS`,
 `PowerLoad`), `internal/trainingload/zones.go` (`BoundsFrom`, `TimeInZones`),
@@ -564,11 +567,61 @@ A ride shorter than a duration holds no best for it, which is what leaves the
 long end of a curve empty until a long ride arrives. A duration no ride reached
 carries no point rather than a nought.
 
-**The threshold suggestion is not read off the curve**, though both are 95% of
-the same best twenty minutes. A derivation runs only for a rider who has entered
-something, so the curve is empty for a rider with no profile at all — who is
-exactly the rider a threshold is suggested to. The two can differ only while a
-ride's samples are stored and its derivation is still owed.
+**No threshold suggestion is read off the curve.** The curve's own point is the
+raw best twenty minutes and the twenty-minute suggestion is 95% of it, so the
+two are the same effort scaled differently rather than the same number. A
+derivation runs only for a rider who has entered something, so the curve is
+empty for a rider with no profile at all — who is exactly the rider a threshold
+is suggested to. Every suggestion is therefore worked out from the stored
+samples, the ramp-test estimate below included.
+
+Where the suggestion is the twenty-minute estimate, it and the curve's point can
+differ only while a ride's samples are stored and its derivation is still owed.
+Where a ramp reading wins, they differ for good: the curve holds durations, and
+a ramp reading is a protocol rather than a duration, so the curve carries no
+point that could agree with it.
+
+**Ramp test.** A rider who tests on a ramp never rides the twenty minutes the
+estimate above scales, so a second estimate reads that protocol instead: 75% of
+the ride's best minute, over a ride shaped like a ramp test — 20 to 40 minutes
+of unbroken recorded span, holding a best minute 1.08 to 1.25 times its best
+five (`internal/rider/ramp.go` `RampThresholdPower`). The suggestion is
+whichever of the two estimates is higher, because each is a floor that only a
+rider who performed that protocol reaches.
+
+The band is closed at the bottom because a ramp is ridden until the next step
+cannot be held, so its last minute necessarily stands above the five it closes.
+Twenty watts a minute onto a peak of 250 to 400 puts the protocol's own ratio
+between 1.11 and 1.19; a ride held flat sits at 1.00, and a steady half hour is
+the opposite of a ramp however near threshold it was ridden. A gentler climb
+than the protocol's own reads as no ramp and falls back to the twenty-minute
+estimate, which is the safe direction to be wrong in.
+
+The shape is deliberately loose and settles nothing on its own. The ratio bounds
+what one ride can claim — an estimate is 75% of a minute that is itself at most
+1.25 times the best five, so it never exceeds 94% of the five minutes it was
+read over — but that bound is on the ride, not on the rider. An easy ride clears
+it: sixteen minutes at 50 W, four at 100 and a closing minute at 125 is a ratio
+of 1.19 and offers 94 W to a rider who never held 60.
+
+The bound is on the ride and not on the rider, and there it stops. A rider
+whose whole corpus is easy rides has no sustained twenty worth clearing, and
+such a ride can be read as a ramp. Nothing inside the recorded data
+distinguishes that case, and a rider whose riding says nothing about their
+threshold is owed no better estimate by either protocol; the suggestion is
+offered and never applied, so the rider is the check.
+
+There is deliberately no test that the hardest minute is the ride's last: a ramp
+is ridden to failure, but the file carries the cooldown after it, so a real
+one's peak minute ends eleven to sixteen minutes before its last sample.
+
+Both heart-rate suggestions read only a beating rate. An unpaired strap records
+a nought that is present rather than absent, and averaging it in would offer a
+rate no heart held — so a suggestion drops it, as the derivation path does
+before it cleans anything (`internal/sqlite/metrics.go` `ActivityRideSamples`).
+
+**Source.** Ramp test: 75% of best-minute power, the scaling Zwift's own ramp
+test applies.
 
 **Applied by.** `internal/activity/powercurve.go` (`PowerBests`),
 `internal/sqlite/metrics.go` (`PowerCurve`).

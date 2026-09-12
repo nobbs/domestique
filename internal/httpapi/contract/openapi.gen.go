@@ -654,7 +654,9 @@ type RiderParameters struct {
 type RiderSuggestions struct {
 	// MaxHeartRateBpm The highest heart rate held over a rolling minute.
 	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
-	// FunctionalThresholdPowerWatts The best twenty-minute average power, taken at 95%.
+	// ThresholdHeartRateBpm The best rolling twenty-minute average heart rate, unscaled. Only a genuine lactate threshold reading if that twenty minutes was a maximal, evenly paced effort -- over ordinary rides it reads high or low depending on what was ridden.
+	ThresholdHeartRateBpm *float64 `json:"thresholdHeartRateBpm,omitempty"`
+	// FunctionalThresholdPowerWatts The greater of two estimates: the best twenty-minute average power taken at 95%, and a ramp-test estimate off the best minute.
 	FunctionalThresholdPowerWatts *float64            `json:"functionalThresholdPowerWatts,omitempty"`
 	Stopping                      *StoppingSuggestion `json:"stopping,omitempty"`
 }

@@ -45,7 +45,7 @@ export const Endurance: Story = {
   args: {
     ride: ride({
       zoneSeconds: [540, 7200, 1260, 240, 40],
-      zoneBoundsBpm: [144.5, 153, 161.5, 170],
+      zoneBoundsBpm: [137.7, 153, 159.8, 170],
       deviceZoneSeconds: [600, 7080, 1300, 200, 100],
       trimp: 142.6,
       heartRateTss: 88.4,
@@ -64,7 +64,7 @@ export const Intervals: Story = {
   args: {
     ride: ride({
       zoneSeconds: [300, 1500, 600, 1800, 900],
-      zoneBoundsBpm: [144.5, 153, 161.5, 170],
+      zoneBoundsBpm: [137.7, 153, 159.8, 170],
       trimp: 198.2,
     }),
   },
@@ -87,7 +87,7 @@ export const EstimatedPower: Story = {
   args: {
     ride: ride({
       zoneSeconds: [420, 5400, 1440, 300, 60],
-      zoneBoundsBpm: [144.5, 153, 161.5, 170],
+      zoneBoundsBpm: [137.7, 153, 159.8, 170],
       estimatedPowerWatts: 187.4,
       estimatedPedallingShare: 0.91,
       trimp: 132.4,

@@ -241,6 +241,39 @@ func steady(seconds int, heartRate, power float64) activity.FIT {
 	return activity.FIT{Records: records}
 }
 
+// strapped records a heart rate that is present but not beating, which is what
+// an unpaired strap writes: the reading is there, and it is nought.
+func strapped(seconds int, heartRate, power float64) activity.FIT {
+	records := make([]activity.Record, seconds)
+	for index := range records {
+		records[index] = activity.Record{
+			Time:         activityNow().Add(time.Duration(index) * time.Second),
+			HeartRateBPM: heartRate, HasHeartRate: true,
+			PowerWatts: power, HasPower: power > 0,
+		}
+	}
+
+	return activity.FIT{Records: records}
+}
+
+// A strap that never paired suggests nothing, rather than suggesting nought.
+// The derivation path drops a heart rate of nought and this one has to agree,
+// or a rider is offered a zone scheme cut from zero.
+func TestRiderSuggestionsIgnoreAStrapThatRecordedNoBeat(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, strapped(1500, 0, 200), activity.RecordsVersion),
+		"StoreActivityRecords()")
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.False(t, suggestions.MaxHeartRateBPM.Set, "nought is no maximum")
+	assert.False(t, suggestions.ThresholdHeartRateBPM.Set, "and no threshold")
+	assert.True(t, suggestions.FunctionalThresholdPowerWatts.Set, "the power beside it is still a reading")
+}
+
 func TestRiderSuggestionsReadTheBestEffortAcrossTheCallersRides(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
@@ -255,6 +288,7 @@ func TestRiderSuggestionsReadTheBestEffortAcrossTheCallersRides(t *testing.T) {
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.InDelta(t, 170.0, suggestions.MaxHeartRateBPM.Number, 0.5, "the harder ride's minute")
+	assert.InDelta(t, 170.0, suggestions.ThresholdHeartRateBPM.Number, 0.5, "the same ride's best twenty minutes, unscaled")
 	assert.InDelta(t, 228.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "240 W taken at 95%")
 }
 
@@ -272,6 +306,78 @@ func TestRiderSuggestionsOmitASensorTheRidesDoNotCarry(t *testing.T) {
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.True(t, suggestions.MaxHeartRateBPM.Set, "the rides carried a heart-rate strap")
 	assert.False(t, suggestions.FunctionalThresholdPowerWatts.Set, "no ride carried a meter")
+}
+
+// shaped is a ride recorded once a second, holding each power in turn for the
+// seconds it is paired with and carrying no strap.
+func shaped(stretches [][2]float64) activity.FIT {
+	var records []activity.Record
+	for _, stretch := range stretches {
+		for range int(stretch[0]) {
+			records = append(records, activity.Record{
+				Time:       activityNow().Add(time.Duration(len(records)) * time.Second),
+				PowerWatts: stretch[1], HasPower: true,
+			})
+		}
+	}
+
+	return activity.FIT{Records: records}
+}
+
+// rampRide is the protocol's own shape: seventeen minutes warm, then
+// one-minute steps of twenty watts to a peak of 330, which is where a recorded
+// ramp test's one-to-five-minute ratio of 1.14 comes from.
+func rampRide() activity.FIT {
+	stretches := [][2]float64{{17 * 60, 110}}
+	for watts := 130.0; watts <= 330; watts += 20 {
+		stretches = append(stretches, [2]float64{60, watts})
+	}
+
+	return shaped(stretches)
+}
+
+// Both the twenty-minute estimate and the ramp estimate are floors on the same
+// number, true only for a rider who performed that protocol, so the higher one
+// is offered.
+func TestRiderSuggestionsPreferTheRampEstimateWhenItIsHigher(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 2, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 205), activity.RecordsVersion),
+		"StoreActivityRecords()") // 205 W at 95% is 194.75 W, the twenty-minute estimate.
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 2, rampRide(), activity.RecordsVersion),
+		"StoreActivityRecords()")
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.InDelta(t, 247.25, suggestions.FunctionalThresholdPowerWatts.Number, 0.5,
+		"75% of the ramp's 330 W peak minute, over the steady ride's 194.75 W")
+}
+
+// A maximal five-minute effort sits inside the ratio band and is read as a ramp
+// test. What keeps that harmless is the arithmetic rather than the shape: the
+// ratio holds any ramp estimate under 94% of the ride's own best five minutes,
+// which a rider's real threshold clears, so the higher-wins fold discards it.
+func TestRiderSuggestionsDiscardAMisreadRampBelowTheTwentyMinuteEstimate(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 2, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 280), activity.RecordsVersion),
+		"StoreActivityRecords()") // 280 W at 95% is 266 W.
+	// Twenty-five minutes with one all-out five in the middle: a ratio of 1.13,
+	// so the shape admits it and 340 W at 75% offers 255 W.
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 2,
+		shaped([][2]float64{{600, 120}, {60, 340}, {240, 290}, {600, 120}}), activity.RecordsVersion),
+		"StoreActivityRecords()")
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.InDelta(t, 266.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5,
+		"the misread ride's 255 W lost to the twenty-minute estimate")
 }
 
 // A ride too short to hold the window suggests nothing rather than its own mean.
