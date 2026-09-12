@@ -77,6 +77,9 @@ export default defineConfig({
   // reports nothing. Failures here are meant to be reproducible.
   retries: 0,
   timeout: 60_000,
+  // The suite's wall clock varies 2-3x between runs on identical inputs; the
+  // default 5 min threshold never names the files that stretch.
+  reportSlowTests: { max: 10, threshold: 15_000 },
   expect: { timeout: 15_000 },
   // Gitignored, and at the repository root beside the coverage reports, so that
   // one place holds everything a run leaves behind for a human to look at.
