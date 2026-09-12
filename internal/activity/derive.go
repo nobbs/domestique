@@ -250,11 +250,15 @@ func (d *Deriver) deriveMetrics(ctx context.Context, targetID string) Result {
 		load := trainingload.Derive(heartRate, samples.Power, movingSeconds, inputs)
 		records, estimates, watts, share, estimated := samples.EstimatePower(inputs.TotalMassKG, coefficients)
 		load.EstimatedPowerWatts, load.HasEstimatedPower = watts, estimated
+		heatDrift := samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts)
+		if heatDriftBelowCoverageFloor(&load) {
+			heatDrift = HeatDrift{}
+		}
 		metrics := RideMetrics{
 			Load:                       load,
 			Averages:                   samples.Averages(),
 			Decoupling:                 samples.Decoupling(heartRate),
-			HeatDrift:                  samples.HeatDrift(heartRate, inputs.FunctionalThresholdPowerWatts),
+			HeatDrift:                  heatDrift,
 			PowerBests:                 samples.PowerBests(),
 			EstimatedPedallingShare:    share,
 			HasEstimatedPedallingShare: estimated,

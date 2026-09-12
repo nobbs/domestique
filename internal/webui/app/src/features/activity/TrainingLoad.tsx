@@ -272,15 +272,23 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   // told what the number measures rather than sold what it means. The pair is
   // one figure and its condition: the beats, at the degrees they were held
   // at. One ride is a point, not a trend.
+  //
+  // Both figures are built from measured power and heart rate; the worse of
+  // the two series' own coverage marks either. Heat drift also needs a
+  // temperature reading this service tracks no coverage share for, so the
+  // service withholds it below the same threshold that withholds the load
+  // figures above (docs/specs/service.md) rather than mark it with a share
+  // that would understate what the untracked series could be missing; the
+  // mark below only ever describes the heart-rate/power share of a ride that
+  // already cleared that floor.
+  const physiologyCoverage = combinedCoverage(metrics?.heartRateCoverage, metrics?.powerCoverage);
   const physiology: Scale[] = [
     {
       label: "Decoupling",
       scale: "% of ratio lost over the second half",
       value: metrics?.decouplingPercent,
       decimals: 1,
-      // Built from measured power and heart rate alone, so the worse of the
-      // two series' own coverage fully describes it.
-      coverage: combinedCoverage(metrics?.heartRateCoverage, metrics?.powerCoverage),
+      coverage: physiologyCoverage,
     },
     {
       label: "Heat drift",
@@ -289,10 +297,7 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
           ? ""
           : `bpm in the endurance band at ${Math.round(metrics.heatDrift.temperatureCelsius)} °C`,
       value: metrics?.heatDrift?.heartRateBpm,
-      // No coverage mark: heat drift also needs a temperature reading beside
-      // the heart rate, and this service tracks no coverage share for that
-      // series, so heart-rate/power coverage alone would understate what
-      // could be missing. Left for a follow-up rather than guessed at here.
+      coverage: physiologyCoverage,
     },
   ].filter((figure) => figure.value !== undefined);
 

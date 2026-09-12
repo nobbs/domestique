@@ -239,31 +239,31 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Heat drift")).toBeNull();
   });
 
-  // Built from measured power and heart rate alone, so either series falling
-  // short makes decoupling no more trustworthy than its weaker half.
-  it("marks decoupling with the worse of the two series' coverage", () => {
-    show({ decouplingPercent: 4.2, heartRateCoverage: 0.95, powerCoverage: 0.8 });
-
-    expect(screen.getByText("80% sensor coverage")).toBeInTheDocument();
-  });
-
-  it("leaves decoupling unmarked when both series covered the whole ride", () => {
-    show({ decouplingPercent: 4.2, heartRateCoverage: 1, powerCoverage: 1 });
-
-    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
-  });
-
-  // Heat drift also needs a temperature reading, and this service tracks no
-  // coverage share for that series, so heart-rate/power coverage alone would
-  // understate what could be missing from it.
-  it("never marks heat drift, even where heart rate and power both fell short", () => {
+  // Both figures are built from measured power and heart rate, so either
+  // series falling short makes either no more trustworthy than its weaker
+  // half. The service withholds heat drift below the same threshold that
+  // withholds the load figures above (it also needs an untracked temperature
+  // reading), so whenever the client is given one at all, marking it with
+  // the same combined share as decoupling is honest about what it does know.
+  it("marks decoupling and heat drift with the worse of the two series' coverage", () => {
     show({
+      decouplingPercent: 4.2,
       heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
-      heartRateCoverage: 0.5,
-      powerCoverage: 0.5,
+      heartRateCoverage: 0.95,
+      powerCoverage: 0.8,
     });
 
-    expect(screen.getByText("Heat drift")).toBeInTheDocument();
+    expect(screen.getAllByText("80% sensor coverage")).toHaveLength(2);
+  });
+
+  it("leaves decoupling and heat drift unmarked when both series covered the whole ride", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+      heartRateCoverage: 1,
+      powerCoverage: 1,
+    });
+
     expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
   });
 

@@ -146,6 +146,19 @@ func (s *RideSamples) HeatDrift(
 	}
 }
 
+// heatDriftBelowCoverageFloor reports whether the heart-rate or power series
+// behind a heat-drift reading fell below MinSeriesCoverage: the reading
+// averages both series over the endurance band, and this service tracks no
+// coverage share for the third series it also needs (temperature), so either
+// known series falling short is withheld rather than marked with a share that
+// would understate what the untracked one could be missing.
+func heatDriftBelowCoverageFloor(load *trainingload.Metrics) bool {
+	shortHeartRate := load.HasHeartRateCoverage && load.HeartRateCoverage < trainingload.MinSeriesCoverage
+	shortPower := load.HasPowerCoverage && load.PowerCoverage < trainingload.MinSeriesCoverage
+
+	return shortHeartRate || shortPower
+}
+
 // byTime indexes a series by the second it was recorded at, which is the
 // resolution the records are stored at and so the only way two sensors' samples
 // are known to describe the same moment.
