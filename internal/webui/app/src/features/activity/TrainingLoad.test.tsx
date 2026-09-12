@@ -314,4 +314,28 @@ describe("TrainingLoad", () => {
 
     expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
   });
+
+  // A share of 99.6% is still not the whole ride: rounding it to "100%" would
+  // print the one word this caption exists to rule out.
+  it("floors the coverage share rather than rounding it up to 100%", () => {
+    show({ averageHeartRateBpm: 142.4, heartRateCoverage: 0.996 });
+
+    expect(screen.getByText("99% sensor coverage")).toBeInTheDocument();
+    expect(screen.queryByText("100% sensor coverage")).not.toBeInTheDocument();
+  });
+
+  // Zones are withheld below the threshold, but a served zone bar can still
+  // hold less than the whole ride, and is owed the same mark every other
+  // heart-rate figure gets.
+  it("marks the zone bar with the heart-rate coverage it was served at", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 0.93 });
+
+    expect(screen.getByText("93% sensor coverage")).toBeInTheDocument();
+  });
+
+  it("leaves the zone bar unmarked at full coverage", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 1 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
 });

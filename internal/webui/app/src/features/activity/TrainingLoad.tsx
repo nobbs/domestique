@@ -14,7 +14,7 @@
 import type { ReactNode } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { Separator } from "../../components/ui/separator";
-import { formatDuration } from "../../lib/format";
+import { formatCoverage, formatDuration } from "../../lib/format";
 
 /** The five zones, easiest first, as a rider reading a training app knows them. */
 const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
@@ -33,16 +33,15 @@ export function Figure({ label, scale, value, decimals = 0, coverage }: Scale) {
   if (value === undefined) {
     return null;
   }
+  const coverageNote = formatCoverage(coverage);
 
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[var(--ink-2)] text-xs">{label}</span>
       <span className="font-semibold text-lg tabular-nums">{value.toFixed(decimals)}</span>
       <span className="text-[var(--ink-2)] text-xs">{scale}</span>
-      {coverage !== undefined && coverage < 1 ? (
-        <span className="text-[10px] text-[var(--ink-2)] opacity-70">
-          {Math.round(coverage * 100)}% sensor coverage
-        </span>
+      {coverageNote ? (
+        <span className="text-[10px] text-[var(--ink-2)] opacity-70">{coverageNote}</span>
       ) : null}
     </div>
   );
@@ -80,16 +79,19 @@ function ZoneStack({
   zoneSeconds,
   zoneBounds,
   deviceZoneSeconds,
+  coverage,
 }: {
   zoneSeconds: number[];
   zoneBounds: number[] | undefined;
   deviceZoneSeconds: number[] | undefined;
+  coverage: number | undefined;
 }) {
   const total = zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
   if (total <= 0) {
     return null;
   }
   const ranges = zoneBounds ? zoneRanges(zoneBounds) : [];
+  const coverageNote = formatCoverage(coverage);
 
   return (
     <div className="flex flex-col gap-3">
@@ -128,6 +130,9 @@ function ZoneStack({
         <p className="text-[var(--ink-2)] text-xs opacity-70">
           Device zones: {deviceZoneSeconds.map((seconds) => formatDuration(seconds)).join(" · ")}
         </p>
+      ) : null}
+      {coverageNote ? (
+        <p className="text-[10px] text-[var(--ink-2)] opacity-70">{coverageNote}</p>
       ) : null}
     </div>
   );
@@ -363,6 +368,7 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
             zoneSeconds={zones}
             zoneBounds={metrics?.zoneBoundsBpm}
             deviceZoneSeconds={metrics?.deviceZoneSeconds}
+            coverage={metrics?.heartRateCoverage}
           />
         ) : null}
         {sections.length > 0 ? <GroupList groups={sections} /> : null}

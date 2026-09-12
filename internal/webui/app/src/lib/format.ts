@@ -285,3 +285,17 @@ export function formatSpeed(kmh: number | null | undefined): string {
 
   return `${kmh.toFixed(1)} km/h`;
 }
+
+/**
+ * "92% sensor coverage" for a series that held less than the whole ride,
+ * `undefined` for one that held all of it. Floored rather than rounded: a
+ * share of 99.6% is still not the whole ride, and rounding it to "100%"
+ * would print the one word this caption exists to rule out.
+ */
+export function formatCoverage(coverage: number | undefined): string | undefined {
+  if (coverage === undefined || coverage >= 1) {
+    return undefined;
+  }
+
+  return `${Math.floor(coverage * 100)}% sensor coverage`;
+}
