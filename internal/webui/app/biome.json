@@ -61,7 +61,13 @@
               "options": {
                 "paths": {
                   "vitest": "A story runs in Storybook itself, where vitest does not exist; use storybook/test."
-                }
+                },
+                "patterns": [
+                  {
+                    "group": ["**/ui/button"],
+                    "message": "Import Button from components/Button; ui/button's vocabulary is not this application's."
+                  }
+                ]
               }
             }
           }
