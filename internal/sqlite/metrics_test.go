@@ -19,17 +19,21 @@ import (
 func derivedMetrics(inputs trainingload.Inputs, coefficients measure.Coefficients) activity.RideMetrics {
 	return activity.RideMetrics{
 		Load: trainingload.Metrics{
-			Inputs:              inputs,
-			Zones:               trainingload.Zones{60, 120, 180, 240, 300},
-			HasZones:            true,
-			TRIMP:               42.5,
-			HasTRIMP:            true,
-			HeartRateTSS:        88.25,
-			HasHeartRateTSS:     true,
-			Power:               trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
-			HasPower:            true,
-			EstimatedPowerWatts: 168.5,
-			HasEstimatedPower:   true,
+			Inputs:               inputs,
+			Zones:                trainingload.Zones{60, 120, 180, 240, 300},
+			HasZones:             true,
+			TRIMP:                42.5,
+			HasTRIMP:             true,
+			HeartRateTSS:         88.25,
+			HasHeartRateTSS:      true,
+			Power:                trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
+			HasPower:             true,
+			EstimatedPowerWatts:  168.5,
+			HasEstimatedPower:    true,
+			HeartRateCoverage:    0.97,
+			HasHeartRateCoverage: true,
+			PowerCoverage:        0.94,
+			HasPowerCoverage:     true,
 		},
 		Averages: activity.RideAverages{
 			HeartRateBPM: 142.5, MaxHeartRateBPM: 178, HasHeartRate: true,
@@ -84,6 +88,9 @@ func TestActivityMetricsRoundTrip(t *testing.T) {
 	assert.InDelta(t, stored.Load.EstimatedPowerWatts, read[1].Load.EstimatedPowerWatts, 1e-9)
 	assert.True(t, read[1].Load.HasZones && read[1].Load.HasTRIMP && read[1].Load.HasHeartRateTSS && read[1].Load.HasPower)
 	assert.True(t, read[1].Load.HasEstimatedPower, "the ride's average estimate")
+	require.True(t, read[1].Load.HasHeartRateCoverage && read[1].Load.HasPowerCoverage)
+	assert.InDelta(t, stored.Load.HeartRateCoverage, read[1].Load.HeartRateCoverage, 1e-9)
+	assert.InDelta(t, stored.Load.PowerCoverage, read[1].Load.PowerCoverage, 1e-9)
 	assert.Equal(t, stored.Averages, read[1].Averages, "and the plain sensor figures beside them")
 	assert.InDelta(t, stored.EstimatedPedallingShare, read[1].EstimatedPedallingShare, 1e-9)
 	// The two rates the zones were cut at come back, so the page can say what
@@ -111,6 +118,7 @@ func TestActivityMetricsKeepEachPartAbsentOnItsOwn(t *testing.T) {
 	assert.False(t, read[1].Averages.HasCadence, "nor a cadence sensor")
 	assert.False(t, read[1].Load.HasEstimatedPower, "nor an estimate")
 	assert.Zero(t, read[1].EstimatedPedallingShare, "no estimate, no share")
+	assert.False(t, read[1].Load.HasHeartRateCoverage || read[1].Load.HasPowerCoverage, "nor a coverage share for either series")
 }
 
 // A row written before migration 057 holds an estimate but no share: it must

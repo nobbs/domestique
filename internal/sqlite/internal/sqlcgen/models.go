@@ -90,6 +90,8 @@ type ActivityMetric struct {
 	EstimatedPedallingShare     sql.NullFloat64
 	InputDragArea               float64
 	InputRollingResistance      float64
+	HeartRateCoverage           sql.NullFloat64
+	PowerCoverage               sql.NullFloat64
 }
 
 type ActivityRecord struct {

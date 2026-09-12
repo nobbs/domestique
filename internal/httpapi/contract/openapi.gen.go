@@ -275,6 +275,10 @@ type ActivityMetrics struct {
 	NormalizedPowerWatts *float64 `json:"normalizedPowerWatts,omitempty"`
 	IntensityFactor      *float64 `json:"intensityFactor,omitempty"`
 	PowerTss             *float64 `json:"powerTss,omitempty"`
+	// HeartRateCoverage The share of the ride's moving time the heart-rate strap held a reading for, whether or not that cleared the threshold this derivation withholds a figure below. Served beside every heart-rate figure above, and beside averageHeartRateBpm and maxHeartRateBpm below, so a figure served at, say, 92% is still read as most of the ride rather than all of it. See docs/specs/service.md §Recorded activities.
+	HeartRateCoverage *float64 `json:"heartRateCoverage,omitempty"`
+	// PowerCoverage The same share for the power meter, served beside normalizedPowerWatts, intensityFactor and powerTss above and averagePowerWatts and maxPowerWatts below. Absent for a ride estimating its power from the track: this describes a meter's own coverage, never the estimate's.
+	PowerCoverage *float64 `json:"powerCoverage,omitempty"`
 	// EstimatedPowerWatts The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track, at the rider's own drag area and rolling resistance where both are entered and a road bicycle's otherwise, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass.
 	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
 	// EstimatedPedallingShare The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.

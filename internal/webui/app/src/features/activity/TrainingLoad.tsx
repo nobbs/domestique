@@ -25,9 +25,11 @@ export interface Scale {
   scale: string;
   value: number | undefined;
   decimals?: number;
+  /** The series' own share of the ride's moving time it held a reading for. Shown only below 100%: a full series has nothing to add. */
+  coverage?: number | undefined;
 }
 
-export function Figure({ label, scale, value, decimals = 0 }: Scale) {
+export function Figure({ label, scale, value, decimals = 0, coverage }: Scale) {
   if (value === undefined) {
     return null;
   }
@@ -37,6 +39,11 @@ export function Figure({ label, scale, value, decimals = 0 }: Scale) {
       <span className="text-[var(--ink-2)] text-xs">{label}</span>
       <span className="font-semibold text-lg tabular-nums">{value.toFixed(decimals)}</span>
       <span className="text-[var(--ink-2)] text-xs">{scale}</span>
+      {coverage !== undefined && coverage < 1 ? (
+        <span className="text-[10px] text-[var(--ink-2)] opacity-70">
+          {Math.round(coverage * 100)}% sensor coverage
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -156,8 +163,18 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   const sensors: Scale[] = [
     { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride, metrics), decimals: 1 },
     { label: "Max speed", scale: "km/h", value: metrics?.maxSpeedKmh, decimals: 1 },
-    { label: "Heart rate", scale: "bpm average", value: metrics?.averageHeartRateBpm },
-    { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
+    {
+      label: "Heart rate",
+      scale: "bpm average",
+      value: metrics?.averageHeartRateBpm,
+      coverage: metrics?.heartRateCoverage,
+    },
+    {
+      label: "Max heart rate",
+      scale: "bpm",
+      value: metrics?.maxHeartRateBpm,
+      coverage: metrics?.heartRateCoverage,
+    },
     { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
     { label: "Max cadence", scale: "rpm", value: metrics?.maxCadenceRpm },
   ].filter((figure) => figure.value !== undefined);
@@ -166,7 +183,12 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   // the label carries the estimate's provenance so it cannot read as a reading.
   const power: Scale | undefined =
     metrics?.averagePowerWatts !== undefined
-      ? { label: "Power", scale: "watts average", value: metrics.averagePowerWatts }
+      ? {
+          label: "Power",
+          scale: "watts average",
+          value: metrics.averagePowerWatts,
+          coverage: metrics.powerCoverage,
+        }
       : metrics?.estimatedPowerWatts !== undefined
         ? {
             label: "Estimated power",
@@ -179,7 +201,12 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
         : undefined;
 
   const devicePower: Scale[] = [
-    { label: "Max power", scale: "watts", value: metrics?.maxPowerWatts },
+    {
+      label: "Max power",
+      scale: "watts",
+      value: metrics?.maxPowerWatts,
+      coverage: metrics?.powerCoverage,
+    },
     {
       label: "Threshold power",
       scale: "watts set on the device",
@@ -189,14 +216,35 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
 
   const normalizedPower: Scale | undefined =
     metrics?.normalizedPowerWatts !== undefined
-      ? { label: "Normalized power", scale: "watts", value: metrics.normalizedPowerWatts }
+      ? {
+          label: "Normalized power",
+          scale: "watts",
+          value: metrics.normalizedPowerWatts,
+          coverage: metrics.powerCoverage,
+        }
       : undefined;
 
   const load: Scale[] = [
-    { label: "Intensity", scale: "of threshold", value: metrics?.intensityFactor, decimals: 2 },
-    { label: "TSS", scale: "power", value: metrics?.powerTss },
-    { label: "hrTSS", scale: "heart rate", value: metrics?.heartRateTss },
-    { label: "TRIMP", scale: "Banister", value: metrics?.trimp },
+    {
+      label: "Intensity",
+      scale: "of threshold",
+      value: metrics?.intensityFactor,
+      decimals: 2,
+      coverage: metrics?.powerCoverage,
+    },
+    { label: "TSS", scale: "power", value: metrics?.powerTss, coverage: metrics?.powerCoverage },
+    {
+      label: "hrTSS",
+      scale: "heart rate",
+      value: metrics?.heartRateTss,
+      coverage: metrics?.heartRateCoverage,
+    },
+    {
+      label: "TRIMP",
+      scale: "Banister",
+      value: metrics?.trimp,
+      coverage: metrics?.heartRateCoverage,
+    },
   ].filter((figure) => figure.value !== undefined);
 
   // Positive is the usual direction, and the scale says so: the reader is

@@ -33,7 +33,8 @@ import (
 // moves every estimated figure a row before it holds.
 // 11: rows before it hold no pedalling share and were worked out at another
 // bicycle.
-const derivationVersion = 11
+// 12: rows before it hold no per-series coverage share.
+const derivationVersion = 12
 
 // ActivitiesAwaitingDerivation lists the target's rides whose stored samples
 // could yield something this derivation now allows: those never derived, those
@@ -305,6 +306,8 @@ func storeActivityMetrics(
 		NormalizedPowerWatts:    nullFloat(metrics.Power.NormalizedWatts, metrics.HasPower),
 		IntensityFactor:         nullFloat(metrics.Power.IntensityFactor, metrics.HasPower),
 		PowerTss:                nullFloat(metrics.Power.TSS, metrics.HasPower),
+		HeartRateCoverage:       nullFloat(metrics.HeartRateCoverage, metrics.HasHeartRateCoverage),
+		PowerCoverage:           nullFloat(metrics.PowerCoverage, metrics.HasPowerCoverage),
 		EstimatedPowerWatts:     nullFloat(metrics.EstimatedPowerWatts, metrics.HasEstimatedPower),
 		EstimatedPedallingShare: nullFloat(stored.EstimatedPedallingShare, stored.HasEstimatedPedallingShare),
 		AverageHeartRateBpm:     nullFloat(averages.HeartRateBPM, averages.HasHeartRate),
@@ -380,14 +383,18 @@ func (s *Store) ActivityMetrics(ctx context.Context, targetID string) (map[int64
 	for index := range rows {
 		row := &rows[index]
 		one := trainingload.Metrics{
-			HasZones:            row.Zone1Seconds.Valid,
-			TRIMP:               row.Trimp.Float64,
-			HasTRIMP:            row.Trimp.Valid,
-			HeartRateTSS:        row.HeartRateTss.Float64,
-			HasHeartRateTSS:     row.HeartRateTss.Valid,
-			HasPower:            row.NormalizedPowerWatts.Valid,
-			EstimatedPowerWatts: row.EstimatedPowerWatts.Float64,
-			HasEstimatedPower:   row.EstimatedPowerWatts.Valid,
+			HasZones:             row.Zone1Seconds.Valid,
+			TRIMP:                row.Trimp.Float64,
+			HasTRIMP:             row.Trimp.Valid,
+			HeartRateTSS:         row.HeartRateTss.Float64,
+			HasHeartRateTSS:      row.HeartRateTss.Valid,
+			HasPower:             row.NormalizedPowerWatts.Valid,
+			EstimatedPowerWatts:  row.EstimatedPowerWatts.Float64,
+			HasEstimatedPower:    row.EstimatedPowerWatts.Valid,
+			HeartRateCoverage:    row.HeartRateCoverage.Float64,
+			HasHeartRateCoverage: row.HeartRateCoverage.Valid,
+			PowerCoverage:        row.PowerCoverage.Float64,
+			HasPowerCoverage:     row.PowerCoverage.Valid,
 			Power: trainingload.Power{
 				NormalizedWatts: row.NormalizedPowerWatts.Float64,
 				IntensityFactor: row.IntensityFactor.Float64,

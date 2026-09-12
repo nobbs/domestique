@@ -83,6 +83,12 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session)
 		view.IntensityFactor = &metrics.Power.IntensityFactor
 		view.PowerTss = &metrics.Power.TSS
 	}
+	if metrics.HasHeartRateCoverage {
+		view.HeartRateCoverage = &metrics.HeartRateCoverage
+	}
+	if metrics.HasPowerCoverage {
+		view.PowerCoverage = &metrics.PowerCoverage
+	}
 	if metrics.HasEstimatedPower {
 		view.EstimatedPowerWatts = &metrics.EstimatedPowerWatts
 	}

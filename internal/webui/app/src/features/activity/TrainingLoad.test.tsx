@@ -283,4 +283,35 @@ describe("TrainingLoad", () => {
 
     expect(screen.queryByText(/Device zones:/)).not.toBeInTheDocument();
   });
+
+  // A figure served above the withhold threshold still held less than the
+  // whole ride, and the reader is owed the share, not just the pass/fail.
+  it("marks a heart-rate figure served below full coverage", () => {
+    show({ averageHeartRateBpm: 124.6, heartRateCoverage: 0.92, trimp: 42.4 });
+
+    expect(screen.getAllByText("92% sensor coverage")).toHaveLength(2);
+  });
+
+  it("marks a power figure served below full coverage", () => {
+    show({
+      averagePowerWatts: 196.2,
+      powerCoverage: 0.85,
+      normalizedPowerWatts: 214,
+      powerTss: 73.2,
+    });
+
+    expect(screen.getAllByText("85% sensor coverage")).toHaveLength(3);
+  });
+
+  it("leaves out the coverage mark at full coverage", () => {
+    show({ averageHeartRateBpm: 142.4, heartRateCoverage: 1 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
+  it("leaves the estimate's own figure unmarked by the meter's coverage", () => {
+    show({ estimatedPowerWatts: 187.4, powerCoverage: 0.5 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
 });

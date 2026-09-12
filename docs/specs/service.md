@@ -670,6 +670,17 @@ The read-only JSON surface is small:
   nothing to any training-load trend built from it. What computes them, and when, is
   [`activity:derive`](task-layer.md).
 
+  Each series' own coverage — the share of the ride's moving time it held a
+  reading for — is served alongside every figure built on it, whether or not
+  that figure cleared the withhold threshold: `heartRateCoverage` beside the
+  zones, TRIMP, hrTSS, average and maximum heart rate, and `powerCoverage`
+  beside normalized power, intensity factor, power TSS, average and maximum
+  power. A figure served at, say, 92% coverage is still most of the ride
+  rather than all of it, and the share says so without the rider having to
+  take a plain average on faith. Absent for a series with nothing to hold a
+  reading of at all, and `powerCoverage` is never served beside an estimate:
+  it describes a meter's own coverage, never the estimate's.
+
   Beside those are the plain figures the ride's own sensors came to with no
   profile involved: the mean of its heart-rate, cadence and measured power
   samples, the highest heart rate it reached, and the highest speed it reached.
