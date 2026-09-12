@@ -350,7 +350,11 @@ depends = [
 
 [ci-test]
 description = "The test half of the gate, as CI groups it"
-depends = ["vet", "test", "test-race"]
+depends = ["vet", "test"]
+
+[ci-test-race]
+description = "The race-detector half of the gate, as CI groups it"
+depends = ["test-race"]
 
 [ci-security]
 description = "The security half of the gate, as CI groups it"
@@ -391,4 +395,4 @@ depends = [
 
 [check]
 description = "The full gate, on demand"
-depends = ["ci-lint", "ci-test", "ci-security", "ci-ui", "build-check"]
+depends = ["ci-lint", "ci-test", "ci-test-race", "ci-security", "ci-ui", "build-check"]

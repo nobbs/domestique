@@ -99,8 +99,8 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-24.04
-    # Must exceed both suites' own -timeout summed; they run back to back.
-    timeout-minutes: 25
+    # Must exceed the suite's own -timeout.
+    timeout-minutes: 15
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
 
@@ -156,6 +156,55 @@ jobs:
           disable_search: true
           plugins: noop
           fail_ci_if_error: false
+
+  race:
+    name: Race
+    runs-on: ubuntu-24.04
+    # Must exceed the suite's own -timeout plus the race build.
+    timeout-minutes: 20
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.go == 'true'
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain
+        # v4.2.5
+        uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
+        with:
+          version: 2026.9.3
+          install: true
+          cache: true
+      - name: Restore the Go module cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/go/pkg/mod
+          key: gomod-${{ runner.os }}-${{ hashFiles('go.sum') }}
+          restore-keys: |
+            gomod-${{ runner.os }}-
+      - name: Restore the Go build cache
+        # v6.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            .cache/go-build
+          key: go-race-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-${{ hashFiles('**/*.go') }}
+          restore-keys: |
+            go-race-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-race-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-${{ hashFiles('go.sum') }}-
+            go-coverage-${{ runner.os }}-${{ hashFiles('.mise.toml') }}-
+            go-race-${{ runner.os }}-
+      - name: Run tests
+        run: mise run --force ci-test-race
 
   security:
     name: Security
@@ -616,6 +665,7 @@ jobs:
       - changes
       - lint
       - test
+      - race
       - security
       - ui
       - build
@@ -629,6 +679,7 @@ jobs:
       needs.changes.result == 'success' &&
       (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
       (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (needs.race.result == 'success' || needs.race.result == 'skipped') &&
       (needs.security.result == 'success' || needs.security.result == 'skipped') &&
       (needs.ui.result == 'success' || needs.ui.result == 'skipped') &&
       (needs.build.result == 'success' || needs.build.result == 'skipped') &&
@@ -817,6 +868,7 @@ jobs:
       - changes
       - lint
       - test
+      - race
       - security
       - ui
       - coverage
@@ -835,6 +887,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           LINT_RESULT: ${{ needs.lint.result }}
           TEST_RESULT: ${{ needs.test.result }}
+          RACE_RESULT: ${{ needs.race.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           UI_RESULT: ${{ needs.ui.result }}
           COVERAGE_RESULT: ${{ needs.coverage.result }}
@@ -858,6 +911,7 @@ jobs:
             echo "| Changes | ${CHANGES_RESULT} |"
             echo "| Lint | ${LINT_RESULT} |"
             echo "| Test | ${TEST_RESULT} |"
+            echo "| Race | ${RACE_RESULT} |"
             echo "| Security | ${SECURITY_RESULT} |"
             echo "| UI | ${UI_RESULT} |"
             echo "| Coverage | ${COVERAGE_RESULT} |"
@@ -876,6 +930,7 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           LINT_RESULT: ${{ needs.lint.result }}
           TEST_RESULT: ${{ needs.test.result }}
+          RACE_RESULT: ${{ needs.race.result }}
           SECURITY_RESULT: ${{ needs.security.result }}
           UI_RESULT: ${{ needs.ui.result }}
           BUILD_RESULT: ${{ needs.build.result }}
@@ -886,7 +941,7 @@ jobs:
           set -eu
 
           for result in "$CHANGES_RESULT" "$LINT_RESULT" "$TEST_RESULT" \
-            "$SECURITY_RESULT" "$UI_RESULT" "$BUILD_RESULT" "$IMAGE_RESULT" \
+            "$RACE_RESULT" "$SECURITY_RESULT" "$UI_RESULT" "$BUILD_RESULT" "$IMAGE_RESULT" \
             "$PUBLISH_RESULT" "$DEPLOY_RESULT"; do
             case "$result" in
               success|skipped) ;;
