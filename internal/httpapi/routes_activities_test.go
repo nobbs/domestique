@@ -232,6 +232,27 @@ func TestGetActivitiesCarriesNoEstimatedCaloriesForAnEstimateWithNoShare(t *test
 	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
 }
 
+// A share of exactly zero is still no share to speak of: scaling by it would
+// serve a false zero rather than withholding the figure.
+func TestGetActivitiesCarriesNoEstimatedCaloriesForAZeroShare(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:                       trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+			EstimatedPedallingShare:    0,
+			HasEstimatedPedallingShare: true,
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
+}
+
 // A ride with neither a meter nor an estimate carries no calorie comparison
 // figure at all.
 func TestGetActivitiesCarriesNoEstimatedCaloriesWithoutEitherPowerFigure(t *testing.T) {

@@ -2268,8 +2268,8 @@ components:
             estimatedPowerWatts. A comparison figure only, never a
             measurement, never the same figure as the activity's own
             caloriesKcal, which a device usually derives from heart rate
-            rather than power. Absent below a positive wattage and moving
-            time, and for an estimate carrying no pedalling share.
+            rather than power. Absent below a positive wattage, moving time,
+            or pedalling share.
         averageSpeedKmh:
           type: number
           format: double
