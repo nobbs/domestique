@@ -412,6 +412,29 @@ func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing
 	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9)
 }
 
+// A record between two distance readings that carries no distance of its own
+// -- a temperature-only one, say -- must not become the step the next
+// distance reading is measured from: that would turn every distance sample
+// after it into a dropped one rather than a step from the last real reading.
+func TestActivityRideSamplesSkipsADistancelessRowWhenBuildingTheOdometerStep(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), TemperatureCelsius: 18, HasTemperatureCelsius: true},
+			{Time: activityNow().Add(2 * time.Second), DistanceMetres: 20, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 1,
+		"the distance step across the temperature-only record must still be measured")
+	assert.Equal(t, activityNow().Add(2*time.Second), samples.Speed[0].At)
+	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9, "20 m over the full two seconds")
+}
+
 // A single implausible spike — a clock or odometer hiccup, not a rider — is
 // dropped, and the rest of the series stands.
 func TestActivityRideSamplesDropsASpeedReadingAboveTheCeiling(t *testing.T) {

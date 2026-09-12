@@ -152,7 +152,14 @@ func speedFromRows(rows []sqlcgen.ListActivitySensorRecordsRow) []trainingload.S
 					samples = append(samples, trainingload.Sample{At: current.At, Value: kmh})
 				}
 			}
-			previous = current
+			// A row with no distance of its own -- a temperature-only record,
+			// say -- must not become the step every later row is measured
+			// from: that would turn every distance reading after it into a
+			// dropped sample rather than a step from the last one that had a
+			// distance to measure from.
+			if current.Known {
+				previous = current
+			}
 		}
 	}
 
