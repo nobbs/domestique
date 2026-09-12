@@ -567,8 +567,9 @@ A ride shorter than a duration holds no best for it, which is what leaves the
 long end of a curve empty until a long ride arrives. A duration no ride reached
 carries no point rather than a nought.
 
-**No threshold suggestion is read off the curve**, though the twenty-minute one
-and the curve's own point are both 95% of the same best twenty minutes. A
+**No threshold suggestion is read off the curve.** The curve's own point is the
+raw best twenty minutes and the twenty-minute suggestion is 95% of it, so the
+two are the same effort scaled differently rather than the same number. A
 derivation runs only for a rider who has entered something, so the curve is
 empty for a rider with no profile at all — who is exactly the rider a threshold
 is suggested to. Every suggestion is therefore worked out from the stored

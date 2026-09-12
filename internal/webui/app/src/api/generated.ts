@@ -976,7 +976,7 @@ export interface RiderSuggestions {
   maxHeartRateBpm?: number;
   /** The best rolling twenty-minute average heart rate, unscaled. Only a genuine lactate threshold reading if that twenty minutes was a maximal, evenly paced effort -- over ordinary rides it reads high or low depending on what was ridden. */
   thresholdHeartRateBpm?: number;
-  /** The greater of two estimates: the best twenty-minute average power taken at 95%, and a ramp-test estimate off the best minute. */
+  /** The best twenty-minute average power taken at 95%, or a ramp-test estimate off the best minute where that is higher and another ride corroborates it. */
   functionalThresholdPowerWatts?: number;
   stopping?: StoppingSuggestion;
 }

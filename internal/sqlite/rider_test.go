@@ -369,9 +369,6 @@ func shaped(stretches [][2]float64) activity.FIT {
 	return activity.FIT{Records: records}
 }
 
-// rampRide climbs ten watts a minute for 28 minutes, the shape a Zwift ramp
-// test drives: a best minute of 369.8 W, so 277.4 W at the protocol's 75%, over
-// a best twenty minutes of 274.8 W, so 261.1 W at Coggan's 95%.
 // rampRide is the protocol's own shape: seventeen minutes warm, then
 // one-minute steps of twenty watts to a peak of 330, which is where a recorded
 // ramp test's one-to-five-minute ratio of 1.14 comes from.
