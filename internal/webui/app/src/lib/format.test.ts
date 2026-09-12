@@ -332,9 +332,17 @@ describe("formatCoverage", () => {
     expect(formatCoverage(1044 / 3600)).toBe("29% sensor coverage");
   });
 
-  // The same epsilon that corrects the case above can itself push a share a
-  // hair under 1 past 100 after the floor; the result must still never claim
-  // full coverage for a value this function was already told is partial.
+  // The same correction that fixes the case above must not overreach: a
+  // share genuinely a whole percent below an integer sits far further from
+  // it than binary floating point's own representation error does, and must
+  // keep its own floor rather than being nudged up to that integer.
+  it("does not round a genuinely partial share up to the nearest percent", () => {
+    expect(formatCoverage(0.009999999999)).toBe("0% sensor coverage");
+  });
+
+  // The correction can itself push a share a hair under 1 past 100 after the
+  // floor; the result must still never claim full coverage for a value this
+  // function was already told is partial.
   it("never prints 100% for a coverage share below 1", () => {
     expect(formatCoverage(0.999999999999)).toBe("99% sensor coverage");
   });

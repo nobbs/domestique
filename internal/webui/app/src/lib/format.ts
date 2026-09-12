@@ -292,18 +292,27 @@ export function formatSpeed(kmh: number | null | undefined): string {
  * share of 99.6% is still not the whole ride, and rounding it to "100%"
  * would print the one word this caption exists to rule out.
  *
- * A tiny epsilon goes in before the floor: 1044/3600 is exactly 29% but
- * binary floating point stores it as 28.999999999999996, and flooring that
- * directly would understate an exact share. The same epsilon can push a
- * share a hair under 1 (0.999999999999) past 100 after the floor, so the
- * result is also capped at 99 -- the caption must never print "100%" for a
- * coverage this function was already told is not the whole ride.
+ * A share that is a whole percent is only ever off by binary floating
+ * point's own precision: 1044/3600 is exactly 29% but stores as
+ * 28.999999999999996. A share genuinely a whole percent *below* an integer
+ * (0.009999999999, meant to read as 0%) sits much further from it than that
+ * — so only a scaled value within COVERAGE_INTEGER_EPSILON of its nearest
+ * integer is treated as that integer; anything further is floored as-is.
+ * Both branches are then capped at 99: the caption must never print "100%"
+ * for a coverage this function was already told is not the whole ride.
  */
+const COVERAGE_INTEGER_EPSILON = 1e-11;
+
 export function formatCoverage(coverage: number | undefined): string | undefined {
   if (coverage === undefined || coverage >= 1) {
     return undefined;
   }
-  const percent = Math.min(Math.floor(coverage * 100 + 1e-9), 99);
+  const scaled = coverage * 100;
+  const nearestInteger = Math.round(scaled);
+  const percent =
+    Math.abs(scaled - nearestInteger) < COVERAGE_INTEGER_EPSILON
+      ? nearestInteger
+      : Math.floor(scaled);
 
-  return `${percent}% sensor coverage`;
+  return `${Math.min(percent, 99)}% sensor coverage`;
 }
