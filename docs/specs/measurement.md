@@ -583,14 +583,31 @@ of recorded span, holding a best minute within 1.25 times its best five
 the two estimates is higher, because each is a floor that only a rider who
 performed that protocol reaches.
 
-The shape is deliberately loose, and the ratio is what makes that safe rather
-than the shape: an estimate is 75% of a minute that is itself at most 1.25 times
-the best five, so it can never exceed 94% of a rider's best five-minute power. A
-steady ride mistaken for a ramp therefore estimates below the threshold it is
-compared against and loses. There is deliberately no test that the hardest
-minute is the ride's last: a ramp is ridden to failure, but the file carries the
-cooldown after it, so a real one's peak minute ends eleven to sixteen minutes
-before its last sample.
+The shape is deliberately loose, and the ratio rather than the shape is what
+bounds a wrong answer: an estimate is 75% of a minute that is itself at most
+1.25 times the best five, so it never exceeds 94% of the five minutes it was
+read over. Against the twenty-minute estimate's 95% that is the comparison worth
+making — a ride is only taken over that estimate when its five minutes stand
+above any twenty the rider sustains, which is what a maximal effort looks like.
+
+The bound is on the ride and not on the rider, and there it stops. A rider whose
+whole corpus is one easy ride has no sustained twenty worth clearing, and such a
+ride can be read as a ramp: sixteen minutes at 50 W, four at 100 and a closing
+minute at 125 is a ratio of 1.19 and offers 94 W against that ride's own 61.
+Nothing inside one ride distinguishes that from a ramp test. Comparing a
+reading against the corpus was tried and is inert — wherever such a comparison
+rejects, the ratio has already put the estimate under the twenty-minute one — so
+the case stands, on the ground that a rider with a single easy ride is owed no
+threshold by either estimate.
+
+There is deliberately no test that the hardest minute is the ride's last: a ramp
+is ridden to failure, but the file carries the cooldown after it, so a real
+one's peak minute ends eleven to sixteen minutes before its last sample.
+
+Both heart-rate suggestions read only a beating rate. An unpaired strap records
+a nought that is present rather than absent, and averaging it in would offer a
+rate no heart held — so a suggestion drops it, as the derivation path does
+before it cleans anything (`internal/sqlite/metrics.go` `ActivityRideSamples`).
 
 **Source.** Ramp test: 75% of best-minute power, the scaling Zwift's own ramp
 test applies.

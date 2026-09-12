@@ -72,16 +72,15 @@ func TestRampThresholdPowerAcceptsARampFollowedByItsCooldown(t *testing.T) {
 	assert.InDelta(t, bestMinute*0.75, watts, 1e-9, "still 75% of the best minute")
 }
 
-// A maximal five-minute effort mid-ride sits inside the ratio band and is
-// admitted. That is deliberate: the ratio is what bounds the cost of a wrong
-// answer, holding any estimate under 94% of the rider's best five minutes — a
-// figure a real threshold clears, so the higher-wins fold discards it.
+// The bound the loose shape rests on, pinned: an admitted ride can never offer
+// more than 94% of the five minutes it was read over, whatever else it is. This
+// easy ride is admitted, and the estimate it offers is one only a rider with no
+// harder riding at all would ever be shown.
 func TestRampThresholdPowerHoldsUnderAShareOfTheBestFiveMinutes(t *testing.T) {
 	t.Parallel()
-	series := hold(600, 120)
-	series = append(series, hold(60, 340)...)
-	series = append(series, hold(240, 290)...) // The five minutes average 300 W: a ratio of 1.13.
-	series = append(series, hold(600, 120)...)
+	series := hold(960, 50)
+	series = append(series, hold(240, 100)...)
+	series = append(series, hold(60, 125)...) // Around 105 W over five and 125 over one: a ratio of 1.19.
 	times := recorded(series)
 	bestFive, found := rider.BestAverage(times, series, 5*time.Minute)
 	require.True(t, found)
@@ -90,7 +89,25 @@ func TestRampThresholdPowerHoldsUnderAShareOfTheBestFiveMinutes(t *testing.T) {
 
 	require.True(t, ok, "inside the ratio band, so the shape admits it")
 	assert.LessOrEqual(t, watts, bestFive*0.9375,
-		"0.75 of a minute that is at most 1.25 of the best five cannot exceed 0.9375 of it")
+		"0.75 of a minute at most 1.25 of the best five cannot exceed 0.9375 of it")
+}
+
+// A pause ends a stretch of recording, so a few valid minutes either side of one
+// must not present themselves as a ride of the right length.
+func TestRampThresholdPowerRejectsASeriesBrokenByAPause(t *testing.T) {
+	t.Parallel()
+	series := rampSteps(21, 100)
+	times := recorded(series)
+	// One step of eleven seconds, past the ten the recording gap allows. The
+	// span still reads inside the bound and every window either side is still
+	// whole, so nothing but the step itself gives the pause away.
+	for index := len(times) / 2; index < len(times); index++ {
+		times[index] = times[index].Add(11 * time.Second)
+	}
+
+	_, ok := rider.RampThresholdPower(times, series)
+
+	assert.False(t, ok, "an eleven-second step is a pause, and a ramp is one stretch")
 }
 
 func TestRampThresholdPowerRejectsAnHourLongRide(t *testing.T) {

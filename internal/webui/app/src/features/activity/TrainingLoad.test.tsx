@@ -155,10 +155,10 @@ describe("TrainingLoad", () => {
   // Open at both ends: neither the easiest nor the hardest zone is given a
   // limit the profile never said.
   it("says the heart rates each zone covered", () => {
-    show({ zoneSeconds: [60, 120, 180, 240, 300], zoneBoundsBpm: [144.5, 153, 161.5, 170] });
+    show({ zoneSeconds: [60, 120, 180, 240, 300], zoneBoundsBpm: [137.7, 153, 159.8, 170] });
 
-    expect(screen.getByText("below 145 bpm")).toBeInTheDocument();
-    expect(screen.getByText("145–152 bpm")).toBeInTheDocument();
+    expect(screen.getByText("below 138 bpm")).toBeInTheDocument();
+    expect(screen.getByText("138–152 bpm")).toBeInTheDocument();
     expect(screen.getByText("170 bpm and up")).toBeInTheDocument();
   });
 

@@ -241,6 +241,39 @@ func steady(seconds int, heartRate, power float64) activity.FIT {
 	return activity.FIT{Records: records}
 }
 
+// strapped records a heart rate that is present but not beating, which is what
+// an unpaired strap writes: the reading is there, and it is nought.
+func strapped(seconds int, heartRate, power float64) activity.FIT {
+	records := make([]activity.Record, seconds)
+	for index := range records {
+		records[index] = activity.Record{
+			Time:         activityNow().Add(time.Duration(index) * time.Second),
+			HeartRateBPM: heartRate, HasHeartRate: true,
+			PowerWatts: power, HasPower: power > 0,
+		}
+	}
+
+	return activity.FIT{Records: records}
+}
+
+// A strap that never paired suggests nothing, rather than suggesting nought.
+// The derivation path drops a heart rate of nought and this one has to agree,
+// or a rider is offered a zone scheme cut from zero.
+func TestRiderSuggestionsIgnoreAStrapThatRecordedNoBeat(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, strapped(1500, 0, 200), activity.RecordsVersion),
+		"StoreActivityRecords()")
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.False(t, suggestions.MaxHeartRateBPM.Set, "nought is no maximum")
+	assert.False(t, suggestions.ThresholdHeartRateBPM.Set, "and no threshold")
+	assert.True(t, suggestions.FunctionalThresholdPowerWatts.Set, "the power beside it is still a reading")
+}
+
 func TestRiderSuggestionsReadTheBestEffortAcrossTheCallersRides(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))

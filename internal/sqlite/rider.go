@@ -225,12 +225,24 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 			ride.targetSlot, ride.workoutID = row.TargetSlot, row.WorkoutID
 		}
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
-		heartRate.add(at, row.HeartRateBpm)
+		heartRate.add(at, beating(row.HeartRateBpm))
 		power.add(at, row.PowerWatts)
 	}
 	closeRide()
 
 	return suggestions
+}
+
+// beating drops a heart rate that is not one. An unpaired strap writes nought,
+// and a nought averaged into a window reads as rest the rider never took --
+// the same rule ActivityRideSamples applies on the derivation path. Power keeps
+// its own nought, which is a rider coasting.
+func beating(value sql.NullFloat64) sql.NullFloat64 {
+	if value.Valid && value.Float64 <= 0 {
+		return sql.NullFloat64{}
+	}
+
+	return value
 }
 
 // sensorSeries is one ride's samples from one sensor. A record without that
