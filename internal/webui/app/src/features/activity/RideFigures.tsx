@@ -47,7 +47,7 @@ function loadFigure(ride: Activity): Headline | null {
 /**
  * The device's own reported calories, with the power-based estimate as a note
  * beside it for comparison; the estimate stands alone where the device
- * declared none. Neither figure yields no headline at all.
+ * declared none, and neither yields no headline at all.
  */
 function caloriesFigure(ride: Activity): Headline[] {
   const estimated = ride.metrics?.estimatedCaloriesKcal;
