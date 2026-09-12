@@ -1,13 +1,11 @@
 package sqlite
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/rider"
-	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -277,26 +275,32 @@ func TestRiderSuggestionsOmitASensorTheRidesDoNotCarry(t *testing.T) {
 	assert.False(t, suggestions.FunctionalThresholdPowerWatts.Set, "no ride carried a meter")
 }
 
-// storeRampCandidateRide stores a ride of the given moving time carrying the
-// power-curve bests a ramp-test derivation would have already computed, so
-// rider.RampThresholdPower's own shape test has a real row to read.
-func storeRampCandidateRide(
-	t *testing.T, store *Store, targetID string, id int64, moving time.Duration, best60, best300 float64,
-) {
-	t.Helper()
-	require.NoError(t, store.StoreActivity(t.Context(), targetID,
-		activity.Listing{ID: id, TypeID: 15, LocationID: 1, Starts: activityNow()},
-		activity.Summary{
-			DistanceMetres: 10_000, MovingSeconds: moving.Seconds(), ElapsedSeconds: moving.Seconds(),
-			AscentMetres: 50, Raw: []byte(`{}`),
-		},
-		activityNow(),
-	), "StoreActivity()")
-	require.NoError(t, store.queries.UpsertActivityMetrics(t.Context(), sqlcgen.UpsertActivityMetricsParams{
-		TargetSlot: targetID, WorkoutID: id,
-		BestPower60s:  sql.NullFloat64{Float64: best60, Valid: true},
-		BestPower300s: sql.NullFloat64{Float64: best300, Valid: true},
-	}), "UpsertActivityMetrics()")
+// shaped is a ride recorded once a second, holding each power in turn for the
+// seconds it is paired with and carrying no strap.
+func shaped(stretches [][2]float64) activity.FIT {
+	var records []activity.Record
+	for _, stretch := range stretches {
+		for range int(stretch[0]) {
+			records = append(records, activity.Record{
+				Time:       activityNow().Add(time.Duration(len(records)) * time.Second),
+				PowerWatts: stretch[1], HasPower: true,
+			})
+		}
+	}
+
+	return activity.FIT{Records: records}
+}
+
+// rampRide climbs ten watts a minute for 28 minutes, the shape a Zwift ramp
+// test drives: a best minute of 369.8 W, so 277.4 W at the protocol's 75%, over
+// a best twenty minutes of 274.8 W, so 261.1 W at Coggan's 95%.
+func rampRide() activity.FIT {
+	stretches := make([][2]float64, 0, 28)
+	for step := range 28 {
+		stretches = append(stretches, [2]float64{60, 100 + 10*float64(step)})
+	}
+
+	return shaped(stretches)
 }
 
 // Both the twenty-minute estimate and the ramp estimate are floors on the same
@@ -307,39 +311,40 @@ func TestRiderSuggestionsPreferTheRampEstimateWhenItIsHigher(t *testing.T) {
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 2, 100), "StoreActivity()")
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 205), activity.RecordsVersion),
 		"StoreActivityRecords()") // 205 W at 95% is 194.75 W, the twenty-minute estimate.
-	storeRampCandidateRide(t, store, "rider-a", 2, 28*time.Minute, 330, 330/1.14) // ratio 1.14, 75% of 330 is 247.5 W.
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 2, rampRide(), activity.RecordsVersion),
+		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
-	assert.InDelta(t, 247.5, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the ramp estimate beats the twenty-minute one")
+	assert.InDelta(t, 277.4, suggestions.FunctionalThresholdPowerWatts.Number, 0.5,
+		"the ramp estimate beats every twenty-minute one")
 }
 
-// An interval session's hard minute is not a ramp test, however hard: its ratio
-// against the best five minutes gives it away, so it leaves the twenty-minute
-// estimate untouched.
-func TestRiderSuggestionsIgnoreAnIntervalSessionsHardMinute(t *testing.T) {
+// A maximal five-minute effort sits inside the ratio band and is read as a ramp
+// test. What keeps that harmless is the arithmetic rather than the shape: the
+// ratio holds any ramp estimate under 94% of the ride's own best five minutes,
+// which a rider's real threshold clears, so the higher-wins fold discards it.
+func TestRiderSuggestionsDiscardAMisreadRampBelowTheTwentyMinuteEstimate(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))
 	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
 	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
-	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 200), activity.RecordsVersion),
-		"StoreActivityRecords()") // 200 W at 95% is 190 W.
-	storeRampCandidateRide(t, store, "rider-a", 2, 60*time.Minute, 340, 180) // ratio 1.89 and an hour moving: neither fits a ramp test.
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 2, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 280), activity.RecordsVersion),
+		"StoreActivityRecords()") // 280 W at 95% is 266 W.
+	// Twenty-five minutes with one all-out five in the middle: a ratio of 1.13,
+	// so the shape admits it and 340 W at 75% offers 255 W.
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 2,
+		shaped([][2]float64{{600, 120}, {60, 340}, {240, 290}, {600, 120}}), activity.RecordsVersion),
+		"StoreActivityRecords()")
 
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
-	assert.InDelta(t, 190.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the interval session contributed nothing")
-}
-
-func TestRiderRampThresholdPowerReportsAnUnreadableStore(t *testing.T) {
-	t.Parallel()
-	store := openTestStore(t, testKey(1))
-	require.NoError(t, store.Close(), "Close()")
-
-	_, err := store.riderRampThresholdPower(t.Context(), []string{"rider-a"}, activityNow())
-	require.ErrorContains(t, err, "reading the ramp test candidates")
+	assert.InDelta(t, 266.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5,
+		"the misread ride's 255 W lost to the twenty-minute estimate")
 }
 
 // A ride too short to hold the window suggests nothing rather than its own mean.

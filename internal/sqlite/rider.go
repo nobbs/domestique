@@ -156,45 +156,8 @@ func (s *Store) RiderSuggestions(
 	}
 	suggestions := accumulateSuggestions(rows)
 	suggestions.Stopping = stopping
-	rampFTP, err := s.riderRampThresholdPower(ctx, targetIDs, since)
-	if err != nil {
-		return rider.Suggestions{}, err
-	}
-	// Both the twenty-minute-power estimate and the ramp estimate are floors,
-	// true only for a rider who actually performed that protocol -- so the
-	// higher of the two is the honest suggestion, whichever test they ran.
-	if rampFTP.Set && (!suggestions.FunctionalThresholdPowerWatts.Set || rampFTP.Number > suggestions.FunctionalThresholdPowerWatts.Number) {
-		suggestions.FunctionalThresholdPowerWatts = rampFTP
-	}
 
 	return suggestions, nil
-}
-
-// riderRampThresholdPower reads the best ramp-test-shaped estimate across the
-// rider's own rides, over the given targets. Absent where no ride was shaped
-// like a ramp test at all.
-func (s *Store) riderRampThresholdPower(ctx context.Context, targetIDs []string, since time.Time) (rider.Value, error) {
-	rows, err := s.queries.ListRiderRampCandidates(ctx, sqlcgen.ListRiderRampCandidatesParams{
-		SinceUnix:   since.Unix(),
-		TargetSlots: targetIDs,
-	})
-	if err != nil {
-		return rider.Value{}, fmt.Errorf("reading the ramp test candidates: %w", err)
-	}
-	var best rider.Value
-	for _, row := range rows {
-		watts, ok := rider.RampThresholdPower(
-			time.Duration(row.MovingSeconds*float64(time.Second)), row.BestPower60s.Float64, row.BestPower300s.Float64,
-		)
-		if !ok {
-			continue
-		}
-		if !best.Set || watts > best.Number {
-			best = rider.Set(watts)
-		}
-	}
-
-	return best, nil
 }
 
 // riderStopping reads the habit off the summaries of the rider's own rides of
@@ -234,12 +197,12 @@ func (s *Store) riderStopping(
 // The rows arrive grouped by target and ride, which is what makes one pass
 // enough.
 //
-// The threshold suggestion is worked out here rather than read off the stored
-// curve, though both are 95% of the same best twenty minutes. A derivation runs
-// only for a rider who has entered something, so a curve is empty for the rider
-// with no profile at all — who is exactly the rider a threshold is suggested
-// to. The two can differ only while a ride's samples are stored and its
-// derivation is still owed.
+// The threshold suggestions are worked out here rather than read off the stored
+// curve, though the twenty-minute one is 95% of the same best twenty minutes. A
+// derivation runs only for a rider who has entered something, so a curve is
+// empty for the rider with no profile at all — who is exactly the rider a
+// threshold is suggested to. The two can differ only while a ride's samples are
+// stored and its derivation is still owed.
 func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Suggestions {
 	suggestions := rider.Suggestions{}
 	var heartRate, power sensorSeries
@@ -253,6 +216,7 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 		// not a figure some share is taken of.
 		heartRate.best(rider.ThresholdHeartRateWindow, &suggestions.ThresholdHeartRateBPM, nil)
 		power.best(rider.ThresholdPowerWindow, &suggestions.FunctionalThresholdPowerWatts, rider.ThresholdPower)
+		power.ramp(&suggestions.FunctionalThresholdPowerWatts)
 		heartRate, power = sensorSeries{}, sensorSeries{}
 	}
 	for index, row := range rows {
@@ -297,6 +261,20 @@ func (s *sensorSeries) best(window time.Duration, into *rider.Value, derive func
 	}
 	if !into.Set || mean > into.Number {
 		*into = rider.Set(mean)
+	}
+}
+
+// ramp keeps the estimate a ride shaped like a ramp test implies. Both it and
+// the twenty-minute estimate are floors on the same number, true only of a
+// rider who actually rode that protocol, so the higher stands whichever test
+// they ran.
+func (s *sensorSeries) ramp(into *rider.Value) {
+	watts, ok := rider.RampThresholdPower(s.times, s.values)
+	if !ok {
+		return
+	}
+	if !into.Set || watts > into.Number {
+		*into = rider.Set(watts)
 	}
 }
 
