@@ -393,8 +393,9 @@ needs cgo and is the one command in this repository that runs with
 release build, the published image, and the container smoke test remain
 `CGO_ENABLED=0` and statically linked, and the normal test command remains
 CGO-free as well. The race check is deferred out of the routine local loop for
-its cost, runs in the same CI job as the normal suite, and sets an explicit
-`-timeout` below that job's own budget, so a hang is given up on by the
+its cost, runs in its own CI job beside the normal suite so neither waits on
+the other, and sets an explicit `-timeout` below that job's own budget, so a
+hang is given up on by the
 toolchain, which prints every goroutine's stack, rather than by the runner,
 which prints nothing.
 
