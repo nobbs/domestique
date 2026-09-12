@@ -75,7 +75,8 @@ sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/
 outputs = { auto = true }
 run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
 
-# wait_for `test`, not depends: running both at once doubles the load on one CI machine.
+# wait_for `test`, not depends: it orders after `test` only when both are in the run,
+# so `check` never runs the two at once on one machine and `ci-test-race` runs alone.
 [test-race]
 description = "Run the Go tests under the race detector"
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
