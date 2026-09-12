@@ -124,6 +124,38 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.Nil(t, plain.Metrics, "and a ride with no row carries none at all")
 }
 
+// Each series' own coverage rides beside the figures it describes, whether or
+// not the figure cleared the withhold threshold — the reader is owed the
+// share a served figure held, not just the pass/fail.
+func TestGetActivitiesCarriesEachSeriesCoverage(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{
+				TRIMP: 42.5, HasTRIMP: true,
+				HeartRateCoverage: 0.92, HasHeartRateCoverage: true,
+				PowerCoverage: 0.15, HasPowerCoverage: true,
+			},
+			Averages: activities.RideAverages{
+				HeartRateBPM: 142.5, HasHeartRate: true,
+			},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 1)
+
+	metrics := list.Activities[0].Metrics
+	require.NotNil(t, metrics)
+	require.NotNil(t, metrics.HeartRateCoverage)
+	assert.InDelta(t, 0.92, *metrics.HeartRateCoverage, 1e-9)
+	require.NotNil(t, metrics.PowerCoverage, "served even for the series that fell below the threshold")
+	assert.InDelta(t, 0.15, *metrics.PowerCoverage, 1e-9)
+	assert.Nil(t, metrics.NormalizedPowerWatts, "the power figure itself is still withheld")
+}
+
 // A ride with a measured average power carries no estimate, and so no
 // pedalling share about one either.
 func TestGetActivitiesCarriesNoPedallingShareWithoutAnEstimate(t *testing.T) {

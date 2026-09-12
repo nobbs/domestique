@@ -275,6 +275,10 @@ type ActivityMetrics struct {
 	NormalizedPowerWatts *float64 `json:"normalizedPowerWatts,omitempty"`
 	IntensityFactor      *float64 `json:"intensityFactor,omitempty"`
 	PowerTss             *float64 `json:"powerTss,omitempty"`
+	// HeartRateCoverage The share of the ride's moving time the heart-rate strap held a reading for, whether or not that cleared the threshold this derivation withholds a figure below. Served beside every heart-rate figure above, and beside averageHeartRateBpm and maxHeartRateBpm below, so a figure served at, say, 92% is still read as most of the ride rather than all of it. See docs/specs/service.md §Recorded activities.
+	HeartRateCoverage *float64 `json:"heartRateCoverage,omitempty"`
+	// PowerCoverage The same share for the power meter, served beside normalizedPowerWatts, intensityFactor, powerTss and averagePowerWatts. Never beside maxPowerWatts: that figure is always the device's own session maximum, not one the recorded series yields, so this series' coverage is not a fact about it. Absent for a ride estimating its power from the track: this describes a meter's own coverage, never the estimate's.
+	PowerCoverage *float64 `json:"powerCoverage,omitempty"`
 	// EstimatedPowerWatts The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track, at the rider's own drag area and rolling resistance where both are entered and a road bicycle's otherwise, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass.
 	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
 	// EstimatedPedallingShare The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
@@ -310,7 +314,7 @@ type ActivityMetrics struct {
 	HeatDrift         *HeatDrift `json:"heatDrift,omitempty"`
 }
 
-// HeatDrift What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, or a rider who has entered no threshold power to place the band with.
+// HeatDrift What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, a rider who has entered no threshold power to place the band with, or a heart-rate, power or temperature series that fell below the same sensor-coverage threshold that withholds the load figures above: the reading is only as trustworthy as the weakest of the three series it is drawn from.
 type HeatDrift struct {
 	// HeartRateBpm The mean heart rate over the ride's samples inside the band.
 	HeartRateBpm float64 `json:"heartRateBpm"`

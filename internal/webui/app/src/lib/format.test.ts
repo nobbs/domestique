@@ -4,6 +4,7 @@ import {
   formatCadence,
   formatClock,
   formatCount,
+  formatCoverage,
   formatDescent,
   formatDistance,
   formatDuration,
@@ -312,5 +313,43 @@ describe("formatSpeed", () => {
 
   it("reports one decimal of kilometres per hour", () => {
     expect(formatSpeed(28.04)).toBe("28.0 km/h");
+  });
+});
+
+describe("formatCoverage", () => {
+  it("says nothing for a series that held the whole ride, or none at all", () => {
+    expect(formatCoverage(1)).toBeUndefined();
+    expect(formatCoverage(undefined)).toBeUndefined();
+  });
+
+  it("floors a partial share rather than rounding it up to 100%", () => {
+    expect(formatCoverage(0.996)).toBe("99% sensor coverage");
+  });
+
+  // 1044/3600 is exactly 29% but binary floating point stores the product as
+  // 28.999999999999996; a bare floor would understate an exact share.
+  it("does not understate an exact percentage lost to floating-point representation", () => {
+    expect(formatCoverage(1044 / 3600)).toBe("29% sensor coverage");
+  });
+
+  // The same correction that fixes the case above must not overreach: a
+  // share genuinely a whole percent below an integer sits far further from
+  // it than binary floating point's own representation error does, and must
+  // keep its own floor rather than being nudged up to that integer.
+  it("does not round a genuinely partial share up to the nearest percent", () => {
+    expect(formatCoverage(0.009999999999)).toBe("0% sensor coverage");
+  });
+
+  // The correction can itself push a share a hair under 1 past 100 after the
+  // floor; the result must still never claim full coverage for a value this
+  // function was already told is partial.
+  it("never prints 100% for a coverage share below 1", () => {
+    expect(formatCoverage(0.999999999999)).toBe("99% sensor coverage");
+  });
+
+  // The server always bounds coverage to [0, 1], but the caption holds its
+  // own floor too rather than trusting that guarantee never to lapse.
+  it("never prints a negative percentage", () => {
+    expect(formatCoverage(-0.5)).toBe("0% sensor coverage");
   });
 });

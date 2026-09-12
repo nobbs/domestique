@@ -19,17 +19,21 @@ import (
 func derivedMetrics(inputs trainingload.Inputs, coefficients measure.Coefficients) activity.RideMetrics {
 	return activity.RideMetrics{
 		Load: trainingload.Metrics{
-			Inputs:              inputs,
-			Zones:               trainingload.Zones{60, 120, 180, 240, 300},
-			HasZones:            true,
-			TRIMP:               42.5,
-			HasTRIMP:            true,
-			HeartRateTSS:        88.25,
-			HasHeartRateTSS:     true,
-			Power:               trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
-			HasPower:            true,
-			EstimatedPowerWatts: 168.5,
-			HasEstimatedPower:   true,
+			Inputs:               inputs,
+			Zones:                trainingload.Zones{60, 120, 180, 240, 300},
+			HasZones:             true,
+			TRIMP:                42.5,
+			HasTRIMP:             true,
+			HeartRateTSS:         88.25,
+			HasHeartRateTSS:      true,
+			Power:                trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
+			HasPower:             true,
+			EstimatedPowerWatts:  168.5,
+			HasEstimatedPower:    true,
+			HeartRateCoverage:    0.97,
+			HasHeartRateCoverage: true,
+			PowerCoverage:        0.94,
+			HasPowerCoverage:     true,
 		},
 		Averages: activity.RideAverages{
 			HeartRateBPM: 142.5, MaxHeartRateBPM: 178, HasHeartRate: true,
@@ -84,6 +88,9 @@ func TestActivityMetricsRoundTrip(t *testing.T) {
 	assert.InDelta(t, stored.Load.EstimatedPowerWatts, read[1].Load.EstimatedPowerWatts, 1e-9)
 	assert.True(t, read[1].Load.HasZones && read[1].Load.HasTRIMP && read[1].Load.HasHeartRateTSS && read[1].Load.HasPower)
 	assert.True(t, read[1].Load.HasEstimatedPower, "the ride's average estimate")
+	require.True(t, read[1].Load.HasHeartRateCoverage && read[1].Load.HasPowerCoverage)
+	assert.InDelta(t, stored.Load.HeartRateCoverage, read[1].Load.HeartRateCoverage, 1e-9)
+	assert.InDelta(t, stored.Load.PowerCoverage, read[1].Load.PowerCoverage, 1e-9)
 	assert.Equal(t, stored.Averages, read[1].Averages, "and the plain sensor figures beside them")
 	assert.InDelta(t, stored.EstimatedPedallingShare, read[1].EstimatedPedallingShare, 1e-9)
 	// The two rates the zones were cut at come back, so the page can say what
@@ -111,6 +118,7 @@ func TestActivityMetricsKeepEachPartAbsentOnItsOwn(t *testing.T) {
 	assert.False(t, read[1].Averages.HasCadence, "nor a cadence sensor")
 	assert.False(t, read[1].Load.HasEstimatedPower, "nor an estimate")
 	assert.Zero(t, read[1].EstimatedPedallingShare, "no estimate, no share")
+	assert.False(t, read[1].Load.HasHeartRateCoverage || read[1].Load.HasPowerCoverage, "nor a coverage share for either series")
 }
 
 // A row written before migration 057 holds an estimate but no share: it must
@@ -311,6 +319,24 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 
 // An unpaired strap writes nought, and nought is no heart rate: it must not
 // enter the series as a reading a rider never took.
+// A record carrying only a temperature reading -- no heart rate, power,
+// cadence, speed or distance -- must still reach the temperature series: the
+// query's own filter is a sensor test, and temperature is one, even alone.
+func TestActivityRideSamplesKeepsARecordWithOnlyATemperatureReading(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), TemperatureCelsius: 18, HasTemperatureCelsius: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Temperature, 1, "the record's only reading must not be filtered out")
+	assert.InDelta(t, 18.0, samples.Temperature[0].Value, 1e-9)
+}
+
 func TestActivityRideSamplesLeavesOutAZeroHeartRate(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
@@ -384,6 +410,29 @@ func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing
 	require.Len(t, samples.Speed, 1, "the rate names the step it ends, not the one it starts")
 	assert.Equal(t, activityNow().Add(time.Second), samples.Speed[0].At)
 	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9)
+}
+
+// A record between two distance readings that carries no distance of its own
+// -- a temperature-only one, say -- must not become the step the next
+// distance reading is measured from: that would turn every distance sample
+// after it into a dropped one rather than a step from the last real reading.
+func TestActivityRideSamplesSkipsADistancelessRowWhenBuildingTheOdometerStep(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), TemperatureCelsius: 18, HasTemperatureCelsius: true},
+			{Time: activityNow().Add(2 * time.Second), DistanceMetres: 20, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 1,
+		"the distance step across the temperature-only record must still be measured")
+	assert.Equal(t, activityNow().Add(2*time.Second), samples.Speed[0].At)
+	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9, "20 m over the full two seconds")
 }
 
 // A single implausible spike — a clock or odometer hiccup, not a rider — is

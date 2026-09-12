@@ -285,3 +285,36 @@ export function formatSpeed(kmh: number | null | undefined): string {
 
   return `${kmh.toFixed(1)} km/h`;
 }
+
+/**
+ * "92% sensor coverage" for a series that held less than the whole ride,
+ * `undefined` for one that held all of it. Floored rather than rounded: a
+ * share of 99.6% is still not the whole ride, and rounding it to "100%"
+ * would print the one word this caption exists to rule out.
+ *
+ * A share that is a whole percent is only ever off by binary floating
+ * point's own precision: 1044/3600 is exactly 29% but stores as
+ * 28.999999999999996. A share genuinely a whole percent *below* an integer
+ * (0.009999999999, meant to read as 0%) sits much further from it than that
+ * — so only a scaled value within COVERAGE_INTEGER_EPSILON of its nearest
+ * integer is treated as that integer; anything further is floored as-is.
+ * Both branches are then clamped to 0-99: the server already bounds
+ * `coverage` to [0, 1], but the caption itself must never print "100%" for a
+ * value already told it is not the whole ride, nor a negative percentage if
+ * that guarantee were ever to lapse.
+ */
+const COVERAGE_INTEGER_EPSILON = 1e-11;
+
+export function formatCoverage(coverage: number | undefined): string | undefined {
+  if (coverage === undefined || coverage >= 1) {
+    return undefined;
+  }
+  const scaled = coverage * 100;
+  const nearestInteger = Math.round(scaled);
+  const percent =
+    Math.abs(scaled - nearestInteger) < COVERAGE_INTEGER_EPSILON
+      ? nearestInteger
+      : Math.floor(scaled);
+
+  return `${Math.min(Math.max(percent, 0), 99)}% sensor coverage`;
+}

@@ -298,6 +298,30 @@ func TestDeriveWithholdsThePowerFiguresBelowMinSeriesCoverage(t *testing.T) {
 	assert.True(t, full.HasPower)
 }
 
+// The coverage share is served beside a figure whether or not it cleared the
+// threshold: a served figure at 92% is still not the whole ride, and a
+// withheld one carries the share a reader would use to judge how close it
+// came, not just the fact that it fell short.
+func TestDeriveKeepsCoverageAlongsideBothServedAndWithheldFigures(t *testing.T) {
+	t.Parallel()
+	inputs := trainingload.Inputs{
+		MaxHeartRateBPM: 190, RestingHeartRateBPM: 50,
+		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
+	}
+
+	served := trainingload.Derive(steady(3601, 150), steady(3601, 200), 3600, inputs)
+	require.True(t, served.HasHeartRateCoverage && served.HasPowerCoverage)
+	assert.InDelta(t, 1.0, served.HeartRateCoverage, 0.001)
+	assert.InDelta(t, 1.0, served.PowerCoverage, 0.001)
+
+	withheld := trainingload.Derive(steady(600, 150), steady(600, 200), 3600, inputs)
+	require.True(t, withheld.HasHeartRateCoverage && withheld.HasPowerCoverage)
+	assert.False(t, withheld.HasTRIMP, "the withheld figure is still gone")
+	assert.InDelta(t, 600.0/3600.0, withheld.HeartRateCoverage, 0.001,
+		"but the share it fell short at is still reported")
+	assert.InDelta(t, 600.0/3600.0, withheld.PowerCoverage, 0.001)
+}
+
 // Without a moving time to judge coverage against, today's behaviour holds:
 // nothing is withheld that the sensors and profile would otherwise allow.
 func TestDeriveWithholdsNothingWhenMovingSecondsIsUnknown(t *testing.T) {
@@ -307,6 +331,8 @@ func TestDeriveWithholdsNothingWhenMovingSecondsIsUnknown(t *testing.T) {
 		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
 	})
 	assert.True(t, full.HasZones && full.HasTRIMP && full.HasHeartRateTSS && full.HasPower)
+	assert.False(t, full.HasHeartRateCoverage || full.HasPowerCoverage,
+		"nothing to share a coverage of without a moving time")
 }
 
 func TestInputsOfReadsTheFourParametersADerivationUses(t *testing.T) {

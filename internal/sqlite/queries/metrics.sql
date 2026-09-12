@@ -3,13 +3,14 @@ INSERT INTO activity_metrics (
   target_slot, workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
+  heart_rate_coverage, power_coverage,
   estimated_power_watts, estimated_pedalling_share,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
   decoupling_percent, heat_drift_heart_rate_bpm, heat_drift_temperature_celsius, heat_drift_samples,
   best_power_5s, best_power_30s, best_power_60s, best_power_300s, best_power_1200s, best_power_3600s,
   input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
   input_total_mass, input_drag_area, input_rolling_resistance, derivation_version, computed_at_unix
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   zone_1_seconds = excluded.zone_1_seconds,
   zone_2_seconds = excluded.zone_2_seconds,
@@ -21,6 +22,8 @@ ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   normalized_power_watts = excluded.normalized_power_watts,
   intensity_factor = excluded.intensity_factor,
   power_tss = excluded.power_tss,
+  heart_rate_coverage = excluded.heart_rate_coverage,
+  power_coverage = excluded.power_coverage,
   estimated_power_watts = excluded.estimated_power_watts,
   estimated_pedalling_share = excluded.estimated_pedalling_share,
   average_heart_rate_bpm = excluded.average_heart_rate_bpm,
@@ -61,6 +64,7 @@ DELETE FROM activity_metrics WHERE target_slot = ?;
 SELECT workout_id,
   zone_1_seconds, zone_2_seconds, zone_3_seconds, zone_4_seconds, zone_5_seconds,
   trimp, heart_rate_tss, normalized_power_watts, intensity_factor, power_tss,
+  heart_rate_coverage, power_coverage,
   estimated_power_watts, estimated_pedalling_share,
   input_max_heart_rate, input_threshold_heart_rate, input_drag_area, input_rolling_resistance,
   average_heart_rate_bpm, max_heart_rate_bpm, average_cadence_rpm, average_power_watts, max_speed_kmh,
@@ -109,7 +113,8 @@ WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
     OR cadence_rpm IS NOT NULL
     OR power_watts IS NOT NULL
     OR speed_ms IS NOT NULL
-    OR distance_metres IS NOT NULL)
+    OR distance_metres IS NOT NULL
+    OR temperature_celsius IS NOT NULL)
 ORDER BY record_index;
 
 -- name: GetTargetOwner :one

@@ -635,6 +635,107 @@ func TestDeriveWithholdsHeartRateLoadBelowMinSeriesCoverage(t *testing.T) {
 	assert.False(t, load.HasHeartRateTSS)
 }
 
+// Heat drift needs enough samples inside the endurance band, not enough of
+// the ride: a strap that covered a sixth of the ride's moving time can still
+// leave 600 in-band samples, well past heatDriftMinimumSamples, so a reading
+// that ignored the strap's overall coverage would come out Known regardless.
+// It is withheld the same way TRIMP and hrTSS are.
+func TestDeriveWithholdsHeatDriftBelowMinSeriesCoverage(t *testing.T) {
+	t.Parallel()
+	const seconds = 3600
+	inBand := func(second int) bool { return second < seconds/2 }
+	power := series(seconds, func(second int) float64 {
+		if inBand(second) {
+			return 160
+		}
+
+		return 240
+	})
+	temperature := series(seconds, func(second int) float64 {
+		if inBand(second) {
+			return 28
+		}
+
+		return 34
+	})
+	heartRate := series(seconds, func(second int) float64 {
+		if inBand(second) {
+			return 138
+		}
+
+		return 172
+	})[:600]
+	store := &fakeDeriveStore{
+		owner: "rider-a",
+		profile: rider.Profile{
+			MaxHeartRateBPM: rider.Set(190), RestingHeartRateBPM: rider.Set(48),
+			ThresholdHeartRateBPM:         rider.Set(170),
+			FunctionalThresholdPowerWatts: rider.Set(250),
+		},
+		owed: []int64{7},
+		rides: map[int64]activity.RideSamples{
+			7: {Power: power, HeartRate: heartRate, Temperature: temperature},
+		},
+		movingSeconds: map[int64]float64{7: seconds},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+
+	assert.False(t, store.written[7].HeatDrift.Known,
+		"600 of 3600 seconds of strap is well under MinSeriesCoverage")
+}
+
+// Full heart-rate and power coverage says nothing about the thermometer: 600
+// temperature samples, all inside the endurance band, still satisfy
+// heatDriftMinimumSamples and would read as Known even though the sensor
+// covered a sixth of the ride's own moving time.
+func TestDeriveWithholdsHeatDriftBelowMinTemperatureCoverage(t *testing.T) {
+	t.Parallel()
+	const seconds = 3600
+	inBand := func(second int) bool { return second < seconds/2 }
+	power := series(seconds, func(second int) float64 {
+		if inBand(second) {
+			return 160
+		}
+
+		return 240
+	})
+	heartRate := series(seconds, func(second int) float64 {
+		if inBand(second) {
+			return 138
+		}
+
+		return 172
+	})
+	temperature := series(seconds, flat(28))[:600]
+	store := &fakeDeriveStore{
+		owner: "rider-a",
+		profile: rider.Profile{
+			MaxHeartRateBPM: rider.Set(190), RestingHeartRateBPM: rider.Set(48),
+			ThresholdHeartRateBPM:         rider.Set(170),
+			FunctionalThresholdPowerWatts: rider.Set(250),
+		},
+		owed: []int64{7},
+		rides: map[int64]activity.RideSamples{
+			7: {Power: power, HeartRate: heartRate, Temperature: temperature},
+		},
+		movingSeconds: map[int64]float64{7: seconds},
+	}
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	require.Equal(t, activity.Polled, deriver.Derive(t.Context(), "rider-a").Outcome)
+
+	written := store.written[7]
+	require.True(t, written.Load.HasHeartRateCoverage && written.Load.HasPowerCoverage)
+	assert.InDelta(t, 1.0, written.Load.HeartRateCoverage, 0.001, "the strap held the whole ride")
+	assert.InDelta(t, 1.0, written.Load.PowerCoverage, 0.001, "so did the meter")
+	assert.False(t, written.HeatDrift.Known,
+		"600 of 3600 seconds of thermometer is well under MinSeriesCoverage")
+}
+
 func TestNewDeriverNeedsAStore(t *testing.T) {
 	t.Parallel()
 	_, err := activity.NewDeriver(nil, nil, nil, indoorWorkoutTypes(), nil)

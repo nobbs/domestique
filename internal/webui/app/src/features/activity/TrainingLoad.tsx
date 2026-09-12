@@ -14,7 +14,7 @@
 import type { ReactNode } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { Separator } from "../../components/ui/separator";
-import { formatDuration } from "../../lib/format";
+import { formatCoverage, formatDuration } from "../../lib/format";
 
 /** The five zones, easiest first, as a rider reading a training app knows them. */
 const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
@@ -25,18 +25,24 @@ export interface Scale {
   scale: string;
   value: number | undefined;
   decimals?: number;
+  /** The series' own share of the ride's moving time it held a reading for. Shown only below 100%: a full series has nothing to add. */
+  coverage?: number | undefined;
 }
 
-export function Figure({ label, scale, value, decimals = 0 }: Scale) {
+export function Figure({ label, scale, value, decimals = 0, coverage }: Scale) {
   if (value === undefined) {
     return null;
   }
+  const coverageNote = formatCoverage(coverage);
 
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-[var(--ink-2)] text-xs">{label}</span>
       <span className="font-semibold text-lg tabular-nums">{value.toFixed(decimals)}</span>
       <span className="text-[var(--ink-2)] text-xs">{scale}</span>
+      {coverageNote ? (
+        <span className="text-[10px] text-[var(--ink-2)] opacity-70">{coverageNote}</span>
+      ) : null}
     </div>
   );
 }
@@ -68,21 +74,40 @@ function zoneColour(zone: number): string {
   return `var(--grade-${zone})`;
 }
 
+/**
+ * The worse of two series' coverage, for a figure built from both — decoupling
+ * and heat drift each need measured power and heart rate together, so either
+ * one falling short makes the figure no more trustworthy than its weaker half.
+ */
+function combinedCoverage(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined) {
+    return b;
+  }
+  if (b === undefined) {
+    return a;
+  }
+
+  return Math.min(a, b);
+}
+
 /** One bar, five segments: the ride's time as a whole, each zone its share of it. */
 function ZoneStack({
   zoneSeconds,
   zoneBounds,
   deviceZoneSeconds,
+  coverage,
 }: {
   zoneSeconds: number[];
   zoneBounds: number[] | undefined;
   deviceZoneSeconds: number[] | undefined;
+  coverage: number | undefined;
 }) {
   const total = zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
   if (total <= 0) {
     return null;
   }
   const ranges = zoneBounds ? zoneRanges(zoneBounds) : [];
+  const coverageNote = formatCoverage(coverage);
 
   return (
     <div className="flex flex-col gap-3">
@@ -122,6 +147,9 @@ function ZoneStack({
           Device zones: {deviceZoneSeconds.map((seconds) => formatDuration(seconds)).join(" · ")}
         </p>
       ) : null}
+      {coverageNote ? (
+        <p className="text-[10px] text-[var(--ink-2)] opacity-70">{coverageNote}</p>
+      ) : null}
     </div>
   );
 }
@@ -156,8 +184,18 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   const sensors: Scale[] = [
     { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride, metrics), decimals: 1 },
     { label: "Max speed", scale: "km/h", value: metrics?.maxSpeedKmh, decimals: 1 },
-    { label: "Heart rate", scale: "bpm average", value: metrics?.averageHeartRateBpm },
-    { label: "Max heart rate", scale: "bpm", value: metrics?.maxHeartRateBpm },
+    {
+      label: "Heart rate",
+      scale: "bpm average",
+      value: metrics?.averageHeartRateBpm,
+      coverage: metrics?.heartRateCoverage,
+    },
+    {
+      label: "Max heart rate",
+      scale: "bpm",
+      value: metrics?.maxHeartRateBpm,
+      coverage: metrics?.heartRateCoverage,
+    },
     { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
     { label: "Max cadence", scale: "rpm", value: metrics?.maxCadenceRpm },
   ].filter((figure) => figure.value !== undefined);
@@ -166,7 +204,12 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   // the label carries the estimate's provenance so it cannot read as a reading.
   const power: Scale | undefined =
     metrics?.averagePowerWatts !== undefined
-      ? { label: "Power", scale: "watts average", value: metrics.averagePowerWatts }
+      ? {
+          label: "Power",
+          scale: "watts average",
+          value: metrics.averagePowerWatts,
+          coverage: metrics.powerCoverage,
+        }
       : metrics?.estimatedPowerWatts !== undefined
         ? {
             label: "Estimated power",
@@ -179,6 +222,10 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
         : undefined;
 
   const devicePower: Scale[] = [
+    // No coverage mark: this is the device's own session maximum, never a
+    // figure our own power series produces, so our series' coverage is not
+    // a fact about it -- unlike the average beside it, which the series
+    // itself yields whenever the session declares none.
     { label: "Max power", scale: "watts", value: metrics?.maxPowerWatts },
     {
       label: "Threshold power",
@@ -189,26 +236,59 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
 
   const normalizedPower: Scale | undefined =
     metrics?.normalizedPowerWatts !== undefined
-      ? { label: "Normalized power", scale: "watts", value: metrics.normalizedPowerWatts }
+      ? {
+          label: "Normalized power",
+          scale: "watts",
+          value: metrics.normalizedPowerWatts,
+          coverage: metrics.powerCoverage,
+        }
       : undefined;
 
   const load: Scale[] = [
-    { label: "Intensity", scale: "of threshold", value: metrics?.intensityFactor, decimals: 2 },
-    { label: "TSS", scale: "power", value: metrics?.powerTss },
-    { label: "hrTSS", scale: "heart rate", value: metrics?.heartRateTss },
-    { label: "TRIMP", scale: "Banister", value: metrics?.trimp },
+    {
+      label: "Intensity",
+      scale: "of threshold",
+      value: metrics?.intensityFactor,
+      decimals: 2,
+      coverage: metrics?.powerCoverage,
+    },
+    { label: "TSS", scale: "power", value: metrics?.powerTss, coverage: metrics?.powerCoverage },
+    {
+      label: "hrTSS",
+      scale: "heart rate",
+      value: metrics?.heartRateTss,
+      coverage: metrics?.heartRateCoverage,
+    },
+    {
+      label: "TRIMP",
+      scale: "Banister",
+      value: metrics?.trimp,
+      coverage: metrics?.heartRateCoverage,
+    },
   ].filter((figure) => figure.value !== undefined);
 
   // Positive is the usual direction, and the scale says so: the reader is
   // told what the number measures rather than sold what it means. The pair is
   // one figure and its condition: the beats, at the degrees they were held
   // at. One ride is a point, not a trend.
+  //
+  // Both figures are built from measured power and heart rate; the worse of
+  // the two series' own coverage marks either -- fully describing decoupling,
+  // which needs no other series. Heat drift also needs a temperature reading
+  // this service tracks no coverage share for, so the service withholds it
+  // below the same threshold that withholds the load figures above
+  // (docs/specs/service.md) rather than mark it with a share that would
+  // understate what the untracked series could be missing; heat drift's own
+  // mark below only ever describes the heart-rate/power share of a ride
+  // that already cleared that floor.
+  const physiologyCoverage = combinedCoverage(metrics?.heartRateCoverage, metrics?.powerCoverage);
   const physiology: Scale[] = [
     {
       label: "Decoupling",
       scale: "% of ratio lost over the second half",
       value: metrics?.decouplingPercent,
       decimals: 1,
+      coverage: physiologyCoverage,
     },
     {
       label: "Heat drift",
@@ -217,6 +297,7 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
           ? ""
           : `bpm in the endurance band at ${Math.round(metrics.heatDrift.temperatureCelsius)} °C`,
       value: metrics?.heatDrift?.heartRateBpm,
+      coverage: physiologyCoverage,
     },
   ].filter((figure) => figure.value !== undefined);
 
@@ -315,6 +396,7 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
             zoneSeconds={zones}
             zoneBounds={metrics?.zoneBoundsBpm}
             deviceZoneSeconds={metrics?.deviceZoneSeconds}
+            coverage={metrics?.heartRateCoverage}
           />
         ) : null}
         {sections.length > 0 ? <GroupList groups={sections} /> : null}

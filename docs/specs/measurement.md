@@ -500,6 +500,13 @@ samples** must fall inside it, so a ride that merely passed through the band is
 not a reading of it. Absent without a threshold power to place the band, without
 measured power, without a thermometer, or below that sample count.
 
+Enough in-band samples can still come from a series that covered only a
+fraction of the ride's moving time: a reading is also withheld when the
+heart-rate, power or temperature series behind it fell below
+`trainingload.MinSeriesCoverage` (§Recorded activities), the same threshold
+that withholds TRIMP, hrTSS and the power figures — otherwise that fraction
+would be presented as a ride-wide reading.
+
 Heart rate and temperature are paired by the second each was recorded at, which
 is the resolution the records are stored at and so the only basis on which two
 sensors are known to describe the same moment.

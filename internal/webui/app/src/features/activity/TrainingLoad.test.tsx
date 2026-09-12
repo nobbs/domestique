@@ -239,6 +239,34 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Heat drift")).toBeNull();
   });
 
+  // Both figures are built from measured power and heart rate, so either
+  // series falling short makes either no more trustworthy than its weaker
+  // half. The service withholds heat drift below the same threshold that
+  // withholds the load figures above (it also needs an untracked temperature
+  // reading), so whenever the client is given one at all, marking it with
+  // the same combined share as decoupling is honest about what it does know.
+  it("marks decoupling and heat drift with the worse of the two series' coverage", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+      heartRateCoverage: 0.95,
+      powerCoverage: 0.8,
+    });
+
+    expect(screen.getAllByText("80% sensor coverage")).toHaveLength(2);
+  });
+
+  it("leaves decoupling and heat drift unmarked when both series covered the whole ride", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+      heartRateCoverage: 1,
+      powerCoverage: 1,
+    });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
   it("uses the server's average speed over the ride's own totals when it is given", () => {
     show({ averageSpeedKmh: 28.6 });
 
@@ -282,5 +310,71 @@ describe("TrainingLoad", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300], deviceZoneSeconds: [] });
 
     expect(screen.queryByText(/Device zones:/)).not.toBeInTheDocument();
+  });
+
+  // A figure served above the withhold threshold still held less than the
+  // whole ride, and the reader is owed the share, not just the pass/fail.
+  it("marks a heart-rate figure served below full coverage", () => {
+    show({ averageHeartRateBpm: 124.6, heartRateCoverage: 0.92, trimp: 42.4 });
+
+    expect(screen.getAllByText("92% sensor coverage")).toHaveLength(2);
+  });
+
+  it("marks a power figure served below full coverage", () => {
+    show({
+      averagePowerWatts: 196.2,
+      powerCoverage: 0.85,
+      normalizedPowerWatts: 214,
+      powerTss: 73.2,
+    });
+
+    expect(screen.getAllByText("85% sensor coverage")).toHaveLength(3);
+  });
+
+  // Max power is always the device's own session maximum -- the recorded
+  // series never yields one of its own -- so the meter's coverage is not a
+  // fact about this particular figure, unlike the average beside it.
+  it("leaves the device's own max power unmarked by the meter's coverage", () => {
+    show({ averagePowerWatts: 196.2, powerCoverage: 0.85, maxPowerWatts: 612 });
+
+    expect(screen.getByText("Max power")).toBeInTheDocument();
+    expect(screen.getByText("612")).toBeInTheDocument();
+    expect(screen.getAllByText("85% sensor coverage")).toHaveLength(1);
+  });
+
+  it("leaves out the coverage mark at full coverage", () => {
+    show({ averageHeartRateBpm: 142.4, heartRateCoverage: 1 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
+  it("leaves the estimate's own figure unmarked by the meter's coverage", () => {
+    show({ estimatedPowerWatts: 187.4, powerCoverage: 0.5 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
+  // A share of 99.6% is still not the whole ride: rounding it to "100%" would
+  // print the one word this caption exists to rule out.
+  it("floors the coverage share rather than rounding it up to 100%", () => {
+    show({ averageHeartRateBpm: 142.4, heartRateCoverage: 0.996 });
+
+    expect(screen.getByText("99% sensor coverage")).toBeInTheDocument();
+    expect(screen.queryByText("100% sensor coverage")).not.toBeInTheDocument();
+  });
+
+  // Zones are withheld below the threshold, but a served zone bar can still
+  // hold less than the whole ride, and is owed the same mark every other
+  // heart-rate figure gets.
+  it("marks the zone bar with the heart-rate coverage it was served at", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 0.93 });
+
+    expect(screen.getByText("93% sensor coverage")).toBeInTheDocument();
+  });
+
+  it("leaves the zone bar unmarked at full coverage", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 1 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
   });
 });

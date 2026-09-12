@@ -57,11 +57,20 @@ type Metrics struct {
 	// with no meter. It is never an input to anything above: an estimate must
 	// not become a measurement by being averaged into one.
 	EstimatedPowerWatts float64
-	HasZones            bool
-	HasTRIMP            bool
-	HasHeartRateTSS     bool
-	HasPower            bool
-	HasEstimatedPower   bool
+	// HeartRateCoverage and PowerCoverage are each series' own SeriesCoverage,
+	// kept beside the figures they describe rather than only spent on the
+	// withhold decision: a figure served above MinSeriesCoverage still holds
+	// less than the whole ride, and a reader of it is owed the share, not just
+	// the pass/fail.
+	HeartRateCoverage    float64
+	PowerCoverage        float64
+	HasZones             bool
+	HasTRIMP             bool
+	HasHeartRateTSS      bool
+	HasPower             bool
+	HasEstimatedPower    bool
+	HasHeartRateCoverage bool
+	HasPowerCoverage     bool
 }
 
 // Derived reports whether anything at all came out, which is what decides
@@ -89,15 +98,21 @@ func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Met
 	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
 
-	if coverage, ok := SeriesCoverage(heartRate, movingSeconds); ok && coverage < MinSeriesCoverage {
-		// Zones is cleared alongside its flag: LoadOf reads it unconditionally,
-		// and a populated-but-disowned value would still reach Timeline and
-		// ZonesByWeek as if this ride's coverage had been enough.
-		metrics.Zones = Zones{}
-		metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
+	if coverage, ok := SeriesCoverage(heartRate, movingSeconds); ok {
+		metrics.HeartRateCoverage, metrics.HasHeartRateCoverage = coverage, true
+		if coverage < MinSeriesCoverage {
+			// Zones is cleared alongside its flag: LoadOf reads it unconditionally,
+			// and a populated-but-disowned value would still reach Timeline and
+			// ZonesByWeek as if this ride's coverage had been enough.
+			metrics.Zones = Zones{}
+			metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
+		}
 	}
-	if coverage, ok := SeriesCoverage(power, movingSeconds); ok && coverage < MinSeriesCoverage {
-		metrics.HasPower = false
+	if coverage, ok := SeriesCoverage(power, movingSeconds); ok {
+		metrics.PowerCoverage, metrics.HasPowerCoverage = coverage, true
+		if coverage < MinSeriesCoverage {
+			metrics.HasPower = false
+		}
 	}
 
 	return metrics

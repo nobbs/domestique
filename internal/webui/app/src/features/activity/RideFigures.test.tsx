@@ -56,6 +56,30 @@ describe("RideFigures", () => {
     expect(screen.getByText("TRIMP")).toBeInTheDocument();
   });
 
+  // The headline figure is the most prominent number on the page, and the one
+  // most likely to be read on its own — it is owed the coverage share too.
+  it("appends the coverage share to the headline load figure's note", () => {
+    const { rerender } = render(
+      <RideFigures ride={ride({ powerTss: 91.4, intensityFactor: 0.74, powerCoverage: 0.85 })} />,
+    );
+    expect(screen.getByText("0.74 of threshold · 85% sensor coverage")).toBeInTheDocument();
+
+    rerender(<RideFigures ride={ride({ heartRateTss: 73.2, heartRateCoverage: 0.92 })} />);
+    expect(screen.getByText("92% sensor coverage")).toBeInTheDocument();
+
+    rerender(<RideFigures ride={ride({ trimp: 130.4, heartRateCoverage: 0.6 })} />);
+    expect(screen.getByText("60% sensor coverage")).toBeInTheDocument();
+  });
+
+  it("leaves the headline figure's note unmarked at full coverage", () => {
+    render(
+      <RideFigures ride={ride({ powerTss: 91.4, intensityFactor: 0.74, powerCoverage: 1 })} />,
+    );
+
+    expect(screen.getByText("0.74 of threshold")).toBeInTheDocument();
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
   // A ride whose recorded file was never readable still has its totals.
   it("shows three figures for a ride with no derived metrics", () => {
     render(<RideFigures ride={ride(undefined)} />);
