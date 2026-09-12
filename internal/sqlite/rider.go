@@ -209,10 +209,6 @@ func (s *Store) riderStopping(
 func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Suggestions {
 	suggestions := rider.Suggestions{}
 	var heartRate, power sensorSeries
-	// The power estimates are held a ride at a time rather than folded as they
-	// come, because a ramp reading is judged against the rider's other rides
-	// and cannot be settled until every ride has been read.
-	var efforts []rideEffort
 	var ride struct {
 		targetSlot string
 		workoutID  int64
@@ -222,14 +218,8 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 		// Unscaled: the heart rate over that window is itself the LTHR estimate,
 		// not a figure some share is taken of.
 		heartRate.best(rider.ThresholdHeartRateWindow, &suggestions.ThresholdHeartRateBPM, nil)
-		effort := rideEffort{}
-		power.best(rider.ThresholdPowerWindow, &effort.bestTwentyMinutePower, nil)
-		if watts, ok := rider.RampThresholdPower(power.times, power.values); ok {
-			effort.rampThresholdWatts = rider.Set(watts)
-		}
-		if effort.bestTwentyMinutePower.Set || effort.rampThresholdWatts.Set {
-			efforts = append(efforts, effort)
-		}
+		power.best(rider.ThresholdPowerWindow, &suggestions.FunctionalThresholdPowerWatts, rider.ThresholdPower)
+		power.ramp(&suggestions.FunctionalThresholdPowerWatts)
 		heartRate, power = sensorSeries{}, sensorSeries{}
 	}
 	for index, row := range rows {
@@ -242,61 +232,8 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 		power.add(at, row.PowerWatts)
 	}
 	closeRide()
-	suggestions.FunctionalThresholdPowerWatts = thresholdPowerFrom(efforts)
 
 	return suggestions
-}
-
-// rideEffort is what one ride says about threshold power: the twenty minutes it
-// sustained, and the estimate it offers if it was shaped like a ramp test.
-type rideEffort struct {
-	bestTwentyMinutePower rider.Value
-	rampThresholdWatts    rider.Value
-}
-
-// thresholdPowerFrom settles the threshold power the rides suggest. Both
-// estimates are floors on the same number, true only of a rider who performed
-// that protocol, so the higher stands whichever test they ran.
-//
-// A ramp reading stands only where another ride supplies a twenty for it to be
-// read beside, and that ride must not be ramp-shaped itself. The reading is a
-// claim that this ride was maximal, and neither the ride making the claim nor
-// another ride making the same one can corroborate it: an easy ride whose
-// hardest minute merely sits near its hardest five clears the shape, and a
-// corpus of nothing but such rides would otherwise authorise itself. Judged
-// against a twenty the rider plainly sustained, an easy ride loses. A rider
-// with no such ride recorded keeps the twenty-minute estimate rather than a
-// claim nothing corroborates.
-func thresholdPowerFrom(efforts []rideEffort) rider.Value {
-	best, witnesses := rider.Value{}, 0
-	for _, effort := range efforts {
-		if !effort.bestTwentyMinutePower.Set {
-			continue
-		}
-		if watts := rider.ThresholdPower(effort.bestTwentyMinutePower.Number); !best.Set || watts > best.Number {
-			best = rider.Set(watts)
-		}
-		// A ride making the same claim cannot corroborate it. Two easy rides
-		// that both clear the loose shape would otherwise witness each other,
-		// and a corpus of nothing but easy rides would authorise itself.
-		if effort.rampThresholdWatts.Set {
-			continue
-		}
-		witnesses++
-	}
-	if witnesses == 0 {
-		return best
-	}
-	for _, effort := range efforts {
-		if !effort.rampThresholdWatts.Set {
-			continue
-		}
-		if !best.Set || effort.rampThresholdWatts.Number > best.Number {
-			best = rider.Set(effort.rampThresholdWatts.Number)
-		}
-	}
-
-	return best
 }
 
 // beating drops a heart rate that is not one. An unpaired strap writes nought,
@@ -339,6 +276,20 @@ func (s *sensorSeries) best(window time.Duration, into *rider.Value, derive func
 	}
 	if !into.Set || mean > into.Number {
 		*into = rider.Set(mean)
+	}
+}
+
+// ramp keeps the estimate a ride shaped like a ramp test implies. Both it and
+// the twenty-minute estimate are floors on the same number, true only of a
+// rider who actually rode that protocol, so the higher stands whichever test
+// they ran.
+func (s *sensorSeries) ramp(into *rider.Value) {
+	watts, ok := rider.RampThresholdPower(s.times, s.values)
+	if !ok {
+		return
+	}
+	if !into.Set || watts > into.Number {
+		*into = rider.Set(watts)
 	}
 }
 

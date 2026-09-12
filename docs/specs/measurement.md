@@ -604,24 +604,12 @@ read over — but that bound is on the ride, not on the rider. An easy ride clea
 it: sixteen minutes at 50 W, four at 100 and a closing minute at 125 is a ratio
 of 1.19 and offers 94 W to a rider who never held 60.
 
-**A ramp reading stands only where another ride that is not itself ramp-shaped
-supplies a twenty to read it beside** (`internal/sqlite/rider.go`
-`thresholdPowerFrom`). The reading is a claim that this ride was maximal, and
-neither the ride making the claim nor another ride making the same one can
-corroborate it: against its own twenty the easy ride above wins, and two such
-rides would otherwise witness each other and let a corpus of nothing but easy
-rides authorise itself. Against a twenty the rider plainly sustained, an easy
-ride loses. A rider with no such ride recorded keeps the twenty-minute estimate
-rather than a claim nothing corroborates.
-
-Comparing a reading against the corpus best twenty *including its own ride* was
-tried instead and is inert — wherever it rejects, the ratio has already put the
-estimate under the twenty-minute one.
-
-What no rule here can do is tell a ramp test from an easy ride when every ride
-is easy, because nothing in such a corpus distinguishes them. A rider whose
-riding says nothing about their threshold is owed no estimate that pretends
-otherwise.
+The bound is on the ride and not on the rider, and there it stops. A rider
+whose whole corpus is easy rides has no sustained twenty worth clearing, and
+such a ride can be read as a ramp. Nothing inside the recorded data
+distinguishes that case, and a rider whose riding says nothing about their
+threshold is owed no better estimate by either protocol; the suggestion is
+offered and never applied, so the rider is the check.
 
 There is deliberately no test that the hardest minute is the ride's last: a ramp
 is ridden to failure, but the file carries the cooldown after it, so a real

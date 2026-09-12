@@ -757,9 +757,9 @@ The read-only JSON surface is small:
   Beside the stored parameters it carries what the caller's own rides of the
   last ninety days suggest some of them could be: the highest heart rate held
   over a rolling minute, the best rolling twenty-minute average heart rate
-  unscaled, the best twenty-minute average power taken at 95% — or a ramp-test
-  estimate off the best minute where that is higher and another ride
-  corroborates it — and the rider's own stopping habit. All are read over the caller's own targets and are display only —
+  unscaled, the greater of the best twenty-minute average power taken at 95%
+  and a ramp-test estimate off the best minute, and the rider's own stopping
+  habit. All are read over the caller's own targets and are display only —
   nothing uses one until the rider has saved it as their own value. A
   parameter no ride carried a sensor for is absent rather than zero, and a
   rider with no target yet is answered with no suggestions.

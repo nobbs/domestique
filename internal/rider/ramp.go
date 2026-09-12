@@ -26,8 +26,9 @@ import (
 // minutes it was read over — but that bound is on the ride and not on the
 // rider. An easy ride clears it: 16 minutes at 50 W, 4 at 100 and a closing
 // minute at 125 is a ratio of 1.19 and offers 94 W to a rider who never held
-// 60. Whether a reading means anything is therefore settled by the rider's
-// other rides, not here; see thresholdPowerFrom in internal/sqlite.
+// 60. Nothing in the recorded data tells that apart from a ramp test, and a
+// rider with no harder riding is owed no better number by either protocol. The
+// suggestion is offered and never applied, so the rider is the check.
 //
 // Deliberately absent: a test that the hardest minute is the ride's last. A ramp
 // is ridden to failure, but the recorded ride carries the cooldown after it, so
