@@ -297,6 +297,27 @@ $$\bar P = \frac{1}{|S|}\sum_{i \in S} P_i, \qquad \text{share} = \frac{|S|}{\te
 
 **Status.** Validated against the operator's own trainer power at matched heart rate: ride means within 6% on rides held out from the check, which `dev/levelstudy` reproduces from a state snapshot.
 
+## Estimated calories
+
+**Definition.** The energy a ride's average power implies at a fixed gross efficiency, served beside the calorie figure the device itself reported, purely so a rider can compare the two.
+
+**Formula.** In symbols:
+
+~~~text
+kJ   = averageWatts · seconds / 1000
+kcal = kJ / 4.184 / 0.22
+~~~
+
+Where the ride measured its own power, `averageWatts` is that measured average and `seconds` is the ride's whole moving time. Otherwise `averageWatts` is the ride's own Estimated power above, which is a mean over the pedalling samples only — so `seconds` is the moving time scaled by that estimate's own pedalling share, landing the energy on the same time base the mean was taken over. Absent below a positive wattage and moving time, and for an estimate carrying no positive pedalling share of its own.
+
+**Constants.** 4.184 (kJ per kcal, physical) and 0.22 (assumed gross cycling efficiency), both from the handover document's own cross-check. Code: `internal/measure/energy.go` (`kilojoulesPerKilocalorie`, `grossCyclingEfficiency`).
+
+**Source.** The handover document [5] §10, "Cross-checks to implement".
+
+**Applied by.** `measure.EstimatedCalories`, called from `internal/httpapi/routes_activities.go` when an activity is served; never stored, never an input to a training load. Served as `estimatedCaloriesKcal`, which never replaces the activity's own `caloriesKcal` — beside it where the device also reported one, and on its own where it did not.
+
+**Status.** Unvalidated, and not fully validatable: the handover document's own worked example notes the device's reported calories is itself usually heart-rate-derived rather than an independent measurement of the same thing this formula estimates. A comparison aid, not a checked figure.
+
 ## Sustained climbs
 
 **Definition.** A run of the route where the signed gradient, measured back

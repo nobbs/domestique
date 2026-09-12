@@ -736,6 +736,15 @@ The read-only JSON surface is small:
   averaged over. Named as an estimate everywhere; never normalised, never
   scored, never an input to a training load; absent for a ride that measured
   its own power.
+
+  Every activity also carries `estimatedCaloriesKcal` where it has a positive
+  average power — measured, or else the estimate above at a positive
+  pedalling share — and a positive moving time: the energy that implies at a
+  fixed gross efficiency (see [measurement.md](measurement.md) §Estimated
+  calories). Never replaces the ride's own `caloriesKcal` — served beside it
+  where the device also reported one, purely for a rider to compare the two,
+  and on its own where it did not; never stored, never mixed with either
+  figure above.
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
   maximum, resting and threshold heart rate, functional threshold power, rider
   and bike mass, and the bicycle's drag area and rolling resistance — every one

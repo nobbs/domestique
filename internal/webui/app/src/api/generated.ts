@@ -296,6 +296,8 @@ export interface ActivityMetrics {
    * @maximum 1
    */
   estimatedPedallingShare?: number;
+  /** The ride's energy at a fixed 22% gross efficiency, over movingSeconds at averagePowerWatts where the ride measured its own power, else over the pedalling share of movingSeconds at estimatedPowerWatts. A comparison figure only, never a measurement, never the same figure as the activity's own caloriesKcal, which a device usually derives from heart rate rather than power. Absent below a positive wattage and moving time; the estimate branch further needs a positive pedalling share, absent for a ride that measured its own power. */
+  estimatedCaloriesKcal?: number;
   /** The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries. */
   averageSpeedKmh?: number;
   /** The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap. */

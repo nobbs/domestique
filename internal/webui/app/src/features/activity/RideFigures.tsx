@@ -79,6 +79,30 @@ function loadFigure(ride: Activity): Headline | null {
   return null;
 }
 
+/**
+ * The device's own reported calories, with the power-based estimate as a note
+ * beside it for comparison; the estimate stands alone where the device
+ * declared none, and neither yields no headline at all.
+ */
+function caloriesFigure(ride: Activity): Headline[] {
+  const estimated = ride.metrics?.estimatedCaloriesKcal;
+  if (ride.caloriesKcal !== undefined) {
+    return [
+      {
+        label: "Calories",
+        value: ride.caloriesKcal.toFixed(0),
+        unit: "kcal",
+        ...(estimated !== undefined ? { note: `~${estimated.toFixed(0)} kcal estimated` } : {}),
+      },
+    ];
+  }
+  if (estimated !== undefined) {
+    return [{ label: "Calories (est.)", value: estimated.toFixed(0), unit: "kcal" }];
+  }
+
+  return [];
+}
+
 export function RideFigures({ ride }: { ride: Activity | undefined }) {
   if (!ride) {
     return null;
@@ -99,9 +123,7 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
     ...(ride.descentMetres !== undefined
       ? [{ label: "Descended", value: formatDescent(ride.descentMetres) }]
       : []),
-    ...(ride.caloriesKcal !== undefined
-      ? [{ label: "Calories", value: ride.caloriesKcal.toFixed(0), unit: "kcal" }]
-      : []),
+    ...caloriesFigure(ride),
     ...(load ? [load] : []),
   ];
 

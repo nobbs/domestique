@@ -10,6 +10,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -61,7 +62,7 @@ func rideWeatherSteps(steps []activities.WeatherStep) []openapi.RideWeatherStep 
 // out".
 //
 //nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
-func activityMetrics(stored activities.RideMetrics, session *activities.Session) *openapi.ActivityMetrics {
+func activityMetrics(stored activities.RideMetrics, session *activities.Session, movingSeconds float64) *openapi.ActivityMetrics {
 	metrics, averages := stored.Load, stored.Averages
 	view := &openapi.ActivityMetrics{}
 	if metrics.HasZones {
@@ -120,6 +121,22 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session)
 	}
 	if session != nil {
 		applySession(view, session)
+	}
+	// Measured power over the whole moving time, else the estimate — which
+	// is a mean over the pedalling samples only, so it needs the pedalling
+	// share back out of movingSeconds to land on the same energy. A
+	// comparison figure only, never stored, never mixed with the device's
+	// own reported calories; absent below a positive wattage, moving time
+	// or pedalling share, rather than served as a false zero.
+	switch {
+	case view.AveragePowerWatts != nil && *view.AveragePowerWatts > 0 && movingSeconds > 0:
+		kcal := measure.EstimatedCalories(*view.AveragePowerWatts, movingSeconds)
+		view.EstimatedCaloriesKcal = &kcal
+	case view.EstimatedPowerWatts != nil && *view.EstimatedPowerWatts > 0 && movingSeconds > 0 &&
+		view.EstimatedPedallingShare != nil && *view.EstimatedPedallingShare > 0:
+		pedallingSeconds := movingSeconds * *view.EstimatedPedallingShare
+		kcal := measure.EstimatedCalories(*view.EstimatedPowerWatts, pedallingSeconds)
+		view.EstimatedCaloriesKcal = &kcal
 	}
 
 	return view
@@ -277,7 +294,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				if hasSession {
 					sessionArg = &session
 				}
-				activity.Metrics = activityMetrics(metrics, sessionArg)
+				activity.Metrics = activityMetrics(metrics, sessionArg, recorded.MovingSeconds)
 			}
 			if hasSession {
 				if session.DescentMetres.Known {
