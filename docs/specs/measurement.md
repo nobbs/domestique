@@ -314,7 +314,7 @@ Where the ride measured its own power, `averageWatts` is that measured average a
 
 **Source.** The handover document [5] §10, "Cross-checks to implement".
 
-**Applied by.** `measure.EstimatedCalories`, called from `internal/httpapi/routes_activities.go` when an activity is served; never stored, never an input to a training load. Served as `estimatedCaloriesKcal`, always beside the activity's own `caloriesKcal` rather than in place of it.
+**Applied by.** `measure.EstimatedCalories`, called from `internal/httpapi/routes_activities.go` when an activity is served; never stored, never an input to a training load. Served as `estimatedCaloriesKcal`, which never replaces the activity's own `caloriesKcal` — beside it where the device also reported one, and on its own where it did not.
 
 **Status.** Unvalidated, and not fully validatable: the handover document's own worked example notes the device's reported calories is itself usually heart-rate-derived rather than an independent measurement of the same thing this formula estimates. A comparison aid, not a checked figure.
 
