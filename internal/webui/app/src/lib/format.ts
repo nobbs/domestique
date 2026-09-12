@@ -291,11 +291,17 @@ export function formatSpeed(kmh: number | null | undefined): string {
  * `undefined` for one that held all of it. Floored rather than rounded: a
  * share of 99.6% is still not the whole ride, and rounding it to "100%"
  * would print the one word this caption exists to rule out.
+ *
+ * A tiny epsilon goes in before the floor: 1044/3600 is exactly 29% but
+ * binary floating point stores it as 28.999999999999996, and flooring that
+ * directly would understate an exact share. The epsilon is far below the
+ * resolution a real ride's coverage is measured at, so it never turns a
+ * genuinely partial share into a whole one.
  */
 export function formatCoverage(coverage: number | undefined): string | undefined {
   if (coverage === undefined || coverage >= 1) {
     return undefined;
   }
 
-  return `${Math.floor(coverage * 100)}% sensor coverage`;
+  return `${Math.floor(coverage * 100 + 1e-9)}% sensor coverage`;
 }

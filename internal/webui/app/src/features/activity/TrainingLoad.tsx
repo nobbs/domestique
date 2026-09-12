@@ -74,6 +74,22 @@ function zoneColour(zone: number): string {
   return `var(--grade-${zone})`;
 }
 
+/**
+ * The worse of two series' coverage, for a figure built from both — decoupling
+ * and heat drift each need measured power and heart rate together, so either
+ * one falling short makes the figure no more trustworthy than its weaker half.
+ */
+function combinedCoverage(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined) {
+    return b;
+  }
+  if (b === undefined) {
+    return a;
+  }
+
+  return Math.min(a, b);
+}
+
 /** One bar, five segments: the ride's time as a whole, each zone its share of it. */
 function ZoneStack({
   zoneSeconds,
@@ -256,12 +272,16 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   // told what the number measures rather than sold what it means. The pair is
   // one figure and its condition: the beats, at the degrees they were held
   // at. One ride is a point, not a trend.
+  // Both figures below are built from measured power and heart rate together,
+  // so the mark they carry is the worse of the two series' own coverage.
+  const physiologyCoverage = combinedCoverage(metrics?.heartRateCoverage, metrics?.powerCoverage);
   const physiology: Scale[] = [
     {
       label: "Decoupling",
       scale: "% of ratio lost over the second half",
       value: metrics?.decouplingPercent,
       decimals: 1,
+      coverage: physiologyCoverage,
     },
     {
       label: "Heat drift",
@@ -270,6 +290,7 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
           ? ""
           : `bpm in the endurance band at ${Math.round(metrics.heatDrift.temperatureCelsius)} °C`,
       value: metrics?.heatDrift?.heartRateBpm,
+      coverage: physiologyCoverage,
     },
   ].filter((figure) => figure.value !== undefined);
 

@@ -239,6 +239,31 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Heat drift")).toBeNull();
   });
 
+  // Both figures need measured power and heart rate together, so either
+  // series falling short makes the figure no more trustworthy than its
+  // weaker half.
+  it("marks decoupling and heat drift with the worse of the two series' coverage", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+      heartRateCoverage: 0.95,
+      powerCoverage: 0.8,
+    });
+
+    expect(screen.getAllByText("80% sensor coverage")).toHaveLength(2);
+  });
+
+  it("leaves decoupling and heat drift unmarked when both series covered the whole ride", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+      heartRateCoverage: 1,
+      powerCoverage: 1,
+    });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
   it("uses the server's average speed over the ride's own totals when it is given", () => {
     show({ averageSpeedKmh: 28.6 });
 

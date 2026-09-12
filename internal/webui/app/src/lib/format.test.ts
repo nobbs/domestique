@@ -4,6 +4,7 @@ import {
   formatCadence,
   formatClock,
   formatCount,
+  formatCoverage,
   formatDescent,
   formatDistance,
   formatDuration,
@@ -312,5 +313,22 @@ describe("formatSpeed", () => {
 
   it("reports one decimal of kilometres per hour", () => {
     expect(formatSpeed(28.04)).toBe("28.0 km/h");
+  });
+});
+
+describe("formatCoverage", () => {
+  it("says nothing for a series that held the whole ride, or none at all", () => {
+    expect(formatCoverage(1)).toBeUndefined();
+    expect(formatCoverage(undefined)).toBeUndefined();
+  });
+
+  it("floors a partial share rather than rounding it up to 100%", () => {
+    expect(formatCoverage(0.996)).toBe("99% sensor coverage");
+  });
+
+  // 1044/3600 is exactly 29% but binary floating point stores the product as
+  // 28.999999999999996; a bare floor would understate an exact share.
+  it("does not understate an exact percentage lost to floating-point representation", () => {
+    expect(formatCoverage(1044 / 3600)).toBe("29% sensor coverage");
   });
 });
