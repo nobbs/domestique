@@ -349,11 +349,15 @@ func tableFingerprint(ctx context.Context, database *sql.DB, table string) (stri
 		if scanErr != nil {
 			return "", fmt.Errorf("reading state table %q: %w", table, scanErr)
 		}
-		columns = append(columns, fmt.Sprintf("%d:%s:%s:%d:%s:%d", cid, name, kind, notNull, defaultValue.String, primaryKey))
+		// cid is a rebuild-style down migration's physical column order, not part of
+		// the table's shape: a table recreated with the same columns in a different
+		// order must still fingerprint the same.
+		columns = append(columns, fmt.Sprintf("%s:%s:%d:%s:%d", name, kind, notNull, defaultValue.String, primaryKey))
 	}
 	if rowsErr := rows.Err(); rowsErr != nil {
 		return "", fmt.Errorf("reading state table %q: %w", table, rowsErr)
 	}
+	sort.Strings(columns)
 	foreignKeys, err := pragmaRows(ctx, database, `SELECT id, seq, "table", "from", "to", on_update, on_delete, match FROM pragma_foreign_key_list(?)`, table)
 	if err != nil {
 		return "", err

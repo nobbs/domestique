@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -402,4 +403,32 @@ func TestMigration057DownKeepsAPopulatedMetricsRow(t *testing.T) {
 	require.Zero(t, pedallingShareColumns, "the pedalling-share columns must be gone after rollback")
 
 	require.NoError(t, migration.Migrate(57), "must be able to re-migrate up after rolling back")
+}
+
+// A rebuild-style down migration recreates its table with the columns in a
+// different physical order than the forward migrations produce; the schema
+// fingerprint must not treat that as a mismatch, or a database rolled back
+// and migrated forward again is refused forever with "state schema differs
+// from the current baseline".
+func TestValidateSchemaSurvivesARollbackAndReplay(t *testing.T) {
+	t.Parallel()
+	for _, rollbackTo := range []uint{56, 55, 45} {
+		t.Run(strconv.Itoa(int(rollbackTo)), func(t *testing.T) {
+			t.Parallel()
+			dbPath := filepath.Join(t.TempDir(), "rollback-replay.db")
+			migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+			require.NoError(t, err)
+			defer closeFn()
+
+			require.NoError(t, migration.Migrate(currentSchemaVersion))
+			require.NoError(t, migration.Migrate(rollbackTo))
+			require.NoError(t, migration.Migrate(currentSchemaVersion))
+
+			database, err := openDatabase(dbPath)
+			require.NoError(t, err)
+			defer closeDatabase(database)
+
+			require.NoError(t, validateSchema(t.Context(), database, currentSchemaVersion, migrationFiles, "migrations"))
+		})
+	}
 }
