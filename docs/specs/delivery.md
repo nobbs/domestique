@@ -82,7 +82,6 @@ network:
 | `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
 | `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and requires the download above. |
 | `ui-storybook-test` | Runs every component's interaction test in that same browser. |
-| `storybook-build` | Builds the static component workshop that CI publishes to Chromatic. |
 
 One task installs the browser UI dependency tree, and every check that reads
 it waits for that task rather than installing anything itself. It reinstalls

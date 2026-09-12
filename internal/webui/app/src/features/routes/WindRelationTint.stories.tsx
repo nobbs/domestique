@@ -14,7 +14,7 @@ import type { BoundingBox, WeatherPoint } from "../../api/types";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { coordinates, liveMap, weatherSamples } from "../../storybook/fixtures";
+import { coordinates, weatherSamples } from "../../storybook/fixtures";
 import { ConditionsWash } from "./ConditionsWash";
 import { useWindRuns, WindRelationTint } from "./WindRelationTint";
 
@@ -80,7 +80,6 @@ function Tinted({ dark = false, withWash = false }: { dark?: boolean; withWash?:
 
 const meta = {
   title: "Components/Route/Wind Relation Tint",
-  parameters: liveMap,
   component: WindRelationTint,
   tags: ["autodocs"],
   args: { runs: [], coordinates },

@@ -47,7 +47,7 @@ export interface MapImplementationProps {
  * The canvas `MapWidget` renders, real MapLibre unless a story overrides it.
  *
  * Live tiles and WebGL rasterization make the real canvas non-deterministic
- * across runs, so Chromatic cannot snapshot a story that mounts it. Storybook
+ * across runs, so no capture of a story that mounts it is stable. Storybook
  * cannot mock `react-map-gl/maplibre` itself — its entry file re-exports
  * everything via `export *`, a shape Storybook's automock explicitly refuses
  * to transform — so the seam lives here instead: `ChromeMap` in

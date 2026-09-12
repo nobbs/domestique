@@ -35,8 +35,8 @@ const menu = () => within(document.body);
  * The open menu, once it exists.
  *
  * The popup is portalled and positioned after the story renders, so a
- * synchronous query races it: this passed on a fast machine and failed on
- * Chromatic's, which is the worst way for a test to be wrong. Waiting for the
+ * synchronous query races it: this passed on a fast machine and failed on a
+ * slower one, which is the worst way for a test to be wrong. Waiting for the
  * menu itself also gives the absence stories something to assert against —
  * "no item" is only meaningful once there is a menu to not contain one.
  */

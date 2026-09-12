@@ -270,12 +270,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          # Chromatic walks ancestry to find the last accepted build; a
-          # single-commit clone has none and treats every story as new.
-          fetch-depth: 0
-          # Chromatic finds ancestors via `git rev-list HEAD` against the head
-          # SHA, and a fork's head SHA is fetchable only as this ref, not by SHA.
-          ref: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/head', github.event.pull_request.number) || '' }}
       - name: Install pinned toolchain
         # v4.2.5
         uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518
@@ -335,29 +329,6 @@ jobs:
           key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
       - name: Typecheck, lint and test the UI
         run: mise run --force ci-ui
-      # `secrets` cannot be read in a step `if:`, so the token's presence is
-      # tested here and passed on as an output instead.
-      - name: Note whether there is a workshop to review
-        id: visual
-        if: ${{ !cancelled() }}
-        env:
-          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -n "${CHROMATIC_PROJECT_TOKEN:-}" ] && [ -d internal/webui/app/storybook-static ]; then
-            echo "publishable=true" >> "${GITHUB_OUTPUT}"
-          else
-            echo "publishable=false" >> "${GITHUB_OUTPUT}"
-          fi
-      - name: Publish the workshop for visual review
-        if: ${{ !cancelled() && steps.visual.outputs.publishable == 'true' }}
-        # v18.6.0
-        uses: chromaui/action@fd5e7e8b66d1a6862ed8866c21e93788217f7cf7
-        with:
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-          workingDir: internal/webui/app
-          storybookBuildDir: storybook-static
-          autoAcceptChanges: main
       - name: Upload UI test results
         if: ${{ !cancelled() }}
         # v7.0.0

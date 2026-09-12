@@ -24,8 +24,7 @@ everything this repository offers.
 
 `mise run quick` runs everything the full gate runs except the checks it
 defers — `build-check`, `test-race`, `vulncheck`, `ui-audit`,
-`ui-browser-install`, `ui-browser-test`, `ui-storybook-test` and
-`storybook-build` — so it stays worth running on every iteration and is not
+`ui-browser-install`, `ui-browser-test` and `ui-storybook-test` — so it stays worth running on every iteration and is not
 itself a full gate. Run the full gate yourself with `mise run check` when a
 change implicates one of those: the release build, concurrent code, a
 dependency, or the browser suite.

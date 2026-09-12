@@ -365,7 +365,6 @@ depends = [
   "ui-browser-install",
   "ui-browser-test",
   "ui-storybook-test",
-  "storybook-build",
 ]
 
 [quick]

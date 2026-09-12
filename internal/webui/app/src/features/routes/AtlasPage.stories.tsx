@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { liveMap, StoryProviders } from "../../storybook/fixtures";
+import { StoryProviders } from "../../storybook/fixtures";
 import { AtlasPage } from "./AtlasPage";
 
 // `AtlasPage` renders the real `LibraryMap` — the same live `Source`/`Layer`
@@ -10,7 +10,6 @@ const meta = {
   title: "Features/Atlas/Entry Page",
   component: AtlasPage,
   tags: ["autodocs"],
-  parameters: liveMap,
   args: { themeChoice: "system" },
   decorators: [
     (Story) => (

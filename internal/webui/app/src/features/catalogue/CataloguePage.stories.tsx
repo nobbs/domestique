@@ -3,7 +3,7 @@ import { expect, userEvent } from "storybook/test";
 import { StoryProviders } from "../../storybook/fixtures";
 import { CataloguePage } from "./CataloguePage";
 
-// No map, so nothing here needs `liveMap`: the catalogue is a table, and the
+// No map: the catalogue is a table, and the
 // geometry it fetches for the glyphs is already seeded by `StoryProviders`
 // under the same keys the atlas caches it with.
 //

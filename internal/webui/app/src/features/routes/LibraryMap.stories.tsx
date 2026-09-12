@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import type { BoundingBox } from "../../api/types";
-import { coordinates, liveMap, StoryProviders } from "../../storybook/fixtures";
+import { coordinates, StoryProviders } from "../../storybook/fixtures";
 import { LibraryMap } from "./LibraryMap";
 
 const streets = {
@@ -19,7 +19,6 @@ const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 const meta = {
   title: "Features/Atlas/Map",
-  parameters: liveMap,
   component: LibraryMap,
   tags: ["autodocs"],
   decorators: [

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { BoundingBox } from "../../api/types";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { coordinates, liveMap } from "../../storybook/fixtures";
+import { coordinates } from "../../storybook/fixtures";
 import { RouteTerminal } from "./RouteTerminal";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
@@ -13,7 +13,6 @@ const finish = coordinates.at(-1) ?? [8.039, 49.0195, 295];
 
 const meta = {
   title: "Components/Route/Route Terminal",
-  parameters: liveMap,
   component: RouteTerminal,
   tags: ["autodocs"],
   args: { kind: "start", position: start, offset: 0, accent },

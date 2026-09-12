@@ -18,7 +18,7 @@ import type { BoundingBox, WeatherPoint } from "../../api/types";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { coordinates, liveMap, weatherSamples } from "../../storybook/fixtures";
+import { coordinates, weatherSamples } from "../../storybook/fixtures";
 import { ConditionsWash } from "./ConditionsWash";
 import { WindDriftField } from "./WindDriftField";
 import { useWindRuns, WindRelationTint } from "./WindRelationTint";
@@ -134,7 +134,6 @@ function Blowing({
 
 const meta = {
   title: "Components/Route/Wind Drift Field",
-  parameters: liveMap,
   component: WindDriftField,
   tags: ["autodocs"],
   args: { coordinates, samples: weatherSamples, measure: "wind" as const },
