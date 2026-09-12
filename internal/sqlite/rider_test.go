@@ -1,11 +1,13 @@
 package sqlite
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/rider"
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -255,6 +257,7 @@ func TestRiderSuggestionsReadTheBestEffortAcrossTheCallersRides(t *testing.T) {
 	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.InDelta(t, 170.0, suggestions.MaxHeartRateBPM.Number, 0.5, "the harder ride's minute")
+	assert.InDelta(t, 170.0, suggestions.ThresholdHeartRateBPM.Number, 0.5, "the same ride's best twenty minutes, unscaled")
 	assert.InDelta(t, 228.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "240 W taken at 95%")
 }
 
@@ -272,6 +275,71 @@ func TestRiderSuggestionsOmitASensorTheRidesDoNotCarry(t *testing.T) {
 	require.NoError(t, err, "RiderSuggestions()")
 	assert.True(t, suggestions.MaxHeartRateBPM.Set, "the rides carried a heart-rate strap")
 	assert.False(t, suggestions.FunctionalThresholdPowerWatts.Set, "no ride carried a meter")
+}
+
+// storeRampCandidateRide stores a ride of the given moving time carrying the
+// power-curve bests a ramp-test derivation would have already computed, so
+// rider.RampThresholdPower's own shape test has a real row to read.
+func storeRampCandidateRide(
+	t *testing.T, store *Store, targetID string, id int64, moving time.Duration, best60, best300 float64,
+) {
+	t.Helper()
+	require.NoError(t, store.StoreActivity(t.Context(), targetID,
+		activity.Listing{ID: id, TypeID: 15, LocationID: 1, Starts: activityNow()},
+		activity.Summary{
+			DistanceMetres: 10_000, MovingSeconds: moving.Seconds(), ElapsedSeconds: moving.Seconds(),
+			AscentMetres: 50, Raw: []byte(`{}`),
+		},
+		activityNow(),
+	), "StoreActivity()")
+	require.NoError(t, store.queries.UpsertActivityMetrics(t.Context(), sqlcgen.UpsertActivityMetricsParams{
+		TargetSlot: targetID, WorkoutID: id,
+		BestPower60s:  sql.NullFloat64{Float64: best60, Valid: true},
+		BestPower300s: sql.NullFloat64{Float64: best300, Valid: true},
+	}), "UpsertActivityMetrics()")
+}
+
+// Both the twenty-minute estimate and the ramp estimate are floors on the same
+// number, true only for a rider who performed that protocol, so the higher one
+// is offered.
+func TestRiderSuggestionsPreferTheRampEstimateWhenItIsHigher(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 205), activity.RecordsVersion),
+		"StoreActivityRecords()") // 205 W at 95% is 194.75 W, the twenty-minute estimate.
+	storeRampCandidateRide(t, store, "rider-a", 2, 28*time.Minute, 330, 330/1.14) // ratio 1.14, 75% of 330 is 247.5 W.
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.InDelta(t, 247.5, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the ramp estimate beats the twenty-minute one")
+}
+
+// An interval session's hard minute is not a ramp test, however hard: its ratio
+// against the best five minutes gives it away, so it leaves the twenty-minute
+// estimate untouched.
+func TestRiderSuggestionsIgnoreAnIntervalSessionsHardMinute(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, steady(1500, 150, 200), activity.RecordsVersion),
+		"StoreActivityRecords()") // 200 W at 95% is 190 W.
+	storeRampCandidateRide(t, store, "rider-a", 2, 60*time.Minute, 340, 180) // ratio 1.89 and an hour moving: neither fits a ramp test.
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	assert.InDelta(t, 190.0, suggestions.FunctionalThresholdPowerWatts.Number, 0.5, "the interval session contributed nothing")
+}
+
+func TestRiderRampThresholdPowerReportsAnUnreadableStore(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.riderRampThresholdPower(t.Context(), []string{"rider-a"}, activityNow())
+	require.ErrorContains(t, err, "reading the ramp test candidates")
 }
 
 // A ride too short to hold the window suggests nothing rather than its own mean.

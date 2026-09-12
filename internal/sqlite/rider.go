@@ -156,8 +156,45 @@ func (s *Store) RiderSuggestions(
 	}
 	suggestions := accumulateSuggestions(rows)
 	suggestions.Stopping = stopping
+	rampFTP, err := s.riderRampThresholdPower(ctx, targetIDs, since)
+	if err != nil {
+		return rider.Suggestions{}, err
+	}
+	// Both the twenty-minute-power estimate and the ramp estimate are floors,
+	// true only for a rider who actually performed that protocol -- so the
+	// higher of the two is the honest suggestion, whichever test they ran.
+	if rampFTP.Set && (!suggestions.FunctionalThresholdPowerWatts.Set || rampFTP.Number > suggestions.FunctionalThresholdPowerWatts.Number) {
+		suggestions.FunctionalThresholdPowerWatts = rampFTP
+	}
 
 	return suggestions, nil
+}
+
+// riderRampThresholdPower reads the best ramp-test-shaped estimate across the
+// rider's own rides, over the given targets. Absent where no ride was shaped
+// like a ramp test at all.
+func (s *Store) riderRampThresholdPower(ctx context.Context, targetIDs []string, since time.Time) (rider.Value, error) {
+	rows, err := s.queries.ListRiderRampCandidates(ctx, sqlcgen.ListRiderRampCandidatesParams{
+		SinceUnix:   since.Unix(),
+		TargetSlots: targetIDs,
+	})
+	if err != nil {
+		return rider.Value{}, fmt.Errorf("reading the ramp test candidates: %w", err)
+	}
+	var best rider.Value
+	for _, row := range rows {
+		watts, ok := rider.RampThresholdPower(
+			time.Duration(row.MovingSeconds*float64(time.Second)), row.BestPower60s.Float64, row.BestPower300s.Float64,
+		)
+		if !ok {
+			continue
+		}
+		if !best.Set || watts > best.Number {
+			best = rider.Set(watts)
+		}
+	}
+
+	return best, nil
 }
 
 // riderStopping reads the habit off the summaries of the rider's own rides of
@@ -212,6 +249,9 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 	}
 	closeRide := func() {
 		heartRate.best(rider.MaxHeartRateWindow, &suggestions.MaxHeartRateBPM, nil)
+		// Unscaled: the heart rate over that window is itself the LTHR estimate,
+		// not a figure some share is taken of.
+		heartRate.best(rider.ThresholdHeartRateWindow, &suggestions.ThresholdHeartRateBPM, nil)
 		power.best(rider.ThresholdPowerWindow, &suggestions.FunctionalThresholdPowerWatts, rider.ThresholdPower)
 		heartRate, power = sensorSeries{}, sensorSeries{}
 	}

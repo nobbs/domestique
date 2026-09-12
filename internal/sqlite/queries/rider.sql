@@ -56,3 +56,18 @@ FROM activities
 WHERE started_at_unix >= sqlc.arg(since_unix)
   AND target_slot IN (sqlc.slice(target_slots))
   AND workout_type_id IN (sqlc.slice(workout_type_ids));
+
+-- Every ride that could be a ramp test, over the rider's own targets. The
+-- shape test itself (moving time, the one-to-five-minute power ratio) is
+-- rider.RampThresholdPower's job; this only needs a ride whose derivation
+-- actually reached the power curve, so a ride still awaiting it is left out
+-- rather than forwarded as a zero.
+-- name: ListRiderRampCandidates :many
+SELECT a.moving_seconds, m.best_power_60s, m.best_power_300s
+FROM activity_metrics AS m
+JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
+-- The scalar bound before the slice, as ListActivitySensorSamples does.
+WHERE a.started_at_unix >= sqlc.arg(since_unix)
+  AND a.target_slot IN (sqlc.slice(target_slots))
+  AND m.best_power_60s IS NOT NULL
+  AND m.best_power_300s IS NOT NULL;

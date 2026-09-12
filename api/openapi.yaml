@@ -3117,6 +3117,13 @@ components:
         maxHeartRateBpm:
           type: number
           description: The highest heart rate held over a rolling minute.
+        thresholdHeartRateBpm:
+          type: number
+          description: >-
+            The best rolling twenty-minute average heart rate, unscaled. Only a
+            genuine lactate threshold reading if that twenty minutes was a
+            maximal, evenly paced effort -- over ordinary rides it reads high
+            or low depending on what was ridden.
         functionalThresholdPowerWatts:
           type: number
           description: The best twenty-minute average power, taken at 95%.

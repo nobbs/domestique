@@ -55,7 +55,9 @@ const PARAMETERS: Parameter[] = [
     field: "thresholdHeartRateBpm",
     label: "Threshold heart rate",
     unit: "bpm",
-    description: "The lactate threshold rate, where a zone scheme cuts hard from moderate.",
+    description:
+      "The lactate threshold rate, where a zone scheme cuts hard from moderate. Only genuine if measured over a maximal, evenly paced effort of about this length.",
+    suggested: "thresholdHeartRateBpm",
   },
   {
     field: "functionalThresholdPowerWatts",

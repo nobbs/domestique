@@ -167,6 +167,67 @@ func (q *Queries) ListRiderCredentials(ctx context.Context, subject string) ([]L
 	return items, nil
 }
 
+const listRiderRampCandidates = `-- name: ListRiderRampCandidates :many
+SELECT a.moving_seconds, m.best_power_60s, m.best_power_300s
+FROM activity_metrics AS m
+JOIN activities AS a ON a.target_slot = m.target_slot AND a.workout_id = m.workout_id
+WHERE a.started_at_unix >= ?1
+  AND a.target_slot IN (/*SLICE:target_slots*/?)
+  AND m.best_power_60s IS NOT NULL
+  AND m.best_power_300s IS NOT NULL
+`
+
+type ListRiderRampCandidatesParams struct {
+	SinceUnix   int64
+	TargetSlots []string
+}
+
+type ListRiderRampCandidatesRow struct {
+	MovingSeconds float64
+	BestPower60s  sql.NullFloat64
+	BestPower300s sql.NullFloat64
+}
+
+// Every ride that could be a ramp test, over the rider's own targets. The
+// shape test itself (moving time, the one-to-five-minute power ratio) is
+// rider.RampThresholdPower's job; this only needs a ride whose derivation
+// actually reached the power curve, so a ride still awaiting it is left out
+// rather than forwarded as a zero.
+// The scalar bound before the slice, as ListActivitySensorSamples does.
+func (q *Queries) ListRiderRampCandidates(ctx context.Context, arg ListRiderRampCandidatesParams) ([]ListRiderRampCandidatesRow, error) {
+	query := listRiderRampCandidates
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.SinceUnix)
+	if len(arg.TargetSlots) > 0 {
+		for _, v := range arg.TargetSlots {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", strings.Repeat(",?", len(arg.TargetSlots))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:target_slots*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRiderRampCandidatesRow{}
+	for rows.Next() {
+		var i ListRiderRampCandidatesRow
+		if err := rows.Scan(&i.MovingSeconds, &i.BestPower60s, &i.BestPower300s); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRiderStoppingRides = `-- name: ListRiderStoppingRides :many
 SELECT moving_seconds, elapsed_seconds, distance_metres
 FROM activities

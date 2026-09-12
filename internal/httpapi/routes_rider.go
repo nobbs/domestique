@@ -108,6 +108,7 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 		},
 		Suggestions: openapi.RiderSuggestions{
 			MaxHeartRateBpm:               suggestions.MaxHeartRateBPM.Pointer(),
+			ThresholdHeartRateBpm:         suggestions.ThresholdHeartRateBPM.Pointer(),
 			FunctionalThresholdPowerWatts: suggestions.FunctionalThresholdPowerWatts.Pointer(),
 			Stopping:                      stoppingSuggestion(suggestions.Stopping),
 		},

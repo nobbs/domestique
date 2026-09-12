@@ -59,12 +59,19 @@ func FromPointer(number *float64) Value {
 }
 
 // The windows a suggestion is the best effort over, and the share of a best
-// twenty-minute power that is taken for a threshold hour power — the
-// conventional 95%, the same figure a ramp test is scaled by.
+// twenty-minute power that is taken for a threshold hour power — Coggan's
+// conventional 95%. A ramp test is scaled differently; see RampThresholdPower.
 const (
-	MaxHeartRateWindow   = time.Minute
-	ThresholdPowerWindow = 20 * time.Minute
-	thresholdPowerShare  = 0.95
+	MaxHeartRateWindow = time.Minute
+	// ThresholdHeartRateWindow follows Friel's field protocol for LTHR: a
+	// thirty-minute solo time trial, averaging the final twenty. A best rolling
+	// twenty minutes over real rides approximates that average, but only reads
+	// as LTHR when some ride actually was a maximal, evenly paced effort near
+	// that length — over a corpus of intervals and long endurance rides it
+	// reads high or low depending on what the rider happened to do that day.
+	ThresholdHeartRateWindow = 20 * time.Minute
+	ThresholdPowerWindow     = 20 * time.Minute
+	thresholdPowerShare      = 0.95
 )
 
 // SuggestionWindow is how far back a suggestion reads. Fitness moves, so a best
@@ -76,7 +83,11 @@ const SuggestionWindow = 90 * 24 * time.Hour
 // offered beside the fields and never stored. A sensor the rides do not carry
 // yields no suggestion rather than a zero.
 type Suggestions struct {
-	MaxHeartRateBPM               Value
+	MaxHeartRateBPM Value
+	// ThresholdHeartRateBPM is only a genuine LTHR reading when the twenty
+	// minutes it was taken from was a maximal, evenly paced effort; see
+	// ThresholdHeartRateWindow.
+	ThresholdHeartRateBPM         Value
 	FunctionalThresholdPowerWatts Value
 	// Stopping is the rider's own stopping habit, which is a distribution
 	// rather than a best effort and so is not a Value.
