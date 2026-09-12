@@ -28,9 +28,6 @@ import { RouteDock } from "./RouteDock";
 
 const meta = {
   title: "Features/Atlas/Route Dock",
-  // No snapshot: the picker prints the ride's day, and the day is relative to
-  // the real clock — a pinned one drifts out of the forecast window, and a
-  // relative one re-diffs every build. Interactions are still tested.
   parameters: { layout: "fullscreen" },
 } satisfies Meta;
 
