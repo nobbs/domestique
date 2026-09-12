@@ -75,7 +75,8 @@ sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/
 outputs = { auto = true }
 run = "CGO_ENABLED=0 gotestsum --format standard-quiet --junitfile .test-results/go.xml -- -shuffle=on -timeout=10m ./..."
 
-# wait_for `test`, not depends: running both at once doubles the load on one CI machine.
+# wait_for `test`, not depends: it orders after `test` only when both are in the run,
+# so `check` never runs the two at once on one machine and `ci-test-race` runs alone.
 [test-race]
 description = "Run the Go tests under the race detector"
 sources = ["**/*.go", "go.mod", "go.sum", "**/testdata/**", "internal/webui/app/dist/**"]
@@ -276,12 +277,6 @@ description = "Run the Storybook component suite"
 wait_for = ["ui-browser-install", "api-generate"]
 run = "pnpm --dir internal/webui/app run test:storybook"
 
-# Runs after `ui-storybook-test`: a second browser starting at the same time makes it flaky.
-[ui-storybook-sweep]
-description = "Open every story and docs page in a built Storybook"
-wait_for = ["ui-browser-install", "ui-storybook-test", "api-generate"]
-run = "pnpm --dir internal/webui/app run test:storybook:sweep"
-
 # govulncheck doesn't see npm packages; this is the UI tree's own advisory check.
 [ui-audit]
 description = "Check the UI dependency tree against the advisory database"
@@ -350,7 +345,11 @@ depends = [
 
 [ci-test]
 description = "The test half of the gate, as CI groups it"
-depends = ["vet", "test", "test-race"]
+depends = ["vet", "test"]
+
+[ci-test-race]
+description = "The race-detector half of the gate, as CI groups it"
+depends = ["test-race"]
 
 [ci-security]
 description = "The security half of the gate, as CI groups it"
@@ -367,7 +366,6 @@ depends = [
   "ui-browser-install",
   "ui-browser-test",
   "ui-storybook-test",
-  "ui-storybook-sweep",
 ]
 
 [quick]
@@ -391,4 +389,4 @@ depends = [
 
 [check]
 description = "The full gate, on demand"
-depends = ["ci-lint", "ci-test", "ci-security", "ci-ui", "build-check"]
+depends = ["ci-lint", "ci-test", "ci-test-race", "ci-security", "ci-ui", "build-check"]

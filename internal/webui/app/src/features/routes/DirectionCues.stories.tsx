@@ -3,7 +3,7 @@ import type { BoundingBox } from "../../api/types";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { coordinates, liveMap } from "../../storybook/fixtures";
+import { coordinates } from "../../storybook/fixtures";
 import { DirectionCues } from "./DirectionCues";
 
 const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
@@ -14,7 +14,6 @@ const styles = {
 
 const meta = {
   title: "Components/Route/Direction Cues",
-  parameters: liveMap,
   component: DirectionCues,
   tags: ["autodocs"],
   args: { coordinates },

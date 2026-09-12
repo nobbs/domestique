@@ -7,12 +7,12 @@
  */
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { liveMap, StoryProviders } from "../../../storybook/fixtures";
+import { StoryProviders } from "../../../storybook/fixtures";
 import { AtlasPage, BentoPage, HeadlinePage, LanesPage } from "./variants";
 
 const meta = {
   title: "Spikes/Activity Page",
-  parameters: { layout: "fullscreen", ...liveMap },
+  parameters: { layout: "fullscreen" },
 } satisfies Meta;
 
 export default meta;

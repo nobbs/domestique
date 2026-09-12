@@ -468,13 +468,6 @@ export function StubbedFetch({
 }
 
 /**
- * Story parameters for anything that mounts a live MapLibre canvas. Its pixels
- * are third-party tiles drawn by WebGL over several frames, so two captures of
- * one story differ and Chromatic reports it as an unstable test.
- */
-export const liveMap = { chromatic: { disableSnapshot: true } };
-
-/**
  * Three laps of the route above: one whole and quickest, one whole and slower,
  * one that skipped part of it and so competes for no best.
  */

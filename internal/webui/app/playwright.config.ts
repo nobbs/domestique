@@ -65,18 +65,21 @@ const progressReporter: ReporterDescription = process.env.CI ? ["github"] : ["li
 
 export default defineConfig({
   testDir: "./e2e",
-  // Two workers, over one demo API, one database and one dev server. The cost is
-  // the browser painting a map in software, which is CPU the runner has spare.
-  // What limits concurrency is the shared stack underneath, which the projects
-  // below make safe. `fullyParallel: false` holds one file to one worker, so only
-  // separate files ever run at the same time.
-  workers: 2,
+  // Four workers, over one demo API, one database and one dev server: the
+  // runner has four cores, and the cost per worker is the browser painting a
+  // map in software. What limits concurrency is the shared stack underneath,
+  // which the projects below make safe. `fullyParallel: false` holds one file
+  // to one worker, so only separate files ever run at the same time.
+  workers: 4,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   // A flaky browser test that passes on the second attempt is a browser test that
   // reports nothing. Failures here are meant to be reproducible.
   retries: 0,
   timeout: 60_000,
+  // Name up to ten files over 15 s: Playwright's own threshold is five minutes,
+  // which never named the files behind a 2-3x swing in the suite's wall clock.
+  reportSlowTests: { max: 10, threshold: 15_000 },
   expect: { timeout: 15_000 },
   // Gitignored, and at the repository root beside the coverage reports, so that
   // one place holds everything a run leaves behind for a human to look at.

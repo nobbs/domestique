@@ -9,7 +9,7 @@ import { CardsIndex, LedgerIndex, WeeksIndex } from "./indexVariants";
 
 const meta = {
   title: "Spikes/Activities Index",
-  parameters: { layout: "fullscreen", chromatic: { disableSnapshot: true } },
+  parameters: { layout: "fullscreen" },
 } satisfies Meta;
 
 export default meta;

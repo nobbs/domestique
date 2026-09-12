@@ -14,7 +14,7 @@ import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import type { MeasureKey } from "../../lib/measures";
-import { coordinates, liveMap, weatherSamples } from "../../storybook/fixtures";
+import { coordinates, weatherSamples } from "../../storybook/fixtures";
 import { ConditionsWash } from "./ConditionsWash";
 
 const styles = {
@@ -69,7 +69,6 @@ function Washed({ measure, dark = false }: { measure: MeasureKey; dark?: boolean
 
 const meta = {
   title: "Components/Route/Conditions Wash",
-  parameters: liveMap,
   component: ConditionsWash,
   tags: ["autodocs"],
   args: { coordinates, samples: weatherSamples, measure: "rain" },

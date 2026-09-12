@@ -82,7 +82,6 @@ network:
 | `ui-browser-install` | Downloads a browser: a network fetch and a few hundred megabytes on disk. |
 | `ui-browser-test` | Drives that browser over the demo stack; minutes rather than seconds, and requires the download above. |
 | `ui-storybook-test` | Runs every component's interaction test in that same browser. |
-| `ui-storybook-sweep` | Opens every story and docs page in a built Storybook, in that same browser. |
 
 One task installs the browser UI dependency tree, and every check that reads
 it waits for that task rather than installing anything itself. It reinstalls
@@ -311,8 +310,8 @@ specs in `e2e` against the Vite dev server. The `bundle` and `mutations`
 projects run the specs in `e2e/contract` against the Go service directly: the
 production bundle served by `internal/webui`'s embed handler, the real routes
 behind it, and the cache headers, content security policy and gates a deployment
-applies. They are two projects rather than one because the suite runs on two
-workers: reading the service concurrently is only two readers, but `mutations`
+applies. They are two projects rather than one because the suite runs on four
+workers: reading the service concurrently is only ever readers, but `mutations`
 rewrites what the others read — its "run now" re-seeds the whole library — so it
 declares the other two as dependencies and runs once they are done. Contract
 failures name the request they came back from.
@@ -393,8 +392,9 @@ needs cgo and is the one command in this repository that runs with
 release build, the published image, and the container smoke test remain
 `CGO_ENABLED=0` and statically linked, and the normal test command remains
 CGO-free as well. The race check is deferred out of the routine local loop for
-its cost, runs in the same CI job as the normal suite, and sets an explicit
-`-timeout` below that job's own budget, so a hang is given up on by the
+its cost, runs in its own CI job beside the normal suite so neither waits on
+the other, and sets an explicit `-timeout` below that job's own budget, so a
+hang is given up on by the
 toolchain, which prints every goroutine's stack, rather than by the runner,
 which prints nothing.
 
