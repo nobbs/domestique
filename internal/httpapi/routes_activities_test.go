@@ -104,7 +104,9 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.Equal(t, []float64{60, 120, 180, 240, 300}, derived.Metrics.ZoneSeconds)
 	// The rates the zones were cut at, from the threshold this row was derived
 	// against rather than whatever the profile holds now.
-	assert.Equal(t, []float64{144.5, 153, 161.5, 170}, derived.Metrics.ZoneBoundsBpm)
+	// Friel's cycling cuts, and compared by delta: 81% and 94% of a threshold
+	// are not exactly representable, so the products are not the literals.
+	assert.InDeltaSlice(t, []float64{137.7, 153, 159.8, 170}, derived.Metrics.ZoneBoundsBpm, 0.01)
 	require.NotNil(t, derived.Metrics.Trimp)
 	assert.InDelta(t, 42.5, *derived.Metrics.Trimp, 1e-9)
 	assert.Nil(t, derived.Metrics.PowerTss, "the rider has entered no threshold power")
