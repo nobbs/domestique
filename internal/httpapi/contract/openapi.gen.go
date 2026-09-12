@@ -314,7 +314,7 @@ type ActivityMetrics struct {
 	HeatDrift         *HeatDrift `json:"heatDrift,omitempty"`
 }
 
-// HeatDrift What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, a rider who has entered no threshold power to place the band with, or a heart-rate or power series that fell below the same sensor-coverage threshold that withholds the load figures above: the reading is only as trustworthy as the weaker of the two series it is drawn from.
+// HeatDrift What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, a rider who has entered no threshold power to place the band with, or a heart-rate, power or temperature series that fell below the same sensor-coverage threshold that withholds the load figures above: the reading is only as trustworthy as the weakest of the three series it is drawn from.
 type HeatDrift struct {
 	// HeartRateBpm The mean heart rate over the ride's samples inside the band.
 	HeartRateBpm float64 `json:"heartRateBpm"`
