@@ -77,8 +77,8 @@ export default defineConfig({
   // reports nothing. Failures here are meant to be reproducible.
   retries: 0,
   timeout: 60_000,
-  // The suite's wall clock varies 2-3x between runs on identical inputs; the
-  // default 5 min threshold never names the files that stretch.
+  // Name up to ten files over 15 s: Playwright's own threshold is five minutes,
+  // which never named the files behind a 2-3x swing in the suite's wall clock.
   reportSlowTests: { max: 10, threshold: 15_000 },
   expect: { timeout: 15_000 },
   // Gitignored, and at the repository root beside the coverage reports, so that

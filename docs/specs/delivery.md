@@ -310,8 +310,8 @@ specs in `e2e` against the Vite dev server. The `bundle` and `mutations`
 projects run the specs in `e2e/contract` against the Go service directly: the
 production bundle served by `internal/webui`'s embed handler, the real routes
 behind it, and the cache headers, content security policy and gates a deployment
-applies. They are two projects rather than one because the suite runs on two
-workers: reading the service concurrently is only two readers, but `mutations`
+applies. They are two projects rather than one because the suite runs on four
+workers: reading the service concurrently is only ever readers, but `mutations`
 rewrites what the others read — its "run now" re-seeds the whole library — so it
 declares the other two as dependencies and runs once they are done. Contract
 failures name the request they came back from.
