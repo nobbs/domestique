@@ -116,13 +116,20 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session,
 	if session != nil {
 		applySession(view, session)
 	}
-	// Measured power, else the estimate; a comparison figure only, never
-	// stored, never mixed with the device's own reported calories.
-	if watts := view.AveragePowerWatts; watts != nil {
-		kcal := measure.EstimatedCalories(*watts, movingSeconds)
+	// Measured power over the whole moving time, else the estimate — which
+	// is a mean over the pedalling samples only, so it needs the pedalling
+	// share back out of movingSeconds to land on the same energy. A
+	// comparison figure only, never stored, never mixed with the device's
+	// own reported calories; absent below either a positive wattage or a
+	// positive time to spend it over, rather than served as a false zero.
+	switch {
+	case view.AveragePowerWatts != nil && *view.AveragePowerWatts > 0 && movingSeconds > 0:
+		kcal := measure.EstimatedCalories(*view.AveragePowerWatts, movingSeconds)
 		view.EstimatedCaloriesKcal = &kcal
-	} else if watts := view.EstimatedPowerWatts; watts != nil {
-		kcal := measure.EstimatedCalories(*watts, movingSeconds)
+	case view.EstimatedPowerWatts != nil && *view.EstimatedPowerWatts > 0 && movingSeconds > 0 &&
+		view.EstimatedPedallingShare != nil:
+		pedallingSeconds := movingSeconds * *view.EstimatedPedallingShare
+		kcal := measure.EstimatedCalories(*view.EstimatedPowerWatts, pedallingSeconds)
 		view.EstimatedCaloriesKcal = &kcal
 	}
 

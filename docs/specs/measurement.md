@@ -304,11 +304,11 @@ $$\bar P = \frac{1}{|S|}\sum_{i \in S} P_i, \qquad \text{share} = \frac{|S|}{\te
 **Formula.** In symbols:
 
 ~~~text
-kJ   = averageWatts · movingSeconds / 1000
+kJ   = averageWatts · seconds / 1000
 kcal = kJ / 4.184 / 0.22
 ~~~
 
-`averageWatts` is the ride's measured average power where it carried a meter, else the ride's own Estimated power above; absent when neither is known.
+Where the ride measured its own power, `averageWatts` is that measured average and `seconds` is the ride's whole moving time. Otherwise `averageWatts` is the ride's own Estimated power above, which is a mean over the pedalling samples only — so `seconds` is the moving time scaled by that estimate's own pedalling share, landing the energy on the same time base the mean was taken over. Absent below a positive wattage and moving time, and for an estimate carrying no pedalling share of its own.
 
 **Constants.** 4.184 (kJ per kcal, physical) and 0.22 (assumed gross cycling efficiency), both from the handover document's own cross-check. Code: `internal/measure/energy.go` (`kilojoulesPerKilocalorie`, `grossCyclingEfficiency`).
 

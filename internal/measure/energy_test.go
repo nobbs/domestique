@@ -16,21 +16,18 @@ func TestEstimatedCaloriesAtTheHandoverEfficiency(t *testing.T) {
 	assert.InDelta(t, 1564.4, measure.EstimatedCalories(meanWatts, seconds), 0.1)
 }
 
-func TestEstimatedCaloriesScalesLinearlyWithEnergy(t *testing.T) {
+// 280 W over ninety minutes is 1512 kJ, ~1642.6 kcal at the same efficiency —
+// a second worked example at different inputs, so a wrong constant cannot
+// pass both by cancelling itself out the way a pure scaling check would.
+func TestEstimatedCaloriesAtASecondWorkedExample(t *testing.T) {
 	t.Parallel()
-	for name, watts := range map[string]float64{
-		"no power":  0,
-		"endurance": 150,
-		"threshold": 280,
-	} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			const seconds = 3600.0
+	const meanWatts, seconds = 280.0, 90 * 60.0
 
-			doubled := measure.EstimatedCalories(2*watts, seconds)
-			single := measure.EstimatedCalories(watts, seconds)
+	assert.InDelta(t, 1642.6, measure.EstimatedCalories(meanWatts, seconds), 0.1)
+}
 
-			assert.InDelta(t, doubled, 2*single, 1e-9)
-		})
-	}
+func TestEstimatedCaloriesIsZeroWithNoPower(t *testing.T) {
+	t.Parallel()
+
+	assert.InDelta(t, 0, measure.EstimatedCalories(0, 3600), 1e-9)
 }

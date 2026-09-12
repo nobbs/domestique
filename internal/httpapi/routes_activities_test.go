@@ -190,8 +190,32 @@ func TestGetActivitiesEstimatesCaloriesFromMeasuredPowerOverAnEstimate(t *testin
 }
 
 // A ride with no meter falls back to the estimate for its calorie comparison
-// figure.
+// figure, scaled by the estimate's own pedalling share: the estimate is a
+// mean over the pedalling samples only, not over the whole moving time.
 func TestGetActivitiesEstimatesCaloriesFromEstimatedPowerWithoutAMeter(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:                       trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+			EstimatedPedallingShare:    0.8,
+			HasEstimatedPedallingShare: true,
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
+	assert.InDelta(t, measure.EstimatedCalories(168.5, 60*0.8), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+}
+
+// A pre-migration row holds an estimate but no pedalling share, so there is
+// nothing to scale the moving time by: the comparison figure is withheld
+// rather than overstated against the whole moving time.
+func TestGetActivitiesCarriesNoEstimatedCaloriesForAnEstimateWithNoShare(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
 	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
@@ -205,8 +229,7 @@ func TestGetActivitiesEstimatesCaloriesFromEstimatedPowerWithoutAMeter(t *testin
 
 	derived := list.Activities[0]
 	require.NotNil(t, derived.Metrics)
-	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
-	assert.InDelta(t, measure.EstimatedCalories(168.5, 60), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
 }
 
 // A ride with neither a meter nor an estimate carries no calorie comparison
@@ -216,6 +239,52 @@ func TestGetActivitiesCarriesNoEstimatedCaloriesWithoutEitherPowerFigure(t *test
 	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
 			Averages: activities.RideAverages{HeartRateBPM: 142.5, HasHeartRate: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
+}
+
+// A file that declared a zero average power is a device that measured
+// nothing meaningful, not a rider who burned nothing: the figure falls back
+// to the estimate rather than serving a false zero.
+func TestGetActivitiesEstimatesCaloriesFromTheEstimateWhenDeviceAveragePowerIsZero(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:                       trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+			EstimatedPedallingShare:    0.8,
+			HasEstimatedPedallingShare: true,
+		}},
+	}
+	state.activitySessions = map[string]map[int64]activities.Session{
+		"rider-a": {1: {AveragePowerWatts: aKnownReading(0)}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
+	assert.InDelta(t, measure.EstimatedCalories(168.5, 60*0.8), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+}
+
+// A ride with no moving time to speak of carries no calorie comparison
+// figure, whatever its power figures say.
+func TestGetActivitiesCarriesNoEstimatedCaloriesWithNoMovingTime(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activities["rider-a"][0].MovingSeconds = 0
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Averages: activities.RideAverages{PowerWatts: 196.25, HasPower: true},
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
