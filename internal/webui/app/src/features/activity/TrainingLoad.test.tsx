@@ -239,28 +239,31 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Heat drift")).toBeNull();
   });
 
-  // Both figures need measured power and heart rate together, so either
-  // series falling short makes the figure no more trustworthy than its
-  // weaker half.
-  it("marks decoupling and heat drift with the worse of the two series' coverage", () => {
-    show({
-      decouplingPercent: 4.2,
-      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
-      heartRateCoverage: 0.95,
-      powerCoverage: 0.8,
-    });
+  // Built from measured power and heart rate alone, so either series falling
+  // short makes decoupling no more trustworthy than its weaker half.
+  it("marks decoupling with the worse of the two series' coverage", () => {
+    show({ decouplingPercent: 4.2, heartRateCoverage: 0.95, powerCoverage: 0.8 });
 
-    expect(screen.getAllByText("80% sensor coverage")).toHaveLength(2);
+    expect(screen.getByText("80% sensor coverage")).toBeInTheDocument();
   });
 
-  it("leaves decoupling and heat drift unmarked when both series covered the whole ride", () => {
+  it("leaves decoupling unmarked when both series covered the whole ride", () => {
+    show({ decouplingPercent: 4.2, heartRateCoverage: 1, powerCoverage: 1 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
+  // Heat drift also needs a temperature reading, and this service tracks no
+  // coverage share for that series, so heart-rate/power coverage alone would
+  // understate what could be missing from it.
+  it("never marks heat drift, even where heart rate and power both fell short", () => {
     show({
-      decouplingPercent: 4.2,
       heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
-      heartRateCoverage: 1,
-      powerCoverage: 1,
+      heartRateCoverage: 0.5,
+      powerCoverage: 0.5,
     });
 
+    expect(screen.getByText("Heat drift")).toBeInTheDocument();
     expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
   });
 

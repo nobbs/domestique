@@ -331,4 +331,11 @@ describe("formatCoverage", () => {
   it("does not understate an exact percentage lost to floating-point representation", () => {
     expect(formatCoverage(1044 / 3600)).toBe("29% sensor coverage");
   });
+
+  // The same epsilon that corrects the case above can itself push a share a
+  // hair under 1 past 100 after the floor; the result must still never claim
+  // full coverage for a value this function was already told is partial.
+  it("never prints 100% for a coverage share below 1", () => {
+    expect(formatCoverage(0.999999999999)).toBe("99% sensor coverage");
+  });
 });
