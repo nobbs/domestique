@@ -46,6 +46,29 @@
   },
   "overrides": [
     {
+      "includes": [
+        "src/**/*.stories.ts",
+        "src/**/*.stories.tsx",
+        "src/storybook/**",
+        "!src/**/*.test.ts",
+        "!src/**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "vitest": "A story runs in Storybook itself, where vitest does not exist; use storybook/test."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["src/components/Button.tsx", "src/components/ui/**"],
       "linter": {
         "rules": {
