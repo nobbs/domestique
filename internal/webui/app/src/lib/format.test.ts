@@ -346,4 +346,10 @@ describe("formatCoverage", () => {
   it("never prints 100% for a coverage share below 1", () => {
     expect(formatCoverage(0.999999999999)).toBe("99% sensor coverage");
   });
+
+  // The server always bounds coverage to [0, 1], but the caption holds its
+  // own floor too rather than trusting that guarantee never to lapse.
+  it("never prints a negative percentage", () => {
+    expect(formatCoverage(-0.5)).toBe("0% sensor coverage");
+  });
 });

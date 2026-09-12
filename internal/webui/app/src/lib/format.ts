@@ -298,8 +298,10 @@ export function formatSpeed(kmh: number | null | undefined): string {
  * (0.009999999999, meant to read as 0%) sits much further from it than that
  * — so only a scaled value within COVERAGE_INTEGER_EPSILON of its nearest
  * integer is treated as that integer; anything further is floored as-is.
- * Both branches are then capped at 99: the caption must never print "100%"
- * for a coverage this function was already told is not the whole ride.
+ * Both branches are then clamped to 0-99: the server already bounds
+ * `coverage` to [0, 1], but the caption itself must never print "100%" for a
+ * value already told it is not the whole ride, nor a negative percentage if
+ * that guarantee were ever to lapse.
  */
 const COVERAGE_INTEGER_EPSILON = 1e-11;
 
@@ -314,5 +316,5 @@ export function formatCoverage(coverage: number | undefined): string | undefined
       ? nearestInteger
       : Math.floor(scaled);
 
-  return `${Math.min(percent, 99)}% sensor coverage`;
+  return `${Math.min(Math.max(percent, 0), 99)}% sensor coverage`;
 }

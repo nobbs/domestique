@@ -674,12 +674,14 @@ The read-only JSON surface is small:
   reading for — is served alongside every figure built on it, whether or not
   that figure cleared the withhold threshold: `heartRateCoverage` beside the
   zones, TRIMP, hrTSS, average and maximum heart rate, and `powerCoverage`
-  beside normalized power, intensity factor, power TSS, average and maximum
-  power. A figure served at, say, 92% coverage is still most of the ride
-  rather than all of it, and the share says so without the rider having to
-  take a plain average on faith. Absent for a series with nothing to hold a
-  reading of at all, absent as well when the ride's own moving time is not
-  yet known (a share judged against an unknown whole is not a share), and
+  beside normalized power, intensity factor, power TSS and average power. A
+  figure served at, say, 92% coverage is still most of the ride rather than
+  all of it, and the share says so without the rider having to take a plain
+  average on faith. Never beside maximum power: that figure is always the
+  device's own session maximum, not one the recorded series yields, so
+  `powerCoverage` is not a fact about it. Absent for a series with nothing to
+  hold a reading of at all, absent as well when the ride's own moving time is
+  not yet known (a share judged against an unknown whole is not a share), and
   `powerCoverage` is never served beside an estimate: it describes a meter's
   own coverage, never the estimate's.
 

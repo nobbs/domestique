@@ -222,12 +222,11 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
         : undefined;
 
   const devicePower: Scale[] = [
-    {
-      label: "Max power",
-      scale: "watts",
-      value: metrics?.maxPowerWatts,
-      coverage: metrics?.powerCoverage,
-    },
+    // No coverage mark: this is the device's own session maximum, never a
+    // figure our own power series produces, so our series' coverage is not
+    // a fact about it -- unlike the average beside it, which the series
+    // itself yields whenever the session declares none.
+    { label: "Max power", scale: "watts", value: metrics?.maxPowerWatts },
     {
       label: "Threshold power",
       scale: "watts set on the device",
@@ -274,13 +273,14 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   // at. One ride is a point, not a trend.
   //
   // Both figures are built from measured power and heart rate; the worse of
-  // the two series' own coverage marks either. Heat drift also needs a
-  // temperature reading this service tracks no coverage share for, so the
-  // service withholds it below the same threshold that withholds the load
-  // figures above (docs/specs/service.md) rather than mark it with a share
-  // that would understate what the untracked series could be missing; the
-  // mark below only ever describes the heart-rate/power share of a ride that
-  // already cleared that floor.
+  // the two series' own coverage marks either -- fully describing decoupling,
+  // which needs no other series. Heat drift also needs a temperature reading
+  // this service tracks no coverage share for, so the service withholds it
+  // below the same threshold that withholds the load figures above
+  // (docs/specs/service.md) rather than mark it with a share that would
+  // understate what the untracked series could be missing; heat drift's own
+  // mark below only ever describes the heart-rate/power share of a ride
+  // that already cleared that floor.
   const physiologyCoverage = combinedCoverage(metrics?.heartRateCoverage, metrics?.powerCoverage);
   const physiology: Scale[] = [
     {

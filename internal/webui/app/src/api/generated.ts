@@ -283,7 +283,7 @@ export interface ActivityMetrics {
    */
   heartRateCoverage?: number;
   /**
-   * The same share for the power meter, served beside normalizedPowerWatts, intensityFactor and powerTss above and averagePowerWatts and maxPowerWatts below. Absent for a ride estimating its power from the track: this describes a meter's own coverage, never the estimate's.
+   * The same share for the power meter, served beside normalizedPowerWatts, intensityFactor, powerTss and averagePowerWatts. Never beside maxPowerWatts: that figure is always the device's own session maximum, not one the recorded series yields, so this series' coverage is not a fact about it. Absent for a ride estimating its power from the track: this describes a meter's own coverage, never the estimate's.
    * @minimum 0
    * @maximum 1
    */

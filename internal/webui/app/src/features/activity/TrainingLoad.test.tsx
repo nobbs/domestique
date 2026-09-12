@@ -331,6 +331,17 @@ describe("TrainingLoad", () => {
     expect(screen.getAllByText("85% sensor coverage")).toHaveLength(3);
   });
 
+  // Max power is always the device's own session maximum -- the recorded
+  // series never yields one of its own -- so the meter's coverage is not a
+  // fact about this particular figure, unlike the average beside it.
+  it("leaves the device's own max power unmarked by the meter's coverage", () => {
+    show({ averagePowerWatts: 196.2, powerCoverage: 0.85, maxPowerWatts: 612 });
+
+    expect(screen.getByText("Max power")).toBeInTheDocument();
+    expect(screen.getByText("612")).toBeInTheDocument();
+    expect(screen.getAllByText("85% sensor coverage")).toHaveLength(1);
+  });
+
   it("leaves out the coverage mark at full coverage", () => {
     show({ averageHeartRateBpm: 142.4, heartRateCoverage: 1 });
 

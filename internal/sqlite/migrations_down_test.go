@@ -463,7 +463,7 @@ func TestMigration058DownKeepsAPopulatedMetricsRow(t *testing.T) {
 // from the current baseline".
 func TestValidateSchemaSurvivesARollbackAndReplay(t *testing.T) {
 	t.Parallel()
-	for _, rollbackTo := range []uint{56, 55, 45} {
+	for _, rollbackTo := range []uint{57, 56, 55, 45} {
 		t.Run(strconv.Itoa(int(rollbackTo)), func(t *testing.T) {
 			t.Parallel()
 			dbPath := filepath.Join(t.TempDir(), "rollback-replay.db")
