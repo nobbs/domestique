@@ -241,6 +241,29 @@ func steady(seconds int, heartRate, power float64) activity.FIT {
 	return activity.FIT{Records: records}
 }
 
+// A ride cannot witness that it was maximal about itself. This easy one clears
+// the ramp shape — its hardest minute sits near its hardest five — and read
+// against its own twenty it would offer 94 W to a rider who never held 60.
+// Nothing else is recorded to judge it against, so it is withheld.
+func TestRiderSuggestionsWithholdARampNoOtherRideCorroborates(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	// Twenty-one minutes: sixteen at 50 W, four at 100 and a closing minute at
+	// 125. A ratio of 1.19, so the shape admits it, and 75% of that minute is
+	// 94 W against a twenty-minute estimate near 61.
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1,
+		shaped([][2]float64{{960, 50}, {240, 100}, {60, 125}}), activity.RecordsVersion),
+		"StoreActivityRecords()")
+
+	suggestions, err := store.RiderSuggestions(t.Context(), []string{"rider-a"}, nil, activityNow().Add(-time.Hour))
+	require.NoError(t, err, "RiderSuggestions()")
+	require.True(t, suggestions.FunctionalThresholdPowerWatts.Set, "the twenty minutes it did ride still stand")
+	assert.Less(t, suggestions.FunctionalThresholdPowerWatts.Number, 75.0,
+		"the twenty-minute estimate, not the 94 W the ramp shape offered")
+}
+
 // strapped records a heart rate that is present but not beating, which is what
 // an unpaired strap writes: the reading is there, and it is nought.
 func strapped(seconds int, heartRate, power float64) activity.FIT {

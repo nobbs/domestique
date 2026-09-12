@@ -12,22 +12,14 @@ import (
 // session built on one-minute intervals sits at 1.56 and above, and a longer
 // training ride runs past the length.
 //
-// The shape is loose, and what a wrong answer costs is bounded by the ratio
-// rather than by the shape: an estimate is 75% of a minute that is itself at
-// most 1.25x the best five, so it never exceeds 94% of the five minutes it was
-// read over. Against the twenty-minute estimate's 95% that is the useful
-// comparison — a ride is only ever taken over it when its five minutes stand
-// above any twenty the rider sustains, which is what a maximal effort looks
-// like and what an ordinary ride does not manage.
-//
-// The bound is on the ride, not on the rider, and there it runs out: a rider
-// whose whole corpus is one easy ride has no twenty minutes worth clearing, and
-// 16 minutes at 50 W, 4 at 100 and a closing minute at 125 reads as a ratio of
-// 1.19 and offers 94 W against that ride's own 61. Nothing in one ride can tell
-// that apart from a ramp test, and a rider with a single easy ride is not owed
-// a threshold either way. A corpus comparison was tried and is provably inert:
-// where it rejects, the ratio has already put the estimate under the
-// twenty-minute one.
+// The shape is loose, and deliberately does not decide anything by itself. The
+// ratio bounds what one ride can claim — an estimate is 75% of a minute that is
+// itself at most 1.25x the best five, so it never exceeds 94% of the five
+// minutes it was read over — but that bound is on the ride and not on the
+// rider. An easy ride clears it: 16 minutes at 50 W, 4 at 100 and a closing
+// minute at 125 is a ratio of 1.19 and offers 94 W to a rider who never held
+// 60. Whether a reading means anything is therefore settled by the rider's
+// other rides, not here; see thresholdPowerFrom in internal/sqlite.
 //
 // Deliberately absent: a test that the hardest minute is the ride's last. A ramp
 // is ridden to failure, but the recorded ride carries the cooldown after it, so

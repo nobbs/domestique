@@ -583,22 +583,27 @@ of recorded span, holding a best minute within 1.25 times its best five
 the two estimates is higher, because each is a floor that only a rider who
 performed that protocol reaches.
 
-The shape is deliberately loose, and the ratio rather than the shape is what
-bounds a wrong answer: an estimate is 75% of a minute that is itself at most
+The shape is deliberately loose and settles nothing on its own. The ratio bounds
+what one ride can claim — an estimate is 75% of a minute that is itself at most
 1.25 times the best five, so it never exceeds 94% of the five minutes it was
-read over. Against the twenty-minute estimate's 95% that is the comparison worth
-making — a ride is only taken over that estimate when its five minutes stand
-above any twenty the rider sustains, which is what a maximal effort looks like.
+read over — but that bound is on the ride, not on the rider. An easy ride clears
+it: sixteen minutes at 50 W, four at 100 and a closing minute at 125 is a ratio
+of 1.19 and offers 94 W to a rider who never held 60.
 
-The bound is on the ride and not on the rider, and there it stops. A rider whose
-whole corpus is one easy ride has no sustained twenty worth clearing, and such a
-ride can be read as a ramp: sixteen minutes at 50 W, four at 100 and a closing
-minute at 125 is a ratio of 1.19 and offers 94 W against that ride's own 61.
-Nothing inside one ride distinguishes that from a ramp test. Comparing a
-reading against the corpus was tried and is inert — wherever such a comparison
-rejects, the ratio has already put the estimate under the twenty-minute one — so
-the case stands, on the ground that a rider with a single easy ride is owed no
-threshold by either estimate.
+**A ramp reading stands only where another ride supplies a twenty to read it
+beside** (`internal/sqlite/rider.go` `thresholdPowerFrom`). The reading is a
+claim that this ride was maximal, and no ride witnesses that about itself:
+against its own twenty the easy ride above wins, and against a twenty the rider
+actually sustained it does not. A rider with nothing else recorded keeps the
+twenty-minute estimate rather than a claim nothing corroborates. Comparing a
+reading against the corpus best twenty *including its own ride* was tried
+instead and is inert — wherever it rejects, the ratio has already put the
+estimate under the twenty-minute one.
+
+What no rule here can do is tell a ramp test from an easy ride when every ride
+is easy, because nothing in such a corpus distinguishes them. A rider whose
+riding says nothing about their threshold is owed no estimate that pretends
+otherwise.
 
 There is deliberately no test that the hardest minute is the ride's last: a ramp
 is ridden to failure, but the file carries the cooldown after it, so a real
