@@ -301,7 +301,6 @@ body { margin: 0; background: var(--base); color: var(--ink); font-family: var(-
 
 @media (display-mode: standalone) {
   body { background: var(--letterbox); }
-  .route-map { min-height: 100vh; }
 }
 
 /* MapLibre owns the canvas and its control corners. */
