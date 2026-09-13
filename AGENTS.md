@@ -170,13 +170,15 @@ statements live in the linked specs.
 ## Testing
 
 - Tests live beside the package, using deterministic in-memory fakes or
-  `httptest`. **No normal test contacts any network service.** Three
+  `httptest`. **No normal test contacts any network service.** Four
   acceptance checks are invoked separately, behind build tags, never with
   production secrets in CI: the Wahoo sandbox check
   ([wahoo_sandbox_test.go](internal/fit/wahoo_sandbox_test.go), `-tags
   wahoo_sandbox`), the Open-Meteo check
   ([openmeteo_acceptance_test.go](internal/openmeteo/openmeteo_acceptance_test.go),
-  `-tags openmeteo_acceptance`, no credentials needed), and the Zwift check
+  `-tags openmeteo_acceptance`, no credentials needed), the Claude check
+  ([claude_acceptance_test.go](internal/claude/claude_acceptance_test.go),
+  `-tags claude_acceptance`, needs `DOMESTIQUE_CLAUDE_TOKEN`), and the Zwift check
   ([zwift_acceptance_test.go](internal/zwift/zwift_acceptance_test.go), `-tags
   zwift_acceptance`, needs `DOMESTIQUE_ZWIFT_EMAIL` and
   `DOMESTIQUE_ZWIFT_PASSWORD`). Run the Open-Meteo check after
