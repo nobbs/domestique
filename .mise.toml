@@ -1,6 +1,6 @@
 [tools]
 go = "1.27.1"
-node = "24.20.0"
+node = "24.21.0"
 # Kept in step with the `packageManager` field in internal/webui/app/package.json.
 pnpm = "11.26.0"
 golangci-lint = "2.13.2"
