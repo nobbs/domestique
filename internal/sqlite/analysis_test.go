@@ -207,3 +207,36 @@ func TestARecordsReReadKeepsTheAnalysis(t *testing.T) {
 	require.NoError(t, err, "ActivitiesAwaitingAnalysis()")
 	assert.Empty(t, pending, "re-derived, the ride is not owed again")
 }
+
+func TestAnalysisReadsAndWritesReportAnUnreadableStore(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	require.NoError(t, store.Close(), "Close()")
+
+	_, err := store.RecordAnalysisEnabled(t.Context(), activityNow())
+	require.ErrorContains(t, err, "recording when the analysis was enabled")
+	_, err = store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", activityNow(), activityNow(), nil, 5)
+	require.ErrorContains(t, err, "listing activities awaiting analysis")
+	_, err = store.AnalysesBefore(t.Context(), "rider-a", activityNow(), 5)
+	require.ErrorContains(t, err, "reading earlier activity analyses")
+	assert.ErrorContains(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 1, testAnalysis("said")),
+		"recording an activity analysis")
+}
+
+// A failed analysis delete rolls the metrics delete back with it.
+func TestAnAnalysisDeleteThatFailsKeepsTheMetricsRow(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	storeRideAt(t, store, 1, activityNow(), true)
+	_, err := store.database.ExecContext(t.Context(), `DROP TABLE activity_analyses`)
+	require.NoError(t, err)
+
+	require.ErrorContains(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{}),
+		"clearing the activity analysis")
+	_, err = store.ClearActivityMetrics(t.Context(), "rider-a")
+	require.ErrorContains(t, err, "clearing the activity analyses")
+
+	derived, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	assert.Contains(t, derived, int64(1))
+}

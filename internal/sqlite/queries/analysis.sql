@@ -1,9 +1,8 @@
--- name: RecordAnalysisEnabled :exec
+-- The no-op update makes RETURNING answer with the instant already standing.
+-- name: RecordAnalysisEnabled :one
 INSERT INTO analysis_state (id, enabled_since_unix) VALUES (1, ?)
-ON CONFLICT(id) DO NOTHING;
-
--- name: GetAnalysisEnabledSince :one
-SELECT enabled_since_unix FROM analysis_state WHERE id = 1;
+ON CONFLICT(id) DO UPDATE SET enabled_since_unix = analysis_state.enabled_since_unix
+RETURNING enabled_since_unix;
 
 -- Derived rides with no analysis that started at or after the instant the
 -- analysis was enabled, oldest first so each answer can read the ones before it.

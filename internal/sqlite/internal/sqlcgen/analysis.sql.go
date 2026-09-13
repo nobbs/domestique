@@ -32,17 +32,6 @@ func (q *Queries) DeleteActivityAnalysis(ctx context.Context, arg DeleteActivity
 	return err
 }
 
-const getAnalysisEnabledSince = `-- name: GetAnalysisEnabledSince :one
-SELECT enabled_since_unix FROM analysis_state WHERE id = 1
-`
-
-func (q *Queries) GetAnalysisEnabledSince(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getAnalysisEnabledSince)
-	var enabled_since_unix int64
-	err := row.Scan(&enabled_since_unix)
-	return enabled_since_unix, err
-}
-
 const listActivitiesAwaitingAnalysis = `-- name: ListActivitiesAwaitingAnalysis :many
 SELECT a.workout_id, a.started_at_unix
 FROM activities AS a
@@ -158,14 +147,18 @@ func (q *Queries) ListAnalysesBefore(ctx context.Context, arg ListAnalysesBefore
 	return items, nil
 }
 
-const recordAnalysisEnabled = `-- name: RecordAnalysisEnabled :exec
+const recordAnalysisEnabled = `-- name: RecordAnalysisEnabled :one
 INSERT INTO analysis_state (id, enabled_since_unix) VALUES (1, ?)
-ON CONFLICT(id) DO NOTHING
+ON CONFLICT(id) DO UPDATE SET enabled_since_unix = analysis_state.enabled_since_unix
+RETURNING enabled_since_unix
 `
 
-func (q *Queries) RecordAnalysisEnabled(ctx context.Context, enabledSinceUnix int64) error {
-	_, err := q.db.ExecContext(ctx, recordAnalysisEnabled, enabledSinceUnix)
-	return err
+// The no-op update makes RETURNING answer with the instant already standing.
+func (q *Queries) RecordAnalysisEnabled(ctx context.Context, enabledSinceUnix int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, recordAnalysisEnabled, enabledSinceUnix)
+	var enabled_since_unix int64
+	err := row.Scan(&enabled_since_unix)
+	return enabled_since_unix, err
 }
 
 const upsertActivityAnalysis = `-- name: UpsertActivityAnalysis :exec

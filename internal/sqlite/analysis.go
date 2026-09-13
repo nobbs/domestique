@@ -13,12 +13,9 @@ import (
 // RecordAnalysisEnabled records now as the instant the analysis was enabled,
 // unless an earlier start already did, and returns the instant that stands.
 func (s *Store) RecordAnalysisEnabled(ctx context.Context, now time.Time) (time.Time, error) {
-	if err := s.queries.RecordAnalysisEnabled(ctx, now.Unix()); err != nil {
-		return time.Time{}, fmt.Errorf("recording when the analysis was enabled: %w", err)
-	}
-	since, err := s.queries.GetAnalysisEnabledSince(ctx)
+	since, err := s.queries.RecordAnalysisEnabled(ctx, now.Unix())
 	if err != nil {
-		return time.Time{}, fmt.Errorf("reading when the analysis was enabled: %w", err)
+		return time.Time{}, fmt.Errorf("recording when the analysis was enabled: %w", err)
 	}
 
 	return time.Unix(since, 0).UTC(), nil
