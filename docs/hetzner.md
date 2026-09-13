@@ -62,7 +62,7 @@ Create a directory owned by the operator, for example `/srv/domestique`:
 
 ```text
 /srv/domestique/
-├── compose.yml   # docs/compose.example.yml, unmodified
+├── compose.yml   # docs/compose.example.yml, unmodified unless analysis is on
 ├── .env          # DOMESTIQUE_IMAGE, DOMESTIQUE_PUBLIC_HOST, DOMESTIQUE_ACME_EMAIL
 ├── config.toml   # config.example.toml with every placeholder replaced
 ├── secrets/      # the state key, the Auth0 client secret, and the deploy

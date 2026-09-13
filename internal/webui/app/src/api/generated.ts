@@ -362,7 +362,7 @@ export interface ActivityRouteMatch {
 }
 
 /**
- * What a language model made of this ride. Absent for a ride not yet analysed, for one whose derivation yielded nothing, and everywhere on a deployment that configured no token. Text for the rider to read; never an input to any figure served here.
+ * What a language model made of this ride. Absent for a ride not yet analysed, for one whose derivation yielded nothing, and everywhere on a deployment that never configured a token. Text for the rider to read; never an input to any figure served here.
  */
 export interface ActivityAnalysis {
   /**

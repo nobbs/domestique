@@ -64,6 +64,10 @@ client_secret_file = "/run/secrets/auth0_client_secret"
 database_path = "/var/lib/domestique/state.db"
 encryption_key_file = "/run/secrets/state_encryption_key"
 
+# Optional: switches the ride analysis on.
+# [analysis]
+# claude_token_file = "/run/secrets/claude_token"
+
 [log]
 level = "info"
 ```

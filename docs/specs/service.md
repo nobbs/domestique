@@ -721,7 +721,8 @@ The read-only JSON surface is small:
   language model wrote about the ride, at most two thousand characters, with
   the model and prompt revision that produced it and when. It is absent for a
   ride not yet analysed, for a ride its derivation yielded nothing for, and
-  for every ride of a deployment that configured no token. It is text for the
+  for every ride of a deployment that never configured a token; removing the
+  token stops new analyses and leaves stored ones served. It is text for the
   rider to read and is never an input to any figure this service serves. The
   bound is what lets it ride on the list: it is asked for as a few short
   paragraphs, and an answer over the bound is refused rather than stored.
@@ -1238,8 +1239,8 @@ profile edit re-derives it but does not re-analyse it; a derivation that
 removes the ride's figures removes the analysis with them, and only a later
 derivation that gives the ride figures again asks once more. No request or
 operation asks on demand, and the route-scoped reprocess does not reach a
-ride. Only rides stored after the
-analysis was enabled are analysed at all: a history already held when the
+ride. Only rides started after the
+analysis was enabled are analysed at all: a history ridden before the
 token arrives is never backfilled, so enabling it costs nothing until the next
 ride lands. Which
 rider a ride belongs to does not change whose subscription answers: this is one

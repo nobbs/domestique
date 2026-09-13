@@ -361,11 +361,11 @@ lists no such task, resolves a graph with no such edge, and offers no decision
 about its alerts. It follows `activity:derive` and holds the same resource,
 because it reads exactly the rows the derivation writes, and it fans out over
 targets the same way. It is owed a ride that has a derived row, no analysis
-row, and was first stored after the analysis was enabled — an instant this
+row, and started after the analysis was enabled — an instant this
 service records the first time it starts with a token and keeps as runtime
 state — so its edge carries no argument and a run with nothing owed asks
-nothing. There is no backfill: a history stored before that instant stays
-unanalysed, and a ride whose analysis stands is never asked about again. A
+nothing. There is no backfill: a ride started before that instant stays
+unanalysed, even one stored after it, and a ride whose analysis stands is never asked about again. A
 ride whose derivation yielded nothing is not owed one, and a derivation that
 removes a ride's derived row removes its analysis in the same transaction, so
 a profile edit that takes a ride's figures away takes what was said about them
