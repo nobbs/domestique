@@ -38,12 +38,7 @@ export function DonutChart<K extends string | number>({
 
   return (
     <div className="relative size-40 shrink-0">
-      <svg
-        viewBox="0 0 42 42"
-        className="-rotate-90 size-full"
-        aria-hidden="true"
-        onMouseLeave={() => onActive?.(null)}
-      >
+      <svg viewBox="0 0 42 42" className="-rotate-90 size-full" aria-hidden="true">
         {total > 0
           ? segments.map((segment) => {
               const length = (Math.max(segment.value, 0) / total) * 100;
@@ -68,6 +63,8 @@ export function DonutChart<K extends string | number>({
                   strokeDashoffset={-start}
                   className="transition-[opacity,stroke-width] duration-150"
                   onMouseEnter={() => onActive?.(segment.key)}
+                  // Per segment, not only on the ring: the hole and the gaps are not a segment either.
+                  onMouseLeave={() => onActive?.(null)}
                 />
               );
             })

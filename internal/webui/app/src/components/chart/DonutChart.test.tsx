@@ -21,13 +21,14 @@ describe("DonutChart", () => {
     expect(segment(container, "c")?.getAttribute("stroke-dashoffset")).toBe("-30");
   });
 
-  it("names the segment pointed at, and nothing once the pointer leaves", () => {
+  it("names the segment pointed at, and nothing once the pointer leaves it", () => {
     const onActive = vi.fn();
     const { container } = render(<DonutChart segments={SEGMENTS} onActive={onActive} />);
 
     fireEvent.mouseEnter(segment(container, "c") as Element);
     expect(onActive).toHaveBeenLastCalledWith("c");
-    fireEvent.mouseLeave(container.querySelector("svg") as Element);
+    // Into the hole or a gap, which is still inside the ring's box.
+    fireEvent.mouseLeave(segment(container, "c") as Element);
     expect(onActive).toHaveBeenLastCalledWith(null);
   });
 
