@@ -7,6 +7,12 @@
 import type { RouteValidation } from "../api/types";
 
 /**
+ * Every date and time this UI prints, in one convention: a 24-hour clock and
+ * day-first dates, whatever locale the reader's browser happens to prefer.
+ */
+export const LOCALE = "en-GB";
+
+/**
  * A tenth below 100 km, a whole number at or above it — always in kilometres,
  * no unit switch to metres.
  *
@@ -36,12 +42,12 @@ export function formatDistance(metres: number): string {
   return formatKilometres(metres);
 }
 
-/** `14:20` or `02:20 PM`, in the reader's own zone and clock convention; `""` for a date that failed to parse. */
+/** `14:20`, in the reader's own zone; `""` for a date that failed to parse. */
 export function formatClock(at: Date): string {
   if (Number.isNaN(at.getTime())) {
     return "";
   }
-  return at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return at.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatCount(value: number, singular: string, plural = `${singular}s`): string {
@@ -91,7 +97,7 @@ export function formatTimestamp(value: string | undefined): string {
   if (Number.isNaN(parsed.getTime())) {
     return "unknown";
   }
-  return parsed.toLocaleString(undefined, {
+  return parsed.toLocaleString(LOCALE, {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -119,7 +125,7 @@ export function formatReadTime(value: string | undefined, now = new Date()): str
     return formatTimestamp(value);
   }
 
-  return parsed.toLocaleTimeString(undefined, { timeStyle: "short" });
+  return parsed.toLocaleTimeString(LOCALE, { timeStyle: "short" });
 }
 
 /**

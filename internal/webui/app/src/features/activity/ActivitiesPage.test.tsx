@@ -11,13 +11,19 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, ActivityRouteMatch, Route, WebUIConfig } from "../../api/types";
-import { formatAscent, formatDistance, formatDuration, formatTimestamp } from "../../lib/format";
+import {
+  formatAscent,
+  formatDistance,
+  formatDuration,
+  formatTimestamp,
+  LOCALE,
+} from "../../lib/format";
 import { IDLE_STATUS } from "../../test/status";
 import { ActivitiesPage } from "./ActivitiesPage";
 
-/** The day a week's label starts with, in the platform's own locale. */
+/** The day a week's label starts with, in the UI's pinned locale. */
 function weekOf(day: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(LOCALE, {
     day: "numeric",
     month: "short",
     timeZone: ZONE,
