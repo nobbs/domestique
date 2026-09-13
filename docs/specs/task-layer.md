@@ -399,8 +399,11 @@ owed asks nothing and costs a query per target. An answer is stored only when
 it fits the contract's bound: non-empty and at most two thousand characters.
 An empty or longer one is `unusable` and the ride stays owed. The log carries
 counts and the alert one stable failure category — `token` refused,
-`allowance` exhausted, `executable` failing, answer `unusable` — and neither
-ever carries the prompt or the answer.
+`allowance` exhausted, `executable` failing, answer `unusable`, or `state` when
+stored state could not be read — and neither ever carries the prompt or the
+answer. Every target shares the one subscription and executable, so a run over
+all of them ends at the first failure that is not `state` rather than meeting
+it again once per target.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery

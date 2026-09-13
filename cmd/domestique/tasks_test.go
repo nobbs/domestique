@@ -1345,3 +1345,24 @@ func TestTheActivityGraphResolvesWithAndWithoutTheAnalysis(t *testing.T) {
 		append(activities(), activityAnalyseTask(&fakeAnalyser{}, allEnabled, twoTargets)))
 	assert.NoError(t, err, "with the analysis")
 }
+
+// Targets share one subscription: a run over all of them stops at a failure the
+// next target would only meet again, but not at one target's unreadable state.
+func TestActivityAnalyseTaskStopsEveryTargetAtASharedFailure(t *testing.T) {
+	t.Parallel()
+
+	three := func() []string { return []string{"rider-a", "rider-b", "rider-c"} }
+	shared := &fakeAnalyser{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Failed, Failure: activity.FailureAllowance},
+	}}
+	activityAnalyseTask(shared, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
+	assert.Equal(t, []string{"rider-a"}, shared.analysed)
+
+	local := &fakeAnalyser{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Failed, Failure: activity.FailureState},
+		"rider-b": {Outcome: activity.Unchanged},
+		"rider-c": {Outcome: activity.Unchanged},
+	}}
+	activityAnalyseTask(local, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
+	assert.Equal(t, []string{"rider-a", "rider-b", "rider-c"}, local.analysed)
+}

@@ -468,6 +468,11 @@ func activityAnalyseTask(
 				if result := activityResult(&analysed); severity(result.Outcome) > severity(aggregate.Outcome) {
 					aggregate = result
 				}
+				// Every target shares one subscription and one executable, so a
+				// failure of either would only be met again by the next target.
+				if analysed.Outcome == activity.Failed && analysed.Failure != activity.FailureState {
+					break
+				}
 			}
 
 			return aggregate
