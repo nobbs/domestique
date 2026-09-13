@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { ActivitySplit, RideWeatherStep } from "../../api/types";
+import { LOCALE } from "../../lib/format";
 import { MIN_WIDTH, PADDING } from "../../lib/plotAxis";
 import { RideConditions, stepStarts } from "./RideConditions";
 
@@ -116,10 +117,10 @@ describe("RideConditions", () => {
   // A recent ride is answered by the quarter hour, and the clock already shows
   // minutes: nothing about the tile needs to change to draw one correctly.
   it("draws a quarter-hour step at its own minute, not rounded to the hour", () => {
-    // Through the platform's own formatter, so the assertion carries no locale
-    // or zone of its own and still fails if the minute is dropped.
+    // Through the pinned locale and the platform's own zone, so the assertion
+    // carries no zone of its own and still fails if the minute is dropped.
     const clock = (iso: string) =>
-      new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+      new Date(iso).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
     show([step({ time: "2026-08-24T06:15:00Z", stepSeconds: 900 })], [0]);
 
     expect(screen.getAllByRole("listitem")).toHaveLength(1);

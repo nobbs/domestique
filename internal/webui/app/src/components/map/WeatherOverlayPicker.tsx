@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useHourTick } from "../../lib/clock";
+import { LOCALE } from "../../lib/format";
 import type { Measure, MeasureKey } from "../../lib/measures";
 import { usePrefersReducedMotion } from "../../lib/mediaQuery";
 
@@ -49,7 +50,7 @@ function hourLabel(hoursAhead: number): string {
   // Floored to match `useViewportGrid`'s own hour key, so the label never
   // names an hour half an hour ahead of the data actually fetched for it.
   const at = new Date((Math.floor(Date.now() / 3_600_000) + hoursAhead) * 3_600_000);
-  const when = at.toLocaleTimeString(undefined, {
+  const when = at.toLocaleTimeString(LOCALE, {
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",

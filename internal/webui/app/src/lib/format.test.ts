@@ -19,6 +19,7 @@ import {
   formatTemperature,
   formatTimestamp,
   formatWindSpeed,
+  LOCALE,
 } from "./format";
 
 describe("formatDistance", () => {
@@ -52,12 +53,18 @@ describe("formatClock", () => {
     expect(formatClock(new Date(Number.NaN))).toBe("");
   });
 
-  it("prints the platform's own short clock for a valid date", () => {
+  it("prints the pinned short clock for a valid date", () => {
     const at = new Date("2026-08-17T19:38:00Z");
 
     expect(formatClock(at)).toBe(
-      at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+      at.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }),
     );
+  });
+
+  // The whole point of the pinned locale: never an am/pm clock, whatever the
+  // reader's browser or the runner's own locale would otherwise print.
+  it("is a 24-hour clock", () => {
+    expect(formatClock(new Date("2026-08-17T19:38:00Z"))).toMatch(/^\d{2}:\d{2}$/);
   });
 });
 
@@ -97,13 +104,12 @@ describe("formatReadTime", () => {
 
   /*
    * The clock alone for today's read, which is nearly every read a card shows.
-   * Asserted against what the platform itself would print rather than against a
-   * literal, so the test says the same thing under every locale the suite runs
-   * in — what is being checked is that the date was dropped, not the separator.
+   * Asserted against what the pinned locale prints rather than against a
+   * literal, so what is checked is that the date was dropped, not the separator.
    */
   it("gives a read from today the clock alone", () => {
     const now = new Date("2026-08-17T19:38:00Z");
-    const expected = now.toLocaleTimeString(undefined, { timeStyle: "short" });
+    const expected = now.toLocaleTimeString(LOCALE, { timeStyle: "short" });
 
     expect(formatReadTime(now.toISOString(), now)).toBe(expected);
   });

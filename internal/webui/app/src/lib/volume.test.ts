@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Activity } from "../api/types";
+import { LOCALE } from "./format";
 import {
   bucketActivities,
   volumeTotals,
@@ -196,11 +197,11 @@ describe("weekdayIndex", () => {
 });
 
 describe("weekRangeLabel", () => {
-  // Through the platform's own formatter, so the assertion carries no locale
-  // of its own and still fails if the range ends on the wrong day.
+  // Through the UI's pinned locale, so the assertion still fails if the range
+  // ends on the wrong day.
   it("spans the Monday to the Sunday six days later", () => {
     const day = (at: Date) =>
-      new Intl.DateTimeFormat(undefined, {
+      new Intl.DateTimeFormat(LOCALE, {
         day: "numeric",
         month: "short",
         timeZone: "UTC",

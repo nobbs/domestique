@@ -8,6 +8,7 @@
  */
 
 import type { Activity } from "../api/types";
+import { LOCALE } from "./format";
 
 export type Granularity = "week" | "month";
 
@@ -114,7 +115,7 @@ function labelFormatter(zone: string, granularity: Granularity): Intl.DateTimeFo
   let formatter = LABEL_FORMATTERS.get(key);
   if (!formatter) {
     formatter = new Intl.DateTimeFormat(
-      undefined,
+      LOCALE,
       granularity === "week"
         ? { day: "numeric", month: "short", timeZone: zone }
         : { month: "short", year: "numeric", timeZone: zone },
@@ -276,7 +277,7 @@ const RANGE_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
 function rangeFormatter(zone: string): Intl.DateTimeFormat {
   let formatter = RANGE_FORMATTERS.get(zone);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(undefined, {
+    formatter = new Intl.DateTimeFormat(LOCALE, {
       day: "numeric",
       month: "short",
       timeZone: zone,
@@ -287,7 +288,7 @@ function rangeFormatter(zone: string): Intl.DateTimeFormat {
   return formatter;
 }
 
-/** The week starting `start` as "31 Aug – 6 Sept" in the reader's own locale, both ends read in `zone`. */
+/** The week starting `start` as "31 Aug – 6 Sept", both ends read in `zone`. */
 export function weekRangeLabel(start: Date, zone: string): string {
   const { year, month, day } = zonedParts(start, zone);
   const end = zonedMidnight(year, month, day + 6, zone);

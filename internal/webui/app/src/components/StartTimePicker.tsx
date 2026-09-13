@@ -25,6 +25,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { LOCALE } from "../lib/format";
 import {
   FORECAST_HORIZON_MS,
   FORECAST_PAST_ALLOWANCE_MS,
@@ -190,7 +191,7 @@ export function StartTimePicker({
         >
           {shownDay === null
             ? "Pick a day"
-            : shownDay.toLocaleDateString(undefined, {
+            : shownDay.toLocaleDateString(LOCALE, {
                 day: "numeric",
                 month: "short",
                 year: "numeric",
