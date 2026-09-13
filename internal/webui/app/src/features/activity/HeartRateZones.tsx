@@ -192,10 +192,8 @@ function Distribution({
   );
 }
 
-/** The bucket widths a distribution is grouped at, narrowest first. */
-const BUCKET_BPM = [1, 2, 5, 10];
-/** The most bars a distribution is drawn with before a wider bucket is taken. */
-const MOST_BARS = 30;
+/** How many whole heart rates one bar of the distribution holds. */
+const BUCKET_BPM = 5;
 
 export interface BeatBucket {
   /** The first and last whole heart rate the bucket holds, inclusive. */
@@ -206,16 +204,15 @@ export interface BeatBucket {
 }
 
 /**
- * Groups a distribution into the narrowest round buckets that keep it to about
- * thirty bars. A bucket a zone edge falls inside is cut at the edge, so no bar
- * mixes two zones and every edge stands between two bars.
+ * Groups a distribution into five-beat buckets on round numbers. A bucket a
+ * zone edge or either end of the distribution falls inside is cut there, so no
+ * bar mixes two zones and every edge stands between two bars.
  */
 export function bucketBeats(
   distribution: ActivityHeartRateDistribution,
   edges: number[],
 ): BeatBucket[] {
   const { fromBpm, seconds } = distribution;
-  const width = BUCKET_BPM.find((bpm) => seconds.length / bpm <= MOST_BARS) ?? 10;
   const buckets: BeatBucket[] = [];
   seconds.forEach((held, index) => {
     const bpm = fromBpm + index;
@@ -224,7 +221,7 @@ export function bucketBeats(
     if (
       last &&
       last.zone === zone &&
-      Math.floor(last.fromBpm / width) === Math.floor(bpm / width)
+      Math.floor(last.fromBpm / BUCKET_BPM) === Math.floor(bpm / BUCKET_BPM)
     ) {
       last.toBpm = bpm;
       last.seconds += held;

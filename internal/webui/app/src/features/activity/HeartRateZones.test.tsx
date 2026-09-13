@@ -66,18 +66,14 @@ describe("HeartRateZones", () => {
     expect(screen.queryByRole("button", { name: "Distribution" })).not.toBeInTheDocument();
   });
 
-  it("draws every whole heart rate the ride held, coloured by the zone it falls in", async () => {
+  it("draws the heart rates the ride held, coloured by the zone they fall in", async () => {
     const { container } = show({}, { fromBpm: 118, seconds: [5, 10, 0, 20] });
 
     await userEvent.click(screen.getByRole("button", { name: "Distribution" }));
 
-    const drawn = bars(container);
-    expect(drawn).toHaveLength(4);
-    // 119.5 is cut at 120: 118 and 119 are Recovery, 120 and 121 Endurance.
-    expect(drawn.map((rect) => rect.getAttribute("fill"))).toEqual([
+    // 119.5 is cut at 120, which cuts the 115-119 and 120-124 bars at the ends held.
+    expect(bars(container).map((rect) => rect.getAttribute("fill"))).toEqual([
       "var(--grade-0)",
-      "var(--grade-0)",
-      "var(--grade-1)",
       "var(--grade-1)",
     ]);
     expect(screen.getByText("120")).toBeInTheDocument();
@@ -89,10 +85,10 @@ describe("HeartRateZones", () => {
     const { container } = show({}, { fromBpm: 118, seconds: [5, 10, 0, 25] });
     await userEvent.click(screen.getByRole("button", { name: "Distribution" }));
 
-    fireEvent.mouseEnter(container.querySelectorAll("rect:not([data-bar])")[3] as Element);
+    fireEvent.mouseEnter(container.querySelectorAll("rect:not([data-bar])")[1] as Element);
 
     expect(screen.getAllByRole("row")[1]).toHaveAttribute("data-active");
-    expect(screen.getByText("121 bpm")).toBeInTheDocument();
+    expect(screen.getByText("120–121 bpm")).toBeInTheDocument();
     expect(screen.getByText("25 s · 63%")).toBeInTheDocument();
   });
 
@@ -139,38 +135,35 @@ describe("HeartRateZones", () => {
 });
 
 describe("bucketBeats", () => {
-  it("keeps one bar per beat for a narrow spread", () => {
-    const buckets = bucketBeats({ fromBpm: 130, seconds: [1, 2, 3] }, [131]);
+  it("groups five beats to a bar on round numbers, however narrow the spread", () => {
+    const buckets = bucketBeats({ fromBpm: 130, seconds: Array.from({ length: 10 }, () => 1) }, []);
 
-    expect(
-      buckets.map((bucket) => [bucket.fromBpm, bucket.toBpm, bucket.seconds, bucket.zone]),
-    ).toEqual([
-      [130, 130, 1, 0],
-      [131, 131, 2, 1],
-      [132, 132, 3, 1],
+    expect(buckets.map((bucket) => [bucket.fromBpm, bucket.toBpm, bucket.seconds])).toEqual([
+      [130, 134, 5],
+      [135, 139, 5],
     ]);
   });
 
-  it("groups by round buckets and cuts one at the zone edge inside it", () => {
+  it("cuts a bar at the zone edge inside it", () => {
     const buckets = bucketBeats(
-      { fromBpm: 100, seconds: Array.from({ length: 50 }, () => 1) },
+      { fromBpm: 120, seconds: Array.from({ length: 10 }, () => 1) },
       [123],
     );
 
-    // Fifty beats take two-beat buckets; 123 cuts 122-123 into 122 and 123.
-    expect(buckets).toHaveLength(26);
-    expect(buckets[11]).toEqual({ fromBpm: 122, toBpm: 122, seconds: 1, zone: 0 });
-    expect(buckets[12]).toEqual({ fromBpm: 123, toBpm: 123, seconds: 1, zone: 1 });
-    expect(buckets[13]).toEqual({ fromBpm: 124, toBpm: 125, seconds: 2, zone: 1 });
+    expect(buckets).toEqual([
+      { fromBpm: 120, toBpm: 122, seconds: 3, zone: 0 },
+      { fromBpm: 123, toBpm: 124, seconds: 2, zone: 1 },
+      { fromBpm: 125, toBpm: 129, seconds: 5, zone: 1 },
+    ]);
   });
 
-  it("starts the first bucket where the distribution does, not at the round number below", () => {
-    const buckets = bucketBeats(
-      { fromBpm: 103, seconds: Array.from({ length: 100 }, () => 1) },
-      [],
-    );
+  it("cuts the first and last bars where the distribution starts and ends", () => {
+    const buckets = bucketBeats({ fromBpm: 103, seconds: Array.from({ length: 9 }, () => 1) }, []);
 
-    expect(buckets[0]).toEqual({ fromBpm: 103, toBpm: 104, seconds: 2, zone: 0 });
-    expect(buckets[1]).toEqual({ fromBpm: 105, toBpm: 109, seconds: 5, zone: 0 });
+    expect(buckets).toEqual([
+      { fromBpm: 103, toBpm: 104, seconds: 2, zone: 0 },
+      { fromBpm: 105, toBpm: 109, seconds: 5, zone: 0 },
+      { fromBpm: 110, toBpm: 111, seconds: 2, zone: 0 },
+    ]);
   });
 });
