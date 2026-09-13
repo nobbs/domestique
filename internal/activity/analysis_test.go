@@ -21,6 +21,10 @@ type fakeAnalyseStore struct {
 	ownerErr       error
 	pendingErr     error
 	storeErr       error
+	contextErr     error
+	earlierErr     error
+	metricsErr     error
+	loadsErr       error
 	owner          string
 	email          string
 	password       string
@@ -52,7 +56,7 @@ func (s *fakeAnalyseStore) TargetOwner(context.Context, string) (string, error) 
 func (s *fakeAnalyseStore) RiderProfile(context.Context, string) (rider.Profile, error) {
 	s.contextReads++
 
-	return rider.Profile{}, nil
+	return rider.Profile{}, s.contextErr
 }
 
 func (s *fakeAnalyseStore) RiderZwiftCredentials(context.Context, string) (email, password []byte, err error) {
@@ -72,17 +76,17 @@ func (s *fakeAnalyseStore) ActivitiesAwaitingAnalysis(
 }
 
 func (s *fakeAnalyseStore) ActivityMetrics(context.Context, string) (map[int64]RideMetrics, error) {
-	return s.metrics, nil
+	return s.metrics, s.metricsErr
 }
 
 func (s *fakeAnalyseStore) ActivityRideLoads(context.Context, string) ([]trainingload.RideLoad, error) {
-	return s.loads, nil
+	return s.loads, s.loadsErr
 }
 
 func (s *fakeAnalyseStore) AnalysesBefore(_ context.Context, _ string, before time.Time, _ int) ([]Analysis, error) {
 	s.earlierBefore = append(s.earlierBefore, before)
 
-	return s.earlier, nil
+	return s.earlier, s.earlierErr
 }
 
 func (s *fakeAnalyseStore) StoreActivityAnalysis(_ context.Context, _ string, id int64, analysis Analysis) error {
@@ -218,6 +222,10 @@ func TestAnalyseReportsStoreFailuresAsState(t *testing.T) {
 		"the credentials": func(s *fakeAnalyseStore) { s.credentialsErr = true },
 		"the owed rides":  func(s *fakeAnalyseStore) { s.pendingErr = errFakeAnalyseStore },
 		"the write":       func(s *fakeAnalyseStore) { s.storeErr = errFakeAnalyseStore },
+		"the profile":     func(s *fakeAnalyseStore) { s.contextErr = errFakeAnalyseStore },
+		"the earlier":     func(s *fakeAnalyseStore) { s.earlierErr = errFakeAnalyseStore },
+		"the metrics":     func(s *fakeAnalyseStore) { s.metricsErr = errFakeAnalyseStore },
+		"the loads":       func(s *fakeAnalyseStore) { s.loadsErr = errFakeAnalyseStore },
 		"a missing row":   func(s *fakeAnalyseStore) { s.metrics = map[int64]RideMetrics{} },
 	}
 	for name, breakStore := range tests {
@@ -242,4 +250,21 @@ func TestNewAnalyserRefusesIncompleteOptions(t *testing.T) {
 	require.Error(t, err, "no enabled instant")
 	_, err = NewAnalyser(store, asker, since, nil, zone, analyseNow)
 	assert.Error(t, err, "no indoor types")
+}
+
+// The prompt carries the load at the end of the ride's own day, cut in the
+// configured zone, or in UTC when that zone cannot be read.
+func TestAnalyseTellsTheLoadAtTheEndOfTheRidesDay(t *testing.T) {
+	t.Parallel()
+	ride := PendingAnalysis{ID: 1, StartedAt: analyseNow().Add(-time.Hour)}
+	store := newFakeAnalyseStore(ride)
+	store.loads = []trainingload.RideLoad{{At: ride.StartedAt, TRIMP: 80, TSS: 70}}
+	asker := &fakeAsker{answers: []string{"answer"}}
+	analyser, err := NewAnalyser(store, asker, analyseNow().Add(-24*time.Hour), []int{12},
+		func() string { return "Not/AZone" }, analyseNow)
+	require.NoError(t, err)
+
+	assert.Equal(t, Result{Outcome: Polled, Analysed: 1}, analyser.Analyse(t.Context(), "rider-a"))
+	require.Len(t, asker.prompts, 1)
+	assert.Contains(t, asker.prompts[0], "Training load at the end of the ride's day")
 }

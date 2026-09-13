@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -535,4 +536,16 @@ func TestClaudeAskerMapsEveryCategory(t *testing.T) {
 		assert.Equal(t, want, asker.FailureOf(fmt.Errorf("wrapped: %w", &claude.Error{Category: category})), string(category))
 	}
 	assert.Equal(t, activity.FailureExecutable, asker.FailureOf(errors.New("anything else")))
+}
+
+func TestClaudeAskerPassesAFailedRunOn(t *testing.T) {
+	t.Parallel()
+
+	client, err := claude.New(claude.Options{
+		Executable: filepath.Join(t.TempDir(), "missing-claude"), Home: t.TempDir(), Token: []byte("token"),
+	})
+	require.NoError(t, err)
+
+	_, _, err = claudeAsker{client: client}.Ask(t.Context(), "prompt")
+	assert.Equal(t, activity.FailureExecutable, claudeAsker{}.FailureOf(err))
 }
