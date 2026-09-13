@@ -101,6 +101,28 @@ func TestGetActivityHeartRateDistributionIsNotFoundWithNoSamples(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code)
 }
 
+func TestGetActivityHeartRateDistributionReportsAnUnreadableTargetStore(t *testing.T) {
+	state := heartRateDistributionState("rider-a")
+	state.targetErr = assert.AnError
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getHeartRateDistribution(t, handler, "/v1/activities/1/heartRateDistribution")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
+
+// Called directly, past the document validator that refuses it first: the
+// handler must not read an unaddressable id as activity zero.
+func TestGetActivityHeartRateDistributionIsNotFoundForAnUnaddressableID(t *testing.T) {
+	handler := activityHandler(t, heartRateDistributionState("rider-a"), nonAdminSessions("rider-a"))
+	request := authenticatedRequest(http.MethodGet, "/v1/activities/one/heartRateDistribution")
+	request.SetPathValue("activityId", "one")
+	response := httptest.NewRecorder()
+
+	handler.GetActivityHeartRateDistribution(response, request)
+
+	assert.Equal(t, http.StatusNotFound, response.Code)
+}
+
 func TestGetActivityHeartRateDistributionReportsAnUnreadableMetricsStore(t *testing.T) {
 	state := heartRateDistributionState("rider-a")
 	state.activityMetricsErr = assert.AnError
