@@ -23,13 +23,6 @@ function show(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>) 
   return render(<TrainingLoad ride={ride(metrics, totals)} />);
 }
 
-/** The zone bar's five segments, in zone order. */
-function segments(container: HTMLElement): HTMLElement[] {
-  const bar = container.querySelector<HTMLElement>('div[aria-hidden="true"]');
-
-  return bar ? Array.from(bar.children as HTMLCollectionOf<HTMLElement>) : [];
-}
-
 describe("TrainingLoad", () => {
   it("shows both load scales side by side, each named", () => {
     show({ trimp: 42.4, heartRateTss: 88.6, powerTss: 73.2, normalizedPowerWatts: 214 });
@@ -137,19 +130,14 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("VO₂ max")).toBeInTheDocument();
     expect(screen.getByText("1 min")).toBeInTheDocument();
     expect(screen.getByText("5 min")).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Recovery1 min");
+    expect(screen.getAllByRole("row")[0]).toHaveTextContent("Recovery1 min");
   });
 
-  it("draws one bar whose segments are each zone's share of the ride", () => {
-    const { container } = show({ zoneSeconds: [60, 120, 0, 240, 120] });
+  it("says each zone's share of the time the ride held any zone", () => {
+    show({ zoneSeconds: [60, 120, 0, 240, 120] });
 
-    const widths = segments(container).map((segment) => Number.parseFloat(segment.style.width));
-    expect(widths).toHaveLength(5);
-    expect(widths[0]).toBeCloseTo(11.11, 1);
-    expect(widths[1]).toBeCloseTo(22.22, 1);
-    expect(widths[2]).toBe(0);
-    expect(widths[3]).toBeCloseTo(44.44, 1);
-    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(100, 5);
+    const shares = screen.getAllByRole("row").map((row) => row.lastElementChild?.textContent);
+    expect(shares).toEqual(["11%", "22%", "0%", "44%", "22%"]);
   });
 
   // Open at both ends: neither the easiest nor the hardest zone is given a
@@ -363,16 +351,16 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("100% sensor coverage")).not.toBeInTheDocument();
   });
 
-  // Zones are withheld below the threshold, but a served zone bar can still
-  // hold less than the whole ride, and is owed the same mark every other
+  // Zones are withheld below the threshold, but served zones can still
+  // hold less than the whole ride, and are owed the same mark every other
   // heart-rate figure gets.
-  it("marks the zone bar with the heart-rate coverage it was served at", () => {
+  it("marks the zones with the heart-rate coverage they were served at", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 0.93 });
 
     expect(screen.getByText("93% sensor coverage")).toBeInTheDocument();
   });
 
-  it("leaves the zone bar unmarked at full coverage", () => {
+  it("leaves the zones unmarked at full coverage", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 1 });
 
     expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
