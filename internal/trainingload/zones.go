@@ -30,13 +30,15 @@ type Bounds [4]float64
 
 // The two zone schemes, as shares of the rate they are cut from.
 //
-// From the lactate threshold, the usual five-zone cut: below 85% of it, then
-// 85, 90, 95 and 100. From the maximum instead, the classic percentage-of-max
-// cut at 60, 70, 80 and 90. The threshold scheme is preferred where the rider
-// has entered one, because a threshold is measured and a maximum is often
+// From the lactate threshold, Friel's cycling cut: below 81% of it, then 81,
+// 90, 94 and 100. Friel publishes a separate cut for running (85, 90, 95,
+// 100); that scheme is not this one, because a bike app has no use for run
+// zones. From the maximum instead, the classic percentage-of-max cut at 60,
+// 70, 80 and 90. The threshold scheme is preferred where the rider has
+// entered one, because a threshold is measured and a maximum is often
 // guessed.
 var (
-	thresholdShares = [4]float64{0.85, 0.90, 0.95, 1.00} //nolint:gochecknoglobals // the scheme itself, read-only.
+	thresholdShares = [4]float64{0.81, 0.90, 0.94, 1.00} //nolint:gochecknoglobals // the scheme itself, read-only.
 	maximumShares   = [4]float64{0.60, 0.70, 0.80, 0.90} //nolint:gochecknoglobals // the scheme itself, read-only.
 )
 
@@ -60,7 +62,9 @@ func BoundsFrom(thresholdHeartRate, maxHeartRate float64) (Bounds, bool) {
 
 // TimeInZones sums how long the ride held each zone. Each sample counts for as
 // long as it stands, up to measure.DefaultMaxGap: a recorder that paused must
-// not book the whole pause to whichever zone it stopped in.
+// not book the whole pause to whichever zone it stopped in, and a dropout the
+// strap wrote as a run of noughts must not be bridged into either zone it
+// falls between.
 func TimeInZones(samples []Sample, bounds Bounds) Zones {
 	zones := Zones{}
 	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(value, seconds float64) {
@@ -81,6 +85,40 @@ func zoneOf(heartRate float64, bounds Bounds) int {
 	}
 
 	return zone
+}
+
+// HeartRateDistribution is how long a ride held each whole heart rate, in
+// seconds. Seconds runs contiguously from FromBPM up; a bin the ride never
+// held is nought rather than absent, so an index always means one beat.
+type HeartRateDistribution struct {
+	Seconds []float64
+	FromBPM int
+}
+
+// TimeAtHeartRate sums how long the ride held each whole heart rate, counted
+// by the same held rule TimeInZones applies (a sample followed by a gap over
+// measure.DefaultMaxGap counts for nothing), each reading floored to its beat.
+func TimeAtHeartRate(samples []Sample) HeartRateDistribution {
+	byBin := map[int]float64{}
+	lowest, highest := 0, 0
+	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(value, seconds float64) {
+		bin := int(math.Floor(value))
+		if len(byBin) == 0 {
+			lowest, highest = bin, bin
+		} else {
+			lowest, highest = min(lowest, bin), max(highest, bin)
+		}
+		byBin[bin] += seconds
+	})
+	if len(byBin) == 0 {
+		return HeartRateDistribution{}
+	}
+	seconds := make([]float64, highest-lowest+1)
+	for bin, held := range byBin {
+		seconds[bin-lowest] = held
+	}
+
+	return HeartRateDistribution{FromBPM: lowest, Seconds: seconds}
 }
 
 // Sample is one recorded moment of whichever sensor is being read.

@@ -5,7 +5,7 @@
  * service's setting: these numbers are this rider's, read and written over
  * their own subject, and every derived training metric downstream needs them.
  *
- * Beside two of the fields sits what the rider's own recent rides suggest.
+ * Beside three of the fields sits what the rider's own recent rides suggest.
  * A suggestion is offered, never applied: nothing uses one until the rider has
  * typed it in and saved it as their own.
  */
@@ -55,7 +55,9 @@ const PARAMETERS: Parameter[] = [
     field: "thresholdHeartRateBpm",
     label: "Threshold heart rate",
     unit: "bpm",
-    description: "The lactate threshold rate, where a zone scheme cuts hard from moderate.",
+    description:
+      "The lactate threshold rate, where a zone scheme cuts hard from moderate. Only genuine if measured over a maximal, evenly paced twenty-minute effort.",
+    suggested: "thresholdHeartRateBpm",
   },
   {
     field: "functionalThresholdPowerWatts",
@@ -75,6 +77,19 @@ const PARAMETERS: Parameter[] = [
     label: "Bike mass",
     unit: "kg",
     description: "The bicycle and everything carried on it.",
+  },
+  {
+    field: "dragAreaM2",
+    label: "Drag area",
+    unit: "m²",
+    description:
+      "The bicycle's CdA: 0.36 on a road bike's hoods, 0.40 on a gravel bike's hoods, 0.45 sitting up.",
+  },
+  {
+    field: "rollingResistance",
+    label: "Rolling resistance",
+    unit: "",
+    description: "The tyres' Crr on tarmac: 0.005 for a road slick, 0.008 for a wide gravel tyre.",
   },
 ];
 
@@ -174,7 +189,7 @@ export function RiderProfile() {
             return (
               <Field key={parameter.field}>
                 <FieldLabel htmlFor={`${id}-${parameter.field}`}>
-                  {parameter.label} ({parameter.unit})
+                  {parameter.unit ? `${parameter.label} (${parameter.unit})` : parameter.label}
                 </FieldLabel>
                 <Input
                   id={`${id}-${parameter.field}`}

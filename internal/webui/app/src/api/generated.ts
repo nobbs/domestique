@@ -238,19 +238,7 @@ export const ActivityProvider = {
 } as const;
 
 /**
- * What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present beside estimatedPowerWatts once the ride has been derived since these existed; a ride derived before then omits it until it is derived again. See docs/specs/measurement.md §Estimated power.
- */
-export interface EstimateQuality {
-  /** The lag-1 Pearson correlation of the estimated watts with themselves shifted by one sample. */
-  autocorrelation: number;
-  /** The mean absolute change in watts per second of elapsed time between consecutive samples. */
-  meanAbsDeltaWattsPerSecond: number;
-  /** The mean amount the zero clamp added: clamped watts minus the unclamped force times speed it would otherwise have reported. */
-  clipBiasWatts: number;
-}
-
-/**
- * What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, or a rider who has entered no threshold power to place the band with.
+ * What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, a rider who has entered no threshold power to place the band with, or a heart-rate, power or temperature series that fell below the same sensor-coverage threshold that withholds the load figures above: the reading is only as trustworthy as the weakest of the three series it is drawn from.
  */
 export interface HeatDrift {
   /** The mean heart rate over the ride's samples inside the band. */
@@ -288,9 +276,28 @@ export interface ActivityMetrics {
   normalizedPowerWatts?: number;
   intensityFactor?: number;
   powerTss?: number;
-  /** The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass. */
+  /**
+   * The share of the ride's moving time the heart-rate strap held a reading for, whether or not that cleared the threshold this derivation withholds a figure below. Served beside every heart-rate figure above, and beside averageHeartRateBpm and maxHeartRateBpm below, so a figure served at, say, 92% is still read as most of the ride rather than all of it. See docs/specs/service.md §Recorded activities.
+   * @minimum 0
+   * @maximum 1
+   */
+  heartRateCoverage?: number;
+  /**
+   * The same share for the power meter, served beside normalizedPowerWatts, intensityFactor, powerTss and averagePowerWatts. Never beside maxPowerWatts: that figure is always the device's own session maximum, not one the recorded series yields, so this series' coverage is not a fact about it. Absent for a ride estimating its power from the track: this describes a meter's own coverage, never the estimate's.
+   * @minimum 0
+   * @maximum 1
+   */
+  powerCoverage?: number;
+  /** The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track, at the rider's own drag area and rolling resistance where both are entered and a road bicycle's otherwise, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass. */
   estimatedPowerWatts?: number;
-  estimateQuality?: EstimateQuality;
+  /**
+   * The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
+   * @minimum 0
+   * @maximum 1
+   */
+  estimatedPedallingShare?: number;
+  /** The ride's energy at a fixed 22% gross efficiency, over movingSeconds at averagePowerWatts where the ride measured its own power, else over the pedalling share of movingSeconds at estimatedPowerWatts. A comparison figure only, never a measurement, never the same figure as the activity's own caloriesKcal, which a device usually derives from heart rate rather than power. Absent below a positive wattage and moving time; the estimate branch further needs a positive pedalling share, absent for a ride that measured its own power. */
+  estimatedCaloriesKcal?: number;
   /** The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries. */
   averageSpeedKmh?: number;
   /** The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap. */
@@ -530,7 +537,7 @@ export interface ActivityTrackProperties {
   weather?: RideWeatherStep[];
   /** The virtual world an indoor ride was ridden in, present only for a ride whose world this service knows the map of. Such a ride keeps `state: indoor` — it was ridden over no ground — but carries its line, which is drawn over the world's own artwork and never over a basemap. */
   world?: ActivityTrackWorld;
-  /** Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass. */
+  /** Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass. */
   estimatedPowerWatts?: (number | null)[];
 }
 
@@ -582,6 +589,16 @@ export interface ActivitySplit {
 
 export interface ActivitySplits {
   splits: ActivitySplit[];
+}
+
+export interface ActivityHeartRateDistribution {
+  /** The heart rate, in whole beats per minute, the first entry of seconds counts. */
+  fromBpm: number;
+  /**
+   * The seconds held at each whole beat per minute from fromBpm up, one entry per beat and nought where the ride held none. A reading counts toward the whole beat at or below it. Never empty.
+   * @minItems 1
+   */
+  seconds: number[];
 }
 
 export interface RouteValidation {
@@ -948,6 +965,18 @@ export interface RiderParameters {
    * @maximum 500
    */
   bikeMassKg?: number;
+  /**
+   * The bicycle's drag area, CdA, in square metres: 0.36 on a road bike's hoods, 0.40 on a gravel bike's hoods, 0.45 sitting up.
+   * @minimum 0.1
+   * @maximum 1.5
+   */
+  dragAreaM2?: number;
+  /**
+   * The tyres' rolling resistance coefficient on tarmac, Crr: 0.005 for a road slick, 0.008 for a wide gravel tyre.
+   * @minimum 0.002
+   * @maximum 0.03
+   */
+  rollingResistance?: number;
 }
 
 /**
@@ -973,7 +1002,9 @@ export interface StoppingSuggestion {
 export interface RiderSuggestions {
   /** The highest heart rate held over a rolling minute. */
   maxHeartRateBpm?: number;
-  /** The best twenty-minute average power, taken at 95%. */
+  /** The best rolling twenty-minute average heart rate, unscaled. Only a genuine lactate threshold reading if that twenty minutes was a maximal, evenly paced effort -- over ordinary rides it reads high or low depending on what was ridden. */
+  thresholdHeartRateBpm?: number;
+  /** The greater of two estimates: the best twenty-minute average power taken at 95%, and a ramp-test estimate off the best minute. */
   functionalThresholdPowerWatts?: number;
   stopping?: StoppingSuggestion;
 }
@@ -1183,6 +1214,13 @@ export type GetActivitySeriesParams = {
 };
 
 export type GetActivitySplitsParams = {
+  /**
+   * The target to read. Omitted means the caller's own.
+   */
+  target?: string;
+};
+
+export type GetActivityHeartRateDistributionParams = {
   /**
    * The target to read. Omitted means the caller's own.
    */
@@ -3699,6 +3737,253 @@ export function useGetActivitySplits<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetActivitySplitsQueryOptions(activityId, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getActivityHeartRateDistributionResponse200 = {
+  data: ActivityHeartRateDistribution;
+  status: 200;
+};
+
+export type getActivityHeartRateDistributionResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getActivityHeartRateDistributionResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getActivityHeartRateDistributionResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getActivityHeartRateDistributionResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getActivityHeartRateDistributionResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getActivityHeartRateDistributionResponseSuccess =
+  getActivityHeartRateDistributionResponse200 & {
+    headers: Headers;
+  };
+export type getActivityHeartRateDistributionResponseError = (
+  | getActivityHeartRateDistributionResponse400
+  | getActivityHeartRateDistributionResponse401
+  | getActivityHeartRateDistributionResponse403
+  | getActivityHeartRateDistributionResponse404
+  | getActivityHeartRateDistributionResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetActivityHeartRateDistributionUrl = (
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/activities/${encodeURIComponent(String(activityId))}/heartRateDistribution?${stringifiedParams}`
+    : `/v1/activities/${encodeURIComponent(String(activityId))}/heartRateDistribution`;
+};
+
+/**
+ * How long one activity held each whole heart rate, counted by the same rule its time in zones is: each sample stands until the next one, and one followed by a gap over ten seconds counts for nothing, over the series with readings above the rider's maximum interpolated across. Served only for a ride whose zones are served, so the two always describe the same samples. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. Nothing about it is stored; it is a fold over the samples at read time. A ride with no zones, or whose samples are not stored, is not found.
+ */
+export const getActivityHeartRateDistribution = async (
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getActivityHeartRateDistributionResponseSuccess> => {
+  return domestiqueRequest<getActivityHeartRateDistributionResponseSuccess>(
+    getGetActivityHeartRateDistributionUrl(activityId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetActivityHeartRateDistributionQueryKey = (
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+) => {
+  return [
+    `/v1/activities/${activityId}/heartRateDistribution`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetActivityHeartRateDistributionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetActivityHeartRateDistributionQueryKey(activityId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>> = ({
+    signal,
+  }) => getActivityHeartRateDistribution(activityId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: activityId !== null && activityId !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetActivityHeartRateDistributionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getActivityHeartRateDistribution>>
+>;
+export type GetActivityHeartRateDistributionQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params: undefined | GetActivityHeartRateDistributionParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+          TError,
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+          TError,
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetActivityHeartRateDistributionQueryOptions(activityId, params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

@@ -338,13 +338,17 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
 
 /**
  * A rider who has entered their heart rate and both masses but neither power
- * number, and whose rides suggest both of the two that carry a suggestion — so
- * an offered figure beside an entered one and beside an empty box are all
- * visible at once.
+ * number nor a threshold heart rate, and whose rides suggest all three fields
+ * that carry a suggestion — so an offered figure beside an entered one and
+ * beside an empty box are all visible at once.
  */
 export const riderProfile: RiderProfile = {
   profile: { maxHeartRateBpm: 188, riderMassKg: 74.5, bikeMassKg: 8.4 },
-  suggestions: { maxHeartRateBpm: 183, functionalThresholdPowerWatts: 261 },
+  suggestions: {
+    maxHeartRateBpm: 183,
+    thresholdHeartRateBpm: 168,
+    functionalThresholdPowerWatts: 261,
+  },
   zwift: { emailSet: false, passwordSet: false },
 };
 
@@ -462,13 +466,6 @@ export function StubbedFetch({
 
   return <>{children}</>;
 }
-
-/**
- * Story parameters for anything that mounts a live MapLibre canvas. Its pixels
- * are third-party tiles drawn by WebGL over several frames, so two captures of
- * one story differ and Chromatic reports it as an unstable test.
- */
-export const liveMap = { chromatic: { disableSnapshot: true } };
 
 /**
  * Three laps of the route above: one whole and quickest, one whole and slower,

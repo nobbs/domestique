@@ -4,9 +4,8 @@ import { StoryProviders } from "../../storybook/fixtures";
 import { VolumePage } from "./VolumePage";
 
 // The rides are seeded by `StoryProviders` under the key the page asks with,
-// so nothing here reaches the network. Assertions wait rather than read once:
-// these stories are also captured by a cloud browser, which settles on its own
-// schedule.
+// so nothing here reaches the network. Assertions wait rather than read once,
+// since a slow machine settles on its own schedule.
 const meta = {
   title: "Features/Volume/Page",
   component: VolumePage,

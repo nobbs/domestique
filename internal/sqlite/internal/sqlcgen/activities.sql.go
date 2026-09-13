@@ -139,6 +139,22 @@ func (q *Queries) DeleteTrainerCopyActivity(ctx context.Context, arg DeleteTrain
 	return result.RowsAffected()
 }
 
+const getActivityMovingSeconds = `-- name: GetActivityMovingSeconds :one
+SELECT moving_seconds FROM activities WHERE target_slot = ? AND workout_id = ?
+`
+
+type GetActivityMovingSecondsParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) GetActivityMovingSeconds(ctx context.Context, arg GetActivityMovingSecondsParams) (float64, error) {
+	row := q.db.QueryRowContext(ctx, getActivityMovingSeconds, arg.TargetSlot, arg.WorkoutID)
+	var moving_seconds float64
+	err := row.Scan(&moving_seconds)
+	return moving_seconds, err
+}
+
 const getActivityProviderSummary = `-- name: GetActivityProviderSummary :one
 SELECT provider, raw_summary_json
 FROM activities
@@ -420,6 +436,55 @@ func (q *Queries) ListActivityListings(ctx context.Context, targetSlot string) (
 			&i.WorkoutTypeLocationID,
 			&i.ReadAtUnix,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActivityMovingSeconds = `-- name: ListActivityMovingSeconds :many
+SELECT workout_id, moving_seconds FROM activities
+WHERE target_slot = ?1 AND workout_id IN (/*SLICE:workout_ids*/?)
+`
+
+type ListActivityMovingSecondsParams struct {
+	TargetSlot string
+	WorkoutIds []int64
+}
+
+type ListActivityMovingSecondsRow struct {
+	WorkoutID     int64
+	MovingSeconds float64
+}
+
+func (q *Queries) ListActivityMovingSeconds(ctx context.Context, arg ListActivityMovingSecondsParams) ([]ListActivityMovingSecondsRow, error) {
+	query := listActivityMovingSeconds
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.TargetSlot)
+	if len(arg.WorkoutIds) > 0 {
+		for _, v := range arg.WorkoutIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:workout_ids*/?", strings.Repeat(",?", len(arg.WorkoutIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:workout_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityMovingSecondsRow{}
+	for rows.Next() {
+		var i ListActivityMovingSecondsRow
+		if err := rows.Scan(&i.WorkoutID, &i.MovingSeconds); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

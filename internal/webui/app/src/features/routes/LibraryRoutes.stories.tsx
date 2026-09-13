@@ -3,7 +3,7 @@ import type { BoundingBox } from "../../api/types";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { coordinates, liveMap, StoryProviders } from "../../storybook/fixtures";
+import { coordinates, StoryProviders } from "../../storybook/fixtures";
 import { LibraryRoutes } from "./LibraryRoutes";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
@@ -11,7 +11,6 @@ const bounds: BoundingBox = [7.995, 48.995, 8.045, 49.025];
 
 const meta = {
   title: "Features/Atlas/Library Routes",
-  parameters: liveMap,
   component: LibraryRoutes,
   tags: ["autodocs"],
   decorators: [

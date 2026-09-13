@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { LOCALE } from "../../lib/format";
 import { WeatherOverlayPicker } from "./WeatherOverlayPicker";
 
 const MEASURES = [
@@ -53,8 +54,8 @@ describe("WeatherOverlayPicker", () => {
       { wrapper },
     );
     // Only the prefix this component itself writes, never the formatted
-    // weekday and time after it: `toLocaleTimeString` renders those however
-    // the runtime's own locale does, which is not this component's to assert.
+    // weekday and time after it: those follow the runtime's zone, which is not
+    // this component's to assert.
     expect(screen.getByText(/^Now · /)).toBeInTheDocument();
     // Screen-reader access, not just sight: a slider whose thumb carries no
     // name of its own announces as "slider", unlabelled, on every platform
@@ -77,9 +78,9 @@ describe("WeatherOverlayPicker", () => {
 
   it("asks for the weekday in the hour label, whatever script or order the runtime renders it in", () => {
     // The label's own promise is that a reader scrubbed past midnight can
-    // still tell which day they are looking at — a promise the DOM text
-    // cannot check without assuming a locale, so this checks the request
-    // the component makes instead of the locale-dependent string it gets back.
+    // still tell which day they are looking at — a promise the DOM text cannot
+    // check without assuming the runner's zone, so this checks the request the
+    // component makes instead of the string it gets back.
     const spy = vi.spyOn(Date.prototype, "toLocaleTimeString");
     render(
       <WeatherOverlayPicker
@@ -94,7 +95,7 @@ describe("WeatherOverlayPicker", () => {
       { wrapper },
     );
 
-    expect(spy).toHaveBeenCalledWith(undefined, expect.objectContaining({ weekday: "short" }));
+    expect(spy).toHaveBeenCalledWith(LOCALE, expect.objectContaining({ weekday: "short" }));
     spy.mockRestore();
   });
 

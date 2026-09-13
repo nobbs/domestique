@@ -10,6 +10,7 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	openapi "github.com/nobbs/domestique/internal/httpapi/contract"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
 
@@ -61,7 +62,7 @@ func rideWeatherSteps(steps []activities.WeatherStep) []openapi.RideWeatherStep 
 // out".
 //
 //nolint:gocritic // value param: metrics are plain numbers, copied as cheaply as a pointer.
-func activityMetrics(stored activities.RideMetrics, session *activities.Session) *openapi.ActivityMetrics {
+func activityMetrics(stored activities.RideMetrics, session *activities.Session, movingSeconds float64) *openapi.ActivityMetrics {
 	metrics, averages := stored.Load, stored.Averages
 	view := &openapi.ActivityMetrics{}
 	if metrics.HasZones {
@@ -83,15 +84,17 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session)
 		view.IntensityFactor = &metrics.Power.IntensityFactor
 		view.PowerTss = &metrics.Power.TSS
 	}
+	if metrics.HasHeartRateCoverage {
+		view.HeartRateCoverage = &metrics.HeartRateCoverage
+	}
+	if metrics.HasPowerCoverage {
+		view.PowerCoverage = &metrics.PowerCoverage
+	}
 	if metrics.HasEstimatedPower {
 		view.EstimatedPowerWatts = &metrics.EstimatedPowerWatts
 	}
-	if metrics.HasEstimatedPower && stored.HasEstimateQuality {
-		view.EstimateQuality = &openapi.EstimateQuality{
-			Autocorrelation:            stored.EstimateQuality.Autocorrelation1,
-			MeanAbsDeltaWattsPerSecond: stored.EstimateQuality.MeanAbsDeltaWattsPerSecond,
-			ClipBiasWatts:              stored.EstimateQuality.ClipBiasWatts,
-		}
+	if metrics.HasEstimatedPower && stored.HasEstimatedPedallingShare {
+		view.EstimatedPedallingShare = &stored.EstimatedPedallingShare
 	}
 	if averages.HasHeartRate {
 		view.AverageHeartRateBpm = &averages.HeartRateBPM
@@ -118,6 +121,22 @@ func activityMetrics(stored activities.RideMetrics, session *activities.Session)
 	}
 	if session != nil {
 		applySession(view, session)
+	}
+	// Measured power over the whole moving time, else the estimate — which
+	// is a mean over the pedalling samples only, so it needs the pedalling
+	// share back out of movingSeconds to land on the same energy. A
+	// comparison figure only, never stored, never mixed with the device's
+	// own reported calories; absent below a positive wattage, moving time
+	// or pedalling share, rather than served as a false zero.
+	switch {
+	case view.AveragePowerWatts != nil && *view.AveragePowerWatts > 0 && movingSeconds > 0:
+		kcal := measure.EstimatedCalories(*view.AveragePowerWatts, movingSeconds)
+		view.EstimatedCaloriesKcal = &kcal
+	case view.EstimatedPowerWatts != nil && *view.EstimatedPowerWatts > 0 && movingSeconds > 0 &&
+		view.EstimatedPedallingShare != nil && *view.EstimatedPedallingShare > 0:
+		pedallingSeconds := movingSeconds * *view.EstimatedPedallingShare
+		kcal := measure.EstimatedCalories(*view.EstimatedPowerWatts, pedallingSeconds)
+		view.EstimatedCaloriesKcal = &kcal
 	}
 
 	return view
@@ -275,7 +294,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				if hasSession {
 					sessionArg = &session
 				}
-				activity.Metrics = activityMetrics(metrics, sessionArg)
+				activity.Metrics = activityMetrics(metrics, sessionArg, recorded.MovingSeconds)
 			}
 			if hasSession {
 				if session.DescentMetres.Known {
@@ -531,6 +550,61 @@ func splitViews(splits []activities.Split) []activitySplitView {
 	}
 
 	return views
+}
+
+// GetActivityHeartRateDistribution serves how long one activity held each
+// whole heart rate, scoped exactly as its zones are: a ride whose zones are
+// withheld below the coverage floor, or that has no derived row, is `404`.
+func (h *Handler) GetActivityHeartRateDistribution(writer http.ResponseWriter, request *http.Request) {
+	// The served surface refuses a non-numeric id before it reaches here.
+	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
+	if idErr != nil {
+		h.notFound(writer)
+
+		return
+	}
+	targetID, found, err := h.readableTarget(request.Context(), request.URL.Query().Get("target"))
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !found {
+		h.notFound(writer)
+
+		return
+	}
+	// ponytail: reads every derived row for the target to reach one ride's;
+	// a single-ride metrics query is the upgrade once this endpoint matters.
+	metricsByID, metricsErr := h.state.ActivityMetrics(request.Context(), targetID)
+	if metricsErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	metrics, ok := metricsByID[id]
+	if !ok || !metrics.Load.HasZones {
+		h.notFound(writer)
+
+		return
+	}
+	samples, samplesErr := h.state.ActivityRideSamples(request.Context(), targetID, id)
+	if samplesErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	heartRate := measure.CapHeartRate(samples.HeartRate, metrics.Load.Inputs.MaxHeartRateBPM)
+	distribution := trainingload.TimeAtHeartRate(heartRate)
+	if len(distribution.Seconds) == 0 {
+		h.notFound(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, activityHeartRateDistributionView{
+		FromBpm: distribution.FromBPM,
+		Seconds: distribution.Seconds,
+	})
 }
 
 // known is a reading's value where it has one, and nothing at all where it does

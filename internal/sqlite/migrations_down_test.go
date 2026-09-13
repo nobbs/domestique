@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -306,4 +307,179 @@ func TestMigration036RemovesOnlyNonCyclingActivities(t *testing.T) {
 
 	require.NoError(t, migration.Migrate(35), "the down migration must apply")
 	require.NoError(t, migration.Migrate(36), "must be able to re-migrate up after rolling back")
+}
+
+// 056's down rebuilds rider_profiles without the bicycle pair; the six
+// earlier fields must survive the rebuild untouched.
+func TestMigration056DownKeepsAStoredProfilesEarlierFields(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "rider-bicycle-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(56))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO rider_profiles (subject, max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
+			functional_threshold_power_watts, rider_mass_kg, bike_mass_kg, drag_area_m2, rolling_resistance, updated_at_unix)
+		VALUES ('rider-a', 190, 50, 165, 280, 70, 9, 0.3, 0.005, 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(55))
+
+	var maximum, resting, threshold, ftp, riderMass, bikeMass float64
+	err = database.QueryRowContext(t.Context(),
+		`SELECT max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
+			functional_threshold_power_watts, rider_mass_kg, bike_mass_kg FROM rider_profiles WHERE subject = 'rider-a'`).
+		Scan(&maximum, &resting, &threshold, &ftp, &riderMass, &bikeMass)
+	require.NoError(t, err, "the profile row must survive the rollback")
+	require.InDelta(t, 190.0, maximum, 0)
+	require.InDelta(t, 50.0, resting, 0)
+	require.InDelta(t, 165.0, threshold, 0)
+	require.InDelta(t, 280.0, ftp, 0)
+	require.InDelta(t, 70.0, riderMass, 0)
+	require.InDelta(t, 9.0, bikeMass, 0)
+
+	var bicycleColumns int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM pragma_table_info('rider_profiles') WHERE name IN ('drag_area_m2', 'rolling_resistance')`).
+		Scan(&bicycleColumns))
+	require.Zero(t, bicycleColumns, "the bicycle columns must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(56), "must be able to re-migrate up after rolling back")
+}
+
+// 057's down rebuilds activity_metrics without the pedalling-share columns;
+// a populated row's other columns, including the legacy estimate_* ones,
+// must survive.
+func TestMigration057DownKeepsAPopulatedMetricsRow(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "estimate-pedalling-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(57))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix)
+		VALUES ('rider-a', 1, 15, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activity_metrics (target_slot, workout_id, estimated_power_watts, estimate_autocorrelation,
+			estimated_pedalling_share, input_drag_area, input_rolling_resistance,
+			input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
+			computed_at_unix)
+		VALUES ('rider-a', 1, 210, 0.4, 0.9, 0.3, 0.005, 190, 50, 165, 280, 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(56))
+
+	var estimatedPower, autocorrelation float64
+	err = database.QueryRowContext(t.Context(),
+		`SELECT estimated_power_watts, estimate_autocorrelation FROM activity_metrics WHERE target_slot = 'rider-a' AND workout_id = 1`).
+		Scan(&estimatedPower, &autocorrelation)
+	require.NoError(t, err, "the metrics row must survive the rollback")
+	require.InDelta(t, 210.0, estimatedPower, 0)
+	require.InDelta(t, 0.4, autocorrelation, 0, "the legacy estimate_* column must survive the rollback")
+
+	var pedallingShareColumns int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM pragma_table_info('activity_metrics') WHERE name IN ('estimated_pedalling_share', 'input_drag_area', 'input_rolling_resistance')`).
+		Scan(&pedallingShareColumns))
+	require.Zero(t, pedallingShareColumns, "the pedalling-share columns must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(57), "must be able to re-migrate up after rolling back")
+}
+
+// 058's down rebuilds activity_metrics without the two coverage columns; a
+// populated row's other columns, including the pedalling-share ones 057
+// added, must survive.
+func TestMigration058DownKeepsAPopulatedMetricsRow(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "series-coverage-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(58))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix)
+		VALUES ('rider-a', 1, 15, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activity_metrics (target_slot, workout_id, estimated_power_watts, estimated_pedalling_share,
+			heart_rate_coverage, power_coverage, input_drag_area, input_rolling_resistance,
+			input_max_heart_rate, input_resting_heart_rate, input_threshold_heart_rate, input_threshold_power,
+			computed_at_unix)
+		VALUES ('rider-a', 1, 210, 0.9, 0.97, 0.94, 0.3, 0.005, 190, 50, 165, 280, 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(57))
+
+	var estimatedPower, pedallingShare float64
+	err = database.QueryRowContext(t.Context(),
+		`SELECT estimated_power_watts, estimated_pedalling_share FROM activity_metrics WHERE target_slot = 'rider-a' AND workout_id = 1`).
+		Scan(&estimatedPower, &pedallingShare)
+	require.NoError(t, err, "the metrics row must survive the rollback")
+	require.InDelta(t, 210.0, estimatedPower, 0)
+	require.InDelta(t, 0.9, pedallingShare, 0, "057's own column must survive 058's rollback")
+
+	var coverageColumns int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM pragma_table_info('activity_metrics') WHERE name IN ('heart_rate_coverage', 'power_coverage')`).
+		Scan(&coverageColumns))
+	require.Zero(t, coverageColumns, "the coverage columns must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(58), "must be able to re-migrate up after rolling back")
+}
+
+// A rebuild-style down migration recreates its table with the columns in a
+// different physical order than the forward migrations produce; the schema
+// fingerprint must not treat that as a mismatch, or a database rolled back
+// and migrated forward again is refused forever with "state schema differs
+// from the current baseline".
+func TestValidateSchemaSurvivesARollbackAndReplay(t *testing.T) {
+	t.Parallel()
+	for _, rollbackTo := range []uint{57, 56, 55, 45} {
+		t.Run(strconv.Itoa(int(rollbackTo)), func(t *testing.T) {
+			t.Parallel()
+			dbPath := filepath.Join(t.TempDir(), "rollback-replay.db")
+			migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+			require.NoError(t, err)
+			defer closeFn()
+
+			require.NoError(t, migration.Migrate(currentSchemaVersion))
+			require.NoError(t, migration.Migrate(rollbackTo))
+			require.NoError(t, migration.Migrate(currentSchemaVersion))
+
+			database, err := openDatabase(dbPath)
+			require.NoError(t, err)
+			defer closeDatabase(database)
+
+			require.NoError(t, validateSchema(t.Context(), database, currentSchemaVersion, migrationFiles, "migrations"))
+		})
+	}
 }

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { TrainingLoad } from "./TrainingLoad";
@@ -21,13 +21,6 @@ function ride(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>):
 
 function show(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>) {
   return render(<TrainingLoad ride={ride(metrics, totals)} />);
-}
-
-/** The zone bar's five segments, in zone order. */
-function segments(container: HTMLElement): HTMLElement[] {
-  const bar = container.querySelector<HTMLElement>('div[aria-hidden="true"]');
-
-  return bar ? Array.from(bar.children as HTMLCollectionOf<HTMLElement>) : [];
 }
 
 describe("TrainingLoad", () => {
@@ -122,34 +115,12 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("Power", { selector: "span" })).not.toBeInTheDocument();
   });
 
-  // A strap-only ride: the tile's caption and badge are the reader's summary,
-  // and the exact values stay reachable on touch and to assistive technology
-  // as hidden text beside them, not only through the caption's hover title.
-  it("folds the estimate's quality diagnostics into its power tile", () => {
-    show({
-      estimatedPowerWatts: 187.4,
-      estimateQuality: {
-        autocorrelation: 0.923,
-        meanAbsDeltaWattsPerSecond: 12.34,
-        clipBiasWatts: 3.456,
-      },
-    });
+  it("shows the estimate's pedalling share as its scale", () => {
+    show({ estimatedPowerWatts: 187.4, estimatedPedallingShare: 0.87 });
 
-    expect(screen.getByText("steady, moderate jitter, +3 W clamp bias")).toBeInTheDocument();
-    expect(screen.getByText("rough")).toBeInTheDocument();
-    const exact = screen.getByText(
-      "Estimate steadiness 0.92 lag-1 correlation · Estimate jitter 12.3 watts change per second · Clamp bias 3.5 watts the zero clamp added",
-    );
-    expect(exact).toHaveClass("sr-only");
-    expect(screen.queryByText("Estimate steadiness", { selector: "span" })).not.toBeInTheDocument();
-  });
-
-  it("leaves out the quality diagnostics when the ride has no estimate", () => {
-    show({ averagePowerWatts: 196.2 });
-
-    expect(screen.queryByText("Estimate steadiness")).not.toBeInTheDocument();
-    expect(screen.queryByText("Estimate jitter")).not.toBeInTheDocument();
-    expect(screen.queryByText("Clamp bias")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("watts while pedalling, 87% of its estimated samples"),
+    ).toBeInTheDocument();
   });
 
   it("names each zone and how long the ride held it", () => {
@@ -159,28 +130,23 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("VO₂ max")).toBeInTheDocument();
     expect(screen.getByText("1 min")).toBeInTheDocument();
     expect(screen.getByText("5 min")).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Recovery1 min");
+    expect(screen.getAllByRole("row")[0]).toHaveTextContent("Recovery1 min");
   });
 
-  it("draws one bar whose segments are each zone's share of the ride", () => {
-    const { container } = show({ zoneSeconds: [60, 120, 0, 240, 120] });
+  it("says each zone's share of the time the ride held any zone", () => {
+    show({ zoneSeconds: [60, 120, 0, 240, 120] });
 
-    const widths = segments(container).map((segment) => Number.parseFloat(segment.style.width));
-    expect(widths).toHaveLength(5);
-    expect(widths[0]).toBeCloseTo(11.11, 1);
-    expect(widths[1]).toBeCloseTo(22.22, 1);
-    expect(widths[2]).toBe(0);
-    expect(widths[3]).toBeCloseTo(44.44, 1);
-    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(100, 5);
+    const shares = screen.getAllByRole("row").map((row) => row.lastElementChild?.textContent);
+    expect(shares).toEqual(["11%", "22%", "0%", "44%", "22%"]);
   });
 
   // Open at both ends: neither the easiest nor the hardest zone is given a
   // limit the profile never said.
   it("says the heart rates each zone covered", () => {
-    show({ zoneSeconds: [60, 120, 180, 240, 300], zoneBoundsBpm: [144.5, 153, 161.5, 170] });
+    show({ zoneSeconds: [60, 120, 180, 240, 300], zoneBoundsBpm: [137.7, 153, 159.8, 170] });
 
-    expect(screen.getByText("below 145 bpm")).toBeInTheDocument();
-    expect(screen.getByText("145–152 bpm")).toBeInTheDocument();
+    expect(screen.getByText("below 138 bpm")).toBeInTheDocument();
+    expect(screen.getByText("138–152 bpm")).toBeInTheDocument();
     expect(screen.getByText("170 bpm and up")).toBeInTheDocument();
   });
 
@@ -225,10 +191,37 @@ describe("TrainingLoad", () => {
 
   it("shows nothing at all for a ride with nothing to say about effort", () => {
     const { rerender } = show(undefined, { movingSeconds: 0 });
-    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
 
     rerender(<TrainingLoad ride={undefined} />);
-    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+  });
+
+  it("puts the zones in a Heart rate box and the figures in a Sensors box", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], averageHeartRateBpm: 142, trimp: 42 });
+
+    const heartRate = screen.getByRole("region", { name: "Heart rate" });
+    const sensors = screen.getByRole("region", { name: "Sensors" });
+    expect(within(heartRate).getByText("Recovery")).toBeInTheDocument();
+    expect(within(heartRate).queryByText("TRIMP")).not.toBeInTheDocument();
+    expect(within(sensors).getByText("TRIMP")).toBeInTheDocument();
+    // The box's title names the first group, so it is not said twice.
+    expect(screen.getAllByRole("heading", { name: "Sensors" })).toHaveLength(1);
+  });
+
+  it("titles the figures box by its first group when the ride has no sensor figures", () => {
+    show({ trimp: 42 }, { movingSeconds: 0 });
+
+    expect(screen.getByRole("region", { name: "Load" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Load" })).toHaveLength(1);
+    expect(screen.queryByText("Sensors")).not.toBeInTheDocument();
+  });
+
+  it("leaves out the Heart rate box for a ride with no zones", () => {
+    show({ averageHeartRateBpm: 142 });
+
+    expect(screen.queryByRole("region", { name: "Heart rate" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Sensors" })).toBeInTheDocument();
   });
 
   it("shows no zones for a row whose zones are all empty", () => {
@@ -259,6 +252,34 @@ describe("TrainingLoad", () => {
 
     expect(screen.queryByText("Decoupling")).toBeNull();
     expect(screen.queryByText("Heat drift")).toBeNull();
+  });
+
+  // Both figures are built from measured power and heart rate, so either
+  // series falling short makes either no more trustworthy than its weaker
+  // half. The service withholds heat drift below the same threshold that
+  // withholds the load figures above (it also needs an untracked temperature
+  // reading), so whenever the client is given one at all, marking it with
+  // the same combined share as decoupling is honest about what it does know.
+  it("marks decoupling and heat drift with the worse of the two series' coverage", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+      heartRateCoverage: 0.95,
+      powerCoverage: 0.8,
+    });
+
+    expect(screen.getAllByText("80% sensor coverage")).toHaveLength(2);
+  });
+
+  it("leaves decoupling and heat drift unmarked when both series covered the whole ride", () => {
+    show({
+      decouplingPercent: 4.2,
+      heatDrift: { heartRateBpm: 141.6, temperatureCelsius: 29.4, samples: 1800 },
+      heartRateCoverage: 1,
+      powerCoverage: 1,
+    });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
   });
 
   it("uses the server's average speed over the ride's own totals when it is given", () => {
@@ -304,5 +325,71 @@ describe("TrainingLoad", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300], deviceZoneSeconds: [] });
 
     expect(screen.queryByText(/Device zones:/)).not.toBeInTheDocument();
+  });
+
+  // A figure served above the withhold threshold still held less than the
+  // whole ride, and the reader is owed the share, not just the pass/fail.
+  it("marks a heart-rate figure served below full coverage", () => {
+    show({ averageHeartRateBpm: 124.6, heartRateCoverage: 0.92, trimp: 42.4 });
+
+    expect(screen.getAllByText("92% sensor coverage")).toHaveLength(2);
+  });
+
+  it("marks a power figure served below full coverage", () => {
+    show({
+      averagePowerWatts: 196.2,
+      powerCoverage: 0.85,
+      normalizedPowerWatts: 214,
+      powerTss: 73.2,
+    });
+
+    expect(screen.getAllByText("85% sensor coverage")).toHaveLength(3);
+  });
+
+  // Max power is always the device's own session maximum -- the recorded
+  // series never yields one of its own -- so the meter's coverage is not a
+  // fact about this particular figure, unlike the average beside it.
+  it("leaves the device's own max power unmarked by the meter's coverage", () => {
+    show({ averagePowerWatts: 196.2, powerCoverage: 0.85, maxPowerWatts: 612 });
+
+    expect(screen.getByText("Max power")).toBeInTheDocument();
+    expect(screen.getByText("612")).toBeInTheDocument();
+    expect(screen.getAllByText("85% sensor coverage")).toHaveLength(1);
+  });
+
+  it("leaves out the coverage mark at full coverage", () => {
+    show({ averageHeartRateBpm: 142.4, heartRateCoverage: 1 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
+  it("leaves the estimate's own figure unmarked by the meter's coverage", () => {
+    show({ estimatedPowerWatts: 187.4, powerCoverage: 0.5 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
+  });
+
+  // A share of 99.6% is still not the whole ride: rounding it to "100%" would
+  // print the one word this caption exists to rule out.
+  it("floors the coverage share rather than rounding it up to 100%", () => {
+    show({ averageHeartRateBpm: 142.4, heartRateCoverage: 0.996 });
+
+    expect(screen.getByText("99% sensor coverage")).toBeInTheDocument();
+    expect(screen.queryByText("100% sensor coverage")).not.toBeInTheDocument();
+  });
+
+  // Zones are withheld below the threshold, but served zones can still
+  // hold less than the whole ride, and are owed the same mark every other
+  // heart-rate figure gets.
+  it("marks the zones with the heart-rate coverage they were served at", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 0.93 });
+
+    expect(screen.getByText("93% sensor coverage")).toBeInTheDocument();
+  });
+
+  it("leaves the zones unmarked at full coverage", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 1 });
+
+    expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
   });
 });

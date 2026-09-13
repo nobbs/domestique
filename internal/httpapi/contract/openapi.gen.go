@@ -287,9 +287,16 @@ type ActivityMetrics struct {
 	NormalizedPowerWatts *float64 `json:"normalizedPowerWatts,omitempty"`
 	IntensityFactor      *float64 `json:"intensityFactor,omitempty"`
 	PowerTss             *float64 `json:"powerTss,omitempty"`
-	// EstimatedPowerWatts The ride's average estimated power, for a bicycle carrying no meter. An estimate from a physics model over the recorded track, never a measurement: it feeds none of the figures above and must not be presented as though it were one of them. Absent for a ride that measured its own power, one with no usable track, and one whose rider has entered no mass.
-	EstimatedPowerWatts *float64         `json:"estimatedPowerWatts,omitempty"`
-	EstimateQuality     *EstimateQuality `json:"estimateQuality,omitempty"`
+	// HeartRateCoverage The share of the ride's moving time the heart-rate strap held a reading for, whether or not that cleared the threshold this derivation withholds a figure below. Served beside every heart-rate figure above, and beside averageHeartRateBpm and maxHeartRateBpm below, so a figure served at, say, 92% is still read as most of the ride rather than all of it. See docs/specs/service.md §Recorded activities.
+	HeartRateCoverage *float64 `json:"heartRateCoverage,omitempty"`
+	// PowerCoverage The same share for the power meter, served beside normalizedPowerWatts, intensityFactor, powerTss and averagePowerWatts. Never beside maxPowerWatts: that figure is always the device's own session maximum, not one the recorded series yields, so this series' coverage is not a fact about it. Absent for a ride estimating its power from the track: this describes a meter's own coverage, never the estimate's.
+	PowerCoverage *float64 `json:"powerCoverage,omitempty"`
+	// EstimatedPowerWatts The ride's estimated power while pedalling, in watts, for a bicycle carrying no meter: a physics model over the recorded track, at the rider's own drag area and rolling resistance where both are entered and a road bicycle's otherwise, never a measurement, never an input to the figures above. Absent for a ride that measured its own power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass.
+	EstimatedPowerWatts *float64 `json:"estimatedPowerWatts,omitempty"`
+	// EstimatedPedallingShare The share of the ride's estimated samples the rider was pedalling through, which the estimate is averaged over. Present only beside estimatedPowerWatts, and absent for a ride whose estimate was worked out before a share was kept, until it is derived again.
+	EstimatedPedallingShare *float64 `json:"estimatedPedallingShare,omitempty"`
+	// EstimatedCaloriesKcal The ride's energy at a fixed 22% gross efficiency, over movingSeconds at averagePowerWatts where the ride measured its own power, else over the pedalling share of movingSeconds at estimatedPowerWatts. A comparison figure only, never a measurement, never the same figure as the activity's own caloriesKcal, which a device usually derives from heart rate rather than power. Absent below a positive wattage and moving time; the estimate branch further needs a positive pedalling share, absent for a ride that measured its own power.
+	EstimatedCaloriesKcal *float64 `json:"estimatedCaloriesKcal,omitempty"`
 	// AverageSpeedKmh The device's own average speed in km/h, from the file's session message. Absent where the file declared none, in which case a client falls back to distance over moving time — both of which the activity already carries.
 	AverageSpeedKmh *float64 `json:"averageSpeedKmh,omitempty"`
 	// AverageHeartRateBpm The device's own session average where the file declared one, otherwise the mean of the ride's recorded heart-rate samples. Absent for a ride that carried no strap.
@@ -321,7 +328,7 @@ type ActivityMetrics struct {
 	HeatDrift         *HeatDrift `json:"heatDrift,omitempty"`
 }
 
-// HeatDrift What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, or a rider who has entered no threshold power to place the band with.
+// HeatDrift What one ride says about riding warm: the heart rate it held in the rider's endurance band and the temperature it was recorded at. One ride is a point rather than a trend, and the drift is these points over a season. Absent for a ride with no measured power, no thermometer, too few samples in the band, a rider who has entered no threshold power to place the band with, or a heart-rate, power or temperature series that fell below the same sensor-coverage threshold that withholds the load figures above: the reading is only as trustworthy as the weakest of the three series it is drawn from.
 type HeatDrift struct {
 	// HeartRateBpm The mean heart rate over the ride's samples inside the band.
 	HeartRateBpm float64 `json:"heartRateBpm"`
@@ -329,16 +336,6 @@ type HeatDrift struct {
 	TemperatureCelsius float64 `json:"temperatureCelsius"`
 	// Samples How many samples the pair was read from.
 	Samples int `json:"samples"`
-}
-
-// EstimateQuality What the estimate's own shape says about whether to trust it: a real ride's power is strongly autocorrelated sample to sample and moves by a few watts a second, and a series driven by recorder noise is neither. Present beside estimatedPowerWatts once the ride has been derived since these existed; a ride derived before then omits it until it is derived again. See docs/specs/measurement.md §Estimated power.
-type EstimateQuality struct {
-	// Autocorrelation The lag-1 Pearson correlation of the estimated watts with themselves shifted by one sample.
-	Autocorrelation float64 `json:"autocorrelation"`
-	// MeanAbsDeltaWattsPerSecond The mean absolute change in watts per second of elapsed time between consecutive samples.
-	MeanAbsDeltaWattsPerSecond float64 `json:"meanAbsDeltaWattsPerSecond"`
-	// ClipBiasWatts The mean amount the zero clamp added: clamped watts minus the unclamped force times speed it would otherwise have reported.
-	ClipBiasWatts float64 `json:"clipBiasWatts"`
 }
 
 type ActivityList struct {
@@ -659,13 +656,19 @@ type RiderParameters struct {
 	RiderMassKg                   *float64 `json:"riderMassKg,omitempty"`
 	// BikeMassKg The bicycle and everything carried on it.
 	BikeMassKg *float64 `json:"bikeMassKg,omitempty"`
+	// DragAreaM2 The bicycle's drag area, CdA, in square metres: 0.36 on a road bike's hoods, 0.40 on a gravel bike's hoods, 0.45 sitting up.
+	DragAreaM2 *float64 `json:"dragAreaM2,omitempty"`
+	// RollingResistance The tyres' rolling resistance coefficient on tarmac, Crr: 0.005 for a road slick, 0.008 for a wide gravel tyre.
+	RollingResistance *float64 `json:"rollingResistance,omitempty"`
 }
 
 // RiderSuggestions What the rider's rides of the last ninety days say some of these numbers could be, offered beside the controls and stored nowhere. A parameter no ride carried a sensor for is absent rather than zero.
 type RiderSuggestions struct {
 	// MaxHeartRateBpm The highest heart rate held over a rolling minute.
 	MaxHeartRateBpm *float64 `json:"maxHeartRateBpm,omitempty"`
-	// FunctionalThresholdPowerWatts The best twenty-minute average power, taken at 95%.
+	// ThresholdHeartRateBpm The best rolling twenty-minute average heart rate, unscaled. Only a genuine lactate threshold reading if that twenty minutes was a maximal, evenly paced effort -- over ordinary rides it reads high or low depending on what was ridden.
+	ThresholdHeartRateBpm *float64 `json:"thresholdHeartRateBpm,omitempty"`
+	// FunctionalThresholdPowerWatts The greater of two estimates: the best twenty-minute average power taken at 95%, and a ramp-test estimate off the best minute.
 	FunctionalThresholdPowerWatts *float64            `json:"functionalThresholdPowerWatts,omitempty"`
 	Stopping                      *StoppingSuggestion `json:"stopping,omitempty"`
 }
@@ -854,7 +857,7 @@ type ActivityTrackProperties struct {
 	// Weather What this ride was actually ridden through, one row per step of it, asked of the weather provider once after the ride's samples were stored. Absent for a ride nobody has asked about yet and for one the provider had nothing to say about.
 	Weather []RideWeatherStep              `json:"weather,omitempty"`
 	World   *ActivityTrackProperties_World `json:"world,omitempty"`
-	// EstimatedPowerWatts Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has entered no mass.
+	// EstimatedPowerWatts Power this service worked out from the track itself, for a bicycle carrying no meter, indexed 1:1 with the coordinates; null where no estimate was made. Deliberately not `powerWatts`: it is an estimate from a physics model over position, altitude and time, never a measurement, and nothing may present it as one. Omitted entirely for a ride that carries real power, one with no usable track, and one whose rider has not entered both their own mass and their bicycle's mass.
 	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
 }
 
@@ -887,6 +890,13 @@ type ActivitySplit struct {
 	HeartRateBpm *float64 `json:"heartRateBpm,omitempty"`
 	// PowerWatts The mean of the stretch's measured power. Never fed by an estimate: a bicycle with no meter has no average power.
 	PowerWatts *float64 `json:"powerWatts,omitempty"`
+}
+
+type ActivityHeartRateDistribution struct {
+	// FromBpm The heart rate, in whole beats per minute, the first entry of seconds counts.
+	FromBpm int32 `json:"fromBpm"`
+	// Seconds The seconds held at each whole beat per minute from fromBpm up, one entry per beat and nought where the ride held none. A reading counts toward the whole beat at or below it. Never empty.
+	Seconds []float64 `json:"seconds"`
 }
 
 type ActivitySplits struct {

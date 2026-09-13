@@ -22,6 +22,43 @@ func (q *Queries) ClearActivityClimbAttempts(ctx context.Context, targetSlot str
 	return result.RowsAffected()
 }
 
+const clearEstimatedActivityClimbAttemptsForTarget = `-- name: ClearEstimatedActivityClimbAttemptsForTarget :execrows
+DELETE FROM activity_climb_attempt AS c
+WHERE c.target_slot = ?1
+  AND c.workout_id IN (
+    SELECT DISTINCT r.workout_id FROM activity_records AS r
+    WHERE r.target_slot = ?1 AND r.estimated_power_watts IS NOT NULL
+  )
+`
+
+// A rider clearing their profile takes only the climbs and matches an
+// estimate shaped with it: a metered ride's route match owes the profile
+// nothing, and must survive a clear that names no bicycle or mass at all.
+func (q *Queries) ClearEstimatedActivityClimbAttemptsForTarget(ctx context.Context, targetSlot string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearEstimatedActivityClimbAttemptsForTarget, targetSlot)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const clearEstimatedActivityRouteMatchesForTarget = `-- name: ClearEstimatedActivityRouteMatchesForTarget :execrows
+DELETE FROM activity_route_match AS m
+WHERE m.target_slot = ?1
+  AND m.workout_id IN (
+    SELECT DISTINCT r.workout_id FROM activity_records AS r
+    WHERE r.target_slot = ?1 AND r.estimated_power_watts IS NOT NULL
+  )
+`
+
+func (q *Queries) ClearEstimatedActivityRouteMatchesForTarget(ctx context.Context, targetSlot string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, clearEstimatedActivityRouteMatchesForTarget, targetSlot)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const deleteActivityClimbAttempts = `-- name: DeleteActivityClimbAttempts :exec
 DELETE FROM activity_climb_attempt WHERE target_slot = ? AND workout_id = ?
 `

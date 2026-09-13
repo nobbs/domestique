@@ -12,7 +12,23 @@
 
 import type { Activity } from "../../api/types";
 import { Badge } from "../../components/ui/badge";
-import { formatAscent, formatDescent, formatDistance, formatDuration } from "../../lib/format";
+import {
+  formatAscent,
+  formatCoverage,
+  formatDescent,
+  formatDistance,
+  formatDuration,
+} from "../../lib/format";
+
+/** A figure's own note, with a coverage share appended where the series held less than the whole ride. */
+function withCoverage(note: string | undefined, coverage: number | undefined): string | undefined {
+  const coverageNote = formatCoverage(coverage);
+  if (!coverageNote) {
+    return note;
+  }
+
+  return note ? `${note} · ${coverageNote}` : coverageNote;
+}
 
 interface Headline {
   label: string;
@@ -25,23 +41,66 @@ interface Headline {
 function loadFigure(ride: Activity): Headline | null {
   const metrics = ride.metrics;
   if (metrics?.powerTss !== undefined) {
+    const note = withCoverage(
+      metrics.intensityFactor !== undefined
+        ? `${metrics.intensityFactor.toFixed(2)} of threshold`
+        : undefined,
+      metrics.powerCoverage,
+    );
+
     return {
       label: "Training stress",
       value: metrics.powerTss.toFixed(0),
       unit: "TSS",
-      ...(metrics.intensityFactor !== undefined
-        ? { note: `${metrics.intensityFactor.toFixed(2)} of threshold` }
-        : {}),
+      ...(note !== undefined ? { note } : {}),
     };
   }
   if (metrics?.heartRateTss !== undefined) {
-    return { label: "Training stress", value: metrics.heartRateTss.toFixed(0), unit: "hrTSS" };
+    const note = withCoverage(undefined, metrics.heartRateCoverage);
+
+    return {
+      label: "Training stress",
+      value: metrics.heartRateTss.toFixed(0),
+      unit: "hrTSS",
+      ...(note !== undefined ? { note } : {}),
+    };
   }
   if (metrics?.trimp !== undefined) {
-    return { label: "Training impulse", value: metrics.trimp.toFixed(0), unit: "TRIMP" };
+    const note = withCoverage(undefined, metrics.heartRateCoverage);
+
+    return {
+      label: "Training impulse",
+      value: metrics.trimp.toFixed(0),
+      unit: "TRIMP",
+      ...(note !== undefined ? { note } : {}),
+    };
   }
 
   return null;
+}
+
+/**
+ * The device's own reported calories, with the power-based estimate as a note
+ * beside it for comparison; the estimate stands alone where the device
+ * declared none, and neither yields no headline at all.
+ */
+function caloriesFigure(ride: Activity): Headline[] {
+  const estimated = ride.metrics?.estimatedCaloriesKcal;
+  if (ride.caloriesKcal !== undefined) {
+    return [
+      {
+        label: "Calories",
+        value: ride.caloriesKcal.toFixed(0),
+        unit: "kcal",
+        ...(estimated !== undefined ? { note: `~${estimated.toFixed(0)} kcal estimated` } : {}),
+      },
+    ];
+  }
+  if (estimated !== undefined) {
+    return [{ label: "Calories (est.)", value: estimated.toFixed(0), unit: "kcal" }];
+  }
+
+  return [];
 }
 
 export function RideFigures({ ride }: { ride: Activity | undefined }) {
@@ -64,9 +123,7 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
     ...(ride.descentMetres !== undefined
       ? [{ label: "Descended", value: formatDescent(ride.descentMetres) }]
       : []),
-    ...(ride.caloriesKcal !== undefined
-      ? [{ label: "Calories", value: ride.caloriesKcal.toFixed(0), unit: "kcal" }]
-      : []),
+    ...caloriesFigure(ride),
     ...(load ? [load] : []),
   ];
 

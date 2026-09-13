@@ -1,9 +1,3 @@
-# The commit hook is a fast guard, not a second quality gate: it must stay
-# cheap enough that nobody is tempted to bypass it. Two rules keep it that way.
-# Every check here is either a whole-file safety check that costs nothing, or a
-# formatting check scoped to the files the commit stages. Tests, full linting,
-# audits, cross-compilation, image builds, and the browser suites belong to
-# `mise run check` and to GitHub Actions, and must not be added below.
 [[repos]]
 repo = "builtin"
 
@@ -37,12 +31,6 @@ id = "detect-private-key"
 [[repos]]
 repo = "local"
 
-# Both checks below take their file list from prek — `pass_filenames = true` —
-# so a commit is judged on what it stages and never fails on a defect in a file
-# it did not touch. `prek run --all-files`, which is what `mise run ci-lint` runs,
-# passes every matching file instead, so the repository-wide coverage the gate
-# needs is unchanged.
-
 [[repos.hooks]]
 id = "golangci-format"
 name = "golangci-lint format"
@@ -51,16 +39,7 @@ language = "system"
 files = "\\.go$"
 pass_filenames = true
 
-# The only Markdown lint there is. `mise run hygiene` runs this same hook over
-# every tracked file, so the gate needs no pass of its own; it used to keep one
-# anyway, over a filesystem glob, and the two disagreed about which files
-# existed. Fetched skills are gitignored but still on disk, so the glob walked
-# into third-party Markdown that git never lists and the gate failed on
-# hundreds of defects no commit hook could have seen.
-#
-# `.markdownlint-cli2.yaml` applies either way — `ignores` filters named files
-# as well as globbed ones — so taking the file list from git costs no coverage
-# and leaves one answer to what is linted instead of two.
+# Files come from git, not a filesystem glob: gitignored, fetched skill Markdown stays unlinted.
 [[repos.hooks]]
 id = "markdownlint"
 name = "Markdown lint"
@@ -69,11 +48,6 @@ language = "system"
 files = "\\.md$"
 pass_filenames = true
 
-# Every YAML file, not only the OpenAPI contract this once checked: yamlfmt
-# has to parse a document before it can format it, so it answers the question
-# `check-yaml` used to — is this loadable — and the further one that check
-# never asked, which is whether it is written the way the rest of the tree is.
-# What it will not touch is named in `.yamlfmt`'s own exclude list.
 [[repos.hooks]]
 id = "yamlfmt"
 name = "YAML format"
@@ -82,8 +56,7 @@ language = "system"
 files = "\\.ya?ml$"
 pass_filenames = true
 
-# yamlfmt preserves flow mappings. Reject nonempty flow nodes separately while
-# allowing OpenAPI's idiomatic empty arrays (`[]`).
+# yamlfmt preserves flow mappings; this rejects the ones it leaves alone.
 [[repos.hooks]]
 id = "openapi-no-flow-style"
 name = "OpenAPI block style"
@@ -91,3 +64,21 @@ entry = "mise exec -- yq eval --exit-status '[.. | select(style == \"flow\" and 
 language = "system"
 files = "^api/openapi\\.yaml$"
 pass_filenames = true
+
+# biome.json lives in internal/webui/app; the wrapper cds there since biome isn't mise-pinned.
+[[repos.hooks]]
+id = "biome-format"
+name = "Biome format"
+entry = "dev/check-ui-format.sh"
+language = "system"
+files = "^internal/webui/app/.*\\.(ts|tsx|json)$"
+pass_filenames = true
+
+# gitleaks reads the staged diff itself; pass_filenames would only hand it
+# positional arguments protect ignores, so it's explicitly off, not omitted.
+[[repos.hooks]]
+id = "gitleaks-protect"
+name = "Secret scan"
+entry = "mise exec -- gitleaks protect --staged --redact --no-banner"
+language = "system"
+pass_filenames = false

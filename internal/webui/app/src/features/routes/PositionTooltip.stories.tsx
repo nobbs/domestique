@@ -11,7 +11,6 @@ import type { ProfileSample } from "../../lib/profile";
 import { sampleAt } from "../../lib/profile";
 import {
   coordinates,
-  liveMap,
   profile as maybeProfile,
   StoryProviders,
   surface,
@@ -114,7 +113,6 @@ function OnMap({
 
 const meta = {
   title: "Components/Route/Position Tooltip",
-  parameters: liveMap,
   component: PositionTooltip,
   tags: ["autodocs"],
   args: {

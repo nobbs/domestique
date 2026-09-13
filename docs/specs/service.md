@@ -526,12 +526,16 @@ The read-only JSON surface is small:
 
   Beside them, and only where one was worked out, the **estimated** power at
   each coordinate, indexed the same way and named `estimatedPowerWatts` rather
-  than any name a measurement could carry. It is omitted entirely for a ride
-  that measured its own power, one with no usable track, and one whose rider has
-  entered no mass. Nothing else the samples hold is served here, and the
-  estimate is never served as though it were a reading. It is scoped exactly as
-  the list above is. An activity with fewer than
-  two positioned samples is served as an unlocated Feature — a null `geometry`
+  than any name a measurement could carry. It is worked out at the rider's own
+  drag area and rolling resistance where both are entered, and at a road
+  bicycle's otherwise — only the two masses gate whether an estimate exists at
+  all. It is omitted entirely for a ride that measured its own power, one with
+  no usable track, and one whose rider has not entered both their own mass and
+  their bicycle's mass. Nothing else the samples hold is served here, and the
+  estimate is never served as though it were a reading. It is scoped exactly
+  as the list above is. An activity
+  with fewer than two positioned samples is served as an unlocated Feature — a
+  null `geometry`
   and no box — whose `properties.state` says why: `pending` for samples not
   downloaded yet, `empty` for samples too few of which carried a position to
   draw a line, `unreadable` for a file that did not decode, and `indoor` for a
@@ -608,6 +612,21 @@ The read-only JSON surface is small:
   one that recorded no distance to cut by, is answered with an empty list rather
   than an error — a splits table with no rows says what it needs to. It is
   scoped exactly as the track is, and answers `404` on the same terms.
+- `GET /v1/activities/{activityId}/heartRateDistribution` returns how long that
+  activity held each whole heart rate, lowest held first: the seconds held at
+  and above the lowest bin, through the highest, nought where the ride passed
+  through a beat without stopping there. Folded by the same held rule and over
+  the same capped series its time in zones is, a reading counting toward the
+  whole beat at or below it. Nothing about it is stored: it is a fold over the
+  ride's recorded samples, positioned or not, at read time. It is served only
+  where that ride's zones are served — withheld with them below the coverage
+  floor, absent for a ride nothing was derived for — and `404` otherwise. The
+  cap uses the maximum heart rate the zones were derived against, so the two
+  agree even after a profile change until the ride is re-derived. The totals
+  agree exactly; a reading the cap interpolated to a fraction of a beat can land
+  in the whole beat below a zone bound it cleared, so a page colouring whole
+  beats by zone may place those few seconds one zone lower. It is scoped
+  exactly as the track is.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.
@@ -659,8 +678,34 @@ The read-only JSON surface is small:
   for carries none of it, and the zones are cut from the threshold rate where
   the profile has one and from the maximum otherwise. A heart-rate reading
   above the profile's own maximum is a sensor fault rather than a rider: it is
-  interpolated across before any of this is worked out. What computes them,
-  and when, is [`activity:derive`](task-layer.md).
+  interpolated across before any of this is worked out. Zones, TRIMP and
+  hrTSS are all withheld together when the heart-rate strap covered under 90%
+  of the ride's moving time, and normalized power, intensity factor and power
+  TSS likewise when the meter did; a ride withheld this way contributes
+  nothing to any training-load trend built from it. What computes them, and when, is
+  [`activity:derive`](task-layer.md).
+
+  Each series' own coverage — the share of the ride's moving time it held a
+  reading for — is served alongside every figure built on it, whether or not
+  that figure cleared the withhold threshold: `heartRateCoverage` beside the
+  zones, TRIMP, hrTSS, average and maximum heart rate, and `powerCoverage`
+  beside normalized power, intensity factor, power TSS and average power. A
+  figure served at, say, 92% coverage is still most of the ride rather than
+  all of it, and the share says so without the rider having to take a plain
+  average on faith. Never beside maximum power: that figure is always the
+  device's own session maximum, not one the recorded series yields, so
+  `powerCoverage` is not a fact about it. Absent for a series with nothing to
+  hold a reading of at all, absent as well when the ride's own moving time is
+  not yet known (a share judged against an unknown whole is not a share), and
+  `powerCoverage` is never served beside an estimate: it describes a meter's
+  own coverage, never the estimate's.
+
+  Decoupling and heat drift (§Decoupling and heat drift, measurement.md) are
+  each built from more than one of these series and carry no coverage field
+  of their own; a reader of either takes the lesser of `heartRateCoverage`
+  and `powerCoverage` as its share. Heat drift is additionally withheld below
+  the same threshold on all three series it needs, including temperature,
+  which this service otherwise tracks no coverage share for.
 
   Beside those are the plain figures the ride's own sensors came to with no
   profile involved: the mean of its heart-rate, cadence and measured power
@@ -698,24 +743,23 @@ The read-only JSON surface is small:
   and a mean of two codes names no weather. It is absent both for a ride nobody
   has asked about and for one that was asked about and had nothing to answer.
 
-  A ride carrying no meter, for a rider who has entered both a rider and a bike
-  mass, also carries `estimatedPowerWatts`: its average **estimated** power. It is worked out from the
-  recorded track by a physics model — gravity against the grade, rolling
-  resistance and drag at fixed road-bike constants, never below zero and never
-  accounting for wind. The air's density follows the sample's own altitude and
-  temperature rather than a fixed figure, and a sample the rider was not
-  pedalling through — its cadence known and zero — reads no power at all,
-  checked before the zero clamp ever runs. Both the grade and the speed are measured over the same
-  window of distance rather than between one sample and the next: at one sample
-  a second the step is barometric noise and GPS jitter as much as it is riding,
-  and the clamp at zero would keep the half of that noise which reads positive
-  and discard the half which reads negative. The change in speed is not charged
-  for. Over a ride it is the kinetic energy the rider gets back, and at this
-  sampling rate a real surge cannot be told from the jitter. It is an
-  estimate and is named as one everywhere: it is never normalised, never scored,
-  and never an input to a training load. A ride that measured its own power has
-  none, because an estimate beside a reading only invites the two to be
-  confused.
+  A ride carrying no meter, for a rider who has entered both masses, carries
+  `estimatedPowerWatts`, its estimated power while pedalling, from the force
+  balance in [measurement.md](measurement.md) §Estimated power at the rider's
+  own bicycle numbers, and `estimatedPedallingShare`, the share of the ride's
+  estimated samples the rider was pedalling through, which the estimate is
+  averaged over. Named as an estimate everywhere; never normalised, never
+  scored, never an input to a training load; absent for a ride that measured
+  its own power.
+
+  Every activity also carries `estimatedCaloriesKcal` where it has a positive
+  average power — measured, or else the estimate above at a positive
+  pedalling share — and a positive moving time: the energy that implies at a
+  fixed gross efficiency (see [measurement.md](measurement.md) §Estimated
+  calories). Never replaces the ride's own `caloriesKcal` — served beside it
+  where the device also reported one, purely for a rider to compare the two,
+  and on its own where it did not; never stored, never mixed with either
+  figure above.
 
   Each activity that has one also carries its `analysis`: the plain text a
   language model wrote about the ride, at most two thousand characters, with
@@ -726,30 +770,24 @@ The read-only JSON surface is small:
   rider to read and is never an input to any figure this service serves. The
   bound is what lets it ride on the list: it is asked for as a few short
   paragraphs, and an answer over the bound is refused rather than stored.
-
-  `estimatedPowerWatts` carries `estimateQuality` beside it, present once the
-  ride has been derived since the diagnostics existed and never without the
-  estimate; a ride derived before then omits it until it is derived again. It
-  holds the lag-1 autocorrelation of the estimated watts, the mean
-  absolute change in watts per second between consecutive samples, and the
-  mean amount the zero clamp added. What the estimate's own shape says about
-  whether to trust it, not a judgement this service makes about it — see
-  [measurement.md](measurement.md) §Estimated power.
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
-  maximum, resting and threshold heart rate, functional threshold power, and
-  rider and bike mass — every one of them optional, so a parameter the rider has
-  not entered is absent rather than zero. It is answered for the **caller's own
-  subject only**: no session reads another rider's profile on this path, an
-  administrator's included, and a subject that has entered nothing reads an
-  empty profile rather than a `404`.
+  maximum, resting and threshold heart rate, functional threshold power, rider
+  and bike mass, and the bicycle's drag area and rolling resistance — every one
+  of them optional, so a parameter the rider has not entered is absent rather
+  than zero. It is answered for the **caller's own subject only**: no session
+  reads another rider's profile on this path, an administrator's included, and
+  a subject that has entered nothing reads an empty profile rather than a
+  `404`.
 
   Beside the stored parameters it carries what the caller's own rides of the
   last ninety days suggest some of them could be: the highest heart rate held
-  over a rolling minute, the best twenty-minute average power taken at 95%, and
-  the rider's own stopping habit. All are read over the caller's own targets and
-  are display only — nothing uses one until the rider has saved it as their own
-  value. A parameter no ride carried a sensor for is absent rather than zero,
-  and a rider with no target yet is answered with no suggestions.
+  over a rolling minute, the best rolling twenty-minute average heart rate
+  unscaled, the greater of the best twenty-minute average power taken at 95%
+  and a ramp-test estimate off the best minute, and the rider's own stopping
+  habit. All are read over the caller's own targets and are display only —
+  nothing uses one until the rider has saved it as their own value. A
+  parameter no ride carried a sensor for is absent rather than zero, and a
+  rider with no target yet is answered with no suggestions.
 
   The stopping habit is the median and quartiles of stopped seconds per moving
   hour — elapsed time less moving time, over moving time — across the caller's

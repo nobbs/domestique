@@ -294,6 +294,9 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /v1/activities/{activityId}/track", h.GetActivityTrack)
 	h.mux.HandleFunc("GET /v1/activities/{activityId}/series/{series}", h.GetActivitySeries)
 	h.mux.HandleFunc("GET /v1/activities/{activityId}/splits", h.GetActivitySplits)
+	h.mux.HandleFunc(
+		"GET /v1/activities/{activityId}/heartRateDistribution", h.GetActivityHeartRateDistribution,
+	)
 	h.mux.HandleFunc("GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}", h.GetRoute)
 	h.mux.HandleFunc(
 		"GET /v1/providers/{provider}/sourceRoutes/{sourceRouteId}/routes/{stageOrder}/geometry",

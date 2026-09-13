@@ -70,10 +70,9 @@ private to this service.
 ├── dev/
 │   ├── demoapi/                    the demo service, over internal/demo
 │   ├── session/                    mints a session row for a dev-setup snapshot
-│   ├── gatecheck/                  asserts what `quick` defers against `check`
 │   ├── patchcoverage/              grades a patch the way Codecov will
 │   ├── coveragesummary/            prints a profile's summary
-│   ├── ascentstudy/                the offline ascent study over recorded rides
+│   ├── levelstudy/                 the offline bicycle-coefficient study over recorded rides
 │   └── *.sh                        the scripts the Mise tasks call
 ├── deploy/
 │   └── domestique-deploy.sh        the host-side deploy, run over SSH

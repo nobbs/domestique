@@ -9,7 +9,7 @@
  * the map.
  */
 
-import { expect, openLibrary, openSync, test } from "./fixtures";
+import { expect, followDestination, openLibrary, openSync, test } from "./fixtures";
 
 /** A reference no recorded run can have, standing in for a pruned one. */
 const PRUNED = "000000000000";
@@ -31,7 +31,7 @@ test("the page puts notices before the operational questions", async ({ offlineP
 test("the way back is the map itself", async ({ offlinePage: page }) => {
   await openSync(page);
 
-  await page.getByRole("link", { name: "Atlas" }).click();
+  await followDestination(page, "Atlas");
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
@@ -86,7 +86,7 @@ test("the foot of the page names the running build", async ({ offlinePage: page 
 test("the menu bar is the only way in that a reader needs", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  await page.getByRole("link", { name: /^Sync/ }).click();
+  await followDestination(page, /^Sync/);
 
   await expect(page).toHaveURL(/\/sync$/);
   await expect(page.getByRole("region", { name: "Now" })).toBeVisible();

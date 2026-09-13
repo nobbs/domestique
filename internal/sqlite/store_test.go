@@ -18,7 +18,10 @@ import (
 
 func TestStoreCreatesCurrentSchemaBaseline(t *testing.T) {
 	t.Parallel()
-	store := openTestStore(t, testKey(1))
+	// A fresh path on purpose: openTestStore starts from an already migrated file.
+	store, err := Open(t.Context(), filepath.Join(t.TempDir(), "state.db"), testKey(1))
+	require.NoError(t, err, "Open()")
+	t.Cleanup(func() { assert.NoError(t, store.Close(), "Close()") })
 	var legacy, current int
 	var dirty bool
 	require.NoError(t, store.database.QueryRowContext(t.Context(), `SELECT MAX(version) FROM schema_migrations`).Scan(&legacy))

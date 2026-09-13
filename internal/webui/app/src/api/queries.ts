@@ -6,6 +6,7 @@ import {
   type WebUIConfig as GeneratedWebUIConfig,
   type GetTaskRunsParams,
   getGetActivitiesQueryOptions,
+  getGetActivityHeartRateDistributionQueryOptions,
   getGetActivitySeriesQueryOptions,
   getGetActivitySplitsQueryOptions,
   getGetActivityTrackQueryOptions,
@@ -27,6 +28,7 @@ import {
 } from "./generated";
 import {
   type Activity,
+  type ActivityHeartRateDistribution,
   type ActivityList,
   type ActivitySeries,
   type ActivitySeriesName,
@@ -115,6 +117,19 @@ export const activitySeriesQuery = (id: string, series: ActivitySeriesName) =>
   getGetActivitySeriesQueryOptions(id, series, undefined, {
     query: {
       select: (response) => payload<ActivitySeries>(response),
+      retry: false,
+      staleTime: 5 * 60 * 1000,
+    },
+  });
+
+/**
+ * How long one ride held each whole heart rate. Asked for only when the rider
+ * opens the distribution: the zones beside it already say most of what it does.
+ */
+export const activityHeartRateDistributionQuery = (id: string) =>
+  getGetActivityHeartRateDistributionQueryOptions(id, undefined, {
+    query: {
+      select: (response) => payload<ActivityHeartRateDistribution>(response),
       retry: false,
       staleTime: 5 * 60 * 1000,
     },

@@ -322,6 +322,25 @@ export async function openRoute(
   await settleMap(page);
 }
 
+/**
+ * Follows one of the bar's destinations, wherever the row has put it.
+ *
+ * Which names the bar shows is measured against the width it has, so a narrow
+ * viewport reaches a page through the menu at the end of the row rather than
+ * through a name in it. A test about the page it leads to should not have to
+ * know which of the two it got.
+ */
+export async function followDestination(page: Page, name: string | RegExp): Promise<void> {
+  const link = page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name });
+  if ((await link.count()) > 0) {
+    await link.click();
+
+    return;
+  }
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name }).click();
+}
+
 /** The sync page, once the service has answered what it is doing. */
 export async function openSync(page: Page): Promise<void> {
   await page.goto("/sync");

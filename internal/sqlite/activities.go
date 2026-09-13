@@ -234,6 +234,27 @@ func (s *Store) ActivityRecordsState(
 	return activity.RecordsState(stored.RecordsState), int(stored.WorkoutTypeID), true, nil
 }
 
+// ActivityMovingSecondsFor is every one of ids' own moving time, the
+// derivation's share of a series' coverage is judged against, read in one
+// query rather than one per ride. An id with no such activity is simply
+// absent from the map, which a lookup reads as zero -- unmeasured, not failed.
+func (s *Store) ActivityMovingSecondsFor(
+	ctx context.Context, targetID string, ids []int64,
+) (map[int64]float64, error) {
+	rows, err := s.queries.ListActivityMovingSeconds(ctx, sqlcgen.ListActivityMovingSecondsParams{
+		TargetSlot: targetID, WorkoutIds: ids,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading activities' moving time: %w", err)
+	}
+	movingSeconds := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		movingSeconds[row.WorkoutID] = row.MovingSeconds
+	}
+
+	return movingSeconds, nil
+}
+
 // ActivityProviderSummary is which provider recorded one target's activity and
 // the summary document that provider's own adapter wrote for it. Interpreting
 // the document is the caller's; this store only holds it.

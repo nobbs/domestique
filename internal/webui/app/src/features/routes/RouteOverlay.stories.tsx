@@ -7,7 +7,7 @@ import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { buildProfile } from "../../lib/profile";
-import { coordinates, liveMap, weatherSamples } from "../../storybook/fixtures";
+import { coordinates, weatherSamples } from "../../storybook/fixtures";
 import { RouteOverlay } from "./RouteOverlay";
 
 const styleUrl = "https://tiles.openfreemap.org/styles/bright";
@@ -16,7 +16,6 @@ const profile = buildProfile(coordinates);
 
 const meta = {
   title: "Components/Route/Route Overlay",
-  parameters: liveMap,
   component: RouteOverlay,
   tags: ["autodocs"],
   args: { coordinates },

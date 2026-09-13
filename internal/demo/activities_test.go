@@ -8,6 +8,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/demo"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/wahoo"
 )
@@ -65,6 +66,44 @@ func TestRidesCoverTheShapesTheActivityViewsHaveToDraw(t *testing.T) {
 
 // The totals a ride is listed by have to agree with the samples underneath it,
 // or the ride page contradicts the list that opened it.
+// The regression: a geometry segment that outlasts several samples must not
+// leave the odometer standing still for them, the way snapping distance
+// forward only once the segment finished used to. A ride's own moving
+// intervals are read off exactly this, and a stall an outdoor recording
+// never actually had would wrongly withhold coverage built on it.
+func TestRideDistanceNeverStandsStillWhileMoving(t *testing.T) {
+	t.Parallel()
+
+	rides, err := demo.Rides(seededAt())
+	require.NoError(t, err)
+
+	full := rideByID(t, rides, 90_101)
+	for index := 1; index < len(full.FIT.Records); index++ {
+		assert.Greater(t, full.FIT.Records[index].DistanceMetres, full.FIT.Records[index-1].DistanceMetres,
+			"record %d must cover more ground than the one before it", index)
+	}
+}
+
+// The regression: a slow geometry segment must not leave position, altitude
+// and effort pinned to its far endpoint for the several samples that share
+// it while only the odometer moved -- the position, and what feeds the
+// estimator, are interpolated across the same segment the distance is.
+func TestRidePositionMovesWithTheOdometerRatherThanStandingStill(t *testing.T) {
+	t.Parallel()
+
+	rides, err := demo.Rides(seededAt())
+	require.NoError(t, err)
+
+	full := rideByID(t, rides, 90_101)
+	for index := 1; index < len(full.FIT.Records); index++ {
+		previous, current := full.FIT.Records[index-1], full.FIT.Records[index]
+		if current.DistanceMetres > previous.DistanceMetres {
+			moved := current.Latitude != previous.Latitude || current.Longitude != previous.Longitude
+			assert.True(t, moved, "record %d covers more ground but sits at the same point as %d", index, index-1)
+		}
+	}
+}
+
 func TestEachRidesTotalsAgreeWithItsOwnSamples(t *testing.T) {
 	t.Parallel()
 
@@ -119,12 +158,21 @@ func TestAPositionedRideIsRecordedOverTheStageItFollowed(t *testing.T) {
 		require.NotEmpty(t, geometry, "ride %d names a stage the library holds", id)
 
 		records := ride.FIT.Records
-		require.Len(t, records, len(geometry), "one sample per point of the stage")
+		require.NotEmpty(t, records)
 		assert.InDelta(t, geometry[0].Latitude, records[0].Latitude, 1e-9,
 			"ride %d sets off where the stage does", id)
 		assert.InDelta(t, geometry[len(geometry)-1].Longitude, records[len(records)-1].Longitude, 1e-9,
 			"ride %d finishes where the stage does", id)
 		assert.Positive(t, records[len(records)-1].DistanceMetres, "and covers ground on the way")
+
+		// The whole reason records are timed rather than pointed: the
+		// geometry's own distance spacing must never leave a gap wide enough
+		// to read as the sensor having dropped out.
+		for index := 1; index < len(records); index++ {
+			gap := records[index].Time.Sub(records[index-1].Time)
+			assert.LessOrEqual(t, gap, measure.DefaultMaxGap,
+				"ride %d: consecutive samples %v apart", id, gap)
+		}
 	}
 }
 

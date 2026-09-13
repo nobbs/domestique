@@ -25,7 +25,12 @@ afterEach(() => {
 describe("RiderProfile", () => {
   it("fills each box from the rider's stored parameters", () => {
     show({
-      profile: { maxHeartRateBpm: 188, riderMassKg: 74.5 },
+      profile: {
+        maxHeartRateBpm: 188,
+        riderMassKg: 74.5,
+        dragAreaM2: 0.4,
+        rollingResistance: 0.008,
+      },
       suggestions: {},
       zwift: { emailSet: false, passwordSet: false },
     });
@@ -33,6 +38,8 @@ describe("RiderProfile", () => {
     expect(screen.getByLabelText("Maximum heart rate (bpm)")).toHaveValue(188);
     expect(screen.getByLabelText("Rider mass (kg)")).toHaveValue(74.5);
     expect(screen.getByLabelText("Functional threshold power (W)")).toHaveValue(null);
+    expect(screen.getByLabelText("Drag area (m²)")).toHaveValue(0.4);
+    expect(screen.getByLabelText("Rolling resistance")).toHaveValue(0.008);
   });
 
   // A suggestion is offered beside the field it is about and applied to none of
@@ -63,13 +70,20 @@ describe("RiderProfile", () => {
 
     await userEvent.clear(screen.getByLabelText("Bike mass (kg)"));
     await userEvent.type(screen.getByLabelText("Rider mass (kg)"), "74.5");
+    await userEvent.type(screen.getByLabelText("Drag area (m²)"), "0.4");
+    await userEvent.type(screen.getByLabelText("Rolling resistance"), "0.008");
     await userEvent.click(screen.getByRole("button", { name: "Save rider profile" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const call = fetchMock.mock.calls.find((each) => each[0] === "/v1/settings/rider");
     expect(call?.[1]).toMatchObject({
       method: "PUT",
-      body: JSON.stringify({ maxHeartRateBpm: 188, riderMassKg: 74.5 }),
+      body: JSON.stringify({
+        maxHeartRateBpm: 188,
+        riderMassKg: 74.5,
+        dragAreaM2: 0.4,
+        rollingResistance: 0.008,
+      }),
     });
   });
 

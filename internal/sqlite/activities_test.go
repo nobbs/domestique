@@ -847,6 +847,23 @@ func TestActivityRecordsStateTellsPendingFromStored(t *testing.T) {
 	require.ErrorContains(t, err, "reading an activity records state")
 }
 
+func TestActivityMovingSecondsForReadsAStoredTotal(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+
+	movingSeconds, err := store.ActivityMovingSecondsFor(t.Context(), "rider-a", []int64{1, 2})
+	require.NoError(t, err, "ActivityMovingSecondsFor()")
+	require.Contains(t, movingSeconds, int64(1))
+	assert.InDelta(t, 3600, movingSeconds[1], 1e-9)
+	assert.NotContains(t, movingSeconds, int64(2), "an activity not stored is simply absent")
+
+	require.NoError(t, store.Close(), "Close()")
+	_, err = store.ActivityMovingSecondsFor(t.Context(), "rider-a", []int64{1})
+	require.ErrorContains(t, err, "reading activities' moving time")
+}
+
 // ActivityCaloriesAccum decodes only the one field it names out of the stored
 // raw summary, and reports absent for a ride that never gave one at all.
 func TestActivityCaloriesAccumReadsTheOneFieldItNames(t *testing.T) {
@@ -1104,7 +1121,7 @@ func TestStoreActivityRecordsClearsTheDerivedRow(t *testing.T) {
 	fit := activity.FIT{Records: []activity.Record{{Time: activityNow(), PowerWatts: 240, HasPower: true}}}
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, fit, activity.RecordsVersion),
 		"StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
 
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, fit, activity.RecordsVersion+1),
@@ -1113,7 +1130,7 @@ func TestStoreActivityRecordsClearsTheDerivedRow(t *testing.T) {
 	read, err := store.ActivityMetrics(t.Context(), "rider-a")
 	require.NoError(t, err, "ActivityMetrics()")
 	assert.NotContains(t, read, int64(1))
-	awaiting, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	awaiting, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
 	assert.Equal(t, []int64{1}, awaiting)
 }

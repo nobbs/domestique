@@ -103,5 +103,4 @@ export const Unfolded: Story = { args: { expanded: true } };
  *  and `--animate-ring-trace`. */
 export const Loading: Story = {
   args: { loading: true },
-  parameters: { chromatic: { disableSnapshot: true } },
 };

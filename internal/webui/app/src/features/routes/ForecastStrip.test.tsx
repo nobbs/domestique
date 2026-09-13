@@ -10,7 +10,7 @@
  * What is tested here is the part that is not drawing: which of the several
  * ways there can be no forecast leads to silence and which to a sentence, and
  * whether a failure is reported as the provider's or as this page's. A tile's
- * pixels are Chromatic's business; a wrong error message sends a reader to
+ * pixels are not this test's business; a wrong error message sends a reader to
  * check whether Open-Meteo is down over arithmetic done here.
  */
 

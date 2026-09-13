@@ -30,13 +30,15 @@ func (s *Store) RiderProfile(ctx context.Context, subject string) (rider.Profile
 		FunctionalThresholdPowerWatts: riderValue(row.FunctionalThresholdPowerWatts),
 		RiderMassKG:                   riderValue(row.RiderMassKg),
 		BikeMassKG:                    riderValue(row.BikeMassKg),
+		DragAreaM2:                    riderValue(row.DragAreaM2),
+		RollingResistance:             riderValue(row.RollingResistance),
 	}, nil
 }
 
 // SetRiderProfile replaces one subject's parameters whole, the way every
 // settings section is replaced whole.
 //
-//nolint:gocritic // value param: a profile is six optional numbers, copied as cheaply as a pointer.
+//nolint:gocritic // value param: a profile is eight optional numbers, copied as cheaply as a pointer.
 func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rider.Profile) error {
 	if err := s.queries.UpsertRiderProfile(ctx, sqlcgen.UpsertRiderProfileParams{
 		Subject:                       subject,
@@ -46,6 +48,8 @@ func (s *Store) SetRiderProfile(ctx context.Context, subject string, profile rid
 		FunctionalThresholdPowerWatts: nullRiderValue(profile.FunctionalThresholdPowerWatts),
 		RiderMassKg:                   nullRiderValue(profile.RiderMassKG),
 		BikeMassKg:                    nullRiderValue(profile.BikeMassKG),
+		DragAreaM2:                    nullRiderValue(profile.DragAreaM2),
+		RollingResistance:             nullRiderValue(profile.RollingResistance),
 		UpdatedAtUnix:                 time.Now().Unix(),
 	}); err != nil {
 		return fmt.Errorf("storing the rider profile: %w", err)
@@ -193,12 +197,15 @@ func (s *Store) riderStopping(
 // The rows arrive grouped by target and ride, which is what makes one pass
 // enough.
 //
-// The threshold suggestion is worked out here rather than read off the stored
-// curve, though both are 95% of the same best twenty minutes. A derivation runs
-// only for a rider who has entered something, so a curve is empty for the rider
-// with no profile at all — who is exactly the rider a threshold is suggested
-// to. The two can differ only while a ride's samples are stored and its
-// derivation is still owed.
+// The threshold suggestions are worked out here rather than read off the stored
+// curve, though the twenty-minute one is 95% of the same best twenty minutes. A
+// derivation runs only for a rider who has entered something, so a curve is
+// empty for the rider with no profile at all — who is exactly the rider a
+// threshold is suggested to. Where the suggestion is that twenty-minute one,
+// the two can differ only while a ride's samples are stored and its derivation
+// is still owed; where a ramp reading wins, they differ for good, because the
+// curve holds durations and a ramp reading is a protocol the curve has no
+// point for.
 func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Suggestions {
 	suggestions := rider.Suggestions{}
 	var heartRate, power sensorSeries
@@ -208,7 +215,11 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 	}
 	closeRide := func() {
 		heartRate.best(rider.MaxHeartRateWindow, &suggestions.MaxHeartRateBPM, nil)
+		// Unscaled: the heart rate over that window is itself the LTHR estimate,
+		// not a figure some share is taken of.
+		heartRate.best(rider.ThresholdHeartRateWindow, &suggestions.ThresholdHeartRateBPM, nil)
 		power.best(rider.ThresholdPowerWindow, &suggestions.FunctionalThresholdPowerWatts, rider.ThresholdPower)
+		power.ramp(&suggestions.FunctionalThresholdPowerWatts)
 		heartRate, power = sensorSeries{}, sensorSeries{}
 	}
 	for index, row := range rows {
@@ -217,12 +228,24 @@ func accumulateSuggestions(rows []sqlcgen.ListActivitySensorSamplesRow) rider.Su
 			ride.targetSlot, ride.workoutID = row.TargetSlot, row.WorkoutID
 		}
 		at := time.Unix(row.RecordedAtUnix, 0).UTC()
-		heartRate.add(at, row.HeartRateBpm)
+		heartRate.add(at, beating(row.HeartRateBpm))
 		power.add(at, row.PowerWatts)
 	}
 	closeRide()
 
 	return suggestions
+}
+
+// beating drops a heart rate that is not one. An unpaired strap writes nought,
+// and a nought averaged into a window reads as rest the rider never took --
+// the same rule ActivityRideSamples applies on the derivation path. Power keeps
+// its own nought, which is a rider coasting.
+func beating(value sql.NullFloat64) sql.NullFloat64 {
+	if value.Valid && value.Float64 <= 0 {
+		return sql.NullFloat64{}
+	}
+
+	return value
 }
 
 // sensorSeries is one ride's samples from one sensor. A record without that
@@ -253,6 +276,20 @@ func (s *sensorSeries) best(window time.Duration, into *rider.Value, derive func
 	}
 	if !into.Set || mean > into.Number {
 		*into = rider.Set(mean)
+	}
+}
+
+// ramp keeps the estimate a ride shaped like a ramp test implies. Both it and
+// the twenty-minute estimate are floors on the same number, true only of a
+// rider who actually rode that protocol, so the higher stands whichever test
+// they ran.
+func (s *sensorSeries) ramp(into *rider.Value) {
+	watts, ok := rider.RampThresholdPower(s.times, s.values)
+	if !ok {
+		return
+	}
+	if !into.Set || watts > into.Number {
+		*into = rider.Set(watts)
 	}
 }
 

@@ -88,10 +88,8 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 				PowerWatts: 196.25, HasPower: true,
 				MaxSpeedKmh: 54.2, HasSpeed: true,
 			},
-			HasEstimateQuality: true,
-			EstimateQuality: measure.Quality{
-				Autocorrelation1: 0.91, MeanAbsDeltaWattsPerSecond: 11.4, ClipBiasWatts: 2.1,
-			},
+			EstimatedPedallingShare:    0.87,
+			HasEstimatedPedallingShare: true,
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
@@ -106,16 +104,16 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.Equal(t, []float64{60, 120, 180, 240, 300}, derived.Metrics.ZoneSeconds)
 	// The rates the zones were cut at, from the threshold this row was derived
 	// against rather than whatever the profile holds now.
-	assert.Equal(t, []float64{144.5, 153, 161.5, 170}, derived.Metrics.ZoneBoundsBpm)
+	// Friel's cycling cuts, and compared by delta: 81% and 94% of a threshold
+	// are not exactly representable, so the products are not the literals.
+	assert.InDeltaSlice(t, []float64{137.7, 153, 159.8, 170}, derived.Metrics.ZoneBoundsBpm, 0.01)
 	require.NotNil(t, derived.Metrics.Trimp)
 	assert.InDelta(t, 42.5, *derived.Metrics.Trimp, 1e-9)
 	assert.Nil(t, derived.Metrics.PowerTss, "the rider has entered no threshold power")
 	require.NotNil(t, derived.Metrics.EstimatedPowerWatts, "which is why it has an estimate at all")
 	assert.InDelta(t, 168.5, *derived.Metrics.EstimatedPowerWatts, 1e-9)
-	require.NotNil(t, derived.Metrics.EstimateQuality, "the estimate's own quality diagnostics")
-	assert.InDelta(t, 0.91, derived.Metrics.EstimateQuality.Autocorrelation, 1e-9)
-	assert.InDelta(t, 11.4, derived.Metrics.EstimateQuality.MeanAbsDeltaWattsPerSecond, 1e-9)
-	assert.InDelta(t, 2.1, derived.Metrics.EstimateQuality.ClipBiasWatts, 1e-9)
+	require.NotNil(t, derived.Metrics.EstimatedPedallingShare, "the share of the ride it was worked out over")
+	assert.InDelta(t, 0.87, *derived.Metrics.EstimatedPedallingShare, 1e-9)
 	require.NotNil(t, derived.Metrics.AverageHeartRateBpm)
 	assert.InDelta(t, 142.5, *derived.Metrics.AverageHeartRateBpm, 1e-9)
 	require.NotNil(t, derived.Metrics.MaxHeartRateBpm)
@@ -129,9 +127,41 @@ func TestGetActivitiesCarriesTheDerivedMetricsOfEachRide(t *testing.T) {
 	assert.Nil(t, plain.Metrics, "and a ride with no row carries none at all")
 }
 
+// Each series' own coverage rides beside the figures it describes, whether or
+// not the figure cleared the withhold threshold — the reader is owed the
+// share a served figure held, not just the pass/fail.
+func TestGetActivitiesCarriesEachSeriesCoverage(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{
+				TRIMP: 42.5, HasTRIMP: true,
+				HeartRateCoverage: 0.92, HasHeartRateCoverage: true,
+				PowerCoverage: 0.15, HasPowerCoverage: true,
+			},
+			Averages: activities.RideAverages{
+				HeartRateBPM: 142.5, HasHeartRate: true,
+			},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 1)
+
+	metrics := list.Activities[0].Metrics
+	require.NotNil(t, metrics)
+	require.NotNil(t, metrics.HeartRateCoverage)
+	assert.InDelta(t, 0.92, *metrics.HeartRateCoverage, 1e-9)
+	require.NotNil(t, metrics.PowerCoverage, "served even for the series that fell below the threshold")
+	assert.InDelta(t, 0.15, *metrics.PowerCoverage, 1e-9)
+	assert.Nil(t, metrics.NormalizedPowerWatts, "the power figure itself is still withheld")
+}
+
 // A ride with a measured average power carries no estimate, and so no
-// quality diagnostics about one either.
-func TestGetActivitiesCarriesNoEstimateQualityWithoutAnEstimate(t *testing.T) {
+// pedalling share about one either.
+func TestGetActivitiesCarriesNoPedallingShareWithoutAnEstimate(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
 	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
@@ -147,17 +177,39 @@ func TestGetActivitiesCarriesNoEstimateQualityWithoutAnEstimate(t *testing.T) {
 	derived := list.Activities[0]
 	require.NotNil(t, derived.Metrics)
 	assert.Nil(t, derived.Metrics.EstimatedPowerWatts)
-	assert.Nil(t, derived.Metrics.EstimateQuality)
+	assert.Nil(t, derived.Metrics.EstimatedPedallingShare)
 	assert.Nil(t, derived.Metrics.MaxSpeedKmh, "no speed series behind this ride")
 }
 
-// A ride derived before the diagnostics existed carries an estimate and no
-// quality until it is derived again; nulls are not a quality of nought.
-func TestGetActivitiesCarriesNoEstimateQualityForAnEstimateDerivedBeforeItExisted(t *testing.T) {
+// A row written before migration 057 holds an estimate but no share, and must
+// be served without the field rather than a false zero.
+func TestGetActivitiesCarriesNoPedallingShareForAPreMigrationRow(t *testing.T) {
 	state := activityState("rider-a", time.Hour, 2*time.Hour)
 	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
 		"rider-a": {1: {
-			Load: trainingload.Metrics{EstimatedPowerWatts: 150, HasEstimatedPower: true},
+			Load: trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedPowerWatts)
+	assert.Nil(t, derived.Metrics.EstimatedPedallingShare, "no share was ever written for this row")
+}
+
+// A ride that measured its own power gets its calorie comparison figure from
+// that, even where an estimate also happens to be stored.
+func TestGetActivitiesEstimatesCaloriesFromMeasuredPowerOverAnEstimate(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:     trainingload.Metrics{EstimatedPowerWatts: 300, HasEstimatedPower: true},
+			Averages: activities.RideAverages{PowerWatts: 196.25, HasPower: true},
 		}},
 	}
 	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
@@ -167,8 +219,137 @@ func TestGetActivitiesCarriesNoEstimateQualityForAnEstimateDerivedBeforeItExiste
 
 	derived := list.Activities[0]
 	require.NotNil(t, derived.Metrics)
-	require.NotNil(t, derived.Metrics.EstimatedPowerWatts)
-	assert.Nil(t, derived.Metrics.EstimateQuality)
+	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
+	assert.InDelta(t, measure.EstimatedCalories(196.25, 60), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+}
+
+// A ride with no meter falls back to the estimate for its calorie comparison
+// figure, scaled by the estimate's own pedalling share: the estimate is a
+// mean over the pedalling samples only, not over the whole moving time.
+func TestGetActivitiesEstimatesCaloriesFromEstimatedPowerWithoutAMeter(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:                       trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+			EstimatedPedallingShare:    0.8,
+			HasEstimatedPedallingShare: true,
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
+	assert.InDelta(t, measure.EstimatedCalories(168.5, 60*0.8), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+}
+
+// A pre-migration row holds an estimate but no pedalling share, so there is
+// nothing to scale the moving time by: the comparison figure is withheld
+// rather than overstated against the whole moving time.
+func TestGetActivitiesCarriesNoEstimatedCaloriesForAnEstimateWithNoShare(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load: trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
+}
+
+// A share of exactly zero is still no share to speak of: scaling by it would
+// serve a false zero rather than withholding the figure.
+func TestGetActivitiesCarriesNoEstimatedCaloriesForAZeroShare(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:                       trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+			EstimatedPedallingShare:    0,
+			HasEstimatedPedallingShare: true,
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
+}
+
+// A ride with neither a meter nor an estimate carries no calorie comparison
+// figure at all.
+func TestGetActivitiesCarriesNoEstimatedCaloriesWithoutEitherPowerFigure(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Averages: activities.RideAverages{HeartRateBPM: 142.5, HasHeartRate: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
+}
+
+// A file that declared a zero average power is a device that measured
+// nothing meaningful, not a rider who burned nothing: the figure falls back
+// to the estimate rather than serving a false zero.
+func TestGetActivitiesEstimatesCaloriesFromTheEstimateWhenDeviceAveragePowerIsZero(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Load:                       trainingload.Metrics{EstimatedPowerWatts: 168.5, HasEstimatedPower: true},
+			EstimatedPedallingShare:    0.8,
+			HasEstimatedPedallingShare: true,
+		}},
+	}
+	state.activitySessions = map[string]map[int64]activities.Session{
+		"rider-a": {1: {AveragePowerWatts: aKnownReading(0)}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	require.NotNil(t, derived.Metrics.EstimatedCaloriesKcal)
+	assert.InDelta(t, measure.EstimatedCalories(168.5, 60*0.8), *derived.Metrics.EstimatedCaloriesKcal, 1e-9)
+}
+
+// A ride with no moving time to speak of carries no calorie comparison
+// figure, whatever its power figures say.
+func TestGetActivitiesCarriesNoEstimatedCaloriesWithNoMovingTime(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activities["rider-a"][0].MovingSeconds = 0
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{
+		"rider-a": {1: {
+			Averages: activities.RideAverages{PowerWatts: 196.25, HasPower: true},
+		}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+
+	derived := list.Activities[0]
+	require.NotNil(t, derived.Metrics)
+	assert.Nil(t, derived.Metrics.EstimatedCaloriesKcal)
 }
 
 // The listing card gets one line about the ride: the range the temperature

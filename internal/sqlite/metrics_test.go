@@ -1,12 +1,14 @@
 package sqlite
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/rider"
+	"github.com/nobbs/domestique/internal/sqlite/internal/sqlcgen"
 	"github.com/nobbs/domestique/internal/trainingload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,20 +16,24 @@ import (
 
 // derivedMetrics is a row with something in every part, so a round trip that
 // drops one is visible.
-func derivedMetrics(inputs trainingload.Inputs) activity.RideMetrics {
+func derivedMetrics(inputs trainingload.Inputs, coefficients measure.Coefficients) activity.RideMetrics {
 	return activity.RideMetrics{
 		Load: trainingload.Metrics{
-			Inputs:              inputs,
-			Zones:               trainingload.Zones{60, 120, 180, 240, 300},
-			HasZones:            true,
-			TRIMP:               42.5,
-			HasTRIMP:            true,
-			HeartRateTSS:        88.25,
-			HasHeartRateTSS:     true,
-			Power:               trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
-			HasPower:            true,
-			EstimatedPowerWatts: 168.5,
-			HasEstimatedPower:   true,
+			Inputs:               inputs,
+			Zones:                trainingload.Zones{60, 120, 180, 240, 300},
+			HasZones:             true,
+			TRIMP:                42.5,
+			HasTRIMP:             true,
+			HeartRateTSS:         88.25,
+			HasHeartRateTSS:      true,
+			Power:                trainingload.Power{NormalizedWatts: 214, IntensityFactor: 0.856, TSS: 73.3},
+			HasPower:             true,
+			EstimatedPowerWatts:  168.5,
+			HasEstimatedPower:    true,
+			HeartRateCoverage:    0.97,
+			HasHeartRateCoverage: true,
+			PowerCoverage:        0.94,
+			HasPowerCoverage:     true,
 		},
 		Averages: activity.RideAverages{
 			HeartRateBPM: 142.5, MaxHeartRateBPM: 178, HasHeartRate: true,
@@ -35,12 +41,9 @@ func derivedMetrics(inputs trainingload.Inputs) activity.RideMetrics {
 			PowerWatts: 196.25, HasPower: true,
 			MaxSpeedKmh: 47.3, HasSpeed: true,
 		},
-		HasEstimateQuality: true,
-		EstimateQuality: measure.Quality{
-			Autocorrelation1:           0.912,
-			MeanAbsDeltaWattsPerSecond: 14.2,
-			ClipBiasWatts:              2.6,
-		},
+		EstimatedPedallingShare:    0.83,
+		HasEstimatedPedallingShare: true,
+		Coefficients:               coefficients,
 	}
 }
 
@@ -50,6 +53,10 @@ func testInputs() trainingload.Inputs {
 		ThresholdHeartRateBPM: 170, FunctionalThresholdPowerWatts: 250,
 		TotalMassKG: 82,
 	}
+}
+
+func testCoefficients() measure.Coefficients {
+	return measure.Coefficients{DragArea: 0.38, RollingResistance: 0.007}
 }
 
 func metricsStore(t *testing.T, ids ...int64) *Store {
@@ -66,7 +73,7 @@ func metricsStore(t *testing.T, ids ...int64) *Store {
 func TestActivityMetricsRoundTrip(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
-	stored := derivedMetrics(testInputs())
+	stored := derivedMetrics(testInputs(), testCoefficients())
 
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, stored),
 		"StoreActivityMetrics()")
@@ -81,11 +88,11 @@ func TestActivityMetricsRoundTrip(t *testing.T) {
 	assert.InDelta(t, stored.Load.EstimatedPowerWatts, read[1].Load.EstimatedPowerWatts, 1e-9)
 	assert.True(t, read[1].Load.HasZones && read[1].Load.HasTRIMP && read[1].Load.HasHeartRateTSS && read[1].Load.HasPower)
 	assert.True(t, read[1].Load.HasEstimatedPower, "the ride's average estimate")
+	require.True(t, read[1].Load.HasHeartRateCoverage && read[1].Load.HasPowerCoverage)
+	assert.InDelta(t, stored.Load.HeartRateCoverage, read[1].Load.HeartRateCoverage, 1e-9)
+	assert.InDelta(t, stored.Load.PowerCoverage, read[1].Load.PowerCoverage, 1e-9)
 	assert.Equal(t, stored.Averages, read[1].Averages, "and the plain sensor figures beside them")
-	assert.InDelta(t, stored.EstimateQuality.Autocorrelation1, read[1].EstimateQuality.Autocorrelation1, 1e-9)
-	assert.InDelta(t, stored.EstimateQuality.MeanAbsDeltaWattsPerSecond,
-		read[1].EstimateQuality.MeanAbsDeltaWattsPerSecond, 1e-9)
-	assert.InDelta(t, stored.EstimateQuality.ClipBiasWatts, read[1].EstimateQuality.ClipBiasWatts, 1e-9)
+	assert.InDelta(t, stored.EstimatedPedallingShare, read[1].EstimatedPedallingShare, 1e-9)
 	// The two rates the zones were cut at come back, so the page can say what
 	// each zone covered without reading the rider's current profile.
 	assert.InDelta(t, stored.Load.Inputs.ThresholdHeartRateBPM,
@@ -110,7 +117,29 @@ func TestActivityMetricsKeepEachPartAbsentOnItsOwn(t *testing.T) {
 	assert.False(t, read[1].Load.HasPower, "and no ride carried a meter")
 	assert.False(t, read[1].Averages.HasCadence, "nor a cadence sensor")
 	assert.False(t, read[1].Load.HasEstimatedPower, "nor an estimate")
-	assert.False(t, read[1].HasEstimateQuality, "so its quality reads back absent, not zero as a value")
+	assert.Zero(t, read[1].EstimatedPedallingShare, "no estimate, no share")
+	assert.False(t, read[1].Load.HasHeartRateCoverage || read[1].Load.HasPowerCoverage, "nor a coverage share for either series")
+}
+
+// A row written before migration 057 holds an estimate but no share: it must
+// come back as no share rather than a false zero.
+func TestActivityMetricsPreMigration057RowHasNoShare(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+
+	require.NoError(t, store.queries.UpsertActivityMetrics(t.Context(), sqlcgen.UpsertActivityMetricsParams{
+		TargetSlot: "rider-a", WorkoutID: 1,
+		EstimatedPowerWatts:     sql.NullFloat64{Float64: 168.5, Valid: true},
+		EstimatedPedallingShare: sql.NullFloat64{Valid: false},
+		InputDragArea:           testCoefficients().DragArea,
+		InputRollingResistance:  testCoefficients().RollingResistance,
+	}), "UpsertActivityMetrics()")
+
+	read, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	require.Contains(t, read, int64(1))
+	assert.True(t, read[1].Load.HasEstimatedPower)
+	assert.False(t, read[1].HasEstimatedPedallingShare, "no share was ever written")
 }
 
 // A profile edit that takes a parameter away takes its numbers with it: a
@@ -119,7 +148,7 @@ func TestActivityMetricsKeepEachPartAbsentOnItsOwn(t *testing.T) {
 func TestStoreActivityMetricsRemovesARowThatYieldsNothing(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
 
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{}),
@@ -141,14 +170,14 @@ func TestActivitiesAwaitingDerivationFindsTheStaleAndTheUnderived(t *testing.T) 
 			Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
 		}, activity.RecordsVersion), "StoreActivityRecords()")
 	}
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
 	stale := testInputs()
 	stale.FunctionalThresholdPowerWatts = 200
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 2, derivedMetrics(stale)),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 2, derivedMetrics(stale, testCoefficients())),
 		"StoreActivityMetrics() against another profile")
 
-	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
 	assert.ElementsMatch(t, []int64{2, 3}, owed,
 		"the row against the old profile and the ride never derived, and no other")
@@ -164,7 +193,7 @@ func TestActivitiesAwaitingDerivationRelistsARowAnEarlierDerivationWrote(t *test
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
 	// Exactly what migration 043 leaves behind for every row written before it.
 	_, err := store.database.ExecContext(t.Context(),
@@ -173,40 +202,37 @@ func TestActivitiesAwaitingDerivationRelistsARowAnEarlierDerivationWrote(t *test
 			average_cadence_rpm = NULL, average_power_watts = NULL`)
 	require.NoError(t, err, "ageing the stored row")
 
-	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, listErr, "ActivitiesAwaitingDerivation()")
 	assert.Equal(t, []int64{1}, owed, "the row predates the figures this derivation produces")
 }
 
-// The same relisting, a version later: a row version 2 wrote has no quality
-// diagnostics either, exactly what migration 045 leaves behind.
+// The same relisting, a version later: a row an older version wrote is owed a
+// derivation again purely because its version differs from this one's.
 func TestActivitiesAwaitingDerivationRelistsARowVersion2Wrote(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
-	_, err := store.database.ExecContext(t.Context(),
-		`UPDATE activity_metrics SET derivation_version = 2,
-			estimate_autocorrelation = NULL, estimate_delta_watts_per_second = NULL,
-			estimate_clip_bias_watts = NULL`)
+	_, err := store.database.ExecContext(t.Context(), `UPDATE activity_metrics SET derivation_version = 2`)
 	require.NoError(t, err, "ageing the stored row to version 2")
 
-	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, listErr, "ActivitiesAwaitingDerivation()")
-	assert.Equal(t, []int64{1}, owed, "the row predates the estimate quality this derivation produces")
+	assert.Equal(t, []int64{1}, owed, "the row predates what this derivation produces")
 
 	// And the next run fills it in rather than leaving the columns null for good.
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics() on the next run")
 	read, readErr := store.ActivityMetrics(t.Context(), "rider-a")
 	require.NoError(t, readErr, "ActivityMetrics()")
 	assert.True(t, read[1].Averages.HasHeartRate)
 	assert.InDelta(t, 142.5, read[1].Averages.HeartRateBPM, 1e-9)
 
-	settled, settledErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	settled, settledErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, settledErr, "ActivitiesAwaitingDerivation() after the refill")
 	assert.Empty(t, settled, "and the refilled row is owed nothing further")
 }
@@ -219,12 +245,12 @@ func TestActivitiesAwaitingDerivationRelistsARowVersion7Wrote(t *testing.T) {
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
 	_, err := store.database.ExecContext(t.Context(), `UPDATE activity_metrics SET derivation_version = 7`)
 	require.NoError(t, err, "ageing the stored row to version 7")
 
-	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	owed, listErr := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, listErr, "ActivitiesAwaitingDerivation()")
 	assert.Equal(t, []int64{1}, owed, "the row predates the maximum speed this derivation produces")
 }
@@ -235,7 +261,7 @@ func TestActivitiesAwaitingDerivationSkipsARideWithNoStoredRecords(t *testing.T)
 	t.Parallel()
 	store := metricsStore(t, 1)
 
-	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
 	assert.Empty(t, owed)
 }
@@ -291,6 +317,42 @@ func TestActivityRideSamplesSplitTheSeriesAndLeaveOutTheAbsent(t *testing.T) {
 	assert.False(t, samples.Track[1].HasTemperature)
 }
 
+// An unpaired strap writes nought, and nought is no heart rate: it must not
+// enter the series as a reading a rider never took.
+// A record carrying only a temperature reading -- no heart rate, power,
+// cadence, speed or distance -- must still reach the temperature series: the
+// query's own filter is a sensor test, and temperature is one, even alone.
+func TestActivityRideSamplesKeepsARecordWithOnlyATemperatureReading(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), TemperatureCelsius: 18, HasTemperatureCelsius: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Temperature, 1, "the record's only reading must not be filtered out")
+	assert.InDelta(t, 18.0, samples.Temperature[0].Value, 1e-9)
+}
+
+func TestActivityRideSamplesLeavesOutAZeroHeartRate(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), HeartRateBPM: 0, HasHeartRate: true},
+			{Time: activityNow().Add(time.Second), HeartRateBPM: 140, HasHeartRate: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.HeartRate, 1, "the nought is not a reading")
+	assert.InDelta(t, 140.0, samples.HeartRate[0].Value, 1e-9)
+}
+
 // A device that records its own speed is trusted over the odometer: the
 // series is built from speed_ms per row, converted to km/h.
 func TestActivityRideSamplesReadsSpeedFromTheDeviceWhereRecorded(t *testing.T) {
@@ -313,6 +375,24 @@ func TestActivityRideSamplesReadsSpeedFromTheDeviceWhereRecorded(t *testing.T) {
 	assert.InDelta(t, 72.0, samples.Speed[1].Value, 1e-9)
 }
 
+// The regression: an odometer whose every derived rate exceeds the ceiling
+// has no usable reading at all.
+func TestActivityRideSamplesTreatsAnAllExcessiveOdometerRateAsUnknown(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			// 10 km in one second: the only derived rate, and implausible.
+			{Time: activityNow().Add(time.Second), DistanceMetres: 10000, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	assert.Empty(t, samples.Speed, "the only derived rate was implausible and dropped")
+}
+
 // A ride with no device speed reading falls back to the odometer: distance
 // over time between consecutive records, the same rule speedSeries applies.
 func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing.T) {
@@ -327,8 +407,32 @@ func TestActivityRideSamplesFallsBackToTheOdometerWithoutADeviceSpeed(t *testing
 
 	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
 	require.NoError(t, err, "ActivityRideSamples()")
-	require.Len(t, samples.Speed, 1, "the first record has no interval behind it")
+	require.Len(t, samples.Speed, 1, "the rate names the step it ends, not the one it starts")
+	assert.Equal(t, activityNow().Add(time.Second), samples.Speed[0].At)
 	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9)
+}
+
+// A record between two distance readings that carries no distance of its own
+// -- a temperature-only one, say -- must not become the step the next
+// distance reading is measured from: that would turn every distance sample
+// after it into a dropped one rather than a step from the last real reading.
+func TestActivityRideSamplesSkipsADistancelessRowWhenBuildingTheOdometerStep(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), DistanceMetres: 0, HasDistance: true},
+			{Time: activityNow().Add(time.Second), TemperatureCelsius: 18, HasTemperatureCelsius: true},
+			{Time: activityNow().Add(2 * time.Second), DistanceMetres: 20, HasDistance: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	samples, err := store.ActivityRideSamples(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRideSamples()")
+	require.Len(t, samples.Speed, 1,
+		"the distance step across the temperature-only record must still be measured")
+	assert.Equal(t, activityNow().Add(2*time.Second), samples.Speed[0].At)
+	assert.InDelta(t, 36.0, samples.Speed[0].Value, 1e-9, "20 m over the full two seconds")
 }
 
 // A single implausible spike — a clock or odometer hiccup, not a rider — is
@@ -401,12 +505,67 @@ func TestStoreEstimatedPowerWritesTheSeriesAndClearsItAgain(t *testing.T) {
 	assert.False(t, track[1].HasEstimatedPower)
 }
 
+// The regression: a track with samples but no known estimate among them --
+// every step fell in a recording gap, say -- is not "a ride that now yields
+// an estimate". Its existing match must survive, not be redone against a
+// series that was never actually written.
+func TestStoreEstimatedPowerKeepsTheMatchWhenNoEstimateWasKnown(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 1, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
+		[]int64{0, 1}, []measure.Estimate{{}, {}}), "StoreEstimatedPower() with a track but no known estimate")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	assert.Len(t, attempts, 1, "no estimate was ever written, so the existing match owes it nothing")
+}
+
 func TestStoreEstimatedPowerRefusesMismatchedSeries(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1)
 
 	require.ErrorContains(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
 		[]int64{0}, []measure.Estimate{{}, {}}), "an estimate per record or none")
+}
+
+// The regression: written separately, a metrics failure after a successful
+// estimate write would leave the track endpoint serving an estimate no
+// metrics row stands behind. One transaction rolls both back together.
+func TestStoreRideDerivationRollsBackTheEstimateWhenTheMetricsWriteFails(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{
+				Time: activityNow(), Latitude: 49, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 100, HasAltitude: true,
+			},
+			{
+				Time: activityNow().Add(time.Second), Latitude: 49.001, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 101, HasAltitude: true,
+			},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	_, err := store.database.ExecContext(t.Context(), `
+		CREATE TRIGGER reject_activity_metrics_write BEFORE INSERT ON activity_metrics
+		BEGIN SELECT RAISE(ABORT, 'metrics write failed'); END
+	`)
+	require.NoError(t, err)
+
+	err = store.StoreRideDerivation(t.Context(), "rider-a", 1,
+		[]int64{0, 1}, []measure.Estimate{{}, {Watts: 214, Known: true}},
+		derivedMetrics(testInputs(), testCoefficients()))
+	require.Error(t, err)
+
+	track, trackErr := store.ActivityTrack(t.Context(), "rider-a", 1)
+	require.NoError(t, trackErr, "ActivityTrack()")
+	require.Len(t, track, 2)
+	assert.False(t, track[1].HasEstimatedPower, "the estimate must not survive a metrics write that failed beside it")
 }
 
 // A mass change makes every estimate stale, so a row worked out against another
@@ -417,18 +576,58 @@ func TestActivitiesAwaitingDerivationNoticesAMassChange(t *testing.T) {
 	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
 		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
 	}, activity.RecordsVersion), "StoreActivityRecords()")
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics()")
 
-	unchanged, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	unchanged, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
 	assert.Empty(t, unchanged, "nothing changed")
 
 	heavier := testInputs()
 	heavier.TotalMassKG = 84
-	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", heavier)
+	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", heavier, testCoefficients())
 	require.NoError(t, err, "ActivitiesAwaitingDerivation() after a mass change")
 	assert.Equal(t, []int64{1}, owed)
+}
+
+// A bicycle change makes every estimate stale, so a row worked out against
+// another drag area or rolling resistance is owed a derivation again.
+func TestActivitiesAwaitingDerivationNoticesABicycleChange(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow(), HeartRateBPM: 150, HasHeartRate: true}},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
+		"StoreActivityMetrics()")
+
+	unchanged, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
+	require.NoError(t, err, "ActivitiesAwaitingDerivation()")
+	assert.Empty(t, unchanged, "nothing changed")
+
+	slipperier := testCoefficients()
+	slipperier.DragArea = 0.30
+	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), slipperier)
+	require.NoError(t, err, "ActivitiesAwaitingDerivation() after a bicycle change")
+	assert.Equal(t, []int64{1}, owed)
+}
+
+// A metered ride holds no estimate, so a bicycle change has nothing in it to
+// go stale and must not re-list it.
+func TestActivitiesAwaitingDerivationIgnoresABicycleChangeForAMeteredRide(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1)
+	metered := derivedMetrics(testInputs(), testCoefficients())
+	metered.Load.HasEstimatedPower = false
+	metered.HasEstimatedPedallingShare = false
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, metered),
+		"StoreActivityMetrics()")
+
+	slipperier := testCoefficients()
+	slipperier.DragArea = 0.30
+	owed, err := store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), slipperier)
+	require.NoError(t, err, "ActivitiesAwaitingDerivation() after a bicycle change")
+	assert.Empty(t, owed, "a metered ride has no estimate to go stale")
 }
 
 func TestTargetOwnerIsEmptyForASlotThisDeploymentDoesNotHave(t *testing.T) {
@@ -450,7 +649,7 @@ func TestClearActivityMetricsRemovesEveryRowAndCountsThem(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1, 2)
 	for _, id := range []int64{1, 2} {
-		require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", id, derivedMetrics(testInputs())),
+		require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", id, derivedMetrics(testInputs(), testCoefficients())),
 			"StoreActivityMetrics()")
 	}
 
@@ -467,12 +666,66 @@ func TestClearActivityMetricsRemovesEveryRowAndCountsThem(t *testing.T) {
 	assert.Zero(t, again, "a rider who never had a profile is not a rider who cleared one")
 }
 
+// The regression: clearing every profile parameter must not leave the
+// estimate series, or the route match and climb attempt read from it,
+// outliving the metrics row it was derived beside.
+func TestClearActivityMetricsTakesTheEstimateSeriesAndTheRouteMatchWithIt(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t, 1, 2)
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{
+				Time: activityNow(), Latitude: 49, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 100, HasAltitude: true,
+			},
+			{
+				Time: activityNow().Add(time.Second), Latitude: 49.001, Longitude: 8, HasPosition: true,
+				AltitudeMetres: 101, HasAltitude: true,
+			},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	require.NoError(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1,
+		[]int64{0, 1}, []measure.Estimate{{}, {Watts: 214, Known: true}}), "StoreEstimatedPower()")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 1, matchOf(key), []activity.ClimbAttempt{attemptOf(0, 780)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	// A second, metered ride: its match owes the profile nothing and must
+	// survive a clear that names no bicycle or mass at all.
+	meteredKey := storeTestLibrary(t, store, 8, "hash-b")
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 2, matchOf(meteredKey), []activity.ClimbAttempt{attemptOf(0, 600)}, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+	// Stored last: StoreActivityRecords and StoreEstimatedPower each clear a
+	// stale metrics row of their own, and this test means to clear a row that
+	// still stands for what it just wrote.
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1,
+		derivedMetrics(testInputs(), testCoefficients())), "StoreActivityMetrics()")
+
+	removed, err := store.ClearActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ClearActivityMetrics()")
+	assert.Equal(t, 1, removed)
+
+	track, err := store.ActivityTrack(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityTrack()")
+	require.Len(t, track, 2)
+	assert.False(t, track[1].HasEstimatedPower, "the estimate must not outlive the profile it was derived from")
+
+	attempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", key)
+	require.NoError(t, err, "RouteClimbAttempts()")
+	assert.Empty(t, attempts, "no profile, no match to attribute a climb attempt to")
+
+	meteredAttempts, err := store.RouteClimbAttempts(t.Context(), "rider-a", meteredKey)
+	require.NoError(t, err, "RouteClimbAttempts() for the metered ride")
+	assert.Len(t, meteredAttempts, 1, "a metered ride's match owes the profile nothing and survives the clear")
+}
+
 // The whole of what the fitness timeline folds: one row per derived ride, with
 // the moment it was ridden, oldest first.
 func TestActivityRideLoadsCarryTheDayAndTheLoadOfEachRide(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t, 1, 2)
-	withMeter := derivedMetrics(testInputs())
+	withMeter := derivedMetrics(testInputs(), testCoefficients())
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, withMeter),
 		"StoreActivityMetrics()")
 	// A ride with a strap and no meter: its stress score is the heart-rate one.
@@ -511,36 +764,24 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 
 	_, err := store.ActivityMetrics(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the activity metrics")
-	_, err = store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs())
+	_, err = store.ActivitiesAwaitingDerivation(t.Context(), "rider-a", testInputs(), testCoefficients())
 	require.ErrorContains(t, err, "listing activities awaiting derivation")
 	_, err = store.ActivityRideSamples(t.Context(), "rider-a", 1)
 	require.ErrorContains(t, err, "reading the recorded samples")
 	require.ErrorContains(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1, nil, nil),
 		"starting the estimated power write")
-	require.ErrorContains(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs())),
+	require.ErrorContains(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"storing the activity metrics")
 	require.ErrorContains(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{}),
 		"clearing the activity metrics")
+	require.ErrorContains(t, store.StoreRideDerivation(t.Context(), "rider-a", 1, nil, nil, activity.RideMetrics{}),
+		"starting the ride derivation write")
 	_, err = store.TargetOwner(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the target owner")
 	_, err = store.ClearActivityMetrics(t.Context(), "rider-a")
-	require.ErrorContains(t, err, "clearing the activity metrics")
+	require.ErrorContains(t, err, "starting the activity metrics clear")
 	_, err = store.ActivityRideLoads(t.Context(), "rider-a")
 	require.ErrorContains(t, err, "reading the activity ride loads")
-}
-
-func TestActivityMetricsReadsNoQualityForAnEstimateDerivedBeforeItExisted(t *testing.T) {
-	t.Parallel()
-	store := metricsStore(t, 1)
-
-	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{
-		Load: trainingload.Metrics{Inputs: testInputs(), EstimatedPowerWatts: 150, HasEstimatedPower: true},
-	}), "StoreActivityMetrics()")
-
-	read, err := store.ActivityMetrics(t.Context(), "rider-a")
-	require.NoError(t, err, "ActivityMetrics()")
-	assert.True(t, read[1].Load.HasEstimatedPower)
-	assert.False(t, read[1].HasEstimateQuality, "an estimate alone is not a quality")
 }
 
 func TestActivityMetricsRoundTripTheDriftReadings(t *testing.T) {

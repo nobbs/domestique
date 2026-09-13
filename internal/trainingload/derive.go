@@ -1,6 +1,8 @@
 package trainingload
 
-import "github.com/nobbs/domestique/internal/rider"
+import (
+	"github.com/nobbs/domestique/internal/rider"
+)
 
 // Inputs are the profile values a derivation reads. They are recorded on the
 // row beside the numbers, so a row worked out against a profile the rider has
@@ -55,11 +57,20 @@ type Metrics struct {
 	// with no meter. It is never an input to anything above: an estimate must
 	// not become a measurement by being averaged into one.
 	EstimatedPowerWatts float64
-	HasZones            bool
-	HasTRIMP            bool
-	HasHeartRateTSS     bool
-	HasPower            bool
-	HasEstimatedPower   bool
+	// HeartRateCoverage and PowerCoverage are each series' own SeriesCoverage,
+	// kept beside the figures they describe rather than only spent on the
+	// withhold decision: a figure served above MinSeriesCoverage still holds
+	// less than the whole ride, and a reader of it is owed the share, not just
+	// the pass/fail.
+	HeartRateCoverage    float64
+	PowerCoverage        float64
+	HasZones             bool
+	HasTRIMP             bool
+	HasHeartRateTSS      bool
+	HasPower             bool
+	HasEstimatedPower    bool
+	HasHeartRateCoverage bool
+	HasPowerCoverage     bool
 }
 
 // Derived reports whether anything at all came out, which is what decides
@@ -70,8 +81,14 @@ func (m *Metrics) Derived() bool {
 
 // Derive works out everything one ride yields. heartRate and power are that
 // ride's samples of each sensor, in recorded order, with the samples that
-// carried no reading left out rather than passed as zero.
-func Derive(heartRate, power []Sample, inputs Inputs) Metrics {
+// carried no reading left out rather than passed as zero. movingSeconds is
+// the ride's own moving time, which a figure's series coverage is judged
+// against; a figure whose series measurably held for less than
+// MinSeriesCoverage of it is withheld rather than served understated. Zero
+// or negative leaves coverage unmeasured rather than failed, so a caller that
+// cannot supply it yet gets today's behaviour rather than everything
+// withheld.
+func Derive(heartRate, power []Sample, movingSeconds float64, inputs Inputs) Metrics {
 	metrics := Metrics{Inputs: inputs}
 	if bounds, ok := BoundsFrom(inputs.ThresholdHeartRateBPM, inputs.MaxHeartRateBPM); ok && len(heartRate) > 1 {
 		zones := TimeInZones(heartRate, bounds)
@@ -80,6 +97,23 @@ func Derive(heartRate, power []Sample, inputs Inputs) Metrics {
 	metrics.TRIMP, metrics.HasTRIMP = TRIMP(heartRate, inputs.MaxHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.HeartRateTSS, metrics.HasHeartRateTSS = HeartRateTSS(heartRate, inputs.ThresholdHeartRateBPM, inputs.RestingHeartRateBPM)
 	metrics.Power, metrics.HasPower = PowerLoad(power, inputs.FunctionalThresholdPowerWatts)
+
+	if coverage, ok := SeriesCoverage(heartRate, movingSeconds); ok {
+		metrics.HeartRateCoverage, metrics.HasHeartRateCoverage = coverage, true
+		if coverage < MinSeriesCoverage {
+			// Zones is cleared alongside its flag: LoadOf reads it unconditionally,
+			// and a populated-but-disowned value would still reach Timeline and
+			// ZonesByWeek as if this ride's coverage had been enough.
+			metrics.Zones = Zones{}
+			metrics.HasZones, metrics.HasTRIMP, metrics.HasHeartRateTSS = false, false, false
+		}
+	}
+	if coverage, ok := SeriesCoverage(power, movingSeconds); ok {
+		metrics.PowerCoverage, metrics.HasPowerCoverage = coverage, true
+		if coverage < MinSeriesCoverage {
+			metrics.HasPower = false
+		}
+	}
 
 	return metrics
 }

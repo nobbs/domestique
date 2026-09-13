@@ -1,6 +1,7 @@
 package measure_test
 
 import (
+	"math"
 	"math/rand/v2"
 	"time"
 
@@ -44,6 +45,42 @@ func outAndBack(n int, speedMS, grade float64) []measure.Sample {
 			DistanceMetres: distance,
 			AltitudeMetres: summitAltitude - speedMS*float64(index)*grade,
 		})
+	}
+
+	return samples
+}
+
+// accelerating records one sample a second on flat ground, opening at speedMS
+// and gaining accelerationMSS of speed every second.
+func accelerating(n int, speedMS, accelerationMSS float64) []measure.Sample {
+	samples := make([]measure.Sample, n)
+	for index := range samples {
+		elapsed := float64(index)
+		samples[index] = measure.Sample{
+			At:             start().Add(time.Duration(index) * time.Second),
+			DistanceMetres: speedMS*elapsed + 0.5*accelerationMSS*elapsed*elapsed,
+			AltitudeMetres: 100,
+		}
+	}
+
+	return samples
+}
+
+// surges rides flat ground at speedMS with the speed swinging amplitudeMS
+// either side of it once a minute, covering the same ground in the same time
+// as flat(n, speedMS) does over whole minutes.
+func surges(n int, speedMS, amplitudeMS float64) []measure.Sample {
+	const periodSeconds = 60.0
+	samples := make([]measure.Sample, n)
+	for index := range samples {
+		elapsed := float64(index)
+		phase := 2 * math.Pi * elapsed / periodSeconds
+		samples[index] = measure.Sample{
+			At: start().Add(time.Duration(index) * time.Second),
+			DistanceMetres: speedMS*elapsed +
+				amplitudeMS*periodSeconds/(2*math.Pi)*(1-math.Cos(phase)),
+			AltitudeMetres: 100,
+		}
 	}
 
 	return samples
