@@ -240,3 +240,21 @@ func TestAnAnalysisDeleteThatFailsKeepsTheMetricsRow(t *testing.T) {
 	require.NoError(t, err, "ActivityMetrics()")
 	assert.Contains(t, derived, int64(1))
 }
+
+// zwift:poll deletes the head unit's copy of an indoor ride; its analysis must go
+// with it rather than refuse the delete.
+func TestDeletingATrainerCopyTakesItsAnalysis(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	const indoor = 12
+	storeRecordedRide(t, store, activity.Listing{ID: 1, TypeID: indoor, Starts: activityNow()}, true)
+	require.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 1, testAnalysis("said")), "StoreActivityAnalysis()")
+
+	removed, err := store.DeleteTrainerCopy(t.Context(), "rider-a", activityNow(), time.Minute, []int{indoor})
+	require.NoError(t, err, "DeleteTrainerCopy()")
+	require.Equal(t, 1, removed)
+
+	var analyses int
+	require.NoError(t, store.database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM activity_analyses`).Scan(&analyses))
+	assert.Zero(t, analyses)
+}
