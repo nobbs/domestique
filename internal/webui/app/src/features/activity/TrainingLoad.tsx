@@ -230,8 +230,6 @@ function figureGrid(figures: Scale[]): ReactNode {
   );
 }
 
-const SENSORS = "Sensors";
-
 interface Group {
   title: string;
   content: ReactNode;
@@ -251,7 +249,7 @@ function groupedSections(groups: Groups): Group[] {
 
   const sections: Group[] = [];
   if (groups.sensors.length > 0) {
-    sections.push({ title: SENSORS, content: figureGrid(groups.sensors) });
+    sections.push({ title: "Sensors", content: figureGrid(groups.sensors) });
   }
   if (powerContent.length > 0) {
     sections.push({ title: "Power", content: <div className={GRID}>{powerContent}</div> });
@@ -268,14 +266,14 @@ function groupedSections(groups: Groups): Group[] {
 
 const BOX = "flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5";
 
-/** The box is titled Sensors, so that group, first whenever it is there, needs no heading of its own. */
+/** The box is titled by its first group, so that group needs no heading of its own. */
 function GroupList({ groups }: { groups: Group[] }) {
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group, index) => (
         <div key={group.title} className="flex flex-col gap-2">
           {index > 0 ? <Separator /> : null}
-          {group.title === SENSORS ? null : (
+          {index === 0 ? null : (
             <h3 className="text-[10px] text-[var(--ink-2)] font-semibold uppercase tracking-[0.08em]">
               {group.title}
             </h3>
@@ -314,8 +312,8 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
         </section>
       ) : null}
       {sections.length > 0 ? (
-        <section className={BOX} aria-label={SENSORS}>
-          <h2 className="font-medium text-sm">{SENSORS}</h2>
+        <section className={BOX} aria-label={sections[0]?.title}>
+          <h2 className="font-medium text-sm">{sections[0]?.title}</h2>
           <GroupList groups={sections} />
         </section>
       ) : null}

@@ -209,6 +209,14 @@ describe("TrainingLoad", () => {
     expect(screen.getAllByRole("heading", { name: "Sensors" })).toHaveLength(1);
   });
 
+  it("titles the figures box by its first group when the ride has no sensor figures", () => {
+    show({ trimp: 42 }, { movingSeconds: 0 });
+
+    expect(screen.getByRole("region", { name: "Load" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Load" })).toHaveLength(1);
+    expect(screen.queryByText("Sensors")).not.toBeInTheDocument();
+  });
+
   it("leaves out the Heart rate box for a ride with no zones", () => {
     show({ averageHeartRateBpm: 142 });
 
