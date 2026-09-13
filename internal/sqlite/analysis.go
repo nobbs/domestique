@@ -25,15 +25,21 @@ func (s *Store) RecordAnalysisEnabled(ctx context.Context, now time.Time) (time.
 }
 
 // ActivitiesAwaitingAnalysis lists the target's derived rides with no analysis
-// that started at or after since, oldest first, at most limit of them.
+// that started at or after since, oldest first, at most limit of them. A head
+// unit's ride of one of heldTypeIDs that started at or after heldSince is left
+// out; no types holds nothing.
 func (s *Store) ActivitiesAwaitingAnalysis(
-	ctx context.Context, targetID string, since time.Time, limit int,
+	ctx context.Context, targetID string, since, heldSince time.Time, heldTypeIDs []int, limit int,
 ) ([]activity.PendingAnalysis, error) {
 	if limit <= 0 {
 		return nil, errors.New("a positive limit is required")
 	}
 	rows, err := s.queries.ListActivitiesAwaitingAnalysis(ctx, sqlcgen.ListActivitiesAwaitingAnalysisParams{
-		TargetSlot: targetID, EnabledSinceUnix: since.Unix(), RowLimit: int64(limit),
+		TargetSlot:       targetID,
+		EnabledSinceUnix: since.Unix(),
+		HeldSinceUnix:    heldSince.Unix(),
+		HeldTypeIds:      typeIDList(heldTypeIDs),
+		RowLimit:         int64(limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("listing activities awaiting analysis: %w", err)

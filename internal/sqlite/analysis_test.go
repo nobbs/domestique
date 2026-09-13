@@ -14,8 +14,15 @@ import (
 func storeRideAt(t *testing.T, store *Store, id int64, starts time.Time, derived bool) {
 	t.Helper()
 
+	storeRecordedRide(t, store, activity.Listing{ID: id, TypeID: 15, LocationID: 1, Starts: starts}, derived)
+}
+
+func storeRecordedRide(t *testing.T, store *Store, listing activity.Listing, derived bool) {
+	t.Helper()
+
+	id, starts := listing.ID, listing.Starts
 	require.NoError(t, store.StoreActivity(t.Context(), "rider-a",
-		activity.Listing{ID: id, TypeID: 15, LocationID: 1, Starts: starts},
+		listing,
 		activity.Summary{DistanceMetres: 1000, MovingSeconds: 3600, ElapsedSeconds: 3900, Raw: []byte(`{}`)},
 		starts,
 	), "StoreActivity()")
@@ -64,16 +71,16 @@ func TestActivitiesAwaitingAnalysisListsDerivedUnanalysedRidesSinceTheInstant(t 
 	storeRideAt(t, store, 5, since.Add(3*time.Hour), true)
 	require.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 5, testAnalysis("said")), "StoreActivityAnalysis()")
 
-	pending, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", since, 10)
+	pending, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", since, since, nil, 10)
 	require.NoError(t, err, "ActivitiesAwaitingAnalysis()")
 	assert.Equal(t, []int64{3, 2}, pendingIDs(pending), "oldest first; not before the instant, underived or analysed")
 	assert.Equal(t, since, pending[0].StartedAt)
 
-	bounded, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", since, 1)
+	bounded, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", since, since, nil, 1)
 	require.NoError(t, err, "ActivitiesAwaitingAnalysis() bounded")
 	assert.Equal(t, []int64{3}, pendingIDs(bounded))
 
-	other, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-b", since, 10)
+	other, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-b", since, since, nil, 10)
 	require.NoError(t, err, "ActivitiesAwaitingAnalysis() for another target")
 	assert.Empty(t, other)
 }
@@ -113,7 +120,7 @@ func TestADerivationThatYieldsNothingRemovesTheAnalysis(t *testing.T) {
 
 	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
 		"StoreActivityMetrics() again")
-	pending, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", activityNow(), 5)
+	pending, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", activityNow(), activityNow(), nil, 5)
 	require.NoError(t, err, "ActivitiesAwaitingAnalysis()")
 	assert.Equal(t, []int64{1}, pendingIDs(pending))
 }
@@ -149,8 +156,29 @@ func TestAnalysisReadsRefuseANonPositiveLimit(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t)
 
-	_, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", activityNow(), 0)
+	_, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", activityNow(), activityNow(), nil, 0)
 	require.Error(t, err, "ActivitiesAwaitingAnalysis() with no limit")
 	_, err = store.AnalysesBefore(t.Context(), "rider-a", activityNow(), -1)
 	assert.Error(t, err, "AnalysesBefore() with a negative limit")
+}
+
+// A head unit's indoor ride waits for the Zwift copy that may replace it; the
+// Zwift copy itself, an outdoor ride and a ride past the hold do not.
+func TestActivitiesAwaitingAnalysisHoldsARecentHeadUnitIndoorRide(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	since, heldSince := activityNow(), activityNow().Add(7*time.Hour)
+	const indoor = 12
+	storeRecordedRide(t, store, activity.Listing{ID: 1, TypeID: indoor, Starts: heldSince}, true)
+	storeRecordedRide(t, store, activity.Listing{ID: 2, TypeID: indoor, Starts: heldSince.Add(-time.Second)}, true)
+	storeRecordedRide(t, store, activity.Listing{ID: 3, TypeID: indoor, Starts: heldSince.Add(time.Hour), Provider: activity.ProviderZwift}, true)
+	storeRecordedRide(t, store, activity.Listing{ID: 4, TypeID: 15, Starts: heldSince.Add(time.Hour)}, true)
+
+	held, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", since, heldSince, []int{indoor}, 10)
+	require.NoError(t, err, "ActivitiesAwaitingAnalysis()")
+	assert.Equal(t, []int64{2, 3, 4}, pendingIDs(held))
+
+	unheld, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", since, heldSince, nil, 10)
+	require.NoError(t, err, "ActivitiesAwaitingAnalysis() for a rider without Zwift")
+	assert.Equal(t, []int64{2, 1, 3, 4}, pendingIDs(unheld), "no held types holds nothing")
 }
