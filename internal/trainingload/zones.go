@@ -96,9 +96,8 @@ type HeartRateDistribution struct {
 }
 
 // TimeAtHeartRate sums how long the ride held each whole heart rate, counted
-// by the same held rule TimeInZones applies: each sample stands until the
-// next, up to measure.DefaultMaxGap, and a reading floors to the beat it
-// counts toward. A ride that held nothing yields the zero value.
+// by the same held rule TimeInZones applies (a sample followed by a gap over
+// measure.DefaultMaxGap counts for nothing), each reading floored to its beat.
 func TimeAtHeartRate(samples []Sample) HeartRateDistribution {
 	byBin := map[int]float64{}
 	lowest, highest := 0, 0

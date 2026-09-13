@@ -622,7 +622,10 @@ The read-only JSON surface is small:
   where that ride's zones are served — withheld with them below the coverage
   floor, absent for a ride nothing was derived for — and `404` otherwise. The
   cap uses the maximum heart rate the zones were derived against, so the two
-  agree even after a profile change until the ride is re-derived. It is scoped
+  agree even after a profile change until the ride is re-derived. The totals
+  agree exactly; a reading the cap interpolated to a fraction of a beat can land
+  in the whole beat below a zone bound it cleared, so a page colouring whole
+  beats by zone may place those few seconds one zone lower. It is scoped
   exactly as the track is.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this

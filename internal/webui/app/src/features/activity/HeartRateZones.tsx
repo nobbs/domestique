@@ -204,9 +204,8 @@ export interface BeatBucket {
 }
 
 /**
- * Groups a distribution into five-beat buckets on round numbers. A bucket a
- * zone edge or either end of the distribution falls inside is cut there, so no
- * bar mixes two zones and every edge stands between two bars.
+ * Groups a distribution into five-beat buckets on round numbers, cut at either
+ * end and at every zone edge, so each bar is coloured by one zone.
  */
 export function bucketBeats(
   distribution: ActivityHeartRateDistribution,

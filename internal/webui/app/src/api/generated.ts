@@ -3791,7 +3791,7 @@ export const getGetActivityHeartRateDistributionUrl = (
 };
 
 /**
- * How long one activity held each whole heart rate, counted by the same rule its time in zones is: each sample stands until the next one, up to ten seconds, over the series with readings above the rider's maximum interpolated across. Served only for a ride whose zones are served, so the two always describe the same samples. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. Nothing about it is stored; it is a fold over the samples at read time. A ride with no zones, or whose samples are not stored, is not found.
+ * How long one activity held each whole heart rate, counted by the same rule its time in zones is: each sample stands until the next one, and one followed by a gap over ten seconds counts for nothing, over the series with readings above the rider's maximum interpolated across. Served only for a ride whose zones are served, so the two always describe the same samples. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. Nothing about it is stored; it is a fold over the samples at read time. A ride with no zones, or whose samples are not stored, is not found.
  */
 export const getActivityHeartRateDistribution = async (
   activityId: ActivityID,
