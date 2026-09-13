@@ -3,7 +3,7 @@
  * the same ride. Storybook only; nothing here is imported by the application.
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { formatDuration } from "../../../lib/format";
 
 const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
@@ -158,62 +158,100 @@ export function BandsEffort() {
   );
 }
 
+/** Whether a mark for `zone` sits back, because another zone is being pointed at. */
+const dimmed = (zone: number, active: number | null) =>
+  active !== null && active !== zone ? 0.2 : 1;
+
+function Ring({ zones, active = null }: { zones: number[]; active?: number | null }) {
+  const total = zones.reduce((sum, seconds) => sum + seconds, 0);
+  let offset = 0;
+  return (
+    <div className="relative size-40 shrink-0">
+      <svg viewBox="0 0 42 42" className="-rotate-90 size-full" aria-hidden="true">
+        {zones.map((seconds, zone) => {
+          const length = (seconds / total) * 100;
+          const dash = (
+            <circle
+              key={ZONE_NAMES[zone]}
+              cx="21"
+              cy="21"
+              r="15.9155"
+              fill="none"
+              stroke={colour(zone)}
+              strokeWidth={active === zone ? 6.5 : 5}
+              opacity={dimmed(zone, active)}
+              strokeDasharray={`${Math.max(length - 0.6, 0.3)} ${100 - length + 0.6}`}
+              strokeDashoffset={-offset}
+            />
+          );
+          offset += length;
+          return dash;
+        })}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="font-semibold text-lg tabular-nums">
+          {formatDuration(active === null ? total : zones[active])}
+        </span>
+        <span className="text-[var(--ink-2)] text-xs">
+          {active === null ? "in zones" : ZONE_NAMES[active]}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ZoneTable({
+  zones,
+  active = null,
+  onActive,
+}: {
+  zones: number[];
+  active?: number | null;
+  onActive?: (zone: number | null) => void;
+}) {
+  const total = zones.reduce((sum, seconds) => sum + seconds, 0);
+  return (
+    <table className="min-w-60 flex-1 text-sm tabular-nums" onMouseLeave={() => onActive?.(null)}>
+      <tbody>
+        {zones.map((seconds, zone) => (
+          <tr
+            key={ZONE_NAMES[zone]}
+            className="border-black/5 border-b last:border-0"
+            style={{ opacity: active !== null && active !== zone ? 0.5 : 1 }}
+            onMouseEnter={() => onActive?.(zone)}
+          >
+            <td className="py-1.5 pr-2">
+              <span
+                className="inline-block size-2.5 rounded-full align-middle"
+                style={{ backgroundColor: colour(zone) }}
+              />
+            </td>
+            <td className="py-1.5">{ZONE_NAMES[zone]}</td>
+            <td className="py-1.5 text-[var(--ink-2)] text-xs">{range(zone)}</td>
+            <td className="py-1.5 text-right">{formatDuration(seconds)}</td>
+            <td className="w-10 py-1.5 text-right text-[var(--ink-2)] text-xs">
+              {share(seconds, total)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /** D · A ring: the total at its centre, a legend table beside it carrying range, time and share. */
 export function RingEffort() {
-  let offset = 0;
   return (
     <Card>
       <div className="flex flex-wrap items-center gap-6">
-        <div className="relative size-40 shrink-0">
-          <svg viewBox="0 0 42 42" className="-rotate-90 size-full" aria-hidden="true">
-            {ZONES.map((seconds, zone) => {
-              const length = (seconds / TOTAL) * 100;
-              const dash = (
-                <circle
-                  key={ZONE_NAMES[zone]}
-                  cx="21"
-                  cy="21"
-                  r="15.9155"
-                  fill="none"
-                  stroke={colour(zone)}
-                  strokeWidth="5"
-                  strokeDasharray={`${Math.max(length - 0.6, 0.3)} ${100 - length + 0.6}`}
-                  strokeDashoffset={-offset}
-                />
-              );
-              offset += length;
-              return dash;
-            })}
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="font-semibold text-lg tabular-nums">{formatDuration(TOTAL)}</span>
-            <span className="text-[var(--ink-2)] text-xs">in zones</span>
-          </div>
-        </div>
-        <table className="min-w-60 flex-1 text-sm tabular-nums">
-          <tbody>
-            {ZONES.map((seconds, zone) => (
-              <tr key={ZONE_NAMES[zone]} className="border-black/5 border-b last:border-0">
-                <td className="py-1.5 pr-2">
-                  <span
-                    className="inline-block size-2.5 rounded-full align-middle"
-                    style={{ backgroundColor: colour(zone) }}
-                  />
-                </td>
-                <td className="py-1.5">{ZONE_NAMES[zone]}</td>
-                <td className="py-1.5 text-[var(--ink-2)] text-xs">{range(zone)}</td>
-                <td className="py-1.5 text-right">{formatDuration(seconds)}</td>
-                <td className="w-10 py-1.5 text-right text-[var(--ink-2)] text-xs">
-                  {share(seconds)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <Ring zones={ZONES} />
+        <ZoneTable zones={ZONES} />
       </div>
     </Card>
   );
 }
+
+const SAMPLE_SECONDS = 30;
 
 /** A deterministic heart-rate trace, one sample per 30 s, standing in for the ride's fetched series. */
 function trace(): number[] {
@@ -222,18 +260,20 @@ function trace(): number[] {
     seed = (seed * 16807) % 2147483647;
     return seed / 2147483647 - 0.5;
   };
-  return Array.from({ length: Math.round(TOTAL / 30) }, (_, i) => {
+  return Array.from({ length: Math.round(TOTAL / SAMPLE_SECONDS) }, (_, i) => {
     const climb = i % 90 > 78 ? 16 : 0;
     const hr = 122 + 9 * Math.sin(i / 41) + 6 * Math.sin(i / 9) + climb + noise() * 10;
     return Math.max(92, Math.min(168, Math.round(hr)));
   });
 }
 
+const SAMPLES = trace();
 const zoneOf = (bpm: number) => BOUNDS.filter((bound) => bpm >= bound).length;
+const SAMPLE_ZONES = ZONES.map(
+  (_, zone) => SAMPLES.filter((bpm) => zoneOf(bpm) === zone).length * SAMPLE_SECONDS,
+);
 
-/** E · From the series: where the beats sat (a 2-bpm histogram under the zone edges), and when (a ribbon of the ride's clock). */
-export function SeriesEffort() {
-  const samples = trace();
+function Histogram({ samples, active = null }: { samples: number[]; active?: number | null }) {
   const low = 90;
   const bins = Array.from({ length: 40 }, () => 0);
   for (const bpm of samples) {
@@ -241,14 +281,14 @@ export function SeriesEffort() {
     bins[bin] = (bins[bin] ?? 0) + 1;
   }
   const tallest = Math.max(...bins);
-  const counts = ZONES.map((_, zone) => samples.filter((bpm) => zoneOf(bpm) === zone).length);
   const x = (bpm: number) => ((bpm - low) / 80) * 400;
 
   return (
-    <Card note="needs the heart-rate series, fetched on demand">
-      <svg viewBox="0 0 400 130" className="w-full" role="img" aria-label="Heart-rate histogram">
+    <div className="flex flex-col gap-1">
+      <svg viewBox="0 0 400 105" className="w-full" role="img" aria-label="Heart-rate histogram">
         {bins.map((count, bin) => {
           const height = (count / tallest) * 100;
+          const zone = zoneOf(low + bin * 2);
           return (
             <rect
               // biome-ignore lint/suspicious/noArrayIndexKey: bins are a fixed bpm order
@@ -257,7 +297,8 @@ export function SeriesEffort() {
               y={105 - height}
               width={9}
               height={height}
-              fill={colour(zoneOf(low + bin * 2))}
+              fill={colour(zone)}
+              opacity={dimmed(zone, active)}
             />
           );
         })}
@@ -272,42 +313,94 @@ export function SeriesEffort() {
               strokeDasharray="2 2"
               strokeWidth={0.5}
             />
-            <text x={x(bound)} y={118} textAnchor="middle" fontSize={8} fill="var(--ink-2)">
-              {bound}
-            </text>
           </g>
         ))}
-        <text x={0} y={128} fontSize={8} fill="var(--ink-2)">
-          bpm
-        </text>
       </svg>
-      <div className="flex flex-col gap-1">
-        <svg
-          viewBox={`0 0 ${samples.length} 1`}
-          preserveAspectRatio="none"
-          className="h-5 w-full rounded"
-          shapeRendering="crispEdges"
-          aria-hidden="true"
-        >
-          {samples.map((bpm, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: samples are a fixed clock order
-            <rect key={i} x={i} y={0} width={1.05} height={1} fill={colour(zoneOf(bpm))} />
-          ))}
-        </svg>
-        <div className="flex justify-between text-[10px] text-[var(--ink-2)] tabular-nums">
-          <span>start</span>
-          <span>{formatDuration(TOTAL)}</span>
-        </div>
+      <div className="relative h-4 text-[10px] text-[var(--ink-2)] tabular-nums">
+        {BOUNDS.map((bound) => (
+          <span
+            key={bound}
+            className="-translate-x-1/2 absolute"
+            style={{ left: `${x(bound) / 4}%` }}
+          >
+            {bound}
+          </span>
+        ))}
+        <span className="absolute right-0">bpm</span>
       </div>
+    </div>
+  );
+}
+
+function Ribbon({ samples, active = null }: { samples: number[]; active?: number | null }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <svg
+        viewBox={`0 0 ${samples.length} 1`}
+        preserveAspectRatio="none"
+        className="h-5 w-full rounded"
+        shapeRendering="crispEdges"
+        aria-hidden="true"
+      >
+        {samples.map((bpm, i) => (
+          <rect
+            // biome-ignore lint/suspicious/noArrayIndexKey: samples are a fixed clock order
+            key={i}
+            x={i}
+            y={0}
+            width={1.05}
+            height={1}
+            fill={colour(zoneOf(bpm))}
+            opacity={dimmed(zoneOf(bpm), active)}
+          />
+        ))}
+      </svg>
+      <div className="flex justify-between text-[10px] text-[var(--ink-2)] tabular-nums">
+        <span>start</span>
+        <span>{formatDuration(samples.length * SAMPLE_SECONDS)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** E · From the series: where the beats sat (a 2-bpm histogram under the zone edges), and when (a ribbon of the ride's clock). */
+export function SeriesEffort() {
+  return (
+    <Card note="needs the heart-rate series, fetched on demand">
+      <Histogram samples={SAMPLES} />
+      <Ribbon samples={SAMPLES} />
       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-        {counts.map((count, zone) => (
+        {SAMPLE_ZONES.map((seconds, zone) => (
           <li key={ZONE_NAMES[zone]} className="flex items-center gap-1.5 tabular-nums">
             <span className="size-2 rounded-full" style={{ backgroundColor: colour(zone) }} />
             {ZONE_NAMES[zone]}{" "}
-            <span className="text-[var(--ink-2)]">{share(count, samples.length)}</span>
+            <span className="text-[var(--ink-2)]">
+              {share(seconds, SAMPLES.length * SAMPLE_SECONDS)}
+            </span>
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+/** D+E · The ring and its table answer how much; the histogram and ribbon below answer where and when. Pointing at a row lights that zone in all three. */
+export function RingSeriesEffort() {
+  const [active, setActive] = useState<number | null>(null);
+  return (
+    <Card>
+      <div className="@container">
+        <div className="grid @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-6">
+          <div className="@3xl:contents flex flex-wrap items-center gap-6">
+            <Ring zones={SAMPLE_ZONES} active={active} />
+            <ZoneTable zones={SAMPLE_ZONES} active={active} onActive={setActive} />
+          </div>
+          <div className="flex flex-col gap-3">
+            <Histogram samples={SAMPLES} active={active} />
+            <Ribbon samples={SAMPLES} active={active} />
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }
