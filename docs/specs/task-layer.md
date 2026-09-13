@@ -114,7 +114,7 @@ sync:source       stored an inventory     ->  ridemodel:predict
 ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
-activity:record   stored one ride's file  ->  zwift:poll         (asks only for an indoor ride)
+activity:record   stored one ride's file  ->  zwift:poll         (reads Zwift only for a target holding a held ride)
 zwift:poll        stored indoor rides     ->  activity:derive
 activity:derive   derived stored rides    ->  activity:analyse   (only with a token)
 ~~~
