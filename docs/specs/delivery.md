@@ -533,6 +533,8 @@ What is not automerged is what the gate cannot answer for:
   language version in `go.mod`, the types in `@types/node` and the build stages'
   base image tags each describe one decision spread across several files, so
   each is grouped and moved by a person.
+- **The bundled `claude` executable**, at every update type. The ride
+  analysis's contract rests on what it does, and no test here asks it anything.
 - **A published advisory.** These ignore the release-age hold and the
   concurrency limits, and are read rather than merged.
 
