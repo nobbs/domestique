@@ -298,6 +298,9 @@ type Result struct {
 	// including those a failed pass managed before it stopped. A ride with
 	// nowhere to ask about is settled without a request being spent on it.
 	WeatherRead int
+	// Analysed counts the rides an analysis run stored an answer for,
+	// including those a failed run managed before it stopped.
+	Analysed int
 }
 
 // Poller reads one target's recorded activities into the store. It adds and

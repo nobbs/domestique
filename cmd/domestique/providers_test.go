@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/auth0"
+	"github.com/nobbs/domestique/internal/claude"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/wahoo"
@@ -517,4 +520,19 @@ func writeTestJSON(t *testing.T, writer http.ResponseWriter, body any) {
 	t.Helper()
 	writer.Header().Set("Content-Type", "application/json")
 	require.NoError(t, json.NewEncoder(writer).Encode(body), "encoding a test response")
+}
+
+func TestClaudeAskerMapsEveryCategory(t *testing.T) {
+	t.Parallel()
+
+	asker := claudeAsker{}
+	for category, want := range map[claude.Category]activity.Failure{
+		claude.CategoryToken:      activity.FailureToken,
+		claude.CategoryAllowance:  activity.FailureAllowance,
+		claude.CategoryUnusable:   activity.FailureUnusable,
+		claude.CategoryExecutable: activity.FailureExecutable,
+	} {
+		assert.Equal(t, want, asker.FailureOf(fmt.Errorf("wrapped: %w", &claude.Error{Category: category})), string(category))
+	}
+	assert.Equal(t, activity.FailureExecutable, asker.FailureOf(errors.New("anything else")))
 }

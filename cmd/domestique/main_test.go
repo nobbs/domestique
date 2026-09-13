@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -725,4 +728,53 @@ func TestConfiguredStyleURLsCoversBothColourSchemes(t *testing.T) {
 		"https://imagery.example.test/satellite",
 	}, styles, "the styles a browser may load")
 	assert.Empty(t, configuredStyleURLs(nil), "an unconfigured list")
+}
+
+func TestStartAnalysisRegistersNothingWithoutAToken(t *testing.T) {
+	t.Parallel()
+
+	definitions, err := startAnalysis(t.Context(), &config.Settings{}, nil, nil, allEnabled, twoTargets)
+	require.NoError(t, err)
+	assert.Empty(t, definitions)
+}
+
+// With a token the analysis is registered, its home made beside the state, and
+// the instant it was enabled recorded once.
+func TestStartAnalysisRegistersTheTaskWithAToken(t *testing.T) {
+	directory := t.TempDir()
+	store := testStore(t, directory)
+	keyPath := filepath.Join(directory, "state-key")
+	secretPath := filepath.Join(directory, "client-secret")
+	require.NoError(t, os.WriteFile(keyPath, []byte(strings.Repeat("A", 43)+"\n"), 0o600))
+	require.NoError(t, os.WriteFile(secretPath, []byte("client-secret\n"), 0o600))
+	configPath := filepath.Join(directory, "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(fmt.Sprintf(`
+[http]
+listen_address = ":8080"
+browser_origin_url = "https://domestique.example.test"
+[auth.auth0]
+domain = "tenant.eu.auth0.com"
+client_id = "client-id"
+client_secret_file = %q
+[state]
+database_path = %q
+encryption_key_file = %q
+`, secretPath, filepath.Join(directory, "state.db"), keyPath)), 0o600))
+	t.Setenv("DOMESTIQUE_CONFIG_FILE", configPath)
+	t.Setenv("DOMESTIQUE_ANALYSIS__CLAUDE_TOKEN", "claude-token")
+	settings, err := config.Load()
+	require.NoError(t, err, "config.Load()")
+
+	before := time.Now().Add(-time.Minute)
+	definitions, err := startAnalysis(t.Context(), settings, testSettings(t, store), store, allEnabled, twoTargets)
+	require.NoError(t, err)
+	require.Len(t, definitions, 1)
+	assert.Equal(t, taskActivityAnalyse, definitions[0].Name)
+
+	info, err := os.Stat(filepath.Join(directory, "claude"))
+	require.NoError(t, err, "the claude home")
+	assert.True(t, info.IsDir())
+	since, err := store.RecordAnalysisEnabled(t.Context(), time.Now().Add(time.Hour))
+	require.NoError(t, err)
+	assert.True(t, since.After(before) && since.Before(time.Now()), "the first start recorded the instant")
 }
