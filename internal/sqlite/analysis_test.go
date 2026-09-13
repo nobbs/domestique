@@ -182,3 +182,28 @@ func TestActivitiesAwaitingAnalysisHoldsARecentHeadUnitIndoorRide(t *testing.T) 
 	require.NoError(t, err, "ActivitiesAwaitingAnalysis() for a rider without Zwift")
 	assert.Equal(t, []int64{2, 1, 3, 4}, pendingIDs(unheld), "no held types holds nothing")
 }
+
+// A records re-read drops the metrics row but not the analysis: removal is a
+// derivation's to make, and a records-version bump must not re-analyse every ride.
+func TestARecordsReReadKeepsTheAnalysis(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	storeRideAt(t, store, 1, activityNow(), true)
+	require.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 1, testAnalysis("said")), "StoreActivityAnalysis()")
+
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{{Time: activityNow()}},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+	derived, err := store.ActivityMetrics(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityMetrics()")
+	require.NotContains(t, derived, int64(1), "the re-read drops the metrics row")
+
+	earlier, err := store.AnalysesBefore(t.Context(), "rider-a", activityNow().Add(time.Hour), 5)
+	require.NoError(t, err, "AnalysesBefore()")
+	assert.Len(t, earlier, 1)
+	require.NoError(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
+		"StoreActivityMetrics() after the re-read")
+	pending, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", activityNow(), activityNow(), nil, 5)
+	require.NoError(t, err, "ActivitiesAwaitingAnalysis()")
+	assert.Empty(t, pending, "re-derived, the ride is not owed again")
+}
