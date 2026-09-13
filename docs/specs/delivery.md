@@ -577,8 +577,10 @@ absent from the runtime image.
 
 The runtime image carries a second executable beside the service: the native
 `claude` build Anthropic publishes for `linux-x64-musl`, which the ride analysis
-runs ([the task](task-layer.md#the-registered-tasks)). It is a single
-self-contained binary with no Node runtime behind it. A build stage downloads
+runs ([the task](task-layer.md#the-registered-tasks)). It is a single binary
+with no Node runtime behind it, linked against musl and the C++ runtime, so the
+musl loader, `libgcc_s` and `libstdc++` are copied beside it from a hardened
+Alpine build stage of the same release as the static runtime. A build stage downloads
 it from `downloads.claude.ai/claude-code-releases` at a version pinned in the
 Dockerfile and verifies it against the checksum that version's manifest
 publishes, so the image is reproducible and a tampered download fails the
@@ -669,10 +671,12 @@ asserted separately, over the log as it really is. A run can fail long before it
 reaches that assertion, including while starting, so what a failure prints is
 filtered rather than trusted.
 
-The smoke test asserts that the `claude` executable is present in the image
-and nothing about what it does: running it would contact Anthropic, and the
-configured token is a placeholder. What the executable answers is proved by the
-analysis task's acceptance check, behind a build tag and never in CI.
+The smoke test asserts that the `claude` executable starts in the image — it
+asks for its version with no network, as the image's user on a read-only root
+filesystem, which is what proves the libraries it links against are there — and
+nothing about what it answers: that would contact Anthropic, and no token is
+configured. What the executable answers is proved by the analysis task's
+acceptance check, behind a build tag and never in CI.
 
 The smoke test contacts nothing. Every credential it mounts is a placeholder it
 wrote itself, each provider points at an unroutable address, no region is

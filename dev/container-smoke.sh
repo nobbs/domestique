@@ -14,6 +14,8 @@
 #
 #   * the image declares the unprivileged user, the two ports, the state volume
 #     and the entrypoint a deployment relies on;
+#   * the bundled claude executable starts, with no network, as that user on a
+#     read-only root filesystem;
 #   * the liveness probe answers on the served listener, with the response
 #     headers every answer on that listener carries;
 #   * the readiness probe answers ready on its own listener, with no-store, and
@@ -185,6 +187,15 @@ done
   die "the image must declare ${STATE_PATH} as its state volume"
 [[ "$(image_field '{{json .Config.Entrypoint}}')" == *"/usr/local/bin/domestique"* ]] ||
   die "the image must start the service itself, without a shell in front of it"
+
+log "checking that the bundled claude executable starts"
+# Starting it at all is what proves the C runtime it links against came with it;
+# --version asks nothing of Anthropic, and no network is there to ask anyway.
+claude_version="$("${DOCKER}" run --rm --network none --read-only --tmpfs /tmp \
+  --entrypoint /usr/local/bin/claude -e HOME=/tmp "${IMAGE}" --version 2>&1)" ||
+  die "the bundled claude executable does not start: ${claude_version}"
+[[ "${claude_version}" == *"(Claude Code)"* ]] ||
+  die "the bundled claude executable answered something unexpected: ${claude_version}"
 
 # A fresh state directory every run: this asserts what a first start does with an
 # empty one, which is also the case an operator meets on a new host.
