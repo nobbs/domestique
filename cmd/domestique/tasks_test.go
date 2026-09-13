@@ -1358,6 +1358,13 @@ func TestActivityAnalyseTaskStopsEveryTargetAtASharedFailure(t *testing.T) {
 	activityAnalyseTask(shared, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
 	assert.Equal(t, []string{"rider-a"}, shared.analysed)
 
+	after := &fakeAnalyser{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Failed, Failure: activity.FailureState},
+		"rider-b": {Outcome: activity.Failed, Failure: activity.FailureAllowance},
+	}}
+	result := activityAnalyseTask(after, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
+	assert.Equal(t, task.Detail("allowance"), result.Detail, "the failure that ended the run is the one reported")
+
 	local := &fakeAnalyser{results: map[string]activity.Result{
 		"rider-a": {Outcome: activity.Failed, Failure: activity.FailureState},
 		"rider-b": {Outcome: activity.Unchanged},

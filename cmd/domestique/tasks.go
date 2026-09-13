@@ -465,7 +465,9 @@ func activityAnalyseTask(
 			aggregate := task.Result{Outcome: task.NotReady}
 			for _, targetID := range targetIDs() {
 				analysed := analyser.Analyse(ctx, targetID)
-				if result := activityResult(&analysed); severity(result.Outcome) > severity(aggregate.Outcome) {
+				result := activityResult(&analysed)
+				// A later equally severe failure is the one that ended the run.
+				if severity(result.Outcome) >= severity(aggregate.Outcome) {
 					aggregate = result
 				}
 				// Every target shares one subscription and one executable, so a
