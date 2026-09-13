@@ -282,7 +282,9 @@ func storeEstimatedPower(
 func (s *Store) StoreActivityMetrics(
 	ctx context.Context, targetID string, id int64, stored activity.RideMetrics,
 ) error {
-	return storeActivityMetrics(ctx, s.queries, targetID, id, stored)
+	return s.withTx(ctx, "activity metrics", func(queries *sqlcgen.Queries) error {
+		return storeActivityMetrics(ctx, queries, targetID, id, stored)
+	})
 }
 
 // storeActivityMetrics is StoreActivityMetrics' body, run against the

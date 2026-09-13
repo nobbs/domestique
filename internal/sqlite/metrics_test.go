@@ -771,9 +771,9 @@ func TestActivityMetricsReportAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, store.StoreEstimatedPower(t.Context(), "rider-a", 1, nil, nil),
 		"starting the estimated power write")
 	require.ErrorContains(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, derivedMetrics(testInputs(), testCoefficients())),
-		"storing the activity metrics")
+		"starting the activity metrics write")
 	require.ErrorContains(t, store.StoreActivityMetrics(t.Context(), "rider-a", 1, activity.RideMetrics{}),
-		"clearing the activity metrics")
+		"starting the activity metrics write")
 	require.ErrorContains(t, store.StoreRideDerivation(t.Context(), "rider-a", 1, nil, nil, activity.RideMetrics{}),
 		"starting the ride derivation write")
 	_, err = store.TargetOwner(t.Context(), "rider-a")
