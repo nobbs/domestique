@@ -287,7 +287,15 @@ const SAMPLE_ZONES = ZONES.map(
   (_, zone) => SAMPLES.filter((bpm) => zoneOf(bpm) === zone).length * SAMPLE_SECONDS,
 );
 
-function Histogram({ samples, active = null }: { samples: number[]; active?: number | null }) {
+function Histogram({
+  samples,
+  active = null,
+  onActive,
+}: {
+  samples: number[];
+  active?: number | null;
+  onActive?: (zone: number | null) => void;
+}) {
   const low = 90;
   const bins = Array.from({ length: 40 }, () => 0);
   for (const bpm of samples) {
@@ -305,7 +313,10 @@ function Histogram({ samples, active = null }: { samples: number[]; active?: num
         className="w-full"
         role="img"
         aria-label="Heart-rate histogram"
-        onMouseLeave={() => setHovered(null)}
+        onMouseLeave={() => {
+          setHovered(null);
+          onActive?.(null);
+        }}
       >
         {bins.map((count, bin) => {
           const height = (count / tallest) * 100;
@@ -320,7 +331,10 @@ function Histogram({ samples, active = null }: { samples: number[]; active?: num
               height={height}
               fill={colour(zone)}
               opacity={hovered === null ? dimmed(zone, active) : dimmed(bin, hovered)}
-              onMouseEnter={() => setHovered(bin)}
+              onMouseEnter={() => {
+                setHovered(bin);
+                onActive?.(zone);
+              }}
             >
               <title>{`${low + bin * 2}–${low + bin * 2 + 1} bpm · ${formatDuration(count * SAMPLE_SECONDS)}`}</title>
             </rect>
@@ -420,7 +434,7 @@ export function RingSeriesEffort() {
             <ZoneTable zones={SAMPLE_ZONES} active={active} onActive={setActive} />
           </div>
           <div className="flex flex-col gap-3">
-            <Histogram samples={SAMPLES} active={active} />
+            <Histogram samples={SAMPLES} active={active} onActive={setActive} />
             <Ribbon samples={SAMPLES} active={active} />
           </div>
         </div>
