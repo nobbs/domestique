@@ -48,7 +48,10 @@ services:
       - ./config.toml:/etc/domestique/config.toml:ro
     # The two secrets the host hands the process. Every other credential the
     # service holds is entered on its settings page and stored encrypted under
-    # the state key.
+    # the state key. To switch the ride analysis on, list a third entry,
+    # claude_token, here and under the top-level secrets below as
+    # `file: ./secrets/claude_token`, beside the [analysis] section of
+    # config.toml.
     secrets:
       - state_encryption_key
       - auth0_client_secret

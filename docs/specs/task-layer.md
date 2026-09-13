@@ -115,6 +115,7 @@ ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
 zwift:poll        stored indoor rides     ->  activity:derive
+activity:derive   derived stored rides    ->  activity:analyse   (only with a token)
 ~~~
 
 A calibration that fitted a new pair makes every stored prediction stale, so it
@@ -274,6 +275,7 @@ is checked rather than inferred.
 | `zwift:poll` | target slot, or none for every one | `activities` exclusive | every six hours |
 | `activity:derive` | target slot, or none for every one | `activities` exclusive | every hour |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
+| `activity:analyse` | target slot, or none for every one | `activities` exclusive | every hour, and only when a token is configured |
 
 `zwift:poll` reads the same rows from a rider's own Zwift account, under the
 same exclusivity: it stores the indoor rides that account recorded and removes
@@ -350,6 +352,45 @@ along the whole of it — a headwind that became a tailwind is the point. A
 weather code is not a quantity: where a step was asked at more than one
 coordinate, it keeps the worst of them. Neither pass holds the other back, and
 the run reports whichever came to the more serious thing.
+
+`activity:analyse` asks a language model what to make of each ride that has
+been derived and not yet analysed ([what is sent and stored](service.md#recorded-activities)).
+It and the edge that reaches it are registered together, and only when the
+operator has configured a Claude Code OAuth token: a deployment without one
+lists no such task, resolves a graph with no such edge, and offers no decision
+about its alerts. It follows `activity:derive` and holds the same resource,
+because it reads exactly the rows the derivation writes, and it fans out over
+targets the same way. It is owed a ride that has a derived row, no analysis
+row, and started after the analysis was enabled — an instant this
+service records the first time it starts with a token and keeps as runtime
+state — so its edge carries no argument and a run with nothing owed asks
+nothing. There is no backfill: a ride started before that instant stays
+unanalysed, even one stored after it, and a ride whose analysis stands is never asked about again. A
+ride whose derivation yielded nothing is not owed one, and a derivation that
+removes a ride's derived row removes its analysis in the same transaction, so
+a profile edit that takes a ride's figures away takes what was said about them
+too — and a later derivation that gives the ride figures again leaves it owed
+again, because what was said before was about figures that no longer exist.
+That is the one way a ride is analysed twice, and it costs one request per
+such edit. The analyses a prompt carries for context are the same target's, newest
+first, at most five. Unlike the weather,
+which is asked once and recorded either way, an analysis that fails is not
+recorded as asked: the usual reason is the subscription's monthly allowance
+running out, which is temporary, so the ride stays owed and the run faults
+into the ordinary backoff. Each ride costs one request, made through the bundled
+`claude` executable with a bounded timeout and no tool enabled. A run asks
+about a bounded few rides per target, oldest owed first, and ends at the first
+failed request with the rest still owed, so neither a week away nor an outage
+holds the `activities` resource past that bound times the timeout. It also runs
+hourly, because the edge alone would not try again: a derivation that already
+succeeded is not repeated, so a ride left owed by a failed request would wait
+for the next new ride rather than the next hour. A scheduled run with nothing
+owed asks nothing and costs a query per target. An answer is stored only when
+it fits the contract's bound: non-empty and at most two thousand characters.
+An empty or longer one is `unusable` and the ride stays owed. The log and the
+alert carry counts and one stable failure category — `token` refused,
+`allowance` exhausted, `executable` failing, answer `unusable` — and never the
+prompt or the answer.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery

@@ -204,7 +204,7 @@ statements live in the linked specs.
 credentials and private route data. Do not read them for context or commit
 them. [`config.example.toml`](config.example.toml) is the tracked reference —
 it names two secret **files** (the state encryption key and the Auth0 client
-secret) and never embeds a value. Never commit credentials, OAuth tokens,
+secret) plus an optional Claude token file, and never embeds a value. Never commit credentials, OAuth tokens,
 personal route fixtures, generated FIT files, SQLite state, or host deployment
 files.
 
