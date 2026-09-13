@@ -59,7 +59,7 @@
     "@vitest/browser-playwright": "4.1.11",
     "@vitest/coverage-v8": "4.1.11",
     "jsdom": "30.0.1",
-    "orval": "8.29.0",
+    "orval": "8.30.0",
     "playwright": "1.63.0",
     "storybook": "10.6.0",
     "tailwindcss": "4.3.3",
