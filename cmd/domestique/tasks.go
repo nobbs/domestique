@@ -92,7 +92,7 @@ const (
 	activityAnalyseInterval     = time.Hour
 	activityAnalyseInitialDelay = time.Hour
 	analysisAlertTitle          = "Domestique ride analysis"
-	analysisAlertSuppression    = 24 * time.Hour
+	analysisAlertSuppression    = 6 * time.Hour
 )
 
 // A rider's form moves over months, so the pair is refitted weekly; the first
