@@ -114,6 +114,7 @@ sync:source       stored an inventory     ->  ridemodel:predict
 ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
+activity:record   stored one ride's file  ->  zwift:poll         (asks only for an indoor ride)
 zwift:poll        stored indoor rides     ->  activity:derive
 activity:derive   derived stored rides    ->  activity:analyse   (only with a token)
 ~~~
@@ -284,7 +285,11 @@ the head unit's copy of each, which is the one place a poll removes an activity
 skipped rather than failed — most riders have none, and there is nothing there
 to read — and a refused sign-in is reported as an authorization failure without
 marking anything for renewal, because what it asks for is a password re-entered
-rather than a grant re-issued.
+rather than a grant re-issued. Run by the edge from `activity:record`, it
+reads Zwift only for a target holding a head unit's indoor ride inside the
+analysis hold below, and otherwise answers without a request: the edge exists so
+the Zwift copy replaces the head unit's before either is analysed, not to poll
+Zwift for every ride a webhook delivers.
 
 `activity:poll` stores cycling alone. A rider's account may record any sport
 their device or app supports, and the poll keeps only what the provider counts
@@ -365,7 +370,12 @@ row, and started after the analysis was enabled — an instant this
 service records the first time it starts with a token and keeps as runtime
 state — so its edge carries no argument and a run with nothing owed asks
 nothing. There is no backfill: a ride started before that instant stays
-unanalysed, even one stored after it, and a ride whose analysis stands is never asked about again. A
+unanalysed, even one stored after it, and a ride whose analysis stands is never asked about again.
+A head unit's indoor ride of a rider with Zwift credentials is held until it
+started more than seven hours ago — one `zwift:poll` interval and an hour —
+because that poll replaces it with the Zwift copy and the analysis would go with
+it: by then it has been replaced, and the Zwift copy is the one owed, or it is
+the only copy there is. A
 ride whose derivation yielded nothing is not owed one, and a derivation that
 removes a ride's derived row removes its analysis in the same transaction, so
 a profile edit that takes a ride's figures away takes what was said about them
