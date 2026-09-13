@@ -1,6 +1,7 @@
 /** UI-domain aliases over the OpenAPI-generated models. */
 import {
   type Activity,
+  type ActivityHeartRateDistribution,
   type ActivityList,
   type ActivityMetrics,
   type ActivityRouteMatch,
@@ -57,6 +58,7 @@ import {
 
 export type {
   Activity,
+  ActivityHeartRateDistribution,
   ActivityList,
   ActivityMetrics,
   ActivityRouteMatch,

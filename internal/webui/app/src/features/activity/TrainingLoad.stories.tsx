@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { activityHeartRateDistributionQuery } from "../../api/queries";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { TrainingLoad } from "./TrainingLoad";
 
@@ -24,16 +26,41 @@ function ride(metrics: ActivityMetrics): Activity {
   };
 }
 
+/**
+ * A spread of heart rates around an endurance ride's middle, with a tail of
+ * harder efforts, so the Distribution view has something to draw. Trimmed to
+ * the first and last beat held, as the service sends it.
+ */
+function distribution() {
+  const held = Array.from({ length: 80 }, (_, index) => {
+    const bpm = 100 + index;
+    const steady = 260 * Math.exp(-(((bpm - 145) / 9) ** 2));
+    const efforts = 45 * Math.exp(-(((bpm - 168) / 5) ** 2));
+    return Math.round(steady + efforts);
+  });
+  const first = held.findIndex((seconds) => seconds > 0);
+  const last = held.findLastIndex((seconds) => seconds > 0);
+  return { fromBpm: 100 + first, seconds: held.slice(first, last + 1) };
+}
+
 const meta = {
   title: "Features/Activity/Effort",
   component: TrainingLoad,
   tags: ["autodocs"],
   decorators: [
-    (Story) => (
-      <div className="max-w-2xl p-6">
-        <Story />
-      </div>
-    ),
+    (Story) => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+      });
+      client.setQueryData(activityHeartRateDistributionQuery("1").queryKey, distribution());
+      return (
+        <QueryClientProvider client={client}>
+          <div className="max-w-4xl p-6">
+            <Story />
+          </div>
+        </QueryClientProvider>
+      );
+    },
   ],
 } satisfies Meta<typeof TrainingLoad>;
 

@@ -178,6 +178,13 @@ type activitySplitsView struct {
 	Splits []activitySplitView `json:"splits"`
 }
 
+// activityHeartRateDistributionView is how long a ride held each whole heart
+// rate, lowest first, contiguous from FromBpm.
+type activityHeartRateDistributionView struct {
+	Seconds []float64 `json:"seconds"`
+	FromBpm int       `json:"fromBpm"`
+}
+
 type lineStringView struct {
 	Type        string          `json:"type"`
 	Coordinates json.RawMessage `json:"coordinates"`

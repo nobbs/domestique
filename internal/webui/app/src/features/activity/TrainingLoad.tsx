@@ -1,23 +1,21 @@
 /**
- * How hard one ride was: its time in heart-rate zones as one bar, beside what
- * its sensors averaged and the load it came to on every scale the ride allowed.
+ * How hard one ride was, in two boxes: its time in heart-rate zones, and beside
+ * it what its sensors averaged and the load it came to on every scale allowed.
  *
  * The load scales are shown together rather than reconciled — they answer
  * different questions and neither converts to the other — and each is named,
  * so a number is never a bare figure the reader has to guess the meaning of.
  * Anything the ride's sensors or the rider's profile did not allow is left out
- * rather than shown as a zero. The figures group under small headings —
- * Sensors, Power, Load, Physiology — so a reader can skim past what a ride's
+ * rather than shown as a zero. The figures group under small headings — the
+ * box's own Sensors, then Power, Load, Physiology — so a reader can skim past what a ride's
  * shape does not carry rather than meet an eighteen-tile grid every time.
  */
 
 import type { ReactNode } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { Separator } from "../../components/ui/separator";
-import { formatCoverage, formatDuration } from "../../lib/format";
-
-/** The five zones, easiest first, as a rider reading a training app knows them. */
-const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
+import { formatCoverage } from "../../lib/format";
+import { HeartRateZones } from "./HeartRateZones";
 
 /** One figure: what it is called, and the scale it is on. */
 export interface Scale {
@@ -48,33 +46,6 @@ export function Figure({ label, scale, value, decimals = 0, coverage }: Scale) {
 }
 
 /**
- * The heart rates each zone covers, easiest first. Open at both ends — the
- * easiest zone has nothing below it and the hardest nothing above — so neither
- * is given a limit the profile never said. A bound cut from a percentage lands
- * between two beats, and a sample below it is still the easier zone, so both
- * edges take the ceiling rather than the nearer beat.
- */
-function zoneRanges(bounds: number[]): string[] {
-  const ranges: string[] = [];
-  let low: number | undefined;
-  for (const bound of bounds) {
-    const edge = Math.ceil(bound);
-    ranges.push(low === undefined ? `below ${edge} bpm` : `${low}–${edge - 1} bpm`);
-    low = edge;
-  }
-  if (low !== undefined) {
-    ranges.push(`${low} bpm and up`);
-  }
-
-  return ranges;
-}
-
-/** Easiest to hardest on the severity ramp the gradient bands wear. */
-function zoneColour(zone: number): string {
-  return `var(--grade-${zone})`;
-}
-
-/**
  * The worse of two series' coverage, for a figure built from both — decoupling
  * and heat drift each need measured power and heart rate together, so either
  * one falling short makes the figure no more trustworthy than its weaker half.
@@ -88,70 +59,6 @@ function combinedCoverage(a: number | undefined, b: number | undefined): number 
   }
 
   return Math.min(a, b);
-}
-
-/** One bar, five segments: the ride's time as a whole, each zone its share of it. */
-function ZoneStack({
-  zoneSeconds,
-  zoneBounds,
-  deviceZoneSeconds,
-  coverage,
-}: {
-  zoneSeconds: number[];
-  zoneBounds: number[] | undefined;
-  deviceZoneSeconds: number[] | undefined;
-  coverage: number | undefined;
-}) {
-  const total = zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
-  if (total <= 0) {
-    return null;
-  }
-  const ranges = zoneBounds ? zoneRanges(zoneBounds) : [];
-  const coverageNote = formatCoverage(coverage);
-
-  return (
-    <div className="flex flex-col gap-3">
-      {/* The legend beside it says the same thing, so the bar is decoration. */}
-      <div aria-hidden="true" className="flex h-3 overflow-hidden rounded-full bg-black/5">
-        {zoneSeconds.map((seconds, zone) => (
-          <span
-            key={ZONE_NAMES[zone]}
-            className="h-full"
-            style={{ width: `${(seconds / total) * 100}%`, backgroundColor: zoneColour(zone) }}
-          />
-        ))}
-      </div>
-      <ul className="grid grid-cols-5 gap-2">
-        {zoneSeconds.map((seconds, zone) => (
-          // Zones are a fixed ordered set of five, so the name is their identity.
-          <li key={ZONE_NAMES[zone]} className="flex flex-col gap-0.5">
-            <span
-              aria-hidden="true"
-              className="h-1 rounded-full"
-              style={{ backgroundColor: zoneColour(zone) }}
-            />
-            <span className="text-[var(--ink-2)] text-xs">{ZONE_NAMES[zone]}</span>
-            {ranges[zone] ? (
-              <span className="text-[10px] text-[var(--ink-2)] tabular-nums opacity-70">
-                {ranges[zone]}
-              </span>
-            ) : null}
-            <span className="text-sm tabular-nums">{formatDuration(seconds)}</span>
-          </li>
-        ))}
-      </ul>
-      {deviceZoneSeconds && deviceZoneSeconds.length > 0 ? (
-        // The profile's zones above are the default; this is only a caption
-        // naming the head unit's own cut of the same ride, for comparison.
-        <p className="text-[var(--ink-2)] text-xs opacity-70">
-          Device zones: {deviceZoneSeconds.map((seconds) => formatDuration(seconds)).join(" · ")}
-        </p>
-      ) : null}
-      {coverageNote ? (
-        <p className="text-[10px] text-[var(--ink-2)] opacity-70">{coverageNote}</p>
-      ) : null}
-    </div>
-  );
 }
 
 /**
@@ -357,15 +264,20 @@ function groupedSections(groups: Groups): Group[] {
   return sections;
 }
 
+const BOX = "flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5";
+
+/** The box is titled by its first group, so that group needs no heading of its own. */
 function GroupList({ groups }: { groups: Group[] }) {
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group, index) => (
         <div key={group.title} className="flex flex-col gap-2">
           {index > 0 ? <Separator /> : null}
-          <h3 className="text-[10px] text-[var(--ink-2)] font-semibold uppercase tracking-[0.08em]">
-            {group.title}
-          </h3>
+          {index === 0 ? null : (
+            <h3 className="text-[10px] text-[var(--ink-2)] font-semibold uppercase tracking-[0.08em]">
+              {group.title}
+            </h3>
+          )}
           {group.content}
         </div>
       ))}
@@ -385,22 +297,26 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
   }
 
   return (
-    <section
-      className="flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
-      aria-label="Effort"
+    <div
+      className={zones && sections.length > 0 ? "grid items-start gap-4 md:grid-cols-2" : "grid"}
     >
-      <h2 className="font-medium text-sm">Effort</h2>
-      <div className={zones ? "grid gap-6 md:grid-cols-2" : ""}>
-        {zones ? (
-          <ZoneStack
+      {zones ? (
+        <section className={BOX} aria-label="Heart rate">
+          <HeartRateZones
+            rideId={ride.id}
             zoneSeconds={zones}
             zoneBounds={metrics?.zoneBoundsBpm}
             deviceZoneSeconds={metrics?.deviceZoneSeconds}
             coverage={metrics?.heartRateCoverage}
           />
-        ) : null}
-        {sections.length > 0 ? <GroupList groups={sections} /> : null}
-      </div>
-    </section>
+        </section>
+      ) : null}
+      {sections.length > 0 ? (
+        <section className={BOX} aria-label={sections[0]?.title}>
+          <h2 className="font-medium text-sm">{sections[0]?.title}</h2>
+          <GroupList groups={sections} />
+        </section>
+      ) : null}
+    </div>
   );
 }

@@ -493,6 +493,52 @@ paths:
         "503":
           $ref: '#/components/responses/Unavailable'
 
+  /v1/activities/{activityId}/heartRateDistribution:
+    get:
+      tags:
+        - browser-api
+      operationId: getActivityHeartRateDistribution
+      description: >-
+        How long one activity held each whole heart rate, counted by the same
+        rule its time in zones is: each sample stands until the next one, and one
+        followed by a gap over ten seconds counts for nothing, over the series
+        with readings above the rider's maximum
+        interpolated across. Served only for a ride whose zones are served, so
+        the two always describe the same samples. Scoped exactly as the track
+        is: a caller reads only an activity of the target they own, and an
+        admin may name any target. Nothing about it is stored; it is a fold over
+        the samples at read time. A ride with no zones, or whose samples are not
+        stored, is not found.
+      parameters:
+        - name: activityId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/ActivityID'
+        - name: target
+          in: query
+          description: >-
+            The target to read. Omitted means the caller's own.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The seconds held at each whole heart rate, lowest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityHeartRateDistribution'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+
   /v1/routes:
     get:
       tags:
@@ -3656,6 +3702,29 @@ components:
             a bicycle with no meter has no average power.
           type: number
           format: double
+    ActivityHeartRateDistribution:
+      type: object
+      additionalProperties: false
+      required:
+        - fromBpm
+        - seconds
+      properties:
+        fromBpm:
+          description: >-
+            The heart rate, in whole beats per minute, the first entry of
+            seconds counts.
+          type: integer
+          format: int32
+        seconds:
+          description: >-
+            The seconds held at each whole beat per minute from fromBpm up, one
+            entry per beat and nought where the ride held none. A reading counts
+            toward the whole beat at or below it. Never empty.
+          type: array
+          minItems: 1
+          items:
+            type: number
+            format: double
     ActivitySplits:
       type: object
       additionalProperties: false

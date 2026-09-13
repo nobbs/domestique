@@ -880,6 +880,13 @@ type ActivitySplit struct {
 	PowerWatts *float64 `json:"powerWatts,omitempty"`
 }
 
+type ActivityHeartRateDistribution struct {
+	// FromBpm The heart rate, in whole beats per minute, the first entry of seconds counts.
+	FromBpm int32 `json:"fromBpm"`
+	// Seconds The seconds held at each whole beat per minute from fromBpm up, one entry per beat and nought where the ride held none. A reading counts toward the whole beat at or below it. Never empty.
+	Seconds []float64 `json:"seconds"`
+}
+
 type ActivitySplits struct {
 	Splits []ActivitySplit `json:"splits"`
 }

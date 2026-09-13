@@ -324,3 +324,16 @@ export function formatCoverage(coverage: number | undefined): string | undefined
 
   return `${Math.min(Math.max(percent, 0), 99)}% sensor coverage`;
 }
+
+/**
+ * One part's share of a whole, as a whole percent. A part too small to reach
+ * one percent reads "<1%" rather than "0%", which would say it was not there.
+ */
+export function formatShare(part: number, whole: number): string {
+  if (!(whole > 0) || !(part > 0)) {
+    return "0%";
+  }
+  const percent = (part / whole) * 100;
+
+  return percent < 1 ? "<1%" : `${Math.round(percent)}%`;
+}

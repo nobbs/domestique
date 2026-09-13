@@ -33,10 +33,10 @@ linters:
       check-blank: true
       check-type-assertions: true
     interfacebloat:
-      # ActivityState grew a twelfth method for which provider recorded a ride
-      # and what it wrote; still one responsibility, one target's recorded
+      # ActivityState grew a thirteenth method for one ride's recorded series,
+      # split by sensor; still one responsibility, one target's recorded
       # activities.
-      max: 12
+      max: 13
     gocritic:
       enabled-tags:
         - diagnostic

@@ -612,6 +612,21 @@ The read-only JSON surface is small:
   one that recorded no distance to cut by, is answered with an empty list rather
   than an error — a splits table with no rows says what it needs to. It is
   scoped exactly as the track is, and answers `404` on the same terms.
+- `GET /v1/activities/{activityId}/heartRateDistribution` returns how long that
+  activity held each whole heart rate, lowest held first: the seconds held at
+  and above the lowest bin, through the highest, nought where the ride passed
+  through a beat without stopping there. Folded by the same held rule and over
+  the same capped series its time in zones is, a reading counting toward the
+  whole beat at or below it. Nothing about it is stored: it is a fold over the
+  ride's recorded samples, positioned or not, at read time. It is served only
+  where that ride's zones are served — withheld with them below the coverage
+  floor, absent for a ride nothing was derived for — and `404` otherwise. The
+  cap uses the maximum heart rate the zones were derived against, so the two
+  agree even after a profile change until the ride is re-derived. The totals
+  agree exactly; a reading the cap interpolated to a fraction of a beat can land
+  in the whole beat below a zone bound it cleared, so a page colouring whole
+  beats by zone may place those few seconds one zone lower. It is scoped
+  exactly as the track is.
 - `GET /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}`
   returns stored route metadata, not edit controls. Two further shapes of this
   address redirect to it with `308`.

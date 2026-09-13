@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { TrainingLoad } from "./TrainingLoad";
@@ -21,13 +21,6 @@ function ride(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>):
 
 function show(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>) {
   return render(<TrainingLoad ride={ride(metrics, totals)} />);
-}
-
-/** The zone bar's five segments, in zone order. */
-function segments(container: HTMLElement): HTMLElement[] {
-  const bar = container.querySelector<HTMLElement>('div[aria-hidden="true"]');
-
-  return bar ? Array.from(bar.children as HTMLCollectionOf<HTMLElement>) : [];
 }
 
 describe("TrainingLoad", () => {
@@ -137,19 +130,14 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("VO₂ max")).toBeInTheDocument();
     expect(screen.getByText("1 min")).toBeInTheDocument();
     expect(screen.getByText("5 min")).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Recovery1 min");
+    expect(screen.getAllByRole("row")[0]).toHaveTextContent("Recovery1 min");
   });
 
-  it("draws one bar whose segments are each zone's share of the ride", () => {
-    const { container } = show({ zoneSeconds: [60, 120, 0, 240, 120] });
+  it("says each zone's share of the time the ride held any zone", () => {
+    show({ zoneSeconds: [60, 120, 0, 240, 120] });
 
-    const widths = segments(container).map((segment) => Number.parseFloat(segment.style.width));
-    expect(widths).toHaveLength(5);
-    expect(widths[0]).toBeCloseTo(11.11, 1);
-    expect(widths[1]).toBeCloseTo(22.22, 1);
-    expect(widths[2]).toBe(0);
-    expect(widths[3]).toBeCloseTo(44.44, 1);
-    expect(widths.reduce((sum, width) => sum + width, 0)).toBeCloseTo(100, 5);
+    const shares = screen.getAllByRole("row").map((row) => row.lastElementChild?.textContent);
+    expect(shares).toEqual(["11%", "22%", "0%", "44%", "22%"]);
   });
 
   // Open at both ends: neither the easiest nor the hardest zone is given a
@@ -203,10 +191,37 @@ describe("TrainingLoad", () => {
 
   it("shows nothing at all for a ride with nothing to say about effort", () => {
     const { rerender } = show(undefined, { movingSeconds: 0 });
-    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
 
     rerender(<TrainingLoad ride={undefined} />);
-    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+  });
+
+  it("puts the zones in a Heart rate box and the figures in a Sensors box", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], averageHeartRateBpm: 142, trimp: 42 });
+
+    const heartRate = screen.getByRole("region", { name: "Heart rate" });
+    const sensors = screen.getByRole("region", { name: "Sensors" });
+    expect(within(heartRate).getByText("Recovery")).toBeInTheDocument();
+    expect(within(heartRate).queryByText("TRIMP")).not.toBeInTheDocument();
+    expect(within(sensors).getByText("TRIMP")).toBeInTheDocument();
+    // The box's title names the first group, so it is not said twice.
+    expect(screen.getAllByRole("heading", { name: "Sensors" })).toHaveLength(1);
+  });
+
+  it("titles the figures box by its first group when the ride has no sensor figures", () => {
+    show({ trimp: 42 }, { movingSeconds: 0 });
+
+    expect(screen.getByRole("region", { name: "Load" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: "Load" })).toHaveLength(1);
+    expect(screen.queryByText("Sensors")).not.toBeInTheDocument();
+  });
+
+  it("leaves out the Heart rate box for a ride with no zones", () => {
+    show({ averageHeartRateBpm: 142 });
+
+    expect(screen.queryByRole("region", { name: "Heart rate" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Sensors" })).toBeInTheDocument();
   });
 
   it("shows no zones for a row whose zones are all empty", () => {
@@ -363,16 +378,16 @@ describe("TrainingLoad", () => {
     expect(screen.queryByText("100% sensor coverage")).not.toBeInTheDocument();
   });
 
-  // Zones are withheld below the threshold, but a served zone bar can still
-  // hold less than the whole ride, and is owed the same mark every other
+  // Zones are withheld below the threshold, but served zones can still
+  // hold less than the whole ride, and are owed the same mark every other
   // heart-rate figure gets.
-  it("marks the zone bar with the heart-rate coverage it was served at", () => {
+  it("marks the zones with the heart-rate coverage they were served at", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 0.93 });
 
     expect(screen.getByText("93% sensor coverage")).toBeInTheDocument();
   });
 
-  it("leaves the zone bar unmarked at full coverage", () => {
+  it("leaves the zones unmarked at full coverage", () => {
     show({ zoneSeconds: [60, 120, 180, 240, 300], heartRateCoverage: 1 });
 
     expect(screen.queryByText(/sensor coverage/)).not.toBeInTheDocument();
