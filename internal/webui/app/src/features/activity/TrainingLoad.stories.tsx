@@ -28,17 +28,19 @@ function ride(metrics: ActivityMetrics): Activity {
 
 /**
  * A spread of heart rates around an endurance ride's middle, with a tail of
- * harder efforts, so the Distribution view has something to draw.
+ * harder efforts, so the Distribution view has something to draw. Trimmed to
+ * the first and last beat held, as the service sends it.
  */
 function distribution() {
-  const fromBpm = 100;
-  const seconds = Array.from({ length: 80 }, (_, index) => {
-    const bpm = fromBpm + index;
+  const held = Array.from({ length: 80 }, (_, index) => {
+    const bpm = 100 + index;
     const steady = 260 * Math.exp(-(((bpm - 145) / 9) ** 2));
     const efforts = 45 * Math.exp(-(((bpm - 168) / 5) ** 2));
     return Math.round(steady + efforts);
   });
-  return { fromBpm, seconds };
+  const first = held.findIndex((seconds) => seconds > 0);
+  const last = held.findLastIndex((seconds) => seconds > 0);
+  return { fromBpm: 100 + first, seconds: held.slice(first, last + 1) };
 }
 
 const meta = {
