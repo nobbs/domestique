@@ -378,17 +378,19 @@ which is asked once and recorded either way, an analysis that fails is not
 recorded as asked: the usual reason is the subscription's monthly allowance
 running out, which is temporary, so the ride stays owed and the run faults
 into the ordinary backoff. Each ride costs one request, made through the bundled
-`claude` executable with a bounded timeout and no tool enabled, and a run
-analyses every ride it is owed, which is what the poll or webhook before it
-just stored — a week away is a week's rides, never a history. It also runs
+`claude` executable with a bounded timeout and no tool enabled. A run asks
+about a bounded few rides per target, oldest owed first, and ends at the first
+failed request with the rest still owed, so neither a week away nor an outage
+holds the `activities` resource past that bound times the timeout. It also runs
 hourly, because the edge alone would not try again: a derivation that already
 succeeded is not repeated, so a ride left owed by a failed request would wait
 for the next new ride rather than the next hour. A scheduled run with nothing
 owed asks nothing and costs a query per target. An answer is stored only when
 it fits the contract's bound: non-empty and at most two thousand characters.
-An empty or longer one is the `unusable` category and the ride stays owed. The log and the alert carry counts and a
-stable failure category — the token refused, the allowance exhausted, the
-executable failing, the answer unusable — and never the prompt or the answer.
+An empty or longer one is `unusable` and the ride stays owed. The log and the
+alert carry counts and one stable failure category — `token` refused,
+`allowance` exhausted, `executable` failing, answer `unusable` — and never the
+prompt or the answer.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery

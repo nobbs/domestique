@@ -1264,7 +1264,7 @@ Code OAuth token, `activity:analyse` asks a language model what to make of it
 ([the task](task-layer.md#the-registered-tasks)). What leaves the host is the
 ride's derived metrics and sensor means, the rider's profile and zone bounds,
 the rider's current fitness, fatigue and form, and the analyses of the same
-target's five most recent earlier rides so the answer can speak to a trend —
+target's five most recent earlier analyses so the answer can speak to a trend —
 never another target's, whoever owns it; never the track, the
 weather, the provider's document or the rider's identity. The request goes
 through the `claude` executable bundled in the image, authenticated by the
