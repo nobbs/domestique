@@ -258,3 +258,26 @@ func TestDeletingATrainerCopyTakesItsAnalysis(t *testing.T) {
 	require.NoError(t, store.database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM activity_analyses`).Scan(&analyses))
 	assert.Zero(t, analyses)
 }
+
+func TestHoldsHeadUnitRideFindsOnlyARecentWahooRideOfTheTypes(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	const indoor = 12
+	since := activityNow()
+	storeRecordedRide(t, store, activity.Listing{ID: 1, TypeID: indoor, Starts: since.Add(-time.Second)}, false)
+	storeRecordedRide(t, store, activity.Listing{ID: 2, TypeID: indoor, Starts: since, Provider: activity.ProviderZwift}, false)
+	storeRecordedRide(t, store, activity.Listing{ID: 3, TypeID: 15, Starts: since}, false)
+
+	held, err := store.HoldsHeadUnitRide(t.Context(), "rider-a", []int{indoor}, since)
+	require.NoError(t, err, "HoldsHeadUnitRide()")
+	assert.False(t, held, "too old, a Zwift ride, or outdoors")
+
+	storeRecordedRide(t, store, activity.Listing{ID: 4, TypeID: indoor, Starts: since}, false)
+	held, err = store.HoldsHeadUnitRide(t.Context(), "rider-a", []int{indoor}, since)
+	require.NoError(t, err, "HoldsHeadUnitRide()")
+	assert.True(t, held)
+
+	require.NoError(t, store.Close(), "Close()")
+	_, err = store.HoldsHeadUnitRide(t.Context(), "rider-a", []int{indoor}, since)
+	assert.ErrorContains(t, err, "checking for a head unit ride")
+}

@@ -232,3 +232,12 @@ DELETE FROM activities
 WHERE target_slot = sqlc.arg(target_slot) AND provider = 'wahoo'
   AND workout_type_id IN (SELECT value FROM json_each(CAST(sqlc.arg(indoor_type_ids) AS TEXT)))
   AND started_at_unix >= sqlc.arg(from_unix) AND started_at_unix <= sqlc.arg(to_unix);
+
+-- Whether a head unit holds an activity of one of the types started since an instant.
+-- name: HoldsHeadUnitActivity :one
+SELECT EXISTS (
+  SELECT 1 FROM activities
+  WHERE target_slot = sqlc.arg(target_slot) AND provider = 'wahoo'
+    AND workout_type_id IN (SELECT value FROM json_each(CAST(sqlc.arg(type_ids) AS TEXT)))
+    AND started_at_unix >= sqlc.arg(since_unix)
+);
