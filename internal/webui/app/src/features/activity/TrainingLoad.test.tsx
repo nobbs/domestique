@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { TrainingLoad } from "./TrainingLoad";
@@ -191,10 +191,29 @@ describe("TrainingLoad", () => {
 
   it("shows nothing at all for a ride with nothing to say about effort", () => {
     const { rerender } = show(undefined, { movingSeconds: 0 });
-    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
 
     rerender(<TrainingLoad ride={undefined} />);
-    expect(screen.queryByLabelText("Effort")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+  });
+
+  it("puts the zones in a Heart rate box and the figures in a Sensors box", () => {
+    show({ zoneSeconds: [60, 120, 180, 240, 300], averageHeartRateBpm: 142, trimp: 42 });
+
+    const heartRate = screen.getByRole("region", { name: "Heart rate" });
+    const sensors = screen.getByRole("region", { name: "Sensors" });
+    expect(within(heartRate).getByText("Recovery")).toBeInTheDocument();
+    expect(within(heartRate).queryByText("TRIMP")).not.toBeInTheDocument();
+    expect(within(sensors).getByText("TRIMP")).toBeInTheDocument();
+    // The box's title names the first group, so it is not said twice.
+    expect(screen.getAllByRole("heading", { name: "Sensors" })).toHaveLength(1);
+  });
+
+  it("leaves out the Heart rate box for a ride with no zones", () => {
+    show({ averageHeartRateBpm: 142 });
+
+    expect(screen.queryByRole("region", { name: "Heart rate" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Sensors" })).toBeInTheDocument();
   });
 
   it("shows no zones for a row whose zones are all empty", () => {

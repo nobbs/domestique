@@ -1,13 +1,13 @@
 /**
- * How hard one ride was: its time in heart-rate zones, beside what
- * its sensors averaged and the load it came to on every scale the ride allowed.
+ * How hard one ride was, in two boxes: its time in heart-rate zones, and beside
+ * it what its sensors averaged and the load it came to on every scale allowed.
  *
  * The load scales are shown together rather than reconciled — they answer
  * different questions and neither converts to the other — and each is named,
  * so a number is never a bare figure the reader has to guess the meaning of.
  * Anything the ride's sensors or the rider's profile did not allow is left out
- * rather than shown as a zero. The figures group under small headings —
- * Sensors, Power, Load, Physiology — so a reader can skim past what a ride's
+ * rather than shown as a zero. The figures group under small headings — the
+ * box's own Sensors, then Power, Load, Physiology — so a reader can skim past what a ride's
  * shape does not carry rather than meet an eighteen-tile grid every time.
  */
 
@@ -230,6 +230,8 @@ function figureGrid(figures: Scale[]): ReactNode {
   );
 }
 
+const SENSORS = "Sensors";
+
 interface Group {
   title: string;
   content: ReactNode;
@@ -249,7 +251,7 @@ function groupedSections(groups: Groups): Group[] {
 
   const sections: Group[] = [];
   if (groups.sensors.length > 0) {
-    sections.push({ title: "Sensors", content: figureGrid(groups.sensors) });
+    sections.push({ title: SENSORS, content: figureGrid(groups.sensors) });
   }
   if (powerContent.length > 0) {
     sections.push({ title: "Power", content: <div className={GRID}>{powerContent}</div> });
@@ -264,15 +266,20 @@ function groupedSections(groups: Groups): Group[] {
   return sections;
 }
 
+const BOX = "flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5";
+
+/** The box is titled Sensors, so that group, first whenever it is there, needs no heading of its own. */
 function GroupList({ groups }: { groups: Group[] }) {
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group, index) => (
         <div key={group.title} className="flex flex-col gap-2">
           {index > 0 ? <Separator /> : null}
-          <h3 className="text-[10px] text-[var(--ink-2)] font-semibold uppercase tracking-[0.08em]">
-            {group.title}
-          </h3>
+          {group.title === SENSORS ? null : (
+            <h3 className="text-[10px] text-[var(--ink-2)] font-semibold uppercase tracking-[0.08em]">
+              {group.title}
+            </h3>
+          )}
           {group.content}
         </div>
       ))}
@@ -292,13 +299,9 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
   }
 
   return (
-    <section
-      className="flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
-      aria-label="Effort"
-    >
-      <h2 className="font-medium text-sm">Effort</h2>
-      <div className={zones ? "grid gap-6 md:grid-cols-2" : ""}>
-        {zones ? (
+    <div className={zones && sections.length > 0 ? "grid gap-4 md:grid-cols-2" : "grid"}>
+      {zones ? (
+        <section className={BOX} aria-label="Heart rate">
           <HeartRateZones
             rideId={ride.id}
             zoneSeconds={zones}
@@ -306,9 +309,14 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
             deviceZoneSeconds={metrics?.deviceZoneSeconds}
             coverage={metrics?.heartRateCoverage}
           />
-        ) : null}
-        {sections.length > 0 ? <GroupList groups={sections} /> : null}
-      </div>
-    </section>
+        </section>
+      ) : null}
+      {sections.length > 0 ? (
+        <section className={BOX} aria-label={SENSORS}>
+          <h2 className="font-medium text-sm">{SENSORS}</h2>
+          <GroupList groups={sections} />
+        </section>
+      ) : null}
+    </div>
   );
 }
