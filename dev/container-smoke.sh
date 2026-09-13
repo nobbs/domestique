@@ -189,9 +189,10 @@ done
   die "the image must start the service itself, without a shell in front of it"
 
 log "checking that the bundled claude executable starts"
-# Starting it at all is what proves the C runtime it links against came with it;
+# Starting under the service's own hardening proves its C runtime came with it;
 # --version asks nothing of Anthropic, and no network is there to ask anyway.
-claude_version="$("${DOCKER}" run --rm --network none --read-only --tmpfs /tmp \
+claude_version="$("${DOCKER}" run --rm --network none --read-only \
+  --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:mode=1777,nosuid,nodev,noexec \
   --entrypoint /usr/local/bin/claude -e HOME=/tmp "${IMAGE}" --version 2>&1)" ||
   die "the bundled claude executable does not start: ${claude_version}"
 
