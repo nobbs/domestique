@@ -15,6 +15,7 @@ import {
   formatMovingTimeUncertainty,
   formatPrecipitation,
   formatReadTime,
+  formatShare,
   formatSpeed,
   formatTemperature,
   formatTimestamp,
@@ -357,5 +358,22 @@ describe("formatCoverage", () => {
   // own floor too rather than trusting that guarantee never to lapse.
   it("never prints a negative percentage", () => {
     expect(formatCoverage(-0.5)).toBe("0% sensor coverage");
+  });
+});
+
+describe("formatShare", () => {
+  it("rounds a share to the nearest whole percent", () => {
+    expect(formatShare(1, 3)).toBe("33%");
+    expect(formatShare(2, 3)).toBe("67%");
+    expect(formatShare(5, 5)).toBe("100%");
+  });
+
+  it("marks a sliver as under one percent rather than as nothing", () => {
+    expect(formatShare(2, 1000)).toBe("<1%");
+  });
+
+  it("reads nothing of nothing as nought", () => {
+    expect(formatShare(0, 100)).toBe("0%");
+    expect(formatShare(5, 0)).toBe("0%");
   });
 });
