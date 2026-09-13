@@ -484,3 +484,60 @@ func TestLoadReadsAConfiguredReadinessListener(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, ":9090", settings.HTTP.ReadinessAddress, "HTTP.ReadinessAddress")
 }
+
+func TestLoadLeavesTheAnalysisOffWithoutAToken(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.False(t, settings.Analysis.Enabled(), "Analysis.Enabled()")
+	assert.Empty(t, settings.Analysis.ClaudeToken(), "Analysis.ClaudeToken()")
+}
+
+func TestLoadReadsTheClaudeTokenFromAFile(t *testing.T) {
+	directory := t.TempDir()
+	configPath, _ := writeValidConfiguration(t, directory)
+	tokenPath := writeSecretFile(t, directory, "claude-token", "claude-token-value")
+	appendToFile(t, configPath, fmt.Sprintf("\n[analysis]\nclaude_token_file = %q\n", tokenPath))
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.True(t, settings.Analysis.Enabled(), "Analysis.Enabled()")
+	assert.Equal(t, []byte("claude-token-value"), settings.Analysis.ClaudeToken(), "Analysis.ClaudeToken()")
+}
+
+func TestLoadClearsTheDirectClaudeToken(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"ANALYSIS__CLAUDE_TOKEN", "direct-claude-token")
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, []byte("direct-claude-token"), settings.Analysis.ClaudeToken(), "Analysis.ClaudeToken()")
+	_, found := os.LookupEnv(envPrefix + "ANALYSIS__CLAUDE_TOKEN")
+	assert.False(t, found, "the direct secret environment value remains after Load()")
+}
+
+func TestLoadRejectsALiteralClaudeToken(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[analysis]\nclaude_token = \"not-allowed\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "literal secret")
+	assert.NotContains(t, err.Error(), "not-allowed", "Load() exposed the literal secret")
+}
+
+func TestLoadRejectsAmbiguousClaudeTokenInputs(t *testing.T) {
+	directory := t.TempDir()
+	configPath, _ := writeValidConfiguration(t, directory)
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"ANALYSIS__CLAUDE_TOKEN", "direct-claude-token")
+	t.Setenv(envPrefix+"ANALYSIS__CLAUDE_TOKEN_FILE", writeSecretFile(t, directory, "claude-token", "file-token"))
+
+	_, err := Load()
+	require.ErrorContains(t, err, "both direct and file environment")
+	assert.NotContains(t, err.Error(), "direct-claude-token", "Load() exposed the direct secret")
+}
