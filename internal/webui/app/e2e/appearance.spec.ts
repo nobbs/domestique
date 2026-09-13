@@ -11,6 +11,7 @@ import type { Page } from "@playwright/test";
 import { BASEMAP_ATTRIBUTION_TEXT } from "./basemap";
 import {
   expect,
+  followDestination,
   installOfflineBasemap,
   mapRegion,
   openLibrary,
@@ -134,7 +135,7 @@ test.describe("the theme override", () => {
     await chooseDarkTheme(page);
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
-    await page.getByRole("link", { name: "Settings" }).click();
+    await followDestination(page, "Settings");
 
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
     // And the bar on that page agrees about which scheme is in force, rather
@@ -179,16 +180,15 @@ test.describe("on a narrow viewport", () => {
 
   /*
    * The scheme is still a control here rather than something only a wide
-   * viewport gets. It sits at the same end of the bar as the session pill,
-   * which at this width is already reached by scrolling the bar sideways — the
-   * bar has never fitted 375 px, and this asserts the toggle is no worse off
-   * than the mark beside it, not that either is on screen.
+   * viewport gets, and at this width it is on screen rather than off the end of
+   * a bar that has run out of room: the destinations fold into a menu so that
+   * the two marks at the far end keep their places.
    */
   test("the colour scheme is still in the bar", async ({ offlinePage: page }) => {
     await openLibrary(page);
 
     const toggle = page.getByRole("button", { name: /^Theme: / });
-    await expect(toggle).toHaveCount(1);
+    await expect(toggle).toBeVisible();
     await toggle.click();
     await expect(page.getByRole("button", { name: "Theme: light. Switch to dark." })).toHaveCount(
       1,
@@ -199,7 +199,7 @@ test.describe("on a narrow viewport", () => {
   // why this is asked in a real browser rather than in jsdom.
   test("the settings page credits every data source", async ({ offlinePage: page }) => {
     await openLibrary(page);
-    await page.getByRole("link", { name: "Settings" }).click();
+    await followDestination(page, "Settings");
 
     const credit = page.getByText(BASEMAP_ATTRIBUTION_TEXT);
     await expect(credit).toHaveText(BASEMAP_ATTRIBUTION_TEXT);
@@ -241,7 +241,7 @@ test.describe("on a narrow viewport", () => {
 test.describe("text selection", () => {
   test("a double click on the page's own text selects nothing", async ({ offlinePage: page }) => {
     await openLibrary(page);
-    await page.getByRole("link", { name: "Settings" }).click();
+    await followDestination(page, "Settings");
 
     // A run of ordinary prose, well away from the map — which has had its own
     // selection turned off since long before the document did.

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { expect } from "storybook/test";
+import { expect, screen, userEvent, within } from "storybook/test";
 import { statusQuery, webUIConfigQuery } from "../api/queries";
 import type { Status, TargetStatus, WebUIConfig } from "../api/types";
 import { StoryProviders } from "../storybook/fixtures";
@@ -35,6 +35,12 @@ function unauthorized(): TargetStatus {
   };
 }
 
+/** One of the wrappers a story is rendered inside, so a story can add its own. */
+type MenuBarDecorator = Extract<
+  NonNullable<Meta<typeof MenuBar>["decorators"]>,
+  readonly unknown[]
+>[number];
+
 /**
  * A status the shared `StoryProviders` fixture does not carry — each of these
  * three stories overrides the query cache with the exact shape its own
@@ -49,7 +55,7 @@ function unauthorized(): TargetStatus {
  * of its own for the same reason: `StoryProviders` already mounted one, and
  * react-router refuses to render a second one nested inside it.
  */
-function withStatus(value?: Status): NonNullable<Meta<typeof MenuBar>["decorators"]> {
+function withStatus(value?: Status): MenuBarDecorator[] {
   return [
     (Story) => {
       // `enabled: false` because every story here seeds what it wants read.
@@ -162,5 +168,54 @@ export const StatusNotYetKnown: Story = {
     const link = canvas.getByRole("link", { name: "Sync" });
     await expect(link).not.toHaveAttribute("data-tone");
     await expect(link).not.toHaveAttribute("title");
+  },
+};
+
+/**
+ * A bar too narrow for every name — a phone, or a window dragged in.
+ *
+ * The names that fit stay named; the rest move into one control at the end of
+ * the row. Which names those are is measured rather than declared, so this is
+ * one of the few things the Vitest suite cannot settle: jsdom lays nothing out,
+ * so the split it reports is whatever geometry a test invents for it. Here the
+ * browser does the laying out, and the fold is the real one.
+ */
+export const NarrowRow: Story = {
+  decorators: [
+    (Story) => (
+      <div className="w-[420px]">
+        <Story />
+      </div>
+    ),
+    ...withStatus({
+      ready: true,
+      converged: true,
+      targets: [unauthorized()],
+      sync: {
+        state: "idle",
+        lastCompletedAt: "2026-08-18T06:30:00Z",
+        sourceRoutes: 0,
+        created: 0,
+        updated: 0,
+        deleted: 0,
+        phases: {},
+        surface: { classified: 0, total: 0, incomplete: 0, enrichmentFailures: 0 },
+      },
+    }),
+  ],
+  play: async ({ canvas }) => {
+    const more = canvas.getByRole("button", { name: "More" });
+    // The sync state came with it: a fold must not take away the one thing the
+    // bar says without being asked.
+    await expect(more).toHaveAttribute("title", "Sync · A target is not connected");
+
+    await userEvent.click(more);
+
+    // Through a portal into `document.body`, outside this story's canvas root.
+    const menu = await screen.findByRole("menu", {}, { timeout: 10_000 });
+    await expect(within(menu).getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
   },
 };
