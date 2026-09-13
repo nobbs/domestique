@@ -299,7 +299,9 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
   }
 
   return (
-    <div className={zones && sections.length > 0 ? "grid gap-4 md:grid-cols-2" : "grid"}>
+    <div
+      className={zones && sections.length > 0 ? "grid items-start gap-4 md:grid-cols-2" : "grid"}
+    >
       {zones ? (
         <section className={BOX} aria-label="Heart rate">
           <HeartRateZones
