@@ -138,8 +138,10 @@ type rawSettings struct {
 }
 
 type rawAnalysis struct {
-	ClaudeToken     string `koanf:"claude_token"`
-	ClaudeTokenFile string `koanf:"claude_token_file"`
+	// ClaudeTokenFile is nil when no file input names the key at all, which is
+	// the one way to leave the analysis off; an empty path is still refused.
+	ClaudeTokenFile *string `koanf:"claude_token_file"`
+	ClaudeToken     string  `koanf:"claude_token"`
 }
 
 type rawLog struct {
@@ -406,12 +408,16 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err != nil {
 		return nil, err
 	}
+	var claudeTokenFile string
+	if raw.Analysis.ClaudeTokenFile != nil {
+		claudeTokenFile = *raw.Analysis.ClaudeTokenFile
+	}
 	claudeToken, err := resolveOptionalSecret(secretInput{
 		name:      "claude token",
 		directEnv: envPrefix + "ANALYSIS__CLAUDE_TOKEN",
 		fileEnv:   envPrefix + "ANALYSIS__CLAUDE_TOKEN_FILE",
-		filePath:  raw.Analysis.ClaudeTokenFile,
-	})
+		filePath:  claudeTokenFile,
+	}, raw.Analysis.ClaudeTokenFile != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -499,10 +505,8 @@ func resolveSecret(input secretInput) (runtimeconfig.Secret, error) {
 
 // resolveOptionalSecret is resolveSecret for a secret whose absence is valid.
 // An input that is present but empty is still refused.
-func resolveOptionalSecret(input secretInput) (runtimeconfig.Secret, error) {
-	_, directSet := os.LookupEnv(input.directEnv)
-	_, fileSet := os.LookupEnv(input.fileEnv)
-	if !directSet && !fileSet && input.filePath == "" {
+func resolveOptionalSecret(input secretInput, filePresent bool) (runtimeconfig.Secret, error) {
+	if _, directSet := os.LookupEnv(input.directEnv); !directSet && !filePresent {
 		return runtimeconfig.Secret{}, nil
 	}
 

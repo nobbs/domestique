@@ -542,6 +542,15 @@ func TestLoadRejectsAmbiguousClaudeTokenInputs(t *testing.T) {
 	assert.NotContains(t, err.Error(), "direct-claude-token", "Load() exposed the direct secret")
 }
 
+func TestLoadRejectsAnEmptyClaudeTokenFileInTOML(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[analysis]\nclaude_token_file = \"\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "claude token is not configured")
+}
+
 func TestLoadRejectsAnEmptyClaudeTokenFileOverride(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)
