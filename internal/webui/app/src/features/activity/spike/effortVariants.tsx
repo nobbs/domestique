@@ -162,12 +162,25 @@ export function BandsEffort() {
 const dimmed = (zone: number, active: number | null) =>
   active !== null && active !== zone ? 0.2 : 1;
 
-function Ring({ zones, active = null }: { zones: number[]; active?: number | null }) {
+function Ring({
+  zones,
+  active = null,
+  onActive,
+}: {
+  zones: number[];
+  active?: number | null;
+  onActive?: (zone: number | null) => void;
+}) {
   const total = zones.reduce((sum, seconds) => sum + seconds, 0);
   let offset = 0;
   return (
     <div className="relative size-40 shrink-0">
-      <svg viewBox="0 0 42 42" className="-rotate-90 size-full" aria-hidden="true">
+      <svg
+        viewBox="0 0 42 42"
+        className="-rotate-90 size-full"
+        aria-hidden="true"
+        onMouseLeave={() => onActive?.(null)}
+      >
         {zones.map((seconds, zone) => {
           const length = (seconds / total) * 100;
           const dash = (
@@ -182,13 +195,14 @@ function Ring({ zones, active = null }: { zones: number[]; active?: number | nul
               opacity={dimmed(zone, active)}
               strokeDasharray={`${Math.max(length - 0.6, 0.3)} ${100 - length + 0.6}`}
               strokeDashoffset={-offset}
+              onMouseEnter={() => onActive?.(zone)}
             />
           );
           offset += length;
           return dash;
         })}
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
+      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
         <span className="font-semibold text-lg tabular-nums">
           {formatDuration(active === null ? total : zones[active])}
         </span>
@@ -384,7 +398,7 @@ export function SeriesEffort() {
   );
 }
 
-/** D+E · The ring and its table answer how much; the histogram and ribbon below answer where and when. Pointing at a row lights that zone in all three. */
+/** D+E · The ring and its table answer how much; the histogram and ribbon below answer where and when. Pointing at a row or a ring segment lights that zone everywhere. */
 export function RingSeriesEffort() {
   const [active, setActive] = useState<number | null>(null);
   return (
@@ -392,7 +406,7 @@ export function RingSeriesEffort() {
       <div className="@container">
         <div className="grid @3xl:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-6">
           <div className="@3xl:contents flex flex-wrap items-center gap-6">
-            <Ring zones={SAMPLE_ZONES} active={active} />
+            <Ring zones={SAMPLE_ZONES} active={active} onActive={setActive} />
             <ZoneTable zones={SAMPLE_ZONES} active={active} onActive={setActive} />
           </div>
           <div className="flex flex-col gap-3">
