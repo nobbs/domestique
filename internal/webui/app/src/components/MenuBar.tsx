@@ -119,10 +119,13 @@ export function MenuBar() {
       <Wordmark className="shrink-0" />
       {/* The row is what is left of the bar after the brand and the session, and
           it keeps that width whatever it holds — which is what stops a fold from
-          changing the budget that decided it. */}
+          changing the budget that decided it. It clips, or the measured copy
+          below would give the page a scrollbar the width of every name at once;
+          the clip is held off the edge by the focus ring's offset, which is
+          painted outside the box it belongs to and would otherwise go with it. */}
       <nav
         aria-label="Primary"
-        className="relative flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden sm:gap-1"
+        className="relative flex min-w-0 flex-1 items-center gap-0.5 overflow-clip [overflow-clip-margin:4px] sm:gap-1"
         ref={frameRef}
       >
         {/* Every name at its natural width, laid out but never painted, so the
@@ -145,10 +148,12 @@ export function MenuBar() {
               {destination.to === SYNC ? <Dot tone={state?.tone} /> : null}
             </span>
           ))}
-          {/* Measured with the sync dot whether or not sync is folded: the dot's
-              presence in the real trigger depends on the fold, and a measurement
-              that moved with its own answer would never settle. */}
-          <span className={TRIGGER_CLASS}>
+          {/* Measured carrying the dot and the current-page weight whether or
+              not the real one will: both depend on which names end up folded,
+              and a measurement that moved with its own answer would never
+              settle. Wearing them always is the safe direction — it reserves
+              the widest this control can be. */}
+          <span className={TRIGGER_CLASS} data-holds-current="true">
             More
             <Dot tone={state?.tone} />
             <IconChevronDown aria-hidden="true" size={14} stroke={1.6} />

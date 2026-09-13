@@ -62,8 +62,9 @@ function rectOf(left: number, width: number): DOMRect {
  *
  * Only the two things the arithmetic reads are answered: how wide the row is,
  * and where each item of the measured copy sits. Every name is given the same
- * width, the trailing control included — it is the last child of the copy — so
- * a budget of `n * (ITEM_WIDTH + ITEM_GAP)` holds about `n` of them.
+ * width, and so is the trailing control — it is the last child of the copy — so
+ * a budget of `n * (ITEM_WIDTH + ITEM_GAP)` holds `n - 1` names once the row
+ * has overflowed, the control taking the width of the name it stands in for.
  */
 function layOutRow(available: number): void {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (

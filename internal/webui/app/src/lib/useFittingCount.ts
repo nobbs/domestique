@@ -35,9 +35,9 @@ function fittingCount(frame: HTMLElement, measure: HTMLElement, total: number): 
   const control = rects.at(-1);
   const last = rects.at(total - 1);
 
-  // Mid-render the copy can hold a different number of items than the caller
-  // has asked about; showing everything is the answer that never hides a
-  // destination, and the next measurement corrects it.
+  // A guard rather than a case seen: everything below indexes by `total`, and
+  // reading a copy that disagrees with it would fold by arithmetic done over
+  // the wrong row. Showing every name is the answer that hides nothing.
   if (total === 0 || rects.length !== total + 1 || !control || !last) {
     return total;
   }
