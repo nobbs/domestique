@@ -110,7 +110,7 @@ func TestAskReturnsTheAnswerAndRunsTheExecutableConfined(t *testing.T) {
 	assert.Equal(t, "What about this ride?", seen.Stdin, "the prompt travels on standard input")
 	assert.Equal(t, []string{
 		"--print", "--output-format", "json", "--model", Model,
-		"--tools", "", "--no-session-persistence", "--strict-mcp-config",
+		"--tools", "", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "",
 	}, seen.Args)
 	assert.ElementsMatch(t, []string{
 		"HOME=" + home,

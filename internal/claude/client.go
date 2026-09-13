@@ -130,6 +130,9 @@ func (c *Client) Ask(ctx context.Context, prompt string) (Answer, error) {
 		"--tools", "",
 		"--no-session-persistence",
 		"--strict-mcp-config",
+		// Home is a writable volume: a settings file planted there could add
+		// hooks or point the token at another host, so none is read.
+		"--setting-sources", "",
 	)
 	command.Dir = c.home
 	command.Env = []string{
