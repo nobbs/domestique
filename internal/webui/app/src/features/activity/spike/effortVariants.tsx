@@ -296,10 +296,17 @@ function Histogram({ samples, active = null }: { samples: number[]; active?: num
   }
   const tallest = Math.max(...bins);
   const x = (bpm: number) => ((bpm - low) / 80) * 400;
+  const [hovered, setHovered] = useState<number | null>(null);
 
   return (
     <div className="flex flex-col gap-1">
-      <svg viewBox="0 0 400 105" className="w-full" role="img" aria-label="Heart-rate histogram">
+      <svg
+        viewBox="0 0 400 105"
+        className="w-full"
+        role="img"
+        aria-label="Heart-rate histogram"
+        onMouseLeave={() => setHovered(null)}
+      >
         {bins.map((count, bin) => {
           const height = (count / tallest) * 100;
           const zone = zoneOf(low + bin * 2);
@@ -312,12 +319,15 @@ function Histogram({ samples, active = null }: { samples: number[]; active?: num
               width={9}
               height={height}
               fill={colour(zone)}
-              opacity={dimmed(zone, active)}
-            />
+              opacity={hovered === null ? dimmed(zone, active) : dimmed(bin, hovered)}
+              onMouseEnter={() => setHovered(bin)}
+            >
+              <title>{`${low + bin * 2}–${low + bin * 2 + 1} bpm · ${formatDuration(count * SAMPLE_SECONDS)}`}</title>
+            </rect>
           );
         })}
         {BOUNDS.map((bound) => (
-          <g key={bound}>
+          <g key={bound} pointerEvents="none">
             <line
               x1={x(bound)}
               x2={x(bound)}
