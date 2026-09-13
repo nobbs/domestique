@@ -583,8 +583,9 @@ musl loader, `libgcc_s` and `libstdc++` are copied beside it from a hardened
 Alpine build stage of the same release as the static runtime. A build stage downloads
 it from `downloads.claude.ai/claude-code-releases` at a version pinned in the
 Dockerfile and verifies it against the checksum that version's manifest
-publishes, so the image is reproducible and a tampered download fails the
-build. The pin is a dependency like any other: Renovate moves it through a
+publishes, so the executable is the same on every build and a tampered download
+fails it. The two libraries come from the pinned Alpine release's current
+packages, as any security update to that release would. The pin is a dependency like any other: Renovate moves it through a
 custom manager, and it is not automerged, because the executable's behaviour is
 what the analysis task's contract rests on and no test here exercises it. The
 service runs it only as a child process with a bounded timeout, no tool
