@@ -1,5 +1,5 @@
 /**
- * Five positions on how the Effort card's time in zones should read. Storybook
+ * Positions on how the Effort card's time in zones should read. Storybook
  * only; see the note on each variant in `effortVariants.tsx` for its bet.
  */
 
@@ -7,10 +7,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import {
   BandsEffort,
   ColumnsEffort,
+  DisclosureEffort,
+  PeekEffort,
+  PopoverEffort,
   RingEffort,
   RingSeriesEffort,
   RowsEffort,
   SeriesEffort,
+  SwapEffort,
 } from "./effortVariants";
 
 const meta = {
@@ -45,6 +49,15 @@ export const Ring = card(RingEffort);
 export const Series = card(SeriesEffort);
 /** D+E · Ring and table on top, histogram and ribbon below, one zone lit across all three on hover. */
 export const RingSeries = card(RingSeriesEffort);
+
+/** F1 · Collapsed: a disclosure row opens the histogram beneath the table. */
+export const Disclosure = card(DisclosureEffort);
+/** F2 · Collapsed: a flat silhouette of the histogram is the button that grows it. */
+export const Peek = card(PeekEffort);
+/** F3 · Collapsed: a header switch trades the ring for the histogram. */
+export const Swap = card(SwapEffort);
+/** F4 · Collapsed: a header button opens the histogram in a popover. */
+export const PopoverDistribution = card(PopoverEffort);
 
 /** D+E at the full width the card has when the ride carries no other figures. */
 export const RingSeriesWide: Story = {

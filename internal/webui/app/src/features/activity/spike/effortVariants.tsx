@@ -3,7 +3,16 @@
  * the same ride. Storybook only; nothing here is imported by the application.
  */
 
+import { IconChartHistogram, IconChevronDown } from "@tabler/icons-react";
 import { type ReactNode, useState } from "react";
+import { Button } from "../../../components/Button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "../../../components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "../../../components/ui/toggle-group";
 import { formatDuration } from "../../../lib/format";
 
 const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
@@ -28,12 +37,21 @@ function share(seconds: number, total = TOTAL): string {
   return percent > 0 && percent < 1 ? "<1%" : `${Math.round(percent)}%`;
 }
 
-function Card({ children, note }: { children: ReactNode; note?: string }) {
+function Card({
+  children,
+  note,
+  action,
+}: {
+  children: ReactNode;
+  note?: string;
+  action?: ReactNode;
+}) {
   return (
     <section className="flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5">
-      <div className="flex items-baseline justify-between gap-4">
+      <div className="flex min-h-8 items-center justify-between gap-4">
         <h2 className="font-medium text-sm">Effort</h2>
         {note ? <span className="text-[var(--ink-2)] text-xs">{note}</span> : null}
+        {action}
       </div>
       {children}
     </section>
@@ -287,6 +305,18 @@ const SAMPLE_ZONES = ZONES.map(
   (_, zone) => SAMPLES.filter((bpm) => zoneOf(bpm) === zone).length * SAMPLE_SECONDS,
 );
 
+const low = 90;
+
+/** Sample counts in 2-bpm bins from 90 bpm up. */
+function binsOf(samples: number[]): number[] {
+  const bins = Array.from({ length: 40 }, () => 0);
+  for (const bpm of samples) {
+    const bin = Math.floor((bpm - low) / 2);
+    bins[bin] = (bins[bin] ?? 0) + 1;
+  }
+  return bins;
+}
+
 function Histogram({
   samples,
   active = null,
@@ -296,12 +326,7 @@ function Histogram({
   active?: number | null;
   onActive?: (zone: number | null) => void;
 }) {
-  const low = 90;
-  const bins = Array.from({ length: 40 }, () => 0);
-  for (const bpm of samples) {
-    const bin = Math.floor((bpm - low) / 2);
-    bins[bin] = (bins[bin] ?? 0) + 1;
-  }
+  const bins = binsOf(samples);
   const tallest = Math.max(...bins);
   const x = (bpm: number) => ((bpm - low) / 80) * 400;
   const [hovered, setHovered] = useState<number | null>(null);
@@ -440,7 +465,7 @@ export function SeriesEffort() {
   );
 }
 
-/** D+E · The ring and its table answer how much; the histogram and ribbon below answer where and when. Pointing at a row or a ring segment lights that zone everywhere. */
+/** D+E · The ring and its table answer how much; the histogram below answers where. Pointing at a row or a ring segment lights that zone everywhere. */
 export function RingSeriesEffort() {
   const [active, setActive] = useState<number | null>(null);
   return (
@@ -453,10 +478,158 @@ export function RingSeriesEffort() {
           </div>
           <div className="flex flex-col gap-3">
             <Histogram samples={SAMPLES} active={active} onActive={setActive} />
-            <Ribbon samples={SAMPLES} active={active} />
           </div>
         </div>
       </div>
+    </Card>
+  );
+}
+
+/** The ring and table every collapsed variant keeps in view. */
+function Zones({
+  active,
+  onActive,
+}: {
+  active: number | null;
+  onActive: (zone: number | null) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-6">
+      <Ring zones={SAMPLE_ZONES} active={active} onActive={onActive} />
+      <ZoneTable zones={SAMPLE_ZONES} active={active} onActive={onActive} />
+    </div>
+  );
+}
+
+const PANEL_MOTION =
+  "h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0";
+
+/** F1 · A disclosure row under the table; the histogram slides open beneath it. Nothing is fetched until it opens. */
+export function DisclosureEffort() {
+  const [active, setActive] = useState<number | null>(null);
+  return (
+    <Card>
+      <Zones active={active} onActive={setActive} />
+      <Collapsible className="flex flex-col">
+        <CollapsibleTrigger
+          render={<Button variant="ghost" />}
+          className="group justify-between text-[var(--ink-2)]"
+        >
+          Heart-rate distribution
+          <IconChevronDown className="transition-transform group-data-panel-open:rotate-180" />
+        </CollapsibleTrigger>
+        <CollapsibleContent className={PANEL_MOTION}>
+          <div className="pt-3">
+            <Histogram samples={SAMPLES} active={active} onActive={setActive} />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+/** F2 · A peek: a flat, label-free silhouette of the histogram invites the click that grows it. Needs the series up front. */
+export function PeekEffort() {
+  const [active, setActive] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
+  const bins = binsOf(SAMPLES);
+  const tallest = Math.max(...bins);
+
+  return (
+    <Card>
+      <Zones active={active} onActive={setActive} />
+      <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col gap-1">
+        {open ? null : (
+          <CollapsibleTrigger
+            aria-label="Show heart-rate distribution"
+            className="group relative flex h-10 items-end gap-px rounded-md px-1 hover:bg-black/5"
+          >
+            {bins.map((count, bin) => (
+              <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: bins are a fixed bpm order
+                key={bin}
+                className="flex-1 rounded-t-sm opacity-50 group-hover:opacity-80"
+                style={{
+                  height: `${(count / tallest) * 100}%`,
+                  backgroundColor: colour(zoneOf(low + bin * 2)),
+                }}
+              />
+            ))}
+            <span className="absolute inset-0 flex items-center justify-center text-[var(--ink-2)] text-xs opacity-0 group-hover:opacity-100">
+              <span className="rounded bg-[var(--panel)] px-1.5 py-0.5 shadow-sm">
+                Show distribution
+              </span>
+            </span>
+          </CollapsibleTrigger>
+        )}
+        <CollapsibleContent className={PANEL_MOTION}>
+          <Histogram samples={SAMPLES} active={active} onActive={setActive} />
+          <div className="flex justify-end">
+            <CollapsibleTrigger render={<Button variant="ghost" />} className="text-[var(--ink-2)]">
+              Hide
+            </CollapsibleTrigger>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+}
+
+/** F3 · A switch in the header trades the ring for the histogram; the table stays, so the card barely changes height. */
+export function SwapEffort() {
+  const [active, setActive] = useState<number | null>(null);
+  const [view, setView] = useState<"ring" | "distribution">("ring");
+
+  return (
+    <Card
+      action={
+        <ToggleGroup
+          aria-label="View"
+          variant="outline"
+          spacing={0}
+          size="sm"
+          value={[view]}
+          onValueChange={(next) => {
+            const chosen = next[0];
+            if (chosen === "ring" || chosen === "distribution") {
+              setView(chosen);
+            }
+          }}
+        >
+          <ToggleGroupItem value="ring">Zones</ToggleGroupItem>
+          <ToggleGroupItem value="distribution">Distribution</ToggleGroupItem>
+        </ToggleGroup>
+      }
+    >
+      {view === "ring" ? (
+        <Zones active={active} onActive={setActive} />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <Histogram samples={SAMPLES} active={active} onActive={setActive} />
+          <ZoneTable zones={SAMPLE_ZONES} active={active} onActive={setActive} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** F4 · A header button opens the histogram in a popover over the page; the card itself never moves. */
+export function PopoverEffort() {
+  const [active, setActive] = useState<number | null>(null);
+  return (
+    <Card
+      action={
+        <Popover onOpenChange={(open) => (open ? null : setActive(null))}>
+          <PopoverTrigger render={<Button variant="ghost" icon={<IconChartHistogram />} />}>
+            Distribution
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-96">
+            <Histogram samples={SAMPLES} active={active} onActive={setActive} />
+          </PopoverContent>
+        </Popover>
+      }
+    >
+      <Zones active={active} onActive={setActive} />
     </Card>
   );
 }
