@@ -498,8 +498,11 @@ func resolveSecret(input secretInput) (runtimeconfig.Secret, error) {
 }
 
 // resolveOptionalSecret is resolveSecret for a secret whose absence is valid.
+// An input that is present but empty is still refused.
 func resolveOptionalSecret(input secretInput) (runtimeconfig.Secret, error) {
-	if _, directSet := os.LookupEnv(input.directEnv); !directSet && input.filePath == "" {
+	_, directSet := os.LookupEnv(input.directEnv)
+	_, fileSet := os.LookupEnv(input.fileEnv)
+	if !directSet && !fileSet && input.filePath == "" {
 		return runtimeconfig.Secret{}, nil
 	}
 

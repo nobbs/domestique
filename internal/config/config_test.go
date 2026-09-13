@@ -541,3 +541,12 @@ func TestLoadRejectsAmbiguousClaudeTokenInputs(t *testing.T) {
 	require.ErrorContains(t, err, "both direct and file environment")
 	assert.NotContains(t, err.Error(), "direct-claude-token", "Load() exposed the direct secret")
 }
+
+func TestLoadRejectsAnEmptyClaudeTokenFileOverride(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv(envPrefix+"ANALYSIS__CLAUDE_TOKEN_FILE", "")
+
+	_, err := Load()
+	require.ErrorContains(t, err, "claude token is not configured")
+}
