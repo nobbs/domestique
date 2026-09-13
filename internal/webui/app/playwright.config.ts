@@ -76,7 +76,10 @@ export default defineConfig({
   // A flaky browser test that passes on the second attempt is a browser test that
   // reports nothing. Failures here are meant to be reproducible.
   retries: 0,
-  timeout: 60_000,
+  // Doubled on a runner, where four workers paint their maps in software over
+  // four shared cores: a test that opens a route and settles WebGL twice costs
+  // under 10 s unloaded and has exceeded 60 s there (#731).
+  timeout: process.env.CI ? 120_000 : 60_000,
   // Name up to ten files over 15 s: Playwright's own threshold is five minutes,
   // which never named the files behind a 2-3x swing in the suite's wall clock.
   reportSlowTests: { max: 10, threshold: 15_000 },
