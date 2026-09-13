@@ -170,9 +170,9 @@ func (a *Analyser) heldTypes(ctx context.Context, subject string) ([]int, error)
 // analysisContext is what every prompt of one run reads beside its ride.
 type analysisContext struct {
 	metrics  map[int64]RideMetrics
-	profile  rider.Profile
-	loads    []trainingload.RideLoad
 	location *time.Location
+	loads    []trainingload.RideLoad
+	profile  rider.Profile
 }
 
 func (a *Analyser) readContext(ctx context.Context, targetID, subject string) (analysisContext, error) {
