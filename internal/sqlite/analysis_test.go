@@ -143,3 +143,14 @@ func TestStoreActivityAnalysisRefusesTextOutsideTheBound(t *testing.T) {
 	assert.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 1, testAnalysis(strings.Repeat("é", 2000))),
 		"the bound counts characters, not bytes")
 }
+
+// A limit is the run's bound; zero or less would silently mean nothing or everything.
+func TestAnalysisReadsRefuseANonPositiveLimit(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+
+	_, err := store.ActivitiesAwaitingAnalysis(t.Context(), "rider-a", activityNow(), 0)
+	require.Error(t, err, "ActivitiesAwaitingAnalysis() with no limit")
+	_, err = store.AnalysesBefore(t.Context(), "rider-a", activityNow(), -1)
+	assert.Error(t, err, "AnalysesBefore() with a negative limit")
+}

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -28,6 +29,9 @@ func (s *Store) RecordAnalysisEnabled(ctx context.Context, now time.Time) (time.
 func (s *Store) ActivitiesAwaitingAnalysis(
 	ctx context.Context, targetID string, since time.Time, limit int,
 ) ([]activity.PendingAnalysis, error) {
+	if limit <= 0 {
+		return nil, errors.New("a positive limit is required")
+	}
 	rows, err := s.queries.ListActivitiesAwaitingAnalysis(ctx, sqlcgen.ListActivitiesAwaitingAnalysisParams{
 		TargetSlot: targetID, EnabledSinceUnix: since.Unix(), RowLimit: int64(limit),
 	})
@@ -68,6 +72,9 @@ func (s *Store) StoreActivityAnalysis(
 func (s *Store) AnalysesBefore(
 	ctx context.Context, targetID string, before time.Time, limit int,
 ) ([]activity.Analysis, error) {
+	if limit <= 0 {
+		return nil, errors.New("a positive limit is required")
+	}
 	rows, err := s.queries.ListAnalysesBefore(ctx, sqlcgen.ListAnalysesBeforeParams{
 		TargetSlot: targetID, StartedBeforeUnix: before.Unix(), RowLimit: int64(limit),
 	})
