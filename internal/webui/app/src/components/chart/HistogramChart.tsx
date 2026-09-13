@@ -1,6 +1,8 @@
 /**
- * Equal-width bars side by side, each belonging to a group it shares a colour
- * with, and labelled marks at chosen bar edges.
+ * Bars side by side, each as wide as the span of the axis it covers and
+ * belonging to a group it shares a colour with, and labelled marks on the axis.
+ * A bar's height is its value per unit of span, so a bar cut narrower than its
+ * neighbours is not drawn as if it held less.
  *
  * Pointing at a bar lifts that bar alone and names its group, so a chart or
  * table beside it can show the whole group; a group named from elsewhere lifts
@@ -11,12 +13,14 @@ import { type ReactNode, useState } from "react";
 
 export interface HistogramBar<G extends string | number> {
   value: number;
+  /** Units of the axis the bar covers; 1 when absent. */
+  span?: number;
   colour: string;
   group: G;
 }
 
 export interface HistogramMarker {
-  /** The bar edge the mark stands on: 0 is the left of the first bar. */
+  /** Where on the axis the mark stands, in span units from the first bar's left edge. */
   edge: number;
   label: string;
 }
@@ -33,9 +37,11 @@ export interface HistogramChartProps<G extends string | number> {
   readout?: (index: number) => ReactNode;
 }
 
-/** Height and bar width in viewBox units; the chart is stretched to its box. */
+/** Height and one span unit's width in viewBox units; the chart is stretched to its box. */
 const HEIGHT = 100;
-const BAR = 10;
+const UNIT = 10;
+/** The ground left either side of a bar, in viewBox units. */
+const GAP = 1;
 
 export function HistogramChart<G extends string | number>({
   label,
@@ -47,10 +53,16 @@ export function HistogramChart<G extends string | number>({
   readout,
 }: HistogramChartProps<G>) {
   const [pointed, setPointed] = useState<number | null>(null);
-  const tallest = Math.max(0, ...bars.map((bar) => bar.value));
-  const width = bars.length * BAR;
-  const percent = (edge: number) => (edge / Math.max(bars.length, 1)) * 100;
-  const pointedBar = pointed === null ? undefined : bars[pointed];
+  const spans = bars.map((bar) => bar.span ?? 1);
+  const starts = spans.map((_, index) =>
+    spans.slice(0, index).reduce((sum, span) => sum + span, 0),
+  );
+  const axis = spans.reduce((sum, span) => sum + span, 0);
+  const densities = bars.map((bar, index) => bar.value / (spans[index] ?? 1));
+  const tallest = Math.max(0, ...densities);
+  const heightOf = (index: number) =>
+    tallest > 0 ? ((densities[index] ?? 0) / tallest) * HEIGHT : 0;
+  const percent = (edge: number) => (edge / Math.max(axis, 1)) * 100;
 
   const opacity = (index: number, group: G) => {
     if (pointed !== null) {
@@ -64,7 +76,7 @@ export function HistogramChart<G extends string | number>({
     <div className="flex flex-col gap-1">
       <div className="relative">
         <svg
-          viewBox={`0 0 ${width} ${HEIGHT}`}
+          viewBox={`0 0 ${axis * UNIT} ${HEIGHT}`}
           preserveAspectRatio="none"
           className="block h-32 w-full"
           role="img"
@@ -79,9 +91,9 @@ export function HistogramChart<G extends string | number>({
             <rect
               // biome-ignore lint/suspicious/noArrayIndexKey: a bar's place is its identity
               key={index}
-              x={index * BAR}
+              x={(starts[index] ?? 0) * UNIT}
               y={0}
-              width={BAR}
+              width={(spans[index] ?? 1) * UNIT}
               height={HEIGHT}
               fill="transparent"
               onMouseEnter={() => {
@@ -91,15 +103,15 @@ export function HistogramChart<G extends string | number>({
             />
           ))}
           {bars.map((bar, index) => {
-            const height = tallest > 0 ? (bar.value / tallest) * HEIGHT : 0;
+            const height = heightOf(index);
             return (
               <rect
                 // biome-ignore lint/suspicious/noArrayIndexKey: a bar's place is its identity
                 key={index}
                 data-bar={index}
-                x={index * BAR + 1}
+                x={(starts[index] ?? 0) * UNIT + GAP}
                 y={HEIGHT - height}
-                width={BAR - 2}
+                width={(spans[index] ?? 1) * UNIT - 2 * GAP}
                 height={height}
                 fill={bar.colour}
                 opacity={opacity(index, bar.group)}
@@ -110,8 +122,8 @@ export function HistogramChart<G extends string | number>({
           {markers.map((marker) => (
             <line
               key={marker.edge}
-              x1={marker.edge * BAR}
-              x2={marker.edge * BAR}
+              x1={marker.edge * UNIT}
+              x2={marker.edge * UNIT}
               y1={0}
               y2={HEIGHT}
               stroke="var(--ink-2)"
@@ -122,13 +134,13 @@ export function HistogramChart<G extends string | number>({
             />
           ))}
         </svg>
-        {pointed !== null && pointedBar && readout ? (
+        {pointed !== null && readout ? (
           <div
             className="-translate-x-1/2 -translate-y-full pointer-events-none absolute flex flex-col whitespace-nowrap rounded-md bg-[var(--panel)] px-2 py-1 text-xs tabular-nums shadow-md ring-1 ring-black/10"
             style={{
               // Clamped so the readout over an edge bar stays inside the chart.
-              left: `${Math.min(88, Math.max(12, percent(pointed + 0.5)))}%`,
-              top: `calc(${tallest > 0 ? (1 - pointedBar.value / tallest) * 100 : 100}% - 6px)`,
+              left: `${Math.min(88, Math.max(12, percent((starts[pointed] ?? 0) + (spans[pointed] ?? 1) / 2)))}%`,
+              top: `calc(${100 - (heightOf(pointed) / HEIGHT) * 100}% - 6px)`,
             }}
           >
             {readout(pointed)}

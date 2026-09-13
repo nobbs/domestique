@@ -192,6 +192,50 @@ function Distribution({
   );
 }
 
+/** The bucket widths a distribution is grouped at, narrowest first. */
+const BUCKET_BPM = [1, 2, 5, 10];
+/** The most bars a distribution is drawn with before a wider bucket is taken. */
+const MOST_BARS = 30;
+
+export interface BeatBucket {
+  /** The first and last whole heart rate the bucket holds, inclusive. */
+  fromBpm: number;
+  toBpm: number;
+  seconds: number;
+  zone: number;
+}
+
+/**
+ * Groups a distribution into the narrowest round buckets that keep it to about
+ * thirty bars. A bucket a zone edge falls inside is cut at the edge, so no bar
+ * mixes two zones and every edge stands between two bars.
+ */
+export function bucketBeats(
+  distribution: ActivityHeartRateDistribution,
+  edges: number[],
+): BeatBucket[] {
+  const { fromBpm, seconds } = distribution;
+  const width = BUCKET_BPM.find((bpm) => seconds.length / bpm <= MOST_BARS) ?? 10;
+  const buckets: BeatBucket[] = [];
+  seconds.forEach((held, index) => {
+    const bpm = fromBpm + index;
+    const zone = edges.filter((edge) => bpm >= edge).length;
+    const last = buckets.at(-1);
+    if (
+      last &&
+      last.zone === zone &&
+      Math.floor(last.fromBpm / width) === Math.floor(bpm / width)
+    ) {
+      last.toBpm = bpm;
+      last.seconds += held;
+    } else {
+      buckets.push({ fromBpm: bpm, toBpm: bpm, seconds: held, zone });
+    }
+  });
+
+  return buckets;
+}
+
 function DistributionChart({
   distribution,
   edges,
@@ -205,23 +249,34 @@ function DistributionChart({
 }) {
   const { fromBpm, seconds } = distribution;
   const total = seconds.reduce((sum, held) => sum + held, 0);
-  const zoneOf = (bpm: number) => edges.filter((edge) => bpm >= edge).length;
-  const readout = (index: number): ReactNode => (
-    <>
-      <span className="font-medium">{fromBpm + index} bpm</span>
-      <span className="text-[var(--ink-2)]">
-        {formatDuration(seconds[index])} · {formatShare(seconds[index] ?? 0, total)}
-      </span>
-    </>
-  );
+  const buckets = bucketBeats(distribution, edges);
+  const readout = (index: number): ReactNode => {
+    const bucket = buckets[index];
+    if (!bucket) {
+      return null;
+    }
+
+    return (
+      <>
+        <span className="font-medium">
+          {bucket.fromBpm === bucket.toBpm ? bucket.fromBpm : `${bucket.fromBpm}–${bucket.toBpm}`}{" "}
+          bpm
+        </span>
+        <span className="text-[var(--ink-2)]">
+          {formatDuration(bucket.seconds)} · {formatShare(bucket.seconds, total)}
+        </span>
+      </>
+    );
+  };
 
   return (
     <HistogramChart
       label="Time at each heart rate"
-      bars={seconds.map((held, index) => ({
-        value: held,
-        colour: zoneColour(zoneOf(fromBpm + index)),
-        group: zoneOf(fromBpm + index),
+      bars={buckets.map((bucket) => ({
+        value: bucket.seconds,
+        span: bucket.toBpm - bucket.fromBpm + 1,
+        colour: zoneColour(bucket.zone),
+        group: bucket.zone,
       }))}
       markers={edges
         .map((edge) => ({ edge: edge - fromBpm, label: String(edge) }))

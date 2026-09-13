@@ -59,6 +59,27 @@ describe("HistogramChart", () => {
     expect(bar(container, 2)?.getAttribute("opacity")).toBe("0.2");
   });
 
+  it("draws a wider bar across more of the axis, as tall as what it holds per unit", () => {
+    const { container } = render(
+      <HistogramChart
+        label="Spread"
+        bars={[
+          { value: 10, colour: "grey", group: 0 },
+          { value: 40, span: 4, colour: "grey", group: 0 },
+        ]}
+        markers={[{ edge: 1, label: "edge" }]}
+      />,
+    );
+
+    expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 50 100");
+    expect(bar(container, 1)?.getAttribute("x")).toBe("11");
+    expect(bar(container, 1)?.getAttribute("width")).toBe("38");
+    // Forty over four units is ten per unit, the same as the one-unit bar beside it.
+    expect(bar(container, 1)?.getAttribute("height")).toBe("100");
+    expect(bar(container, 0)?.getAttribute("height")).toBe("100");
+    expect(screen.getByText("edge")).toHaveStyle({ left: "20%" });
+  });
+
   it("labels each marker where its edge falls, and the unit at the end", () => {
     render(
       <HistogramChart

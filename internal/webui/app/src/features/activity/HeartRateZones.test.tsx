@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activityHeartRateDistributionQuery } from "../../api/queries";
 import type { ActivityHeartRateDistribution } from "../../api/types";
-import { HeartRateZones, type HeartRateZonesProps } from "./HeartRateZones";
+import { bucketBeats, HeartRateZones, type HeartRateZonesProps } from "./HeartRateZones";
 
 const ZONES: HeartRateZonesProps = {
   rideId: "7",
@@ -96,6 +96,17 @@ describe("HeartRateZones", () => {
     expect(screen.getByText("25 s · 63%")).toBeInTheDocument();
   });
 
+  it("draws a wide spread in five-beat bars, cut at each zone edge", async () => {
+    const { container } = show({}, { fromBpm: 100, seconds: Array.from({ length: 100 }, () => 6) });
+    await userEvent.click(screen.getByRole("button", { name: "Distribution" }));
+
+    // Twenty five-beat bars, two of them cut in two where 134 and 148 fall inside.
+    expect(bars(container)).toHaveLength(22);
+    fireEvent.mouseEnter(container.querySelectorAll("rect:not([data-bar])")[7] as Element);
+    expect(screen.getByText("134 bpm")).toBeInTheDocument();
+    expect(screen.getAllByRole("row")[2]).toHaveAttribute("data-active");
+  });
+
   it("says so when the service holds no heart rates for the ride", async () => {
     vi.stubGlobal(
       "fetch",
@@ -124,5 +135,42 @@ describe("HeartRateZones", () => {
         screen.getByText("The service did not say how long the ride held each heart rate."),
       ).toBeInTheDocument(),
     );
+  });
+});
+
+describe("bucketBeats", () => {
+  it("keeps one bar per beat for a narrow spread", () => {
+    const buckets = bucketBeats({ fromBpm: 130, seconds: [1, 2, 3] }, [131]);
+
+    expect(
+      buckets.map((bucket) => [bucket.fromBpm, bucket.toBpm, bucket.seconds, bucket.zone]),
+    ).toEqual([
+      [130, 130, 1, 0],
+      [131, 131, 2, 1],
+      [132, 132, 3, 1],
+    ]);
+  });
+
+  it("groups by round buckets and cuts one at the zone edge inside it", () => {
+    const buckets = bucketBeats(
+      { fromBpm: 100, seconds: Array.from({ length: 50 }, () => 1) },
+      [123],
+    );
+
+    // Fifty beats take two-beat buckets; 123 cuts 122-123 into 122 and 123.
+    expect(buckets).toHaveLength(26);
+    expect(buckets[11]).toEqual({ fromBpm: 122, toBpm: 122, seconds: 1, zone: 0 });
+    expect(buckets[12]).toEqual({ fromBpm: 123, toBpm: 123, seconds: 1, zone: 1 });
+    expect(buckets[13]).toEqual({ fromBpm: 124, toBpm: 125, seconds: 2, zone: 1 });
+  });
+
+  it("starts the first bucket where the distribution does, not at the round number below", () => {
+    const buckets = bucketBeats(
+      { fromBpm: 103, seconds: Array.from({ length: 100 }, () => 1) },
+      [],
+    );
+
+    expect(buckets[0]).toEqual({ fromBpm: 103, toBpm: 104, seconds: 2, zone: 0 });
+    expect(buckets[1]).toEqual({ fromBpm: 105, toBpm: 109, seconds: 5, zone: 0 });
   });
 });
