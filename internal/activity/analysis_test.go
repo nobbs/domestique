@@ -252,9 +252,9 @@ func TestNewAnalyserRefusesIncompleteOptions(t *testing.T) {
 	assert.Error(t, err, "no indoor types")
 }
 
-// The prompt carries the load at the end of the ride's own day, cut in the
-// configured zone, or in UTC when that zone cannot be read.
-func TestAnalyseTellsTheLoadAtTheEndOfTheRidesDay(t *testing.T) {
+// The prompt carries the rider's current load, cut in the configured zone, or
+// in UTC when that zone cannot be read.
+func TestAnalyseTellsTheCurrentLoad(t *testing.T) {
 	t.Parallel()
 	ride := PendingAnalysis{ID: 1, StartedAt: analyseNow().Add(-time.Hour)}
 	store := newFakeAnalyseStore(ride)
@@ -266,5 +266,19 @@ func TestAnalyseTellsTheLoadAtTheEndOfTheRidesDay(t *testing.T) {
 
 	assert.Equal(t, Result{Outcome: Polled, Analysed: 1}, analyser.Analyse(t.Context(), "rider-a"))
 	require.Len(t, asker.prompts, 1)
-	assert.Contains(t, asker.prompts[0], "Training load at the end of the ride's day")
+	assert.Contains(t, asker.prompts[0], "The rider's training load now")
+}
+
+// A shutdown mid-request is not a failed analysis worth a warning.
+func TestAnalyseLogsNoFailureForAShutdown(t *testing.T) {
+	logged := captureLogs(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	store := newFakeAnalyseStore(PendingAnalysis{ID: 1})
+	asker := &fakeAsker{failure: FailureExecutable, answers: []string{""}}
+
+	result := newTestAnalyser(t, store, asker).Analyse(ctx, "rider-a")
+
+	assert.Equal(t, Failed, result.Outcome)
+	assert.NotContains(t, logged.String(), "ride analysis failed")
 }

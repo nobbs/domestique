@@ -70,7 +70,7 @@ This ride:
 - heart-rate sensor covered 90% of the ride
 - power meter covered 98% of the ride
 
-Training load at the end of the ride's day:
+The rider's training load now:
 - TSS scale: fitness 62, fatigue 71, form -9
 - TRIMP scale: fitness 70, fatigue 80, form -10
 

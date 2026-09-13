@@ -17,7 +17,7 @@ Use only the figures below. Where a figure you would want is absent, say so rath
 
 // composePrompt is the whole of what leaves the host about one ride: its
 // derived figures and sensor means, the rider's profile and zone bounds, the
-// training load after the ride's day and earlier analyses. Never the track,
+// rider's current training load and earlier analyses. Never the track,
 // the weather, the provider's document or who the rider is.
 func composePrompt(profile *rider.Profile, metrics *RideMetrics, day *trainingload.Day, earlier []Analysis) string {
 	var prompt strings.Builder
@@ -26,7 +26,7 @@ func composePrompt(profile *rider.Profile, metrics *RideMetrics, day *traininglo
 	writeSection(&prompt, "Rider profile", profileLines(profile))
 	writeSection(&prompt, "This ride", rideLines(metrics))
 	if day != nil {
-		writeSection(&prompt, "Training load at the end of the ride's day", []string{
+		writeSection(&prompt, "The rider's training load now", []string{
 			fmt.Sprintf("TSS scale: fitness %.0f, fatigue %.0f, form %.0f", day.TSSFitness, day.TSSFatigue, day.TSSForm),
 			fmt.Sprintf("TRIMP scale: fitness %.0f, fatigue %.0f, form %.0f", day.TRIMPFitness, day.TRIMPFatigue, day.TRIMPForm),
 		})
