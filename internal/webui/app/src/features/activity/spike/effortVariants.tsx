@@ -308,52 +308,70 @@ function Histogram({
 
   return (
     <div className="flex flex-col gap-1">
-      <svg
-        viewBox="0 0 400 105"
-        className="w-full"
-        role="img"
-        aria-label="Heart-rate histogram"
-        onMouseLeave={() => {
-          setHovered(null);
-          onActive?.(null);
-        }}
-      >
-        {bins.map((count, bin) => {
-          const height = (count / tallest) * 100;
-          const zone = zoneOf(low + bin * 2);
-          return (
-            <rect
-              // biome-ignore lint/suspicious/noArrayIndexKey: bins are a fixed bpm order
-              key={bin}
-              x={x(low + bin * 2) + 0.5}
-              y={105 - height}
-              width={9}
-              height={height}
-              fill={colour(zone)}
-              opacity={hovered === null ? dimmed(zone, active) : dimmed(bin, hovered)}
-              onMouseEnter={() => {
-                setHovered(bin);
-                onActive?.(zone);
-              }}
-            >
-              <title>{`${low + bin * 2}–${low + bin * 2 + 1} bpm · ${formatDuration(count * SAMPLE_SECONDS)}`}</title>
-            </rect>
-          );
-        })}
-        {BOUNDS.map((bound) => (
-          <g key={bound} pointerEvents="none">
-            <line
-              x1={x(bound)}
-              x2={x(bound)}
-              y1={0}
-              y2={105}
-              stroke="var(--ink-2)"
-              strokeDasharray="2 2"
-              strokeWidth={0.5}
-            />
-          </g>
-        ))}
-      </svg>
+      <div className="relative">
+        <svg
+          viewBox="0 0 400 105"
+          className="w-full"
+          role="img"
+          aria-label="Heart-rate histogram"
+          onMouseLeave={() => {
+            setHovered(null);
+            onActive?.(null);
+          }}
+        >
+          {bins.map((count, bin) => {
+            const height = (count / tallest) * 100;
+            const zone = zoneOf(low + bin * 2);
+            return (
+              <rect
+                // biome-ignore lint/suspicious/noArrayIndexKey: bins are a fixed bpm order
+                key={bin}
+                x={x(low + bin * 2) + 0.5}
+                y={105 - height}
+                width={9}
+                height={height}
+                fill={colour(zone)}
+                opacity={hovered === null ? dimmed(zone, active) : dimmed(bin, hovered)}
+                onMouseEnter={() => {
+                  setHovered(bin);
+                  onActive?.(zone);
+                }}
+              />
+            );
+          })}
+          {BOUNDS.map((bound) => (
+            <g key={bound} pointerEvents="none">
+              <line
+                x1={x(bound)}
+                x2={x(bound)}
+                y1={0}
+                y2={105}
+                stroke="var(--ink-2)"
+                strokeDasharray="2 2"
+                strokeWidth={0.5}
+              />
+            </g>
+          ))}
+        </svg>
+        {hovered === null ? null : (
+          <div
+            className="-translate-x-1/2 -translate-y-full pointer-events-none absolute flex flex-col whitespace-nowrap rounded-md bg-[var(--panel)] px-2 py-1 text-xs tabular-nums shadow-md ring-1 ring-black/10"
+            style={{
+              // Clamped so the edge bars' readout stays inside the card.
+              left: `${Math.min(90, Math.max(10, (x(low + hovered * 2) + 5) / 4))}%`,
+              top: `calc(${((105 - ((bins[hovered] ?? 0) / tallest) * 100) / 105) * 100}% - 6px)`,
+            }}
+          >
+            <span className="font-medium">
+              {low + hovered * 2}–{low + hovered * 2 + 1} bpm
+            </span>
+            <span className="text-[var(--ink-2)]">
+              {formatDuration((bins[hovered] ?? 0) * SAMPLE_SECONDS)} ·{" "}
+              {share(bins[hovered] ?? 0, samples.length)}
+            </span>
+          </div>
+        )}
+      </div>
       <div className="relative h-4 text-[10px] text-[var(--ink-2)] tabular-nums">
         {BOUNDS.map((bound) => (
           <span
