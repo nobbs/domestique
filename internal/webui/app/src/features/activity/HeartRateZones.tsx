@@ -98,7 +98,7 @@ export function HeartRateZones({
       label: "Zones",
       content: () => (
         <>
-          <div className="flex flex-wrap items-center gap-6">
+          <div className="flex justify-center">
             <DonutChart
               segments={zoneSeconds.map((seconds, zone) => ({
                 key: zone,
@@ -115,8 +115,8 @@ export function HeartRateZones({
                 {active === null ? "in zones" : ZONE_NAMES[active]}
               </span>
             </DonutChart>
-            <div className="min-w-60 flex-1">{table}</div>
           </div>
+          {table}
           {deviceZoneSeconds && deviceZoneSeconds.length > 0 ? (
             // The profile's zones above are the default; this is only a caption
             // naming the head unit's own cut of the same ride, for comparison.
