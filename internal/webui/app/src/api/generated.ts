@@ -573,6 +573,16 @@ export interface ActivitySplits {
   splits: ActivitySplit[];
 }
 
+export interface ActivityHeartRateDistribution {
+  /** The heart rate, in whole beats per minute, the first entry of seconds counts. */
+  fromBpm: number;
+  /**
+   * The seconds held at each whole beat per minute from fromBpm up, one entry per beat and nought where the ride held none. A reading counts toward the whole beat at or below it. Never empty.
+   * @minItems 1
+   */
+  seconds: number[];
+}
+
 export interface RouteValidation {
   biasPercent: number;
   maePercent: number;
@@ -1186,6 +1196,13 @@ export type GetActivitySeriesParams = {
 };
 
 export type GetActivitySplitsParams = {
+  /**
+   * The target to read. Omitted means the caller's own.
+   */
+  target?: string;
+};
+
+export type GetActivityHeartRateDistributionParams = {
   /**
    * The target to read. Omitted means the caller's own.
    */
@@ -3702,6 +3719,253 @@ export function useGetActivitySplits<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getGetActivitySplitsQueryOptions(activityId, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type getActivityHeartRateDistributionResponse200 = {
+  data: ActivityHeartRateDistribution;
+  status: 200;
+};
+
+export type getActivityHeartRateDistributionResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getActivityHeartRateDistributionResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getActivityHeartRateDistributionResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getActivityHeartRateDistributionResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getActivityHeartRateDistributionResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getActivityHeartRateDistributionResponseSuccess =
+  getActivityHeartRateDistributionResponse200 & {
+    headers: Headers;
+  };
+export type getActivityHeartRateDistributionResponseError = (
+  | getActivityHeartRateDistributionResponse400
+  | getActivityHeartRateDistributionResponse401
+  | getActivityHeartRateDistributionResponse403
+  | getActivityHeartRateDistributionResponse404
+  | getActivityHeartRateDistributionResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetActivityHeartRateDistributionUrl = (
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/activities/${encodeURIComponent(String(activityId))}/heartRateDistribution?${stringifiedParams}`
+    : `/v1/activities/${encodeURIComponent(String(activityId))}/heartRateDistribution`;
+};
+
+/**
+ * How long one activity held each whole heart rate, counted by the same rule its time in zones is: each sample stands until the next one, up to ten seconds, over the series with readings above the rider's maximum interpolated across. Served only for a ride whose zones are served, so the two always describe the same samples. Scoped exactly as the track is: a caller reads only an activity of the target they own, and an admin may name any target. Nothing about it is stored; it is a fold over the samples at read time. A ride with no zones, or whose samples are not stored, is not found.
+ */
+export const getActivityHeartRateDistribution = async (
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getActivityHeartRateDistributionResponseSuccess> => {
+  return domestiqueRequest<getActivityHeartRateDistributionResponseSuccess>(
+    getGetActivityHeartRateDistributionUrl(activityId, params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetActivityHeartRateDistributionQueryKey = (
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+) => {
+  return [
+    `/v1/activities/${activityId}/heartRateDistribution`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetActivityHeartRateDistributionQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetActivityHeartRateDistributionQueryKey(activityId, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>> = ({
+    signal,
+  }) => getActivityHeartRateDistribution(activityId, params, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: activityId !== null && activityId !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetActivityHeartRateDistributionQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getActivityHeartRateDistribution>>
+>;
+export type GetActivityHeartRateDistributionQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params: undefined | GetActivityHeartRateDistributionParams,
+  options: {
+    query: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    > &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+          TError,
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    > &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+          TError,
+          Awaited<ReturnType<typeof getActivityHeartRateDistribution>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetActivityHeartRateDistribution<
+  TData = Awaited<ReturnType<typeof getActivityHeartRateDistribution>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  activityId: ActivityID,
+  params?: GetActivityHeartRateDistributionParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getActivityHeartRateDistribution>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetActivityHeartRateDistributionQueryOptions(activityId, params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

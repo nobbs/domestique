@@ -2476,6 +2476,8 @@ type fakeState struct {
 	tracks               map[string][]activities.TrackPoint
 	sampleRows           map[string][]activities.SampleRow
 	sampleRowsErr        error
+	rideSamples          map[string]activities.RideSamples
+	rideSamplesErr       error
 	recordsStates        map[string]activities.RecordsState
 	recordsStateTypes    map[string]int
 	providerSummaries    map[string]fakeProviderSummary
@@ -2876,6 +2878,18 @@ func (s *fakeState) ActivitySeries(
 	}
 
 	return s.sampleRows[targetID+"/"+strconv.FormatInt(id, 10)], nil
+}
+
+// ActivityRideSamples reports the recorded series the test gave this target's
+// activity, keyed the way the store scopes it.
+func (s *fakeState) ActivityRideSamples(
+	_ context.Context, targetID string, id int64,
+) (activities.RideSamples, error) {
+	if s.rideSamplesErr != nil {
+		return activities.RideSamples{}, s.rideSamplesErr
+	}
+
+	return s.rideSamples[targetID+"/"+strconv.FormatInt(id, 10)], nil
 }
 
 // TargetByWahooUser answers from the Wahoo identities a test configured. An

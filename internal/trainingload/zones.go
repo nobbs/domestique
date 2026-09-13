@@ -87,6 +87,41 @@ func zoneOf(heartRate float64, bounds Bounds) int {
 	return zone
 }
 
+// HeartRateDistribution is how long a ride held each whole heart rate, in
+// seconds. Seconds runs contiguously from FromBPM up; a bin the ride never
+// held is nought rather than absent, so an index always means one beat.
+type HeartRateDistribution struct {
+	Seconds []float64
+	FromBPM int
+}
+
+// TimeAtHeartRate sums how long the ride held each whole heart rate, counted
+// by the same held rule TimeInZones applies: each sample stands until the
+// next, up to measure.DefaultMaxGap, and a reading floors to the beat it
+// counts toward. A ride that held nothing yields the zero value.
+func TimeAtHeartRate(samples []Sample) HeartRateDistribution {
+	byBin := map[int]float64{}
+	lowest, highest := 0, 0
+	measure.ForEachHeld(samples, measure.DefaultMaxGap, func(value, seconds float64) {
+		bin := int(math.Floor(value))
+		if len(byBin) == 0 {
+			lowest, highest = bin, bin
+		} else {
+			lowest, highest = min(lowest, bin), max(highest, bin)
+		}
+		byBin[bin] += seconds
+	})
+	if len(byBin) == 0 {
+		return HeartRateDistribution{}
+	}
+	seconds := make([]float64, highest-lowest+1)
+	for bin, held := range byBin {
+		seconds[bin-lowest] = held
+	}
+
+	return HeartRateDistribution{FromBPM: lowest, Seconds: seconds}
+}
+
 // Sample is one recorded moment of whichever sensor is being read.
 type Sample = measure.Reading
 

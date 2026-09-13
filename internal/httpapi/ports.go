@@ -247,6 +247,9 @@ type ActivityState interface {
 	// ActivityRideLoads is every derived ride of one target with the moment it
 	// was ridden, oldest first: the whole of what a fitness timeline folds.
 	ActivityRideLoads(ctx context.Context, targetID string) ([]trainingload.RideLoad, error)
+	// ActivityRideSamples reads one target's ride's recorded series, split by
+	// what each is for: the same rows a derivation reads.
+	ActivityRideSamples(ctx context.Context, targetID string, id int64) (activities.RideSamples, error)
 	// ActivityWeatherSteps is one ride's own steps, in order.
 	ActivityWeatherSteps(ctx context.Context, targetID string, id int64) ([]activities.WeatherStep, error)
 	// ActivityRouteMatches is the library route each of one target's rides was

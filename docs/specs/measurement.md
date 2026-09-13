@@ -227,9 +227,9 @@ mean    = Σ value[i]·held(i)  /  Σ held(i),  over counted i only
 
 **Source.** This service's own rule.
 
-**Applied by.** `trainingload.TRIMP`, `HeartRateTSS` and `TimeInZones`
-through `measure.ForEachHeld`/`MeanHeld`; `measure.Stretches` and
-`measure.EstimateSeries` are the same rule in `internal/measure/gap.go`.
+**Applied by.** `trainingload.TRIMP`, `HeartRateTSS`, `TimeInZones` and
+`TimeAtHeartRate` through `measure.ForEachHeld`/`MeanHeld`; `measure.Stretches`
+and `measure.EstimateSeries` are the same rule in `internal/measure/gap.go`.
 
 **Status.** Validated: this is the gap rule live training-load figures use
 today.
@@ -474,8 +474,8 @@ for run zones.
 Coggan, in Allen and Coggan 2010. Heart-rate zones: Friel 2009.
 
 **Applied by.** `internal/trainingload/load.go` (`TRIMP`, `HeartRateTSS`,
-`PowerLoad`), `internal/trainingload/zones.go` (`BoundsFrom`, `TimeInZones`),
-`internal/trainingload/fitness.go` (`Timeline`, `decay`).
+`PowerLoad`), `internal/trainingload/zones.go` (`BoundsFrom`, `TimeInZones`,
+`TimeAtHeartRate`), `internal/trainingload/fitness.go` (`Timeline`, `decay`).
 
 **Status.** Validated: these are the figures a rider's own training-load
 pages show today.

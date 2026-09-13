@@ -552,6 +552,61 @@ func splitViews(splits []activities.Split) []activitySplitView {
 	return views
 }
 
+// GetActivityHeartRateDistribution serves how long one activity held each
+// whole heart rate, scoped exactly as its zones are: a ride whose zones are
+// withheld below the coverage floor, or that has no derived row, is `404`.
+func (h *Handler) GetActivityHeartRateDistribution(writer http.ResponseWriter, request *http.Request) {
+	// The served surface refuses a non-numeric id before it reaches here.
+	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
+	if idErr != nil {
+		h.notFound(writer)
+
+		return
+	}
+	targetID, found, err := h.readableTarget(request.Context(), request.URL.Query().Get("target"))
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !found {
+		h.notFound(writer)
+
+		return
+	}
+	// ponytail: reads every derived row for the target to reach one ride's;
+	// a single-ride metrics query is the upgrade once this endpoint matters.
+	metricsByID, metricsErr := h.state.ActivityMetrics(request.Context(), targetID)
+	if metricsErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	metrics, ok := metricsByID[id]
+	if !ok || !metrics.Load.HasZones {
+		h.notFound(writer)
+
+		return
+	}
+	samples, samplesErr := h.state.ActivityRideSamples(request.Context(), targetID, id)
+	if samplesErr != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	heartRate := measure.CapHeartRate(samples.HeartRate, metrics.Load.Inputs.MaxHeartRateBPM)
+	distribution := trainingload.TimeAtHeartRate(heartRate)
+	if len(distribution.Seconds) == 0 {
+		h.notFound(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, activityHeartRateDistributionView{
+		FromBpm: distribution.FromBPM,
+		Seconds: distribution.Seconds,
+	})
+}
+
 // known is a reading's value where it has one, and nothing at all where it does
 // not.
 func known(reading activities.Reading) *float64 {
