@@ -222,7 +222,7 @@ SELECT EXISTS (
   SELECT 1 FROM activities
   WHERE target_slot = ?1 AND provider = 'wahoo'
     AND workout_type_id IN (SELECT value FROM json_each(CAST(?2 AS TEXT)))
-    AND started_at_unix >= ?3
+    AND started_at_unix + CAST(elapsed_seconds AS INTEGER) >= ?3
 )
 `
 
@@ -232,7 +232,7 @@ type HoldsHeadUnitActivityParams struct {
 	SinceUnix  int64
 }
 
-// Whether a head unit holds an activity of one of the types started since an instant.
+// Whether a head unit holds an activity of one of the types that ended since an instant.
 func (q *Queries) HoldsHeadUnitActivity(ctx context.Context, arg HoldsHeadUnitActivityParams) (bool, error) {
 	row := q.db.QueryRowContext(ctx, holdsHeadUnitActivity, arg.TargetSlot, arg.TypeIds, arg.SinceUnix)
 	var exists bool

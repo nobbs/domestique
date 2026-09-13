@@ -162,15 +162,16 @@ func TestAnalysisReadsRefuseANonPositiveLimit(t *testing.T) {
 	assert.Error(t, err, "AnalysesBefore() with a negative limit")
 }
 
-// A head unit's indoor ride waits for the Zwift copy that may replace it; the
-// Zwift copy itself, an outdoor ride and a ride past the hold do not.
+// A head unit's indoor ride waits, from its end, for the Zwift copy that may
+// replace it; the Zwift copy itself, an outdoor ride and a ride past the hold do not.
 func TestActivitiesAwaitingAnalysisHoldsARecentHeadUnitIndoorRide(t *testing.T) {
 	t.Parallel()
 	store := metricsStore(t)
 	since, heldSince := activityNow(), activityNow().Add(7*time.Hour)
 	const indoor = 12
-	storeRecordedRide(t, store, activity.Listing{ID: 1, TypeID: indoor, Starts: heldSince}, true)
-	storeRecordedRide(t, store, activity.Listing{ID: 2, TypeID: indoor, Starts: heldSince.Add(-time.Second)}, true)
+	ends := func(at time.Time) time.Time { return at.Add(-3900 * time.Second) }
+	storeRecordedRide(t, store, activity.Listing{ID: 1, TypeID: indoor, Starts: ends(heldSince)}, true)
+	storeRecordedRide(t, store, activity.Listing{ID: 2, TypeID: indoor, Starts: ends(heldSince.Add(-time.Second))}, true)
 	storeRecordedRide(t, store, activity.Listing{ID: 3, TypeID: indoor, Starts: heldSince.Add(time.Hour), Provider: activity.ProviderZwift}, true)
 	storeRecordedRide(t, store, activity.Listing{ID: 4, TypeID: 15, Starts: heldSince.Add(time.Hour)}, true)
 
@@ -264,15 +265,15 @@ func TestHoldsHeadUnitRideFindsOnlyARecentWahooRideOfTheTypes(t *testing.T) {
 	store := metricsStore(t)
 	const indoor = 12
 	since := activityNow()
-	storeRecordedRide(t, store, activity.Listing{ID: 1, TypeID: indoor, Starts: since.Add(-time.Second)}, false)
+	storeRecordedRide(t, store, activity.Listing{ID: 1, TypeID: indoor, Starts: since.Add(-3901 * time.Second)}, false)
 	storeRecordedRide(t, store, activity.Listing{ID: 2, TypeID: indoor, Starts: since, Provider: activity.ProviderZwift}, false)
 	storeRecordedRide(t, store, activity.Listing{ID: 3, TypeID: 15, Starts: since}, false)
 
 	held, err := store.HoldsHeadUnitRide(t.Context(), "rider-a", []int{indoor}, since)
 	require.NoError(t, err, "HoldsHeadUnitRide()")
-	assert.False(t, held, "too old, a Zwift ride, or outdoors")
+	assert.False(t, held, "ended before the instant, a Zwift ride, or outdoors")
 
-	storeRecordedRide(t, store, activity.Listing{ID: 4, TypeID: indoor, Starts: since}, false)
+	storeRecordedRide(t, store, activity.Listing{ID: 4, TypeID: indoor, Starts: since.Add(-3900 * time.Second)}, false)
 	held, err = store.HoldsHeadUnitRide(t.Context(), "rider-a", []int{indoor}, since)
 	require.NoError(t, err, "HoldsHeadUnitRide()")
 	assert.True(t, held)

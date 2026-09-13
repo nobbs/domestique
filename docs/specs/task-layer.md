@@ -372,7 +372,7 @@ state — so its edge carries no argument and a run with nothing owed asks
 nothing. There is no backfill: a ride started before that instant stays
 unanalysed, even one stored after it, and a ride whose analysis stands is never asked about again.
 A head unit's indoor ride of a rider with Zwift credentials is held until it
-started more than seven hours ago — one `zwift:poll` interval and an hour —
+ended more than seven hours ago — one `zwift:poll` interval and an hour —
 because that poll replaces it with the Zwift copy and the analysis would go with
 it: by then it has been replaced, and the Zwift copy is the one owed, or it is
 the only copy there is. A

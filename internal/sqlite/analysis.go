@@ -23,7 +23,7 @@ func (s *Store) RecordAnalysisEnabled(ctx context.Context, now time.Time) (time.
 
 // ActivitiesAwaitingAnalysis lists the target's derived rides with no analysis
 // that started at or after since, oldest first, at most limit of them. A head
-// unit's ride of one of heldTypeIDs that started at or after heldSince is left
+// unit's ride of one of heldTypeIDs that ended at or after heldSince is left
 // out; no types holds nothing.
 func (s *Store) ActivitiesAwaitingAnalysis(
 	ctx context.Context, targetID string, since, heldSince time.Time, heldTypeIDs []int, limit int,

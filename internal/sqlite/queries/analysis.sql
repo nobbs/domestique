@@ -6,7 +6,7 @@ RETURNING enabled_since_unix;
 
 -- Derived rides with no analysis that started at or after the instant the
 -- analysis was enabled, oldest first so each answer can read the ones before it.
--- A head unit's ride of a held type that started at or after held_since waits
+-- A head unit's ride of a held type that ended at or after held_since waits
 -- for the Zwift copy that may replace it.
 -- name: ListActivitiesAwaitingAnalysis :many
 SELECT a.workout_id, a.started_at_unix
@@ -17,7 +17,7 @@ WHERE a.target_slot = sqlc.arg(target_slot)
   AND a.started_at_unix >= sqlc.arg(enabled_since_unix)
   AND x.workout_id IS NULL
   AND NOT (a.provider = 'wahoo'
-    AND a.started_at_unix >= sqlc.arg(held_since_unix)
+    AND a.started_at_unix + CAST(a.elapsed_seconds AS INTEGER) >= sqlc.arg(held_since_unix)
     AND a.workout_type_id IN (SELECT value FROM json_each(CAST(sqlc.arg(held_type_ids) AS TEXT))))
 ORDER BY a.started_at_unix, a.workout_id
 LIMIT sqlc.arg(row_limit);

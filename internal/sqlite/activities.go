@@ -782,7 +782,7 @@ func (s *Store) DeleteTrainerCopy(
 }
 
 // HoldsHeadUnitRide reports whether the target holds a Wahoo activity of one of
-// typeIDs that started at or after since.
+// typeIDs that ended at or after since.
 func (s *Store) HoldsHeadUnitRide(ctx context.Context, targetID string, typeIDs []int, since time.Time) (bool, error) {
 	held, err := s.queries.HoldsHeadUnitActivity(ctx, sqlcgen.HoldsHeadUnitActivityParams{
 		TargetSlot: targetID, TypeIds: typeIDList(typeIDs), SinceUnix: since.Unix(),

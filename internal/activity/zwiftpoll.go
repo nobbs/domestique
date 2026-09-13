@@ -72,7 +72,7 @@ type ZwiftStore interface {
 	// when present is false.
 	SetActivityWorkout(ctx context.Context, targetID string, id int64, name string, hash int64, completion float64, present bool) error
 	// HoldsHeadUnitRide reports whether the target holds a Wahoo activity of
-	// one of typeIDs that started at or after since.
+	// one of typeIDs that ended at or after since.
 	HoldsHeadUnitRide(ctx context.Context, targetID string, typeIDs []int, since time.Time) (bool, error)
 }
 
