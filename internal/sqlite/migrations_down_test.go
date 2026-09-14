@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -497,6 +498,56 @@ func TestMigration059DownDropsTheAnalysisTablesOnly(t *testing.T) {
 	require.NoError(t, migration.Migrate(59), "must be able to re-migrate up after rolling back")
 }
 
+// 060 owes every matched ride a fresh pass, leaving a ride that matched nothing
+// settled; its down keeps both matches.
+func TestMigration060ReowesMatchedRidesAndItsDownKeepsTheMatches(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "route-clock-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(59))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix)
+		VALUES ('rider-a', 1, 15, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000),
+		       ('rider-a', 2, 15, 1, 1700000100, 1000, 60, 65, 10, '{}', 1700000100)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activity_route_match (target_slot, workout_id, provider, route_id, stage_order,
+			route_coverage, ride_coverage, direction, library_hash, matched_at_unix)
+		VALUES ('rider-a', 1, 'veloplanner', 7, 1, 0.95, 0.96, 'forward', 'library', 1700000000),
+		       ('rider-a', 2, NULL, NULL, NULL, NULL, NULL, NULL, 'library', 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(60))
+
+	var matched, unmatched string
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT library_hash FROM activity_route_match WHERE workout_id = 1`).Scan(&matched))
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT library_hash FROM activity_route_match WHERE workout_id = 2`).Scan(&unmatched))
+	assert.Empty(t, matched, "the matched ride is owed a fresh pass")
+	assert.Equal(t, "library", unmatched, "a ride that matched nothing stays settled")
+
+	require.NoError(t, migration.Migrate(59))
+
+	var matches int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM activity_route_match`).Scan(&matches))
+	assert.Equal(t, 2, matches, "both matches must survive the rollback")
+
+	require.NoError(t, migration.Migrate(60), "must be able to re-migrate up after rolling back")
+}
+
 // A rebuild-style down migration recreates its table with the columns in a
 // different physical order than the forward migrations produce; the schema
 // fingerprint must not treat that as a mismatch, or a database rolled back
@@ -504,7 +555,7 @@ func TestMigration059DownDropsTheAnalysisTablesOnly(t *testing.T) {
 // from the current baseline".
 func TestValidateSchemaSurvivesARollbackAndReplay(t *testing.T) {
 	t.Parallel()
-	for _, rollbackTo := range []uint{57, 56, 55, 45} {
+	for _, rollbackTo := range []uint{59, 57, 56, 55, 45} {
 		t.Run(strconv.Itoa(int(rollbackTo)), func(t *testing.T) {
 			t.Parallel()
 			dbPath := filepath.Join(t.TempDir(), "rollback-replay.db")

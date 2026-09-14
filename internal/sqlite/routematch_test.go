@@ -91,6 +91,48 @@ func TestStoreRoundTripsARouteMatch(t *testing.T) {
 		"which way round the ride went is stored with it")
 }
 
+// The clock goes wherever its match goes: replaced by a match with none, and
+// cleared with every match the target holds.
+func TestStoreKeepsARouteClockOnItsMatch(t *testing.T) {
+	t.Parallel()
+	store := matchStore(t, "rider-a", "rider-b")
+	key := storeTestLibrary(t, store, 7, "hash-a")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 11, 100), "StoreActivity()")
+	match := matchOf(key)
+	match.Direction = activity.DirectionForward
+	match.Clock = &activity.RouteClock{Line: "line", Readings: []activity.RouteClockPoint{
+		{Sample: 0, AlongMetres: 3, MovingSeconds: 0}, {Sample: 20, AlongMetres: 104.5, MovingSeconds: 21},
+	}}
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, match, nil, "library-1", activityNow(),
+	), "StoreActivityRouteMatch()")
+
+	gotKey, clock, found, err := store.ActivityRouteClock(t.Context(), "rider-a", 11)
+	require.NoError(t, err, "ActivityRouteClock()")
+	require.True(t, found)
+	assert.Equal(t, key, gotKey)
+	assert.Equal(t, match.Clock, clock)
+	_, _, found, err = store.ActivityRouteClock(t.Context(), "rider-b", 11)
+	require.NoError(t, err, "ActivityRouteClock()")
+	assert.False(t, found, "another target reads no clock of this ride")
+
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, matchOf(key), nil, "library-2", activityNow(),
+	), "StoreActivityRouteMatch()")
+	_, _, found, err = store.ActivityRouteClock(t.Context(), "rider-a", 11)
+	require.NoError(t, err, "ActivityRouteClock()")
+	assert.False(t, found, "a match stored without a clock replaces the old one")
+
+	require.NoError(t, store.StoreActivityRouteMatch(
+		t.Context(), "rider-a", 11, match, nil, "library-3", activityNow(),
+	), "StoreActivityRouteMatch()")
+	_, err = store.ClearActivityRouteMatches(t.Context(), "rider-a")
+	require.NoError(t, err, "ClearActivityRouteMatches()")
+	_, _, found, err = store.ActivityRouteClock(t.Context(), "rider-a", 11)
+	require.NoError(t, err, "ActivityRouteClock()")
+	assert.False(t, found, "clearing the matches takes the clock")
+}
+
 // A ride recorded as being on no route is not served as a match, but is still
 // a stored answer: the ride is not offered for matching again.
 func TestStoreRecordsANoMatchWithoutServingOne(t *testing.T) {

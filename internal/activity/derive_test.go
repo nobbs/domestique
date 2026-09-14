@@ -1140,12 +1140,17 @@ func climbingLibraryStore() *fakeDeriveStore {
 	track := []activity.TrackPoint{}
 	series := []activity.SampleRow{}
 	at := time.Date(2026, 7, 4, 7, 0, 0, 0, time.UTC)
-	for _, point := range line {
+	odometer := 0.0
+	for index, point := range line {
+		if index > 0 {
+			odometer += measure.HaversineMetres(line[index-1], point)
+		}
 		track = append(track, activity.TrackPoint{
 			Time: at, Latitude: point.Latitude, Longitude: point.Longitude,
 		})
 		series = append(series, activity.SampleRow{
 			Time: at, HeartRateBPM: activity.Reading{Value: 158, Known: true},
+			DistanceMetres: activity.Reading{Value: odometer, Known: true},
 		})
 		at = at.Add(4 * time.Second)
 	}
@@ -1191,6 +1196,25 @@ func TestDeriveTimesNothingOverARouteWithNoHeight(t *testing.T) {
 	assert.Equal(t, 1, result.Matched)
 	require.NotNil(t, store.matches[11], "the ride still matched the route")
 	assert.Empty(t, store.climbAttempts[11])
+}
+
+// The clock is derived on the climb attempts' own pass and stored on the match.
+func TestDeriveReadsAForwardRidesClockAlongItsRoute(t *testing.T) {
+	t.Parallel()
+	store := climbingLibraryStore()
+	// No height: a route with no climbs still has a clock.
+	store.library[0].Elevations = nil
+	deriver, err := activity.NewDeriver(store, nil, nil, indoorWorkoutTypes(), nil)
+	require.NoError(t, err, "NewDeriver()")
+
+	deriver.Derive(t.Context(), "rider-a")
+
+	require.NotNil(t, store.matches[11])
+	require.Equal(t, activity.DirectionForward, store.matches[11].Direction)
+	clock := store.matches[11].Clock
+	require.NotNil(t, clock)
+	require.NotEmpty(t, clock.Readings)
+	assert.Positive(t, clock.Readings[len(clock.Readings)-1].MovingSeconds)
 }
 
 func TestDeriveReportsASeriesItCannotRead(t *testing.T) {

@@ -110,7 +110,10 @@ func ParseDirection(name string) Direction {
 // the two had in common. Coverage is a share in [0, 1] of length, not of points,
 // so a densely sampled stretch does not outweigh a sparse one.
 type RouteMatch struct {
-	Key route.Key
+	// Clock is the ride's moving time along the route, written with the match
+	// and read back only by ActivityRouteClock.
+	Clock *RouteClock
+	Key   route.Key
 	// RouteCoverage is the share of the route's length the ride covered. It is
 	// what decides the match: a ride is on a route when it rode the route.
 	RouteCoverage float64
@@ -197,7 +200,7 @@ func (m *RouteMatcher) Match(track []measure.Coordinate) (RouteMatch, bool) {
 		if match.RouteCoverage < minimumRouteCoverage || match.RideCoverage < minimumRideCoverage {
 			continue
 		}
-		if !found || match.beats(best) {
+		if !found || match.beats(&best) {
 			best, found, bestIndex = match, true, index
 		}
 	}
@@ -260,7 +263,7 @@ func directionOf(track, geometry []measure.Coordinate) Direction {
 // it followed rather than to a short stage inside it that it happens to cover
 // entirely. Coverage of the route itself only separates a tie, and the identity
 // separates what that leaves, so the same corpus always yields the same match.
-func (m RouteMatch) beats(other RouteMatch) bool {
+func (m *RouteMatch) beats(other *RouteMatch) bool {
 	switch {
 	case m.RideCoverage != other.RideCoverage:
 		return m.RideCoverage > other.RideCoverage
@@ -311,28 +314,30 @@ type RouteRide struct {
 	Direction     Direction
 }
 
-// climbAttempts times one ride over the climbs of the route it was matched to.
-// A route whose stored geometry carries no height has no climbs to be timed
-// over, which is not a failure: it is a route this service cannot yet say
-// anything about, and the ride keeps its match either way.
-func (d *Deriver) climbAttempts(
+// timeOverRoute times one ride over the route it was matched to: its attempts
+// at the route's climbs, and its clock along the route. A ride the other way
+// round has neither, and a route whose stored geometry carries no height has
+// no climbs, which is not a failure: the ride keeps its match either way.
+func (d *Deriver) timeOverRoute(
 	ctx context.Context, targetID string, id int64,
 	candidates []RouteCandidate, match *RouteMatch, track []TrackPoint,
-) ([]ClimbAttempt, error) {
+) ([]ClimbAttempt, *RouteClock, error) {
 	candidate := candidateFor(candidates, match.Key)
-	if candidate == nil || len(candidate.Elevations) == 0 {
-		return nil, nil
-	}
-	climbs := RouteClimbs(candidate.Geometry, candidate.Elevations)
-	if len(climbs) == 0 {
-		return nil, nil
+	if candidate == nil || match.Direction != DirectionForward {
+		return nil, nil, nil
 	}
 	series, err := d.store.ActivitySeries(ctx, targetID, id)
 	if err != nil {
-		return nil, fmt.Errorf("reading a ride's samples: %w", err)
+		return nil, nil, fmt.Errorf("reading a ride's samples: %w", err)
+	}
+	var attempts []ClimbAttempt
+	if len(candidate.Elevations) > 0 {
+		attempts = ClimbAttempts(
+			RouteClimbs(candidate.Geometry, candidate.Elevations), candidate.Geometry, track, series, match.Direction,
+		)
 	}
 
-	return ClimbAttempts(climbs, candidate.Geometry, track, series, match.Direction), nil
+	return attempts, ReadRouteClock(candidate.Geometry, track, series, match.Direction), nil
 }
 
 // candidateFor is the library route a match names, or nil where the library has
@@ -369,8 +374,8 @@ type RouteMatchStore interface {
 	// ridden.
 	ClearActivityRouteMatches(ctx context.Context, targetID string) (int, error)
 	ActivityTrack(ctx context.Context, targetID string, id int64) ([]TrackPoint, error)
-	// StoreActivityRouteMatch records which route a ride was ridden on and its
-	// attempts at that route's climbs, together. A nil match records that it was
+	// StoreActivityRouteMatch records which route a ride was ridden on, its
+	// clock along it, and its attempts at that route's climbs, together. A nil match records that it was
 	// ridden on none, which is what stops the ride being matched again against
 	// the same library; an empty set of attempts clears whatever was there.
 	//
@@ -429,7 +434,7 @@ func (d *Deriver) matchRoutes(ctx context.Context, targetID string) Result {
 		var attempts []ClimbAttempt
 		if match, found := matcher.Match(trackCoordinates(track)); found {
 			stored = &match
-			attempts, err = d.climbAttempts(ctx, targetID, id, candidates, &match, track)
+			attempts, match.Clock, err = d.timeOverRoute(ctx, targetID, id, candidates, &match, track)
 			if err != nil {
 				return Result{Outcome: Failed, Failure: FailureState, Matched: matched}
 			}
