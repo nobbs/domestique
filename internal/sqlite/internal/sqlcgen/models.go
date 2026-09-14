@@ -241,6 +241,20 @@ type OauthTransaction struct {
 	CallerLogin   string
 }
 
+type Plan struct {
+	ID                int64
+	Name              string
+	Profile           string
+	Waypoints         string
+	Coordinates       []byte
+	DistanceMetres    float64
+	AscentMetres      float64
+	Published         int64
+	Version           int64
+	CreatedAtUnixNano int64
+	UpdatedAtUnixNano int64
+}
+
 type RidemodelCoefficient struct {
 	ID                    int64
 	SecondsPerKm          float64

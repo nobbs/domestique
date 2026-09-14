@@ -9,6 +9,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// 061's down drops the plans table outright; a rollback must not leave a
+// stored plan behind for a re-migration to collide with.
+func TestMigration061DownDropsPlans(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "plans-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(61))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO plans (id, name, profile, waypoints, coordinates, distance_metres, ascent_metres,
+			published, version, created_at_unix_nano, updated_at_unix_nano)
+		VALUES (123456789, 'Sunday loop', 'gravel', '[[8.4,49.0],[8.5,49.1]]', x'5b5d',
+			1000, 50, 0, 1, 1700000000000000000, 1700000000000000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(60))
+
+	var tableCount int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='plans'`).Scan(&tableCount))
+	assert.Zero(t, tableCount, "plans table must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(61), "must be able to re-migrate up after rolling back")
+}
+
 // No down migration in this repo is otherwise exercised by anything: the
 // compatibility harness only ever migrates forward. 029's down is the one
 // that rebuilds a table rather than dropping it outright, so it is the one
