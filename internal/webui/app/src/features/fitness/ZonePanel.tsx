@@ -17,11 +17,12 @@ export function ZonePanel({ weeks, dates }: Props) {
   // A week that began before the range is drawn over the days of it inside the range.
   const span = (week: FitnessWeek) => {
     const start = daysBetween(firstDay, week.weekStart);
-    return { start: Math.max(start, 0), end: Math.min(start + 7, lastIndex) };
+    return { start: Math.max(start, 0), end: Math.min(start + 7, lastIndex), from: start };
   };
+  // A week begun on the last day served still counts, though the axis gives it no width yet.
   const shown = weeks.filter((week) => {
-    const { start, end } = span(week);
-    return end > start && start <= lastIndex;
+    const { from } = span(week);
+    return from + 7 > 0 && from <= lastIndex;
   });
   if (shown.length === 0) {
     return null;
@@ -73,7 +74,7 @@ export function ZonePanel({ weeks, dates }: Props) {
               shown.map((week) => {
                 const { start, end } = span(week);
                 const left = x(start) + 1;
-                const width = Math.max(x(end) - left - 1, 1);
+                const width = Math.max(x(end) - left - 1, 3);
                 let base = 0;
                 return (
                   <g key={week.weekStart}>

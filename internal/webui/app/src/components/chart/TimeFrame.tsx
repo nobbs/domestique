@@ -143,10 +143,12 @@ export function TimeFrame({
   const x = (index: number) => FRAME_LEFT + scale.at(index) * plotWidth;
   const height = panels.reduce((sum, panel) => sum + panel.height + GAP, 0) + AXIS;
   const lastIndex = dates.length - 1;
+  // Callers pass days in whatever order their rows came, repeats included; the keys walk them in date order.
+  const stops = snap ? [...new Set(snap)].sort((one, other) => one - other) : [];
 
   const nearest = (index: number) =>
-    snap && snap.length > 0
-      ? snap.reduce((best, candidate) =>
+    stops.length > 0
+      ? stops.reduce((best, candidate) =>
           Math.abs(candidate - index) < Math.abs(best - index) ? candidate : best,
         )
       : Math.min(Math.max(Math.round(index), 0), lastIndex);
@@ -162,9 +164,9 @@ export function TimeFrame({
     }
     event.preventDefault();
     const from = active ?? todayIndex ?? lastIndex;
-    if (snap && snap.length > 0) {
-      const position = snap.indexOf(nearest(from));
-      setActive(snap[Math.min(Math.max(position + step, 0), snap.length - 1)] ?? from);
+    if (stops.length > 0) {
+      const position = stops.indexOf(nearest(from));
+      setActive(stops[Math.min(Math.max(position + step, 0), stops.length - 1)] ?? from);
     } else {
       setActive(Math.min(Math.max(from + step, 0), lastIndex));
     }

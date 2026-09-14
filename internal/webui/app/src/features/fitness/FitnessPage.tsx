@@ -22,14 +22,12 @@ import {
   bandOf,
   FORM_BANDS,
   formPercent,
-  mondayOf,
   RAMP_BANDS,
   type Reading,
   reading,
   type Scale,
   scaleOutlook,
   signed,
-  weeklyLoads,
 } from "./form";
 import { PowerDuration } from "./PowerDuration";
 import { SeasonChart } from "./SeasonChart";
@@ -192,7 +190,7 @@ export function FitnessPage() {
                 </p>
               </FitnessSection>
             ) : null}
-            <div className="grid gap-5 md:grid-cols-2">
+            <div className="grid gap-5 md:grid-cols-2 [&>*]:min-w-0">
               {activities.isError ? (
                 // An outage must not read as a season with nothing in it.
                 <p className="text-sm text-[var(--alert)]" role="alert">
@@ -247,10 +245,10 @@ function Headline({
       {outlook ? <Ramp ramp={outlook.rampPerWeek} fitness={today.fitness} /> : null}
       {outlook ? (
         <FitnessStat
-          label="This week, to keep building"
+          label="Next 7 days, to keep building"
           value={`${Math.round(outlook.weekLoadLow)}–${Math.round(outlook.weekLoadHigh)}`}
           unit={unit}
-          note={`${Math.round(weeklyLoads(readings).get(mondayOf(today.date)) ?? 0)} so far · last 4 weeks averaged ${Math.round(outlook.habitualDailyLoad * 7)}`}
+          note={`raises fitness 3–8% · last 4 weeks averaged ${Math.round(outlook.habitualDailyLoad * 7)} a week`}
         />
       ) : null}
       <FitnessStat

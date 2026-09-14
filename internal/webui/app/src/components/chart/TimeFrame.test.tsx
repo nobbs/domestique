@@ -84,6 +84,20 @@ describe("TimeFrame", () => {
     }
   });
 
+  // Rows arrive newest first and a day can hold two rides; the keys still walk the days in order.
+  it("walks snapped days in date order, past a day that repeats", () => {
+    frame({ snap: [3, 3, 0, 1] });
+    const figure = screen.getByRole("img").parentElement as HTMLElement;
+
+    fireEvent.keyDown(figure, { key: "ArrowLeft" });
+    expect(screen.getByRole("status")).toHaveTextContent("#1");
+    fireEvent.keyDown(figure, { key: "ArrowLeft" });
+    expect(screen.getByRole("status")).toHaveTextContent("#0");
+    fireEvent.keyDown(figure, { key: "ArrowRight" });
+    fireEvent.keyDown(figure, { key: "ArrowRight" });
+    expect(screen.getByRole("status")).toHaveTextContent("#3");
+  });
+
   it("drops the readout when focus leaves", () => {
     frame();
     const figure = screen.getByRole("img").parentElement as HTMLElement;

@@ -465,7 +465,7 @@ and three weeks projected from there under three plans
 (`internal/trainingload/outlook.go`):
 
 ~~~text
-ramp(week)    = fitness(last) - fitness(last - 7 days)  [0 where the timeline holds no day 7 before last]
+ramp(week)    = fitness(last) - fitness(last - 7 days)  [fitness(last - 7 days) is 0 where the timeline holds no such day]
 habitual(day) = Σ load(last - 27 days .. last) / 28      [days before the timeline's first count as zero]
 keep          = (1 - 1/42)^7
 weekly(share) = 7 · fitness(last) · (1 + share - keep) / (1 - keep)
@@ -489,7 +489,7 @@ build carries `habitualDailyLoad × BuildFactor` (1.2).
 bands: Transition (≥ 20), Fresh (5 to 20), Grey zone (−10 to 5), Optimal
 (−30 to −10), High risk (< −30). It reads the outlook's ramp the same way, as
 a percentage of the fitness seven days earlier, against four bands:
-Aggressive (> 10), Building (3 to 10), Holding (−3 to 3), Detraining (< −3).
+Aggressive (≥ 10), Building (3 to 10), Holding (−3 to 3), Detraining (< −3).
 Applied by `internal/webui/app/src/features/fitness/form.ts`.
 
 **Heart-rate zones.** Five zones cut by four bounds, from a threshold rate

@@ -39,7 +39,10 @@ export function PowerDuration({ current, previous, previousName }: Props) {
   if (!first || !last) {
     return null;
   }
-  const before = new Map((previous ?? []).map((point) => [point.seconds, point.watts]));
+  const durations = new Set(current.map((point) => point.seconds));
+  // Only durations this range reached: the axis spans them, and another would fall off it.
+  const shared = (previous ?? []).filter((point) => durations.has(point.seconds));
+  const before = new Map(shared.map((point) => [point.seconds, point.watts]));
   const span = Math.log(last.seconds) - Math.log(first.seconds) || 1;
   const x = (seconds: number) =>
     PAD.left +
@@ -106,9 +109,9 @@ export function PowerDuration({ current, previous, previousName }: Props) {
                 {formatCurveDuration(one.seconds)}
               </text>
             ))}
-            {previous && previous.length > 0 ? (
+            {shared.length > 0 ? (
               <polyline
-                points={line(previous)}
+                points={line(shared)}
                 fill="none"
                 stroke="var(--ink-2)"
                 strokeWidth={1.5}

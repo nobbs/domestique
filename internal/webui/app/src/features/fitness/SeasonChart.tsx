@@ -68,7 +68,6 @@ export function SeasonChart({ readings, outlook, scaleName }: Props) {
   const indexOf = new Map(dates.map((date, index) => [date, index]));
   const peak = readings.reduce((best, one) => (one.fitness > best.fitness ? one : best), today);
   const weeks = weeklyLoads(readings);
-  const thisMonday = mondayOf(today.date);
 
   const futureForm = plans.map((plan) =>
     plan.days.map((one) => formPercent(one.form, one.fitness)),
@@ -217,7 +216,7 @@ export function SeasonChart({ readings, outlook, scaleName }: Props) {
       height: 70,
       title: "Weekly load",
       domain: [0, loadHigh],
-      ticks: [0, Math.round(loadHigh / 100) * 100].filter((tick, index) => index === 0 || tick > 0),
+      ticks: [0, Math.floor(loadHigh / 100) * 100].filter((tick, index) => index === 0 || tick > 0),
       draw: (x, y) => (
         <>
           {[...weeks].map(([monday, load]) => {
@@ -235,11 +234,12 @@ export function SeasonChart({ readings, outlook, scaleName }: Props) {
               />
             ) : null;
           })}
-          {outlook ? (
+          {outlook && projected.length >= 7 ? (
+            // The range is for the seven days after the last one served, not the calendar week.
             <rect
-              x={weekBox(x, thisMonday).left}
+              x={x(todayIndex) + 1}
               y={y(outlook.weekLoadHigh)}
-              width={weekBox(x, thisMonday).width}
+              width={Math.max(x(todayIndex + 7) - x(todayIndex) - 2, 1)}
               height={Math.max(y(outlook.weekLoadLow) - y(outlook.weekLoadHigh), 1)}
               rx={2}
               fill="var(--good)"
@@ -324,8 +324,8 @@ export function SeasonChart({ readings, outlook, scaleName }: Props) {
       {outlook ? (
         <p className="text-[var(--ink-2)] text-xs">
           Right of the dotted line, the next three weeks are drawn wider than the past. Each plan
-          spreads its load evenly over every day; the green box is this week's load that would raise
-          fitness 3–8%.
+          spreads its load evenly over every day; the green box is the load over the next seven days
+          that would raise fitness 3–8%.
         </p>
       ) : null}
     </>

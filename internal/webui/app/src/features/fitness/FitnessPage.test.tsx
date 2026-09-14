@@ -157,7 +157,9 @@ describe("FitnessPage", () => {
   it("reads the outlook on the scale the page is on", async () => {
     show({ ...TIMELINE, outlook: OUTLOOK });
 
-    expect(await screen.findByText("412–488")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("group", { name: "Next 7 days, to keep building" }),
+    ).toHaveTextContent("412–488");
     expect(screen.getByRole("group", { name: "Ramp rate" })).toHaveTextContent("+3.0");
     // The rest plan's form reaches the fresh band on its seventh day.
     expect(screen.getByText(/fresh after 7 days of rest/)).toBeInTheDocument();
@@ -184,6 +186,18 @@ describe("FitnessPage", () => {
     expect(await screen.findByRole("heading", { name: "Time in zone" })).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: "Hours in each heart-rate zone over 1 week" }),
+    ).toBeInTheDocument();
+  });
+
+  // The timeline's last day is a Monday, so its week has begun but has no width on the axis yet.
+  it("keeps the week begun on the last day served", async () => {
+    show({
+      ...TIMELINE,
+      weeks: [...TIMELINE.weeks, { weekStart: "2026-08-24", zoneSeconds: [0, 900, 0, 0, 0] }],
+    });
+
+    expect(
+      await screen.findByRole("img", { name: "Hours in each heart-rate zone over 2 weeks" }),
     ).toBeInTheDocument();
   });
 
@@ -312,6 +326,26 @@ describe("FitnessPage power curve", () => {
     expect(screen.getByRole("row", { name: "20m 268 W +8" })).toBeInTheDocument();
     expect(screen.getByRole("row", { name: "5s 912 W —" })).toBeInTheDocument();
     expect(screen.getByText("the 6 months before")).toBeInTheDocument();
+  });
+
+  // The axis spans only the durations this range reached; an hour from the range before would fall off it.
+  it("draws the range before only over the durations this range reached", async () => {
+    const { container } = show({
+      ...TIMELINE,
+      powerCurve: [
+        { seconds: 5, watts: 912 },
+        { seconds: 1200, watts: 268.4 },
+      ],
+      powerCurvePrevious: [
+        { seconds: 5, watts: 900 },
+        { seconds: 1200, watts: 260 },
+        { seconds: 3600, watts: 240 },
+      ],
+    });
+
+    await screen.findByRole("heading", { name: "Power duration" });
+    const previous = container.querySelector('polyline[stroke-dasharray="4 3"]');
+    expect(previous?.getAttribute("points")?.split(" ")).toHaveLength(2);
   });
 
   it("draws nothing where no ride in the window carried a meter", async () => {
