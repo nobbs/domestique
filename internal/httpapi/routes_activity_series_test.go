@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -129,7 +130,8 @@ func predictionState(subject string) *fakeState {
 		{Latitude: track[0].Latitude, Longitude: track[0].Longitude},
 		{Latitude: track[1].Latitude, Longitude: track[1].Longitude},
 	}
-	state.stageProfiles = map[route.Key]fakeStageProfile{testRouteKey(): {line: line}}
+	state.coordinates = json.RawMessage(fmt.Sprintf(`[[%v, %v, 110], [%v, %v]]`,
+		line[0].Longitude, line[0].Latitude, line[1].Longitude, line[1].Latitude))
 	state.summaries = []route.Summary{{Provider: route.ProviderVeloPlanner, SourceRouteID: 7, StageOrder: 1}}
 	state.cumulativeSeconds = json.RawMessage(`[0, 3000]`)
 	state.routeClocks = map[string]fakeRouteClock{subject + "/1": {
@@ -172,7 +174,7 @@ func TestGetActivitySeriesHasNoPredictionComparisonWithoutOne(t *testing.T) {
 	})
 	t.Run("route gone from the library", func(t *testing.T) {
 		state := predictionState("rider-a")
-		state.stageProfiles = nil
+		state.summaries = nil
 		handler := activityHandler(t, state, nonAdminSessions("rider-a"))
 
 		code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
@@ -183,7 +185,6 @@ func TestGetActivitySeriesHasNoPredictionComparisonWithoutOne(t *testing.T) {
 func TestGetActivitySeriesReportsAnUnreadableRouteClockOrStage(t *testing.T) {
 	for name, spoil := range map[string]func(*fakeState){
 		"clock":    func(state *fakeState) { state.routeClockErr = assert.AnError },
-		"line":     func(state *fakeState) { state.stageProfileErr = assert.AnError },
 		"geometry": func(state *fakeState) { state.stageGeometryErr = assert.AnError },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -197,13 +198,21 @@ func TestGetActivitySeriesReportsAnUnreadableRouteClockOrStage(t *testing.T) {
 	}
 }
 
-func TestGetActivitySeriesReportsAnUnreadablePrediction(t *testing.T) {
-	state := predictionState("rider-a")
-	state.cumulativeSeconds = json.RawMessage(`{"not":"an array"}`)
-	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+func TestGetActivitySeriesReportsAnUnreadableStage(t *testing.T) {
+	for name, spoil := range map[string]func(*fakeState){
+		"prediction": func(state *fakeState) { state.cumulativeSeconds = json.RawMessage(`{"not":"an array"}`) },
+		"line":       func(state *fakeState) { state.coordinates = json.RawMessage(`{"not":"an array"}`) },
+		"position":   func(state *fakeState) { state.coordinates = json.RawMessage(`[[8.4], [8.5, 49.2]]`) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := predictionState("rider-a")
+			spoil(state)
+			handler := activityHandler(t, state, nonAdminSessions("rider-a"))
 
-	code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
-	assert.Equal(t, http.StatusServiceUnavailable, code)
+			code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
+			assert.Equal(t, http.StatusServiceUnavailable, code)
+		})
+	}
 }
 
 // Another rider's ride is not found here either, whatever clock it carries.

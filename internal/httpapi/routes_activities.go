@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -508,7 +509,8 @@ func (h *Handler) GetActivitySeries(writer http.ResponseWriter, request *http.Re
 
 // aheadOfPrediction reads one ride's clock along its matched route against that
 // route's current prediction. A ride with no clock, or a route with no
-// prediction for its stored line, has no such series.
+// prediction for its stored line, has no such series. The line and prediction
+// are read from one row, so they cannot come from two library states.
 func (h *Handler) aheadOfPrediction(
 	ctx context.Context, targetID string, id int64, samples int,
 ) ([]activities.Reading, bool, error) {
@@ -519,23 +521,28 @@ func (h *Handler) aheadOfPrediction(
 	if !found {
 		return nil, false, nil
 	}
-	line, _, known, err := h.state.StageProfile(ctx, key)
+	_, coordinates, encoded, known, err := h.state.StageGeometry(
+		ctx, key.Provider(), key.SourceRouteID(), key.StageOrder())
 	if err != nil {
+		return nil, false, fmt.Errorf("reading a stage's predicted moving time: %w", err)
+	}
+	if !known || len(encoded) == 0 {
+		return nil, false, nil
+	}
+	var positions [][]float64
+	var cumulative []float64
+	if err := json.Unmarshal(coordinates, &positions); err != nil {
 		return nil, false, fmt.Errorf("reading a stage's line: %w", err)
 	}
-	if !known {
-		return nil, false, nil
-	}
-	_, _, encoded, _, err := h.state.StageGeometry(ctx, key.Provider(), key.SourceRouteID(), key.StageOrder())
-	if err != nil {
-		return nil, false, fmt.Errorf("reading a stage's predicted moving time: %w", err)
-	}
-	if len(encoded) == 0 {
-		return nil, false, nil
-	}
-	var cumulative []float64
 	if err := json.Unmarshal(encoded, &cumulative); err != nil {
 		return nil, false, fmt.Errorf("reading a stage's predicted moving time: %w", err)
+	}
+	line := make([]measure.Coordinate, 0, len(positions))
+	for _, position := range positions {
+		if len(position) < 2 {
+			return nil, false, errors.New("reading a stage's line: a position needs a longitude and a latitude")
+		}
+		line = append(line, measure.Coordinate{Longitude: position[0], Latitude: position[1]})
 	}
 	readings, ok := activities.AheadOfPrediction(line, cumulative, clock, samples)
 
