@@ -20,13 +20,17 @@ const gradientWindowMetres = 100.0
 // may issue the same numeric ID, so that ID alone is not unique.
 type Provider string
 
-// ProviderVeloPlanner is the only provider a route comes from today. Naming it
-// does not change what a VeloPlanner route's ExternalID renders as.
+// ProviderVeloPlanner names the original upstream source. Naming it does not
+// change what a VeloPlanner route's ExternalID renders as.
 const ProviderVeloPlanner Provider = "veloplanner"
 
 // ProviderKomoot names the second source the webui and its demo library
 // distinguish. No adapter reads Komoot yet; only the demo library sets it.
 const ProviderKomoot Provider = "komoot"
+
+// ProviderLocal names the plan source: routes this service composes itself
+// from an admin-drawn plan, with no upstream account behind them.
+const ProviderLocal Provider = "local"
 
 // Key is the stable identity of one route.
 type Key struct {
