@@ -47,10 +47,27 @@ type Settings struct {
 	// here because this package refuses unknown DOMESTIQUE_ keys. Empty when unset.
 	ImageReference string
 
-	HTTP  HTTP
-	Auth  Auth
-	State State
-	Log   Log
+	HTTP     HTTP
+	Auth     Auth
+	Analysis Analysis
+	State    State
+	Log      Log
+}
+
+// Analysis configures the optional ride analysis. Without a token it is off.
+type Analysis struct {
+	claudeToken runtimeconfig.Secret
+}
+
+// Enabled reports whether the operator configured a Claude Code OAuth token.
+func (a *Analysis) Enabled() bool {
+	return a.claudeToken.IsSet()
+}
+
+// ClaudeToken returns the operator's Claude Code OAuth token, empty when none
+// is configured.
+func (a *Analysis) ClaudeToken() []byte {
+	return a.claudeToken.Bytes()
 }
 
 // Log configures what the service writes to stderr. Output is always JSON.
@@ -113,10 +130,18 @@ func (s State) EncryptionKey() [32]byte {
 }
 
 type rawSettings struct {
-	HTTP  rawHTTP  `koanf:"http"`
-	State rawState `koanf:"state"`
-	Auth  rawAuth  `koanf:"auth"`
-	Log   rawLog   `koanf:"log"`
+	HTTP     rawHTTP     `koanf:"http"`
+	State    rawState    `koanf:"state"`
+	Auth     rawAuth     `koanf:"auth"`
+	Analysis rawAnalysis `koanf:"analysis"`
+	Log      rawLog      `koanf:"log"`
+}
+
+type rawAnalysis struct {
+	// ClaudeTokenFile is nil when no file input names the key at all, which is
+	// the one way to leave the analysis off; an empty path is still refused.
+	ClaudeTokenFile *string `koanf:"claude_token_file"`
+	ClaudeToken     string  `koanf:"claude_token"`
 }
 
 type rawLog struct {
@@ -383,6 +408,19 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err != nil {
 		return nil, err
 	}
+	var claudeTokenFile string
+	if raw.Analysis.ClaudeTokenFile != nil {
+		claudeTokenFile = *raw.Analysis.ClaudeTokenFile
+	}
+	claudeToken, err := resolveOptionalSecret(secretInput{
+		name:      "claude token",
+		directEnv: envPrefix + "ANALYSIS__CLAUDE_TOKEN",
+		fileEnv:   envPrefix + "ANALYSIS__CLAUDE_TOKEN_FILE",
+		filePath:  claudeTokenFile,
+	}, raw.Analysis.ClaudeTokenFile != nil)
+	if err != nil {
+		return nil, err
+	}
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(strings.TrimSpace(raw.Log.Level))); err != nil {
 		return nil, fmt.Errorf("log.level: %w", err)
@@ -405,7 +443,8 @@ func build(raw *rawSettings) (*Settings, error) {
 			DatabasePath:  raw.State.DatabasePath,
 			encryptionKey: key,
 		},
-		Log: Log{Level: level},
+		Analysis: Analysis{claudeToken: claudeToken},
+		Log:      Log{Level: level},
 	}, nil
 }
 
@@ -464,6 +503,16 @@ func resolveSecret(input secretInput) (runtimeconfig.Secret, error) {
 	}
 }
 
+// resolveOptionalSecret is resolveSecret for a secret whose absence is valid.
+// An input that is present but empty is still refused.
+func resolveOptionalSecret(input secretInput, filePresent bool) (runtimeconfig.Secret, error) {
+	if _, directSet := os.LookupEnv(input.directEnv); !directSet && !filePresent {
+		return runtimeconfig.Secret{}, nil
+	}
+
+	return resolveSecret(input)
+}
+
 func secretFromFile(name, path string) (runtimeconfig.Secret, error) {
 	if !filepath.IsAbs(path) {
 		return runtimeconfig.Secret{}, fmt.Errorf("%s file must be an absolute path", name)
@@ -517,6 +566,7 @@ func secretLiteralPaths() [][]string {
 	return [][]string{
 		{"state", "encryption_key"},
 		{"auth", "auth0", "client_secret"},
+		{"analysis", "claude_token"},
 	}
 }
 
@@ -534,6 +584,7 @@ func directSecretEnvironmentNames() []string {
 	return []string{
 		envPrefix + "STATE__ENCRYPTION_KEY",
 		envPrefix + "AUTH__AUTH0__CLIENT_SECRET",
+		envPrefix + "ANALYSIS__CLAUDE_TOKEN",
 	}
 }
 
