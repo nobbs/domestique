@@ -124,6 +124,7 @@ func meteredBlocksOf(power, heartRate []trainingload.Sample, block time.Duration
 			continue
 		}
 		blocks = append(blocks, MeasuredBlock{
+			Start:        start.Add(time.Duration(key) * block),
 			HeartRateBPM: heartRateMeans[key], WattsMeasured: powerMeans[key],
 		})
 	}
@@ -315,17 +316,24 @@ func (s rideScore) errorPercent() float64 { return 100 * (s.modelled - s.target)
 // nought names no scale to judge against.
 func (s rideScore) scorable() bool { return s.target > 0 }
 
-// A report is levelstudy's aggregate result. No ride identifier, date,
-// position or altitude value is ever held here.
+// A report is levelstudy's aggregate result. No ride identifier, day,
+// position or altitude value is ever held here; a calendar month is the
+// finest time it keeps.
 type report struct {
 	rides        map[string][]rideScore
 	fitted       map[string][]measure.Coefficients
+	anchor       anchorMonths
 	bridge       bridge
 	shipped      measure.Coefficients
-	shippedOK    bool
+	bicycle      measure.Coefficients
+	band         [2]float64
+	minMonths    int
+	maxSpread    float64
 	rideCount    int
 	meteredRides int
 	skipped      int
+	shippedOK    bool
+	bandOK       bool
 }
 
 func writeRideTable(b *strings.Builder, scores []rideScore) {
@@ -378,6 +386,9 @@ func (r *report) String() string {
 			fmt.Fprintln(&b, "fitted over the whole corpus: unavailable (the fit collapsed to its search bound)")
 		}
 	}
+	if r.anchor.indoor != nil {
+		r.anchor.writeAnchor(&b, r.bicycle, r.bridge.wattsPerBPM, r.band, r.bandOK, r.minMonths, r.maxSpread)
+	}
 
 	return b.String()
 }
@@ -421,6 +432,7 @@ func quantile(values []float64, q float64) float64 {
 // across folds would let a fit see its own test set.
 func study(
 	ctx context.Context, store *sqlite.Store, minSamples int, block time.Duration, folds, window int, massFlagKG float64, target string,
+	minMonths int, maxSpread float64,
 ) (*report, error) {
 	rides, err := store.RecordedRides(ctx)
 	if err != nil {
@@ -437,8 +449,11 @@ func study(
 	}
 
 	result := &report{
-		rides:  map[string][]rideScore{},
-		fitted: map[string][]measure.Coefficients{},
+		rides:     map[string][]rideScore{},
+		fitted:    map[string][]measure.Coefficients{},
+		anchor:    newAnchorMonths(),
+		minMonths: minMonths,
+		maxSpread: maxSpread,
 	}
 	massCache := map[string]float64{}
 	bicycleCache := map[string]measure.Coefficients{}
@@ -454,7 +469,12 @@ func study(
 		if err != nil {
 			return nil, err
 		}
+		result.band, result.bandOK, err = zoneTwoForTarget(ctx, store, rides[0].TargetID)
+		if err != nil {
+			return nil, err
+		}
 	}
+	result.bicycle = profile
 	var metered []meteredRide
 	var unmetered []unmeteredRide
 
@@ -479,6 +499,11 @@ func study(
 			}
 			result.meteredRides++
 			metered = append(metered, meteredRide{at: samples.Power[0].At, blocks: blocks})
+			times, watts := make([]time.Time, len(samples.Power)), make([]float64, len(samples.Power))
+			for index, reading := range samples.Power {
+				times[index], watts[index] = reading.At, reading.Value
+			}
+			result.anchor.addIndoor(samples.Power[0].At, blocks, times, watts)
 
 			continue
 		}
@@ -503,6 +528,9 @@ func study(
 		if elapsedSeconds <= 0 || heldSeconds < minHeartRateCoverage*elapsedSeconds {
 			result.skipped++
 			continue
+		}
+		if estimates, estimateOK := measure.EstimateSeries(samples.Track, mass, profile); estimateOK {
+			result.anchor.addOutdoor(samples.Track, estimates, heartRate, block)
 		}
 		whole := unmeteredBlocksOf(samples.Track, mass)
 		if len(whole.Indices) == 0 {
@@ -662,4 +690,24 @@ func maxHeartRateForTarget(
 	cache[targetID] = maxHeartRate
 
 	return maxHeartRate, nil
+}
+
+// zoneTwoForTarget is the heart-rate band of one target's zone two, cut the
+// way trainingload.BoundsFrom cuts every zone, and false where the rider has
+// entered neither a threshold nor a maximum.
+func zoneTwoForTarget(ctx context.Context, store *sqlite.Store, targetID string) (band [2]float64, ok bool, err error) {
+	subject, err := store.TargetOwner(ctx, targetID)
+	if err != nil {
+		return band, false, fmt.Errorf("reading a target's owner: %w", err)
+	}
+	if subject == "" {
+		return band, false, nil
+	}
+	profile, err := store.RiderProfile(ctx, subject)
+	if err != nil {
+		return band, false, fmt.Errorf("reading a rider profile: %w", err)
+	}
+	bounds, ok := trainingload.BoundsFrom(profile.ThresholdHeartRateBPM.Number, profile.MaxHeartRateBPM.Number)
+
+	return [2]float64{bounds[0], bounds[1]}, ok, nil
 }

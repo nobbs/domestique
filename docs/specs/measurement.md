@@ -295,7 +295,7 @@ $$\bar P = \frac{1}{|S|}\sum_{i \in S} P_i, \qquad \text{share} = \frac{|S|}{\te
 
 **Applied by.** `measure.EstimateSeries` for the series and `measure.PedallingMean` for the ride figure and share, called by `activity.RideSamples.EstimatePower` in `activity:derive`; stored per record as `activity_records.estimated_power_watts` and per ride as `activity_metrics.estimated_power_watts` and `estimated_pedalling_share`; served as `estimatedPowerWatts` and `estimatedPedallingShare`. The estimate is named as one everywhere, is never mixed with measured power and never feeds a training load, a power curve or a normalized power. A climb attempt's estimated mean is the mean of the stored series over the climb.
 
-**Status.** Validated against the operator's own trainer power at matched heart rate: ride means within 6% on rides held out from the check, which `dev/levelstudy` reproduces from a state snapshot.
+**Status.** Validated against the operator's own trainer power at matched heart rate: ride means within 6% on rides held out from the check, which `dev/levelstudy` reproduces from a state snapshot. The same tool sets the estimate beside the meter month by month over the months holding both indoor and outdoor rides; as of September 2026, over seven such months, no statistic is steady enough to anchor a scale or a coefficient correction on, so the estimate stays unanchored (#723).
 
 ## Estimated calories
 

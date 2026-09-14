@@ -10,11 +10,14 @@
 // then whatever makes it agree.
 package main
 
+import "time"
+
 // A MeasuredBlock is one span of a ride that carried a power meter: the mean
 // heart rate the rider held over it and the mean power they really produced.
 // Long enough that the heart has caught up with the legs — a few minutes, not
 // a few seconds.
 type MeasuredBlock struct {
+	Start         time.Time
 	HeartRateBPM  float64
 	WattsMeasured float64
 }
