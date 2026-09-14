@@ -165,11 +165,15 @@ application dependency.
   restart.
 - `planning.brouter_url` is required whenever the `[planning]` section is
   present, so a section naming tiles and no engine is refused at startup rather
-  than read as a planner with nothing to route. It is the absolute HTTP origin,
-  with no path, of the BRouter instance the planner routes with — a sidecar on the same
-  host, never a public address. It is a file field because it names where a
-  neighbour listens, which is the host's knowledge like the listen addresses
-  above. Leaving the section out switches the planner off: no plan endpoint is
+  than read as a planner with nothing to route. It is the absolute `http` or
+  `https` origin, with no path, of the BRouter instance the planner routes
+  with: either a sidecar on the same host, or the BRouter project's public
+  instance. The public instance costs no deployment and no segments, and it
+  costs one thing a sidecar does not: every preview and save sends a plan's
+  waypoints and profile off the host, to a service with no terms beyond fair
+  use. It is a file field because it names what the host provides beside the
+  process, which is the host's knowledge like the listen addresses above.
+  Leaving the section out switches the planner off: no plan endpoint is
   registered, no local source is read, and the segment task is not
   registered ([the task](task-layer.md#the-registered-tasks)).
 - `planning.segments` is optional and names the BRouter routing segments the

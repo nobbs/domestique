@@ -1248,11 +1248,14 @@ external ID and adopt its Wahoo copy. Its inventory is the set of published
 plans, read from the geometry
 each plan stored when it was saved: a source read never asks the routing
 engine. Geometry comes from the routing engine the deployment names — BRouter,
-run as a sidecar beside the service ([delivery.md](delivery.md)) — which
-answers with the snapped line and an elevation per point; both are then treated
-exactly as a VeloPlanner stage's are, normalised and measured by this service
-and encoded by its own encoder. The engine is asked only with the waypoints and
-the profile; no plan name, rider, or stored route leaves the service for it.
+either as a sidecar beside the service ([delivery.md](delivery.md)) or as the
+project's public instance, on the terms
+[configuration.md](configuration.md#static-fields) states — which answers with
+the snapped line and an elevation per point; both are then treated exactly as
+a VeloPlanner stage's are, normalised and measured by this service and encoded
+by its own encoder. The engine is asked only with the waypoints and the
+profile; no plan name, rider, or stored route leaves the service for it, and
+with a public instance those waypoints are the whole of what leaves the host.
 
 ## Wahoo synchronisation
 
