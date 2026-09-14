@@ -75,7 +75,7 @@ The rider's training load now:
 - TRIMP scale: fitness 70, fatigue 80, form -10
 
 What was said about this rider's earlier rides, newest first:
-- A steady endurance ride. Keep it easy.`, composePrompt(&profile, &metrics, &day, earlier))
+- A steady endurance ride. Keep it easy.`, composePrompt(&profile, &metrics, &day, loadNow, earlier))
 }
 
 func TestComposePromptLeavesOutWhatIsAbsent(t *testing.T) {
@@ -86,5 +86,5 @@ func TestComposePromptLeavesOutWhatIsAbsent(t *testing.T) {
 			Load:                       trainingload.Metrics{EstimatedPowerWatts: 180, HasEstimatedPower: true},
 			EstimatedPedallingShare:    0.85,
 			HasEstimatedPedallingShare: true,
-		}, nil, nil))
+		}, nil, loadNow, nil))
 }

@@ -375,7 +375,7 @@ func startAnalysis(
 		return nil, fmt.Errorf("creating the activity analyser: %w", err)
 	}
 
-	return []task.Definition{activityAnalyseTask(analyser, enabled, targetIDs)}, nil
+	return []task.Definition{activityAnalyseTask(analyser, enabled, targetIDs), activityReanalyseTask(analyser)}, nil
 }
 
 // startSurfaceIndex prepares the surface index and the schedule that rebuilds it.

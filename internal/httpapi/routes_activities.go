@@ -779,3 +779,35 @@ func (h *Handler) readableTarget(ctx context.Context, requested string) (targetI
 
 	return targetID, found, nil
 }
+
+// ReanalyseActivity starts a fresh analysis of one ride of the target the list
+// would serve. Not found when analysis is off, and for a ride with no figures.
+func (h *Handler) ReanalyseActivity(writer http.ResponseWriter, request *http.Request) {
+	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
+	if idErr != nil || !h.registers(TaskActivityReanalyse) {
+		h.notFound(writer)
+
+		return
+	}
+	targetID, found, err := h.readableTarget(request.Context(), request.URL.Query().Get("target"))
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if found {
+		derived, metricsErr := h.state.ActivityMetrics(request.Context(), targetID)
+		if metricsErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
+		_, found = derived[id]
+	}
+	if !found {
+		h.notFound(writer)
+
+		return
+	}
+	h.accepted(writer, func() bool { return h.tasks.Run(TaskActivityReanalyse, ActivityRecordArgument(targetID, id)) })
+}

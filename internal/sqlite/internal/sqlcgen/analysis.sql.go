@@ -32,6 +32,22 @@ func (q *Queries) DeleteActivityAnalysis(ctx context.Context, arg DeleteActivity
 	return err
 }
 
+const getActivityStartedAt = `-- name: GetActivityStartedAt :one
+SELECT started_at_unix FROM activities WHERE target_slot = ? AND workout_id = ?
+`
+
+type GetActivityStartedAtParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+func (q *Queries) GetActivityStartedAt(ctx context.Context, arg GetActivityStartedAtParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getActivityStartedAt, arg.TargetSlot, arg.WorkoutID)
+	var started_at_unix int64
+	err := row.Scan(&started_at_unix)
+	return started_at_unix, err
+}
+
 const listActivitiesAwaitingAnalysis = `-- name: ListActivitiesAwaitingAnalysis :many
 SELECT a.workout_id, a.started_at_unix
 FROM activities AS a

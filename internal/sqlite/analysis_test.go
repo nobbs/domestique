@@ -312,3 +312,22 @@ func TestActivityAnalysesReadsTheRidesInsideTheWindowForOneTarget(t *testing.T) 
 	_, err = store.ActivityAnalyses(t.Context(), "rider-a", from, to)
 	assert.ErrorContains(t, err, "reading the activity analyses")
 }
+
+func TestActivityStartedAtReadsOneRideOfOneTarget(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	storeRideAt(t, store, 1, activityNow(), false)
+
+	started, held, err := store.ActivityStartedAt(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityStartedAt()")
+	assert.True(t, held)
+	assert.Equal(t, activityNow(), started)
+
+	_, held, err = store.ActivityStartedAt(t.Context(), "rider-b", 1)
+	require.NoError(t, err, "ActivityStartedAt() for another target")
+	assert.False(t, held)
+
+	require.NoError(t, store.Close(), "Close()")
+	_, _, err = store.ActivityStartedAt(t.Context(), "rider-a", 1)
+	assert.ErrorContains(t, err, "reading when an activity started")
+}

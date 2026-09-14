@@ -40,6 +40,10 @@ const TaskActivityDerive = "activity:derive"
 // it: its argument names a workout a browser has no way to know about.
 const TaskActivityRecord = "activity:record"
 
+// TaskActivityReanalyse asks once more about one ride. Only its own activity
+// endpoint starts it, so RunTask refuses it the way it refuses TaskActivityRecord.
+const TaskActivityReanalyse = "activity:reanalyse"
+
 // ActivityRecordArgument is how TaskActivityRecord's target slot and workout id
 // travel as one task argument, and the only place that form is written.
 func ActivityRecordArgument(targetID string, workoutID int64) string {
@@ -144,9 +148,9 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	// Started by the webhook receiver alone: its argument names a workout, which
-	// is not a browser's to name, so it is not found rather than forbidden.
-	if name == TaskActivityRecord {
+	// Each names one workout and has its own caller, the Wahoo receiver or the
+	// activity endpoint, so by name it is not found rather than forbidden.
+	if name == TaskActivityRecord || name == TaskActivityReanalyse {
 		h.notFound(writer)
 
 		return

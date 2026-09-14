@@ -54,3 +54,6 @@ FROM activity_analyses AS x
 JOIN activities AS a ON a.target_slot = x.target_slot AND a.workout_id = x.workout_id
 WHERE x.target_slot = sqlc.arg(target_slot)
   AND a.started_at_unix >= sqlc.arg(from_unix) AND a.started_at_unix < sqlc.arg(to_unix);
+
+-- name: GetActivityStartedAt :one
+SELECT started_at_unix FROM activities WHERE target_slot = ? AND workout_id = ?;

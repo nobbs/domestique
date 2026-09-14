@@ -16,6 +16,8 @@ export const TASKS = {
   ridemodelPredict: "ridemodel:predict",
   /** Reading one notified workout of one rider. Started by the Wahoo receiver alone. */
   activityRecord: "activity:record",
+  /** Asking once more about one ride. Started by the ride page's admin control alone. */
+  activityReanalyse: "activity:reanalyse",
 } as const;
 
 /** SYNC_PHASE_TASKS is which task does each half of a synchronization. */

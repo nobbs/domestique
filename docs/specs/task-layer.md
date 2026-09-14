@@ -277,6 +277,7 @@ is checked rather than inferred.
 | `activity:derive` | target slot, or none for every one | `activities` exclusive | every hour |
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
 | `activity:analyse` | target slot, or none for every one | `activities` exclusive | every hour, and only when a token is configured |
+| `activity:reanalyse` | target slot and workout id | `activities` exclusive | none, and only when a token is configured |
 
 `zwift:poll` reads the same rows from a rider's own Zwift account, under the
 same exclusivity: it stores the indoor rides that account recorded and removes
@@ -381,8 +382,15 @@ removes a ride's derived row removes its analysis in the same transaction, so
 a profile edit that takes a ride's figures away takes what was said about them
 too — and a later derivation that gives the ride figures again leaves it owed
 again, because what was said before was about figures that no longer exist.
-That is the one way a ride is analysed twice, and it costs one request per
-such edit. The analyses a prompt carries for context are the same target's, newest
+That is the one way a run analyses a ride twice, and it costs one request per
+such edit. `activity:reanalyse` is the other: an administrator's request over
+one ride, registered with `activity:analyse` or not at all and started by the
+activity endpoint alone, so `RunTask` refuses it as it refuses `activity:record`.
+It asks about the ride its argument names whenever it started and whatever
+stands, under the same exclusivity, and stores the answer only when it fits the
+bound; a failed request records its category on the run and leaves the stored
+analysis untouched. It has no schedule and raises no alert, because the
+administrator who asked is the one watching. The analyses a prompt carries for context are the same target's, newest
 first, at most five. Unlike the weather,
 which is asked once and recorded either way, an analysis that fails is not
 recorded as asked: the usual reason is the subscription's monthly allowance

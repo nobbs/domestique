@@ -33,6 +33,7 @@ const (
 	taskActivityDerive     = httpapi.TaskActivityDerive
 	taskZwiftPoll          = httpapi.TaskZwiftPoll
 	taskActivityAnalyse    = "activity:analyse"
+	taskActivityReanalyse  = httpapi.TaskActivityReanalyse
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -173,9 +174,11 @@ type zwiftPoller interface {
 	HoldsTrainerCopy(ctx context.Context, targetID string) (bool, error)
 }
 
-// activityAnalyser asks about one target's rides owed an analysis.
+// activityAnalyser asks about one target's rides owed an analysis, or once
+// more about one ride.
 type activityAnalyser interface {
 	Analyse(ctx context.Context, targetID string) activity.Result
+	Reanalyse(ctx context.Context, targetID string, workoutID int64) activity.Result
 }
 
 // activityDeriver works out what one target's rides say about how hard they
@@ -478,6 +481,26 @@ func activityAnalyseTask(
 			}
 
 			return aggregate
+		}),
+	}
+}
+
+// activityReanalyseTask asks once more about the one ride its argument names.
+// Only the activity endpoint starts it, so it has no schedule and no alerts.
+func activityReanalyseTask(analyser activityAnalyser) task.Definition {
+	return task.Definition{
+		Name: taskActivityReanalyse,
+		Resources: func(string) []task.Resource {
+			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
+		},
+		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+			targetID, workoutID, ok := parseActivityRecordArgument(invocation.Argument)
+			if !ok {
+				return task.Result{Outcome: task.Failed, Detail: detailActivityArgument}
+			}
+			analysed := analyser.Reanalyse(ctx, targetID, workoutID)
+
+			return activityResult(&analysed)
 		}),
 	}
 }

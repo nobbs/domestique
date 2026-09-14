@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ var errFakeAnalyseStore = errors.New("fake analyse store")
 type fakeAnalyseStore struct {
 	metrics        map[int64]RideMetrics
 	stored         map[int64]Analysis
+	started        map[int64]time.Time
 	ownerErr       error
 	pendingErr     error
 	storeErr       error
@@ -25,6 +27,7 @@ type fakeAnalyseStore struct {
 	earlierErr     error
 	metricsErr     error
 	loadsErr       error
+	startedErr     error
 	owner          string
 	email          string
 	password       string
@@ -87,6 +90,12 @@ func (s *fakeAnalyseStore) AnalysesBefore(_ context.Context, _ string, before ti
 	s.earlierBefore = append(s.earlierBefore, before)
 
 	return s.earlier, s.earlierErr
+}
+
+func (s *fakeAnalyseStore) ActivityStartedAt(_ context.Context, _ string, id int64) (time.Time, bool, error) {
+	at, held := s.started[id]
+
+	return at, held, s.startedErr
 }
 
 func (s *fakeAnalyseStore) StoreActivityAnalysis(_ context.Context, _ string, id int64, analysis Analysis) error {
@@ -281,4 +290,97 @@ func TestAnalyseLogsNoFailureForAShutdown(t *testing.T) {
 
 	assert.Equal(t, Failed, result.Outcome)
 	assert.NotContains(t, logged.String(), "ride analysis failed")
+}
+
+// An admin's re-analysis asks about the one ride whatever it started and whatever
+// stands, and replaces what stood only with an answer.
+func TestReanalyseAsksAboutOneDerivedRideWheneverItStarted(t *testing.T) {
+	t.Parallel()
+	started := analyseNow().Add(-400 * 24 * time.Hour)
+	store := newFakeAnalyseStore()
+	store.metrics[7] = RideMetrics{Load: trainingload.Metrics{TRIMP: 80, HasTRIMP: true}}
+	store.started = map[int64]time.Time{7: started}
+	store.stored[7] = Analysis{Text: "what stood"}
+	asker := &fakeAsker{answers: []string{"said again"}}
+
+	result := newTestAnalyser(t, store, asker).Reanalyse(t.Context(), "rider-a", 7)
+
+	assert.Equal(t, Result{Outcome: Polled, Analysed: 1}, result)
+	assert.Equal(t, "said again", store.stored[7].Text)
+	assert.Equal(t, []time.Time{started}, store.earlierBefore, "its context is the analyses before it")
+}
+
+// A year-old ride is told the load it left behind, not the rider's load today.
+func TestReanalyseReadsTheLoadOnTheRidesOwnDay(t *testing.T) {
+	t.Parallel()
+	started := analyseNow().Add(-400 * 24 * time.Hour)
+	store := newFakeAnalyseStore()
+	store.metrics[7] = RideMetrics{}
+	store.started = map[int64]time.Time{7: started}
+	store.loads = []trainingload.RideLoad{{At: started, TSS: 100}, {At: analyseNow().Add(-time.Hour), TSS: 300}}
+	asker := &fakeAsker{answers: []string{"said again"}}
+
+	newTestAnalyser(t, store, asker).Reanalyse(t.Context(), "rider-a", 7)
+
+	require.Len(t, asker.prompts, 1)
+	day := trainingload.Timeline(store.loads, started, time.UTC)
+	assert.Contains(t, asker.prompts[0], loadOnRideDay+":")
+	assert.Contains(t, asker.prompts[0], fmt.Sprintf("fatigue %.0f", day[len(day)-1].TSSFatigue))
+	assert.NotContains(t, asker.prompts[0], loadNow)
+}
+
+func TestReanalyseKeepsWhatStoodWhenTheRequestFails(t *testing.T) {
+	t.Parallel()
+	store := newFakeAnalyseStore()
+	store.metrics[7] = RideMetrics{}
+	store.started = map[int64]time.Time{7: analyseNow()}
+	store.stored[7] = Analysis{Text: "what stood"}
+
+	result := newTestAnalyser(t, store, &fakeAsker{failure: FailureAllowance, answers: []string{""}}).
+		Reanalyse(t.Context(), "rider-a", 7)
+
+	assert.Equal(t, Result{Outcome: Failed, Failure: FailureAllowance}, result)
+	assert.Equal(t, "what stood", store.stored[7].Text)
+}
+
+func TestReanalyseAsksNothingForARideItCannotAnswerFor(t *testing.T) {
+	t.Parallel()
+	tests := map[string]func(*fakeAnalyseStore){
+		"a ride the target lacks": func(*fakeAnalyseStore) {},
+		"an underived ride":       func(s *fakeAnalyseStore) { s.started = map[int64]time.Time{7: analyseNow()} },
+		"a slot nobody owns": func(s *fakeAnalyseStore) {
+			s.owner, s.started, s.metrics[7] = "", map[int64]time.Time{7: analyseNow()}, RideMetrics{}
+		},
+	}
+	for name, arrange := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store, asker := newFakeAnalyseStore(), &fakeAsker{}
+			arrange(store)
+
+			assert.Equal(t, Result{Outcome: Unchanged}, newTestAnalyser(t, store, asker).Reanalyse(t.Context(), "rider-a", 7))
+			assert.Empty(t, asker.prompts)
+		})
+	}
+}
+
+func TestReanalyseReportsStoreFailuresAsState(t *testing.T) {
+	t.Parallel()
+	tests := map[string]func(*fakeAnalyseStore){
+		"the owner":   func(s *fakeAnalyseStore) { s.ownerErr = errFakeAnalyseStore },
+		"the start":   func(s *fakeAnalyseStore) { s.startedErr = errFakeAnalyseStore },
+		"the context": func(s *fakeAnalyseStore) { s.contextErr = errFakeAnalyseStore },
+	}
+	for name, breakStore := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store := newFakeAnalyseStore()
+			store.metrics[7] = RideMetrics{}
+			store.started = map[int64]time.Time{7: analyseNow()}
+			breakStore(store)
+
+			result := newTestAnalyser(t, store, &fakeAsker{answers: []string{"answer"}}).Reanalyse(t.Context(), "rider-a", 7)
+			assert.Equal(t, Result{Outcome: Failed, Failure: FailureState}, result)
+		})
+	}
 }

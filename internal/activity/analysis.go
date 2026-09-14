@@ -15,7 +15,7 @@ import (
 const (
 	// PromptRevision names the prompt below; an analysis records the one it
 	// was asked with.
-	PromptRevision = 1
+	PromptRevision = 2
 
 	// MaximumAnalysisCharacters is the contract's bound on a stored answer.
 	MaximumAnalysisCharacters = 2000
@@ -79,6 +79,8 @@ type AnalyseStore interface {
 	// newest first.
 	AnalysesBefore(ctx context.Context, targetID string, before time.Time, limit int) ([]Analysis, error)
 	StoreActivityAnalysis(ctx context.Context, targetID string, id int64, analysis Analysis) error
+	// ActivityStartedAt is when one ride started, and whether the target holds it.
+	ActivityStartedAt(ctx context.Context, targetID string, id int64) (time.Time, bool, error)
 }
 
 // Analyser asks a language model about each ride owed an analysis.
@@ -156,6 +158,41 @@ func (a *Analyser) Analyse(ctx context.Context, targetID string) Result {
 	return Result{Outcome: Polled, Analysed: analysed}
 }
 
+// Reanalyse asks once more about one derived ride, whenever it started and
+// whatever stands for it; a failed request leaves the stored analysis in place.
+func (a *Analyser) Reanalyse(ctx context.Context, targetID string, id int64) Result {
+	subject, err := a.store.TargetOwner(ctx, targetID)
+	if err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
+	startedAt, held, err := a.store.ActivityStartedAt(ctx, targetID, id)
+	if err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
+	if subject == "" || !held {
+		return Result{Outcome: Unchanged}
+	}
+	// The ride may be a year old, so it is read against the load it left behind.
+	run, err := a.readContext(ctx, targetID, subject, startedAt)
+	if err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
+	run.loadLabel = loadOnRideDay
+	if _, derived := run.metrics[id]; !derived {
+		return Result{Outcome: Unchanged}
+	}
+	if failure := a.analyseOne(ctx, targetID, PendingAnalysis{ID: id, StartedAt: startedAt}, &run); failure != FailureNone {
+		if ctx.Err() == nil {
+			slog.Warn("ride re-analysis failed", "target", targetID, "failure", string(failure))
+		}
+
+		return Result{Outcome: Failed, Failure: failure}
+	}
+	slog.Info("activity re-analysed", "target", targetID)
+
+	return Result{Outcome: Polled, Analysed: 1}
+}
+
 // heldTypes is the indoor types a rider with Zwift credentials has held back
 // for the Zwift copy; a rider without them has nothing held.
 func (a *Analyser) heldTypes(ctx context.Context, subject string) ([]int, error) {
@@ -173,9 +210,10 @@ func (a *Analyser) heldTypes(ctx context.Context, subject string) ([]int, error)
 // analysisContext is what every prompt of one run reads beside its ride.
 type analysisContext struct {
 	metrics map[int64]RideMetrics
-	// load is the rider's training load now, absent before any derived ride.
-	load    *trainingload.Day
-	profile rider.Profile
+	// load is the rider's training load at loadLabel's day, absent before any derived ride.
+	load      *trainingload.Day
+	loadLabel string
+	profile   rider.Profile
 }
 
 func (a *Analyser) readContext(ctx context.Context, targetID, subject string, now time.Time) (analysisContext, error) {
@@ -196,7 +234,7 @@ func (a *Analyser) readContext(ctx context.Context, targetID, subject string, no
 		location = time.UTC
 	}
 
-	run := analysisContext{metrics: metrics, profile: profile}
+	run := analysisContext{metrics: metrics, profile: profile, loadLabel: loadNow}
 	if days := trainingload.Timeline(loads, now, location); len(days) > 0 {
 		run.load = &days[len(days)-1]
 	}
@@ -215,7 +253,7 @@ func (a *Analyser) analyseOne(
 	if err != nil {
 		return FailureState
 	}
-	text, model, err := a.asker.Ask(ctx, composePrompt(&run.profile, &metrics, run.load, earlier))
+	text, model, err := a.asker.Ask(ctx, composePrompt(&run.profile, &metrics, run.load, run.loadLabel, earlier))
 	if err != nil {
 		return a.asker.FailureOf(err)
 	}
