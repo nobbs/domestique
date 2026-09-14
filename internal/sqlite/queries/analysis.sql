@@ -46,3 +46,8 @@ DELETE FROM activity_analyses WHERE target_slot = ? AND workout_id = ?;
 
 -- name: ClearActivityAnalyses :exec
 DELETE FROM activity_analyses WHERE target_slot = ?;
+
+-- name: ListActivityAnalyses :many
+SELECT workout_id, text, model, prompt_revision, analysed_at_unix
+FROM activity_analyses
+WHERE target_slot = ?;

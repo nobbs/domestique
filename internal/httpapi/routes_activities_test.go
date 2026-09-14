@@ -1219,3 +1219,34 @@ func TestGetActivitiesWithholdsDeviceZoneBoundsWithoutTheirTimes(t *testing.T) {
 	assert.Nil(t, metrics.DeviceZoneSeconds)
 	assert.Nil(t, metrics.DeviceZoneBoundsBpm)
 }
+
+// What was said about a ride rides along with it; a ride nobody asked about, and
+// another rider's ride, carry nothing.
+func TestGetActivitiesCarriesEachRidesAnalysis(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	analysedAt := activityClock().Add(-30 * time.Minute)
+	state.analyses = map[string]map[int64]activities.Analysis{
+		"rider-a": {1: {AnalysedAt: analysedAt, Text: "A steady ride.", Model: "model-a", PromptRevision: 2}},
+		"rider-b": {99: {AnalysedAt: analysedAt, Text: "someone else's", Model: "model-a", PromptRevision: 2}},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+	require.NotNil(t, list.Activities[0].Analysis)
+	assert.Equal(t, "A steady ride.", list.Activities[0].Analysis.Text)
+	assert.Equal(t, "model-a", list.Activities[0].Analysis.Model)
+	assert.Equal(t, 2, list.Activities[0].Analysis.PromptRevision)
+	assert.True(t, analysedAt.Equal(list.Activities[0].Analysis.AnalysedAt))
+	assert.Nil(t, list.Activities[1].Analysis)
+}
+
+func TestGetActivitiesReportsAnUnreadableAnalysisStore(t *testing.T) {
+	state := activityState("rider-a", time.Hour)
+	state.analysesErr = errors.New("unreadable")
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getActivities(t, handler, "/v1/activities")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}

@@ -2502,6 +2502,7 @@ type fakeState struct {
 	activitySessionsErr  error
 	activityWeatherErr   error
 	routeMatchErr        error
+	analysesErr          error
 	routeRidesErr        error
 	rideLoadsErr         error
 	rideLoads            map[string][]trainingload.RideLoad
@@ -2509,6 +2510,7 @@ type fakeState struct {
 	activitySessions     map[string]map[int64]activities.Session
 	activityWeather      map[string]map[int64][]activities.WeatherStep
 	routeMatches         map[string]map[int64]activities.RouteMatch
+	analyses             map[string]map[int64]activities.Analysis
 	riderProfiles        map[string]rider.Profile
 	riderCredentials     map[string]map[rider.CredentialName]rider.Credential
 	riderCredentialsErr  error
@@ -2541,6 +2543,10 @@ func (s *fakeState) ActivityRouteMatches(
 	}
 
 	return s.routeMatches[targetID], nil
+}
+
+func (s *fakeState) ActivityAnalyses(_ context.Context, targetID string) (map[int64]activities.Analysis, error) {
+	return s.analyses[targetID], s.analysesErr
 }
 
 func (s *fakeState) RouteActivities(

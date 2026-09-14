@@ -282,3 +282,23 @@ func TestHoldsHeadUnitRideFindsOnlyARecentWahooRideOfTheTypes(t *testing.T) {
 	_, err = store.HoldsHeadUnitRide(t.Context(), "rider-a", []int{indoor}, since)
 	assert.ErrorContains(t, err, "checking for a head unit ride")
 }
+
+func TestActivityAnalysesReadsEachRidesAnalysisForOneTarget(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	storeRideAt(t, store, 1, activityNow(), true)
+	storeRideAt(t, store, 2, activityNow().Add(time.Hour), true)
+	require.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 1, testAnalysis("said")), "StoreActivityAnalysis()")
+
+	analyses, err := store.ActivityAnalyses(t.Context(), "rider-a")
+	require.NoError(t, err, "ActivityAnalyses()")
+	assert.Equal(t, map[int64]activity.Analysis{1: testAnalysis("said")}, analyses)
+
+	other, err := store.ActivityAnalyses(t.Context(), "rider-b")
+	require.NoError(t, err, "ActivityAnalyses() for another target")
+	assert.Empty(t, other)
+
+	require.NoError(t, store.Close(), "Close()")
+	_, err = store.ActivityAnalyses(t.Context(), "rider-a")
+	assert.ErrorContains(t, err, "reading the activity analyses")
+}
