@@ -4,7 +4,8 @@
 
 This specification is subordinate to [the service contract](service.md). It
 defines the durable lifecycle of OAuth onboarding, synchronisation, and the
-read-only HTTP JSON surface.
+HTTP JSON surface, which is read-only apart from the state-changing endpoints
+it enumerates.
 
 ## Stable identities
 
@@ -156,7 +157,8 @@ A manual trigger is a state change and carries the browser-origin requirement of
 every state-changing route.
 
 The configured Tailnet user starts one by asking for the task that does it:
-`POST /v1/tasks/sync:source/run` reads every configured library,
+`POST /v1/tasks/sync:source/run` reads every configured source, the local one
+included,
 `POST /v1/tasks/sync:target/run` reconciles every target — admin only, since a
 non-admin's empty argument would ask for targets that are not theirs — and
 `POST /v1/tasks/sync:target/run/{slot}` reconciles exactly one target without
@@ -820,9 +822,10 @@ also uses 403; malformed client input uses 400.
 The OAuth start, callback, the protected `POST /v1/tasks` triggers, the protected
 `PUT /v1/tasks/{name}/schedule` switch, the protected
 `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
-request, the protected `PUT /v1/settings/*` section writes, and the admin-only
-`/v1/plans` operations — the preview `POST`, create, replace and delete — are
-the only state-changing endpoints. A settings write changes what the service
+request, the protected `PUT /v1/settings/*` section writes, a rider's own
+`DELETE /v1/settings/rider/credentials/zwift`, and the admin-only `/v1/plans`
+operations — the preview `POST`, create, replace and delete — are the only
+state-changing endpoints. A settings write changes what the service
 does next and nothing it has stored about a route; it reaches the runtime
 settings [the configuration specification](configuration.md#runtime-settings)
 defines and no other configuration. A plan write changes a route this service

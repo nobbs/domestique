@@ -1,12 +1,14 @@
 # domestique
 
-`domestique` mirrors one private VeloPlanner route library to one or two Wahoo
+`domestique` mirrors one private VeloPlanner route library, and the plans an
+admin draws in its own planner, to one or two Wahoo
 accounts. It is a single-tenant service intended to run as a Docker container on
 an amd64 host, reachable behind a TLS-terminating reverse proxy and gated by
 sign-in against an Auth0 tenant.
 
-It also serves a read-only browser UI on the same listener, which draws
-the whole stored library on one map and gives each route a page of its own.
+It also serves a browser UI on the same listener, read-only over every
+mirrored route, which draws the whole stored library on one map, gives each
+route a page of its own, and lets an admin draw plans.
 Basemap tiles come from a configurable keyless provider — the only outbound
 request this service's page makes on its own — and the map follows your
 system's light or dark colour scheme.

@@ -9,7 +9,8 @@ deliberately revised.
 ## Purpose and scope
 
 Domestique mirrors the complete route library of one private VeloPlanner
-account to two separately authorised Wahoo accounts. It runs automatically and
+account, and the plans an admin draws in its own planner, to two separately
+authorised Wahoo accounts. It runs automatically and
 uploads device-ready FIT courses directly to Wahoo; Ride with GPS is not part
 of the service.
 
@@ -21,7 +22,8 @@ The service is a single-tenant Docker workload for an amd64 Tailnet host, which
 is the only architecture the image is published for. The long-running target is a
 small Linux cloud VM. It has no CLI.
 
-The service serves a read-only browser UI for route preview. Its HTTP surface is
+The service serves a browser UI that is read-only over every route it mirrors
+and lets an admin, and no one else, draw plans. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
 protected Wahoo OAuth onboarding flow, the manual triggers over synchronisation
 and surface enrichment, the runtime settings the UI reads and writes back, and
@@ -355,7 +357,8 @@ from the same origin the same way, as `/auth/callback`, and must be registered
 with Auth0 exactly.
 
 The state-changing HTTP surface is sign-in, sign-out, the Wahoo OAuth flow, and
-the Wahoo webhook receiver:
+the Wahoo webhook receiver, plus the task triggers, settings writes and plan
+operations the sections below name:
 
 - `POST /auth/start` begins a sign-in against the configured Auth0 tenant.
 - `GET /auth/callback` validates the returned authorisation code and issues a
@@ -1078,6 +1081,9 @@ Sync remains disabled until every configured target is authorised.
 A SQLite database on a Docker volume stores:
 
 - Wahoo target identities and encrypted refresh tokens;
+- the plans an admin has drawn: waypoints, profile, name, the routed geometry,
+  published state and version, which exist nowhere upstream and are lost with
+  the database;
 - source route/route identity, source revision, content hash, and Wahoo
   `external_id`;
 - a cache of route titles and geometry for the route map view, written
@@ -1233,8 +1239,10 @@ Wahoo wire as the timestamp that field expects while two replaces a second
 apart still differ; it moves on every replace, name included, so an admin's
 edit reaches every target on the next run and an untouched plan is never
 re-sent. The version a replace carries as `If-Match` is a separate counter and
-never leaves the service. A plan's identifier is never reused: a deleted
-plan's number is retired, so a new plan can never inherit a deleted plan's
+never leaves the service. A plan's identifier is drawn at random from the
+positive 63-bit range when the plan is created, never allocated in sequence,
+so it is not reused after a deletion and not repeated by a database rebuilt
+after state loss: a new plan can never inherit a lost or deleted plan's
 external ID and adopt its Wahoo copy. Its inventory is the set of published
 plans, read from the geometry
 each plan stored when it was saved: a source read never asks the routing

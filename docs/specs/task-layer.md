@@ -271,7 +271,7 @@ is checked rather than inferred.
 
 | Task | Argument | Resources | Schedule |
 | --- | --- | --- | --- |
-| `sync:source` | library, or none for every one | `inventory` exclusive | every hour |
+| `sync:source` | source provider, or none for every one | `inventory` exclusive | every hour |
 | `sync:target` | target slot, or none for every one | `inventory` exclusive | every six hours |
 | `sync:clear` | target slot | `inventory` exclusive | none |
 | `surface:annotate` | none | `inventory` exclusive | none |

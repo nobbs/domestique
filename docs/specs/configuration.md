@@ -163,8 +163,10 @@ application dependency.
   route ID, query string or subject. Like every other field it may be set as
   `DOMESTIQUE_LOG__LEVEL`, which is the intended way to raise it for one
   restart.
-- `planning.brouter_url` is optional. It is the absolute HTTP origin, with no
-  path, of the BRouter instance the planner routes with — a sidecar on the same
+- `planning.brouter_url` is required whenever the `[planning]` section is
+  present, so a section naming tiles and no engine is refused at startup rather
+  than read as a planner with nothing to route. It is the absolute HTTP origin,
+  with no path, of the BRouter instance the planner routes with — a sidecar on the same
   host, never a public address. It is a file field because it names where a
   neighbour listens, which is the host's knowledge like the listen addresses
   above. Leaving the section out switches the planner off: no plan endpoint is

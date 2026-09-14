@@ -395,8 +395,8 @@ page, which reaches the deletion gate, the staleness bound, the notification
 settings, the basemap list, the surface regions, the source libraries, the Wahoo
 application, the ride model, and every credential those reach their upstreams
 with — or a change to the host's configuration file, which
-holds only the listeners, the identity gate and the state, followed by a
-restart.
+holds only the listeners, the identity gate, the state and the two optional
+capability sections, followed by a restart.
 
 A credential can be replaced from that page but not read from it, and removing
 one is not offered at all. A blank field means keep rather than clear.
