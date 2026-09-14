@@ -269,6 +269,12 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 			return
 		}
+		analyses, analysisErr := h.state.ActivityAnalyses(request.Context(), targetID, from, to)
+		if analysisErr != nil {
+			h.unavailable(writer)
+
+			return
+		}
 		view.Activities = make([]openapi.Activity, 0, len(stored))
 		for index := range stored {
 			recorded := &stored[index]
@@ -309,6 +315,12 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 			}
 			if match, ok := matches[recorded.ID]; ok {
 				activity.RouteMatch = activityRouteMatch(match)
+			}
+			if analysis, ok := analyses[recorded.ID]; ok {
+				activity.Analysis = &openapi.ActivityAnalysis{
+					Text: analysis.Text, Model: analysis.Model, PromptRevision: analysis.PromptRevision,
+					AnalysedAt: wireTime(analysis.AnalysedAt),
+				}
 			}
 			view.Activities = append(view.Activities, activity)
 		}

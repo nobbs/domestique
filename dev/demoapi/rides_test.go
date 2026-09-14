@@ -73,6 +73,10 @@ func TestSeedLeavesTheDemoRiderARideWithEverythingDerived(t *testing.T) {
 	steps, err := store.ActivityWeatherSteps(t.Context(), demoSubject, rides[0].ID)
 	require.NoError(t, err)
 	assert.NotEmpty(t, steps, "a positioned ride is asked about along its own track")
+
+	analyses, err := store.ActivityAnalyses(t.Context(), demoSubject, time.Now().UTC().AddDate(0, 0, -30), time.Now().UTC())
+	require.NoError(t, err)
+	assert.Len(t, analyses, len(rides), "every ride carries an analysis, past the per-run bound")
 }
 
 // Seeding runs again on every manual synchronisation, so it has to be safe to

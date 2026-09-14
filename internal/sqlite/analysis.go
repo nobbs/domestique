@@ -96,3 +96,29 @@ func (s *Store) AnalysesBefore(
 
 	return analyses, nil
 }
+
+// ActivityAnalyses is what was said about each of one target's rides that
+// started in [from, to), keyed by ride. A ride not analysed is absent from the map.
+func (s *Store) ActivityAnalyses(
+	ctx context.Context, targetID string, from, to time.Time,
+) (map[int64]activity.Analysis, error) {
+	rows, err := s.queries.ListActivityAnalyses(ctx, sqlcgen.ListActivityAnalysesParams{
+		TargetSlot: targetID,
+		FromUnix:   from.Truncate(time.Second).Unix(),
+		ToUnix:     to.Truncate(time.Second).Unix(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("reading the activity analyses: %w", err)
+	}
+	analyses := make(map[int64]activity.Analysis, len(rows))
+	for _, row := range rows {
+		analyses[row.WorkoutID] = activity.Analysis{
+			AnalysedAt:     time.Unix(row.AnalysedAtUnix, 0).UTC(),
+			Text:           row.Text,
+			Model:          row.Model,
+			PromptRevision: int(row.PromptRevision),
+		}
+	}
+
+	return analyses, nil
+}

@@ -33,6 +33,7 @@ import { useEscapeKey } from "../../lib/useEscapeKey";
 import { conditionsSentence } from "../../lib/weather";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
+import { RideAnalysis } from "./RideAnalysis";
 import { RideClimbs } from "./RideClimbs";
 import { RideConditions, stepStarts } from "./RideConditions";
 import { RideFigures } from "./RideFigures";
@@ -237,6 +238,7 @@ export function ActivityPage() {
           </div>
         ) : null}
         <TrainingLoad ride={ride} />
+        <RideAnalysis ride={ride} />
         {id !== null ? <RideClimbs climbs={routeClimbs.data?.climbs} activityId={id} /> : null}
       </div>
     </PageShell>

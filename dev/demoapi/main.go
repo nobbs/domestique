@@ -320,14 +320,40 @@ func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot) error {
 	if err != nil {
 		return fmt.Errorf("creating the demo deriver: %w", err)
 	}
+	analyser, err := activity.NewAnalyser(store, demoAsker{}, time.Unix(1, 0), wahoo.IndoorWorkoutTypes(),
+		func() string { return "UTC" }, now)
+	if err != nil {
+		return fmt.Errorf("creating the demo analyser: %w", err)
+	}
 	for _, slot := range slots {
 		if result := deriver.Derive(ctx, slot.ID); result.Outcome == activity.Failed {
 			return fmt.Errorf("deriving the rides of %s: %s", slot.ID, result.Failure)
+		}
+		// A run asks about a bounded few rides, so the seeded history takes several.
+		for {
+			result := analyser.Analyse(ctx, slot.ID)
+			if result.Outcome == activity.Failed {
+				return fmt.Errorf("analysing the rides of %s: %s", slot.ID, result.Failure)
+			}
+			if result.Outcome != activity.Polled {
+				break
+			}
 		}
 	}
 
 	return nil
 }
+
+// demoAsker answers in place of the bundled claude executable, which the demo
+// has no token for and must never reach.
+type demoAsker struct{}
+
+func (demoAsker) Ask(context.Context, string) (text, model string, err error) {
+	return "A synthetic analysis: the demo has no model to ask, so every ride reads the same.\n\n" +
+		"A real deployment with a Claude token writes a few short paragraphs about the ride here.", "demo", nil
+}
+
+func (demoAsker) FailureOf(error) activity.Failure { return activity.FailureExecutable }
 
 // slotsFor pairs each configured target with the state it was asked for. The
 // slots come from the settings rather than from the flag alone, so a seeded

@@ -282,3 +282,33 @@ func TestHoldsHeadUnitRideFindsOnlyARecentWahooRideOfTheTypes(t *testing.T) {
 	_, err = store.HoldsHeadUnitRide(t.Context(), "rider-a", []int{indoor}, since)
 	assert.ErrorContains(t, err, "checking for a head unit ride")
 }
+
+// The list reads only the analyses of the rides it serves, not a whole history.
+func TestActivityAnalysesReadsTheRidesInsideTheWindowForOneTarget(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	from, to := activityNow(), activityNow().Add(2*time.Hour)
+	storeRideAt(t, store, 1, from.Add(-time.Second), true)
+	storeRideAt(t, store, 2, from, true)
+	storeRideAt(t, store, 3, from.Add(time.Hour), true)
+	storeRideAt(t, store, 4, to, true)
+	for id := int64(1); id <= 4; id++ {
+		if id == 3 {
+			continue
+		}
+		require.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", id, testAnalysis("said")), "StoreActivityAnalysis()")
+	}
+
+	analyses, err := store.ActivityAnalyses(t.Context(), "rider-a", from, to)
+	require.NoError(t, err, "ActivityAnalyses()")
+	assert.Equal(t, map[int64]activity.Analysis{2: testAnalysis("said")}, analyses,
+		"from inclusive, to exclusive, and a ride with no analysis absent")
+
+	other, err := store.ActivityAnalyses(t.Context(), "rider-b", from, to)
+	require.NoError(t, err, "ActivityAnalyses() for another target")
+	assert.Empty(t, other)
+
+	require.NoError(t, store.Close(), "Close()")
+	_, err = store.ActivityAnalyses(t.Context(), "rider-a", from, to)
+	assert.ErrorContains(t, err, "reading the activity analyses")
+}
