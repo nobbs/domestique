@@ -460,6 +460,38 @@ form(day)    = fitness(day) - fatigue(day)
 A day with no ride still carries a load of zero into this update, which is
 what lets rest turn accumulated load into form.
 
+**Outlook.** Where the last day served leaves the rider, on each scale,
+and three weeks projected from there under three plans
+(`internal/trainingload/outlook.go`):
+
+~~~text
+ramp(week)    = fitness(last) - fitness(last - 7 days)  [fitness(last - 7 days) is 0 where the timeline holds no such day]
+habitual(day) = Σ load(last - 27 days .. last) / 28      [days before the timeline's first count as zero]
+keep          = (1 - 1/42)^7
+weekly(share) = 7 · fitness(last) · (1 + share - keep) / (1 - keep)
+~~~
+
+`weekly` is the load that, spread evenly over the next seven days, raises
+fitness by `share`. It is derived by folding a constant daily load `d` from
+`f0` for seven days (`f7 = d + (f0 - d)·keep`), setting `f7 = f0·(1+share)`,
+and solving for `d`. The two figures reported are `weekly(0.03)` and
+`weekly(0.08)` (`BuildingShareLow`, `BuildingShareHigh`). `habitualDailyLoad`
+is the mean daily load over the last `HabitualDays` (28) days, the load a
+rider has actually been carrying.
+
+Each of the three plans then projects `OutlookDays` (21) days forward from
+the last day, applying the same daily decay above under one constant daily
+load: rest carries none, habitual carries `habitualDailyLoad` every day, and
+build carries `habitualDailyLoad × BuildFactor` (1.2).
+
+**Form bands.** The browser reads form as a percentage of fitness —
+`form / fitness · 100`, nought where fitness is at or below 1 — against five
+bands: Transition (≥ 20), Fresh (5 to 20), Grey zone (−10 to 5), Optimal
+(−30 to −10), High risk (< −30). It reads the outlook's ramp the same way, as
+a percentage of the fitness seven days earlier, against four bands:
+Aggressive (≥ 10), Building (3 to 10), Holding (−3 to 3), Detraining (< −3).
+Applied by `internal/webui/app/src/features/fitness/form.ts`.
+
 **Heart-rate zones.** Five zones cut by four bounds, from a threshold rate
 where the rider has entered one (0.81, 0.90, 0.94, 1.00 of threshold) or
 from a maximum rate otherwise (0.60, 0.70, 0.80, 0.90 of maximum)
@@ -472,13 +504,18 @@ for run zones.
 
 **Source.** TRIMP: Banister 1991. Heart-rate TSS and power TSS/IF/NP:
 Coggan, in Allen and Coggan 2010. Heart-rate zones: Friel 2009.
+Form-percentage bands: the convention intervals.icu uses. The weekly range,
+ramp bands and the three plans: this service's own.
 
 **Applied by.** `internal/trainingload/load.go` (`TRIMP`, `HeartRateTSS`,
 `PowerLoad`), `internal/trainingload/zones.go` (`BoundsFrom`, `TimeInZones`,
-`TimeAtHeartRate`), `internal/trainingload/fitness.go` (`Timeline`, `decay`).
+`TimeAtHeartRate`), `internal/trainingload/fitness.go` (`Timeline`, `decay`),
+`internal/trainingload/outlook.go` (`OutlookOf`),
+`internal/webui/app/src/features/fitness/form.ts`.
 
 **Status.** Validated: these are the figures a rider's own training-load
-pages show today.
+pages show today. The outlook and its bands are this service's own reading,
+not validated against another application.
 
 ## Decoupling and heat drift
 

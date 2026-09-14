@@ -2131,6 +2131,115 @@ components:
             point rather than a nought.
           items:
             $ref: '#/components/schemas/PowerCurvePoint'
+        powerCurvePrevious:
+          type: array
+          description: >-
+            The same curve over the window of equal length that ends where this
+            one begins, so a reader can tell whether the window's best efforts
+            moved. Absent where the request named no start, and where no ride in
+            that earlier window carried a meter.
+          items:
+            $ref: '#/components/schemas/PowerCurvePoint'
+        outlook:
+          $ref: '#/components/schemas/FitnessOutlook'
+    FitnessOutlook:
+      type: object
+      additionalProperties: false
+      description: >-
+        Where the last day served leaves the rider, on each scale: how fast
+        fitness is moving, the week's load that would keep it rising, and three
+        weeks projected under three plans. Absent where no day is served.
+        See docs/specs/measurement.md §Training load.
+      required:
+        - date
+        - tss
+        - trimp
+      properties:
+        date:
+          type: string
+          format: date
+          description: The day projected from, the last day in days.
+        tss:
+          $ref: '#/components/schemas/FitnessScaleOutlook'
+        trimp:
+          $ref: '#/components/schemas/FitnessScaleOutlook'
+    FitnessScaleOutlook:
+      type: object
+      additionalProperties: false
+      required:
+        - rampPerWeek
+        - habitualDailyLoad
+        - weekLoadLow
+        - weekLoadHigh
+        - plans
+      properties:
+        rampPerWeek:
+          type: number
+          format: double
+          description: Fitness on the day projected from, less fitness seven days before it.
+        habitualDailyLoad:
+          type: number
+          format: double
+          description: The mean daily load over the 28 days ending on the day projected from.
+        weekLoadLow:
+          type: number
+          format: double
+          description: The load that, spread evenly over the next seven days, raises fitness by 3%.
+        weekLoadHigh:
+          type: number
+          format: double
+          description: The load that, spread evenly over the next seven days, raises fitness by 8%.
+        plans:
+          type: array
+          description: One projection per plan, rest first.
+          items:
+            $ref: '#/components/schemas/FitnessPlan'
+    FitnessPlan:
+      type: object
+      additionalProperties: false
+      required:
+        - plan
+        - dailyLoad
+        - days
+      properties:
+        plan:
+          type: string
+          description: >-
+            rest carries no load; habitual carries habitualDailyLoad every day;
+            build carries a fifth more than that.
+          enum:
+            - rest
+            - habitual
+            - build
+        dailyLoad:
+          type: number
+          format: double
+        days:
+          type: array
+          description: The 21 days after the day projected from, in order.
+          items:
+            $ref: '#/components/schemas/FitnessProjectedDay'
+    FitnessProjectedDay:
+      type: object
+      additionalProperties: false
+      required:
+        - date
+        - fitness
+        - fatigue
+        - form
+      properties:
+        date:
+          type: string
+          format: date
+        fitness:
+          type: number
+          format: double
+        fatigue:
+          type: number
+          format: double
+        form:
+          type: number
+          format: double
     PowerCurvePoint:
       type: object
       additionalProperties: false

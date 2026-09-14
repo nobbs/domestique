@@ -222,8 +222,9 @@ func TestGetFitnessCarriesTheWindowsPowerCurve(t *testing.T) {
 	assert.InDelta(t, 268.0, view.PowerCurve[1].Watts, 1e-9)
 	assert.Equal(t, []string{"rider-a"}, state.powerCurveFor, "the caller's own target alone")
 	// The same window the timeline is cut to, so the two describe one period.
-	assert.Equal(t, from, state.powerCurveWindow[0])
-	assert.Equal(t, to, state.powerCurveWindow[1])
+	require.NotEmpty(t, state.powerCurveWindows)
+	assert.Equal(t, from, state.powerCurveWindows[0][0])
+	assert.Equal(t, to, state.powerCurveWindows[0][1])
 }
 
 // A window whose rides carried no meter has no curve at all, rather than a
@@ -252,4 +253,101 @@ func TestGetFitnessServesTheTimelineWhenTheCurveCannotBeRead(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	assert.Empty(t, view.PowerCurve)
 	assert.NotEmpty(t, view.Days)
+}
+
+// The previous curve is read only when a start was named: the same window's
+// length, ending exactly where the requested window begins.
+func TestGetFitnessCarriesThePreviousPowerCurveOverTheEqualLengthWindowBefore(t *testing.T) {
+	from := activityClock().Add(-48 * time.Hour)
+	to := activityClock()
+	state := fitnessState(
+		trainingload.RideLoad{At: activityClock().Add(-24 * time.Hour), TSS: 60, TRIMP: 40},
+	)
+	curve := rider.PowerCurve{}
+	curve.Watts[0], curve.Held[0] = 900, true
+	state.powerCurves = map[string]rider.PowerCurve{"rider-a": curve}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness?from="+
+		from.Format(time.RFC3339)+"&to="+to.Format(time.RFC3339))
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, view.PowerCurvePrevious, 1)
+	assert.InDelta(t, 900.0, view.PowerCurvePrevious[0].Watts, 1e-9)
+	require.Len(t, state.powerCurveWindows, 2, "the window, then the one before it")
+	assert.Equal(t, from.Add(-to.Sub(from)), state.powerCurveWindows[1][0])
+	assert.Equal(t, from, state.powerCurveWindows[1][1])
+}
+
+// A window with no start has no "before" it, so the previous curve is never
+// asked for.
+func TestGetFitnessOmitsThePreviousPowerCurveWithoutAStart(t *testing.T) {
+	state := fitnessState(
+		trainingload.RideLoad{At: activityClock().Add(-24 * time.Hour), TSS: 60, TRIMP: 40},
+	)
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	require.Equal(t, http.StatusOK, code)
+	assert.Empty(t, view.PowerCurvePrevious)
+	assert.Len(t, state.powerCurveWindows, 1, "only the window itself")
+}
+
+// The acceptance criterion: a rider with rides gets an outlook on both
+// scales, each carrying its three plans of 21 projected days.
+func TestGetFitnessCarriesTheOutlookForARiderWithRides(t *testing.T) {
+	state := fitnessState(
+		trainingload.RideLoad{At: activityClock().Add(-24 * time.Hour), TSS: 60, TRIMP: 40},
+	)
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	require.Equal(t, http.StatusOK, code)
+	require.NotNil(t, view.Outlook)
+	assert.NotEmpty(t, view.Outlook.Date)
+	for _, scale := range []openapi.FitnessScaleOutlook{view.Outlook.Tss, view.Outlook.Trimp} {
+		require.Len(t, scale.Plans, 3)
+		for _, plan := range scale.Plans {
+			assert.Len(t, plan.Days, 21)
+		}
+	}
+	assert.Equal(t, openapi.FitnessPlan_PlanRest, view.Outlook.Tss.Plans[0].Plan)
+	assert.Equal(t, openapi.FitnessPlan_PlanHabitual, view.Outlook.Tss.Plans[1].Plan)
+	assert.Equal(t, openapi.FitnessPlan_PlanBuild, view.Outlook.Tss.Plans[2].Plan)
+}
+
+// A window ending at midnight leaves that day out of days; the outlook must not
+// project from it, or the plans would not continue the line the reader sees.
+func TestGetFitnessProjectsTheOutlookFromTheLastDayServed(t *testing.T) {
+	state := fitnessState(
+		trainingload.RideLoad{At: activityClock().Add(-72 * time.Hour), TSS: 60, TRIMP: 40},
+	)
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	// Midnight in the service's zone (the handler's Europe/Berlin), not in UTC.
+	to := time.Date(2026, 8, 22, 22, 0, 0, 0, time.UTC)
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness?to="+to.Format(time.RFC3339))
+	require.Equal(t, http.StatusOK, code)
+	require.NotEmpty(t, view.Days)
+	require.NotNil(t, view.Outlook)
+	assert.Equal(t, view.Days[len(view.Days)-1].Date, view.Outlook.Date)
+}
+
+// The acceptance criterion's other half: an empty timeline has no last day to
+// project from, so the outlook is absent rather than a projection from nothing.
+func TestGetFitnessOmitsTheOutlookForARiderWithNoRides(t *testing.T) {
+	handler := activityHandler(t, fitnessState(), nonAdminSessions("rider-a"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	require.Equal(t, http.StatusOK, code)
+	assert.Nil(t, view.Outlook)
+}
+
+// A rider with no target of their own has an empty timeline, so it too has no
+// outlook to project from.
+func TestGetFitnessOmitsTheOutlookForARiderWithNoTarget(t *testing.T) {
+	handler := activityHandler(t, fitnessState(), nonAdminSessions("rider-c"))
+
+	code, view := getFitness(t, handler, "/v1/activities/fitness")
+	require.Equal(t, http.StatusOK, code)
+	assert.Nil(t, view.Outlook)
 }

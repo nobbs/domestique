@@ -52,14 +52,17 @@ func (h *Handler) GetFitness(writer http.ResponseWriter, request *http.Request) 
 	// Folded from the rider's first ride rather than from the window, then cut
 	// to the window: a window opening years into a history opens at the fitness
 	// that history had actually built.
+	timeline := trainingload.Timeline(loads, to, location)
 	// A day is in the window when any of it is, not only when it begins inside:
 	// the window a page asks for starts at whatever moment the reader opened it,
 	// and a day it half covers is a day it covers.
-	for _, day := range trainingload.Timeline(loads, to, location) {
+	served := 0
+	for index, day := range timeline {
 		if !overlaps(day.Date, day.Date.AddDate(0, 0, 1), from, to) {
 			continue
 		}
 		view.Days = append(view.Days, fitnessDay(&day))
+		served = index + 1
 	}
 	for _, week := range trainingload.ZonesByWeek(loads, location) {
 		if !overlaps(week.WeekStart, week.WeekStart.AddDate(0, 0, 7), from, to) {
@@ -77,6 +80,19 @@ func (h *Handler) GetFitness(writer http.ResponseWriter, request *http.Request) 
 		request.Context(), []string{targetID}, from, to,
 	); curveErr == nil {
 		view.PowerCurve = powerCurvePoints(curve)
+	}
+	// A window with no start has no equal-length window before it to compare against.
+	if !from.IsZero() {
+		if previous, previousErr := h.state.PowerCurve(
+			request.Context(), []string{targetID}, from.Add(-to.Sub(from)), from,
+		); previousErr == nil {
+			view.PowerCurvePrevious = powerCurvePoints(previous)
+		}
+	}
+	// Projected from the last day served, so the plans continue the line the reader sees.
+	if outlook, ok := trainingload.OutlookOf(timeline[:served]); ok {
+		wire := fitnessOutlook(&outlook)
+		view.Outlook = &wire
 	}
 	h.writeJSON(writer, http.StatusOK, view)
 }
@@ -132,4 +148,43 @@ func fitnessDay(day *trainingload.Day) openapi.FitnessDay {
 		TssFatigue:   day.TSSFatigue,
 		TssForm:      day.TSSForm,
 	}
+}
+
+func fitnessOutlook(outlook *trainingload.Outlook) openapi.FitnessOutlook {
+	return openapi.FitnessOutlook{
+		Date:  outlook.Date.Format(time.DateOnly),
+		Tss:   fitnessScaleOutlook(&outlook.TSS),
+		Trimp: fitnessScaleOutlook(&outlook.TRIMP),
+	}
+}
+
+func fitnessScaleOutlook(scale *trainingload.ScaleOutlook) openapi.FitnessScaleOutlook {
+	return openapi.FitnessScaleOutlook{
+		RampPerWeek:       scale.RampPerWeek,
+		HabitualDailyLoad: scale.HabitualDailyLoad,
+		WeekLoadLow:       scale.WeekLoadLow,
+		WeekLoadHigh:      scale.WeekLoadHigh,
+		Plans: []openapi.FitnessPlan{
+			fitnessPlan(openapi.FitnessPlan_PlanRest, 0, scale.Rest),
+			fitnessPlan(openapi.FitnessPlan_PlanHabitual, scale.HabitualDailyLoad, scale.Habitual),
+			fitnessPlan(openapi.FitnessPlan_PlanBuild,
+				scale.HabitualDailyLoad*trainingload.BuildFactor, scale.Build),
+		},
+	}
+}
+
+func fitnessPlan(
+	plan openapi.FitnessPlan_Plan, dailyLoad float64, days []trainingload.ProjectedDay,
+) openapi.FitnessPlan {
+	projected := make([]openapi.FitnessProjectedDay, len(days))
+	for index := range days {
+		projected[index] = openapi.FitnessProjectedDay{
+			Date:    days[index].Date.Format(time.DateOnly),
+			Fitness: days[index].Fitness,
+			Fatigue: days[index].Fatigue,
+			Form:    days[index].Form,
+		}
+	}
+
+	return openapi.FitnessPlan{Plan: plan, DailyLoad: dailyLoad, Days: projected}
 }

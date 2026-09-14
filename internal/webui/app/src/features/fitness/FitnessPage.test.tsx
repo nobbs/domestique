@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { Activity, Fitness, FitnessDay, Status } from "../../api/types";
+import type { Activity, Fitness, FitnessDay, FitnessScaleOutlook, Status } from "../../api/types";
 import { FitnessPage } from "./FitnessPage";
 
 function day(date: string, overrides: Partial<FitnessDay> = {}): FitnessDay {
@@ -91,29 +91,48 @@ function show(fitness: Fitness = TIMELINE, activities: Activity[] = []) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  // The ride ids are only ever needed to tell two rides apart within one test,
-  // so they start over rather than depending on what ran before.
   nextRideID = 1;
 });
 
+function scaleOutlook(fitness: number): FitnessScaleOutlook {
+  const days = Array.from({ length: 21 }, (_, index) => ({
+    date: new Date(Date.UTC(2026, 7, 25 + index)).toISOString().slice(0, 10),
+    fitness,
+    fatigue: fitness,
+    form: 0,
+  }));
+
+  return {
+    rampPerWeek: 3,
+    habitualDailyLoad: 50,
+    weekLoadLow: 412,
+    weekLoadHigh: 488,
+    plans: [
+      {
+        plan: "rest",
+        dailyLoad: 0,
+        days: days.map((one, index) => ({ ...one, form: index * 4 - 20 })),
+      },
+      { plan: "habitual", dailyLoad: 50, days },
+      { plan: "build", dailyLoad: 60, days },
+    ],
+  };
+}
+
+const OUTLOOK: Fitness["outlook"] = {
+  date: "2026-08-24",
+  tss: scaleOutlook(60),
+  trimp: { ...scaleOutlook(30), weekLoadLow: 200, weekLoadHigh: 240 },
+};
+
 describe("FitnessPage", () => {
-  it("offers both scales and both are readable", async () => {
-    show();
-
-    const group = await screen.findByRole("group", { name: "Scale" });
-    expect(group).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "TRIMP" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Stress score" })).toBeInTheDocument();
-  });
-
-  // A date range, which is this page's own: the volume page's toggle picks the
-  // period it counts in, not the span it counts over.
-  it("offers a range to read the timeline over", async () => {
+  it("offers a range and both scales", async () => {
     show();
 
     expect(await screen.findByRole("group", { name: "Range" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "3 months" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "1 year" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "6 months" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Scale" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "TRIMP" })).toBeInTheDocument();
   });
 
   it("names the scale the chart is on, and changes it with the toggle", async () => {
@@ -125,11 +144,61 @@ describe("FitnessPage", () => {
     expect(await screen.findByRole("img", { name: /TRIMP scale/ })).toBeInTheDocument();
   });
 
-  it("sums each week's time in zone beneath the chart", async () => {
+  it("leads with fitness and form as figures", async () => {
     show();
 
-    expect(await screen.findByText("2026-08-17")).toBeInTheDocument();
-    expect(screen.getByText("35 min")).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "Fitness" })).toHaveTextContent("60");
+    // -30 of 60 is half of fitness below, which is the high-risk band.
+    expect(screen.getByRole("group", { name: "Form" })).toHaveTextContent(
+      "−50%of fitnessHigh risk",
+    );
+  });
+
+  it("reads the outlook on the scale the page is on", async () => {
+    show({ ...TIMELINE, outlook: OUTLOOK });
+
+    expect(
+      await screen.findByRole("group", { name: "Next 7 days, to keep building" }),
+    ).toHaveTextContent("412–488");
+    expect(screen.getByRole("group", { name: "Ramp rate" })).toHaveTextContent("+3.0");
+    // The rest plan's form reaches the fresh band on its seventh day.
+    expect(screen.getByText(/fresh after 7 days of rest/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /and 21 days projected under 3 plans/ }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "TRIMP" }));
+    expect(await screen.findByText("200–240")).toBeInTheDocument();
+  });
+
+  // Projected from another day, the plans would not join the line they continue.
+  it("leaves out an outlook projected from a day other than the last one shown", async () => {
+    show({ ...TIMELINE, outlook: { ...OUTLOOK, date: "2026-08-20" } });
+
+    await screen.findByRole("group", { name: "Scale" });
+    expect(screen.queryByRole("group", { name: "Ramp rate" })).toBeNull();
+    expect(screen.queryByText("412–488")).toBeNull();
+  });
+
+  it("draws each week's time in zone", async () => {
+    show();
+
+    expect(await screen.findByRole("heading", { name: "Time in zone" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Hours in each heart-rate zone over 1 week" }),
+    ).toBeInTheDocument();
+  });
+
+  // The timeline's last day is a Monday, so its week has begun but has no width on the axis yet.
+  it("keeps the week begun on the last day served", async () => {
+    show({
+      ...TIMELINE,
+      weeks: [...TIMELINE.weeks, { weekStart: "2026-08-24", zoneSeconds: [0, 900, 0, 0, 0] }],
+    });
+
+    expect(
+      await screen.findByRole("img", { name: "Hours in each heart-rate zone over 2 weeks" }),
+    ).toBeInTheDocument();
   });
 
   // A rider whose rides have not been derived is told what is missing, not shown
@@ -161,14 +230,25 @@ function ride(startedAt: string, decouplingPercent?: number): Activity {
 }
 
 describe("FitnessPage decoupling", () => {
-  it("draws the season's decoupling once a ride carries one", async () => {
-    const recently = new Date();
-    recently.setDate(recently.getDate() - 5);
-    show(TIMELINE, [ride(recently.toISOString(), 4.2), ride(recently.toISOString(), 7.9)]);
+  it("draws the rides in the range that carry one", async () => {
+    show(TIMELINE, [
+      ride("2026-08-23T08:00:00Z", 4.2),
+      ride("2026-08-23T17:00:00Z", 7.9),
+      ride("2026-06-01T08:00:00Z", 3),
+    ]);
 
     expect(await screen.findByRole("heading", { name: "Decoupling" })).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /Aerobic decoupling over 2 rides/ }),
+    ).toBeInTheDocument();
+  });
+
+  // A ride late in the evening in the service's zone is already the next day in UTC.
+  it("places a ride on its day in the service's zone", async () => {
+    show(TIMELINE, [ride("2026-08-21T22:30:00Z", 5)]);
+
+    expect(
+      await screen.findByRole("img", { name: /Aerobic decoupling over 1 ride/ }),
     ).toBeInTheDocument();
   });
 
@@ -208,10 +288,8 @@ describe("FitnessPage decoupling", () => {
     );
   });
 
-  it("draws nothing where no ride in the window carries one", async () => {
-    const recently = new Date();
-    recently.setDate(recently.getDate() - 5);
-    show(TIMELINE, [ride(recently.toISOString())]);
+  it("draws nothing where no ride in the range carries one", async () => {
+    show(TIMELINE, [ride("2026-08-23T08:00:00Z")]);
 
     await screen.findByRole("group", { name: "Scale" });
     expect(screen.queryByRole("heading", { name: "Decoupling" })).toBeNull();
@@ -229,11 +307,45 @@ describe("FitnessPage power curve", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Power duration" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("img", { name: /Best mean power over 5 s, 20 min/ }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("5 s — 912 W")).toBeInTheDocument();
-    expect(screen.getByText("20 min — 268 W")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Best mean power over 5s, 20m" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "20m 268 W" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Change" })).toBeNull();
+  });
+
+  it("sets the curve against the range before it where the service had one", async () => {
+    show({
+      ...TIMELINE,
+      powerCurve: [
+        { seconds: 5, watts: 912 },
+        { seconds: 1200, watts: 268.4 },
+      ],
+      powerCurvePrevious: [{ seconds: 1200, watts: 260 }],
+    });
+
+    expect(await screen.findByRole("columnheader", { name: "Change" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "20m 268 W +8" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "5s 912 W —" })).toBeInTheDocument();
+    expect(screen.getByText("the 6 months before")).toBeInTheDocument();
+  });
+
+  // The axis spans only the durations this range reached; an hour from the range before would fall off it.
+  it("draws the range before only over the durations this range reached", async () => {
+    const { container } = show({
+      ...TIMELINE,
+      powerCurve: [
+        { seconds: 5, watts: 912 },
+        { seconds: 1200, watts: 268.4 },
+      ],
+      powerCurvePrevious: [
+        { seconds: 5, watts: 900 },
+        { seconds: 1200, watts: 260 },
+        { seconds: 3600, watts: 240 },
+      ],
+    });
+
+    await screen.findByRole("heading", { name: "Power duration" });
+    const previous = container.querySelector('polyline[stroke-dasharray="4 3"]');
+    expect(previous?.getAttribute("points")?.split(" ")).toHaveLength(2);
   });
 
   it("draws nothing where no ride in the window carried a meter", async () => {
