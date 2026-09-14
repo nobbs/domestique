@@ -20,10 +20,10 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { formatCoverage, formatDuration, formatShare } from "../../lib/format";
 
 /** The five zones, easiest first, as a rider reading a training app knows them. */
-const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
+export const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
 
 /** Easiest to hardest on the severity ramp the gradient bands wear. */
-function zoneColour(zone: number): string {
+export function zoneColour(zone: number): string {
   return `var(--grade-${zone})`;
 }
 
