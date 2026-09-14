@@ -10,8 +10,9 @@
 //
 // Development tooling, not part of the shipped binary and never run in quick
 // or check: it needs the operator's own snapshot of real rides. Its report is
-// aggregate numbers only — no ride identifier, date, position or altitude
-// value — and is safe to paste into an issue.
+// aggregate numbers only — no ride identifier, day, position or altitude
+// value, and no time finer than a calendar month — and is safe to paste into
+// an issue.
 //
 // A database holding several riders' rides should be run once per target with
 // -target: the "profile" candidate reads one bicycle for the whole run, so
@@ -38,15 +39,17 @@ func main() {
 	window := flag.Int("window", 30, "how many metered rides before a road ride its bridge level is the median of")
 	mass := flag.Float64("mass", 0, "total system mass in kg, used for a target with no rider profile")
 	target := flag.String("target", "", "the target slot to read rides from; required where the database holds several")
+	minMonths := flag.Int("min-months", 6, "months holding both domains a statistic needs before it can anchor the estimate")
+	maxSpread := flag.Float64("max-spread", 0.10, "widest month-to-month interquartile range, as a share of the median ratio, that still anchors")
 	flag.Parse()
 
-	if err := run(*database, *minSamples, *block, *folds, *window, *mass, *target); err != nil {
+	if err := run(*database, *minSamples, *block, *folds, *window, *mass, *target, *minMonths, *maxSpread); err != nil {
 		fmt.Fprintf(os.Stderr, "levelstudy: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(database string, minSamples int, block time.Duration, folds, window int, massFlag float64, target string) error {
+func run(database string, minSamples int, block time.Duration, folds, window int, massFlag float64, target string, minMonths int, maxSpread float64) error {
 	switch {
 	case database == "":
 		return errors.New("-database is required")
@@ -58,6 +61,10 @@ func run(database string, minSamples int, block time.Duration, folds, window int
 		return errors.New("-folds must be at least two")
 	case window < 1:
 		return errors.New("-window must be at least one ride")
+	case minMonths < 1:
+		return errors.New("-min-months must be at least one month")
+	case maxSpread <= 0:
+		return errors.New("-max-spread must be a positive share")
 	}
 
 	ctx := context.Background()
@@ -79,7 +86,7 @@ func run(database string, minSamples int, block time.Duration, folds, window int
 		}
 	}()
 
-	result, err := study(ctx, store, minSamples, block, folds, window, massFlag, target)
+	result, err := study(ctx, store, minSamples, block, folds, window, massFlag, target, minMonths, maxSpread)
 	if err != nil {
 		return err
 	}
