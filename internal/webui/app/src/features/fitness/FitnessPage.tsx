@@ -1,28 +1,43 @@
 /**
- * Fitness: what the rider's training has accumulated into, and what it has cost.
+ * Fitness: whether the training is working, and how much more of it there is room for.
  *
- * Volume answers how much has been ridden; this answers what it did to the
- * rider. Both scales are kept because neither converts to the other — TRIMP
- * from heart rate, TSS from power where a meter recorded it and from heart rate
- * where none did — so the toggle picks which one is being read rather than
- * converting between them.
+ * Four figures lead — fitness, ramp rate, this week's building range and form —
+ * then one chart runs the range straight into three projected weeks, and the
+ * evidence that the fitness is real follows: best power against the window
+ * before, decoupling, and time in zone. Both load scales stay, because neither
+ * converts to the other; the toggle picks the one being read.
  */
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { activitiesQuery, fitnessQuery } from "../../api/queries";
-import type { FitnessWeek } from "../../api/types";
+import { activitiesQuery, fitnessQuery, webUIConfigQuery } from "../../api/queries";
+import { formatCalendarDay } from "../../components/chart/TimeFrame";
 import { PageShell } from "../../components/Layout";
 import { Skeleton } from "../../components/ui/skeleton";
-import { DecouplingChart, decouplingPoints } from "./DecouplingChart";
-import { FitnessChart, type Scale } from "./FitnessChart";
-import { formatCurveDuration, PowerCurveChart } from "./PowerCurveChart";
+import { DecouplingPanel, DecouplingSummary, decouplingRides } from "./DecouplingPanel";
+import { FitnessSection, FitnessStat } from "./FitnessSection";
+import {
+  bandOf,
+  FORM_BANDS,
+  formPercent,
+  mondayOf,
+  RAMP_BANDS,
+  type Reading,
+  reading,
+  type Scale,
+  scaleOutlook,
+  signed,
+  weeklyLoads,
+} from "./form";
+import { PowerDuration } from "./PowerDuration";
+import { SeasonChart } from "./SeasonChart";
+import { ZonePanel } from "./ZonePanel";
 
-const SCALES: ReadonlyArray<{ value: Scale; label: string }> = [
-  { value: "tss", label: "Stress score" },
-  { value: "trimp", label: "TRIMP" },
+const SCALES: ReadonlyArray<{ value: Scale; label: string; name: string; unit: string }> = [
+  { value: "tss", label: "TSS", name: "stress score", unit: "TSS" },
+  { value: "trimp", label: "TRIMP", name: "TRIMP", unit: "TRIMP" },
 ];
 
 /** How far back the page opens, and what the range control offers. */
@@ -32,44 +47,63 @@ const RANGES: ReadonlyArray<{ value: string; label: string; days: number }> = [
   { value: "365", label: "1 year", days: 365 },
 ];
 
-const ZONE_NAMES = ["Recovery", "Endurance", "Tempo", "Threshold", "VO₂ max"];
+// Only while the config is unavailable: once it answers, its zone is the one used.
+const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-/** The zones of one week, each bar as wide as its share of the week's riding. */
-function WeekBar({ week, widest }: { week: FitnessWeek; widest: number }) {
-  const total = week.zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
-
+function Toggle<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: ReadonlyArray<{ value: T; label: string }>;
+  onChange: (next: T) => void;
+}) {
   return (
-    <li className="grid grid-cols-[5.5rem_1fr] items-center gap-3">
-      <span className="text-[var(--ink-2)] text-sm tabular-nums">{week.weekStart}</span>
-      <div className="flex flex-col gap-1">
-        <div
-          aria-hidden="true"
-          className="flex h-2 overflow-hidden rounded-full"
-          style={{ width: `${(total / widest) * 100}%` }}
-        >
-          {week.zoneSeconds.map((seconds, zone) => (
-            <div
-              key={ZONE_NAMES[zone]}
-              className="h-full"
-              style={{
-                width: `${total > 0 ? (seconds / total) * 100 : 0}%`,
-                backgroundColor: `color-mix(in oklab, var(--accent) ${20 + zone * 20}%, var(--panel))`,
-              }}
-            />
-          ))}
-        </div>
-        <span className="text-[var(--ink-2)] text-xs">
-          {Math.round(total / 60).toLocaleString()} min
-        </span>
-      </div>
-    </li>
+    <ToggleGroup
+      aria-label={label}
+      variant="outline"
+      size="sm"
+      spacing={0}
+      value={[value]}
+      onValueChange={(next) => {
+        // Pressing the pressed one empties the group; the page is always on one choice.
+        const chosen = options.find((option) => option.value === next[0]);
+        if (chosen) {
+          onChange(chosen.value);
+        }
+      }}
+    >
+      {options.map((option) => (
+        <ToggleGroupItem key={option.value} value={option.value}>
+          {option.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
+}
+
+/** How many days of rest bring form into the fresh band, as the note under form says it. */
+function restNote(today: Reading, restForm: readonly number[]): string {
+  const fresh = bandOf(FORM_BANDS, today.formPercent);
+  if (today.formPercent >= 5) {
+    return `${fresh.name} · ${fresh.advice}`;
+  }
+  const days = restForm.findIndex((percent) => percent >= 5);
+  if (days < 0) {
+    return `${fresh.name} · not fresh within three weeks of rest`;
+  }
+
+  return `${fresh.name} · fresh after ${days + 1} ${days === 0 ? "day" : "days"} of rest`;
 }
 
 export function FitnessPage() {
   const [scale, setScale] = useState<Scale>("tss");
-  const [range, setRange] = useState("90");
-  const days = RANGES.find(({ value }) => value === range)?.days ?? 90;
+  const [range, setRange] = useState("180");
+  const selected = RANGES.find(({ value }) => value === range) ?? RANGES[1];
+  const days = selected?.days ?? 180;
   const from = useMemo(() => {
     const start = new Date();
     start.setDate(start.getDate() - days);
@@ -77,31 +111,52 @@ export function FitnessPage() {
     return start.toISOString();
   }, [days]);
   const { data, isPending, isError } = useQuery(fitnessQuery({ from }));
-  // The season's decoupling is read off the rides the activities list already
-  // carries, rather than asking the service to fold it a second way.
   const activities = useQuery(activitiesQuery());
-  const decoupling = useMemo(
-    () => decouplingPoints(activities.data ?? [], new Date(from)),
-    [activities.data, from],
+  const config = useQuery(webUIConfigQuery());
+  const zone = config.data?.timezone || browserZone();
+  const rides = useMemo(
+    () => decouplingRides(activities.data ?? [], zone),
+    [activities.data, zone],
   );
-  const widest = Math.max(
-    ...(data?.weeks ?? []).map((week) =>
-      week.zoneSeconds.reduce((sum, seconds) => sum + seconds, 0),
-    ),
-    1,
+  const readings = useMemo(
+    () => (data?.days ?? []).map((day) => reading(day, scale)),
+    [data, scale],
   );
+  const scaleInfo = SCALES.find(({ value }) => value === scale) ?? SCALES[0];
+  const today = readings[readings.length - 1];
+  // An outlook projected from any day but the last one shown would not join the line it continues.
+  const outlook =
+    data?.outlook && data.outlook.date === today?.date
+      ? scaleOutlook(data.outlook, scale)
+      : undefined;
+  const dates = readings.map((one) => one.date);
 
   return (
     <PageShell>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
-        <h1 className="font-semibold text-2xl tracking-tight">Fitness</h1>
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="font-semibold text-2xl tracking-tight">Fitness</h1>
+            {today ? (
+              <p className="text-[var(--ink-2)] text-sm">
+                As of {formatCalendarDay(today.date)}, on the {scaleInfo?.name} scale
+              </p>
+            ) : null}
+          </div>
+          {readings.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Toggle label="Range" value={range} options={RANGES} onChange={setRange} />
+              <Toggle label="Scale" value={scale} options={SCALES} onChange={setScale} />
+            </div>
+          ) : null}
+        </header>
         {isPending ? (
           <Skeleton className="h-64 w-full" role="status" aria-label="Loading the timeline" />
         ) : isError ? (
           <p className="text-sm text-[var(--alert)]" role="alert">
             The service did not say what the training has come to.
           </p>
-        ) : data.days.length === 0 ? (
+        ) : !today ? (
           <p className="text-[var(--ink-2)] text-sm">
             Nothing has been worked out yet. Training load needs the numbers on{" "}
             <Link className="underline" to="/settings">
@@ -111,102 +166,116 @@ export function FitnessPage() {
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <ToggleGroup
-                aria-label="Scale"
-                variant="outline"
-                spacing={0}
-                value={[scale]}
-                onValueChange={(next) => {
-                  // Pressing the pressed one empties the group; the chart is
-                  // always on one scale, so that leaves it as it was.
-                  const chosen = next[0];
-                  if (chosen === "tss" || chosen === "trimp") {
-                    setScale(chosen);
-                  }
-                }}
-              >
-                {SCALES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <ToggleGroup
-                aria-label="Range"
-                variant="outline"
-                spacing={0}
-                value={[range]}
-                onValueChange={(next) => {
-                  const chosen = next[0];
-                  if (chosen) {
-                    setRange(chosen);
-                  }
-                }}
-              >
-                {RANGES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-            </div>
-            <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
-              <FitnessChart days={data.days} scale={scale} />
-              <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[var(--ink-2)] text-xs">
-                <li>Fitness — six weeks of work</li>
-                <li>Fatigue — one week of it</li>
-                <li>Form — the difference, fresh above zero</li>
-              </ul>
-            </div>
-            {activities.isError ? (
-              // An outage must not read as a season with nothing in it: the
-              // panel says the rides were not read rather than disappearing.
-              <p className="text-sm text-[var(--alert)]" role="alert">
-                The service did not say what has been ridden, so the season's decoupling is not
-                drawn.
-              </p>
-            ) : decoupling.length > 0 ? (
-              <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
-                <h2 className="font-semibold text-lg">Decoupling</h2>
-                <DecouplingChart points={decoupling} />
-                <p className="mt-2 text-[var(--ink-2)] text-xs">
-                  Per ride, the share of the first half's power-to-heart-rate ratio lost over the
-                  second. A falling cloud is aerobic fitness arriving. Measured power only, over
-                  rides of an hour or more, and only meaningful for a steady one.
-                </p>
-              </div>
-            ) : null}
+            <Headline
+              readings={readings}
+              today={today}
+              outlook={outlook}
+              unit={scaleInfo?.unit ?? ""}
+            />
+            <FitnessSection title="Fitness, form and load">
+              <SeasonChart
+                readings={readings}
+                outlook={outlook}
+                scaleName={scaleInfo?.name ?? ""}
+              />
+            </FitnessSection>
             {data.powerCurve && data.powerCurve.length > 0 ? (
-              <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
-                <h2 className="font-semibold text-lg">Power duration</h2>
-                <PowerCurveChart points={data.powerCurve} />
-                <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[var(--ink-2)] text-xs">
-                  {data.powerCurve.map((point) => (
-                    <li key={point.seconds}>
-                      {formatCurveDuration(point.seconds)} — {Math.round(point.watts)} W
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-2 text-[var(--ink-2)] text-xs">
-                  The best each duration reached over this window, from measured power alone. A
-                  duration no ride was long enough for carries no point.
+              <FitnessSection title="Power duration">
+                <PowerDuration
+                  current={data.powerCurve}
+                  previous={data.powerCurvePrevious}
+                  previousName={`the ${selected?.label ?? "range"} before`}
+                />
+                <p className="text-[var(--ink-2)] text-xs">
+                  The best each duration reached, from measured power alone. A duration no ride was
+                  long enough for carries no point.
                 </p>
-              </div>
+              </FitnessSection>
             ) : null}
-            {data.weeks.length > 0 ? (
-              <>
-                <h2 className="font-semibold text-lg">Time in zone, by week</h2>
-                <ul className="flex flex-col gap-2">
-                  {data.weeks.map((week) => (
-                    <WeekBar key={week.weekStart} week={week} widest={widest} />
-                  ))}
-                </ul>
-              </>
-            ) : null}
+            <div className="grid gap-5 md:grid-cols-2">
+              {activities.isError ? (
+                // An outage must not read as a season with nothing in it.
+                <p className="text-sm text-[var(--alert)]" role="alert">
+                  The service did not say what has been ridden, so the season's decoupling is not
+                  drawn.
+                </p>
+              ) : rides.some((ride) => ride.date >= (dates[0] ?? "")) ? (
+                <FitnessSection
+                  title="Decoupling"
+                  aside={<DecouplingSummary rides={rides} dates={dates} />}
+                >
+                  <DecouplingPanel rides={rides} dates={dates} />
+                </FitnessSection>
+              ) : null}
+              {data.weeks.length > 0 ? (
+                <FitnessSection title="Time in zone">
+                  <ZonePanel weeks={data.weeks} dates={dates} />
+                </FitnessSection>
+              ) : null}
+            </div>
           </>
         )}
       </div>
     </PageShell>
+  );
+}
+
+function Headline({
+  readings,
+  today,
+  outlook,
+  unit,
+}: {
+  readings: readonly Reading[];
+  today: Reading;
+  outlook: ReturnType<typeof scaleOutlook> | undefined;
+  unit: string;
+}) {
+  const start = readings[0] ?? today;
+  const peak = readings.reduce((best, one) => (one.fitness > best.fitness ? one : best), today);
+  const formBand = bandOf(FORM_BANDS, today.formPercent);
+  const rest = outlook?.plans.find((plan) => plan.plan === "rest");
+  const restForm = rest?.days.map((one) => formPercent(one.form, one.fitness)) ?? [];
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <FitnessStat
+        label="Fitness"
+        value={today.fitness.toFixed(0)}
+        note={`${signed(today.fitness - start.fitness)} since ${formatCalendarDay(start.date)} · peak ${peak.fitness.toFixed(0)}`}
+      />
+      {outlook ? <Ramp ramp={outlook.rampPerWeek} fitness={today.fitness} /> : null}
+      {outlook ? (
+        <FitnessStat
+          label="This week, to keep building"
+          value={`${Math.round(outlook.weekLoadLow)}–${Math.round(outlook.weekLoadHigh)}`}
+          unit={unit}
+          note={`${Math.round(weeklyLoads(readings).get(mondayOf(today.date)) ?? 0)} so far · last 4 weeks averaged ${Math.round(outlook.habitualDailyLoad * 7)}`}
+        />
+      ) : null}
+      <FitnessStat
+        label="Form"
+        value={`${signed(today.formPercent)}%`}
+        unit="of fitness"
+        tone={formBand.colour}
+        note={outlook ? restNote(today, restForm) : `${formBand.name} · ${formBand.advice}`}
+      />
+    </div>
+  );
+}
+
+function Ramp({ ramp, fitness }: { ramp: number; fitness: number }) {
+  const before = fitness - ramp;
+  const percent = before > 1 ? (ramp / before) * 100 : 0;
+  const band = bandOf(RAMP_BANDS, percent);
+
+  return (
+    <FitnessStat
+      label="Ramp rate"
+      value={signed(ramp, 1)}
+      unit="a week"
+      tone={band.colour}
+      note={`${band.name} · ${signed(percent)}% of fitness`}
+    />
   );
 }
