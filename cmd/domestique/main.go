@@ -164,6 +164,11 @@ func run(ctx context.Context) error {
 		slog.Error("the ride model could not be loaded", "error", reloadErr)
 	}
 	sourceClients := newSourceCache()
+	// [planning] absent switches the planner off: no local source, no plan
+	// endpoint, no segment task.
+	if wireErr := wireLocalSource(settings, store, sourceClients); wireErr != nil {
+		return wireErr
+	}
 	reconciler, err := syncservice.New(&syncservice.Options{
 		TargetIDs: destination.targetIDs,
 		Sources:   func() ([]syncservice.Source, error) { return sourceClients.sources(runtimeSettings) },

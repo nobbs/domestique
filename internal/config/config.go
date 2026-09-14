@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,8 +52,23 @@ type Settings struct {
 	HTTP     HTTP
 	Auth     Auth
 	Analysis Analysis
+	Planning Planning
 	State    State
 	Log      Log
+}
+
+// Planning configures the optional route planner. Without the section the
+// planner is off: no plan endpoint, no local source, no segment task.
+type Planning struct {
+	BRouterURL string
+	Segments   []string
+
+	enabled bool
+}
+
+// Enabled reports whether the [planning] section was present.
+func (p *Planning) Enabled() bool {
+	return p.enabled
 }
 
 // Analysis configures the optional ride analysis. Without a token it is off.
@@ -130,11 +147,12 @@ func (s State) EncryptionKey() [32]byte {
 }
 
 type rawSettings struct {
-	HTTP     rawHTTP     `koanf:"http"`
-	State    rawState    `koanf:"state"`
-	Auth     rawAuth     `koanf:"auth"`
-	Analysis rawAnalysis `koanf:"analysis"`
-	Log      rawLog      `koanf:"log"`
+	HTTP     rawHTTP      `koanf:"http"`
+	State    rawState     `koanf:"state"`
+	Auth     rawAuth      `koanf:"auth"`
+	Analysis rawAnalysis  `koanf:"analysis"`
+	Planning *rawPlanning `koanf:"planning"`
+	Log      rawLog       `koanf:"log"`
 }
 
 type rawAnalysis struct {
@@ -142,6 +160,13 @@ type rawAnalysis struct {
 	// the one way to leave the analysis off; an empty path is still refused.
 	ClaudeTokenFile *string `koanf:"claude_token_file"`
 	ClaudeToken     string  `koanf:"claude_token"`
+}
+
+// rawPlanning is a pointer field on rawSettings so an absent [planning]
+// section (nil) is distinguishable from one present but empty.
+type rawPlanning struct {
+	BRouterURL string   `koanf:"brouter_url"`
+	Segments   []string `koanf:"segments"`
 }
 
 type rawLog struct {
@@ -422,8 +447,12 @@ func build(raw *rawSettings) (*Settings, error) {
 		return nil, err
 	}
 	var level slog.Level
-	if err := level.UnmarshalText([]byte(strings.TrimSpace(raw.Log.Level))); err != nil {
-		return nil, fmt.Errorf("log.level: %w", err)
+	if levelErr := level.UnmarshalText([]byte(strings.TrimSpace(raw.Log.Level))); levelErr != nil {
+		return nil, fmt.Errorf("log.level: %w", levelErr)
+	}
+	planning, err := buildPlanning(raw.Planning)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Settings{
@@ -444,8 +473,105 @@ func build(raw *rawSettings) (*Settings, error) {
 			encryptionKey: key,
 		},
 		Analysis: Analysis{claudeToken: claudeToken},
+		Planning: planning,
 		Log:      Log{Level: level},
 	}, nil
+}
+
+// tilePattern matches a BRouter 5°×5° segment tile name: a hemisphere letter,
+// a longitude, an underscore, a hemisphere letter, and a latitude.
+var tilePattern = regexp.MustCompile(`^([EW])(\d+)_([NS])(\d+)$`)
+
+// buildPlanning validates the [planning] section. raw is nil when the section
+// is absent, which switches the planner off.
+func buildPlanning(raw *rawPlanning) (Planning, error) {
+	if raw == nil {
+		return Planning{}, nil
+	}
+	brouterURL := strings.TrimSpace(raw.BRouterURL)
+	if err := validateBRouterURL(brouterURL); err != nil {
+		return Planning{}, err
+	}
+	segments, err := validateSegments(raw.Segments)
+	if err != nil {
+		return Planning{}, err
+	}
+
+	return Planning{BRouterURL: brouterURL, Segments: segments, enabled: true}, nil
+}
+
+// validateBRouterURL accepts an absolute http or https origin with no path,
+// query or fragment: the sidecar is plain HTTP on an internal network, so
+// runtimeconfig.ValidateHTTPSOrigin (which forces https) does not apply here.
+func validateBRouterURL(value string) error {
+	invalid := errors.New("planning.brouter_url must be an absolute http or https origin without a path")
+	if value == "" {
+		return errors.New("planning.brouter_url is required")
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||
+		(parsed.Path != "" && parsed.Path != "/") {
+		return invalid
+	}
+
+	return nil
+}
+
+// validateSegments trims and validates each tile name, dropping repeats while
+// keeping order.
+func validateSegments(raw []string) ([]string, error) {
+	segments := make([]string, 0, len(raw))
+	seen := make(map[string]bool, len(raw))
+	for _, entry := range raw {
+		trimmed := strings.TrimSpace(entry)
+		if err := validateTile(trimmed); err != nil {
+			return nil, err
+		}
+		if seen[trimmed] {
+			continue
+		}
+		seen[trimmed] = true
+		segments = append(segments, trimmed)
+	}
+
+	return segments, nil
+}
+
+// validateTile checks one segment tile name against BRouter's naming: E/W and
+// a longitude multiple of five (0-180 west, 0-175 east), N/S and a latitude
+// multiple of five (0-90 south, 0-85 north), zero spelled E0/N0.
+func validateTile(tile string) error {
+	invalid := fmt.Errorf("planning.segments: %q is not a valid BRouter tile", tile)
+	match := tilePattern.FindStringSubmatch(tile)
+	if match == nil {
+		return invalid
+	}
+	lonHemisphere, latHemisphere := match[1], match[3]
+	longitude, lonErr := strconv.Atoi(match[2])
+	latitude, latErr := strconv.Atoi(match[4])
+	if lonErr != nil || latErr != nil || longitude%5 != 0 || latitude%5 != 0 {
+		return invalid
+	}
+	if longitude == 0 && lonHemisphere != "E" {
+		return invalid
+	}
+	if latitude == 0 && latHemisphere != "N" {
+		return invalid
+	}
+	lonMax := 180
+	if lonHemisphere == "E" {
+		lonMax = 175
+	}
+	latMax := 90
+	if latHemisphere == "N" {
+		latMax = 85
+	}
+	if longitude > lonMax || latitude > latMax {
+		return invalid
+	}
+
+	return nil
 }
 
 func validateListenAddress(address string) error {

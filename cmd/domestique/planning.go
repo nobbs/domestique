@@ -1,0 +1,155 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/nobbs/domestique/internal/brouter"
+	"github.com/nobbs/domestique/internal/config"
+	syncservice "github.com/nobbs/domestique/internal/sync"
+
+	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/sqlite"
+)
+
+// newLocalSource builds the plan service as a sync source when [planning] is
+// configured. configured is false, with a nil source and error, when the
+// section is absent.
+func newLocalSource(settings *config.Settings, store *sqlite.Store) (source syncservice.Source, configured bool, err error) {
+	if !settings.Planning.Enabled() {
+		return nil, false, nil
+	}
+	client, err := brouter.New(&brouter.Options{BaseURL: settings.Planning.BRouterURL})
+	if err != nil {
+		return nil, false, fmt.Errorf("creating BRouter client: %w", err)
+	}
+
+	return plan.NewService(planStore{store: store}, client, time.Now, plan.RandomID), true, nil
+}
+
+// wireLocalSource registers the plan service on cache when [planning] is
+// configured, leaving cache untouched otherwise.
+func wireLocalSource(settings *config.Settings, store *sqlite.Store, cache *sourceCache) error {
+	source, configured, err := newLocalSource(settings, store)
+	if err != nil {
+		return err
+	}
+	if configured {
+		cache.setLocal(source)
+	}
+
+	return nil
+}
+
+// planStore adapts *sqlite.Store to plan.Store, converting between
+// sqlite.PlanRecord and plan.Plan.
+type planStore struct{ store *sqlite.Store }
+
+func (s planStore) InsertPlan(ctx context.Context, p *plan.Plan) error {
+	record := planRecordOf(p)
+	if err := s.store.InsertPlan(ctx, &record); err != nil {
+		return fmt.Errorf("storing plan: %w", err)
+	}
+
+	return nil
+}
+
+func (s planStore) GetPlan(ctx context.Context, id int64) (plan.Plan, bool, error) {
+	record, found, err := s.store.GetPlan(ctx, id)
+	if err != nil {
+		return plan.Plan{}, false, fmt.Errorf("reading plan: %w", err)
+	}
+	if !found {
+		return plan.Plan{}, false, nil
+	}
+	converted, err := planOf(&record)
+	if err != nil {
+		return plan.Plan{}, false, err
+	}
+
+	return converted, true, nil
+}
+
+func (s planStore) ListPlans(ctx context.Context) ([]plan.Plan, error) {
+	records, err := s.store.ListPlans(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing plans: %w", err)
+	}
+
+	return plansOf(records)
+}
+
+func (s planStore) ListPublishedPlans(ctx context.Context) ([]plan.Plan, error) {
+	records, err := s.store.ListPublishedPlans(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("listing published plans: %w", err)
+	}
+
+	return plansOf(records)
+}
+
+func (s planStore) ReplacePlan(ctx context.Context, p *plan.Plan, expectedVersion int64) (bool, error) {
+	record := planRecordOf(p)
+	ok, err := s.store.ReplacePlan(ctx, &record, expectedVersion)
+	if err != nil {
+		return false, fmt.Errorf("replacing plan: %w", err)
+	}
+
+	return ok, nil
+}
+
+func (s planStore) DeletePlan(ctx context.Context, id, expectedVersion int64) (bool, error) {
+	ok, err := s.store.DeletePlan(ctx, id, expectedVersion)
+	if err != nil {
+		return false, fmt.Errorf("deleting plan: %w", err)
+	}
+
+	return ok, nil
+}
+
+// planRecordOf converts a plan.Plan to the shape sqlite.Store persists,
+// waypoints as [longitude, latitude] pairs.
+func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
+	waypoints := make([][2]float64, len(p.Waypoints))
+	for index, waypoint := range p.Waypoints {
+		waypoints[index] = [2]float64{waypoint.Longitude, waypoint.Latitude}
+	}
+
+	return sqlite.PlanRecord{
+		ID: p.ID, Name: p.Name, Profile: string(p.Profile), Waypoints: waypoints, Geometry: p.Geometry,
+		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, Published: p.Published,
+		Version: p.Version, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+	}
+}
+
+// planOf converts a stored record back to plan.Plan.
+func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
+	profile, err := plan.ParseProfile(record.Profile)
+	if err != nil {
+		return plan.Plan{}, fmt.Errorf("stored plan %d: %w", record.ID, err)
+	}
+	waypoints := make([]plan.Waypoint, len(record.Waypoints))
+	for index, coordinate := range record.Waypoints {
+		waypoints[index] = plan.Waypoint{Longitude: coordinate[0], Latitude: coordinate[1]}
+	}
+
+	return plan.Plan{
+		ID: record.ID, Name: record.Name, Profile: profile, Waypoints: waypoints, Geometry: record.Geometry,
+		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Published: record.Published,
+		Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
+	}, nil
+}
+
+func plansOf(records []sqlite.PlanRecord) ([]plan.Plan, error) {
+	plans := make([]plan.Plan, len(records))
+	for index := range records {
+		converted, err := planOf(&records[index])
+		if err != nil {
+			return nil, err
+		}
+		plans[index] = converted
+	}
+
+	return plans, nil
+}

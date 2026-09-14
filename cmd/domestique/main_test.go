@@ -132,6 +132,38 @@ func TestSourceCacheRebuildsOnlyWhenALibrarysOwnCredentialsChange(t *testing.T) 
 	assert.NotSame(t, first, rebuilt, "a changed password was still served by the old client")
 }
 
+// The local source has no credentials and never refuses: setLocal alone makes
+// it appear, both in the full listing and by itself.
+func TestSourceCacheOffersTheLocalSourceOnceSet(t *testing.T) {
+	t.Parallel()
+
+	current := testSettings(t, testStore(t, t.TempDir()))
+	cache := newSourceCache()
+
+	_, configured, err := cache.sourceFor(current, route.ProviderLocal)
+	require.NoError(t, err, "sourceFor(local) before setLocal")
+	assert.False(t, configured, "the local source reported itself configured before setLocal")
+
+	local := &fakeLocalSource{}
+	cache.setLocal(local)
+
+	built, err := cache.sources(current)
+	require.NoError(t, err, "sources()")
+	require.Len(t, built, 1, "sources()")
+	assert.Same(t, local, built[0], "sources() did not include the local source")
+
+	source, configured, err := cache.sourceFor(current, route.ProviderLocal)
+	require.NoError(t, err, "sourceFor(local)")
+	assert.True(t, configured, "sourceFor(local) after setLocal")
+	assert.Same(t, local, source, "sourceFor(local)")
+}
+
+type fakeLocalSource struct{}
+
+func (fakeLocalSource) Provider() route.Provider { return route.ProviderLocal }
+
+func (fakeLocalSource) Inventory(context.Context) ([]route.Route, error) { return nil, nil }
+
 // Until the Wahoo application is entered there is nothing to reconcile against,
 // so a run is told it has no targets instead of failing against an application
 // that does not exist.
