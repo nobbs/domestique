@@ -230,8 +230,9 @@ pass, so the gate is what makes them safe — see
 [the delivery specification](docs/specs/delivery.md#dependency-updates) for what
 that covers and what it deliberately does not.
 
-Three things want a person: any major, anything touching `maplibre-gl` or
-`react-map-gl`, and anything opened for a published advisory. The map packages
+Four things want a person: any major, anything touching `maplibre-gl` or
+`react-map-gl`, the `claude` executable the image bundles, and anything opened
+for a published advisory. The map packages
 are there because the browser suite renders the map without judging it, which is
 the same reason a map change of your own needs a look before it merges.
 

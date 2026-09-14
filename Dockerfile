@@ -66,6 +66,28 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && touch /out/etc/domestique/.keep /out/var/lib/domestique/.keep \
     && chown -R 65532:65532 /out/etc /out/var
 
+# The native claude build the ride analysis runs, at a pinned version, checked
+# against the checksum that version's manifest publishes. It links against musl
+# and the C++ runtime, which the static image lacks, so those are taken too.
+FROM dhi.io/alpine-base:3.24-dev@sha256:ad660e4218bb22f3d03dbf0c8cb483f7429bbc6ed7dead7d602b8f6cd35bbeb5 AS claude
+
+# renovate: datasource=npm depName=@anthropic-ai/claude-code
+ARG CLAUDE_VERSION=2.1.270
+
+USER root
+ADD https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/manifest.json /tmp/manifest.json
+ADD https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64-musl/claude /out/usr/local/bin/claude
+
+RUN apk add --no-cache libgcc libstdc++ \
+    && expected="$(tr -d ' \n' < /tmp/manifest.json \
+      | sed -nE 's/.*"linux-x64-musl":\{[^{}]*"checksum":"([a-f0-9]{64})".*/\1/p')" \
+    && test -n "$expected" \
+    && echo "$expected  /out/usr/local/bin/claude" | sha256sum -c - \
+    && chmod 0755 /out/usr/local/bin/claude \
+    && install -d /out/lib /out/usr/lib \
+    && cp -L /lib/ld-musl-x86_64.so.1 /out/lib/ \
+    && cp -L /usr/lib/libstdc++.so.6 /usr/lib/libgcc_s.so.1 /out/usr/lib/
+
 # Minimal runtime for a static binary. Its nonroot user is UID 65532,
 # matching the ownership set above.
 FROM dhi.io/static:20260611-alpine@sha256:93568eb7c673afb3ad79b15cca341469d3e02cf859caae1049aa22fe7fbce90a
@@ -73,6 +95,7 @@ FROM dhi.io/static:20260611-alpine@sha256:93568eb7c673afb3ad79b15cca341469d3e02c
 LABEL org.opencontainers.image.source="https://github.com/nobbs/domestique"
 
 COPY --from=build --chown=65532:65532 /out/domestique /usr/local/bin/domestique
+COPY --from=claude /out/ /
 COPY --from=build --chown=65532:65532 /out/etc/domestique /etc/domestique
 COPY --from=build --chown=65532:65532 /out/var/lib/domestique /var/lib/domestique
 

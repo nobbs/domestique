@@ -89,6 +89,18 @@
     },
   ],
 
+  // The claude executable is pinned by a Dockerfile ARG the docker manager
+  // cannot see. Its native builds share their version with the npm package.
+  customManagers: [
+    {
+      customType: "regex",
+      managerFilePatterns: ["/(^|/)Dockerfile$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\s+ARG CLAUDE_VERSION=(?<currentValue>\\S+)",
+      ],
+    },
+  ],
+
   packageRules: [
     {
       description: "Everything Renovate opens is a dependency update.",
@@ -151,6 +163,15 @@
       ],
       matchManagers: ["github-actions"],
       groupName: "GitHub Actions",
+    },
+
+    {
+      description: [
+        "The claude executable is what the ride analysis contract rests on, and ",
+        "no test here asks it anything, so a person reads every move of it.",
+      ],
+      matchDepNames: ["@anthropic-ai/claude-code"],
+      automerge: false,
     },
 
     {
