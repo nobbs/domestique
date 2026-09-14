@@ -109,12 +109,13 @@ export function SeasonChart({ readings, outlook, scaleName }: Props) {
     };
 
   const weekBox = (x: (index: number) => number, monday: string) => {
-    // A week that began before the range is drawn over the days of it inside the range.
+    // Drawn over only the days of the week that were ridden: not before the range, not past today.
     const start = daysBetween(dates[0] ?? monday, monday);
-    const left = x(Math.max(start, 0)) + 1;
-    const right = x(Math.min(start + 7, dates.length - 1)) - 1;
+    const right = x(Math.min(start + 7, todayIndex)) - 1;
+    // A week begun today has no width yet; it still gets a sliver, on the ridden side of the line.
+    const left = Math.min(x(Math.max(start, 0)) + 1, right - 3);
 
-    return { left, width: Math.max(right - left, 1) };
+    return { left, width: right - left };
   };
 
   const panels: FramePanel[] = [

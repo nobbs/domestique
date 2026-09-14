@@ -48,41 +48,6 @@ const RANGES: ReadonlyArray<{ value: string; label: string; days: number }> = [
 // Only while the config is unavailable: once it answers, its zone is the one used.
 const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-function Toggle<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: ReadonlyArray<{ value: T; label: string }>;
-  onChange: (next: T) => void;
-}) {
-  return (
-    <ToggleGroup
-      aria-label={label}
-      variant="outline"
-      size="sm"
-      spacing={0}
-      value={[value]}
-      onValueChange={(next) => {
-        // Pressing the pressed one empties the group; the page is always on one choice.
-        const chosen = options.find((option) => option.value === next[0]);
-        if (chosen) {
-          onChange(chosen.value);
-        }
-      }}
-    >
-      {options.map((option) => (
-        <ToggleGroupItem key={option.value} value={option.value}>
-          {option.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
-  );
-}
-
 /** How many days of rest bring form into the fresh band, as the note under form says it. */
 function restNote(today: Reading, restForm: readonly number[]): string {
   const fresh = bandOf(FORM_BANDS, today.formPercent);
@@ -143,8 +108,45 @@ export function FitnessPage() {
           </div>
           {readings.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <Toggle label="Range" value={range} options={RANGES} onChange={setRange} />
-              <Toggle label="Scale" value={scale} options={SCALES} onChange={setScale} />
+              <ToggleGroup
+                aria-label="Range"
+                variant="outline"
+                size="sm"
+                spacing={0}
+                value={[range]}
+                onValueChange={(next) => {
+                  // Pressing the pressed one empties the group; the page always reads one range.
+                  const chosen = RANGES.find(({ value }) => value === next[0]);
+                  if (chosen) {
+                    setRange(chosen.value);
+                  }
+                }}
+              >
+                {RANGES.map(({ value, label }) => (
+                  <ToggleGroupItem key={value} value={value}>
+                    {label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              <ToggleGroup
+                aria-label="Scale"
+                variant="outline"
+                size="sm"
+                spacing={0}
+                value={[scale]}
+                onValueChange={(next) => {
+                  const chosen = SCALES.find(({ value }) => value === next[0]);
+                  if (chosen) {
+                    setScale(chosen.value);
+                  }
+                }}
+              >
+                {SCALES.map(({ value, label }) => (
+                  <ToggleGroupItem key={value} value={value}>
+                    {label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
             </div>
           ) : null}
         </header>
