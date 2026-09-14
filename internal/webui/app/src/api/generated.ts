@@ -621,7 +621,7 @@ export const ActivitySeriesName = {
 
 export interface ActivitySeries {
   series: ActivitySeriesName;
-  /** The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius, kilometres per hour and watts respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one. */
+  /** The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius, kilometres per hour and watts respectively, and seconds for `aheadOfPrediction`, whose nulls lie before its first reading and after its last rather than where nothing was recorded. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one. */
   values: (number | null)[];
 }
 
