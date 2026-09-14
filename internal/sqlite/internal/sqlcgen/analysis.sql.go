@@ -94,10 +94,18 @@ func (q *Queries) ListActivitiesAwaitingAnalysis(ctx context.Context, arg ListAc
 }
 
 const listActivityAnalyses = `-- name: ListActivityAnalyses :many
-SELECT workout_id, text, model, prompt_revision, analysed_at_unix
-FROM activity_analyses
-WHERE target_slot = ?
+SELECT x.workout_id, x.text, x.model, x.prompt_revision, x.analysed_at_unix
+FROM activity_analyses AS x
+JOIN activities AS a ON a.target_slot = x.target_slot AND a.workout_id = x.workout_id
+WHERE x.target_slot = ?1
+  AND a.started_at_unix >= ?2 AND a.started_at_unix < ?3
 `
+
+type ListActivityAnalysesParams struct {
+	TargetSlot string
+	FromUnix   int64
+	ToUnix     int64
+}
 
 type ListActivityAnalysesRow struct {
 	WorkoutID      int64
@@ -107,8 +115,9 @@ type ListActivityAnalysesRow struct {
 	AnalysedAtUnix int64
 }
 
-func (q *Queries) ListActivityAnalyses(ctx context.Context, targetSlot string) ([]ListActivityAnalysesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActivityAnalyses, targetSlot)
+// The analyses of the rides that started inside a window, as the list reads them.
+func (q *Queries) ListActivityAnalyses(ctx context.Context, arg ListActivityAnalysesParams) ([]ListActivityAnalysesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityAnalyses, arg.TargetSlot, arg.FromUnix, arg.ToUnix)
 	if err != nil {
 		return nil, err
 	}

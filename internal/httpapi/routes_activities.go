@@ -269,7 +269,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 
 			return
 		}
-		analyses, analysisErr := h.state.ActivityAnalyses(request.Context(), targetID)
+		analyses, analysisErr := h.state.ActivityAnalyses(request.Context(), targetID, from, to)
 		if analysisErr != nil {
 			h.unavailable(writer)
 

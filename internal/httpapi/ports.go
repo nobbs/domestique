@@ -189,9 +189,9 @@ type State interface {
 
 // AnalysisState is what a language model said about each stored ride.
 type AnalysisState interface {
-	// ActivityAnalyses is what was said about each of one target's rides, keyed
-	// by ride. A ride not analysed is absent from the map.
-	ActivityAnalyses(ctx context.Context, targetID string) (map[int64]activities.Analysis, error)
+	// ActivityAnalyses is what was said about each of one target's rides that
+	// started in [from, to), keyed by ride. A ride not analysed is absent.
+	ActivityAnalyses(ctx context.Context, targetID string, from, to time.Time) (map[int64]activities.Analysis, error)
 }
 
 // RiderProfileState is one rider's own parameters, and the best efforts their

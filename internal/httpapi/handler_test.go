@@ -2545,7 +2545,9 @@ func (s *fakeState) ActivityRouteMatches(
 	return s.routeMatches[targetID], nil
 }
 
-func (s *fakeState) ActivityAnalyses(_ context.Context, targetID string) (map[int64]activities.Analysis, error) {
+func (s *fakeState) ActivityAnalyses(
+	_ context.Context, targetID string, _, _ time.Time,
+) (map[int64]activities.Analysis, error) {
 	return s.analyses[targetID], s.analysesErr
 }
 
