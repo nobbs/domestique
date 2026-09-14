@@ -121,6 +121,11 @@ the wire. `cumulativeSeconds` is the same quantity accumulated per coordinate.
 There is no separate "ride time" or "elapsed time"; those are the same thing
 under other names.
 
+**ahead of prediction** — how far a ride was ahead of its route's *moving time*
+at one place along the route, measured by the ride's own moving time;
+`aheadOfPrediction` on the wire, shown in signed minutes. Behind is the same
+figure below zero, never a word of its own.
+
 **ascent** — total metres climbed, shown as "Ascent". Over a route it is the
 positive steps of the stored profile; over a ride's own samples it is counted
 with a three-metre hysteresis, which is what the rider's head unit agrees
