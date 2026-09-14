@@ -869,8 +869,14 @@ type recordedWorkout struct {
 
 type fakePoller struct {
 	results  map[string]activity.Result
+	holds    map[string]bool
+	holdErr  error
 	polled   []string
 	recorded []recordedWorkout
+}
+
+func (p *fakePoller) HoldsTrainerCopy(_ context.Context, targetID string) (bool, error) {
+	return p.holds[targetID], p.holdErr
 }
 
 func (p *fakePoller) Poll(_ context.Context, targetID string) activity.Result {
@@ -1254,4 +1260,116 @@ func TestActivityDeriveTaskIsNotReadyWithNoTargets(t *testing.T) {
 
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityDerive})
 	assert.Equal(t, task.NotReady, result.Outcome)
+}
+
+// A recorded ride asks for a Zwift poll, which reads Zwift only for a target
+// still holding a head unit's indoor ride; the schedule polls regardless.
+func TestZwiftPollTaskFollowsARecordedRideOnlyForAHeldRide(t *testing.T) {
+	t.Parallel()
+
+	poller := &fakePoller{
+		results: map[string]activity.Result{"rider-a": {Outcome: activity.Polled}, "rider-b": {Outcome: activity.Polled}},
+		holds:   map[string]bool{"rider-a": true},
+	}
+	definition := zwiftPollTask(poller, allEnabled, twoTargets)
+	assert.Equal(t, []string{taskActivityRecord}, definition.Follows, "follows")
+
+	chained := func(argument string) task.Result {
+		return definition.Run.Run(t.Context(), task.Invocation{Task: taskZwiftPoll, Argument: argument, Trigger: task.TriggerChain})
+	}
+	assert.Equal(t, task.Succeeded, chained("rider-a").Outcome, "a held ride")
+	assert.Equal(t, task.Unchanged, chained("rider-b").Outcome, "nothing held")
+	assert.Equal(t, []string{"rider-a"}, poller.polled, "only the held target reached Zwift")
+
+	scheduled := definition.Run.Run(t.Context(), task.Invocation{Task: taskZwiftPoll, Argument: "rider-b", Trigger: task.TriggerSchedule})
+	assert.Equal(t, task.Succeeded, scheduled.Outcome, "the schedule polls regardless")
+
+	poller.holdErr = errors.New("unreadable")
+	assert.Equal(t, task.Result{Outcome: task.Failed, Detail: detailActivityState}, chained("rider-a"))
+}
+
+type fakeAnalyser struct {
+	results  map[string]activity.Result
+	analysed []string
+}
+
+func (a *fakeAnalyser) Analyse(_ context.Context, targetID string) activity.Result {
+	a.analysed = append(a.analysed, targetID)
+
+	return a.results[targetID]
+}
+
+func TestActivityAnalyseTaskFollowsDeriveUnderTheSameResource(t *testing.T) {
+	t.Parallel()
+
+	analyser := &fakeAnalyser{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Polled, Analysed: 1},
+		"rider-b": {Outcome: activity.Failed, Failure: activity.FailureAllowance},
+	}}
+	definition := activityAnalyseTask(analyser, allEnabled, twoTargets)
+
+	assert.Equal(t, taskActivityAnalyse, definition.Name, "name")
+	assert.Equal(t, []string{taskActivityDerive}, definition.Follows, "follows")
+	assert.Equal(t, []task.Resource{{Name: resourceActivities, Exclusive: true}}, definition.Resources(""), "resources")
+	assert.Equal(t, twoTargets(), definition.FanOut(), "fan-out")
+	assert.Equal(t, activityAnalyseInitialDelay, definition.InitialDelay(), "InitialDelay()")
+	at := time.Date(2026, time.September, 13, 9, 0, 0, 0, time.UTC)
+	assert.Equal(t, at.Add(activityAnalyseInterval), definition.Schedule.NextFire(at), "NextFire()")
+	require.NotNil(t, definition.Notify, "Notify")
+	assert.Subset(t, definition.Notify.Alerts, []task.Detail{"token", "allowance", "executable", "unusable"}, "alerts")
+
+	one := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse, Argument: "rider-a"})
+	assert.Equal(t, task.Succeeded, one.Outcome, "one target")
+	every := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
+	assert.Equal(t, task.Result{Outcome: task.Failed, Detail: "allowance"}, every, "the worst target is reported")
+	assert.Equal(t, []string{"rider-a", "rider-a", "rider-b"}, analyser.analysed)
+}
+
+// The analysis and its edge are registered together or not at all, and the
+// activity graph resolves either way.
+func TestTheActivityGraphResolvesWithAndWithoutTheAnalysis(t *testing.T) {
+	t.Parallel()
+
+	activities := func() []task.Definition {
+		poller := &fakePoller{}
+		return []task.Definition{
+			activityPollTask(poller, allEnabled, twoTargets),
+			activityRecordTask(poller),
+			zwiftPollTask(poller, allEnabled, twoTargets),
+			activityDeriveTask(&fakeDeriver{}, allEnabled, twoTargets),
+		}
+	}
+	_, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, activities())
+	require.NoError(t, err, "without the analysis")
+	_, err = registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn,
+		append(activities(), activityAnalyseTask(&fakeAnalyser{}, allEnabled, twoTargets)))
+	assert.NoError(t, err, "with the analysis")
+}
+
+// Targets share one subscription: a run over all of them stops at a failure the
+// next target would only meet again, but not at one target's unreadable state.
+func TestActivityAnalyseTaskStopsEveryTargetAtASharedFailure(t *testing.T) {
+	t.Parallel()
+
+	three := func() []string { return []string{"rider-a", "rider-b", "rider-c"} }
+	shared := &fakeAnalyser{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Failed, Failure: activity.FailureAllowance},
+	}}
+	activityAnalyseTask(shared, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
+	assert.Equal(t, []string{"rider-a"}, shared.analysed)
+
+	after := &fakeAnalyser{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Failed, Failure: activity.FailureState},
+		"rider-b": {Outcome: activity.Failed, Failure: activity.FailureAllowance},
+	}}
+	result := activityAnalyseTask(after, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
+	assert.Equal(t, task.Detail("allowance"), result.Detail, "the failure that ended the run is the one reported")
+
+	local := &fakeAnalyser{results: map[string]activity.Result{
+		"rider-a": {Outcome: activity.Failed, Failure: activity.FailureState},
+		"rider-b": {Outcome: activity.Unchanged},
+		"rider-c": {Outcome: activity.Unchanged},
+	}}
+	activityAnalyseTask(local, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
+	assert.Equal(t, []string{"rider-a", "rider-b", "rider-c"}, local.analysed)
 }

@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 )
@@ -70,6 +71,9 @@ type ZwiftStore interface {
 	// SetActivityWorkout records what Zwift lists a ride as, or clears it
 	// when present is false.
 	SetActivityWorkout(ctx context.Context, targetID string, id int64, name string, hash int64, completion float64, present bool) error
+	// HoldsHeadUnitRide reports whether the target holds a Wahoo activity of
+	// one of typeIDs that ended at or after since.
+	HoldsHeadUnitRide(ctx context.Context, targetID string, typeIDs []int, since time.Time) (bool, error)
 }
 
 // ZwiftPoller reads one target owner's own Zwift rides into the store.
@@ -89,6 +93,18 @@ func NewZwiftPoller(source ZwiftSource, store ZwiftStore, indoorTypes []int, now
 	}
 
 	return &ZwiftPoller{source: source, store: store, indoorTypes: indoorTypes, now: now}, nil
+}
+
+// HoldsTrainerCopy reports whether the target holds a head unit's indoor ride
+// the analysis is still holding back for its Zwift copy, which is the one
+// thing worth a Zwift poll ahead of the schedule.
+func (p *ZwiftPoller) HoldsTrainerCopy(ctx context.Context, targetID string) (bool, error) {
+	held, err := p.store.HoldsHeadUnitRide(ctx, targetID, p.indoorTypes, p.now().Add(-trainerCopyHold))
+	if err != nil {
+		return false, fmt.Errorf("checking for a trainer copy: %w", err)
+	}
+
+	return held, nil
 }
 
 // Poll stores every ride of one target's owner that their Zwift account has

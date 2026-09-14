@@ -15,6 +15,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/auth0"
+	"github.com/nobbs/domestique/internal/claude"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/komoot"
 	"github.com/nobbs/domestique/internal/ridemodel"
@@ -879,3 +880,34 @@ func zwiftListings(activities []zwift.Activity) []activity.Listing {
 // zwiftCyclingSport is the sport Zwift names a ride; a run on the treadmill is
 // listed by the same account and is not one this service records.
 const zwiftCyclingSport = "CYCLING"
+
+// claudeAsker adapts the claude client to activity.Asker, mapping its failure
+// categories onto the activity vocabulary.
+type claudeAsker struct{ client *claude.Client }
+
+func (a claudeAsker) Ask(ctx context.Context, prompt string) (text, model string, err error) {
+	answer, err := a.client.Ask(ctx, prompt)
+	if err != nil {
+		return "", "", err //nolint:wrapcheck // FailureOf reads the adapter's own error type.
+	}
+
+	return answer.Text, answer.Model, nil
+}
+
+func (claudeAsker) FailureOf(err error) activity.Failure {
+	var failure *claude.Error
+	if !errors.As(err, &failure) {
+		return activity.FailureExecutable
+	}
+	switch failure.Category {
+	case claude.CategoryToken:
+		return activity.FailureToken
+	case claude.CategoryAllowance:
+		return activity.FailureAllowance
+	case claude.CategoryUnusable:
+		return activity.FailureUnusable
+	case claude.CategoryExecutable:
+	}
+
+	return activity.FailureExecutable
+}

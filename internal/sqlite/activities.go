@@ -781,6 +781,19 @@ func (s *Store) DeleteTrainerCopy(
 	return int(removed), nil
 }
 
+// HoldsHeadUnitRide reports whether the target holds a Wahoo activity of one of
+// typeIDs that ended at or after since.
+func (s *Store) HoldsHeadUnitRide(ctx context.Context, targetID string, typeIDs []int, since time.Time) (bool, error) {
+	held, err := s.queries.HoldsHeadUnitActivity(ctx, sqlcgen.HoldsHeadUnitActivityParams{
+		TargetSlot: targetID, TypeIds: typeIDList(typeIDs), SinceUnix: since.Unix(),
+	})
+	if err != nil {
+		return false, fmt.Errorf("checking for a head unit ride: %w", err)
+	}
+
+	return held, nil
+}
+
 // int64s widens workout type ids for a query binding.
 func int64s(values []int) []int64 {
 	widened := make([]int64, len(values))

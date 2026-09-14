@@ -103,7 +103,9 @@ type fakeZwiftStore struct {
 	stored         []storedActivity
 	known          []int64
 	workoutsStored []storedWorkout
+	heldSince      []time.Time
 	deleteCount    int
+	holds          bool
 }
 
 // storedWorkout is one SetActivityWorkout call the fake recorded.
@@ -149,6 +151,15 @@ func (s *fakeZwiftStore) StoreActivity(
 	s.pending = append(s.pending, PendingActivity{ID: listing.ID, Summary: summary})
 
 	return nil
+}
+
+func (s *fakeZwiftStore) HoldsHeadUnitRide(_ context.Context, _ string, _ []int, since time.Time) (bool, error) {
+	if s.ownerErr != nil {
+		return false, s.ownerErr
+	}
+	s.heldSince = append(s.heldSince, since)
+
+	return s.holds, nil
 }
 
 func (s *fakeZwiftStore) DeleteTrainerCopy(
@@ -536,4 +547,23 @@ func TestZwiftPollStopsFillingWhenTheBudgetIsSpent(t *testing.T) {
 	assert.Equal(t, 2, result.Stored, "both rides were stored")
 	assert.Zero(t, result.RecordsStored, "no fill was started past the budget")
 	assert.Len(t, store.pending, 2, "both rides still await their samples")
+}
+
+// The chained poll asks the store about the analysis hold, not about every ride.
+func TestHoldsTrainerCopyAsksAboutTheHeldIndoorRides(t *testing.T) {
+	t.Parallel()
+	store := newFakeZwiftStore()
+	store.holds = true
+	now := time.Date(2026, 9, 13, 18, 0, 0, 0, time.UTC)
+	poller, err := NewZwiftPoller(&fakeZwiftSource{}, store, []int{12}, func() time.Time { return now })
+	require.NoError(t, err)
+
+	held, err := poller.HoldsTrainerCopy(t.Context(), "rider-a")
+	require.NoError(t, err)
+	assert.True(t, held)
+	assert.Equal(t, []time.Time{now.Add(-trainerCopyHold)}, store.heldSince)
+
+	store.ownerErr = errors.New("unreadable")
+	_, err = poller.HoldsTrainerCopy(t.Context(), "rider-a")
+	assert.Error(t, err)
 }

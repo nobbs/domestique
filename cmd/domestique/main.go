@@ -19,6 +19,7 @@ import (
 	"github.com/nobbs/domestique/internal/auth0"
 	"github.com/nobbs/domestique/internal/basemap"
 	"github.com/nobbs/domestique/internal/build"
+	"github.com/nobbs/domestique/internal/claude"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/fit"
@@ -213,10 +214,14 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("creating the activity deriver: %w", err)
 	}
+	analysisTasks, err := startAnalysis(ctx, settings, runtimeSettings, store, switches.enabledFor, destination.targetIDs)
+	if err != nil {
+		return err
+	}
 	tasks, err := registerTasks(
 		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
-		append(
+		append(append(
 			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs),
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
@@ -224,7 +229,7 @@ func run(ctx context.Context) error {
 			zwiftPollTask(zwiftActivityPoller, switches.enabledFor, destination.targetIDs),
 			activityDeriveTask(activityDeriver, switches.enabledFor, destination.targetIDs),
 			rideModelCalibrateTask(store, rideModel, switches.enabledFor, time.Now),
-		),
+		), analysisTasks...),
 	)
 	if err != nil {
 		return err
@@ -333,6 +338,44 @@ func configuredStyleURLs(basemaps []runtimeconfig.Basemap) []string {
 	}
 
 	return styles
+}
+
+// claudeExecutable is where the runtime image installs the bundled executable.
+const claudeExecutable = "/usr/local/bin/claude"
+
+// startAnalysis registers the ride analysis only when the operator configured a
+// Claude token, recording the instant it was first enabled. Its home directory
+// lives beside the state database, which the image keeps writable.
+func startAnalysis(
+	ctx context.Context,
+	settings *config.Settings,
+	runtimeSettings *runtimeconfig.Current,
+	store *sqlite.Store,
+	enabled func(string) func() bool,
+	targetIDs func() []string,
+) ([]task.Definition, error) {
+	if !settings.Analysis.Enabled() {
+		return nil, nil
+	}
+	home := filepath.Join(filepath.Dir(settings.State.DatabasePath), "claude")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		return nil, fmt.Errorf("creating the claude home directory: %w", err)
+	}
+	client, err := claude.New(claude.Options{Executable: claudeExecutable, Home: home, Token: settings.Analysis.ClaudeToken()})
+	if err != nil {
+		return nil, fmt.Errorf("creating the claude client: %w", err)
+	}
+	since, err := store.RecordAnalysisEnabled(ctx, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("recording when the analysis was enabled: %w", err)
+	}
+	analyser, err := activity.NewAnalyser(store, claudeAsker{client: client}, since, wahoo.IndoorWorkoutTypes(),
+		func() string { return runtimeSettings.Values().Timezone }, time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("creating the activity analyser: %w", err)
+	}
+
+	return []task.Definition{activityAnalyseTask(analyser, enabled, targetIDs)}, nil
 }
 
 // startSurfaceIndex prepares the surface index and the schedule that rebuilds it.

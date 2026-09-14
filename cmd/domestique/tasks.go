@@ -32,6 +32,7 @@ const (
 	taskActivityRecord     = httpapi.TaskActivityRecord
 	taskActivityDerive     = httpapi.TaskActivityDerive
 	taskZwiftPoll          = httpapi.TaskZwiftPoll
+	taskActivityAnalyse    = "activity:analyse"
 )
 
 // Everything reading or writing the trusted inventory takes resourceInventory
@@ -83,6 +84,15 @@ const zwiftPollInterval = 6 * time.Hour
 const (
 	activityDeriveInterval     = time.Hour
 	activityDeriveInitialDelay = time.Hour
+)
+
+// An analysis run is bounded per target, so a week's rides take a few runs; the
+// schedule is also what retries a ride a failed request left owed.
+const (
+	activityAnalyseInterval     = time.Hour
+	activityAnalyseInitialDelay = time.Hour
+	analysisAlertTitle          = "Domestique ride analysis"
+	analysisAlertSuppression    = 6 * time.Hour
 )
 
 // A rider's form moves over months, so the pair is refitted weekly; the first
@@ -150,12 +160,22 @@ type synchronizer interface {
 // the reading of a rider's own Zwift account, which has no notification to
 // serve and so no single-ride read.
 type activityPoller interface {
-	zwiftPoller
+	targetPoller
 	Record(ctx context.Context, targetID string, workoutID int64) activity.Result
 }
 
-type zwiftPoller interface {
+type targetPoller interface {
 	Poll(ctx context.Context, targetID string) activity.Result
+}
+
+type zwiftPoller interface {
+	targetPoller
+	HoldsTrainerCopy(ctx context.Context, targetID string) (bool, error)
+}
+
+// activityAnalyser asks about one target's rides owed an analysis.
+type activityAnalyser interface {
+	Analyse(ctx context.Context, targetID string) activity.Result
 }
 
 // activityDeriver works out what one target's rides say about how hard they
@@ -370,6 +390,9 @@ func activityPollTask(
 // zwiftPollTask reads each target owner's own Zwift rides into the store. It
 // takes the same exclusive resource the Wahoo poll does — it writes the same
 // rows, and removes the head unit's copy of a ride it stores.
+//
+// It follows a recorded ride so the Zwift copy can replace the head unit's before
+// either is analysed; a chained run reads Zwift only for a target holding one.
 func zwiftPollTask(
 	poller zwiftPoller, enabled func(string) func() bool, targetIDs func() []string,
 ) task.Definition {
@@ -382,8 +405,18 @@ func zwiftPollTask(
 		Schedule:     task.Every(func() time.Duration { return zwiftPollInterval }),
 		InitialDelay: func() time.Duration { return zwiftPollInterval },
 		FanOut:       targetIDs,
+		Follows:      []string{taskActivityRecord},
 		Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
 		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+			if invocation.Trigger == task.TriggerChain {
+				held, err := poller.HoldsTrainerCopy(ctx, invocation.Argument)
+				if err != nil {
+					return task.Result{Outcome: task.Failed, Detail: detailActivityState}
+				}
+				if !held {
+					return task.Result{Outcome: task.Unchanged}
+				}
+			}
 			if invocation.Argument != "" {
 				polled := poller.Poll(ctx, invocation.Argument)
 
@@ -391,6 +424,60 @@ func zwiftPollTask(
 			}
 
 			return pollEveryTarget(ctx, poller, targetIDs())
+		}),
+	}
+}
+
+// activityAnalyseTask asks a language model about each derived ride owed an
+// analysis. Registered only with a Claude token, together with its edge.
+func activityAnalyseTask(
+	analyser activityAnalyser, enabled func(string) func() bool, targetIDs func() []string,
+) task.Definition {
+	return task.Definition{
+		Name:         taskActivityAnalyse,
+		Enabled:      enabled(taskActivityAnalyse),
+		Follows:      []string{taskActivityDerive},
+		Schedule:     task.Every(func() time.Duration { return activityAnalyseInterval }),
+		InitialDelay: func() time.Duration { return activityAnalyseInitialDelay },
+		Resources: func(string) []task.Resource {
+			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
+		},
+		Notify: &task.Notify{
+			Title:    analysisAlertTitle,
+			Suppress: analysisAlertSuppression,
+			Alerts: []task.Detail{
+				task.DetailRecovered,
+				task.Detail(activity.FailureToken),
+				task.Detail(activity.FailureAllowance),
+				task.Detail(activity.FailureExecutable),
+				task.Detail(activity.FailureUnusable),
+				detailActivityState,
+			},
+		},
+		FanOut:  targetIDs,
+		Backoff: task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
+		Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+			if invocation.Argument != "" {
+				analysed := analyser.Analyse(ctx, invocation.Argument)
+
+				return activityResult(&analysed)
+			}
+			aggregate := task.Result{Outcome: task.NotReady}
+			for _, targetID := range targetIDs() {
+				analysed := analyser.Analyse(ctx, targetID)
+				result := activityResult(&analysed)
+				// A later equally severe failure is the one that ended the run.
+				if severity(result.Outcome) >= severity(aggregate.Outcome) {
+					aggregate = result
+				}
+				// Every target shares one subscription and one executable, so a
+				// failure of either would only be met again by the next target.
+				if analysed.Outcome == activity.Failed && analysed.Failure != activity.FailureState {
+					break
+				}
+			}
+
+			return aggregate
 		}),
 	}
 }
@@ -470,7 +557,7 @@ func parseActivityRecordArgument(argument string) (targetID string, workoutID in
 
 // pollEveryTarget polls every slot, reporting the most serious thing that
 // happened: one rider's dead token must not stop another's rides being read.
-func pollEveryTarget(ctx context.Context, poller zwiftPoller, targetIDs []string) task.Result {
+func pollEveryTarget(ctx context.Context, poller targetPoller, targetIDs []string) task.Result {
 	aggregate := task.Result{Outcome: task.NotReady}
 	for _, targetID := range targetIDs {
 		polled := poller.Poll(ctx, targetID)
@@ -543,6 +630,8 @@ func activityDetail(failure activity.Failure) task.Detail {
 		return detailActivityState
 	case activity.FailureRejected:
 		return detailActivityRejected
+	case activity.FailureToken, activity.FailureAllowance, activity.FailureExecutable, activity.FailureUnusable:
+		return task.Detail(failure)
 	case activity.FailureUpstream, activity.FailureNone:
 	}
 

@@ -372,7 +372,7 @@ state — so its edge carries no argument and a run with nothing owed asks
 nothing. There is no backfill: a ride started before that instant stays
 unanalysed, even one stored after it, and a ride whose analysis stands is never asked about again.
 A head unit's indoor ride of a rider with Zwift credentials is held until it
-started more than seven hours ago — one `zwift:poll` interval and an hour —
+ended more than seven hours ago — one `zwift:poll` interval and an hour —
 because that poll replaces it with the Zwift copy and the analysis would go with
 it: by then it has been replaced, and the Zwift copy is the one owed, or it is
 the only copy there is. A
@@ -397,10 +397,13 @@ succeeded is not repeated, so a ride left owed by a failed request would wait
 for the next new ride rather than the next hour. A scheduled run with nothing
 owed asks nothing and costs a query per target. An answer is stored only when
 it fits the contract's bound: non-empty and at most two thousand characters.
-An empty or longer one is `unusable` and the ride stays owed. The log and the
-alert carry counts and one stable failure category — `token` refused,
-`allowance` exhausted, `executable` failing, answer `unusable` — and never the
-prompt or the answer.
+An empty or longer one is `unusable` and the ride stays owed. The log carries
+counts and the alert one stable failure category — `token` refused,
+`allowance` exhausted, `executable` failing, answer `unusable`, or `state` when
+stored state could not be read — and neither ever carries the prompt or the
+answer. Every target shares the one subscription and executable, so a run over
+all of them ends at the first failure that is not `state` rather than meeting
+it again once per target.
 
 A Wahoo webhook starts `activity:record` for the target and workout it names,
 ahead of the schedule and under the same `activities` exclusivity — a delivery
