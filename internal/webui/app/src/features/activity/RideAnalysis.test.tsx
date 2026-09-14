@@ -98,6 +98,24 @@ describe("RideAnalysis", () => {
     expect(await screen.findByText(/A new analysis replaces this one/)).toBeInTheDocument();
   });
 
+  it("says so when the request is refused", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (_input: RequestInfo | URL, _init?: RequestInit) =>
+          new Response(JSON.stringify({ error: "task_in_progress", message: "busy" }), {
+            status: 409,
+          }),
+      ),
+    );
+    show(analysed, true);
+
+    await userEvent.click(screen.getByRole("button", { name: "Analyse again" }));
+
+    expect(await screen.findByText(/Could not ask right now/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Analyse again" })).toBeEnabled();
+  });
+
   it("offers an admin a first analysis of a derived ride", () => {
     show({ ...ride, metrics: { trimp: 42 } }, true);
 

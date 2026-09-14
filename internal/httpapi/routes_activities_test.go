@@ -1318,8 +1318,13 @@ func TestReanalyseActivityReportsARefusedStartAndAnUnreadableStore(t *testing.T)
 	assert.Equal(t, http.StatusConflict,
 		postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), busy, "/v1/activities/1/reanalyse?target=rider-a"))
 
-	state := activityState("rider-a", time.Hour)
-	state.startedErr = errors.New("unreadable")
-	assert.Equal(t, http.StatusServiceUnavailable,
-		postReanalyse(t, newFakeSessions(), state, reanalyseTasks(), "/v1/activities/1/reanalyse?target=rider-a"))
+	for name, breakState := range map[string]func(*fakeState){
+		"the targets":  func(s *fakeState) { s.targetErr = errors.New("unreadable") },
+		"the ride row": func(s *fakeState) { s.startedErr = errors.New("unreadable") },
+	} {
+		state := activityState("rider-a", time.Hour)
+		breakState(state)
+		assert.Equal(t, http.StatusServiceUnavailable,
+			postReanalyse(t, newFakeSessions(), state, reanalyseTasks(), "/v1/activities/1/reanalyse?target=rider-a"), name)
+	}
 }
