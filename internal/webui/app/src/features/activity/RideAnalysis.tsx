@@ -60,7 +60,7 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
       ) : null}
       {reanalyse.isError ? (
         <p className="text-[var(--ink-2)] text-xs" role="status">
-          Could not ask right now; another activity task may be running.
+          The service did not take the request.
         </p>
       ) : null}
     </section>

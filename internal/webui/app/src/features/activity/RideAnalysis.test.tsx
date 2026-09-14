@@ -112,7 +112,7 @@ describe("RideAnalysis", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Analyse again" }));
 
-    expect(await screen.findByText(/Could not ask right now/)).toBeInTheDocument();
+    expect(await screen.findByText(/did not take the request/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Analyse again" })).toBeEnabled();
   });
 

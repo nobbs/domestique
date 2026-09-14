@@ -781,7 +781,7 @@ func (h *Handler) readableTarget(ctx context.Context, requested string) (targetI
 }
 
 // ReanalyseActivity starts a fresh analysis of one ride of the target the list
-// would serve. Not found when analysis is off, and for a ride that target lacks.
+// would serve. Not found when analysis is off, and for a ride with no figures.
 func (h *Handler) ReanalyseActivity(writer http.ResponseWriter, request *http.Request) {
 	id, idErr := strconv.ParseInt(request.PathValue("activityId"), 10, 64)
 	if idErr != nil || !h.registers(TaskActivityReanalyse) {
@@ -796,12 +796,13 @@ func (h *Handler) ReanalyseActivity(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	if found {
-		_, found, err = h.state.ActivityStartedAt(request.Context(), targetID, id)
-		if err != nil {
+		derived, metricsErr := h.state.ActivityMetrics(request.Context(), targetID)
+		if metricsErr != nil {
 			h.unavailable(writer)
 
 			return
 		}
+		_, found = derived[id]
 	}
 	if !found {
 		h.notFound(writer)

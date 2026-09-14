@@ -864,7 +864,7 @@ browser origin described above, and answer 403 without it.
 - `POST /v1/activities/{activity-id}/reanalyse` (admin-only) asks a language model
   once more about one ride of the target the activity list would serve, as
   `activity:reanalyse` over that ride. It returns `202 Accepted`, `404` for a ride
-  that target does not hold or when no Claude token is configured, and `409`
+  that target holds no derived figures for or when no Claude token is configured, and `409`
   while another activity task holds the rides.
 - The settings are written one section at a time (admin-only), over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,

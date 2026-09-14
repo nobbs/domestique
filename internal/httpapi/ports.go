@@ -192,8 +192,6 @@ type AnalysisState interface {
 	// ActivityAnalyses is what was said about each of one target's rides that
 	// started in [from, to), keyed by ride. A ride not analysed is absent.
 	ActivityAnalyses(ctx context.Context, targetID string, from, to time.Time) (map[int64]activities.Analysis, error)
-	// ActivityStartedAt is when one ride started, and whether the target holds it.
-	ActivityStartedAt(ctx context.Context, targetID string, id int64) (time.Time, bool, error)
 }
 
 // RiderProfileState is one rider's own parameters, and the best efforts their

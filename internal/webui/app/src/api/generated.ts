@@ -3129,7 +3129,7 @@ export const getReanalyseActivityUrl = (
 };
 
 /**
- * Admin-only. Asks a language model once more about one derived ride of the target the activity list would serve, whenever it started. The new answer replaces what stood only when it fits the bound; a failed request leaves the stored analysis in place. Not found when no Claude token is configured, and for a ride that target does not hold.
+ * Admin-only. Asks a language model once more about one derived ride of the target the activity list would serve, whenever it started. The new answer replaces what stood only when it fits the bound; a failed request leaves the stored analysis in place. Not found when no Claude token is configured, and for a ride that target holds no derived figures for.
  */
 export const reanalyseActivity = async (
   activityId: ActivityID,

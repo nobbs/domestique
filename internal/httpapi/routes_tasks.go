@@ -148,8 +148,8 @@ func (h *Handler) RunTask(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	// Started by the webhook receiver alone: its argument names a workout, which
-	// is not a browser's to name, so it is not found rather than forbidden.
+	// Each names one workout and has its own caller, the Wahoo receiver or the
+	// activity endpoint, so by name it is not found rather than forbidden.
 	if name == TaskActivityRecord || name == TaskActivityReanalyse {
 		h.notFound(writer)
 

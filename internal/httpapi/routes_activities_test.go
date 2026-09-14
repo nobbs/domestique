@@ -1260,6 +1260,14 @@ func postReanalyse(t *testing.T, sessions Sessions, state *fakeState, tasks *fak
 	return response.Code
 }
 
+// derivedRideState is rider-a's two rides, the first of them derived.
+func derivedRideState() *fakeState {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	state.activityMetrics = map[string]map[int64]activities.RideMetrics{"rider-a": {1: {}}}
+
+	return state
+}
+
 func reanalyseTasks() *fakeTasks {
 	return &fakeTasks{registered: []RegisteredTask{{Name: TaskActivityReanalyse}}}
 }
@@ -1268,7 +1276,7 @@ func reanalyseTasks() *fakeTasks {
 // task is started over exactly that ride.
 func TestReanalyseActivityStartsTheTaskOverOneRide(t *testing.T) {
 	tasks := reanalyseTasks()
-	code := postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), tasks,
+	code := postReanalyse(t, newFakeSessions(), derivedRideState(), tasks,
 		"/v1/activities/1/reanalyse?target=rider-a")
 
 	assert.Equal(t, http.StatusAccepted, code)
@@ -1277,7 +1285,7 @@ func TestReanalyseActivityStartsTheTaskOverOneRide(t *testing.T) {
 
 func TestReanalyseActivityRefusesANonAdminSession(t *testing.T) {
 	tasks := reanalyseTasks()
-	code := postReanalyse(t, nonAdminSessions("rider-a"), activityState("rider-a", time.Hour), tasks,
+	code := postReanalyse(t, nonAdminSessions("rider-a"), derivedRideState(), tasks,
 		"/v1/activities/1/reanalyse")
 
 	assert.Equal(t, http.StatusForbidden, code)
@@ -1292,10 +1300,11 @@ func TestReanalyseActivityAnswersNotFound(t *testing.T) {
 		"with analysis off":           {&fakeTasks{}, "/v1/activities/1/reanalyse?target=rider-a"},
 		"for a ride the target lacks": {reanalyseTasks(), "/v1/activities/99/reanalyse?target=rider-a"},
 		"for a target nobody holds":   {reanalyseTasks(), "/v1/activities/1/reanalyse?target=nobody"},
+		"for a ride with no figures":  {reanalyseTasks(), "/v1/activities/2/reanalyse?target=rider-a"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			code := postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), test.tasks, test.target)
+			code := postReanalyse(t, newFakeSessions(), derivedRideState(), test.tasks, test.target)
 
 			assert.Equal(t, http.StatusNotFound, code)
 			assert.Empty(t, test.tasks.asked)
@@ -1305,7 +1314,7 @@ func TestReanalyseActivityAnswersNotFound(t *testing.T) {
 
 func TestReanalyseActivityRefusesAnIDThatIsNotNumeric(t *testing.T) {
 	tasks := reanalyseTasks()
-	code := postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), tasks,
+	code := postReanalyse(t, newFakeSessions(), derivedRideState(), tasks,
 		"/v1/activities/x/reanalyse?target=rider-a")
 
 	assert.Equal(t, http.StatusBadRequest, code)
@@ -1316,13 +1325,13 @@ func TestReanalyseActivityReportsARefusedStartAndAnUnreadableStore(t *testing.T)
 	busy := reanalyseTasks()
 	busy.refuse = true
 	assert.Equal(t, http.StatusConflict,
-		postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), busy, "/v1/activities/1/reanalyse?target=rider-a"))
+		postReanalyse(t, newFakeSessions(), derivedRideState(), busy, "/v1/activities/1/reanalyse?target=rider-a"))
 
 	for name, breakState := range map[string]func(*fakeState){
-		"the targets":  func(s *fakeState) { s.targetErr = errors.New("unreadable") },
-		"the ride row": func(s *fakeState) { s.startedErr = errors.New("unreadable") },
+		"the targets": func(s *fakeState) { s.targetErr = errors.New("unreadable") },
+		"the figures": func(s *fakeState) { s.activityMetricsErr = errors.New("unreadable") },
 	} {
-		state := activityState("rider-a", time.Hour)
+		state := derivedRideState()
 		breakState(state)
 		assert.Equal(t, http.StatusServiceUnavailable,
 			postReanalyse(t, newFakeSessions(), state, reanalyseTasks(), "/v1/activities/1/reanalyse?target=rider-a"), name)
