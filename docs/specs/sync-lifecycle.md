@@ -14,8 +14,8 @@ A route is identified by the triple:
 provider + source route ID + stage order
 ~~~
 
-The provider is the upstream that issued the source route ID. `veloplanner` is
-the only provider served.
+The provider is the upstream that issued the source route ID, or `planned` for
+a route this service composed itself, whose source route ID is the plan's own.
 
 A route's deterministic Wahoo external ID is:
 
@@ -325,6 +325,13 @@ prior route count. A source that had routes and now reports none is blocked for
 that source alone unless the operator's empty-source acknowledgement is set, and
 every other configured source proceeds independently of it.
 
+The planned source is exempt from that gate. Its inventory is the published
+plans in this service's own state, read locally: there is no session to lose,
+no listing to truncate, and no upstream to answer with less than it holds, so an
+empty read is a true statement that the last plan was unpublished or deleted,
+which is exactly the deletion the admin asked for. The remaining gates apply to
+it unchanged, the per-run deletion maximum among them.
+
 A read asked for over one source builds that source alone. Building every source
 at once refuses when any one of them has been named but not given credentials,
 because a partial set read as the whole inventory is what the deletion gate
@@ -426,7 +433,8 @@ A target deletion is permitted only when all conditions hold:
 A source inventory that was populated and becomes empty is blocked while the
 empty-source deletion gate is closed. The gate is closed by default. It is
 opened on the settings page, takes effect from the next run, does not bypass the
-remaining checks, and stays open until it is closed again.
+remaining checks, and stays open until it is closed again. The planned source is
+the one exception, for the reason [Multiple sources](#multiple-sources) gives.
 
 Any larger shrink, missing source authentication, malformed geometry, or
 incomplete listing blocks all deletions and yields a safe failure category. The
@@ -830,6 +838,9 @@ The implementation test suite must cover at least:
   stopped;
 - the empty-source deletion gate blocking only the source that emptied out,
   independently of a sibling source that still has routes;
+- the planned source emptying out, by unpublishing or deleting its last plan,
+  deleting that route without the acknowledgement and still within the per-run
+  maximum;
 - manual Wahoo route preservation;
 - state loss adopting matching desired external IDs without deleting unknown
   routes;

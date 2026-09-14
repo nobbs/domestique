@@ -68,6 +68,10 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 # [analysis]
 # claude_token_file = "/run/secrets/claude_token"
 
+# Optional: switches the route planner on.
+# [planning]
+# brouter_url = "http://brouter:17777"
+
 [log]
 level = "info"
 ```
@@ -158,6 +162,13 @@ application dependency.
   route ID, query string or subject. Like every other field it may be set as
   `DOMESTIQUE_LOG__LEVEL`, which is the intended way to raise it for one
   restart.
+- `planning.brouter_url` is optional. It is the absolute HTTP origin, with no
+  path, of the BRouter instance the planner routes with — a sidecar on the same
+  host, never a public address. It is a file field because it names where a
+  neighbour listens, which is the host's knowledge like the listen addresses
+  above. Leaving the section out switches the planner off: no plan endpoint is
+  registered, no planned source is read, and the segment task is not
+  registered ([the task](task-layer.md#the-registered-tasks)).
 - `http.browser_origin_url` is required, and must be an absolute HTTPS origin
   with no path. It is the address a browser reaches this service at, behind the
   reverse proxy.
@@ -495,6 +506,24 @@ was built from, so a new build is written and opened beside the live one, and
 the replaced file is removed only once the new one is serving. A build holds
 roughly half a gigabyte of heap and stages an extract of a few hundred megabytes
 on disk, both of which are released when it finishes.
+
+### Planning
+
+`planning.segments` names the BRouter routing segments the service keeps
+current for its routing engine. Each entry is one of BRouter's 5°×5° tiles,
+named for its south-west corner: `E` or `W` and a longitude, an underscore, `N`
+or `S` and a latitude, both multiples of five, such as `E5_N45`. The shape is
+validated where it is entered; a tile becomes a file name under a fixed host,
+and a validated name can introduce no host, query, or traversal. A blank line
+and a repeat are dropped rather than refused.
+
+The default is **no segments**, under which the weekly task fetches nothing
+and the engine routes with whatever its volume already holds. Each named tile
+costs between a hundred and three hundred megabytes of the volume the engine
+reads. A refresh asks the host for each tile's size and modification time
+first, downloads only what changed, writes beside the live file, and renames
+over it, so the engine never reads a half-written tile. It sends the tile
+names and nothing about any route or plan.
 
 ### Ride model
 

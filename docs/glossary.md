@@ -46,8 +46,8 @@ the `wahoo` adapter and never crosses into the service or the UI.
 ## Where routes come from and go
 
 **provider** — the upstream service a route was read from: VeloPlanner or
-Komoot. This is the word on the wire (`/v1/providers/{provider}/…`) and the word
-in code.
+Komoot, or `planned` for a route this service composed itself. This is the word
+on the wire (`/v1/providers/{provider}/…`) and the word in code.
 
 **source** — the read half of synchronisation, and the settings that configure
 it. "Source" is the role; "provider" is the identity. A sentence about *which*
@@ -146,6 +146,24 @@ gradient; a disagreement between the two is a defect.
 rain and cloud overlays over the whole viewport. Distinct from a route's own
 forecast, which is a series of point readings along one route's geometry, not
 a grid over an area.
+
+## Planning
+
+**plan** — an ordered list of waypoints and a profile that an admin composed on
+the map, owned by this service and nothing upstream. A published plan is a
+route under the `planned` provider; a draft is not a route at all (see
+[service.md](specs/service.md), "HTTP wire contract").
+
+**waypoint** — one point a plan's route must pass through, in the order the
+admin placed it. The routing engine decides the line between two of them; a
+waypoint is never itself a point of the geometry.
+
+**profile** — the routing engine's costing a plan is routed with: trekking,
+fastbike, or gravel. Stored with the plan, so re-routing it keeps the choice.
+
+**draft / published** — a plan's two states. Publishing is what makes it a
+route and puts it in the inventory the next synchronisation reads; unpublishing
+takes it out again, on the same terms as deleting it.
 
 ## Synchronisation
 

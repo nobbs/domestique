@@ -632,6 +632,18 @@ The runtime image:
 - is usable with a read-only root filesystem plus a temporary writable mount if
   the selected runtime needs one.
 
+A deployment with the planner on runs one more container: the BRouter routing
+engine, from an image pinned by digest like every other, with a heap capped at
+half a gigabyte. It publishes no port. It joins an internal network the service
+also joins, so the service reaches it by name over that network alone; it is
+never on the edge network the proxy reads, carries no proxy label, and answers
+nothing from outside the host. Its root filesystem is read-only, every
+capability is dropped, and its routing segments come from a volume it mounts
+read-only and the service mounts read-write, since the service's weekly task is
+what refreshes them ([the task](task-layer.md#the-registered-tasks)). The two
+images therefore have to agree on the user that volume is written and read as,
+and the deploy script asserts that they do before it health-gates the pair.
+
 The host runs the container with a loopback-only publication such as
 `127.0.0.1:8080:8080`, plus the readiness listener on the same terms
 (`127.0.0.1:8081:8081`). Both are loopback-only; only the served one is given to

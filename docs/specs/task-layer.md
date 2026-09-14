@@ -75,6 +75,8 @@ refused attempt reports `skipped`.
 Resources describe state, not tasks. Everything that reads or writes the trusted
 inventory takes `inventory`, whichever task asked, so no two of those overlap. A
 surface index build takes `surface-index`, touches neither, and runs beside them.
+A routing-segment refresh takes `segments`, the volume the routing engine reads,
+and nothing this service itself reads, so it runs beside all three.
 Reading a rider's recorded activities takes `activities`: it reaches the same
 Wahoo account a reconciliation does, but writes only activity rows, so it runs
 beside `inventory` rather than waiting behind it.
@@ -278,6 +280,7 @@ is checked rather than inferred.
 | `ridemodel:calibrate` | none | `activities` exclusive | every week |
 | `activity:analyse` | target slot, or none for every one | `activities` exclusive | every hour, and only when a token is configured |
 | `activity:reanalyse` | target slot and workout id | `activities` exclusive | none, and only when a token is configured |
+| `planning:segments` | none | `segments` exclusive | every week, and only when a routing engine is configured |
 
 `zwift:poll` reads the same rows from a rider's own Zwift account, under the
 same exclusivity: it stores the indoor rides that account recorded and removes

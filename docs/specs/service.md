@@ -24,7 +24,9 @@ small Linux cloud VM. It has no CLI.
 The service serves a read-only browser UI for route preview. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
 protected Wahoo OAuth onboarding flow, the manual triggers over synchronisation
-and surface enrichment, and the runtime settings the UI reads and writes back.
+and surface enrichment, the runtime settings the UI reads and writes back, and
+the plans an admin composes in the browser, which are the one kind of route
+this service itself owns.
 The UI is a view onto stored state: it draws the whole stored library on one map,
 opens any one route over that same map, and reports synchronisation on a second
 view. A route is not a page of its own — it takes over the panel the search
@@ -107,17 +109,34 @@ is the only navigation that leaves the authenticated origin, it opens in a new
 context without a referrer, and it sends nothing: no route, geometry, or
 origin address accompanies it.
 
-Route editing is out of scope. The UI presents no editing affordance, and the
-service writes nothing back to VeloPlanner. Any change to that boundary requires
-revising this document first.
+No upstream route is ever edited. The UI presents no editing affordance over a
+VeloPlanner or Komoot route, and the service writes nothing back to either. Any
+change to that boundary requires revising this document first.
+
+The one provider this service may write is its own. A **plan** is an ordered
+list of waypoints and a routing profile that an admin composes on the map; the
+service hands the waypoints to a self-hosted routing engine, which snaps them to
+a bike-preferring road network, and the geometry that comes back is the plan's
+route. Only an admin session may create, replace or delete a plan, over the
+`/v1/plans` endpoints below; every other session sees a plan's route exactly as
+it sees any other. The browser previews a plan while it is being drawn, but the
+service routes the waypoints itself before anything is stored, and the preview
+runs the same normalisation and measurement a save does, so what the editor
+shows is what the library will hold. A plan is a **draft** until it is
+published, and only a published plan is a route: a draft is served to its
+editor alone, is never in the inventory, and never reaches a target. Publishing
+and unpublishing are the admin's deliberate acts; the next synchronisation
+mirrors either into every target on the terms the
+[sync lifecycle](sync-lifecycle.md) states, deletion gates included.
 
 ## Constraints and non-goals
 
 - Sync every route in the configured VeloPlanner library; there is no selection
   by tag, prefix, or allow-list.
 - Preserve no integration with Ride with GPS.
-- Do not provide route editing or a command-line interface. The browser UI is
-  read-only.
+- Do not edit an upstream route, and do not provide a command-line interface.
+  The browser UI is read-only over every upstream provider; the planned
+  provider, which this service owns, is the one exception, on the terms above.
 - Do not run a secret manager or reference a specific secret provider from Go.
 - Do not back up the persistent service data. Recovery must be safe despite
   that intentional constraint.
@@ -663,7 +682,9 @@ The read-only JSON surface is small:
   base URL. The list is never empty, and its first entry is what a browser that
   has chosen nothing loads. The base URL is the whole of what is sent about the
   provider; the page builds a route's link back to its source route from it. It
-  is omitted when unconfigured, and the page then shows no such link. It also
+  is omitted when unconfigured, and the page then shows no such link. It says
+  whether planning is configured, so the page offers the planner only where a
+  routing engine will answer it, and only to an admin. It also
   reports the signed-in subject's display name: the ID token's email, else its
   name, else the bare `sub`. It names the service's own IANA time zone, so the
   page can bucket by day, week, and month the way the service itself does.
@@ -880,6 +901,21 @@ browser origin described above, and answer 403 without it.
   that will do it, as `sync:source` run on that stage's behalf. What the targets
   hold follows from that read. It returns `202 Accepted`, or `404` for a
   route that is not in the stored inventory.
+- The plan endpoints (all admin-only) are the one place a route is written.
+  `POST /v1/plans/route` is a stateless preview: waypoints and a profile in,
+  the normalised geometry with its distance and ascent out, nothing stored.
+  `GET /v1/plans` lists every plan with its summary and whether it is
+  published; `GET /v1/plans/{plan-id}` returns one plan's waypoints, profile,
+  name, published state, version, and its stored geometry, because a draft is
+  in no inventory for the geometry endpoint to serve. `POST /v1/plans` creates
+  a draft, routing the waypoints server-side first. `PUT /v1/plans/{plan-id}`
+  replaces one plan whole, published state included, and carries the version
+  last read as `If-Match`; a stale version is refused with `412` so two admins
+  cannot overwrite each other. `DELETE /v1/plans/{plan-id}` removes one. The
+  whole group is absent, answering `404`, when no routing engine is configured,
+  and a routing failure is `502` carrying a category and nothing of the
+  engine's response. A plan carries no credential, no rider's data, and no
+  geometry beyond the one the engine returned for its waypoints.
 - `POST /v1/activities/{activity-id}/reanalyse` (admin-only) asks a language model
   once more about one ride of the target the activity list would serve, as
   `activity:reanalyse` over that ride. It returns `202 Accepted`, `404` for a ride
@@ -1166,6 +1202,16 @@ the provider offers them. FIT is produced once, by this service's own encoder,
 for every source alike, and surface classification is computed once, against
 this service's own OpenStreetMap index, for every source alike. This rule is
 provider-agnostic and applies to any future source.
+
+The planned provider, `planned`, is the third source and the only one with no
+upstream. Its source route ID is the plan's own identifier in this service's
+state, its stage order is always 1, and its inventory is the set of published
+plans. Geometry comes from the routing engine the deployment names — BRouter,
+run as a sidecar beside the service ([delivery.md](delivery.md)) — which
+answers with the snapped line and an elevation per point; both are then treated
+exactly as a VeloPlanner stage's are, normalised and measured by this service
+and encoded by its own encoder. The engine is asked only with the waypoints and
+the profile; no plan name, rider, or stored route leaves the service for it.
 
 ## Wahoo synchronisation
 
@@ -1589,10 +1635,12 @@ secret files remain outside Git.
   routes without reading VeloPlanner or writing a Wahoo target — the reprocess
   request, which discards derived answers so they are worked out again, and
   the settings write, which changes how the service behaves next and nothing
-  it holds about a route. Nothing on the surface edits route data, in this
-  service or at the source.
+  it holds about a route. Nothing on the surface edits an upstream route, in
+  this service or at the source; the plan endpoints, admin-only, edit only the
+  routes this service owns.
 - The browser UI renders stored routes on a map, is reachable only by
-  the configured identity, and offers no affordance for editing a route. The
+  the configured identity, and offers no affordance for editing an upstream
+  route; the planner it offers an admin edits plans and nothing else. The
   settings it does offer are the service's own runtime settings and this
   browser's display preferences, neither of which touches stored route data.
   Selecting a surface class or gradient band in its key only changes what the
