@@ -1,6 +1,6 @@
 /**
  * What a language model made of one ride, as the plain text it wrote. Absent
- * until the ride has been analysed, and on a deployment with no token at all.
+ * until the ride has been analysed, and on a deployment that never had a token.
  */
 
 import type { Activity } from "../../api/types";
@@ -18,7 +18,7 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
       aria-label="Analysis"
     >
       <h2 className="font-medium text-sm">Analysis</h2>
-      {/* Paragraphs and line breaks are the model's own; it writes no markup. */}
+      {/* The model is asked for plain paragraphs; any markup it returns shows as typed. */}
       <p className="whitespace-pre-line text-sm leading-relaxed">{analysis.text}</p>
       <p className="text-[var(--ink-2)] text-xs">
         {analysis.model} · {formatTimestamp(analysis.analysedAt)}
