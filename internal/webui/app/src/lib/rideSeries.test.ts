@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../api/types";
 import { buildActivityProfile } from "./profile";
-import { alignSeries } from "./rideSeries";
+import { alignSeries, formatSeriesReading } from "./rideSeries";
 
 /** A straight run east, every sample carrying an altitude. */
 function coordinates(): Position[] {
@@ -125,5 +125,20 @@ describe("alignSeries", () => {
     const aligned = alignSeries(readings, warmUp, profile);
 
     expect(aligned[0]).toBe(80);
+  });
+});
+
+describe("formatSeriesReading", () => {
+  it("reads a signed lead with its sign, and zero with none", () => {
+    const lead = { unit: "min", decimals: 1, signed: true };
+
+    expect(formatSeriesReading(2.54, lead)).toBe("+2.5 min");
+    expect(formatSeriesReading(-1.26, lead)).toBe("-1.3 min");
+    expect(formatSeriesReading(0.01, lead)).toBe("0.0 min");
+    expect(formatSeriesReading(-0.01, lead)).toBe("0.0 min");
+  });
+
+  it("reads an unsigned series as it always did", () => {
+    expect(formatSeriesReading(148, { unit: "bpm" })).toBe("148 bpm");
   });
 });

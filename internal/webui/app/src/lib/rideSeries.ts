@@ -19,7 +19,24 @@ export interface AlignedSeries {
   /** How many decimals a reading is shown with. Absent reads as a whole number. */
   decimals?: number;
   colour: string;
+  /** Whether zero is a reading of its own: drawn as a line, and a lead read with its sign. */
+  signed?: boolean;
   values: (number | null)[];
+}
+
+/** One reading of a series as its chip and the chart's tooltip both say it. */
+export function formatSeriesReading(
+  value: number,
+  series: Pick<AlignedSeries, "unit" | "decimals" | "signed">,
+): string {
+  const decimals = series.decimals ?? 0;
+  const text = value.toFixed(decimals);
+  // A reading that rounds to nought carries no sign either way.
+  if (Number(text) === 0) {
+    return `${(0).toFixed(decimals)} ${series.unit}`;
+  }
+
+  return `${series.signed && value > 0 ? "+" : ""}${text} ${series.unit}`;
 }
 
 /**

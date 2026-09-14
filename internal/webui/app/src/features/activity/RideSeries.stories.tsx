@@ -10,6 +10,7 @@ const OFF: Record<RideSeriesKey, SeriesState> = {
   power: "off",
   targetPower: "off",
   estimatedPower: "off",
+  aheadOfPrediction: "off",
 };
 
 const meta = {

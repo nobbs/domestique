@@ -13,7 +13,7 @@ import { activitySeriesQuery } from "../../api/queries";
 import { ApiError } from "../../api/request";
 import type { ActivitySeriesName, Position } from "../../api/types";
 import type { Profile } from "../../lib/profile";
-import { type AlignedSeries, alignSeries } from "../../lib/rideSeries";
+import { type AlignedSeries, alignSeries, formatSeriesReading } from "../../lib/rideSeries";
 
 /**
  * The series a ride can answer, in the order the chips read.
@@ -28,6 +28,18 @@ export const RIDE_SERIES = [
   { key: "temperature", label: "Temperature", unit: "°C", decimals: 0 },
   { key: "power", label: "Power", unit: "W", decimals: 0 },
   { key: "targetPower", label: "Target power", unit: "W", decimals: 0 },
+  {
+    key: "aheadOfPrediction",
+    label: "Ahead of prediction",
+    unit: "min",
+    decimals: 1,
+    // Served in seconds; a lead of a few minutes reads better as minutes.
+    perUnit: 60,
+    signed: true,
+    // Not "not recorded": a ride has none when it matched no route, rode its
+    // route the other way round, or its route has no prediction.
+    absentLabel: "not compared",
+  },
 ] as const satisfies readonly SeriesDescriptor[];
 
 /**
@@ -43,6 +55,9 @@ interface SeriesDescriptor {
   decimals: number;
   /** What the chip says when the ride has none. Absent reads "not recorded". */
   absentLabel?: string;
+  /** How many served units make one shown, where the two differ. */
+  perUnit?: number;
+  signed?: boolean;
 }
 
 /**
@@ -72,6 +87,7 @@ const SERIES_COLOURS: Record<RideSeriesKey, string> = {
   temperature: "var(--series-temperature)",
   power: "var(--series-power)",
   targetPower: "var(--series-target-power)",
+  aheadOfPrediction: "var(--series-ahead-of-prediction)",
 };
 
 /**
@@ -134,13 +150,20 @@ export function useRideSeries(
         return;
       }
       states[series.key] = "drawn";
+      const descriptor: SeriesDescriptor = series;
+      const perUnit = descriptor.perUnit ?? 1;
       drawn.push({
         key: series.key,
         label: series.label,
         unit: series.unit,
         decimals: series.decimals,
         colour: SERIES_COLOURS[series.key],
-        values: alignSeries(values, coordinates, profile),
+        ...(descriptor.signed ? { signed: true } : {}),
+        values: alignSeries(
+          perUnit === 1 ? values : values.map((value) => (value === null ? null : value / perUnit)),
+          coordinates,
+          profile,
+        ),
       });
     });
 
@@ -250,5 +273,5 @@ function chipReading(
     return "";
   }
 
-  return `${value.toFixed(series.decimals)} ${series.unit}`;
+  return formatSeriesReading(value, series);
 }
