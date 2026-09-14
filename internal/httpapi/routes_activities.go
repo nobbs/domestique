@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -196,7 +197,7 @@ func applySession(view *openapi.ActivityMetrics, session *activities.Session) {
 // matched to none carries none: the page has no route to show, and no way to
 // tell "ridden nowhere in the library" from "not matched yet" that it could act
 // on differently.
-func activityRouteMatch(match activities.RouteMatch) *openapi.ActivityRouteMatch {
+func activityRouteMatch(match *activities.RouteMatch) *openapi.ActivityRouteMatch {
 	return &openapi.ActivityRouteMatch{
 		Provider:      string(match.Key.Provider()),
 		SourceRouteID: match.Key.SourceRouteID(),
@@ -314,7 +315,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				activity.Weather = weatherSummary(summary)
 			}
 			if match, ok := matches[recorded.ID]; ok {
-				activity.RouteMatch = activityRouteMatch(match)
+				activity.RouteMatch = activityRouteMatch(&match)
 			}
 			if analysis, ok := analyses[recorded.ID]; ok {
 				activity.Analysis = &openapi.ActivityAnalysis{
@@ -489,12 +490,56 @@ func (h *Handler) GetActivitySeries(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	readings, present := activities.Series(rows, name)
+	if name == activities.SeriesAheadOfPrediction {
+		readings, present, err = h.aheadOfPrediction(request.Context(), targetID, id, len(rows))
+		if err != nil {
+			h.unavailable(writer)
+
+			return
+		}
+	}
 	if !present {
 		h.notFound(writer)
 
 		return
 	}
 	h.writeJSON(writer, http.StatusOK, activitySeriesView{Series: string(name), Values: seriesValues(readings)})
+}
+
+// aheadOfPrediction reads one ride's clock along its matched route against that
+// route's current prediction. A ride with no clock, or a route with no
+// prediction for its stored line, has no such series.
+func (h *Handler) aheadOfPrediction(
+	ctx context.Context, targetID string, id int64, samples int,
+) ([]activities.Reading, bool, error) {
+	key, clock, found, err := h.state.ActivityRouteClock(ctx, targetID, id)
+	if err != nil {
+		return nil, false, fmt.Errorf("reading a ride's route clock: %w", err)
+	}
+	if !found {
+		return nil, false, nil
+	}
+	line, _, known, err := h.state.StageProfile(ctx, key)
+	if err != nil {
+		return nil, false, fmt.Errorf("reading a stage's line: %w", err)
+	}
+	if !known {
+		return nil, false, nil
+	}
+	_, _, encoded, _, err := h.state.StageGeometry(ctx, key.Provider(), key.SourceRouteID(), key.StageOrder())
+	if err != nil {
+		return nil, false, fmt.Errorf("reading a stage's predicted moving time: %w", err)
+	}
+	if len(encoded) == 0 {
+		return nil, false, nil
+	}
+	var cumulative []float64
+	if err := json.Unmarshal(encoded, &cumulative); err != nil {
+		return nil, false, fmt.Errorf("reading a stage's predicted moving time: %w", err)
+	}
+	readings, ok := activities.AheadOfPrediction(line, cumulative, clock, samples)
+
+	return readings, ok, nil
 }
 
 // GetActivitySplits serves one activity cut into kilometres, scoped exactly as

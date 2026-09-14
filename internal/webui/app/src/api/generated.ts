@@ -605,7 +605,7 @@ export interface ActivityTrack {
 }
 
 /**
- * A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` prefers the device's own reading and, for a sample carrying none, falls back to the distance covered between it and the sample before.
+ * A series of a ride's samples. Every one but `speed` and `aheadOfPrediction` is read from the samples as recorded; `speed` prefers the device's own reading and, for a sample carrying none, falls back to the distance covered between it and the sample before. `aheadOfPrediction` is seconds ahead of the matched route's predicted moving time at the place along the route the ride had reached, positive when faster, measured by the ride's moving time from where it joined the route; null before its first reading and after its last, one every hundred metres along the route. Not found for a ride with no forward route match, no odometer, or whose route has no prediction for its current line.
  */
 export type ActivitySeriesName = (typeof ActivitySeriesName)[keyof typeof ActivitySeriesName];
 
@@ -616,6 +616,7 @@ export const ActivitySeriesName = {
   temperature: "temperature",
   speed: "speed",
   targetPower: "targetPower",
+  aheadOfPrediction: "aheadOfPrediction",
 } as const;
 
 export interface ActivitySeries {

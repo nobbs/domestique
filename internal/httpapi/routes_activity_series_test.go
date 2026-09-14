@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	activities "github.com/nobbs/domestique/internal/activity"
+	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/route"
 )
 
 // seriesState is trackState with samples beside the positions: a ride carrying
@@ -113,6 +115,105 @@ func TestGetActivitySeriesServesAnyTargetToAnAdmin(t *testing.T) {
 	code, view := getSeries(t, handler, "/v1/activities/1/series/heartRate?target=rider-b")
 	require.Equal(t, http.StatusOK, code)
 	assert.Len(t, view.Values, 1)
+}
+
+// predictionState is seriesState with ride 1 matched forward to a route drawn
+// along its own track, predicted at fifty minutes end to end.
+func predictionState(subject string) *fakeState {
+	state := seriesState(subject)
+	track := state.tracks[subject+"/1"]
+	// Eight seconds apart, inside a recording gap, so the step counts as moving.
+	track[1].Time = activityClock().Add(8 * time.Second)
+	state.sampleRows[subject+"/1"][1].Time = track[1].Time
+	line := []measure.Coordinate{
+		{Latitude: track[0].Latitude, Longitude: track[0].Longitude},
+		{Latitude: track[1].Latitude, Longitude: track[1].Longitude},
+	}
+	state.stageProfiles = map[route.Key]fakeStageProfile{testRouteKey(): {line: line}}
+	state.summaries = []route.Summary{{Provider: route.ProviderVeloPlanner, SourceRouteID: 7, StageOrder: 1}}
+	state.cumulativeSeconds = json.RawMessage(`[0, 3000]`)
+	state.routeClocks = map[string]fakeRouteClock{subject + "/1": {
+		key:   testRouteKey(),
+		clock: activities.ReadRouteClock(line, track, state.sampleRows[subject+"/1"], activities.DirectionForward),
+	}}
+
+	return state
+}
+
+// The ride took eight moving seconds over what was predicted at fifty minutes.
+func TestGetActivitySeriesServesTheRideAheadOfItsPrediction(t *testing.T) {
+	handler := activityHandler(t, predictionState("rider-a"), nonAdminSessions("rider-a"))
+
+	code, view := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, view.Values, 2, "one value per coordinate")
+	require.NotNil(t, view.Values[0])
+	assert.InDelta(t, 0.0, *view.Values[0], 1e-9, "both clocks start where the ride joined the route")
+	require.NotNil(t, view.Values[1])
+	assert.InDelta(t, 2992.0, *view.Values[1], 1e-6)
+}
+
+func TestGetActivitySeriesHasNoPredictionComparisonWithoutOne(t *testing.T) {
+	t.Run("no clock", func(t *testing.T) {
+		state := predictionState("rider-a")
+		state.routeClocks = nil
+		handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+		code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
+		assert.Equal(t, http.StatusNotFound, code)
+	})
+	t.Run("no prediction", func(t *testing.T) {
+		state := predictionState("rider-a")
+		state.cumulativeSeconds = nil
+		handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+		code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
+		assert.Equal(t, http.StatusNotFound, code)
+	})
+	t.Run("route gone from the library", func(t *testing.T) {
+		state := predictionState("rider-a")
+		state.stageProfiles = nil
+		handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+		code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
+		assert.Equal(t, http.StatusNotFound, code)
+	})
+}
+
+func TestGetActivitySeriesReportsAnUnreadableRouteClockOrStage(t *testing.T) {
+	for name, spoil := range map[string]func(*fakeState){
+		"clock":    func(state *fakeState) { state.routeClockErr = assert.AnError },
+		"line":     func(state *fakeState) { state.stageProfileErr = assert.AnError },
+		"geometry": func(state *fakeState) { state.stageGeometryErr = assert.AnError },
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := predictionState("rider-a")
+			spoil(state)
+			handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+			code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
+			assert.Equal(t, http.StatusServiceUnavailable, code)
+		})
+	}
+}
+
+func TestGetActivitySeriesReportsAnUnreadablePrediction(t *testing.T) {
+	state := predictionState("rider-a")
+	state.cumulativeSeconds = json.RawMessage(`{"not":"an array"}`)
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction")
+	assert.Equal(t, http.StatusServiceUnavailable, code)
+}
+
+// Another rider's ride is not found here either, whatever clock it carries.
+func TestGetActivitySeriesRefusesAnotherRidersPredictionComparison(t *testing.T) {
+	state := predictionState("rider-a")
+	state.routeClocks["rider-b/1"] = state.routeClocks["rider-a/1"]
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, _ := getSeries(t, handler, "/v1/activities/1/series/aheadOfPrediction?target=rider-b")
+	assert.Equal(t, http.StatusNotFound, code)
 }
 
 // A ride this target has no summary for is not found, on the same terms the
