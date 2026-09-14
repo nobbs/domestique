@@ -10,12 +10,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/nobbs/domestique/internal/plan"
 )
 
-func testWaypoints() []plan.Waypoint {
-	return []plan.Waypoint{
+func testWaypoints() []Waypoint {
+	return []Waypoint{
 		{Longitude: 8.68, Latitude: 50.11},
 		{Longitude: 8.70, Latitude: 50.12},
 	}
@@ -37,7 +35,7 @@ func TestRouteSendsTheExpectedRequest(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, err = client.Route(context.Background(), testWaypoints(), plan.Trekking)
+	_, err = client.Route(context.Background(), testWaypoints(), "trekking")
 	require.NoError(t, err)
 
 	assert.Equal(t, http.MethodGet, gotMethod, "method")
@@ -62,7 +60,7 @@ func TestRouteDecodesGeometryWithAndWithoutElevation(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	points, err := client.Route(context.Background(), testWaypoints(), plan.Trekking)
+	points, err := client.Route(context.Background(), testWaypoints(), "trekking")
 	require.NoError(t, err)
 	require.Len(t, points, 2)
 	require.NotNil(t, points[0].Elevation)
@@ -127,7 +125,7 @@ func TestRouteMapsFailureCategories(t *testing.T) {
 			client, err := New(&Options{BaseURL: server.URL})
 			require.NoError(t, err)
 
-			_, routeErr := client.Route(context.Background(), testWaypoints(), plan.Trekking)
+			_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
 			require.Error(t, routeErr)
 			var brouterErr *Error
 			require.ErrorAs(t, routeErr, &brouterErr)
@@ -146,11 +144,36 @@ func TestRouteTimesOutAsUnreachable(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL, Timeout: 50 * time.Millisecond})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), plan.Trekking)
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
 	assert.Equal(t, FailureUnreachable, brouterErr.Category, "Category")
+}
+
+// A redirect is not a routing answer this adapter follows: it must not reach
+// whatever the Location header names.
+func TestRouteDoesNotFollowARedirect(t *testing.T) {
+	var targetRequests int
+	target := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		targetRequests++
+	}))
+	defer target.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer server.Close()
+
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	require.Error(t, routeErr)
+	var brouterErr *Error
+	require.ErrorAs(t, routeErr, &brouterErr)
+	assert.Equal(t, FailureResponse, brouterErr.Category, "Category")
+	assert.Equal(t, 0, targetRequests, "the redirect target must never be requested")
 }
 
 func TestNewRejectsABaseURLWithAPath(t *testing.T) {
@@ -172,7 +195,7 @@ func TestRouteRejectsFewerThanTwoWaypoints(t *testing.T) {
 	client, err := New(&Options{BaseURL: "http://brouter:17777"})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}}, plan.Trekking)
+	_, routeErr := client.Route(context.Background(), []Waypoint{{Longitude: 8.68, Latitude: 50.11}}, "trekking")
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -189,7 +212,7 @@ func TestRouteRejectsAnOversizedResponse(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), plan.Trekking)
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -205,7 +228,7 @@ func TestRouteRejectsAnUnexpectedSuccessStatus(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), plan.Trekking)
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -222,7 +245,7 @@ func TestRouteRejectsAResponseWithNoLineStringFeature(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), plan.Trekking)
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -240,7 +263,26 @@ func TestRouteRejectsACoordinateMissingLatitude(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), plan.Trekking)
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	require.Error(t, routeErr)
+	var brouterErr *Error
+	require.ErrorAs(t, routeErr, &brouterErr)
+	assert.Equal(t, FailureResponse, brouterErr.Category, "Category")
+}
+
+// A coordinate outside the valid range is never a real routing answer.
+func TestRouteRejectsAnOutOfRangeCoordinate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"geometry":{"type":"LineString","coordinates":[[200,50.11],[8.70,50.12]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)

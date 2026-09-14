@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,9 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/route"
+	"github.com/nobbs/domestique/internal/sqlite"
 )
 
 // [planning] absent switches the planner off: newLocalSource returns nil
@@ -37,6 +41,17 @@ func TestNewLocalSourceBuildsThePlanServiceWhenConfigured(t *testing.T) {
 	assert.Equal(t, route.ProviderLocal, source.Provider(), "Provider()")
 }
 
+// newLocalSource forwards a BRouter client construction failure rather than
+// registering a source that could never route.
+func TestNewLocalSourceForwardsABRouterConstructionFailure(t *testing.T) {
+	settings := testPlanningSettings(t)
+	settings.Planning.BRouterURL = "not a url"
+
+	_, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	require.Error(t, err)
+	assert.False(t, configured, "newLocalSource() on a construction failure")
+}
+
 func TestWireLocalSourceLeavesTheCacheEmptyWithoutPlanning(t *testing.T) {
 	t.Parallel()
 
@@ -57,6 +72,59 @@ func TestWireLocalSourceRegistersThePlanServiceWhenConfigured(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, configured, "sourceFor(local) after wireLocalSource with [planning]")
 	assert.Equal(t, route.ProviderLocal, source.Provider(), "Provider()")
+}
+
+// The segments warning is logged once at startup and changes no behaviour;
+// this only exercises the branch, since slog output is not asserted here.
+func TestWireLocalSourceWarnsAboutUnusedSegments(t *testing.T) {
+	settings := testPlanningSettings(t)
+	settings.Planning.Segments = []string{"E5_N45"}
+	cache := newSourceCache()
+
+	require.NoError(t, wireLocalSource(settings, testStore(t, t.TempDir()), cache))
+}
+
+// brouterRouter converts plan types to the adapter's own before asking the
+// engine, and the points it returns travel back unchanged.
+func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
+	var gotProfile string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotProfile = r.URL.Query().Get("profile")
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+
+	client, err := brouter.New(&brouter.Options{BaseURL: server.URL})
+	require.NoError(t, err)
+	router := brouterRouter{client: client}
+
+	points, err := router.Route(
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+	require.NoError(t, err)
+	assert.Equal(t, "gravel", gotProfile, "profile")
+	require.Len(t, points, 2, "points")
+}
+
+// A routing failure is wrapped rather than passed through bare, but the
+// caller must still be able to recover the adapter's own category.
+func TestBrouterRouterWrapsARoutingFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client, err := brouter.New(&brouter.Options{BaseURL: server.URL})
+	require.NoError(t, err)
+	router := brouterRouter{client: client}
+
+	_, routeErr := router.Route(
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+	require.Error(t, routeErr)
+	var brouterErr *brouter.Error
+	require.ErrorAs(t, routeErr, &brouterErr)
+	assert.Equal(t, brouter.FailureEngine, brouterErr.Category, "Category")
 }
 
 // testPlanningSettings loads a valid configuration file with [planning] set,
@@ -142,4 +210,47 @@ func TestPlanStoreRoundTripsAPlan(t *testing.T) {
 	deleted, err := store.DeletePlan(t.Context(), read.ID, read.Version)
 	require.NoError(t, err, "DeletePlan()")
 	assert.True(t, deleted, "DeletePlan()")
+}
+
+// A record whose stored profile this build no longer recognises must surface
+// as an error, not a plan silently missing its routing profile. The database
+// schema itself refuses an unknown profile on write, so this goes through
+// planOf directly rather than round-tripping a corrupt row through SQLite.
+func TestPlanOfRejectsAnUnrecognisedStoredProfile(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	record := sqlite.PlanRecord{
+		ID: 1, Name: "Corrupt", Profile: "not-a-real-profile",
+		Waypoints: [][2]float64{{8.68, 50.11}, {8.70, 50.12}},
+		Geometry:  []route.Point{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}},
+		Version:   1, CreatedAt: now, UpdatedAt: now,
+	}
+
+	_, err := planOf(&record)
+	require.Error(t, err)
+}
+
+// A store that cannot be reached must surface as an error on every method,
+// never a silently empty answer.
+func TestPlanStoreForwardsUnderlyingStoreFailures(t *testing.T) {
+	t.Parallel()
+
+	underlying := testStore(t, t.TempDir())
+	require.NoError(t, underlying.Close())
+	store := planStore{store: underlying}
+	now := time.Now().UTC()
+	unreachable := plan.Plan{ID: 1, Name: "Unreachable", Profile: "gravel", Version: 1, CreatedAt: now, UpdatedAt: now}
+
+	require.Error(t, store.InsertPlan(t.Context(), &unreachable), "InsertPlan()")
+	_, _, err := store.GetPlan(t.Context(), 1)
+	require.Error(t, err, "GetPlan()")
+	_, err = store.ListPlans(t.Context())
+	require.Error(t, err, "ListPlans()")
+	_, err = store.ListPublishedPlans(t.Context())
+	require.Error(t, err, "ListPublishedPlans()")
+	_, err = store.ReplacePlan(t.Context(), &unreachable, 1)
+	require.Error(t, err, "ReplacePlan()")
+	_, err = store.DeletePlan(t.Context(), 1, 1)
+	require.Error(t, err, "DeletePlan()")
 }

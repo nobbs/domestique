@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/route"
 	syncservice "github.com/nobbs/domestique/internal/sync"
 
 	"github.com/nobbs/domestique/internal/plan"
@@ -25,7 +27,26 @@ func newLocalSource(settings *config.Settings, store *sqlite.Store) (source sync
 		return nil, false, fmt.Errorf("creating BRouter client: %w", err)
 	}
 
-	return plan.NewService(planStore{store: store}, client, time.Now, plan.RandomID), true, nil
+	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), true, nil
+}
+
+// brouterRouter adapts *brouter.Client to plan.Router: the brouter package
+// knows nothing of plan.Waypoint or plan.Profile, so this is the one place
+// that converts between them.
+type brouterRouter struct{ client *brouter.Client }
+
+func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) ([]route.Point, error) {
+	converted := make([]brouter.Waypoint, len(waypoints))
+	for index, waypoint := range waypoints {
+		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+	}
+
+	points, err := r.client.Route(ctx, converted, string(profile))
+	if err != nil {
+		return nil, fmt.Errorf("routing waypoints: %w", err)
+	}
+
+	return points, nil
 }
 
 // wireLocalSource registers the plan service on cache when [planning] is
@@ -35,8 +56,15 @@ func wireLocalSource(settings *config.Settings, store *sqlite.Store, cache *sour
 	if err != nil {
 		return err
 	}
-	if configured {
-		cache.setLocal(source)
+	if !configured {
+		return nil
+	}
+	cache.setLocal(source)
+	// No behaviour change: the segment refresh task is #758/#761's work. This
+	// build routes with whatever the engine's own directory already holds.
+	if len(settings.Planning.Segments) > 0 {
+		slog.Warn("planning.segments named but this build registers no segment refresh; " +
+			"the engine routes with what its directory holds")
 	}
 
 	return nil

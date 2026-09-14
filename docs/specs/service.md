@@ -117,7 +117,8 @@ change to that boundary requires revising this document first.
 
 The one provider this service may write is its own. A **plan** is an ordered
 list of waypoints and a routing profile that an admin composes on the map; the
-service hands the waypoints to a self-hosted routing engine, which snaps them to
+service hands the waypoints to a routing engine, self-hosted or the project's
+public instance, which snaps them to
 a bike-preferring road network, and the geometry that comes back is the plan's
 route. Only an admin session may create, replace or delete a plan, over the
 `/v1/plans` endpoints below; every other session sees a plan's route exactly as

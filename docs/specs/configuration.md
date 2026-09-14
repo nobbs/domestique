@@ -171,8 +171,8 @@ application dependency.
   instance. The public instance costs no deployment and no segments, and it
   costs one thing a sidecar does not: every preview and save sends a plan's
   waypoints and profile off the host, to a service with no terms beyond fair
-  use. It is a file field because it names what the host provides beside the
-  process, which is the host's knowledge like the listen addresses above.
+  use. It is a file field because it selects the engine at startup and is not
+  something to edit while the service runs.
   Leaving the section out switches the planner off: no plan endpoint is
   registered, no local source is read, and the segment task is not
   registered ([the task](task-layer.md#the-registered-tasks)).
@@ -190,7 +190,8 @@ application dependency.
   already holds. Each named tile costs between a hundred and three hundred
   megabytes under the state volume. A refresh fetches each tile from the
   BRouter project's published segment directory, `brouter.de/brouter/segments4/`,
-  the one host it ever contacts and the only egress the planner adds; it asks
+  the one host a refresh contacts; with the public instance the planner also
+  sends each preview and save there; it asks
   that host for each tile's size and modification time first, downloads only
   what changed, writes beside the live file, and renames over it, so the engine
   never reads a half-written tile. It sends the tile names and nothing about

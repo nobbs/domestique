@@ -8,13 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -66,9 +66,15 @@ type Options struct {
 	Timeout   time.Duration
 }
 
+// Waypoint is one point an engine is asked to route through.
+type Waypoint struct {
+	Longitude float64
+	Latitude  float64
+}
+
 // Client asks one BRouter instance to route waypoints. The host is fixed at
-// construction: BaseURL is the operator's own sidecar address, never a
-// per-request value.
+// construction: BaseURL is the configured engine, sidecar or public instance,
+// never a per-request value.
 type Client struct {
 	client  *http.Client
 	baseURL *url.URL
@@ -97,7 +103,12 @@ func New(options *Options) (*Client, error) {
 	}
 
 	return &Client{
-		client:  &http.Client{Transport: transport},
+		client: &http.Client{
+			Transport: transport,
+			// A redirect is not a routing answer this adapter parses; left
+			// alone it falls into the non-200 classification below.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
 		baseURL: parsed,
 		timeout: timeout,
 	}, nil
@@ -118,7 +129,7 @@ func parseOrigin(value string) (*url.URL, error) {
 // returning one point per vertex of the returned track with an elevation
 // where the engine supplied one.
 func (c *Client) Route(
-	ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile,
+	ctx context.Context, waypoints []Waypoint, profile string,
 ) (points []route.Point, err error) {
 	if len(waypoints) < 2 {
 		return nil, &Error{Category: FailureRefused}
@@ -131,7 +142,7 @@ func (c *Client) Route(
 	endpoint.Path = "/brouter"
 	endpoint.RawQuery = url.Values{
 		"lonlats":        {lonlats(waypoints)},
-		"profile":        {string(profile)},
+		"profile":        {profile},
 		"alternativeidx": {"0"},
 		"format":         {"geojson"},
 	}.Encode()
@@ -150,14 +161,8 @@ func (c *Client) Route(
 		err = errors.Join(err, response.Body.Close())
 	}()
 
-	body, readErr := io.ReadAll(io.LimitReader(response.Body, maximumBodyBytes+1))
-	if readErr != nil {
-		return nil, &Error{Category: FailureUnreachable, Status: response.StatusCode}
-	}
-	if len(body) > maximumBodyBytes {
-		return nil, &Error{Category: FailureResponse, Status: response.StatusCode}
-	}
-
+	// Classified before the body is read: only a 200 is worth the cost and the
+	// exposure of parsing; every other status is drained and closed unread.
 	switch {
 	case response.StatusCode >= http.StatusInternalServerError:
 		return nil, &Error{Category: FailureEngine, Status: response.StatusCode}
@@ -167,13 +172,21 @@ func (c *Client) Route(
 		return nil, &Error{Category: FailureResponse, Status: response.StatusCode}
 	}
 
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, maximumBodyBytes+1))
+	if readErr != nil {
+		return nil, &Error{Category: FailureUnreachable, Status: response.StatusCode}
+	}
+	if len(body) > maximumBodyBytes {
+		return nil, &Error{Category: FailureResponse, Status: response.StatusCode}
+	}
+
 	return parseGeometry(body, response.StatusCode)
 }
 
 // lonlats formats waypoints as BRouter's pipe-separated lon,lat list.
 // url.Values.Encode percent-encodes the pipe to %7C, which is what the
 // server accepts.
-func lonlats(waypoints []plan.Waypoint) string {
+func lonlats(waypoints []Waypoint) string {
 	parts := make([]string, len(waypoints))
 	for index, waypoint := range waypoints {
 		parts[index] = strconv.FormatFloat(waypoint.Longitude, 'f', -1, 64) + "," +
@@ -212,13 +225,25 @@ func parseGeometry(body []byte, status int) ([]route.Point, error) {
 		if len(coordinate) < 2 {
 			return nil, &Error{Category: FailureResponse, Status: status}
 		}
-		point := route.Point{Longitude: coordinate[0], Latitude: coordinate[1]}
+		longitude, latitude := coordinate[0], coordinate[1]
+		if !validCoordinate(longitude, -180, 180) || !validCoordinate(latitude, -90, 90) {
+			return nil, &Error{Category: FailureResponse, Status: status}
+		}
+		point := route.Point{Longitude: longitude, Latitude: latitude}
 		if len(coordinate) >= 3 {
 			elevation := coordinate[2]
+			if math.IsNaN(elevation) || math.IsInf(elevation, 0) {
+				return nil, &Error{Category: FailureResponse, Status: status}
+			}
 			point.Elevation = &elevation
 		}
 		points[index] = point
 	}
 
 	return points, nil
+}
+
+// validCoordinate reports whether value is a finite number within [min, max].
+func validCoordinate(value, minimum, maximum float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= minimum && value <= maximum
 }

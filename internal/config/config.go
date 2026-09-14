@@ -58,7 +58,7 @@ type Settings struct {
 }
 
 // Planning configures the optional route planner. Without the section the
-// planner is off: no plan endpoint, no local source, no segment task.
+// planner is off: no local source.
 type Planning struct {
 	BRouterURL string
 	Segments   []string
@@ -480,7 +480,7 @@ func build(raw *rawSettings) (*Settings, error) {
 
 // tilePattern matches a BRouter 5°×5° segment tile name: a hemisphere letter,
 // a longitude, an underscore, a hemisphere letter, and a latitude.
-var tilePattern = regexp.MustCompile(`^([EW])(\d+)_([NS])(\d+)$`)
+var tilePattern = regexp.MustCompile(`^([EW])(0|[1-9]\d*)_([NS])(0|[1-9]\d*)$`)
 
 // buildPlanning validates the [planning] section. raw is nil when the section
 // is absent, which switches the planner off.
@@ -501,8 +501,8 @@ func buildPlanning(raw *rawPlanning) (Planning, error) {
 }
 
 // validateBRouterURL accepts an absolute http or https origin with no path,
-// query or fragment: the sidecar is plain HTTP on an internal network, so
-// runtimeconfig.ValidateHTTPSOrigin (which forces https) does not apply here.
+// query or fragment. http is admitted for a sidecar on an internal network,
+// and is cleartext against any other host.
 func validateBRouterURL(value string) error {
 	invalid := errors.New("planning.brouter_url must be an absolute http or https origin without a path")
 	if value == "" {

@@ -609,6 +609,8 @@ func TestLoadRejectsInvalidSegmentTiles(t *testing.T) {
 		{tile: "E7_N45"},
 		{tile: "not-a-tile"},
 		{tile: "E5_S0"},
+		{tile: "E05_N45"},
+		{tile: "E00_N00"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.tile, func(t *testing.T) {
