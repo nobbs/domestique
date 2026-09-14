@@ -1240,7 +1240,8 @@ apart still differ; it moves on every replace, name included, so an admin's
 edit reaches every target on the next run and an untouched plan is never
 re-sent. The version a replace carries as `If-Match` is a separate counter and
 never leaves the service. A plan's identifier is drawn at random from the
-positive 63-bit range when the plan is created, never allocated in sequence,
+positive integers below 2^53 when the plan is created — the widest range a
+route identifier survives a browser's JSON parse in — never allocated in sequence,
 so it is not reused after a deletion and not repeated by a database rebuilt
 after state loss: a new plan can never inherit a lost or deleted plan's
 external ID and adopt its Wahoo copy. Its inventory is the set of published

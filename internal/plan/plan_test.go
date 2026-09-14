@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -254,7 +255,7 @@ func TestInventoryReturnsOnlyPublishedPlansOrderedByID(t *testing.T) {
 	assert.Equal(t, route.ProviderLocal, stage.Key().Provider(), "provider")
 	assert.Equal(t, published.ID, stage.Key().SourceRouteID(), "source route ID")
 	assert.Equal(t, 1, stage.Key().StageOrder(), "stage order")
-	assert.NotEmpty(t, stage.Revision(), "revision")
+	assert.Equal(t, "2026-09-14T12:00:00.000000000Z", stage.Revision(), "revision keeps a fixed-width fraction")
 	assert.NotEmpty(t, stage.ContentHash(), "content hash")
 
 	stored := store.plans[draft.ID]
@@ -293,13 +294,27 @@ func TestValidateRejectsOutOfRangeInput(t *testing.T) {
 	}
 }
 
-func TestRandomIDReturnsPositiveValues(t *testing.T) {
+func TestRandomIDReturnsPositiveValuesBelowTwoToThe53(t *testing.T) {
 	t.Parallel()
 	for range 20 {
 		id, err := RandomID()
 		require.NoError(t, err, "RandomID()")
 		assert.Positive(t, id, "RandomID()")
+		assert.Less(t, id, int64(1<<53), "RandomID()")
 	}
+}
+
+func TestRouteRefusesInvalidInputBeforeRouting(t *testing.T) {
+	t.Parallel()
+	router := &fakeRouter{geometry: testGeometry()}
+	service := NewService(newFakeStore(), router, fixedNow, sequentialID())
+	_, err := service.Route(t.Context(), []Waypoint{{Longitude: 1, Latitude: 1}}, Trekking)
+	require.Error(t, err, "one waypoint")
+	_, err = service.Route(t.Context(), []Waypoint{{Longitude: math.NaN(), Latitude: 1}, {Longitude: 2, Latitude: 2}}, Trekking)
+	require.Error(t, err, "NaN longitude")
+	_, err = service.Route(t.Context(), []Waypoint{{Longitude: 1, Latitude: 1}, {Longitude: 2, Latitude: 2}}, Profile("walking"))
+	require.Error(t, err, "unknown profile")
+	assert.Zero(t, router.calls, "the router must not be asked")
 }
 
 func TestRouteWrapsAnInvalidRoutedGeometry(t *testing.T) {

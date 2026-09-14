@@ -1,6 +1,6 @@
 -- A plan is an admin-composed route: ordered waypoints and a routing profile,
 -- routed through the self-hosted engine on save. id is drawn at random from
--- the positive int63 range at creation, never assigned in sequence, so a
+-- the positive integers below 2^53 at creation, never assigned in sequence, so a
 -- database rebuilt after state loss cannot reissue a deleted plan's identity.
 CREATE TABLE plans (
   id                   INTEGER PRIMARY KEY,

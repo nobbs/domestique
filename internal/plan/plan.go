@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 	"strings"
 	"time"
 
@@ -117,17 +118,24 @@ func NewService(store Store, router Router, now func() time.Time, newID func() (
 	return &Service{store: store, router: router, now: now, newID: newID}
 }
 
-// RandomID draws a plan identifier at random from the positive int63 range,
-// never in sequence, so a database rebuilt after state loss cannot reissue a
-// deleted plan's identity.
+// maxID bounds a plan identifier below 2^53, the largest integer a browser's
+// JSON number carries exactly; the id travels as sourceRouteId.
+const maxID = 1 << 53
+
+// RandomID draws a plan identifier at random from [1, 2^53), never in
+// sequence, so a database rebuilt after state loss cannot reissue one.
 func RandomID() (int64, error) {
-	drawn, err := cryptorand.Int(cryptorand.Reader, big.NewInt(math.MaxInt64))
+	drawn, err := cryptorand.Int(cryptorand.Reader, big.NewInt(maxID-1))
 	if err != nil {
 		return 0, fmt.Errorf("plan: drawing a plan id: %w", err)
 	}
 
 	return drawn.Int64() + 1, nil
 }
+
+// revisionLayout is RFC 3339 with a fixed nine-digit fraction, so a whole
+// second still carries one and every replace instant renders the same width.
+const revisionLayout = "2006-01-02T15:04:05.000000000Z07:00"
 
 // previewRevision is a non-empty placeholder for route.NewRoute: Route builds
 // no stored identity, so any fixed value satisfies it.
@@ -136,6 +144,9 @@ const previewRevision = "preview"
 // Route is the one measuring path: it asks the router for the snapped line,
 // then normalizes and measures it exactly as a stored stage is.
 func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profile) (Measured, error) {
+	if err := validateRouting(profile, waypoints); err != nil {
+		return Measured{}, err
+	}
 	points, err := s.router.Route(ctx, waypoints, profile)
 	if err != nil {
 		return Measured{}, fmt.Errorf("plan: routing waypoints: %w", err)
@@ -172,7 +183,7 @@ func (s *Service) Create(ctx context.Context, name string, profile Profile, wayp
 	}
 	now := s.now().UTC()
 	created := Plan{
-		ID: id, Name: trimmedName, Profile: profile, Waypoints: waypoints,
+		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
 		Published: false, Version: 1, CreatedAt: now, UpdatedAt: now,
 	}
@@ -209,7 +220,7 @@ func (s *Service) Replace(
 		return Plan{}, err
 	}
 	replaced := Plan{
-		ID: id, Name: trimmedName, Profile: profile, Waypoints: waypoints,
+		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
 		Published: published, Version: expectedVersion + 1, CreatedAt: existing.CreatedAt, UpdatedAt: s.now().UTC(),
 	}
@@ -289,7 +300,7 @@ func (s *Service) Inventory(ctx context.Context) ([]route.Route, error) {
 	routes := make([]route.Route, 0, len(plans))
 	for index := range plans {
 		plan := &plans[index]
-		revision := plan.UpdatedAt.UTC().Format(time.RFC3339Nano)
+		revision := plan.UpdatedAt.UTC().Format(revisionLayout)
 		built, err := route.NewRoute(
 			route.ProviderLocal, plan.ID, 1, revision, plan.Name, "",
 			plan.Geometry, contentHash(plan.ID, plan.Name, plan.Geometry),
@@ -311,22 +322,36 @@ func validate(name string, profile Profile, waypoints []Waypoint) (string, error
 	if len(trimmed) > maxNameLength {
 		return "", fmt.Errorf("plan: name exceeds %d characters", maxNameLength)
 	}
-	if _, err := ParseProfile(string(profile)); err != nil {
+	if err := validateRouting(profile, waypoints); err != nil {
 		return "", err
-	}
-	if len(waypoints) < minWaypoints || len(waypoints) > maxWaypoints {
-		return "", fmt.Errorf("plan: waypoints must number between %d and %d", minWaypoints, maxWaypoints)
-	}
-	for index, waypoint := range waypoints {
-		if waypoint.Longitude < -180 || waypoint.Longitude > 180 {
-			return "", fmt.Errorf("plan: waypoint %d longitude is out of range", index)
-		}
-		if waypoint.Latitude < -90 || waypoint.Latitude > 90 {
-			return "", fmt.Errorf("plan: waypoint %d latitude is out of range", index)
-		}
 	}
 
 	return trimmed, nil
+}
+
+// validateRouting is the part of validation a preview shares with a save: what
+// may be sent to the router at all.
+func validateRouting(profile Profile, waypoints []Waypoint) error {
+	if _, err := ParseProfile(string(profile)); err != nil {
+		return err
+	}
+	if len(waypoints) < minWaypoints || len(waypoints) > maxWaypoints {
+		return fmt.Errorf("plan: waypoints must number between %d and %d", minWaypoints, maxWaypoints)
+	}
+	for index, waypoint := range waypoints {
+		if !inRange(waypoint.Longitude, 180) {
+			return fmt.Errorf("plan: waypoint %d longitude is out of range", index)
+		}
+		if !inRange(waypoint.Latitude, 90) {
+			return fmt.Errorf("plan: waypoint %d latitude is out of range", index)
+		}
+	}
+
+	return nil
+}
+
+func inRange(value, limit float64) bool {
+	return !math.IsNaN(value) && value >= -limit && value <= limit
 }
 
 // contentHash is a stable digest of everything a published plan's route is
