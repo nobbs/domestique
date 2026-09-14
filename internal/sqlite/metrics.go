@@ -282,7 +282,9 @@ func storeEstimatedPower(
 func (s *Store) StoreActivityMetrics(
 	ctx context.Context, targetID string, id int64, stored activity.RideMetrics,
 ) error {
-	return storeActivityMetrics(ctx, s.queries, targetID, id, stored)
+	return s.withTx(ctx, "activity metrics", func(queries *sqlcgen.Queries) error {
+		return storeActivityMetrics(ctx, queries, targetID, id, stored)
+	})
 }
 
 // storeActivityMetrics is StoreActivityMetrics' body, run against the
@@ -299,6 +301,12 @@ func storeActivityMetrics(
 			TargetSlot: targetID, WorkoutID: id,
 		}); err != nil {
 			return fmt.Errorf("clearing the activity metrics: %w", err)
+		}
+		// What was said about figures that no longer exist goes with them.
+		if err := queries.DeleteActivityAnalysis(ctx, sqlcgen.DeleteActivityAnalysisParams{
+			TargetSlot: targetID, WorkoutID: id,
+		}); err != nil {
+			return fmt.Errorf("clearing the activity analysis: %w", err)
 		}
 
 		return nil
@@ -500,6 +508,9 @@ func (s *Store) ClearActivityMetrics(ctx context.Context, targetID string) (int,
 	removed, err := queries.ClearActivityMetrics(ctx, targetID)
 	if err != nil {
 		return 0, fmt.Errorf("clearing the activity metrics: %w", err)
+	}
+	if err := queries.ClearActivityAnalyses(ctx, targetID); err != nil {
+		return 0, fmt.Errorf("clearing the activity analyses: %w", err)
 	}
 	// Cleared before the series it was read from, the same order
 	// StoreEstimatedPower keeps for one ride: a climb attempt naming an

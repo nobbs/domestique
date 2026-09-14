@@ -29,6 +29,15 @@ type Activity struct {
 	WorkoutCompletion     sql.NullFloat64
 }
 
+type ActivityAnalysis struct {
+	TargetSlot     string
+	WorkoutID      int64
+	Text           string
+	Model          string
+	PromptRevision int64
+	AnalysedAtUnix int64
+}
+
 type ActivityClimbAttempt struct {
 	TargetSlot          string
 	WorkoutID           int64
@@ -201,6 +210,11 @@ type AlertToggle struct {
 	Alert         string
 	Enabled       int64
 	UpdatedAtUnix int64
+}
+
+type AnalysisState struct {
+	ID               int64
+	EnabledSinceUnix int64
 }
 
 type LoginTransaction struct {

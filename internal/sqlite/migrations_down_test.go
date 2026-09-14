@@ -456,6 +456,47 @@ func TestMigration058DownKeepsAPopulatedMetricsRow(t *testing.T) {
 	require.NoError(t, migration.Migrate(58), "must be able to re-migrate up after rolling back")
 }
 
+// 059's down drops the analysis tables alone; the ride they describe stays.
+func TestMigration059DownDropsTheAnalysisTablesOnly(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "analyses-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(59))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(),
+		`INSERT INTO targets (slot, authorization_state, updated_at_unix) VALUES ('rider-a', 'authorized', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activities (target_slot, workout_id, workout_type_id, workout_type_location_id, started_at_unix,
+			distance_metres, moving_seconds, elapsed_seconds, ascent_metres, raw_summary_json, updated_at_unix)
+		VALUES ('rider-a', 1, 15, 1, 1700000000, 1000, 60, 65, 10, '{}', 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO activity_analyses (target_slot, workout_id, text, model, prompt_revision, analysed_at_unix)
+		VALUES ('rider-a', 1, 'said', 'model', 1, 1700000000)`)
+	require.NoError(t, err)
+	_, err = database.ExecContext(t.Context(), `INSERT INTO analysis_state (id, enabled_since_unix) VALUES (1, 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(58))
+
+	var activities, tables int
+	require.NoError(t, database.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM activities`).Scan(&activities))
+	require.Equal(t, 1, activities, "the ride must survive the rollback")
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('activity_analyses', 'analysis_state')`).Scan(&tables))
+	require.Zero(t, tables, "both analysis tables must be gone")
+
+	require.NoError(t, migration.Migrate(59), "must be able to re-migrate up after rolling back")
+}
+
 // A rebuild-style down migration recreates its table with the columns in a
 // different physical order than the forward migrations produce; the schema
 // fingerprint must not treat that as a mismatch, or a database rolled back
