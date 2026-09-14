@@ -11,7 +11,7 @@ require (
 	github.com/knadh/koanf/providers/env/v2 v2.0.1
 	github.com/knadh/koanf/providers/file v1.2.1
 	github.com/knadh/koanf/v2 v2.3.6
-	github.com/muktihari/fit v0.28.3
+	github.com/muktihari/fit v0.28.4
 	github.com/paulmach/osm v0.9.0
 	github.com/pb33f/libopenapi v0.38.7
 	github.com/pb33f/libopenapi-validator v0.14.0

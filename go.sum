@@ -93,8 +93,8 @@ github.com/mitchellh/copystructure v1.2.0/go.mod h1:qLl+cE2AmVv+CoeAwDPye/v+N2HK
 github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zxSIeXaQ=
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
 github.com/montanaflynn/stats v0.0.0-20171201202039-1bf9dbcd8cbe/go.mod h1:wL8QJuTMNUDYhXwkmfOly8iTdp5TEcJFWZD2D7SIkUc=
-github.com/muktihari/fit v0.28.3 h1:lTGbRDXk6T2TodtK9YiCJYbNHxVRu+r48Bfdn2pW/8I=
-github.com/muktihari/fit v0.28.3/go.mod h1:Nlz7BvsAbVK4TKXdO5zAxiKS7m1tnG/s7EYD4lJ8iLI=
+github.com/muktihari/fit v0.28.4 h1:r1WH+vO8n0i/7hYtrEDC7f4HxdjhvTt8ZmMriJmy+G0=
+github.com/muktihari/fit v0.28.4/go.mod h1:Nlz7BvsAbVK4TKXdO5zAxiKS7m1tnG/s7EYD4lJ8iLI=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/paulmach/orb v0.12.0 h1:z+zOwjmG3MyEEqzv92UN49Lg1JFYx0L9GpGKNVDKk1s=
