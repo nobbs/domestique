@@ -186,7 +186,8 @@ host and needs a restart.
 page saying what is still missing, with no run in its history and no
 notification of any kind. That is a deployment that has not been configured yet
 rather than one that broke, and it is the state every new deployment starts in.
-The host's file carries only the listeners, the identity gate and the state, and
+The host's file carries only the listeners, the identity gate, the state, and
+the two optional sections that switch a capability on beside the process, and
 everything a run needs — the source libraries and their accounts, and the
 Wahoo application and its client secret — is entered on the settings page. At
 least one target is also needed, but that is not entered there: it exists once
@@ -387,7 +388,8 @@ reclassifies it automatically.
 ## What this runbook does not cover
 
 There is no state backup, no key rotation, and no remote route cleanup.
-There is also no HTTP or CLI path to delete a route. Everything in this guide is
+There is also no HTTP or CLI path to delete an upstream route; a plan the
+service itself owns is the one thing its admin endpoints delete. Everything in this guide is
 either a browser action the service already offers — including the settings
 page, which reaches the deletion gate, the staleness bound, the notification
 settings, the basemap list, the surface regions, the source libraries, the Wahoo

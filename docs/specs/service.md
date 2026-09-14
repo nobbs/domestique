@@ -434,8 +434,9 @@ stored encrypted and is never read back out, by this endpoint or any other.
 A synchronisation has two halves, and each is separately switched, triggered,
 and reported:
 
-- The **source** half reads the VeloPlanner library, validates it, and stores
-  it. It contacts no target and needs no authorisation.
+- The **source** half reads every configured library and the published plans,
+  validates them, and stores them. It contacts no target and needs no
+  authorisation.
 - The **target** half reconciles what is stored onto each Wahoo target. It reads
   the stored library rather than fetching a fresh one, so a target that was
   unreachable catches up from the last inventory known to be whole.
@@ -1014,9 +1015,10 @@ Route geometry is served **only** on the dedicated geometry endpoint, a
 recorded activity's track **only** on its own track endpoint, and its sensor
 series **only** on the series endpoint, one named series per request — all only
 to a session belonging to an allowed subject, and only from local stored state.
-The two admin-only plan responses that carry a geometry — one plan read, and
-the preview — are the sole addition to that list, and the plan listing is a
-listing like any other: it carries none. Neither must ever appear in logs,
+The admin-only plan responses that carry a geometry — one plan read, the
+preview, and the answer to a create or replace, which is the plan as stored —
+are the sole addition to that list, and the plan listing is a listing like any
+other: it carries none. Neither must ever appear in logs,
 notifications, error messages, the status endpoint, or any listing.
 
 The concrete OAuth, sync, persistence, and JSON contracts are defined in the
@@ -1039,6 +1041,10 @@ The service has a provider-neutral configuration contract:
   are held in the state database, edited over the settings endpoints, and in
   force without a restart; the
   [configuration specification](configuration.md#runtime-settings) defines them.
+  The two optional sections that switch a whole capability on — the analysis
+  token and the planner's routing engine — are the exceptions, because each
+  names something the host provides beside the process rather than work the
+  service chooses.
   A deployment that has configured none of them starts, serves the settings
   page, and runs nothing. Targets are held in the same database but are not
   among these settings: each is created by its own owning subject connecting,
@@ -1197,7 +1203,7 @@ data belongs in repository fixtures.
 Komoot is a second, independent source integration against the same unofficial
 category of interface. It is not yet offered to an operator: until the
 configuration and composition-root work lands, the purpose and scope above hold
-and a deployment mirrors VeloPlanner alone.
+and a deployment mirrors VeloPlanner, and its own plans, alone.
 
 The adapter reads a private account's own email and password, exchanged at
 runtime for a session token, with no OAuth machinery involved. Komoot's OAuth2
@@ -1222,11 +1228,15 @@ upstream libraries and their accounts: naming a routing engine in the static
 configuration is what adds it, and every read of every source then reads it
 too. Its source route ID is the plan's own identifier in this service's state,
 its stage order is always 1, and its source revision is the instant of its
-last replace, rendered as RFC 3339 like every upstream's, so it rides the
-Wahoo wire as the timestamp that field expects, an admin's edit reaches every
-target on the next run, and an untouched plan is never re-sent. The version a
-replace carries as `If-Match` is a separate counter and never leaves the
-service. Its inventory is the set of published plans, read from the geometry
+last replace, rendered as RFC 3339 with fractional seconds, so it rides the
+Wahoo wire as the timestamp that field expects while two replaces a second
+apart still differ; it moves on every replace, name included, so an admin's
+edit reaches every target on the next run and an untouched plan is never
+re-sent. The version a replace carries as `If-Match` is a separate counter and
+never leaves the service. A plan's identifier is never reused: a deleted
+plan's number is retired, so a new plan can never inherit a deleted plan's
+external ID and adopt its Wahoo copy. Its inventory is the set of published
+plans, read from the geometry
 each plan stored when it was saved: a source read never asks the routing
 engine. Geometry comes from the routing engine the deployment names — BRouter,
 run as a sidecar beside the service ([delivery.md](delivery.md)) — which
@@ -1597,6 +1607,7 @@ flowchart LR
     HTTP --> WebUI["embedded browser UI assets"]
     Scheduler["scheduler"] --> App
     App --> Source["VeloPlanner source adapter"]
+    App --> Local["local plans and routing-engine adapter"]
     App --> Course["course and FIT encoder"]
     App --> Wahoo["Wahoo OAuth and route adapter"]
     App --> State["SQLite state adapter"]

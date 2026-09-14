@@ -182,10 +182,13 @@ application dependency.
   sidecar beside it. The default is **no segments**, under which the weekly
   task fetches nothing and the engine routes with whatever its directory
   already holds. Each named tile costs between a hundred and three hundred
-  megabytes under the state volume. A refresh asks the host for each tile's
-  size and modification time first, downloads only what changed, writes beside
-  the live file, and renames over it, so the engine never reads a half-written
-  tile. It sends the tile names and nothing about any route or plan.
+  megabytes under the state volume. A refresh fetches each tile from the
+  BRouter project's published segment directory, `brouter.de/brouter/segments4/`,
+  the one host it ever contacts and the only egress the planner adds; it asks
+  that host for each tile's size and modification time first, downloads only
+  what changed, writes beside the live file, and renames over it, so the engine
+  never reads a half-written tile. It sends the tile names and nothing about
+  any route or plan.
 - `http.browser_origin_url` is required, and must be an absolute HTTPS origin
   with no path. It is the address a browser reaches this service at, behind the
   reverse proxy.

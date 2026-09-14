@@ -4,7 +4,8 @@ Guidance for AI coding agents. Humans start at
 [CONTRIBUTING.md](CONTRIBUTING.md). Rules here state the command; the linked
 specs hold the reasons.
 
-`domestique` mirrors one private VeloPlanner route library to each signed-in
+`domestique` mirrors one private VeloPlanner route library, and the plans an
+admin draws in its own planner, to each signed-in
 rider's own self-service Wahoo account as device-ready FIT courses, plus a
 read-only browser UI (library map, per-route pages, settings). Single-tenant,
 CGO-free, `linux/amd64` Docker workload on a Tailnet host; no CLI.
@@ -156,7 +157,8 @@ statements live in the linked specs.
   session without the Auth0 Action's admin claim is answered `403`, and may
   start no task but `sync:target` over its own subject
   ([service.md](docs/specs/service.md)).
-- **Geometry is served only by its own endpoint**, only to the gated identity
+- **Geometry is served only by its own endpoint**, only to the gated identity;
+  the admin-only plan read, preview and save answers are the sole additions
   ([service.md](docs/specs/service.md)).
 - **Refresh tokens are encrypted at rest**; access tokens in memory only;
   settings-page credentials are write-only
