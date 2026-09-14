@@ -4,7 +4,8 @@
 
 This specification is subordinate to [the service contract](service.md). It
 defines the durable lifecycle of OAuth onboarding, synchronisation, and the
-read-only HTTP JSON surface.
+HTTP JSON surface, which is read-only apart from the state-changing endpoints
+it enumerates.
 
 ## Stable identities
 
@@ -14,8 +15,8 @@ A route is identified by the triple:
 provider + source route ID + stage order
 ~~~
 
-The provider is the upstream that issued the source route ID. `veloplanner` is
-the only provider served.
+The provider is the upstream that issued the source route ID, or `local` for
+a route this service composed itself, whose source route ID is the plan's own.
 
 A route's deterministic Wahoo external ID is:
 
@@ -52,6 +53,7 @@ implementation detail.
 | reprocess request | one route an operator has asked to have redone | none |
 | notification state | last delivered failure category and suppression deadline | none |
 | runtime settings | the settings an operator edits while the service runs, including the basemap list and the surface regions | none |
+| plan | name, profile, ordered waypoints, the routed geometry, its distance and ascent, published state, the instant of its last replace that is its source revision, and the version a replace must match | none, but its waypoints and geometry are route detail and stay out of logs and notifications like any other |
 
 Every recorded run carries an opaque reference of random bytes. It is the only
 detail of a run that may appear in a notification, and it is what an operator
@@ -155,7 +157,8 @@ A manual trigger is a state change and carries the browser-origin requirement of
 every state-changing route.
 
 The configured Tailnet user starts one by asking for the task that does it:
-`POST /v1/tasks/sync:source/run` reads every configured library,
+`POST /v1/tasks/sync:source/run` reads every configured source, the local one
+included,
 `POST /v1/tasks/sync:target/run` reconciles every target — admin only, since a
 non-admin's empty argument would ask for targets that are not theirs — and
 `POST /v1/tasks/sync:target/run/{slot}` reconciles exactly one target without
@@ -325,6 +328,19 @@ prior route count. A source that had routes and now reports none is blocked for
 that source alone unless the operator's empty-source acknowledgement is set, and
 every other configured source proceeds independently of it.
 
+The local source is exempt from that gate. Its inventory is the published
+plans in this service's own state, read locally: there is no session to lose,
+no listing to truncate, and no upstream to answer with less than it holds, so an
+empty read is a true statement that the last plan was unpublished or deleted,
+which is exactly the deletion the admin asked for. Empty means a read that
+succeeded and returned nothing: a local read that fails — a query error, a
+schema the running build does not expect, a row it cannot decode — is a source
+failure like any other, keeps the last-known local routes, and deletes
+nothing. The remaining gates apply to the local source unchanged, the per-run
+deletion maximum among them. It has no credentials to be missing, so it is
+always ready: it never holds back a read of every source, and a read asked for
+over it alone names it by its provider like any other.
+
 A read asked for over one source builds that source alone. Building every source
 at once refuses when any one of them has been named but not given credentials,
 because a partial set read as the whole inventory is what the deletion gate
@@ -347,7 +363,10 @@ all listing pages complete, every new or changed route detail is valid, and each
 unchanged route is backed by a prior trusted revision. Every resulting route must
 have usable geometry. State-loss recovery fetches every route detail afresh. A
 malformed route or incomplete pagination invalidates the whole inventory; it
-produces no destination mutation.
+produces no destination mutation. The local source has no login and no
+pages, so those two conditions are met by definition; the rest apply to it
+unchanged, and a stored plan whose geometry is not usable invalidates its
+inventory exactly as an upstream's malformed route does.
 
 For each target, Domestique first reads that target's routes once, keyed by
 external ID, and answers every question below from that one reading. One reading
@@ -382,8 +401,9 @@ target without replaying destructive work.
 ### Clearing a target
 
 An operator, or the target's own owner, may clear one target: delete every
-route this service owns there and forget that slot's route mappings, leaving
-it as though it had never been written to.
+route this service owns there, found by listing the target's routes for this
+service's external IDs, and forget that slot's route mappings, leaving it as
+though it had never been written to.
 
 It is the only deletion the per-target deletion limit does not bound. Nothing
 schedules it, and it is reachable only from an explicit manual request naming
@@ -426,7 +446,8 @@ A target deletion is permitted only when all conditions hold:
 A source inventory that was populated and becomes empty is blocked while the
 empty-source deletion gate is closed. The gate is closed by default. It is
 opened on the settings page, takes effect from the next run, does not bypass the
-remaining checks, and stays open until it is closed again.
+remaining checks, and stays open until it is closed again. The local source is
+the one exception, for the reason [Multiple sources](#multiple-sources) gives.
 
 Any larger shrink, missing source authentication, malformed geometry, or
 incomplete listing blocks all deletions and yields a safe failure category. The
@@ -441,6 +462,16 @@ looking up the deterministic external IDs for currently desired routes:
 - a matching remote route may be adopted into fresh state;
 - a missing desired route may be created; and
 - no unmatched remote route may be deleted.
+
+A plan lives in this service's state alone, so lost state loses every plan,
+and no local route is desired after recovery. The local routes the targets
+still hold are then unmatched remote routes: they are not deleted by any
+automatic run, and the one way to remove them is the deliberate clearing of a
+target, which takes everything this service ever wrote there. A clear finds
+what it deletes by asking the target for the routes carrying this service's
+external IDs, not by consulting local mappings, which is why it still works
+over a database that holds none. Re-drawing a plan makes a new plan with a new
+identifier; it does not re-adopt the old route.
 
 ## HTTP JSON contract
 
@@ -756,7 +787,8 @@ routes return 404 with the standard error shape. `GET .../geometry` and
 `POST .../reprocess` are addressed the same way.
 
 A request naming a provider this service does not serve — anything but
-`veloplanner` — is answered 404 rather than passed to state as a lookup.
+`veloplanner`, `komoot` and `local` — is answered 404 rather than passed to
+state as a lookup.
 
 ### Redirected route addresses
 
@@ -790,12 +822,16 @@ also uses 403; malformed client input uses 400.
 The OAuth start, callback, the protected `POST /v1/tasks` triggers, the protected
 `PUT /v1/tasks/{name}/schedule` switch, the protected
 `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
-request, and the protected `PUT /v1/settings/*` section writes are the only
-state-changing endpoints. A settings write changes what the service does next and
-nothing it has stored about a route; it reaches the runtime settings
-[the configuration specification](configuration.md#runtime-settings) defines and
-no other configuration. There is no HTTP or CLI endpoint for route deletion,
-static configuration or secret mutation, or Wahoo target removal.
+request, the protected `PUT /v1/settings/*` section writes, a rider's own
+`DELETE /v1/settings/rider/credentials/zwift`, and the admin-only `/v1/plans`
+operations — the preview `POST`, create, replace and delete — are the only
+state-changing endpoints. A settings write changes what the service
+does next and nothing it has stored about a route; it reaches the runtime
+settings [the configuration specification](configuration.md#runtime-settings)
+defines and no other configuration. A plan write changes a route this service
+owns and no other. There is no HTTP or CLI endpoint for deleting an upstream
+route, for static configuration or secret mutation, or for Wahoo target
+removal.
 
 Every one of them except the OAuth start and callback is refused with 403 unless
 its `Origin` header equals the browser UI's origin. Identity is settled first, so
@@ -830,6 +866,9 @@ The implementation test suite must cover at least:
   stopped;
 - the empty-source deletion gate blocking only the source that emptied out,
   independently of a sibling source that still has routes;
+- the local source emptying out, by unpublishing or deleting its last plan,
+  deleting that route without the acknowledgement and still within the per-run
+  maximum;
 - manual Wahoo route preservation;
 - state loss adopting matching desired external IDs without deleting unknown
   routes;

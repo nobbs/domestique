@@ -4,12 +4,14 @@ Guidance for AI coding agents. Humans start at
 [CONTRIBUTING.md](CONTRIBUTING.md). Rules here state the command; the linked
 specs hold the reasons.
 
-`domestique` mirrors one private VeloPlanner route library to each signed-in
+`domestique` mirrors one private VeloPlanner route library, and the plans an
+admin draws in its own planner, to each signed-in
 rider's own self-service Wahoo account as device-ready FIT courses, plus a
 read-only browser UI (library map, per-route pages, settings). Single-tenant,
 CGO-free, `linux/amd64` Docker workload on a Tailnet host; no CLI.
 State-changing HTTP is limited to sign-in and sign-out, Wahoo OAuth onboarding,
-the Wahoo webhook receiver, manual run triggers, and `PUT /v1/settings/*`.
+the Wahoo webhook receiver, manual run triggers, `PUT /v1/settings/*`, and the
+admin-only `/v1/plans` writes over the one provider this service owns.
 
 ## Commands
 
@@ -155,7 +157,8 @@ statements live in the linked specs.
   session without the Auth0 Action's admin claim is answered `403`, and may
   start no task but `sync:target` over its own subject
   ([service.md](docs/specs/service.md)).
-- **Geometry is served only by its own endpoint**, only to the gated identity
+- **Geometry is served only by its own endpoint**, only to the gated identity;
+  the admin-only plan read, preview and save answers are the sole additions
   ([service.md](docs/specs/service.md)).
 - **Refresh tokens are encrypted at rest**; access tokens in memory only;
   settings-page credentials are write-only
@@ -163,9 +166,10 @@ statements live in the linked specs.
 - **All non-OAuth HTTP is read-only and identity-gated** to a session issued
   for an allowed subject, apart from the sign-in document, the build artefacts
   it loads, and `POST /webhooks/wahoo`, which the Wahoo application's shared
-  token authenticates instead. The container still publishes to loopback only,
-  behind a TLS-terminating reverse proxy; the service never reads an identity
-  header ([auth0.md](docs/auth0.md)).
+  token authenticates instead. The admin-only `/v1/plans` writes are a further
+  exception, behind the same identity gate. The container still publishes to
+  loopback only, behind a TLS-terminating reverse proxy; the service never
+  reads an identity header ([auth0.md](docs/auth0.md)).
 
 ## Testing
 

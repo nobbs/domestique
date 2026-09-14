@@ -60,6 +60,13 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 # [analysis]
 # claude_token_file = "/run/secrets/claude_token"
 
+# Optional. The BRouter sidecar the route planner routes with, and the 5° tiles
+# the weekly task keeps current for it. Leaving the section out switches the
+# planner off: no plan endpoint, no local source, no segment task.
+# [planning]
+# brouter_url = "http://brouter:17777"
+# segments = ["E5_N45", "E10_N45", "E5_N50", "E10_N50"]
+
 # How much the service says on stderr, as JSON lines: debug, info, warn or
 # error. Optional; this is the default. DOMESTIQUE_LOG__LEVEL overrides it.
 [log]

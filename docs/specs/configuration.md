@@ -68,6 +68,11 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 # [analysis]
 # claude_token_file = "/run/secrets/claude_token"
 
+# Optional: switches the route planner on.
+# [planning]
+# brouter_url = "http://brouter:17777"
+# segments = ["E5_N45", "E10_N45", "E5_N50", "E10_N50"]
+
 [log]
 level = "info"
 ```
@@ -158,6 +163,34 @@ application dependency.
   route ID, query string or subject. Like every other field it may be set as
   `DOMESTIQUE_LOG__LEVEL`, which is the intended way to raise it for one
   restart.
+- `planning.brouter_url` is required whenever the `[planning]` section is
+  present, so a section naming tiles and no engine is refused at startup rather
+  than read as a planner with nothing to route. It is the absolute HTTP origin,
+  with no path, of the BRouter instance the planner routes with — a sidecar on the same
+  host, never a public address. It is a file field because it names where a
+  neighbour listens, which is the host's knowledge like the listen addresses
+  above. Leaving the section out switches the planner off: no plan endpoint is
+  registered, no local source is read, and the segment task is not
+  registered ([the task](task-layer.md#the-registered-tasks)).
+- `planning.segments` is optional and names the BRouter routing segments the
+  service keeps current for that engine. Each entry is one of BRouter's 5°×5°
+  tiles, named for its south-west corner: `E` or `W` and a longitude from 0 to
+  180 west or 175 east, an underscore, `N` or `S` and a latitude from 0 to 90
+  south or 85 north, both multiples of five, zero spelled `E0` and `N0`, such
+  as `E5_N45`. A tile becomes a file name under a fixed host, and a validated
+  name can introduce no host, query, or traversal; a repeat is dropped rather
+  than refused. It is a file field for the same reason the engine's address
+  is: which tiles a host serves is the host's knowledge, decided with the
+  sidecar beside it. The default is **no segments**, under which the weekly
+  task fetches nothing and the engine routes with whatever its directory
+  already holds. Each named tile costs between a hundred and three hundred
+  megabytes under the state volume. A refresh fetches each tile from the
+  BRouter project's published segment directory, `brouter.de/brouter/segments4/`,
+  the one host it ever contacts and the only egress the planner adds; it asks
+  that host for each tile's size and modification time first, downloads only
+  what changed, writes beside the live file, and renames over it, so the engine
+  never reads a half-written tile. It sends the tile names and nothing about
+  any route or plan.
 - `http.browser_origin_url` is required, and must be an absolute HTTPS origin
   with no path. It is the address a browser reaches this service at, behind the
   reverse proxy.
@@ -305,7 +338,9 @@ deployment losing its database.
 carries a `provider` — `veloplanner` or `komoot` — and a `base_url`, which must
 be an absolute HTTPS origin without a path, matching what the adapter itself
 requires. A provider may appear at most once; a run reads each provider once and
-stores its inventory under that provider's name.
+stores its inventory under that provider's name. The local provider is never
+an entry here: it has no library and no account, and the static `[planning]`
+section is what adds it to every read ([service.md](service.md)).
 
 The base URL also reaches the browser through `GET /v1/webui/config`, keyed by
 provider, as the base of a route's link back to its source route. Pointing it at
