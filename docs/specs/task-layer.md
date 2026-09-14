@@ -75,8 +75,12 @@ refused attempt reports `skipped`.
 Resources describe state, not tasks. Everything that reads or writes the trusted
 inventory takes `inventory`, whichever task asked, so no two of those overlap. A
 surface index build takes `surface-index`, touches neither, and runs beside them.
-A routing-segment refresh takes `segments`, the volume the routing engine reads,
-and nothing this service itself reads, so it runs beside all three.
+A routing-segment refresh takes `segments`, the directory the routing engine
+reads, and nothing this service itself reads: a plan's geometry is stored when
+it is saved, and a source read of the local provider reads that store, never
+the engine, so a tile replaced mid-read changes no route. The engine is asked
+only by a preview and a save, which hold no resource; the download runs beside
+everything and each tile is swapped by one rename at its end.
 Reading a rider's recorded activities takes `activities`: it reaches the same
 Wahoo account a reconciliation does, but writes only activity rows, so it runs
 beside `inventory` rather than waiting behind it.

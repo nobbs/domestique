@@ -121,21 +121,24 @@ route. Only an admin session may create, replace or delete a plan, over the
 `/v1/plans` endpoints below; every other session sees a plan's route exactly as
 it sees any other. The browser previews a plan while it is being drawn, but the
 service routes the waypoints itself before anything is stored, and the preview
-runs the same normalisation and measurement a save does, so what the editor
-shows is what the library will hold. A plan is a **draft** until it is
-published, and only a published plan is a route: a draft is served to its
-editor alone, is never in the inventory, and never reaches a target. Publishing
-and unpublishing are the admin's deliberate acts; the next synchronisation
-mirrors either into every target on the terms the
-[sync lifecycle](sync-lifecycle.md) states, deletion gates included.
+runs the same normalisation and measurement a save does over the same routing
+data, so the two agree; a save answers with what it stored, and the editor
+shows that answer, so the one case where the routing data changed between the
+two — a weekly segment refresh landing in between — is visible rather than
+silent. A plan is a **draft** until it is
+published, and only a published plan is a route: a draft is visible through
+the admin-only plan endpoints and nowhere else, is never in the inventory, and
+never reaches a target. Publishing and unpublishing are the admin's deliberate
+acts; the next synchronisation mirrors either into every target on the terms
+the [sync lifecycle](sync-lifecycle.md) states, deletion gates included.
 
 ## Constraints and non-goals
 
-- Sync every route in the configured VeloPlanner library; there is no selection
-  by tag, prefix, or allow-list.
+- Sync every route of every configured source, published plans included; there
+  is no selection by tag, prefix, or allow-list.
 - Preserve no integration with Ride with GPS.
 - Do not edit an upstream route, and do not provide a command-line interface.
-  The browser UI is read-only over every upstream provider; the planned
+  The browser UI is read-only over every upstream provider; the local
   provider, which this service owns, is the one exception, on the terms above.
 - Do not run a secret manager or reference a specific secret provider from Go.
 - Do not back up the persistent service data. Recovery must be safe despite
@@ -902,20 +905,28 @@ browser origin described above, and answer 403 without it.
   hold follows from that read. It returns `202 Accepted`, or `404` for a
   route that is not in the stored inventory.
 - The plan endpoints (all admin-only) are the one place a route is written.
-  `POST /v1/plans/route` is a stateless preview: waypoints and a profile in,
-  the normalised geometry with its distance and ascent out, nothing stored.
+  `POST /v1/plans/route` is a preview: waypoints and a profile in, the
+  normalised geometry with its distance and ascent out, nothing stored. It is
+  a `POST` that makes the service do outbound work, so it is Origin-checked
+  like every state-changing request, storing nothing notwithstanding.
   `GET /v1/plans` lists every plan with its summary and whether it is
-  published; `GET /v1/plans/{plan-id}` returns one plan's waypoints, profile,
-  name, published state, version, and its stored geometry, because a draft is
-  in no inventory for the geometry endpoint to serve. `POST /v1/plans` creates
-  a draft, routing the waypoints server-side first. `PUT /v1/plans/{plan-id}`
-  replaces one plan whole, published state included, and carries the version
-  last read as `If-Match`; a stale version is refused with `412` so two admins
-  cannot overwrite each other. `DELETE /v1/plans/{plan-id}` removes one. The
-  whole group is absent, answering `404`, when no routing engine is configured,
-  and a routing failure is `502` carrying a category and nothing of the
-  engine's response. A plan carries no credential, no rider's data, and no
-  geometry beyond the one the engine returned for its waypoints.
+  published, and carries no geometry; `GET /v1/plans/{plan-id}` returns one
+  plan's waypoints, profile, name, published state, version, and its stored
+  geometry, because a draft is in no inventory for the geometry endpoint to
+  serve. `POST /v1/plans` creates a draft, routing the waypoints server-side
+  first. `PUT /v1/plans/{plan-id}` replaces one plan whole, published state
+  included, and `DELETE /v1/plans/{plan-id}` removes one; both carry the
+  version last read as `If-Match`, and a stale version is refused with `412`,
+  so one admin can neither overwrite nor delete what another has just changed.
+  The whole group is absent, answering `404`, when no routing engine is
+  configured, and a routing failure is `502` carrying a category and nothing
+  of the engine's response. A plan carries no credential, no rider's data, and
+  no geometry beyond the one the engine returned for its waypoints. These six
+  operations, and the planning flag `GET /v1/webui/config` carries, are
+  specified here in prose until the change that implements them adds them to
+  [`api/openapi.yaml`](../../api/openapi.yaml), which is normative from that
+  change on; a path there without a handler behind it would fail the contract
+  test that keeps the document and the served routes together.
 - `POST /v1/activities/{activity-id}/reanalyse` (admin-only) asks a language model
   once more about one ride of the target the activity list would serve, as
   `activity:reanalyse` over that ride. It returns `202 Accepted`, `404` for a ride
@@ -1003,8 +1014,10 @@ Route geometry is served **only** on the dedicated geometry endpoint, a
 recorded activity's track **only** on its own track endpoint, and its sensor
 series **only** on the series endpoint, one named series per request — all only
 to a session belonging to an allowed subject, and only from local stored state.
-Neither must ever appear in logs, notifications, error messages, the status
-endpoint, or any listing.
+The two admin-only plan responses that carry a geometry — one plan read, and
+the preview — are the sole addition to that list, and the plan listing is a
+listing like any other: it carries none. Neither must ever appear in logs,
+notifications, error messages, the status endpoint, or any listing.
 
 The concrete OAuth, sync, persistence, and JSON contracts are defined in the
 [sync lifecycle specification](sync-lifecycle.md).
@@ -1203,10 +1216,19 @@ for every source alike, and surface classification is computed once, against
 this service's own OpenStreetMap index, for every source alike. This rule is
 provider-agnostic and applies to any future source.
 
-The planned provider, `planned`, is the third source and the only one with no
-upstream. Its source route ID is the plan's own identifier in this service's
-state, its stage order is always 1, and its inventory is the set of published
-plans. Geometry comes from the routing engine the deployment names — BRouter,
+The local provider, `local`, is the third source and the only one with no
+upstream. It is not an entry in the configurable source list, which names
+upstream libraries and their accounts: naming a routing engine in the static
+configuration is what adds it, and every read of every source then reads it
+too. Its source route ID is the plan's own identifier in this service's state,
+its stage order is always 1, and its source revision is the instant of its
+last replace, rendered as RFC 3339 like every upstream's, so it rides the
+Wahoo wire as the timestamp that field expects, an admin's edit reaches every
+target on the next run, and an untouched plan is never re-sent. The version a
+replace carries as `If-Match` is a separate counter and never leaves the
+service. Its inventory is the set of published plans, read from the geometry
+each plan stored when it was saved: a source read never asks the routing
+engine. Geometry comes from the routing engine the deployment names — BRouter,
 run as a sidecar beside the service ([delivery.md](delivery.md)) — which
 answers with the snapped line and an elevation per point; both are then treated
 exactly as a VeloPlanner stage's are, normalised and measured by this service
@@ -1540,7 +1562,9 @@ A normal small, authenticated source deletion is mirrored.
 
 Source authentication and inventory safety take priority over making a deletion
 immediate. A final-library deletion that would appear as an empty source requires
-an explicit acknowledgement before it can delete Wahoo routes.
+an explicit acknowledgement before it can delete Wahoo routes — except from the
+local source, whose empty inventory is this service's own statement rather
+than an upstream's, on the terms the sync lifecycle gives.
 
 Every run records a terminal outcome. Pushover receives:
 
@@ -1616,11 +1640,15 @@ secret files remain outside Git.
   served back, in any form, to any caller.
 - Any signed-in subject can self-service authorise their own Wahoo account
   through the session-gated OAuth flow, one target per subject.
-- An hourly run mirrors every valid VeloPlanner route to every configured target as FIT.
+- An hourly run mirrors every valid route of every configured source, published
+  plans included, to every configured target as FIT.
 - Edits preserve the route's `external_id`; source deletions remove only owned
   destination routes and respect the deletion guard.
 - A failed source inventory cannot cause a destructive Wahoo deletion.
-- Lost state cannot cause deletion of unknown Wahoo routes.
+- Lost state cannot cause deletion of unknown Wahoo routes. Lost state does
+  lose every plan, which exists nowhere upstream, and with it the ability to
+  adopt or remove the local routes the targets still hold; the sync lifecycle
+  states what a recovery may do about them.
 - The service logs and notifications do not reveal secrets or route details.
 - Every state-changing HTTP interaction additionally proves it came from this
   service's own browser UI.

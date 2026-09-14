@@ -164,10 +164,10 @@ statements live in the linked specs.
 - **All non-OAuth HTTP is read-only and identity-gated** to a session issued
   for an allowed subject, apart from the sign-in document, the build artefacts
   it loads, and `POST /webhooks/wahoo`, which the Wahoo application's shared
-  token authenticates instead. The `/v1/plans` writes are the one
-  identity-gated exception, and they are admin-only. The container still
-  publishes to loopback only, behind a TLS-terminating reverse proxy; the
-  service never reads an identity header ([auth0.md](docs/auth0.md)).
+  token authenticates instead. The admin-only `/v1/plans` writes are a further
+  exception, behind the same identity gate. The container still publishes to
+  loopback only, behind a TLS-terminating reverse proxy; the service never
+  reads an identity header ([auth0.md](docs/auth0.md)).
 
 ## Testing
 

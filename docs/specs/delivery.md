@@ -619,7 +619,8 @@ The runtime image:
   genuinely needs;
 - runs as an unprivileged non-root user;
 - has a declared persistent volume for `/var/lib/domestique`, which holds the
-  SQLite database and, under its own subdirectory, the home directory the
+  SQLite database, the routing segments when a planner is configured, and,
+  under its own subdirectory, the home directory the
   `claude` executable insists on writing its configuration to, which is why
   the root filesystem can stay read-only with that executable aboard; the
   service points `HOME` there, runs every prompt with session persistence off
@@ -638,10 +639,12 @@ half a gigabyte. It publishes no port. It joins an internal network the service
 also joins, so the service reaches it by name over that network alone; it is
 never on the edge network the proxy reads, carries no proxy label, and answers
 nothing from outside the host. Its root filesystem is read-only, every
-capability is dropped, and its routing segments come from a volume it mounts
-read-only and the service mounts read-write, since the service's weekly task is
-what refreshes them ([the task](task-layer.md#the-registered-tasks)). The two
-images therefore have to agree on the user that volume is written and read as,
+capability is dropped, and its routing segments are a subdirectory of the
+service's one state volume, which the engine mounts read-only at the directory
+its image reads from; the service's weekly task is what writes them there
+([the task](task-layer.md#the-registered-tasks)), so the service gains no
+second mount and its root stays as read-only as before. The two images
+therefore have to agree on the user that subdirectory is written and read as,
 and the deploy script asserts that they do before it health-gates the pair.
 
 The host runs the container with a loopback-only publication such as

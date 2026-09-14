@@ -46,7 +46,7 @@ the `wahoo` adapter and never crosses into the service or the UI.
 ## Where routes come from and go
 
 **provider** — the upstream service a route was read from: VeloPlanner or
-Komoot, or `planned` for a route this service composed itself. This is the word
+Komoot, or `local` for a route this service composed itself. This is the word
 on the wire (`/v1/providers/{provider}/…`) and the word in code.
 
 **source** — the read half of synchronisation, and the settings that configure
@@ -151,7 +151,7 @@ a grid over an area.
 
 **plan** — an ordered list of waypoints and a profile that an admin composed on
 the map, owned by this service and nothing upstream. A published plan is a
-route under the `planned` provider; a draft is not a route at all (see
+route under the `local` provider; a draft is not a route at all (see
 [service.md](specs/service.md), "HTTP wire contract").
 
 **waypoint** — one point a plan's route must pass through, in the order the
