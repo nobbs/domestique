@@ -73,6 +73,7 @@ private to this service.
 │   ├── patchcoverage/              grades a patch the way Codecov will
 │   ├── coveragesummary/            prints a profile's summary
 │   ├── levelstudy/                 the offline bicycle-coefficient study over recorded rides
+│   ├── npstudy/                    the offline study of a normalized power of the estimate
 │   └── *.sh                        the scripts the Mise tasks call
 ├── deploy/
 │   └── domestique-deploy.sh        the host-side deploy, run over SSH
