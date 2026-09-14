@@ -355,6 +355,47 @@ paths:
           $ref: '#/components/responses/NotFound'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/activities/{activityId}/reanalyse:
+    post:
+      tags:
+        - browser-api
+      operationId: reanalyseActivity
+      description: >-
+        Admin-only. Asks a language model once more about one derived ride of
+        the target the activity list would serve, whenever it started. The new
+        answer replaces what stood only when it fits the bound; a failed request
+        leaves the stored analysis in place. Not found when no Claude token is
+        configured, and for a ride that target does not hold.
+      parameters:
+        - name: activityId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/ActivityID'
+        - name: target
+          in: query
+          description: >-
+            The target the ride belongs to. Omitted means the caller's own.
+          schema:
+            type: string
+      security:
+        - session: []
+          browserOrigin: []
+      responses:
+        "202":
+          $ref: '#/components/responses/Accepted'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/TaskInProgress'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/activities/{activityId}/track:
     get:
       tags:

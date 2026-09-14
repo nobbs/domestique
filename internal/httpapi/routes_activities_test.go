@@ -1250,3 +1250,76 @@ func TestGetActivitiesReportsAnUnreadableAnalysisStore(t *testing.T) {
 	code, _ := getActivities(t, handler, "/v1/activities")
 	assert.Equal(t, http.StatusServiceUnavailable, code)
 }
+
+func postReanalyse(t *testing.T, sessions Sessions, state *fakeState, tasks *fakeTasks, target string) int {
+	t.Helper()
+	handler := handlerFor(t, sessions, &fakeOAuth{}, state, tasks)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodPost, target))
+
+	return response.Code
+}
+
+func reanalyseTasks() *fakeTasks {
+	return &fakeTasks{registered: []RegisteredTask{{Name: TaskActivityReanalyse}}}
+}
+
+// An admin asks again about one ride of the target the list would serve, and the
+// task is started over exactly that ride.
+func TestReanalyseActivityStartsTheTaskOverOneRide(t *testing.T) {
+	tasks := reanalyseTasks()
+	code := postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), tasks,
+		"/v1/activities/1/reanalyse?target=rider-a")
+
+	assert.Equal(t, http.StatusAccepted, code)
+	assert.Equal(t, []startedTask{{name: TaskActivityReanalyse, argument: "rider-a/1"}}, tasks.started)
+}
+
+func TestReanalyseActivityRefusesANonAdminSession(t *testing.T) {
+	tasks := reanalyseTasks()
+	code := postReanalyse(t, nonAdminSessions("rider-a"), activityState("rider-a", time.Hour), tasks,
+		"/v1/activities/1/reanalyse")
+
+	assert.Equal(t, http.StatusForbidden, code)
+	assert.Empty(t, tasks.asked)
+}
+
+func TestReanalyseActivityAnswersNotFound(t *testing.T) {
+	tests := map[string]struct {
+		tasks  *fakeTasks
+		target string
+	}{
+		"with analysis off":           {&fakeTasks{}, "/v1/activities/1/reanalyse?target=rider-a"},
+		"for a ride the target lacks": {reanalyseTasks(), "/v1/activities/99/reanalyse?target=rider-a"},
+		"for a target nobody holds":   {reanalyseTasks(), "/v1/activities/1/reanalyse?target=nobody"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			code := postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), test.tasks, test.target)
+
+			assert.Equal(t, http.StatusNotFound, code)
+			assert.Empty(t, test.tasks.asked)
+		})
+	}
+}
+
+func TestReanalyseActivityRefusesAnIDThatIsNotNumeric(t *testing.T) {
+	tasks := reanalyseTasks()
+	code := postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), tasks,
+		"/v1/activities/x/reanalyse?target=rider-a")
+
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Empty(t, tasks.asked)
+}
+
+func TestReanalyseActivityReportsARefusedStartAndAnUnreadableStore(t *testing.T) {
+	busy := reanalyseTasks()
+	busy.refuse = true
+	assert.Equal(t, http.StatusConflict,
+		postReanalyse(t, newFakeSessions(), activityState("rider-a", time.Hour), busy, "/v1/activities/1/reanalyse?target=rider-a"))
+
+	state := activityState("rider-a", time.Hour)
+	state.startedErr = errors.New("unreadable")
+	assert.Equal(t, http.StatusServiceUnavailable,
+		postReanalyse(t, newFakeSessions(), state, reanalyseTasks(), "/v1/activities/1/reanalyse?target=rider-a"))
+}

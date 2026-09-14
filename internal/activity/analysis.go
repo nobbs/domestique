@@ -79,6 +79,8 @@ type AnalyseStore interface {
 	// newest first.
 	AnalysesBefore(ctx context.Context, targetID string, before time.Time, limit int) ([]Analysis, error)
 	StoreActivityAnalysis(ctx context.Context, targetID string, id int64, analysis Analysis) error
+	// ActivityStartedAt is when one ride started, and whether the target holds it.
+	ActivityStartedAt(ctx context.Context, targetID string, id int64) (time.Time, bool, error)
 }
 
 // Analyser asks a language model about each ride owed an analysis.
@@ -154,6 +156,39 @@ func (a *Analyser) Analyse(ctx context.Context, targetID string) Result {
 	slog.Info("activities analysed", "target", targetID, "analysed", analysed)
 
 	return Result{Outcome: Polled, Analysed: analysed}
+}
+
+// Reanalyse asks once more about one derived ride, whenever it started and
+// whatever stands for it; a failed request leaves the stored analysis in place.
+func (a *Analyser) Reanalyse(ctx context.Context, targetID string, id int64) Result {
+	subject, err := a.store.TargetOwner(ctx, targetID)
+	if err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
+	startedAt, held, err := a.store.ActivityStartedAt(ctx, targetID, id)
+	if err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
+	if subject == "" || !held {
+		return Result{Outcome: Unchanged}
+	}
+	run, err := a.readContext(ctx, targetID, subject, a.now())
+	if err != nil {
+		return Result{Outcome: Failed, Failure: FailureState}
+	}
+	if _, derived := run.metrics[id]; !derived {
+		return Result{Outcome: Unchanged}
+	}
+	if failure := a.analyseOne(ctx, targetID, PendingAnalysis{ID: id, StartedAt: startedAt}, &run); failure != FailureNone {
+		if ctx.Err() == nil {
+			slog.Warn("ride re-analysis failed", "target", targetID, "failure", string(failure))
+		}
+
+		return Result{Outcome: Failed, Failure: failure}
+	}
+	slog.Info("activity re-analysed", "target", targetID)
+
+	return Result{Outcome: Polled, Analysed: 1}
 }
 
 // heldTypes is the indoor types a rider with Zwift credentials has held back

@@ -768,8 +768,9 @@ encryption_key_file = %q
 	before := time.Now().Add(-time.Minute)
 	definitions, err := startAnalysis(t.Context(), settings, testSettings(t, store), store, allEnabled, twoTargets)
 	require.NoError(t, err)
-	require.Len(t, definitions, 1)
+	require.Len(t, definitions, 2)
 	assert.Equal(t, taskActivityAnalyse, definitions[0].Name)
+	assert.Equal(t, taskActivityReanalyse, definitions[1].Name, "registered with the analysis, or not at all")
 
 	info, err := os.Stat(filepath.Join(directory, "claude"))
 	require.NoError(t, err, "the claude home")

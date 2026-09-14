@@ -172,8 +172,8 @@ below), not a second sign-in decision; every admitted subject proves
 membership the same one way: a session this service itself issued.
 
 The same claim also decides who administers the service. The shared settings,
-the background activities and their schedules, and the per-route reprocess
-request belong to an admin subject: the endpoints marked admin-only below
+the background activities and their schedules, the per-route reprocess request
+and the per-ride re-analysis request belong to an admin subject: the endpoints marked admin-only below
 answer `403` in the shared error shape to any other session, and the two
 admin browser routes answer not found. The rider profile is the one settings
 section outside that split, because it is one rider's own rather than the
@@ -392,7 +392,7 @@ a cross-site GET the browser is redirected into.
 
 Alongside it are the operator controls over the background activities: starting
 one by name, the per-task switches that decide what a schedule is allowed to
-start, and the per-route reprocess request. They change what the service does
+start, the per-route reprocess request, and the per-ride re-analysis request. They change what the service does
 next; they change nothing it has stored about routes. A triggered run is the
 same run through the same gates as a scheduled one, and an enrichment pass
 asked for by name is narrower still: it never reads VeloPlanner or writes a
@@ -812,7 +812,7 @@ The read-only JSON surface is small:
   old.
 
 The endpoints below that change state — the task runs, the schedule switches,
-the reprocess request, and the settings write — additionally require the
+the reprocess and re-analysis requests, and the settings write — additionally require the
 browser origin described above, and answer 403 without it.
 
 - `POST /v1/tasks/{name}/run`, and `/run/{argument}` for one over an argument,
@@ -861,6 +861,11 @@ browser origin described above, and answer 403 without it.
   that will do it, as `sync:source` run on that stage's behalf. What the targets
   hold follows from that read. It returns `202 Accepted`, or `404` for a
   route that is not in the stored inventory.
+- `POST /v1/activities/{activity-id}/reanalyse` (admin-only) asks a language model
+  once more about one ride of the target the activity list would serve, as
+  `activity:reanalyse` over that ride. It returns `202 Accepted`, `404` for a ride
+  that target does not hold or when no Claude token is configured, and `409`
+  while another activity task holds the rides.
 - The settings are written one section at a time (admin-only), over one endpoint per
   section: `PUT /v1/settings/wahoo` for the registered application,
   `/v1/settings/sources/{provider}` for one library and the account it is read
@@ -1272,16 +1277,18 @@ operator's own Claude subscription, with no tool enabled: the model sees the
 prompt and answers text. That text is stored beside the ride with the model
 and prompt revision that produced it, served on the activity contract, and
 read back by later prompts alone — no load, no suggestion and no calibration
-ever reads it. A ride whose analysis stands is not asked about again. A
+ever reads it. No run asks again about a ride whose analysis stands. A
 profile edit re-derives it but does not re-analyse it; a derivation that
 removes the ride's figures removes the analysis with them, and only a later
-derivation that gives the ride figures again asks once more. No request or
-operation asks on demand, and the route-scoped reprocess does not reach a
-ride. A head unit's indoor ride waits, for a rider with Zwift credentials, until
+derivation that gives the ride figures again asks once more. The one request
+that asks on demand is an administrator's re-analysis of one ride: it asks about
+any derived ride, whenever it started, replaces what stood only with an answer
+that fits the bound, and leaves the stored analysis in place when the request
+fails. The route-scoped reprocess does not reach a ride. A head unit's indoor ride waits, for a rider with Zwift credentials, until
 the Zwift copy that replaces it has had a poll to arrive in, so the copy asked
 about is the one kept. Only rides started after the
-analysis was enabled are analysed at all: a history ridden before the
-token arrives is never backfilled, so enabling it costs nothing until the next
+analysis was enabled are analysed by a run: a history ridden before the
+token arrives is never backfilled but one ride at a time by that request, so enabling it costs nothing until the next
 ride lands. Which
 rider a ride belongs to does not change whose subscription answers: this is one
 deployment's operator paying for its riders, so the token is a static secret

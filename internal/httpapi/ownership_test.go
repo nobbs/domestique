@@ -248,17 +248,19 @@ func TestRunTaskAllowsNonAdminToRunTheirOwnTarget(t *testing.T) {
 // A registered task the receiver alone starts is not found for anybody: its
 // argument names a workout, and an admin has no more business naming one.
 func TestRunTaskRefusesActivityRecordForEveryCaller(t *testing.T) {
-	for _, sessions := range map[string]*fakeSessions{
-		"admin": newFakeSessions(), "rider": nonAdminSessions("rider-a"),
-	} {
-		tasks := &fakeTasks{registered: []RegisteredTask{{Name: TaskActivityRecord}}}
-		handler := handlerFor(t, sessions, &fakeOAuth{}, &fakeState{}, tasks)
+	for _, name := range []string{TaskActivityRecord, TaskActivityReanalyse} {
+		for _, sessions := range map[string]*fakeSessions{
+			"admin": newFakeSessions(), "rider": nonAdminSessions("rider-a"),
+		} {
+			tasks := &fakeTasks{registered: []RegisteredTask{{Name: name}}}
+			handler := handlerFor(t, sessions, &fakeOAuth{}, &fakeState{}, tasks)
 
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, signedInRequest(
-			http.MethodPost, "/v1/tasks/"+encodedTaskName(TaskActivityRecord)+"/run/rider-a"))
-		assert.Equal(t, http.StatusNotFound, response.Code, "run status")
-		assert.Empty(t, tasks.asked, "the task must not have been reached")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, signedInRequest(
+				http.MethodPost, "/v1/tasks/"+encodedTaskName(name)+"/run/rider-a"))
+			assert.Equal(t, http.StatusNotFound, response.Code, "run status")
+			assert.Empty(t, tasks.asked, "the task must not have been reached")
+		}
 	}
 }
 

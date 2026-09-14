@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -121,4 +122,18 @@ func (s *Store) ActivityAnalyses(
 	}
 
 	return analyses, nil
+}
+
+// ActivityStartedAt is when one of the target's rides started, and whether the
+// target holds it at all.
+func (s *Store) ActivityStartedAt(ctx context.Context, targetID string, id int64) (time.Time, bool, error) {
+	started, err := s.queries.GetActivityStartedAt(ctx, sqlcgen.GetActivityStartedAtParams{TargetSlot: targetID, WorkoutID: id})
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("reading when an activity started: %w", err)
+	}
+
+	return time.Unix(started, 0).UTC(), true, nil
 }

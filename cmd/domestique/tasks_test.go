@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1293,6 +1294,12 @@ type fakeAnalyser struct {
 	analysed []string
 }
 
+func (a *fakeAnalyser) Reanalyse(_ context.Context, targetID string, workoutID int64) activity.Result {
+	a.analysed = append(a.analysed, targetID+"/"+strconv.FormatInt(workoutID, 10))
+
+	return a.results[targetID]
+}
+
 func (a *fakeAnalyser) Analyse(_ context.Context, targetID string) activity.Result {
 	a.analysed = append(a.analysed, targetID)
 
@@ -1372,4 +1379,25 @@ func TestActivityAnalyseTaskStopsEveryTargetAtASharedFailure(t *testing.T) {
 	}}
 	activityAnalyseTask(local, allEnabled, three).Run.Run(t.Context(), task.Invocation{Task: taskActivityAnalyse})
 	assert.Equal(t, []string{"rider-a", "rider-b", "rider-c"}, local.analysed)
+}
+
+// The re-analysis is one ride's, named in its argument, under the same resource
+// as every other activity task; a malformed argument asks nothing.
+func TestActivityReanalyseTaskAsksAboutTheRideItsArgumentNames(t *testing.T) {
+	t.Parallel()
+
+	analyser := &fakeAnalyser{results: map[string]activity.Result{"rider-a": {Outcome: activity.Polled, Analysed: 1}}}
+	definition := activityReanalyseTask(analyser)
+
+	assert.Equal(t, taskActivityReanalyse, definition.Name, "name")
+	assert.Nil(t, definition.Schedule, "only the activity endpoint starts it")
+	assert.Equal(t, []task.Resource{{Name: resourceActivities, Exclusive: true}}, definition.Resources(""), "resources")
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityReanalyse, Argument: "rider-a/42"})
+	assert.Equal(t, task.Succeeded, result.Outcome, "outcome")
+	assert.Equal(t, []string{"rider-a/42"}, analyser.analysed)
+
+	malformed := definition.Run.Run(t.Context(), task.Invocation{Task: taskActivityReanalyse, Argument: "rider-a"})
+	assert.Equal(t, task.Result{Outcome: task.Failed, Detail: detailActivityArgument}, malformed)
+	assert.Len(t, analyser.analysed, 1)
 }

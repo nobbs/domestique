@@ -2503,6 +2503,7 @@ type fakeState struct {
 	activityWeatherErr   error
 	routeMatchErr        error
 	analysesErr          error
+	startedErr           error
 	routeRidesErr        error
 	rideLoadsErr         error
 	rideLoads            map[string][]trainingload.RideLoad
@@ -2549,6 +2550,19 @@ func (s *fakeState) ActivityAnalyses(
 	_ context.Context, targetID string, _, _ time.Time,
 ) (map[int64]activities.Analysis, error) {
 	return s.analyses[targetID], s.analysesErr
+}
+
+func (s *fakeState) ActivityStartedAt(_ context.Context, targetID string, id int64) (time.Time, bool, error) {
+	if s.startedErr != nil {
+		return time.Time{}, false, s.startedErr
+	}
+	for index := range s.activities[targetID] {
+		if stored := &s.activities[targetID][index]; stored.ID == id {
+			return stored.StartedAt, true, nil
+		}
+	}
+
+	return time.Time{}, false, nil
 }
 
 func (s *fakeState) RouteActivities(
