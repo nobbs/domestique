@@ -95,7 +95,7 @@ describe("RideAnalysis", () => {
         true,
       ),
     );
-    expect(await screen.findByText(/A new analysis replaces this one/)).toBeInTheDocument();
+    expect(await screen.findByText(/Reload the page in a minute/)).toBeInTheDocument();
   });
 
   it("says so when the request is refused", async () => {

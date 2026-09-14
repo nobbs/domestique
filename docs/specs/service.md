@@ -1282,8 +1282,9 @@ profile edit re-derives it but does not re-analyse it; a derivation that
 removes the ride's figures removes the analysis with them, and only a later
 derivation that gives the ride figures again asks once more. The one request
 that asks on demand is an administrator's re-analysis of one ride: it asks about
-any derived ride, whenever it started, replaces what stood only with an answer
-that fits the bound, and leaves the stored analysis in place when the request
+any derived ride, whenever it started, and sends the rider's fitness, fatigue and
+form as they stood at the end of that ride's day rather than today's. It replaces
+what stood only with an answer that fits the bound, and leaves the stored analysis in place when the request
 fails. The route-scoped reprocess does not reach a ride. A head unit's indoor ride waits, for a rider with Zwift credentials, until
 the Zwift copy that replaces it has had a poll to arrive in, so the copy asked
 about is the one kept. Only rides started after the

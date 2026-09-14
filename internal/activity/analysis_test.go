@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -307,6 +308,25 @@ func TestReanalyseAsksAboutOneDerivedRideWheneverItStarted(t *testing.T) {
 	assert.Equal(t, Result{Outcome: Polled, Analysed: 1}, result)
 	assert.Equal(t, "said again", store.stored[7].Text)
 	assert.Equal(t, []time.Time{started}, store.earlierBefore, "its context is the analyses before it")
+}
+
+// A year-old ride is told the load it left behind, not the rider's load today.
+func TestReanalyseReadsTheLoadOnTheRidesOwnDay(t *testing.T) {
+	t.Parallel()
+	started := analyseNow().Add(-400 * 24 * time.Hour)
+	store := newFakeAnalyseStore()
+	store.metrics[7] = RideMetrics{}
+	store.started = map[int64]time.Time{7: started}
+	store.loads = []trainingload.RideLoad{{At: started, TSS: 100}, {At: analyseNow().Add(-time.Hour), TSS: 300}}
+	asker := &fakeAsker{answers: []string{"said again"}}
+
+	newTestAnalyser(t, store, asker).Reanalyse(t.Context(), "rider-a", 7)
+
+	require.Len(t, asker.prompts, 1)
+	day := trainingload.Timeline(store.loads, started, time.UTC)
+	assert.Contains(t, asker.prompts[0], loadOnRideDay+":")
+	assert.Contains(t, asker.prompts[0], fmt.Sprintf("fatigue %.0f", day[len(day)-1].TSSFatigue))
+	assert.NotContains(t, asker.prompts[0], loadNow)
 }
 
 func TestReanalyseKeepsWhatStoodWhenTheRequestFails(t *testing.T) {

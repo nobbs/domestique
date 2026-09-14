@@ -91,9 +91,9 @@ export function TaskTable() {
   }
 
   function runControl(task: Task) {
-    // The Wahoo receiver names a workout when it starts this; the service
-    // refuses every other caller, so there is no button to offer.
-    if (task.name === TASKS.activityRecord) {
+    // Each names one ride, which only its own caller knows; the service refuses
+    // them by name, so there is no button to offer.
+    if (task.name === TASKS.activityRecord || task.name === TASKS.activityReanalyse) {
       return <span className="text-[var(--ink-2)]">—</span>;
     }
     if (task.name !== TASKS.syncClear) {

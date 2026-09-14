@@ -54,8 +54,8 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
       ) : null}
       {reanalyse.isSuccess ? (
         <p className="text-[var(--ink-2)] text-xs" role="status">
-          Asked. A new analysis replaces this one once it arrives; a failed request leaves it as it
-          is.
+          Asked. Reload the page in a minute to see the new analysis; a failed request leaves this
+          one as it is.
         </p>
       ) : null}
       {reanalyse.isError ? (

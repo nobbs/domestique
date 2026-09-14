@@ -10,23 +10,31 @@ import (
 )
 
 // promptInstruction is revision PromptRevision's framing; change the two together.
-const promptInstruction = `You are a cycling coach reading one ride a rider has just finished.
+const promptInstruction = `You are a cycling coach reading one ride a rider has finished.
 Answer in plain text without Markdown, headings or lists, in two or three short paragraphs of at most 1500 characters in total:
 what kind of ride it was, what it did to the rider's fitness, fatigue and form, and one recommendation for the next session.
 Use only the figures below. Where a figure you would want is absent, say so rather than guessing.`
+
+// The two ways a prompt names the training load it carries.
+const (
+	loadNow       = "The rider's training load now"
+	loadOnRideDay = "The rider's training load at the end of this ride's day"
+)
 
 // composePrompt is the whole of what leaves the host about one ride: its
 // derived figures and sensor means, the rider's profile and zone bounds, the
 // rider's current training load and earlier analyses. Never the track,
 // the weather, the provider's document or who the rider is.
-func composePrompt(profile *rider.Profile, metrics *RideMetrics, day *trainingload.Day, earlier []Analysis) string {
+func composePrompt(
+	profile *rider.Profile, metrics *RideMetrics, day *trainingload.Day, loadLabel string, earlier []Analysis,
+) string {
 	var prompt strings.Builder
 	prompt.WriteString(promptInstruction)
 
 	writeSection(&prompt, "Rider profile", profileLines(profile))
 	writeSection(&prompt, "This ride", rideLines(metrics))
 	if day != nil {
-		writeSection(&prompt, "The rider's training load now", []string{
+		writeSection(&prompt, loadLabel, []string{
 			fmt.Sprintf("TSS scale: fitness %.0f, fatigue %.0f, form %.0f", day.TSSFitness, day.TSSFatigue, day.TSSForm),
 			fmt.Sprintf("TRIMP scale: fitness %.0f, fatigue %.0f, form %.0f", day.TRIMPFitness, day.TRIMPFatigue, day.TRIMPForm),
 		})

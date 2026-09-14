@@ -15,7 +15,7 @@ import (
 const (
 	// PromptRevision names the prompt below; an analysis records the one it
 	// was asked with.
-	PromptRevision = 1
+	PromptRevision = 2
 
 	// MaximumAnalysisCharacters is the contract's bound on a stored answer.
 	MaximumAnalysisCharacters = 2000
@@ -172,10 +172,12 @@ func (a *Analyser) Reanalyse(ctx context.Context, targetID string, id int64) Res
 	if subject == "" || !held {
 		return Result{Outcome: Unchanged}
 	}
-	run, err := a.readContext(ctx, targetID, subject, a.now())
+	// The ride may be a year old, so it is read against the load it left behind.
+	run, err := a.readContext(ctx, targetID, subject, startedAt)
 	if err != nil {
 		return Result{Outcome: Failed, Failure: FailureState}
 	}
+	run.loadLabel = loadOnRideDay
 	if _, derived := run.metrics[id]; !derived {
 		return Result{Outcome: Unchanged}
 	}
@@ -208,9 +210,10 @@ func (a *Analyser) heldTypes(ctx context.Context, subject string) ([]int, error)
 // analysisContext is what every prompt of one run reads beside its ride.
 type analysisContext struct {
 	metrics map[int64]RideMetrics
-	// load is the rider's training load now, absent before any derived ride.
-	load    *trainingload.Day
-	profile rider.Profile
+	// load is the rider's training load at loadLabel's day, absent before any derived ride.
+	load      *trainingload.Day
+	loadLabel string
+	profile   rider.Profile
 }
 
 func (a *Analyser) readContext(ctx context.Context, targetID, subject string, now time.Time) (analysisContext, error) {
@@ -231,7 +234,7 @@ func (a *Analyser) readContext(ctx context.Context, targetID, subject string, no
 		location = time.UTC
 	}
 
-	run := analysisContext{metrics: metrics, profile: profile}
+	run := analysisContext{metrics: metrics, profile: profile, loadLabel: loadNow}
 	if days := trainingload.Timeline(loads, now, location); len(days) > 0 {
 		run.load = &days[len(days)-1]
 	}
@@ -250,7 +253,7 @@ func (a *Analyser) analyseOne(
 	if err != nil {
 		return FailureState
 	}
-	text, model, err := a.asker.Ask(ctx, composePrompt(&run.profile, &metrics, run.load, earlier))
+	text, model, err := a.asker.Ask(ctx, composePrompt(&run.profile, &metrics, run.load, run.loadLabel, earlier))
 	if err != nil {
 		return a.asker.FailureOf(err)
 	}
