@@ -96,7 +96,7 @@ afterEach(() => {
 
 function scaleOutlook(fitness: number): FitnessScaleOutlook {
   const days = Array.from({ length: 21 }, (_, index) => ({
-    date: `2026-08-${String(25 + index).padStart(2, "0")}`,
+    date: new Date(Date.UTC(2026, 7, 25 + index)).toISOString().slice(0, 10),
     fitness,
     fatigue: fitness,
     form: 0,

@@ -74,6 +74,42 @@ export function median(values: readonly number[]): number | undefined {
     : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
 }
 
+/** The chart's percent range: the rides shown and the median, which also reads rides before the range. */
+export function decouplingDomain(
+  shown: readonly DecouplingRide[],
+  trend: readonly (number | undefined)[],
+): [number, number] {
+  const values = [
+    ...shown.map((ride) => ride.percent),
+    ...trend.filter((value) => value !== undefined),
+  ];
+
+  return [Math.min(-2, ...values), Math.max(12, ...values)];
+}
+
+/** Each unbroken stretch of defined values, as index–value pairs, so a gap is never drawn across. */
+export function definedRuns(
+  values: readonly (number | undefined)[],
+): Array<Array<[number, number]>> {
+  const runs: Array<Array<[number, number]>> = [];
+  let run: Array<[number, number]> = [];
+  values.forEach((value, index) => {
+    if (value === undefined) {
+      if (run.length > 0) {
+        runs.push(run);
+      }
+      run = [];
+    } else {
+      run.push([index, value]);
+    }
+  });
+  if (run.length > 0) {
+    runs.push(run);
+  }
+
+  return runs;
+}
+
 const daysBefore = (date: string, days: number) => {
   const at = new Date(`${date}T00:00:00Z`);
   at.setUTCDate(at.getUTCDate() - days);
@@ -123,8 +159,7 @@ export function DecouplingPanel({ rides, dates }: Props) {
     return null;
   }
   const trend = dates.map((date) => medianBetween(rides, daysBefore(date, TREND_DAYS), date));
-  const high = Math.max(12, ...shown.map((ride) => ride.percent));
-  const low = Math.min(-2, ...shown.map((ride) => ride.percent));
+  const [low, high] = decouplingDomain(shown, trend);
 
   return (
     <>
@@ -185,16 +220,15 @@ export function DecouplingPanel({ rides, dates }: Props) {
                     opacity={0.55}
                   />
                 ))}
-                <polyline
-                  points={trend
-                    .flatMap((value, index) =>
-                      value === undefined ? [] : [`${x(index)},${y(value)}`],
-                    )
-                    .join(" ")}
-                  fill="none"
-                  stroke="var(--ink)"
-                  strokeWidth={2}
-                />
+                {definedRuns(trend).map((run) => (
+                  <polyline
+                    key={run[0]?.[0]}
+                    points={run.map(([index, value]) => `${x(index)},${y(value)}`).join(" ")}
+                    fill="none"
+                    stroke="var(--ink)"
+                    strokeWidth={2}
+                  />
+                ))}
               </>
             ),
           },
