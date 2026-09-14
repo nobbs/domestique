@@ -58,7 +58,7 @@ import { useNarrowViewport } from "../../lib/mediaQuery";
 import { PADDING, plotAxis } from "../../lib/plotAxis";
 import type { DistanceWindow, Profile, ProfileSample } from "../../lib/profile";
 import { niceStep, sampleAt, sampleIndexAt, ticksFor } from "../../lib/profile";
-import type { AlignedSeries } from "../../lib/rideSeries";
+import { type AlignedSeries, formatSeriesReading } from "../../lib/rideSeries";
 import { MIN_DRAG_PIXELS, spanBetween, widened } from "../../lib/selection";
 import type { SurfaceSummary } from "../../lib/surface";
 import { SURFACE_STYLES, surfaceBandsWithin, surfaceKindAt } from "../../lib/surface";
@@ -384,9 +384,7 @@ function SeriesTooltip({
                 style={{ background: one.colour, forcedColorAdjust: "none" }}
               />
               <span>{one.label}</span>
-              <span className="tabular-nums">
-                {value.toFixed(one.decimals ?? 0)} {one.unit}
-              </span>
+              <span className="tabular-nums">{formatSeriesReading(value, one)}</span>
             </div>
           );
         })}
@@ -808,7 +806,27 @@ export function ElevationProfile({
            */}
           {series.map((one) => (
             <Fragment key={one.key}>
-              <YAxis yAxisId={one.key} domain={["auto", "auto"]} hide />
+              <YAxis
+                yAxisId={one.key}
+                // A signed series keeps its zero on the chart, so the line it is
+                // read against is always there to read it against.
+                domain={
+                  one.signed
+                    ? [(low: number) => Math.min(0, low), (high: number) => Math.max(0, high)]
+                    : ["auto", "auto"]
+                }
+                hide
+              />
+              {one.signed ? (
+                <ReferenceLine
+                  yAxisId={one.key}
+                  y={0}
+                  stroke={one.colour}
+                  strokeDasharray="3 3"
+                  strokeOpacity={0.6}
+                  data-zero={one.key}
+                />
+              ) : null}
               <Area
                 yAxisId={one.key}
                 dataKey={one.key}

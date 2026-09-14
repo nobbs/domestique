@@ -909,21 +909,22 @@ type ActivityTrackProperties struct {
 	EstimatedPowerWatts []*float64 `json:"estimatedPowerWatts,omitempty"`
 }
 
-// ActivitySeriesName A series of a ride's samples. Every one but `speed` is read from the samples as recorded; `speed` prefers the device's own reading and, for a sample carrying none, falls back to the distance covered between it and the sample before.
+// ActivitySeriesName A series of a ride's samples. Every one but `speed` and `aheadOfPrediction` is read from the samples as recorded; `speed` prefers the device's own reading and, for a sample carrying none, falls back to the distance covered between it and the sample before. `aheadOfPrediction` is seconds ahead of the matched route's predicted moving time at the place along the route the ride had reached, positive when faster, measured by the ride's moving time from where it joined the route; null before its first reading and after its last, one every hundred metres along the route. Not found for a ride with no forward route match, no odometer, or whose route has no prediction for its current line.
 type ActivitySeriesName string
 
 const (
-	ActivitySeriesNameHeartRate   ActivitySeriesName = "heartRate"
-	ActivitySeriesNameCadence     ActivitySeriesName = "cadence"
-	ActivitySeriesNamePower       ActivitySeriesName = "power"
-	ActivitySeriesNameTemperature ActivitySeriesName = "temperature"
-	ActivitySeriesNameSpeed       ActivitySeriesName = "speed"
-	ActivitySeriesNameTargetPower ActivitySeriesName = "targetPower"
+	ActivitySeriesNameHeartRate         ActivitySeriesName = "heartRate"
+	ActivitySeriesNameCadence           ActivitySeriesName = "cadence"
+	ActivitySeriesNamePower             ActivitySeriesName = "power"
+	ActivitySeriesNameTemperature       ActivitySeriesName = "temperature"
+	ActivitySeriesNameSpeed             ActivitySeriesName = "speed"
+	ActivitySeriesNameTargetPower       ActivitySeriesName = "targetPower"
+	ActivitySeriesNameAheadOfPrediction ActivitySeriesName = "aheadOfPrediction"
 )
 
 type ActivitySeries struct {
 	Series ActivitySeriesName `json:"series"`
-	// Values The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius, kilometres per hour and watts respectively. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one.
+	// Values The series at each coordinate of the activity's track, indexed 1:1 with them; null where that sample recorded nothing. Units are beats per minute, revolutions per minute, watts, degrees Celsius, kilometres per hour and watts respectively, and seconds for `aheadOfPrediction`, whose nulls lie before its first reading and after its last rather than where nothing was recorded. A reading of zero is a reading — a stopped rider's cadence — and never stands in for an absent one.
 	Values []*float64 `json:"values"`
 }
 

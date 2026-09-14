@@ -171,6 +171,7 @@ function show(
   splits: ActivitySplit[] = [],
   library: LibraryRoute[] | null = [],
   climbs: RouteClimb[] = [],
+  aheadOfPrediction?: (number | null)[],
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -200,6 +201,12 @@ function show(
       client.setQueryData(activitySeriesQuery(asked, "heartRate").queryKey, {
         series: "heartRate",
         values: heartRate,
+      });
+    }
+    if (aheadOfPrediction) {
+      client.setQueryData(activitySeriesQuery(asked, "aheadOfPrediction").queryKey, {
+        series: "aheadOfPrediction",
+        values: aheadOfPrediction,
       });
     }
   }
@@ -400,6 +407,21 @@ describe("one ride's page", () => {
     expect(drawn.series[0]?.key).toBe("heartRate");
     expect(drawn.series[0]?.values).toHaveLength(drawn.profiles.at(-1)?.samples.length ?? 0);
     expect(drawn.series[0]?.values[0]).toBe(120);
+  });
+
+  // Served in seconds, read in minutes, and drawn against its own zero.
+  it("draws the lead over the prediction in signed minutes", async () => {
+    show(track(), RIDE.id, undefined, RIDE, [], [], [], [0, -90, 150]);
+
+    await userEvent.click(screen.getByRole("button", { name: /Ahead of prediction/ }));
+
+    const lead = drawn.series.find((one) => one.key === "aheadOfPrediction");
+    expect(lead?.signed).toBe(true);
+    expect(lead?.unit).toBe("min");
+    const readings = (lead?.values ?? []).filter((value): value is number => value !== null);
+    expect(Math.min(...readings)).toBeGreaterThanOrEqual(-1.5);
+    expect(Math.max(...readings)).toBeLessThanOrEqual(2.5);
+    expect(Math.max(...readings)).toBeGreaterThan(0);
   });
 
   it("puts the series away again when its chip is pressed a second time", async () => {

@@ -136,6 +136,7 @@ type ActivityRouteMatch struct {
 	Direction     sql.NullString
 	LibraryHash   string
 	MatchedAtUnix int64
+	RouteClock    sql.NullString
 }
 
 type ActivitySession struct {

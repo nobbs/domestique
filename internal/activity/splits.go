@@ -80,12 +80,7 @@ type splitParts struct {
 
 // add folds the step from one sample to the next into the stretch it began in.
 func (p *splitParts) add(previous, current *SampleRow) {
-	// The same pair `speedSeries` refuses to report a speed for: a clock that
-	// did not advance, or went backwards over a correction, times nothing.
-	seconds := current.Time.Sub(previous.Time).Seconds()
-	if seconds > 0 && current.DistanceMetres.Value > previous.DistanceMetres.Value {
-		p.movingSeconds += seconds
-	}
+	p.movingSeconds += movingSecondsBetween(previous, current)
 	// The first sample the stretch began from opens its series where it
 	// carried a height; a sample without one ends the run, and the next that
 	// carries one starts another.
@@ -105,6 +100,19 @@ func (p *splitParts) add(previous, current *SampleRow) {
 	}
 	p.heartRate.add(current.HeartRateBPM)
 	p.power.add(current.PowerWatts)
+}
+
+// movingSecondsBetween is the time between two samples that both carry an
+// odometer reading, if the rider moved over it. The same pair `speedSeries`
+// refuses a speed for: a clock that did not advance, or went backwards over a
+// correction, times nothing.
+func movingSecondsBetween(previous, current *SampleRow) float64 {
+	seconds := current.Time.Sub(previous.Time).Seconds()
+	if seconds > 0 && current.DistanceMetres.Value > previous.DistanceMetres.Value {
+		return seconds
+	}
+
+	return 0
 }
 
 func (p splitParts) close(distanceMetres float64) Split {

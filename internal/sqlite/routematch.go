@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -128,6 +129,13 @@ func (s *Store) StoreActivityRouteMatch(
 		// absence, which is what the column being nullable is for.
 		if match.Direction != activity.DirectionUnknown {
 			params.Direction = sql.NullString{String: match.Direction.String(), Valid: true}
+		}
+		if match.Clock != nil {
+			clock, err := json.Marshal(match.Clock)
+			if err != nil {
+				return fmt.Errorf("encoding an activity's route clock: %w", err)
+			}
+			params.RouteClock = sql.NullString{String: string(clock), Valid: true}
 		}
 	}
 	// One transaction: an attempt names no route of its own and is read through
@@ -257,6 +265,28 @@ func (s *Store) RouteClimbAttempts(
 	}
 
 	return attempts, nil
+}
+
+// ActivityRouteClock is one ride's clock along the route it was matched to, and
+// that route. found is false for a ride with no match, or no clock on it.
+func (s *Store) ActivityRouteClock(
+	ctx context.Context, targetID string, id int64,
+) (key route.Key, clock *activity.RouteClock, found bool, err error) {
+	row, err := s.queries.GetActivityRouteClock(ctx, sqlcgen.GetActivityRouteClockParams{
+		TargetSlot: targetID, WorkoutID: id,
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return route.Key{}, nil, false, nil
+	}
+	if err != nil {
+		return route.Key{}, nil, false, fmt.Errorf("reading an activity's route clock: %w", err)
+	}
+	if err := json.Unmarshal([]byte(row.RouteClock.String), &clock); err != nil {
+		return route.Key{}, nil, false, fmt.Errorf("reading an activity's route clock: %w", err)
+	}
+	key = route.NewKey(route.Provider(row.Provider.String), row.RouteID.Int64, int(row.StageOrder.Int64))
+
+	return key, clock, true, nil
 }
 
 // ClearActivityRouteMatches removes every match one target holds and reports

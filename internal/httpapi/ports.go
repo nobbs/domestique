@@ -307,6 +307,10 @@ type StageState interface {
 	// carries no height.
 	StageProfile(ctx context.Context, key route.Key) (
 		line []measure.Coordinate, elevations []float64, found bool, err error)
+	// ActivityRouteClock is one ride's moving time along the route it was matched
+	// to, and that route; found is false for a ride with no clock.
+	ActivityRouteClock(ctx context.Context, targetID string, id int64) (
+		key route.Key, clock *activities.RouteClock, found bool, err error)
 	// RouteClimbAttempts is every attempt one target's rides made at one of
 	// this stage's climbs.
 	RouteClimbAttempts(ctx context.Context, targetID string, key route.Key) (

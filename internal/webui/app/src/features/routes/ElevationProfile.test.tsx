@@ -275,6 +275,33 @@ describe("ElevationProfile", () => {
     expect(bare.container.querySelector("[data-series]")).toBeNull();
   });
 
+  // A lead over a prediction is read against zero, so zero is drawn with it.
+  it("draws a zero line for a signed series alone", () => {
+    const profile = buildProfile(climb());
+    const values = (profile?.samples ?? []).map((_, index) => 1 + index);
+    const line = (key: string, signed: boolean): AlignedSeries => ({
+      key,
+      label: key,
+      unit: "min",
+      colour: "var(--series-ahead-of-prediction)",
+      ...(signed ? { signed } : {}),
+      values,
+    });
+
+    const { container } = render(
+      <ElevationProfile
+        profile={profile}
+        title="Eich Rundkurs 90"
+        series={[line("aheadOfPrediction", true), line("heartRate", false)]}
+        activeMetres={null}
+        onActiveChange={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelectorAll("[data-zero]")).toHaveLength(1);
+    expect(container.querySelector("[data-zero='aheadOfPrediction']")).not.toBeNull();
+  });
+
   it("says so plainly when a route has no elevation", () => {
     const flat: Position[] = [
       [8, 49],

@@ -336,6 +336,12 @@ of nothing, so a profile edit that takes a parameter away takes its numbers
 with it. A slot nobody owns, and a rider who has entered no profile at all,
 leave the rides untouched rather than failing.
 
+The pass that matches a ride to its library route also times it over the route:
+its attempts at the route's climbs, and its moving time read every hundred
+metres along the route for a ride that ran it the way it is stored
+([measurement.md](measurement.md#ahead-of-prediction)). Both are written with the
+match, in one transaction, and are derived again whenever the match is.
+
 The same task also records what each ride was actually ridden through, which is
 independent of the profile and of everything above: a rider who has entered
 nothing still rode through weather. A ride is asked about **once**, after its

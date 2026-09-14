@@ -2510,6 +2510,9 @@ type fakeState struct {
 	activitySessions     map[string]map[int64]activities.Session
 	activityWeather      map[string]map[int64][]activities.WeatherStep
 	routeMatches         map[string]map[int64]activities.RouteMatch
+	routeClocks          map[string]fakeRouteClock
+	routeClockErr        error
+	stageGeometryErr     error
 	analyses             map[string]map[int64]activities.Analysis
 	riderProfiles        map[string]rider.Profile
 	riderCredentials     map[string]map[rider.CredentialName]rider.Credential
@@ -2550,6 +2553,24 @@ func (s *fakeState) ActivityAnalyses(
 	_ context.Context, targetID string, _, _ time.Time,
 ) (map[int64]activities.Analysis, error) {
 	return s.analyses[targetID], s.analysesErr
+}
+
+// ActivityRouteClock answers with the clock the test seeded for one ride,
+// keyed "target/id".
+func (s *fakeState) ActivityRouteClock(
+	_ context.Context, targetID string, id int64,
+) (route.Key, *activities.RouteClock, bool, error) {
+	if s.routeClockErr != nil {
+		return route.Key{}, nil, false, s.routeClockErr
+	}
+	clock, found := s.routeClocks[fmt.Sprintf("%s/%d", targetID, id)]
+
+	return clock.key, clock.clock, found, nil
+}
+
+type fakeRouteClock struct {
+	clock *activities.RouteClock
+	key   route.Key
 }
 
 func (s *fakeState) RouteActivities(
@@ -3103,6 +3124,9 @@ func (s *fakeState) StageGeometry(
 	routeID int64,
 	stageOrder int,
 ) (summary route.Summary, coordinates, cumulativeSeconds json.RawMessage, found bool, err error) {
+	if s.stageGeometryErr != nil {
+		return route.Summary{}, nil, nil, false, s.stageGeometryErr
+	}
 	for index := range s.summaries {
 		candidate := s.summaries[index]
 		if candidate.Provider == provider && candidate.SourceRouteID == routeID && candidate.StageOrder == stageOrder {

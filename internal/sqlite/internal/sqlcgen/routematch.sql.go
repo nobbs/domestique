@@ -100,6 +100,38 @@ func (q *Queries) DeleteActivityRouteMatchesForTarget(ctx context.Context, targe
 	return result.RowsAffected()
 }
 
+const getActivityRouteClock = `-- name: GetActivityRouteClock :one
+SELECT provider, route_id, stage_order, route_clock
+FROM activity_route_match
+WHERE target_slot = ?1 AND workout_id = ?2
+  AND provider IS NOT NULL AND route_clock IS NOT NULL
+`
+
+type GetActivityRouteClockParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+type GetActivityRouteClockRow struct {
+	Provider   sql.NullString
+	RouteID    sql.NullInt64
+	StageOrder sql.NullInt64
+	RouteClock sql.NullString
+}
+
+// One ride's clock along the route it was matched to, with that route.
+func (q *Queries) GetActivityRouteClock(ctx context.Context, arg GetActivityRouteClockParams) (GetActivityRouteClockRow, error) {
+	row := q.db.QueryRowContext(ctx, getActivityRouteClock, arg.TargetSlot, arg.WorkoutID)
+	var i GetActivityRouteClockRow
+	err := row.Scan(
+		&i.Provider,
+		&i.RouteID,
+		&i.StageOrder,
+		&i.RouteClock,
+	)
+	return i, err
+}
+
 const insertActivityClimbAttempt = `-- name: InsertActivityClimbAttempt :exec
 INSERT INTO activity_climb_attempt (
   target_slot, workout_id, climb_index, seconds, heart_rate_bpm, power_watts, estimated_power_watts
@@ -392,11 +424,11 @@ func (q *Queries) ListRouteClimbAttempts(ctx context.Context, arg ListRouteClimb
 const upsertActivityRouteMatch = `-- name: UpsertActivityRouteMatch :exec
 INSERT INTO activity_route_match (
   target_slot, workout_id, provider, route_id, stage_order,
-  route_coverage, ride_coverage, direction, library_hash, matched_at_unix
+  route_coverage, ride_coverage, direction, route_clock, library_hash, matched_at_unix
 ) VALUES (
   ?1, ?2, ?3, ?4, ?5,
-  ?6, ?7, ?8,
-  ?9, ?10
+  ?6, ?7, ?8, ?9,
+  ?10, ?11
 )
 ON CONFLICT (target_slot, workout_id) DO UPDATE SET
   provider = excluded.provider,
@@ -405,6 +437,7 @@ ON CONFLICT (target_slot, workout_id) DO UPDATE SET
   route_coverage = excluded.route_coverage,
   ride_coverage = excluded.ride_coverage,
   direction = excluded.direction,
+  route_clock = excluded.route_clock,
   library_hash = excluded.library_hash,
   matched_at_unix = excluded.matched_at_unix
 `
@@ -418,6 +451,7 @@ type UpsertActivityRouteMatchParams struct {
 	RouteCoverage sql.NullFloat64
 	RideCoverage  sql.NullFloat64
 	Direction     sql.NullString
+	RouteClock    sql.NullString
 	LibraryHash   string
 	MatchedAtUnix int64
 }
@@ -432,6 +466,7 @@ func (q *Queries) UpsertActivityRouteMatch(ctx context.Context, arg UpsertActivi
 		arg.RouteCoverage,
 		arg.RideCoverage,
 		arg.Direction,
+		arg.RouteClock,
 		arg.LibraryHash,
 		arg.MatchedAtUnix,
 	)

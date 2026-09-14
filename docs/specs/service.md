@@ -581,14 +581,19 @@ The read-only JSON surface is small:
   own roads.
 - `GET /v1/activities/{activityId}/series/{series}` returns one named series of
   that activity's samples — `heartRate`, `cadence`, `power`, `temperature`,
-  `speed` or `targetPower` — indexed 1:1 with the coordinates the track
+  `speed`, `targetPower` or `aheadOfPrediction` — indexed 1:1 with the coordinates the track
   endpoint serves, `null` where that sample recorded nothing. Every one but
   `speed` is read from the samples as recorded; `speed` is worked out from the
   distance covered between one sample and the next, in kilometres per hour, and
   has none at the first sample or across a pair whose clock did not advance. A
   reading of nought is a reading — a stopped rider's cadence — and never stands
   in for an absent one. `targetPower` is the power a structured workout
-  prescribed for that record, carried by almost no ride.
+  prescribed for that record, carried by almost no ride. `aheadOfPrediction`
+  is not read from the samples: it is seconds ahead of the matched route's
+  predicted moving time at the place along the route the ride had reached
+  ([measurement.md](measurement.md#ahead-of-prediction)), `404` for a ride
+  with no forward match or no odometer, and for a route with no prediction
+  for its stored line or whose line has moved since the ride was read along it.
 
   One request names one series and receives that series alone: a ride can hold
   twenty thousand samples, and nothing of this is bundled into the track
@@ -1426,6 +1431,14 @@ pass is the attempt. Because the climbs follow the route's height, the library
 digest a match is measured against now covers the height along each route as
 well as its line: a route whose profile is redrawn owes its rides a fresh pass
 exactly as one whose line moved does.
+
+The same pass reads each ride's clock along its route: its own moving time
+every hundred metres along it, stored on the match, so it is replaced,
+deleted and cleared exactly as the match is. Only a ride that ran the route the
+way it is stored has one. The prediction it is compared against is not stored
+with it but read when the comparison is served, as the `aheadOfPrediction`
+series of the ride, scoped exactly as the ride's other series are: a refit
+changes the prediction without owing any ride a fresh pass.
 
 A route serves its climbs in the order they are ridden, each with the caller's
 own attempts at it, quickest first, scoped to the owning subject exactly as the

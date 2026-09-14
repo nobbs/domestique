@@ -354,6 +354,62 @@ now draws the climbs the route serves.
 
 **Status.** Validated against the vectors in `climb_test.go`.
 
+## Ahead of prediction
+
+**Definition.** How far ahead of its route's predicted moving time a ride was
+at a place along the route: the predicted time from where the ride joined the
+route to that place, less the ride's own moving time over the same. Positive
+is ahead, zero is on the prediction.
+
+**Formula.** In symbols:
+
+~~~text
+passes(i)    = the route's segments within the 40 m route-matching corridor of
+               sample i, grouped into places more than 80 m apart along it,
+               each at its nearest segment, in the snap index's projected frame
+along(i)     = the pass nearest along(previous on-route sample), or the
+               earliest pass for the first
+moving(i)    = Σ seconds between consecutive odometer-carrying samples up to i
+               where 0 < seconds <= 10 s and the odometer advanced
+readings     = the first on-route sample, then the first sample whose along
+               reaches each further multiple of 100 m
+predicted(a) = cumulativeSeconds interpolated at a, over each coordinate's
+               along in the same frame
+ahead(k)     = (predicted(along(k)) - predicted(along(k0)))
+               - (moving(k) - moving(k0)),  k0 the first reading
+~~~
+
+Between two readings a sample's value is interpolated by sample index; before
+the first and after the last there is none.
+
+**Constants.** The 100 m spacing is `routeClockSpacingMetres` in
+`internal/activity/routeclock.go`; the 40 m corridor is route matching's own,
+and the 10 s gap is Recording gaps' `measure.DefaultMaxGap`. Passes are told
+apart because a closed loop's finish lies within the corridor of its start, and
+a ride's first seconds must not snap to the route's end.
+
+**Choices.** The ride's clock is its moving time, never elapsed time, so a stop
+is not read as the prediction being wrong. Both series are read at the same
+place along the route rather than at the bicycle's odometer, which a detour or
+GPS wander pulls away from the route. Only a ride that ran the way the route is
+stored is compared: the prediction is not symmetric, so a ride the other way
+round, or one whose direction could not be told, has none. A ride with no
+odometer cannot tell moving from standing and has none either. A step longer
+than a recording gap counts as a pause even where the odometer crept across it,
+so a GPS dropout while riding reads as time gained. A comparison is served only
+against the line the clock was read along, which the clock fingerprints.
+
+**Source.** This service's own rule.
+
+**Applied by.** `activity.ReadRouteClock` in `activity:derive`, on the pass that
+matches a ride to its route, stored as `activity_route_match.route_clock`;
+`activity.AheadOfPrediction` when the series is served, against the stage's
+current `cumulativeSeconds`, so a refit prediction is never read against a
+stale comparison.
+
+**Status.** Covered by unit tests over synthetic rides; unvalidated against a
+real ride's split times.
+
 ## Sensor cleaning
 
 **Definition.** Heart-rate samples above the rider's maximum, replaced by

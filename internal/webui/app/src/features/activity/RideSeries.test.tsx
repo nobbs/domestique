@@ -22,6 +22,7 @@ function allOff(): Record<RideSeriesKey, SeriesState> {
     power: "off",
     targetPower: "off",
     estimatedPower: "off",
+    aheadOfPrediction: "off",
   };
 }
 
@@ -40,7 +41,7 @@ describe("the ride's series chips", () => {
     const onToggle = vi.fn();
     render(<SeriesChips states={allOff()} drawn={[]} activeIndex={null} onToggle={onToggle} />);
 
-    expect(screen.getAllByRole("button")).toHaveLength(7);
+    expect(screen.getAllByRole("button")).toHaveLength(8);
     await userEvent.click(screen.getByRole("button", { name: /Heart rate/ }));
 
     expect(onToggle).toHaveBeenCalledWith("heartRate");
@@ -91,6 +92,47 @@ describe("the ride's series chips", () => {
     // Still pressed: the rider asked for it, and pressing it again is what
     // puts it away.
     expect(screen.getByRole("button", { name: /Power/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("reads the lead over the prediction with its sign", () => {
+    render(
+      <SeriesChips
+        states={{ ...allOff(), aheadOfPrediction: "drawn" }}
+        drawn={[
+          {
+            key: "aheadOfPrediction",
+            label: "Ahead of prediction",
+            unit: "min",
+            decimals: 1,
+            signed: true,
+            colour: "var(--series-ahead-of-prediction)",
+            values: [0, -3.24],
+          },
+        ]}
+        activeIndex={1}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Ahead of prediction/ }).textContent).toContain(
+      "-3.2 min",
+    );
+  });
+
+  // A ride with nothing to compare shows the absence, never a flat zero.
+  it("says a ride with no prediction to compare against was not compared", () => {
+    render(
+      <SeriesChips
+        states={{ ...allOff(), aheadOfPrediction: "absent" }}
+        drawn={[]}
+        activeIndex={null}
+        onToggle={vi.fn()}
+      />,
+    );
+
+    const chip = screen.getByRole("button", { name: /Ahead of prediction/ });
+    expect(chip.textContent).toContain("not compared");
+    expect(chip.textContent).not.toMatch(/\d/);
   });
 
   // A service that could not be asked says so. Reading a 503 as "not recorded"

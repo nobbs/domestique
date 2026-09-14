@@ -16,6 +16,8 @@ const (
 	SeriesTemperature SeriesName = "temperature"
 	SeriesSpeed       SeriesName = "speed"
 	SeriesTargetPower SeriesName = "targetPower"
+	// SeriesAheadOfPrediction is not read from the samples: see AheadOfPrediction.
+	SeriesAheadOfPrediction SeriesName = "aheadOfPrediction"
 )
 
 // Reading is one sample of a series. Known is false where that sample recorded

@@ -13,10 +13,10 @@ ORDER BY a.started_at_unix DESC, a.workout_id DESC;
 -- name: UpsertActivityRouteMatch :exec
 INSERT INTO activity_route_match (
   target_slot, workout_id, provider, route_id, stage_order,
-  route_coverage, ride_coverage, direction, library_hash, matched_at_unix
+  route_coverage, ride_coverage, direction, route_clock, library_hash, matched_at_unix
 ) VALUES (
   sqlc.arg(target_slot), sqlc.arg(workout_id), sqlc.narg(provider), sqlc.narg(route_id), sqlc.narg(stage_order),
-  sqlc.narg(route_coverage), sqlc.narg(ride_coverage), sqlc.narg(direction),
+  sqlc.narg(route_coverage), sqlc.narg(ride_coverage), sqlc.narg(direction), sqlc.narg(route_clock),
   sqlc.arg(library_hash), sqlc.arg(matched_at_unix)
 )
 ON CONFLICT (target_slot, workout_id) DO UPDATE SET
@@ -26,6 +26,7 @@ ON CONFLICT (target_slot, workout_id) DO UPDATE SET
   route_coverage = excluded.route_coverage,
   ride_coverage = excluded.ride_coverage,
   direction = excluded.direction,
+  route_clock = excluded.route_clock,
   library_hash = excluded.library_hash,
   matched_at_unix = excluded.matched_at_unix;
 
@@ -38,6 +39,13 @@ WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id);
 SELECT workout_id, provider, route_id, stage_order, route_coverage, ride_coverage, direction
 FROM activity_route_match
 WHERE target_slot = sqlc.arg(target_slot) AND provider IS NOT NULL;
+
+-- name: GetActivityRouteClock :one
+-- One ride's clock along the route it was matched to, with that route.
+SELECT provider, route_id, stage_order, route_clock
+FROM activity_route_match
+WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
+  AND provider IS NOT NULL AND route_clock IS NOT NULL;
 
 -- name: ListRouteActivities :many
 -- The rides one target rode on one route, newest first.
