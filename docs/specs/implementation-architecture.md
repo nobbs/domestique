@@ -74,6 +74,7 @@ private to this service.
 │   ├── coveragesummary/            prints a profile's summary
 │   ├── levelstudy/                 the offline bicycle-coefficient study over recorded rides
 │   ├── npstudy/                    the offline study of a normalized power of the estimate
+│   ├── matchstudy/                 the offline study of the route matcher's acceptance band
 │   └── *.sh                        the scripts the Mise tasks call
 ├── deploy/
 │   └── domestique-deploy.sh        the host-side deploy, run over SSH
