@@ -454,11 +454,63 @@ export interface PowerCurvePoint {
   watts: number;
 }
 
+/**
+ * rest carries no load; habitual carries habitualDailyLoad every day; build carries a fifth more than that.
+ */
+export type FitnessPlanPlan = (typeof FitnessPlanPlan)[keyof typeof FitnessPlanPlan];
+
+export const FitnessPlanPlan = {
+  rest: "rest",
+  habitual: "habitual",
+  build: "build",
+} as const;
+
+export interface FitnessProjectedDay {
+  date: string;
+  fitness: number;
+  fatigue: number;
+  form: number;
+}
+
+export interface FitnessPlan {
+  /** rest carries no load; habitual carries habitualDailyLoad every day; build carries a fifth more than that. */
+  plan: FitnessPlanPlan;
+  dailyLoad: number;
+  /** The 21 days after the day projected from, in order. */
+  days: FitnessProjectedDay[];
+}
+
+export interface FitnessScaleOutlook {
+  /** Fitness on the day projected from, less fitness seven days before it. */
+  rampPerWeek: number;
+  /** The mean daily load over the 28 days ending on the day projected from. */
+  habitualDailyLoad: number;
+  /** The load that, spread evenly over the next seven days, raises fitness by 3%. */
+  weekLoadLow: number;
+  /** The load that, spread evenly over the next seven days, raises fitness by 8%. */
+  weekLoadHigh: number;
+  /** One projection per plan, rest first. */
+  plans: FitnessPlan[];
+}
+
+/**
+ * Where the last day served leaves the rider, on each scale: how fast fitness is moving, the week's load that would keep it rising, and three weeks projected under three plans. Absent where no day is served. See docs/specs/measurement.md §Training load.
+ */
+export interface FitnessOutlook {
+  /** The day projected from, the last day in days. */
+  date: string;
+  tss: FitnessScaleOutlook;
+  trimp: FitnessScaleOutlook;
+}
+
 export interface Fitness {
   days: FitnessDay[];
   weeks: FitnessWeek[];
   /** The power-duration curve over the window: the best mean power the rider held at each of a fixed set of durations, shortest first. Folded from what each ride was derived to hold, so a ride awaiting derivation is not in it yet. Measured power only -- an estimate from the track never enters the curve. Absent where no ride in the window carried a meter; a duration no ride was long enough for carries no point rather than a nought. */
   powerCurve?: PowerCurvePoint[];
+  /** The same curve over the window of equal length that ends where this one begins, so a reader can tell whether the window's best efforts moved. Absent where the request named no start, and where no ride in that earlier window carried a meter. */
+  powerCurvePrevious?: PowerCurvePoint[];
+  outlook?: FitnessOutlook;
 }
 
 export interface ActivityTrackLineString {

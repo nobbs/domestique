@@ -499,6 +499,20 @@ The read-only JSON surface is small:
   held in each heart-rate zone. A rider with no derived metrics, and one with no
   target at all, is answered with an empty series rather than an error.
 
+  Beside the window's own power-duration curve, `powerCurvePrevious` carries
+  the same curve over the equal-length window that ends where this one
+  begins, so a reader can tell whether the window's best efforts moved; it is
+  absent where the request named no start, and where no ride in that earlier
+  window carried a meter.
+
+  `outlook` is where the last day served leaves the rider, on each of the two
+  scales: how fast fitness is moving, the daily load that has become
+  habitual, the week's load that would keep it rising, and three weeks
+  projected from there under three plans — rest, habitual, and a fifth more
+  than habitual — each projected with an even daily load. It is absent where no
+  day is served, which leaves nothing to project from. See
+  [measurement.md](measurement.md) §Training load.
+
   Nothing about it is stored. It is a fold over the derived metrics at read
   time, which at the row counts one rider produces is cheaper than a table that
   would have to be kept true.

@@ -216,6 +216,54 @@ type Fitness struct {
 	Weeks []FitnessWeek `json:"weeks"`
 	// PowerCurve The power-duration curve over the window: the best mean power the rider held at each of a fixed set of durations, shortest first. Folded from what each ride was derived to hold, so a ride awaiting derivation is not in it yet. Measured power only -- an estimate from the track never enters the curve. Absent where no ride in the window carried a meter; a duration no ride was long enough for carries no point rather than a nought.
 	PowerCurve []PowerCurvePoint `json:"powerCurve,omitempty"`
+	// PowerCurvePrevious The same curve over the window of equal length that ends where this one begins, so a reader can tell whether the window's best efforts moved. Absent where the request named no start, and where no ride in that earlier window carried a meter.
+	PowerCurvePrevious []PowerCurvePoint `json:"powerCurvePrevious,omitempty"`
+	Outlook            *FitnessOutlook   `json:"outlook,omitempty"`
+}
+
+// FitnessOutlook Where the last day served leaves the rider, on each scale: how fast fitness is moving, the week's load that would keep it rising, and three weeks projected under three plans. Absent where no day is served. See docs/specs/measurement.md §Training load.
+type FitnessOutlook struct {
+	// Date The day projected from, the last day in days.
+	Date  string              `json:"date"`
+	Tss   FitnessScaleOutlook `json:"tss"`
+	Trimp FitnessScaleOutlook `json:"trimp"`
+}
+
+type FitnessScaleOutlook struct {
+	// RampPerWeek Fitness on the day projected from, less fitness seven days before it.
+	RampPerWeek float64 `json:"rampPerWeek"`
+	// HabitualDailyLoad The mean daily load over the 28 days ending on the day projected from.
+	HabitualDailyLoad float64 `json:"habitualDailyLoad"`
+	// WeekLoadLow The load that, spread evenly over the next seven days, raises fitness by 3%.
+	WeekLoadLow float64 `json:"weekLoadLow"`
+	// WeekLoadHigh The load that, spread evenly over the next seven days, raises fitness by 8%.
+	WeekLoadHigh float64 `json:"weekLoadHigh"`
+	// Plans One projection per plan, rest first.
+	Plans []FitnessPlan `json:"plans"`
+}
+
+// FitnessPlan_Plan rest carries no load; habitual carries habitualDailyLoad every day; build carries a fifth more than that.
+type FitnessPlan_Plan string
+
+const (
+	FitnessPlan_PlanRest     FitnessPlan_Plan = "rest"
+	FitnessPlan_PlanHabitual FitnessPlan_Plan = "habitual"
+	FitnessPlan_PlanBuild    FitnessPlan_Plan = "build"
+)
+
+type FitnessPlan struct {
+	// Plan rest carries no load; habitual carries habitualDailyLoad every day; build carries a fifth more than that.
+	Plan      FitnessPlan_Plan `json:"plan"`
+	DailyLoad float64          `json:"dailyLoad"`
+	// Days The 21 days after the day projected from, in order.
+	Days []FitnessProjectedDay `json:"days"`
+}
+
+type FitnessProjectedDay struct {
+	Date    string  `json:"date"`
+	Fitness float64 `json:"fitness"`
+	Fatigue float64 `json:"fatigue"`
+	Form    float64 `json:"form"`
 }
 
 type PowerCurvePoint struct {
