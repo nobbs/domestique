@@ -1,13 +1,13 @@
 import {
+  IconArrowBackUp,
+  IconArrowForwardUp,
+  IconArrowsExchange,
   IconChevronsRight,
   IconDeviceFloppy,
   IconFlagCheck,
   IconLayoutBottombarCollapse,
   IconMountain,
   IconPlayerPlay,
-  IconPlayerTrackNext,
-  IconPlayerTrackPrev,
-  IconRestore,
   IconTrash,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -453,7 +453,7 @@ function PlannerHistoryControls({
       >
         <Button
           variant="ghost"
-          icon={<IconPlayerTrackPrev stroke={1.6} />}
+          icon={<IconArrowBackUp stroke={1.6} />}
           disabled={state.past.length === 0}
           aria-label="Undo"
           title="Undo"
@@ -461,7 +461,7 @@ function PlannerHistoryControls({
         />
         <Button
           variant="ghost"
-          icon={<IconPlayerTrackNext stroke={1.6} />}
+          icon={<IconArrowForwardUp stroke={1.6} />}
           disabled={state.future.length === 0}
           aria-label="Redo"
           title="Redo"
@@ -470,7 +470,7 @@ function PlannerHistoryControls({
       </ButtonGroup>
       <Button
         variant="panel"
-        icon={<IconRestore stroke={1.6} />}
+        icon={<IconArrowsExchange stroke={1.6} />}
         disabled={state.waypoints.length < 2}
         aria-label="Reverse"
         title="Reverse"
