@@ -27,13 +27,18 @@ import { PLAN_PROFILES } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
 import { PageShell } from "../../components/Layout";
 import { CartographyProvider } from "../../components/map/CartographyContext";
+import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Input } from "../../components/ui/input";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
+import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
+import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance } from "../../lib/format";
-import { buildProfile } from "../../lib/profile";
+import { NO_INSETS } from "../../lib/overlayInsets";
+import { buildProfile, rangeBounds } from "../../lib/profile";
+import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { RouteOverlay } from "../routes/RouteOverlay";
 import { initialPlannerState, type PlannerState, plannerReducer } from "./planner";
@@ -64,6 +69,10 @@ function errorMessage(error: unknown): string {
 
 function planWaypoints(waypoints: PlannerState["waypoints"]) {
   return waypoints.map(({ longitude, latitude }) => ({ longitude, latitude }));
+}
+
+function waypointPositions(waypoints: PlannerState["waypoints"]): Position[] {
+  return waypoints.map(({ longitude, latitude }) => [longitude, latitude]);
 }
 
 export interface PlannerSidebarProps {
@@ -153,7 +162,38 @@ export function PlannerSidebar({
         {state.waypoints.map((waypoint, index) => (
           <li key={waypoint.id} className="flex items-center gap-1 text-sm">
             <IconMapPin size={16} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">{`${waypoint.latitude.toFixed(5)}, ${waypoint.longitude.toFixed(5)}`}</span>
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={-90}
+                max={90}
+                step="any"
+                aria-label={`Waypoint ${index + 1} latitude`}
+                value={waypoint.latitude}
+                onChange={(event) => {
+                  const latitude = Number(event.target.value);
+                  if (Number.isFinite(latitude)) {
+                    dispatch({ type: "move", index, waypoint: { ...waypoint, latitude } });
+                  }
+                }}
+              />
+              <Input
+                type="number"
+                inputMode="decimal"
+                min={-180}
+                max={180}
+                step="any"
+                aria-label={`Waypoint ${index + 1} longitude`}
+                value={waypoint.longitude}
+                onChange={(event) => {
+                  const longitude = Number(event.target.value);
+                  if (Number.isFinite(longitude)) {
+                    dispatch({ type: "move", index, waypoint: { ...waypoint, longitude } });
+                  }
+                }}
+              />
+            </div>
             <Button
               variant="ghost"
               icon={<IconArrowUp size={16} />}
@@ -251,19 +291,28 @@ export function PlanPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
   const { mutate: previewRoute } = usePreviewPlanRoute();
   const loaded = useRef<string | null>(null);
   const request = useRef(0);
-  const loadedPlan = plan.data?.data;
+  const queryPlan = plan.data?.data;
+  const loadedPlan =
+    savedPlan?.id === planId ? savedPlan : queryPlan?.id === planId ? queryPlan : undefined;
+  const [themeChoice] = useThemeChoice();
+  const [basemapChoice] = useBasemapChoice();
+  const prefersDark = usePrefersDarkScheme();
+  const basemap = config.data
+    ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
+    : null;
 
   useEffect(() => {
-    if (planId !== null) {
-      return;
-    }
     loaded.current = null;
     request.current += 1;
+    setSavedPlan(null);
     dispatch({ type: "reset" });
-    setPreview(null);
+    if (planId === null) {
+      setPreview(null);
+    }
     setPreviewError(null);
     setSaveError(null);
     setActiveMetres(null);
@@ -285,7 +334,11 @@ export function PlanPage() {
   useEffect(() => {
     if (state.waypoints.length < 2) {
       request.current += 1;
-      setPreview(null);
+      const hydratingStoredPlan =
+        planId !== null && loadedPlan !== undefined && state.past.length === 0;
+      if (!hydratingStoredPlan) {
+        setPreview(null);
+      }
       setPreviewError(null);
       return;
     }
@@ -310,9 +363,13 @@ export function PlanPage() {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [previewRoute, state.profile, state.waypoints]);
+  }, [loadedPlan, planId, previewRoute, state.past.length, state.profile, state.waypoints]);
 
   const line = useMemo(() => positions(preview), [preview]);
+  const viewportBounds = useMemo(() => {
+    const coordinates = line.length > 1 ? line : waypointPositions(state.waypoints);
+    return rangeBounds(coordinates, { startIndex: 0, endIndex: coordinates.length - 1 });
+  }, [line, state.waypoints]);
   const profile = useMemo(() => buildProfile(line), [line]);
   const save = async (published: boolean) => {
     const data = {
@@ -329,22 +386,40 @@ export function PlanPage() {
         navigate(`/plan/${response.data.id}`, { replace: true });
         return;
       }
+      if (!loadedPlan) {
+        return;
+      }
       const response = await replace.mutateAsync({
         planId,
         data,
-        headers: { "If-Match": String(loadedPlan?.version ?? 0) },
+        headers: { "If-Match": String(loadedPlan.version) },
       });
       loaded.current = `${response.data.id}/${response.data.version}`;
+      setSavedPlan(response.data);
       dispatch({ type: "load", plan: response.data });
       setPreview(previewFrom(response.data));
-      queryClient.invalidateQueries({ queryKey: getGetPlanQueryKey(planId) });
+      queryClient.setQueryData(getGetPlanQueryKey(planId), response);
       queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
     } catch (error) {
       setSaveError(errorMessage(error));
     }
   };
   const saving = create.isPending || replace.isPending;
-  const styleUrl = config.data?.basemaps[0]?.styleUrl;
+
+  if (planId !== null && (plan.isPending || plan.isError || !loadedPlan)) {
+    return (
+      <PageShell>
+        {plan.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Could not load plan</AlertTitle>
+            <AlertDescription>{errorMessage(plan.error)}</AlertDescription>
+          </Alert>
+        ) : (
+          <p className="text-sm text-[var(--ink-2)]">Loading plan…</p>
+        )}
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell>
@@ -361,10 +436,10 @@ export function PlanPage() {
           dispatch={dispatch}
         />
         <div className="relative min-h-96 overflow-hidden rounded-xl">
-          {styleUrl ? (
-            <CartographyProvider dark={config.data?.basemaps[0]?.darkCartography ?? false}>
+          {basemap ? (
+            <CartographyProvider dark={basemap.dark}>
               <MapWidget
-                styleUrl={styleUrl}
+                styleUrl={basemap.styleUrl}
                 ariaLabel="Plan route map"
                 cursor={state.waypoints.length === 50 ? "" : "crosshair"}
                 onClick={(event) =>
@@ -374,6 +449,7 @@ export function PlanPage() {
                   })
                 }
               >
+                <MapViewport bounds={viewportBounds} maxZoom={ROUTE_MAX_ZOOM} insets={NO_INSETS} />
                 {line.length > 1 ? (
                   <RouteOverlay
                     coordinates={line}
@@ -397,7 +473,11 @@ export function PlanPage() {
                       })
                     }
                   >
-                    <span className="grid size-6 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow">
+                    <span
+                      role="img"
+                      aria-label={`Waypoint ${index + 1}`}
+                      className="grid size-6 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow"
+                    >
                       {index + 1}
                     </span>
                   </Marker>

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
+const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
 
 vi.mock("../../api/generated", async (importOriginal) => ({
@@ -16,7 +17,7 @@ vi.mock("../../api/generated", async (importOriginal) => ({
     data: { data: { plans: [{ id: 4, name: "Draft loop", published: false }] } },
   }),
   usePreviewPlanRoute: () => ({ mutate: preview }),
-  useReplacePlan: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useReplacePlan: () => ({ isPending: false, mutateAsync: replace }),
 }));
 vi.mock("../../api/queries", () => ({
   webUIConfigQuery: () => ({ queryKey: ["config"], queryFn: vi.fn() }),
@@ -39,6 +40,11 @@ vi.mock("../../components/map/MapWidget", () => ({
     >
       {children}
     </button>
+  ),
+}));
+vi.mock("../../components/map/MapViewport", () => ({
+  MapViewport: ({ bounds }: { bounds: unknown }) => (
+    <output data-testid="plan-viewport">{JSON.stringify(bounds)}</output>
   ),
 }));
 vi.mock("react-map-gl/maplibre", () => ({
@@ -85,6 +91,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   preview.mockReset();
   create.mockReset();
+  replace.mockReset();
   openedPlan.value = {};
 });
 
@@ -193,14 +200,109 @@ describe("PlanPage", () => {
         },
       },
     };
+    preview.mockImplementation(
+      (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
+        callbacks.onError(new Error("Stored route could not refresh")),
+    );
     renderPage("/plan/4");
     await act(async () => {});
+    act(() => vi.advanceTimersByTime(300));
 
     expect(screen.getByDisplayValue("Stored loop")).toBeInTheDocument();
+    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
+    expect(screen.getByText("Stored route could not refresh")).toBeInTheDocument();
+    expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
     fireEvent.click(screen.getByRole("link", { name: "New" }));
     await act(async () => {});
 
     expect(screen.getByDisplayValue("")).toBeInTheDocument();
     expect(screen.queryByLabelText("Planned route summary")).toBeNull();
+  });
+
+  it("waits for an opened plan and keeps its controls out of a failed load", () => {
+    openedPlan.value = { isPending: true };
+    const { rerender } = renderPage("/plan/4");
+
+    expect(screen.getByText("Loading plan…")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+
+    openedPlan.value = { isError: true, error: new Error("Plan not found") };
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={["/plan/4"]}>
+          <Routes>
+            <Route path="/plan/:planId" element={<PlanPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("Plan not found")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
+  });
+
+  it("uses saved plan versions for subsequent replacements", async () => {
+    const storedPlan = {
+      id: 4,
+      name: "Stored loop",
+      profile: "trekking" as const,
+      published: false,
+      version: 2,
+      waypoints: [
+        { longitude: 8, latitude: 49 },
+        { longitude: 8.1, latitude: 49.1 },
+      ],
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [
+          [8, 49],
+          [8.1, 49.1],
+        ],
+      },
+      distanceMetres: 10_000,
+      ascentMetres: 100,
+      createdAt: "2026-09-15T09:00:00Z",
+      updatedAt: "2026-09-15T09:00:00Z",
+    };
+    openedPlan.value = {
+      data: {
+        data: storedPlan,
+      },
+    };
+    replace
+      .mockResolvedValueOnce({ data: { ...storedPlan, version: 3 } })
+      .mockResolvedValueOnce({ data: { ...storedPlan, version: 4, published: true } });
+    renderPage("/plan/4");
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Publish — syncs on next run" }));
+    await act(async () => {});
+
+    expect(replace.mock.calls[0]?.[0]).toMatchObject({ headers: { "If-Match": "2" } });
+    expect(replace.mock.calls[1]?.[0]).toMatchObject({ headers: { "If-Match": "3" } });
+  });
+
+  it("offers waypoint coordinates as native keyboard-editable controls", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Waypoint 1 latitude" }), {
+      target: { value: "49.5" },
+    });
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          waypoints: [
+            expect.objectContaining({ longitude: 8, latitude: 49.5 }),
+            expect.objectContaining({ longitude: 8, latitude: 49 }),
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
   });
 });

@@ -319,6 +319,14 @@ func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot) error {
 	if err := demo.Seed(ctx, store, slots, now()); err != nil {
 		return fmt.Errorf("seeding the demo library and its rides: %w", err)
 	}
+	planSource := plan.NewService(planStore{store: store}, demo.StraightLineRouter{}, now, plan.RandomID)
+	plans, err := planSource.Inventory(ctx)
+	if err != nil {
+		return fmt.Errorf("reading the demo plans: %w", err)
+	}
+	if storeErr := store.StoreTrustedInventory(ctx, route.ProviderLocal, plans); storeErr != nil {
+		return fmt.Errorf("storing the demo plans: %w", storeErr)
+	}
 	deriver, err := activity.NewDeriver(store, store, rideWeather(), wahoo.IndoorWorkoutTypes(), now)
 	if err != nil {
 		return fmt.Errorf("creating the demo deriver: %w", err)

@@ -81,6 +81,13 @@ function OpenedLegacyRoute() {
   return <Navigate to={`/?route=${encodeURIComponent(key)}`} replace />;
 }
 
+/** Each address is a distinct draft, so an opened plan never leaks into the next one. */
+function OpenedPlan() {
+  const { planId } = useParams();
+
+  return <PlanPage key={planId ?? "new"} />;
+}
+
 /**
  * The client routes. These mirror the paths the Go handler serves the entry
  * document for, so a deep link and an in-app navigation resolve identically.
@@ -124,7 +131,7 @@ export function App() {
         path="plan"
         element={
           <PlanningOnly>
-            <PlanPage />
+            <OpenedPlan />
           </PlanningOnly>
         }
       />
@@ -132,7 +139,7 @@ export function App() {
         path="plan/:planId"
         element={
           <PlanningOnly>
-            <PlanPage />
+            <OpenedPlan />
           </PlanningOnly>
         }
       />
