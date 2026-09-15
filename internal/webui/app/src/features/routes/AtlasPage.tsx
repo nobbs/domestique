@@ -34,6 +34,7 @@ import {
 } from "../../api/queries";
 import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
 import { routeKey } from "../../api/types";
+import { ButtonLink } from "../../components/Button";
 import { Layout } from "../../components/Layout";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
@@ -41,6 +42,7 @@ import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
 import { formatReadTime } from "../../lib/format";
+import { useEffectiveAdmin } from "../../lib/identity";
 import { matchingRoutes } from "../../lib/library";
 import { useOverlayInsets } from "../../lib/overlayInsets";
 import { coordinateRange, rangeBounds } from "../../lib/profile";
@@ -137,6 +139,7 @@ function loadFailure(what: string, error: unknown) {
 export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const routes = useQuery(routesQuery());
   const config = useQuery(webUIConfigQuery());
+  const effectiveAdmin = useEffectiveAdmin();
   const status = useQuery(statusQuery());
   const prefersDark = usePrefersDarkScheme();
   // The scheme actually in force: the system's own, unless the reader has
@@ -518,6 +521,11 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
        * into the middle of a hierarchy. It is not drawn: the map is the title.
        */}
       <h1 className="visually-hidden">Route library</h1>
+      {config.data?.planning && effectiveAdmin ? (
+        <ButtonLink variant="panel" to="/plan">
+          Plan a route
+        </ButtonLink>
+      ) : null}
       {routes.isError ? loadFailure("the route library", routes.error) : null}
       {config.isError ? loadFailure("the map configuration", config.error) : null}
       {/*

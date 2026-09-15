@@ -5,6 +5,7 @@ describe("providerLabel", () => {
   it("names a provider this build knows a spelling for", () => {
     expect(providerLabel("veloplanner")).toBe("VeloPlanner");
     expect(providerLabel("komoot")).toBe("Komoot");
+    expect(providerLabel("local")).toBe("Local");
   });
 
   // A source this build has never heard of is still a source, so it is shown

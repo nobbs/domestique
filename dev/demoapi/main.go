@@ -31,6 +31,7 @@ import (
 	"github.com/nobbs/domestique/internal/demo"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
+	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
@@ -228,12 +229,14 @@ func newHandler(
 		slots:   slots,
 		running: &atomic.Bool{},
 	}
+	planService := plan.NewService(planStore{store: store}, demo.StraightLineRouter{}, time.Now, plan.RandomID)
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
 			Alerts:           newDemoAlerts(),
 			Tasks:            newDemoTasks(demoReseeder.trigger),
 			BuildRevision:    "demo",
+			Plans:            planService,
 			Sessions:         sessions,
 			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
 			Auth0Domain:      settings.Auth.Auth0.Domain,
