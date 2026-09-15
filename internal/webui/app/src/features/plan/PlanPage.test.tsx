@@ -7,6 +7,7 @@ const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
+const overlayInsets = vi.hoisted(() => ({ value: { top: 12, right: 13, bottom: 14, left: 15 } }));
 
 vi.mock("../../api/generated", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/generated")>()),
@@ -24,31 +25,69 @@ vi.mock("../../api/queries", () => ({
 }));
 vi.mock("../../components/Layout", () => ({
   PageShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
+  Layout: ({
+    map,
+    children,
+    dock,
+  }: {
+    map: React.ReactNode;
+    children: React.ReactNode;
+    dock: React.ReactNode;
+  }) => (
+    <main>
+      {map}
+      <div className="shell__overlay">
+        {children}
+        {dock}
+      </div>
+    </main>
+  ),
+}));
+vi.mock("../../lib/overlayInsets", () => ({
+  useOverlayInsets: () => overlayInsets.value,
 }));
 vi.mock("../../components/map/MapWidget", () => ({
   MapWidget: ({
     children,
+    furniture,
     onClick,
   }: {
     children: React.ReactNode;
+    furniture?: React.ReactNode;
     onClick?: (event: { lngLat: { lng: number; lat: number } }) => void;
   }) => (
-    <button
-      type="button"
-      aria-label="Plan route map"
-      onClick={() => onClick?.({ lngLat: { lng: 8, lat: 49 } })}
-    >
-      {children}
-    </button>
+    <>
+      <button
+        type="button"
+        aria-label="Plan route map"
+        onClick={() => onClick?.({ lngLat: { lng: 8, lat: 49 } })}
+      >
+        {children}
+      </button>
+      {furniture}
+    </>
   ),
 }));
+vi.mock("../../components/map/MapControls", () => ({
+  MapControls: ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid="plan-map-controls">{children}</div>
+  ),
+}));
+vi.mock("../../components/map/BasemapPicker", () => ({
+  BasemapPicker: () => <span data-testid="plan-basemap-picker" />,
+}));
 vi.mock("../../components/map/MapViewport", () => ({
-  MapViewport: ({ bounds }: { bounds: unknown }) => (
-    <output data-testid="plan-viewport">{JSON.stringify(bounds)}</output>
+  MapViewport: ({ bounds, insets }: { bounds: unknown; insets: unknown }) => (
+    <output data-testid="plan-viewport" data-insets={JSON.stringify(insets)}>
+      {JSON.stringify(bounds)}
+    </output>
   ),
 }));
 vi.mock("react-map-gl/maplibre", () => ({
   Marker: ({ children }: { children: React.ReactNode }) => children,
+  ScaleControl: ({ position, unit }: { position: string; unit: string }) => (
+    <output data-testid="plan-scale" data-position={position} data-unit={unit} />
+  ),
 }));
 vi.mock("../routes/RouteOverlay", () => ({
   RouteOverlay: ({ coordinates }: { coordinates: unknown[] }) => (
@@ -104,6 +143,29 @@ describe("PlanPage", () => {
     expect(screen.getByRole("button", { name: "Plan route map" })).toBeInTheDocument();
     expect(screen.getByText("Draft loop")).toBeInTheDocument();
     expect(screen.getByText("Draft")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-map-controls")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-position", "bottom-left");
+    expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-unit", "metric");
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute(
+      "data-insets",
+      JSON.stringify(overlayInsets.value),
+    );
+  });
+
+  it("folds and reopens its independent planner and elevation overlays", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
+    expect(screen.getByRole("button", { name: "Show planner controls" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show planner controls" }));
+    expect(screen.getByLabelText("Name")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
+    expect(screen.getByRole("button", { name: "Show elevation" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show elevation" }));
+    expect(screen.getByRole("button", { name: "Hide elevation" })).toBeInTheDocument();
   });
 
   it("routes one preview after a burst and leaves the last good line up after a failure", () => {

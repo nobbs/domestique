@@ -1,8 +1,11 @@
 import {
   IconArrowDown,
   IconArrowUp,
+  IconChevronsRight,
   IconDeviceFloppy,
+  IconLayoutBottombarCollapse,
   IconMapPin,
+  IconMountain,
   IconPlayerTrackNext,
   IconPlayerTrackPrev,
   IconRestore,
@@ -10,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Dispatch, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Marker } from "react-map-gl/maplibre";
+import { Marker, ScaleControl } from "react-map-gl/maplibre";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   getGetPlanQueryKey,
@@ -25,8 +28,10 @@ import { webUIConfigQuery } from "../../api/queries";
 import type { Plan, PlanProfile, PlanRoutePreview, PlanSummary, Position } from "../../api/types";
 import { PLAN_PROFILES } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
-import { PageShell } from "../../components/Layout";
+import { Layout, PageShell } from "../../components/Layout";
+import { BasemapPicker } from "../../components/map/BasemapPicker";
 import { CartographyProvider } from "../../components/map/CartographyContext";
+import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
@@ -36,7 +41,7 @@ import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance } from "../../lib/format";
-import { NO_INSETS } from "../../lib/overlayInsets";
+import { useOverlayInsets } from "../../lib/overlayInsets";
 import { buildProfile, rangeBounds } from "../../lib/profile";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { ElevationProfile } from "../routes/ElevationProfile";
@@ -123,6 +128,8 @@ export interface PlannerSidebarProps {
   published: boolean;
   saving: boolean;
   saveError: string | null;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   onSave: (published: boolean) => void;
   dispatch: Dispatch<Parameters<typeof plannerReducer>[1]>;
 }
@@ -136,170 +143,267 @@ export function PlannerSidebar({
   published,
   saving,
   saveError,
+  collapsed,
+  onCollapsedChange,
   onSave,
   dispatch,
 }: PlannerSidebarProps) {
   return (
-    <aside className="grid gap-4 rounded-xl border border-[var(--rule)] bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold">{planId === null ? "Plan a route" : "Edit plan"}</h1>
-        <ButtonLink variant="ghost" to="/plan">
-          New
-        </ButtonLink>
-      </div>
-      <label className="grid gap-1 text-sm font-medium">
-        Name
-        <Input
-          value={state.name}
-          maxLength={120}
-          onChange={(event) => dispatch({ type: "setName", name: event.target.value })}
-        />
-      </label>
-      <fieldset className="grid gap-1">
-        <legend className="text-sm font-medium">Route type</legend>
-        <RadioGroup
-          value={state.profile}
-          onValueChange={(profile) =>
-            dispatch({ type: "setProfile", profile: profile as PlanProfile })
-          }
-          className="flex flex-wrap gap-2"
-        >
-          {PLAN_PROFILES.map((profile) => (
-            <label key={profile} className="flex items-center gap-1.5 text-sm">
-              <RadioGroupItem value={profile} />
-              {profile}
+    <div data-compact-workspace="" className="w-fit max-w-full">
+      <section
+        aria-label="Route planner controls"
+        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[24rem]"}`}
+      >
+        <div className="flex items-center gap-1 p-1.5">
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Show planner controls" : "Hide planner controls"}
+            onClick={() => onCollapsedChange(!collapsed)}
+            className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+          >
+            <IconChevronsRight
+              size={16}
+              stroke={2}
+              aria-hidden="true"
+              className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
+            />
+            <span className="font-semibold">{planId === null ? "Plan a route" : "Edit plan"}</span>
+            {collapsed && preview ? (
+              <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
+                {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
+              </span>
+            ) : null}
+          </button>
+          {collapsed ? null : (
+            <ButtonLink variant="ghost" className="ml-auto" to="/plan">
+              New
+            </ButtonLink>
+          )}
+        </div>
+        {collapsed ? null : (
+          <div className="grid gap-4 px-4 pt-2 pb-4">
+            <label className="grid gap-1 text-sm font-medium">
+              Name
+              <Input
+                value={state.name}
+                maxLength={120}
+                onChange={(event) => dispatch({ type: "setName", name: event.target.value })}
+              />
             </label>
-          ))}
-        </RadioGroup>
-      </fieldset>
-      <div className="flex flex-wrap gap-1">
-        <Button
-          variant="outline"
-          icon={<IconPlayerTrackPrev stroke={1.6} />}
-          disabled={state.past.length === 0}
-          onClick={() => dispatch({ type: "undo" })}
-        >
-          Undo
-        </Button>
-        <Button
-          variant="outline"
-          icon={<IconPlayerTrackNext stroke={1.6} />}
-          disabled={state.future.length === 0}
-          onClick={() => dispatch({ type: "redo" })}
-        >
-          Redo
-        </Button>
-        <Button
-          variant="outline"
-          icon={<IconRestore stroke={1.6} />}
-          disabled={state.waypoints.length < 2}
-          onClick={() => dispatch({ type: "reverse" })}
-        >
-          Reverse
-        </Button>
-      </div>
-      <ol className="grid gap-1" aria-label="Waypoints">
-        {state.waypoints.map((waypoint, index) => (
-          <li key={waypoint.id} className="flex items-center gap-1 text-sm">
-            <IconMapPin size={16} aria-hidden="true" />
-            <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
-              <CoordinateInput
-                label={`Waypoint ${index + 1} latitude`}
-                value={waypoint.latitude}
-                min={-90}
-                max={90}
-                onCommit={(latitude) =>
-                  dispatch({ type: "move", index, waypoint: { ...waypoint, latitude } })
+            <fieldset className="grid gap-1">
+              <legend className="text-sm font-medium">Route type</legend>
+              <RadioGroup
+                value={state.profile}
+                onValueChange={(profile) =>
+                  dispatch({ type: "setProfile", profile: profile as PlanProfile })
                 }
-              />
-              <CoordinateInput
-                label={`Waypoint ${index + 1} longitude`}
-                value={waypoint.longitude}
-                min={-180}
-                max={180}
-                onCommit={(longitude) =>
-                  dispatch({ type: "move", index, waypoint: { ...waypoint, longitude } })
-                }
-              />
+                className="flex flex-wrap gap-2"
+              >
+                {PLAN_PROFILES.map((profile) => (
+                  <label key={profile} className="flex items-center gap-1.5 text-sm">
+                    <RadioGroupItem value={profile} />
+                    {profile}
+                  </label>
+                ))}
+              </RadioGroup>
+            </fieldset>
+            <div className="flex flex-wrap gap-1">
+              <Button
+                variant="outline"
+                icon={<IconPlayerTrackPrev stroke={1.6} />}
+                disabled={state.past.length === 0}
+                onClick={() => dispatch({ type: "undo" })}
+              >
+                Undo
+              </Button>
+              <Button
+                variant="outline"
+                icon={<IconPlayerTrackNext stroke={1.6} />}
+                disabled={state.future.length === 0}
+                onClick={() => dispatch({ type: "redo" })}
+              >
+                Redo
+              </Button>
+              <Button
+                variant="outline"
+                icon={<IconRestore stroke={1.6} />}
+                disabled={state.waypoints.length < 2}
+                onClick={() => dispatch({ type: "reverse" })}
+              >
+                Reverse
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              icon={<IconArrowUp size={16} />}
-              aria-label={`Move waypoint ${index + 1} up`}
-              disabled={index === 0}
-              onClick={() => dispatch({ type: "reorder", index, direction: "up" })}
-            />
-            <Button
-              variant="ghost"
-              icon={<IconArrowDown size={16} />}
-              aria-label={`Move waypoint ${index + 1} down`}
-              disabled={index === state.waypoints.length - 1}
-              onClick={() => dispatch({ type: "reorder", index, direction: "down" })}
-            />
-            <Button
-              variant="ghost"
-              icon={<IconTrash size={16} />}
-              aria-label={`Delete waypoint ${index + 1}`}
-              onClick={() => dispatch({ type: "delete", index })}
-            />
-          </li>
-        ))}
-      </ol>
-      <p className="text-sm text-[var(--ink-2)]">
-        Click the map to add up to 50 waypoints. Drag a pin to move it.
-      </p>
-      {preview ? (
-        <output aria-label="Planned route summary" className="text-sm font-medium tabular-nums">
-          {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
-        </output>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
+            <ol className="grid gap-1" aria-label="Waypoints">
+              {state.waypoints.map((waypoint, index) => (
+                <li key={waypoint.id} className="flex items-center gap-1 text-sm">
+                  <IconMapPin size={16} aria-hidden="true" />
+                  <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
+                    <CoordinateInput
+                      label={`Waypoint ${index + 1} latitude`}
+                      value={waypoint.latitude}
+                      min={-90}
+                      max={90}
+                      onCommit={(latitude) =>
+                        dispatch({ type: "move", index, waypoint: { ...waypoint, latitude } })
+                      }
+                    />
+                    <CoordinateInput
+                      label={`Waypoint ${index + 1} longitude`}
+                      value={waypoint.longitude}
+                      min={-180}
+                      max={180}
+                      onCommit={(longitude) =>
+                        dispatch({ type: "move", index, waypoint: { ...waypoint, longitude } })
+                      }
+                    />
+                  </div>
+                  <Button
+                    variant="ghost"
+                    icon={<IconArrowUp size={16} />}
+                    aria-label={`Move waypoint ${index + 1} up`}
+                    disabled={index === 0}
+                    onClick={() => dispatch({ type: "reorder", index, direction: "up" })}
+                  />
+                  <Button
+                    variant="ghost"
+                    icon={<IconArrowDown size={16} />}
+                    aria-label={`Move waypoint ${index + 1} down`}
+                    disabled={index === state.waypoints.length - 1}
+                    onClick={() => dispatch({ type: "reorder", index, direction: "down" })}
+                  />
+                  <Button
+                    variant="ghost"
+                    icon={<IconTrash size={16} />}
+                    aria-label={`Delete waypoint ${index + 1}`}
+                    onClick={() => dispatch({ type: "delete", index })}
+                  />
+                </li>
+              ))}
+            </ol>
+            <p className="text-sm text-[var(--ink-2)]">
+              Click the map to add up to 50 waypoints. Drag a pin to move it.
+            </p>
+            {preview ? (
+              <output
+                aria-label="Planned route summary"
+                className="text-sm font-medium tabular-nums"
+              >
+                {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
+              </output>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                icon={<IconDeviceFloppy stroke={1.6} />}
+                disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                onClick={() => onSave(planId === null ? false : published)}
+              >
+                {planId === null ? "Save draft" : "Save changes"}
+              </Button>
+              {planId !== null && !published ? (
+                <Button
+                  variant="outline"
+                  disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                  onClick={() => onSave(true)}
+                >
+                  Publish — syncs on next run
+                </Button>
+              ) : null}
+            </div>
+            {planId !== null && published ? (
+              <Button
+                variant="warning"
+                disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                onClick={() => onSave(false)}
+              >
+                Unpublish — removes on next sync
+              </Button>
+            ) : null}
+            {saveError ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not save plan</AlertTitle>
+                <AlertDescription>{saveError}</AlertDescription>
+              </Alert>
+            ) : null}
+            <div className="grid gap-1 border-[var(--rule)] border-t pt-3">
+              <h2 className="text-sm font-medium">Plans</h2>
+              {plans.map((plan) => (
+                <Link
+                  key={plan.id}
+                  to={`/plan/${plan.id}`}
+                  className="flex items-center justify-between rounded-md px-2 py-1 text-sm hover:bg-[var(--base)]"
+                >
+                  <span>{plan.name}</span>
+                  {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function PlannerDock({
+  open,
+  onOpenChange,
+  preview,
+  profile,
+  activeMetres,
+  onActiveChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  preview: PlanRoutePreview | null;
+  profile: ReturnType<typeof buildProfile>;
+  activeMetres: number | null;
+  onActiveChange: (metres: number | null) => void;
+}) {
+  if (!open) {
+    return (
+      <Button
+        variant="panel"
+        icon={<IconMountain stroke={1.6} />}
+        aria-expanded="false"
+        aria-label="Show elevation"
+        onClick={() => onOpenChange(true)}
+      >
+        Show elevation
+      </Button>
+    );
+  }
+
+  return (
+    <section
+      aria-label="Planned route elevation"
+      className="w-full max-w-5xl rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
+    >
+      <div className="mb-2 flex items-center justify-between gap-3">
+        {preview ? (
+          <output aria-label="Elevation summary" className="text-sm font-medium tabular-nums">
+            {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
+          </output>
+        ) : (
+          <span className="text-sm font-medium">Elevation</span>
+        )}
         <Button
-          icon={<IconDeviceFloppy stroke={1.6} />}
-          disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-          onClick={() => onSave(planId === null ? false : published)}
+          variant="ghost"
+          icon={<IconLayoutBottombarCollapse stroke={1.6} />}
+          aria-expanded="true"
+          aria-label="Hide elevation"
+          onClick={() => onOpenChange(false)}
         >
-          {planId === null ? "Save draft" : "Save changes"}
+          Hide
         </Button>
-        {planId !== null && !published ? (
-          <Button
-            variant="outline"
-            disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-            onClick={() => onSave(true)}
-          >
-            Publish — syncs on next run
-          </Button>
-        ) : null}
       </div>
-      {planId !== null && published ? (
-        <Button
-          variant="warning"
-          disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-          onClick={() => onSave(false)}
-        >
-          Unpublish — removes on next sync
-        </Button>
-      ) : null}
-      {saveError ? (
-        <Alert variant="destructive">
-          <AlertTitle>Could not save plan</AlertTitle>
-          <AlertDescription>{saveError}</AlertDescription>
-        </Alert>
-      ) : null}
-      <div className="grid gap-1 border-[var(--rule)] border-t pt-3">
-        <h2 className="text-sm font-medium">Plans</h2>
-        {plans.map((plan) => (
-          <Link
-            key={plan.id}
-            to={`/plan/${plan.id}`}
-            className="flex items-center justify-between rounded-md px-2 py-1 text-sm hover:bg-[var(--base)]"
-          >
-            <span>{plan.name}</span>
-            {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
-          </Link>
-        ))}
-      </div>
-    </aside>
+      <ElevationProfile
+        title="Planned route elevation"
+        profile={profile}
+        activeMetres={activeMetres}
+        onActiveChange={onActiveChange}
+      />
+    </section>
   );
 }
 
@@ -319,6 +423,8 @@ export function PlanPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [dockOpen, setDockOpen] = useState(true);
   const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
   const { mutate: previewRoute } = usePreviewPlanRoute();
   const loaded = useRef<string | null>(null);
@@ -328,11 +434,13 @@ export function PlanPage() {
   const loadedPlan =
     savedPlan?.id === planId ? savedPlan : queryPlan?.id === planId ? queryPlan : undefined;
   const [themeChoice] = useThemeChoice();
-  const [basemapChoice] = useBasemapChoice();
+  const [basemapChoice, chooseBasemap] = useBasemapChoice();
+  const [basemapPickerOpen, setBasemapPickerOpen] = useState(false);
   const prefersDark = usePrefersDarkScheme();
   const basemap = config.data
     ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
     : null;
+  const insets = useOverlayInsets();
 
   useEffect(() => {
     loaded.current = null;
@@ -455,25 +563,31 @@ export function PlanPage() {
   }
 
   return (
-    <PageShell>
-      <div className="grid min-h-[calc(100dvh-9rem)] gap-4 lg:grid-cols-[24rem_1fr]">
-        <PlannerSidebar
-          state={state}
-          plans={plans.data?.data.plans ?? []}
-          preview={preview}
-          planId={planId}
-          published={loadedPlan?.published ?? false}
-          saving={saving}
-          saveError={saveError}
-          onSave={(published) => void save(published)}
-          dispatch={dispatch}
-        />
-        <div className="relative min-h-96 overflow-hidden rounded-xl">
+    <Layout
+      drawerLabel="Plan a route"
+      drawerTitle="Route planner"
+      workspaceLabel="Route planner controls"
+      map={
+        <div className="relative size-full">
           {basemap ? (
             <CartographyProvider dark={basemap.dark}>
               <MapWidget
                 styleUrl={basemap.styleUrl}
                 ariaLabel="Plan route map"
+                furniture={
+                  <>
+                    <ScaleControl position="bottom-left" unit="metric" />
+                    <MapControls>
+                      <BasemapPicker
+                        basemaps={config.data?.basemaps ?? []}
+                        selectedName={basemap.name}
+                        onSelect={chooseBasemap}
+                        expanded={basemapPickerOpen}
+                        onExpandedChange={setBasemapPickerOpen}
+                      />
+                    </MapControls>
+                  </>
+                }
                 cursor={state.waypoints.length === 50 ? "" : "crosshair"}
                 onClick={(event) =>
                   dispatch({
@@ -482,7 +596,7 @@ export function PlanPage() {
                   })
                 }
               >
-                <MapViewport bounds={viewportBounds} maxZoom={ROUTE_MAX_ZOOM} insets={NO_INSETS} />
+                <MapViewport bounds={viewportBounds} maxZoom={ROUTE_MAX_ZOOM} insets={insets} />
                 {line.length > 1 ? (
                   <RouteOverlay
                     coordinates={line}
@@ -519,21 +633,40 @@ export function PlanPage() {
             </CartographyProvider>
           ) : null}
           {previewError ? (
-            <Alert variant="destructive" className="absolute right-3 bottom-3 left-3">
+            <Alert
+              variant="destructive"
+              className="absolute top-1/2 right-3 z-30 max-w-sm -translate-y-1/2"
+            >
               <AlertTitle>Preview unavailable</AlertTitle>
               <AlertDescription>{previewError}</AlertDescription>
             </Alert>
           ) : null}
         </div>
-        <div className="lg:col-start-2">
-          <ElevationProfile
-            title="Planned route elevation"
-            profile={profile}
-            activeMetres={activeMetres}
-            onActiveChange={setActiveMetres}
-          />
-        </div>
-      </div>
-    </PageShell>
+      }
+      dock={
+        <PlannerDock
+          open={dockOpen}
+          onOpenChange={setDockOpen}
+          preview={preview}
+          profile={profile}
+          activeMetres={activeMetres}
+          onActiveChange={setActiveMetres}
+        />
+      }
+    >
+      <PlannerSidebar
+        state={state}
+        plans={plans.data?.data.plans ?? []}
+        preview={preview}
+        planId={planId}
+        published={loadedPlan?.published ?? false}
+        saving={saving}
+        saveError={saveError}
+        collapsed={panelCollapsed}
+        onCollapsedChange={setPanelCollapsed}
+        onSave={(published) => void save(published)}
+        dispatch={dispatch}
+      />
+    </Layout>
   );
 }

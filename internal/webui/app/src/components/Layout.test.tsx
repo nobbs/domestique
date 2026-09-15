@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useNarrowViewport } from "../lib/mediaQuery";
 
@@ -8,11 +9,14 @@ vi.mock("./MenuBar", () => ({ MenuBar: () => <span>Domestique</span> }));
 
 const { Layout } = await import("./Layout");
 
-function show(narrow: boolean) {
+function show(
+  narrow: boolean,
+  labels?: Pick<ComponentProps<typeof Layout>, "drawerLabel" | "drawerTitle" | "workspaceLabel">,
+) {
   vi.mocked(useNarrowViewport).mockReturnValue(narrow);
 
   return render(
-    <Layout map={<div aria-label="Route map" role="img" />}>
+    <Layout map={<div aria-label="Route map" role="img" />} {...labels}>
       <button type="button">Route control</button>
     </Layout>,
   );
@@ -47,5 +51,21 @@ describe("Layout", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Route library" })).toBeNull());
     expect(trigger).toHaveFocus();
+  });
+
+  it("uses a page's own labels for the narrow workspace", async () => {
+    const user = userEvent.setup();
+    show(true, {
+      drawerLabel: "Plan a route",
+      drawerTitle: "Route planner",
+      workspaceLabel: "Route planner controls",
+    });
+    const trigger = screen.getByRole("button", { name: "Plan a route" });
+
+    await user.click(trigger);
+
+    expect(screen.getByRole("dialog", { name: "Route planner" })).toContainElement(
+      screen.getByRole("button", { name: "Route control" }),
+    );
   });
 });
