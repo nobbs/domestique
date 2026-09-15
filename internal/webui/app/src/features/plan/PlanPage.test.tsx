@@ -103,11 +103,13 @@ vi.mock("../routes/RouteOverlay", () => ({
   RouteOverlay: ({
     coordinates,
     showTerminals,
+    surface,
   }: {
     coordinates: unknown[];
     showTerminals?: boolean;
+    surface?: unknown;
   }) => {
-    routeOverlay({ coordinates, showTerminals });
+    routeOverlay({ coordinates, showTerminals, surface });
     return <output data-testid="route-line">{coordinates.length}</output>;
   },
 }));
@@ -291,6 +293,7 @@ describe("PlanPage", () => {
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("null");
     expect(routeOverlay).toHaveBeenCalledWith(expect.objectContaining({ showTerminals: false }));
+    expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: undefined }));
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
     failed = true;
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
@@ -298,6 +301,46 @@ describe("PlanPage", () => {
 
     expect(screen.getByText("Routing unavailable")).toBeInTheDocument();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+  });
+
+  it("passes classified preview ranges to the route overlay", () => {
+    const ranges = [{ kind: "gravel" as const, startIndex: 0, endIndex: 1 }];
+    preview.mockImplementation(
+      (
+        _variables: unknown,
+        callbacks: {
+          onSuccess: (value: {
+            data: {
+              geometry: { type: "LineString"; coordinates: number[][] };
+              distanceMetres: number;
+              ascentMetres: number;
+              surface: { ranges: typeof ranges; matchedMetres: number };
+            };
+          }) => void;
+        },
+      ) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49],
+                [8.1, 49.1],
+              ],
+            },
+            distanceMetres: 10_000,
+            ascentMetres: 100,
+            surface: { ranges, matchedMetres: 10_000 },
+          },
+        }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: ranges }));
   });
 
   it("shows a save failure instead of leaving a rejected action behind", async () => {
@@ -314,6 +357,7 @@ describe("PlanPage", () => {
   });
 
   it("starts a new draft after leaving an opened plan", async () => {
+    const savedSurface = [{ kind: "asphalt" as const, startIndex: 0, endIndex: 1 }];
     openedPlan.value = {
       data: {
         data: {
@@ -335,6 +379,7 @@ describe("PlanPage", () => {
           },
           distanceMetres: 10_000,
           ascentMetres: 100,
+          surface: { ranges: savedSurface, matchedMetres: 10_000 },
           createdAt: "2026-09-15T09:00:00Z",
           updatedAt: "2026-09-15T09:00:00Z",
         },
@@ -362,6 +407,9 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
     expect(screen.getByText("Stored route could not refresh")).toBeInTheDocument();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    expect(routeOverlay).toHaveBeenLastCalledWith(
+      expect.objectContaining({ surface: savedSurface }),
+    );
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
     mapPoint.value = { longitude: 8.05, latitude: 49.05 };
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));

@@ -87,3 +87,23 @@ func TestSeedAddsPublishedPlansToTheDemoInventory(t *testing.T) {
 	require.Len(t, local, 1)
 	assert.Equal(t, created.ID, local[0].Key().SourceRouteID())
 }
+
+func TestDemoSurfaceClassifierProvidesDeterministicBands(t *testing.T) {
+	points := make([]route.Point, 12)
+	for index := range points {
+		points[index] = route.Point{Longitude: 8 + float64(index)/1000, Latitude: 49}
+	}
+
+	first, err := (demoSurfaceClassifier{}).Classify(t.Context(), points)
+	require.NoError(t, err)
+	second, err := (demoSurfaceClassifier{}).Classify(t.Context(), points)
+	require.NoError(t, err)
+
+	assert.Equal(t, first, second)
+	require.Len(t, first.Ranges, 4)
+	assert.Equal(t, "asphalt", first.Ranges[0].Kind)
+	assert.Equal(t, "gravel", first.Ranges[1].Kind)
+	assert.Equal(t, "ground", first.Ranges[2].Kind)
+	assert.Equal(t, "paving", first.Ranges[3].Kind)
+	assert.Greater(t, first.MatchedMetres, 0.0)
+}

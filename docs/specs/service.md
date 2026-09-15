@@ -914,6 +914,11 @@ browser origin described above, and answer 403 without it.
   normalised geometry with its distance and ascent out, nothing stored. It is
   a `POST` that makes the service do outbound work, so it is Origin-checked
   like every state-changing request, storing nothing notwithstanding.
+  The preview and every plan read, create, or replace response optionally
+  classify the returned geometry against the current local OpenStreetMap index.
+  The surface is omitted when the index or classification is unavailable;
+  classification failure never blocks routing or saving, and no classification
+  is persisted with the plan.
   `GET /v1/plans` lists every plan with its summary and whether it is
   published, and carries no geometry; `GET /v1/plans/{plan-id}` returns one
   plan's waypoints, profile, name, published state, version, and its stored

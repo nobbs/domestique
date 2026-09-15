@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,7 @@ func (h *Handler) PreviewPlanRoute(writer http.ResponseWriter, request *http.Req
 		Geometry:       lineStringOf(measured.Geometry),
 		DistanceMetres: measured.DistanceMetres,
 		AscentMetres:   measured.AscentMetres,
+		Surface:        h.planSurface(request.Context(), measured.Geometry),
 	})
 }
 
@@ -63,7 +65,7 @@ func (h *Handler) CreatePlan(writer http.ResponseWriter, request *http.Request) 
 	if h.planFailed(writer, err) {
 		return
 	}
-	h.writeJSON(writer, http.StatusCreated, planOf(&created))
+	h.writeJSON(writer, http.StatusCreated, h.planOf(request.Context(), &created))
 }
 
 // GetPlan returns one plan whole, including its stored geometry: a draft is
@@ -86,7 +88,7 @@ func (h *Handler) GetPlan(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	h.writeJSON(writer, http.StatusOK, planOf(&found))
+	h.writeJSON(writer, http.StatusOK, h.planOf(request.Context(), &found))
 }
 
 // ReplacePlan overwrites one plan whole, published state included, routing
@@ -115,7 +117,7 @@ func (h *Handler) ReplacePlan(writer http.ResponseWriter, request *http.Request)
 	if h.planFailed(writer, err) {
 		return
 	}
-	h.writeJSON(writer, http.StatusOK, planOf(&replaced))
+	h.writeJSON(writer, http.StatusOK, h.planOf(request.Context(), &replaced))
 }
 
 // DeletePlan removes one plan. A stale If-Match is refused with 412 on the
@@ -222,13 +224,34 @@ func lineStringOf(points []route.Point) openapi.GeoJSONLineString {
 }
 
 // planOf renders a stored plan whole, waypoints and geometry included.
-func planOf(p *plan.Plan) openapi.Plan {
+func (h *Handler) planOf(ctx context.Context, p *plan.Plan) openapi.Plan {
 	return openapi.Plan{
 		ID: p.ID, Name: p.Name, Profile: openapi.PlanProfile(p.Profile), Published: p.Published, Version: p.Version,
 		Waypoints: openapiWaypointsOf(p.Waypoints), Geometry: lineStringOf(p.Geometry),
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres,
+		Surface:   h.planSurface(ctx, p.Geometry),
 		CreatedAt: wireTime(p.CreatedAt), UpdatedAt: wireTime(p.UpdatedAt),
 	}
+}
+
+func (h *Handler) planSurface(ctx context.Context, geometry []route.Point) *openapi.SurfaceClassification {
+	if h.surface == nil {
+		return nil
+	}
+	classification, err := h.surface.Classify(ctx, geometry)
+	if err != nil || classification == nil {
+		return nil
+	}
+	ranges := make([]openapi.SurfaceRange, len(classification.Ranges))
+	for index, band := range classification.Ranges {
+		ranges[index] = openapi.SurfaceRange{
+			Kind:       openapi.SurfaceRange_Kind(band.Kind),
+			StartIndex: band.StartIndex,
+			EndIndex:   band.EndIndex,
+		}
+	}
+
+	return &openapi.SurfaceClassification{Ranges: ranges, MatchedMetres: classification.MatchedMetres}
 }
 
 // planSummaryOf renders a plan's summary, carrying no geometry.

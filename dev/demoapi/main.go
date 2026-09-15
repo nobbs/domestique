@@ -236,14 +236,15 @@ func newHandler(
 	}
 	handler, err := httpapi.New(
 		&httpapi.Options{
-			Settings:         runtimeSettings,
-			Alerts:           newDemoAlerts(),
-			Tasks:            newDemoTasks(demoReseeder.trigger),
-			BuildRevision:    "demo",
-			Plans:            plans,
-			Sessions:         sessions,
-			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
-			Auth0Domain:      settings.Auth.Auth0.Domain,
+			Settings:          runtimeSettings,
+			Alerts:            newDemoAlerts(),
+			Tasks:             newDemoTasks(demoReseeder.trigger),
+			BuildRevision:     "demo",
+			Plans:             plans,
+			SurfaceClassifier: demoSurfaceClassifier{},
+			Sessions:          sessions,
+			BrowserOriginURL:  settings.HTTP.BrowserOriginURL,
+			Auth0Domain:       settings.Auth.Auth0.Domain,
 		},
 		oauthService,
 		store,

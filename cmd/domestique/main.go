@@ -306,6 +306,7 @@ func run(ctx context.Context) error {
 			RideModelValidationFunc: rideModel.validationView,
 			RideModelStatusFunc:     rideModel.statusView,
 			Plans:                   httpapiPlans(planService),
+			SurfaceClassifier:       newSurfaceClassifier(surfaceIndex),
 		},
 		oauthService,
 		store,

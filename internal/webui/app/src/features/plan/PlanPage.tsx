@@ -72,6 +72,7 @@ function previewFrom(plan: Plan): PlanRoutePreview {
     geometry: plan.geometry,
     distanceMetres: plan.distanceMetres,
     ascentMetres: plan.ascentMetres,
+    ...(plan.surface === undefined ? {} : { surface: plan.surface }),
   };
 }
 
@@ -840,6 +841,7 @@ export function PlanPage() {
                 {line.length > 1 ? (
                   <RouteOverlay
                     coordinates={line}
+                    surface={preview?.surface?.ranges}
                     profile={profile}
                     activeProfile={profile}
                     activeMetres={activeMetres}

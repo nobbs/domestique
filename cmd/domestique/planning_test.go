@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +19,18 @@ import (
 	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
+	"github.com/nobbs/domestique/internal/surface"
 )
+
+type planningSurfaceSource struct {
+	generation string
+}
+
+func (planningSurfaceSource) Ways(context.Context, []route.Point) ([]surface.Way, error) {
+	return nil, nil
+}
+
+func (s planningSurfaceSource) Generation() string { return s.generation }
 
 // [planning] absent switches the planner off: newLocalSource returns nil
 // without an error rather than a source with nothing to route.
@@ -29,6 +41,20 @@ func TestNewLocalSourceIsNilWithoutPlanning(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, configured, "newLocalSource() without [planning]")
 	assert.Nil(t, source, "newLocalSource() without [planning]")
+}
+
+func TestSurfaceClassifierOmitsMissingMapAndKeepsUnknownClassification(t *testing.T) {
+	points := []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}}
+
+	missing, err := newSurfaceClassifier(planningSurfaceSource{}).Classify(t.Context(), points)
+	require.NoError(t, err)
+	assert.Nil(t, missing)
+
+	unknown, err := newSurfaceClassifier(planningSurfaceSource{generation: "current"}).Classify(t.Context(), points)
+	require.NoError(t, err)
+	require.NotNil(t, unknown)
+	require.Len(t, unknown.Ranges, 1)
+	assert.Equal(t, "unknown", unknown.Ranges[0].Kind)
 }
 
 func TestNewLocalSourceBuildsThePlanServiceWhenConfigured(t *testing.T) {

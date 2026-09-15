@@ -414,9 +414,10 @@ type PlanRouteRequest struct {
 }
 
 type PlanRoutePreview struct {
-	Geometry       GeoJSONLineString `json:"geometry"`
-	DistanceMetres float64           `json:"distanceMetres"`
-	AscentMetres   float64           `json:"ascentMetres"`
+	Geometry       GeoJSONLineString      `json:"geometry"`
+	DistanceMetres float64                `json:"distanceMetres"`
+	AscentMetres   float64                `json:"ascentMetres"`
+	Surface        *SurfaceClassification `json:"surface,omitempty"`
 }
 
 type PlanWrite struct {
@@ -428,17 +429,18 @@ type PlanWrite struct {
 }
 
 type Plan struct {
-	ID             int64             `json:"id"`
-	Name           string            `json:"name"`
-	Profile        PlanProfile       `json:"profile"`
-	Published      bool              `json:"published"`
-	Version        int64             `json:"version"`
-	Waypoints      []PlanWaypoint    `json:"waypoints"`
-	Geometry       GeoJSONLineString `json:"geometry"`
-	DistanceMetres float64           `json:"distanceMetres"`
-	AscentMetres   float64           `json:"ascentMetres"`
-	CreatedAt      time.Time         `json:"createdAt"`
-	UpdatedAt      time.Time         `json:"updatedAt"`
+	ID             int64                  `json:"id"`
+	Name           string                 `json:"name"`
+	Profile        PlanProfile            `json:"profile"`
+	Published      bool                   `json:"published"`
+	Version        int64                  `json:"version"`
+	Waypoints      []PlanWaypoint         `json:"waypoints"`
+	Geometry       GeoJSONLineString      `json:"geometry"`
+	DistanceMetres float64                `json:"distanceMetres"`
+	AscentMetres   float64                `json:"ascentMetres"`
+	Surface        *SurfaceClassification `json:"surface,omitempty"`
+	CreatedAt      time.Time              `json:"createdAt"`
+	UpdatedAt      time.Time              `json:"updatedAt"`
 }
 
 type PlanSummary struct {
@@ -909,6 +911,11 @@ type SurfaceRange struct {
 	Kind       SurfaceRange_Kind `json:"kind"`
 	StartIndex int               `json:"startIndex"`
 	EndIndex   int               `json:"endIndex"`
+}
+
+type SurfaceClassification struct {
+	Ranges        []SurfaceRange `json:"ranges"`
+	MatchedMetres float64        `json:"matchedMetres"`
 }
 
 type GeoJSONLineString struct {

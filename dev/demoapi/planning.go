@@ -6,12 +6,53 @@ import (
 	"time"
 
 	"github.com/nobbs/domestique/internal/brouter"
+	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
+	"github.com/nobbs/domestique/internal/surface"
 )
 
 const demoBRouterURL = "https://brouter.de"
+
+type demoSurfaceClassifier struct{}
+
+var _ httpapi.SurfaceClassifier = demoSurfaceClassifier{}
+
+func (demoSurfaceClassifier) Classify(
+	ctx context.Context, points []route.Point,
+) (*httpapi.SurfaceClassification, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("classifying demo surface: %w", err)
+	}
+	if len(points) == 0 {
+		return nil, fmt.Errorf("classifying demo surface: geometry is empty")
+	}
+
+	kinds := make([]surface.Kind, len(points))
+	classes := []surface.Kind{surface.KindAsphalt, surface.KindGravel, surface.KindGround, surface.KindPaving}
+	for index := range kinds {
+		classIndex := index * len(classes) / len(kinds)
+		if classIndex >= len(classes) {
+			classIndex = len(classes) - 1
+		}
+		kinds[index] = classes[classIndex]
+	}
+	ranges := surface.Compress(kinds)
+	classification := &httpapi.SurfaceClassification{
+		Ranges:        make([]httpapi.SurfaceRange, len(ranges)),
+		MatchedMetres: surface.MatchedMetres(points, kinds),
+	}
+	for index, band := range ranges {
+		classification.Ranges[index] = httpapi.SurfaceRange{
+			Kind:       band.Kind.String(),
+			StartIndex: band.StartIndex,
+			EndIndex:   band.EndIndex,
+		}
+	}
+
+	return classification, nil
+}
 
 // newDemoPlanService builds the one planner used by the demo API and its
 // reseed path. BRouter's client owns the 20-second timeout and context flow.

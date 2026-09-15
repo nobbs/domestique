@@ -38,6 +38,26 @@ type Plans interface {
 	List(ctx context.Context) ([]plan.Plan, error)
 }
 
+// SurfaceClassification is the current local map's reading of one routed
+// geometry. A nil result means that no classification is available.
+type SurfaceClassification struct {
+	Ranges        []SurfaceRange
+	MatchedMetres float64
+}
+
+// SurfaceRange is one contiguous surface class in geometry point indices.
+type SurfaceRange struct {
+	Kind       string
+	StartIndex int
+	EndIndex   int
+}
+
+// SurfaceClassifier enriches plan responses without making plan persistence
+// depend on a particular map index or storage implementation.
+type SurfaceClassifier interface {
+	Classify(ctx context.Context, points []route.Point) (*SurfaceClassification, error)
+}
+
 // OAuth performs the protected Wahoo onboarding flow.
 type OAuth interface {
 	Start(ctx context.Context, callerLogin, targetID string) (string, error)

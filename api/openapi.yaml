@@ -2949,6 +2949,8 @@ components:
         ascentMetres:
           type: number
           format: double
+        surface:
+          $ref: '#/components/schemas/SurfaceClassification'
     PlanWrite:
       type: object
       additionalProperties: false
@@ -3015,6 +3017,8 @@ components:
         ascentMetres:
           type: number
           format: double
+        surface:
+          $ref: '#/components/schemas/SurfaceClassification'
         createdAt:
           type: string
           format: date-time
@@ -4016,6 +4020,20 @@ components:
         endIndex:
           type: integer
           minimum: 0
+    SurfaceClassification:
+      type: object
+      additionalProperties: false
+      required:
+        - ranges
+        - matchedMetres
+      properties:
+        ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/SurfaceRange'
+        matchedMetres:
+          type: number
+          format: double
     GeoJSONLineString:
       type: object
       additionalProperties: false
