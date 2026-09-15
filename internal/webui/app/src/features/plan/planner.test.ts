@@ -37,6 +37,12 @@ describe("plannerReducer", () => {
     expect(seed?.name).toHaveLength(120);
     expect(seed && isPlannerSeed(seed)).toBe(true);
     expect(plannerSeedFrom("Short", [[8, 49]])).toBeNull();
+    expect(
+      plannerSeedFrom("  ", [
+        [8, 49],
+        [8.1, 49.1],
+      ]),
+    ).toBeNull();
 
     // Characters, as the service counts them: an emoji is one, not two.
     const astral = plannerSeedFrom("\u{1F6B4}".repeat(121), [
