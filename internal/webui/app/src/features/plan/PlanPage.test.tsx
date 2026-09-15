@@ -477,11 +477,23 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
 
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
-    fireEvent.click(screen.getByRole("link", { name: "New" }));
-    await act(async () => {});
+    vi.stubGlobal("navigator", {
+      geolocation: {
+        getCurrentPosition: (
+          found: (position: { coords: { latitude: number; longitude: number } }) => void,
+        ) => found({ coords: { latitude: 49, longitude: 8 } }),
+      },
+    });
+    try {
+      fireEvent.click(screen.getByRole("link", { name: "New" }));
+      await act(async () => {});
 
-    expect(screen.getByDisplayValue("")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Planned route summary")).toBeNull();
+      expect(screen.getByDisplayValue("")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Planned route summary")).toBeNull();
+      expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[7.99,48.99,8.01,49.01]");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("waits for an opened plan and keeps its controls out of a failed load", () => {

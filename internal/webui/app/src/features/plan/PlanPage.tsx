@@ -682,10 +682,9 @@ export function PlanPage() {
     ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
     : null;
   const insets = useOverlayInsets();
-  // Decided once, at mount: only a blank draft frames the rider's own position,
-  // and a plan or seed that opens later keeps its own framing.
-  const [locationEnabled] = useState(() => planId === null && copySeed === null);
-  const position = useStartupLocation(locationEnabled);
+  // Only a blank draft frames the rider's own position; a plan or seed keeps
+  // its own framing, and the request is not made until a blank one is shown.
+  const position = useStartupLocation(planId === null && copySeed === null);
   const locationBox = useMemo(() => (position ? boxAround(position) : null), [position]);
 
   useEffect(() => {
