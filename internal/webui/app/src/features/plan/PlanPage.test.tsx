@@ -362,6 +362,48 @@ describe("PlanPage", () => {
     expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: ranges }));
   });
 
+  it("leaves the route unpainted when the classification matched nothing", () => {
+    preview.mockImplementation(
+      (
+        _variables: unknown,
+        callbacks: {
+          onSuccess: (value: {
+            data: {
+              geometry: { type: "LineString"; coordinates: number[][] };
+              distanceMetres: number;
+              ascentMetres: number;
+              surface: { ranges: unknown[]; matchedMetres: number };
+            };
+          }) => void;
+        },
+      ) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49],
+                [8.1, 49.1],
+              ],
+            },
+            distanceMetres: 10_000,
+            ascentMetres: 100,
+            surface: {
+              ranges: [{ kind: "unknown", startIndex: 0, endIndex: 1 }],
+              matchedMetres: 0,
+            },
+          },
+        }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: undefined }));
+  });
+
   it("shows a save failure instead of leaving a rejected action behind", async () => {
     create.mockRejectedValue(new Error("Save unavailable"));
     renderPage();

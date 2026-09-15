@@ -868,7 +868,11 @@ export function PlanPage() {
                 {line.length > 1 ? (
                   <RouteOverlay
                     coordinates={line}
-                    surface={preview?.surface?.ranges}
+                    surface={
+                      preview?.surface && preview.surface.matchedMetres > 0
+                        ? preview.surface.ranges
+                        : undefined
+                    }
                     profile={profile}
                     activeProfile={profile}
                     activeMetres={activeMetres}
