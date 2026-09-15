@@ -14,6 +14,10 @@ export default defineConfig({
       // character in one must travel as a single escaped path segment rather
       // than silently addressing a different route.
       urlEncodeParameters: true,
+      // Without this, a declared header parameter — If-Match, the plan
+      // endpoints' only one — is silently dropped from the generated
+      // signature rather than typed.
+      headers: true,
       override: {
         fetch: { forceSuccessResponse: true },
         mutator: { name: "domestiqueRequest", path: "./src/api/request.ts" },

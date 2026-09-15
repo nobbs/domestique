@@ -39,6 +39,10 @@ const maximumRequestBytes = 1 << 10
 // list carries two URLs per entry.
 const maximumSettingsBytes = 16 << 10
 
+// maximumPlanBytes bounds a plan body: up to 50 waypoints, each a longitude
+// and a latitude, plus a name and a profile.
+const maximumPlanBytes = 8 << 10
+
 // maximumWebhookBytes bounds an inbound provider notification. A workout summary
 // is small, and the three fields this service reads of one are smaller.
 const maximumWebhookBytes = 64 << 10
@@ -106,6 +110,11 @@ type Options struct {
 	// Tasks are the background activities this handler lists and starts.
 	// Required.
 	Tasks Tasks
+
+	// Plans is the admin-composed local route source. Optional: nil leaves the
+	// whole /v1/plans group unregistered, answering 404, and reports planning
+	// as unconfigured — the shape a build with no routing engine takes.
+	Plans Plans
 
 	// WebhookTokens verifies the token an inbound provider notification carries.
 	// Optional: without it, or until a webhook token is stored, POST
@@ -194,6 +203,7 @@ type Handler struct {
 	styleOrigins        StyleOrigins
 	alerts              Alerts
 	tasks               Tasks
+	plans               Plans
 	webhookTokens       WebhookTokens
 	zwiftWorldMaps      ZwiftWorldMaps
 	zwiftWorldOf        ZwiftWorldOf
@@ -270,6 +280,7 @@ func New(
 		rideModelValidation: options.RideModelValidationFunc,
 		rideModelStatus:     options.RideModelStatusFunc,
 		now:                 time.Now,
+		plans:               options.Plans,
 
 		sessions: options.Sessions,
 	}
@@ -333,6 +344,14 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/basemaps", h.adminOnly(h.SetBasemaps))
 	h.mux.HandleFunc("PUT /v1/settings/surface", h.adminOnly(h.SetSurface))
 	h.mux.HandleFunc("PUT /v1/settings/sync", h.adminOnly(h.SetSync))
+	if h.plans != nil {
+		h.mux.HandleFunc("POST /v1/plans/route", h.adminOnly(h.PreviewPlanRoute))
+		h.mux.HandleFunc("GET /v1/plans", h.adminOnly(h.ListPlans))
+		h.mux.HandleFunc("POST /v1/plans", h.adminOnly(h.CreatePlan))
+		h.mux.HandleFunc("GET /v1/plans/{planId}", h.adminOnly(h.GetPlan))
+		h.mux.HandleFunc("PUT /v1/plans/{planId}", h.adminOnly(h.ReplacePlan))
+		h.mux.HandleFunc("DELETE /v1/plans/{planId}", h.adminOnly(h.DeletePlan))
+	}
 	// Not admin-gated: this section is the rider's own, read and written over
 	// their own subject and no other's.
 	h.mux.HandleFunc("GET /v1/settings/rider", h.GetRiderProfile)
@@ -468,6 +487,10 @@ func (h *Handler) bounded(next http.Handler) http.Handler {
 	})
 }
 
+// plansPath is the prefix of every plan address, whose bodies carry up to 50
+// waypoints and so outgrow every other request this service reads.
+const plansPath = "/v1/plans"
+
 // requestLimit is how large a body one path may carry.
 func requestLimit(path string) int64 {
 	if path == basemapsPath {
@@ -475,6 +498,9 @@ func requestLimit(path string) int64 {
 	}
 	if path == webhookWahooPath {
 		return maximumWebhookBytes
+	}
+	if strings.HasPrefix(path, plansPath) {
+		return maximumPlanBytes
 	}
 
 	return maximumRequestBytes

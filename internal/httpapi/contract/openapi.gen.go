@@ -394,6 +394,69 @@ type RouteList struct {
 	Routes []Route `json:"routes"`
 }
 
+type PlanWaypoint struct {
+	Longitude float64 `json:"longitude"`
+	Latitude  float64 `json:"latitude"`
+}
+
+// PlanProfile The routing engine profile a plan is drawn against.
+type PlanProfile string
+
+const (
+	PlanProfileTrekking PlanProfile = "trekking"
+	PlanProfileFastbike PlanProfile = "fastbike"
+	PlanProfileGravel   PlanProfile = "gravel"
+)
+
+type PlanRouteRequest struct {
+	Profile   PlanProfile    `json:"profile"`
+	Waypoints []PlanWaypoint `json:"waypoints"`
+}
+
+type PlanRoutePreview struct {
+	Geometry       GeoJSONLineString `json:"geometry"`
+	DistanceMetres float64           `json:"distanceMetres"`
+	AscentMetres   float64           `json:"ascentMetres"`
+}
+
+type PlanWrite struct {
+	Name      string         `json:"name"`
+	Profile   PlanProfile    `json:"profile"`
+	Waypoints []PlanWaypoint `json:"waypoints"`
+	// Published Whether the plan should be published. A create ignores this field and always stores a draft; a replace stores exactly what is sent.
+	Published bool `json:"published"`
+}
+
+type Plan struct {
+	ID             int64             `json:"id"`
+	Name           string            `json:"name"`
+	Profile        PlanProfile       `json:"profile"`
+	Published      bool              `json:"published"`
+	Version        int64             `json:"version"`
+	Waypoints      []PlanWaypoint    `json:"waypoints"`
+	Geometry       GeoJSONLineString `json:"geometry"`
+	DistanceMetres float64           `json:"distanceMetres"`
+	AscentMetres   float64           `json:"ascentMetres"`
+	CreatedAt      time.Time         `json:"createdAt"`
+	UpdatedAt      time.Time         `json:"updatedAt"`
+}
+
+type PlanSummary struct {
+	ID             int64       `json:"id"`
+	Name           string      `json:"name"`
+	Profile        PlanProfile `json:"profile"`
+	Published      bool        `json:"published"`
+	Version        int64       `json:"version"`
+	DistanceMetres float64     `json:"distanceMetres"`
+	AscentMetres   float64     `json:"ascentMetres"`
+	WaypointCount  int         `json:"waypointCount"`
+	UpdatedAt      time.Time   `json:"updatedAt"`
+}
+
+type PlanList struct {
+	Plans []PlanSummary `json:"plans"`
+}
+
 type SyncPhaseRun struct {
 	LastCompletedAt time.Time `json:"lastCompletedAt"`
 	LastResult      string    `json:"lastResult"`
@@ -815,6 +878,8 @@ type WebUIConfig struct {
 	// Timezone The IANA zone the service reads local time in.
 	Timezone string          `json:"timezone"`
 	Identity BrowserIdentity `json:"identity"`
+	// Planning Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off.
+	Planning *bool `json:"planning,omitempty"`
 }
 
 // BrowserIdentity Who the gate let through. It names the reader rather than identifying them: it is how a session can be seen to be the one intended.

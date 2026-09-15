@@ -8,17 +8,17 @@ import (
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/route"
-	syncservice "github.com/nobbs/domestique/internal/sync"
 
 	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/sqlite"
 )
 
-// newLocalSource builds the plan service as a sync source when [planning] is
-// configured. configured is false, with a nil source and error, when the
-// section is absent.
-func newLocalSource(settings *config.Settings, store *sqlite.Store) (source syncservice.Source, configured bool, err error) {
+// newLocalSource builds the plan service, which is also the sync source for
+// [planning], when that section is configured. configured is false, with a
+// nil service and error, when it is absent.
+func newLocalSource(settings *config.Settings, store *sqlite.Store) (service *plan.Service, configured bool, err error) {
 	if !settings.Planning.Enabled() {
 		return nil, false, nil
 	}
@@ -50,16 +50,20 @@ func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, pro
 }
 
 // wireLocalSource registers the plan service on cache when [planning] is
-// configured, leaving cache untouched otherwise.
-func wireLocalSource(settings *config.Settings, store *sqlite.Store, cache *sourceCache) error {
-	source, configured, err := newLocalSource(settings, store)
+// configured, leaving cache untouched otherwise, and returns it so main can
+// wire it into the HTTP surface's plan endpoints. configured is false, with
+// a nil service, when the section is absent.
+func wireLocalSource(
+	settings *config.Settings, store *sqlite.Store, cache *sourceCache,
+) (service *plan.Service, configured bool, err error) {
+	service, configured, err = newLocalSource(settings, store)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
 	if !configured {
-		return nil
+		return nil, false, nil
 	}
-	cache.setLocal(source)
+	cache.setLocal(service)
 	// No behaviour change: the segment refresh task is #758/#761's work. This
 	// build routes with whatever the engine's own directory already holds.
 	if len(settings.Planning.Segments) > 0 {
@@ -67,7 +71,18 @@ func wireLocalSource(settings *config.Settings, store *sqlite.Store, cache *sour
 			"the engine routes with what its directory holds")
 	}
 
-	return nil
+	return service, true, nil
+}
+
+// httpapiPlans adapts a possibly-nil *plan.Service to httpapi.Plans, so the
+// composition root's Options literal never assigns a typed nil pointer to
+// that interface field — which Go would treat as non-nil.
+func httpapiPlans(service *plan.Service) httpapi.Plans {
+	if service == nil {
+		return nil
+	}
+
+	return service
 }
 
 // planStore adapts *sqlite.Store to plan.Store, converting between

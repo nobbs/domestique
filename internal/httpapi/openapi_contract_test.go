@@ -45,7 +45,7 @@ func TestEveryContractOperationIsRegistered(t *testing.T) {
 	handler := newTestHandler(t)
 	pathValues := strings.NewReplacer(
 		"{provider}", "veloplanner", "{routeId}", "12", "{stage}", "1",
-		"{target}", "rider-a", "{asset}", "app.js",
+		"{target}", "rider-a", "{asset}", "app.js", "{planId}", "7",
 	)
 
 	for path, operations := range document.Paths {
@@ -177,12 +177,12 @@ func TestEveryStateChangingOperationRequiresTheBrowserOrigin(t *testing.T) {
 	plain := strings.NewReplacer(
 		"{provider}", "veloplanner", "{sourceRouteId}", "12", "{stageOrder}", "1",
 		"{routeId}", "12", "{stage}", "1",
-		"{target}", "rider-a", "{asset}", "app.js",
+		"{target}", "rider-a", "{asset}", "app.js", "{planId}", "7",
 	)
 	escaped := strings.NewReplacer(
 		"{provider}", "velo%2Fplanner", "{sourceRouteId}", "12", "{stageOrder}", "1",
 		"{routeId}", "12", "{stage}", "1",
-		"{target}", "a%2Fb", "{asset}", "app%2Ejs",
+		"{target}", "a%2Fb", "{asset}", "app%2Ejs", "{planId}", "7",
 	)
 
 	for path, operations := range document.Paths {

@@ -37,7 +37,7 @@ func ParseProfile(value string) (Profile, error) {
 	case Trekking, Fastbike, Gravel:
 		return profile, nil
 	default:
-		return "", fmt.Errorf("plan: unknown profile %q", value)
+		return "", fmt.Errorf("%w: unknown profile %q", ErrInvalid, value)
 	}
 }
 
@@ -53,6 +53,15 @@ var ErrVersionMismatch = errors.New("plan: version does not match")
 
 // ErrNotFound reports an operation against a plan ID that does not exist.
 var ErrNotFound = errors.New("plan: not found")
+
+// ErrRouting reports that the routing engine could not route a set of
+// waypoints. Route wraps it around the engine's own error, so a caller can
+// test for it with errors.Is without seeing what the engine said.
+var ErrRouting = errors.New("plan: routing failed")
+
+// ErrInvalid reports that a plan's own fields did not pass validation: its
+// name, profile, waypoint count, or a waypoint's coordinates.
+var ErrInvalid = errors.New("plan: invalid")
 
 // Waypoint is one point an admin placed while drawing a plan.
 type Waypoint struct {
@@ -149,7 +158,7 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 	}
 	points, err := s.router.Route(ctx, waypoints, profile)
 	if err != nil {
-		return Measured{}, fmt.Errorf("plan: routing waypoints: %w", err)
+		return Measured{}, fmt.Errorf("plan: routing waypoints: %w: %w", ErrRouting, err)
 	}
 	built, err := route.NewRoute(route.ProviderLocal, 1, 1, previewRevision, "", "", points, previewRevision)
 	if err != nil {
@@ -317,10 +326,10 @@ func (s *Service) Inventory(ctx context.Context) ([]route.Route, error) {
 func validate(name string, profile Profile, waypoints []Waypoint) (string, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
-		return "", errors.New("plan: name is required")
+		return "", fmt.Errorf("%w: name is required", ErrInvalid)
 	}
 	if len(trimmed) > maxNameLength {
-		return "", fmt.Errorf("plan: name exceeds %d characters", maxNameLength)
+		return "", fmt.Errorf("%w: name exceeds %d characters", ErrInvalid, maxNameLength)
 	}
 	if err := validateRouting(profile, waypoints); err != nil {
 		return "", err
@@ -336,14 +345,14 @@ func validateRouting(profile Profile, waypoints []Waypoint) error {
 		return err
 	}
 	if len(waypoints) < minWaypoints || len(waypoints) > maxWaypoints {
-		return fmt.Errorf("plan: waypoints must number between %d and %d", minWaypoints, maxWaypoints)
+		return fmt.Errorf("%w: waypoints must number between %d and %d", ErrInvalid, minWaypoints, maxWaypoints)
 	}
 	for index, waypoint := range waypoints {
 		if !inRange(waypoint.Longitude, 180) {
-			return fmt.Errorf("plan: waypoint %d longitude is out of range", index)
+			return fmt.Errorf("%w: waypoint %d longitude is out of range", ErrInvalid, index)
 		}
 		if !inRange(waypoint.Latitude, 90) {
-			return fmt.Errorf("plan: waypoint %d latitude is out of range", index)
+			return fmt.Errorf("%w: waypoint %d latitude is out of range", ErrInvalid, index)
 		}
 	}
 

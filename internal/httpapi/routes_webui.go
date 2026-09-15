@@ -37,6 +37,7 @@ func (h *Handler) GetWebUIConfig(writer http.ResponseWriter, request *http.Reque
 			Display: identity.Display,
 			Admin:   identity.Admin,
 		},
+		Planning: optionalBool(h.plans != nil),
 	}
 	// Omitted entirely when no source named one, so the page offers no link at
 	// all rather than building a broken one.

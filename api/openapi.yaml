@@ -868,6 +868,198 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/NotFound'
+  /v1/plans/route:
+    post:
+      tags:
+        - browser-api
+      operationId: previewPlanRoute
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Routes a set of waypoints over the configured engine and returns the
+        normalised geometry with its distance and ascent, storing nothing.
+        Origin-checked like every state-changing request, storing nothing
+        notwithstanding, because it makes the service do outbound work.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanRouteRequest'
+      responses:
+        "200":
+          description: The routed geometry, not stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanRoutePreview'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/plans:
+    get:
+      tags:
+        - browser-api
+      operationId: listPlans
+      description: >-
+        Every plan, draft and published, with its summary. Carries no
+        geometry: a plan's geometry is served only by its own address.
+      responses:
+        "200":
+          description: Every plan's summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+    post:
+      tags:
+        - browser-api
+      operationId: createPlan
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Routes the waypoints server-side and stores a new plan as a draft,
+        regardless of the published field this request carries.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanWrite'
+      responses:
+        "201":
+          description: The stored draft, with its routed geometry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/plans/{planId}:
+    get:
+      tags:
+        - browser-api
+      operationId: getPlan
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        "200":
+          description: >-
+            One plan's waypoints, profile, name, published state, version and
+            stored geometry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+    put:
+      tags:
+        - browser-api
+      operationId: replacePlan
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Replaces one plan whole, published state included, routing the
+        waypoints server-side again. The version last read travels as
+        If-Match; a stale version is refused with 412 so one admin cannot
+        overwrite what another has just changed.
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanWrite'
+      responses:
+        "200":
+          description: The stored plan, with its newly routed geometry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "412":
+          $ref: '#/components/responses/PreconditionFailed'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      tags:
+        - browser-api
+      operationId: deletePlan
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Removes one plan. The version last read travels as If-Match; a stale
+        version is refused with 412.
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        "204":
+          $ref: '#/components/responses/NoContent'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "412":
+          $ref: '#/components/responses/PreconditionFailed'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/settings:
     get:
       tags:
@@ -1533,6 +1725,23 @@ components:
       schema:
         type: integer
         minimum: 1
+    PlanId:
+      name: planId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: >-
+        The plan's version as last read, as a plain decimal string this
+        service echoes back rather than interprets as an HTTP entity tag.
+      schema:
+        type: string
   responses:
     SettingsStored:
       description: >-
@@ -1574,6 +1783,12 @@ components:
             $ref: '#/components/schemas/Error'
     Unavailable:
       description: Local state is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    PreconditionFailed:
+      description: The If-Match version no longer matches what is stored.
       content:
         application/json:
           schema:
@@ -2683,6 +2898,176 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Route'
+    PlanWaypoint:
+      type: object
+      additionalProperties: false
+      required:
+        - longitude
+        - latitude
+      properties:
+        longitude:
+          type: number
+          format: double
+        latitude:
+          type: number
+          format: double
+    PlanProfile:
+      type: string
+      description: The routing engine profile a plan is drawn against.
+      enum:
+        - trekking
+        - fastbike
+        - gravel
+    PlanRouteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - profile
+        - waypoints
+      properties:
+        profile:
+          $ref: '#/components/schemas/PlanProfile'
+        waypoints:
+          type: array
+          minItems: 2
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PlanWaypoint'
+    PlanRoutePreview:
+      type: object
+      additionalProperties: false
+      required:
+        - geometry
+        - distanceMetres
+        - ascentMetres
+      properties:
+        geometry:
+          $ref: '#/components/schemas/GeoJSONLineString'
+        distanceMetres:
+          type: number
+          format: double
+        ascentMetres:
+          type: number
+          format: double
+    PlanWrite:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - profile
+        - waypoints
+        - published
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        profile:
+          $ref: '#/components/schemas/PlanProfile'
+        waypoints:
+          type: array
+          minItems: 2
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/PlanWaypoint'
+        published:
+          type: boolean
+          description: >-
+            Whether the plan should be published. A create ignores this field
+            and always stores a draft; a replace stores exactly what is sent.
+    Plan:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - profile
+        - published
+        - version
+        - waypoints
+        - geometry
+        - distanceMetres
+        - ascentMetres
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        profile:
+          $ref: '#/components/schemas/PlanProfile'
+        published:
+          type: boolean
+        version:
+          type: integer
+          format: int64
+        waypoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanWaypoint'
+        geometry:
+          $ref: '#/components/schemas/GeoJSONLineString'
+        distanceMetres:
+          type: number
+          format: double
+        ascentMetres:
+          type: number
+          format: double
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PlanSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - profile
+        - published
+        - version
+        - distanceMetres
+        - ascentMetres
+        - waypointCount
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        profile:
+          $ref: '#/components/schemas/PlanProfile'
+        published:
+          type: boolean
+        version:
+          type: integer
+          format: int64
+        distanceMetres:
+          type: number
+          format: double
+        ascentMetres:
+          type: number
+          format: double
+        waypointCount:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+    PlanList:
+      type: object
+      additionalProperties: false
+      required:
+        - plans
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanSummary'
     SyncPhaseRun:
       type: object
       additionalProperties: false
@@ -3574,6 +3959,11 @@ components:
           description: The IANA zone the service reads local time in.
         identity:
           $ref: '#/components/schemas/BrowserIdentity'
+        planning:
+          type: boolean
+          description: >-
+            Whether a routing engine is configured, so the page offers the
+            planner only where it will answer. Absent means off.
     BrowserIdentity:
       type: object
       additionalProperties: false
