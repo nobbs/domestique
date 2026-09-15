@@ -164,8 +164,10 @@ func run(ctx context.Context) error {
 		slog.Error("the ride model could not be loaded", "error", reloadErr)
 	}
 	sourceClients := newSourceCache()
-	// [planning] absent switches the planner off: no local source.
-	if wireErr := wireLocalSource(settings, store, sourceClients); wireErr != nil {
+	// [planning] absent switches the planner off: no local source, and the
+	// plan endpoints stay unregistered.
+	planService, _, wireErr := wireLocalSource(settings, store, sourceClients)
+	if wireErr != nil {
 		return wireErr
 	}
 	reconciler, err := syncservice.New(&syncservice.Options{
@@ -303,6 +305,7 @@ func run(ctx context.Context) error {
 			},
 			RideModelValidationFunc: rideModel.validationView,
 			RideModelStatusFunc:     rideModel.statusView,
+			Plans:                   httpapiPlans(planService),
 		},
 		oauthService,
 		store,

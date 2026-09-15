@@ -54,6 +54,11 @@ var ErrVersionMismatch = errors.New("plan: version does not match")
 // ErrNotFound reports an operation against a plan ID that does not exist.
 var ErrNotFound = errors.New("plan: not found")
 
+// ErrRouting reports that the routing engine could not route a set of
+// waypoints. Route wraps it around the engine's own error, so a caller can
+// test for it with errors.Is without seeing what the engine said.
+var ErrRouting = errors.New("plan: routing failed")
+
 // Waypoint is one point an admin placed while drawing a plan.
 type Waypoint struct {
 	Longitude float64
@@ -149,7 +154,7 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 	}
 	points, err := s.router.Route(ctx, waypoints, profile)
 	if err != nil {
-		return Measured{}, fmt.Errorf("plan: routing waypoints: %w", err)
+		return Measured{}, fmt.Errorf("plan: routing waypoints: %w: %w", ErrRouting, err)
 	}
 	built, err := route.NewRoute(route.ProviderLocal, 1, 1, previewRevision, "", "", points, previewRevision)
 	if err != nil {

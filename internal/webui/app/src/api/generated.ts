@@ -792,6 +792,77 @@ export interface RouteActivityList {
 }
 
 /**
+ * The routing engine profile a plan is drawn against.
+ */
+export type PlanProfile = (typeof PlanProfile)[keyof typeof PlanProfile];
+
+export const PlanProfile = {
+  trekking: "trekking",
+  fastbike: "fastbike",
+  gravel: "gravel",
+} as const;
+
+export interface PlanWaypoint {
+  longitude: number;
+  latitude: number;
+}
+
+export interface PlanRouteRequest {
+  profile: PlanProfile;
+  /** @minItems 2 */
+  waypoints: PlanWaypoint[];
+}
+
+export interface PlanRoutePreview {
+  geometry: GeoJSONLineString;
+  distanceMetres: number;
+  ascentMetres: number;
+}
+
+export interface PlanSummary {
+  id: number;
+  name: string;
+  profile: PlanProfile;
+  published: boolean;
+  version: number;
+  distanceMetres: number;
+  ascentMetres: number;
+  waypointCount: number;
+  updatedAt: string;
+}
+
+export interface PlanList {
+  plans: PlanSummary[];
+}
+
+export interface PlanWrite {
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
+  name: string;
+  profile: PlanProfile;
+  /** @minItems 2 */
+  waypoints: PlanWaypoint[];
+  /** Whether the plan should be published. A create ignores this field and always stores a draft; a replace stores exactly what is sent. */
+  published: boolean;
+}
+
+export interface Plan {
+  id: number;
+  name: string;
+  profile: PlanProfile;
+  published: boolean;
+  version: number;
+  waypoints: PlanWaypoint[];
+  geometry: GeoJSONLineString;
+  distanceMetres: number;
+  ascentMetres: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
  * Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace.
  */
 export type SettingsSecretsSet = { [key: string]: boolean };
@@ -1105,6 +1176,8 @@ export interface WebUIConfig {
   /** The IANA zone the service reads local time in. */
   timezone: string;
   identity: BrowserIdentity;
+  /** Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off. */
+  planning?: boolean;
 }
 
 export interface WeatherPoint {
@@ -1182,9 +1255,14 @@ export type AcceptedResponse = Accepted;
 export type TaskInProgressResponse = Error;
 
 /**
- * Every setting now in force, not only the section this request replaced, so one answer refills the whole page.
+ * Provider request failed without exposing provider detail.
  */
-export type SettingsStoredResponse = Settings;
+export type ProviderUnavailableResponse = Error;
+
+/**
+ * The If-Match version no longer matches what is stored.
+ */
+export type PreconditionFailedResponse = Error;
 
 /**
  * The write took effect. There is nothing to answer with.
@@ -1192,9 +1270,14 @@ export type SettingsStoredResponse = Settings;
 export type NoContentResponse = void;
 
 /**
- * Provider request failed without exposing provider detail.
+ * Every setting now in force, not only the section this request replaced, so one answer refills the whole page.
  */
-export type ProviderUnavailableResponse = Error;
+export type SettingsStoredResponse = Settings;
+
+/**
+ * The plan's version as last read, as a plain decimal string this service echoes back rather than interprets as an HTTP entity tag.
+ */
+export type IfMatchParameter = string;
 
 export type WeatherGridReferenceTimeParameter = string;
 
@@ -5502,6 +5585,968 @@ export const useReprocessRoute = <
   TContext
 > => {
   return useMutation(getReprocessRouteMutationOptions(options), queryClient);
+};
+
+export type previewPlanRouteResponse200 = {
+  data: PlanRoutePreview;
+  status: 200;
+};
+
+export type previewPlanRouteResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type previewPlanRouteResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type previewPlanRouteResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type previewPlanRouteResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type previewPlanRouteResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type previewPlanRouteResponseSuccess = previewPlanRouteResponse200 & {
+  headers: Headers;
+};
+export type previewPlanRouteResponseError = (
+  | previewPlanRouteResponse400
+  | previewPlanRouteResponse401
+  | previewPlanRouteResponse403
+  | previewPlanRouteResponse404
+  | previewPlanRouteResponse502
+) & {
+  headers: Headers;
+};
+
+export const getPreviewPlanRouteUrl = () => {
+  return `/v1/plans/route`;
+};
+
+/**
+ * Routes a set of waypoints over the configured engine and returns the normalised geometry with its distance and ascent, storing nothing. Origin-checked like every state-changing request, storing nothing notwithstanding, because it makes the service do outbound work.
+ */
+export const previewPlanRoute = async (
+  planRouteRequest: PlanRouteRequest,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<previewPlanRouteResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<previewPlanRouteResponseSuccess>(getPreviewPlanRouteUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(planRouteRequest),
+  });
+};
+
+export const getPreviewPlanRouteMutationKey = () => ["previewPlanRoute"] as const;
+
+export const getPreviewPlanRouteMutationOptions = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof previewPlanRoute>>,
+    TError,
+    PreviewPlanRouteMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof previewPlanRoute>>,
+  TError,
+  PreviewPlanRouteMutationVariables,
+  TContext
+> => {
+  const mutationKey = getPreviewPlanRouteMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof previewPlanRoute>>,
+    PreviewPlanRouteMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return previewPlanRoute(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PreviewPlanRouteMutationResult = NonNullable<
+  Awaited<ReturnType<typeof previewPlanRoute>>
+>;
+export type PreviewPlanRouteMutationBody = PlanRouteRequest;
+export type PreviewPlanRouteMutationError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | ProviderUnavailableResponse
+>;
+export type PreviewPlanRouteMutationVariables = { data: PlanRouteRequest };
+
+export const usePreviewPlanRoute = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof previewPlanRoute>>,
+      TError,
+      PreviewPlanRouteMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof previewPlanRoute>>,
+  TError,
+  PreviewPlanRouteMutationVariables,
+  TContext
+> => {
+  return useMutation(getPreviewPlanRouteMutationOptions(options), queryClient);
+};
+
+export type listPlansResponse200 = {
+  data: PlanList;
+  status: 200;
+};
+
+export type listPlansResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type listPlansResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type listPlansResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type listPlansResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type listPlansResponseSuccess = listPlansResponse200 & {
+  headers: Headers;
+};
+export type listPlansResponseError = (
+  | listPlansResponse401
+  | listPlansResponse403
+  | listPlansResponse404
+  | listPlansResponse503
+) & {
+  headers: Headers;
+};
+
+export const getListPlansUrl = () => {
+  return `/v1/plans`;
+};
+
+/**
+ * Every plan, draft and published, with its summary. Carries no geometry: a plan's geometry is served only by its own address.
+ */
+export const listPlans = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<listPlansResponseSuccess> => {
+  return domestiqueRequest<listPlansResponseSuccess>(getListPlansUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPlansQueryKey = () => {
+  return [`/v1/plans`] as const;
+};
+
+export const getListPlansQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPlans>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(options?: {
+  query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>>;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPlansQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listPlans>>> = ({ signal }) =>
+    listPlans({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPlans>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListPlansQueryResult = NonNullable<Awaited<ReturnType<typeof listPlans>>>;
+export type ListPlansQueryError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+>;
+
+export function useListPlans<
+  TData = Awaited<ReturnType<typeof listPlans>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPlans>>,
+          TError,
+          Awaited<ReturnType<typeof listPlans>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListPlans<
+  TData = Awaited<ReturnType<typeof listPlans>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listPlans>>,
+          TError,
+          Awaited<ReturnType<typeof listPlans>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListPlans<
+  TData = Awaited<ReturnType<typeof listPlans>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useListPlans<
+  TData = Awaited<ReturnType<typeof listPlans>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListPlansQueryOptions(options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type createPlanResponse201 = {
+  data: Plan;
+  status: 201;
+};
+
+export type createPlanResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type createPlanResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type createPlanResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type createPlanResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type createPlanResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type createPlanResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type createPlanResponseSuccess = createPlanResponse201 & {
+  headers: Headers;
+};
+export type createPlanResponseError = (
+  | createPlanResponse400
+  | createPlanResponse401
+  | createPlanResponse403
+  | createPlanResponse404
+  | createPlanResponse502
+  | createPlanResponse503
+) & {
+  headers: Headers;
+};
+
+export const getCreatePlanUrl = () => {
+  return `/v1/plans`;
+};
+
+/**
+ * Routes the waypoints server-side and stores a new plan as a draft, regardless of the published field this request carries.
+ */
+export const createPlan = async (
+  planWrite: PlanWrite,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<createPlanResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<createPlanResponseSuccess>(getCreatePlanUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(planWrite),
+  });
+};
+
+export const getCreatePlanMutationKey = () => ["createPlan"] as const;
+
+export const getCreatePlanMutationOptions = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPlan>>,
+    TError,
+    CreatePlanMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPlan>>,
+  TError,
+  CreatePlanMutationVariables,
+  TContext
+> => {
+  const mutationKey = getCreatePlanMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPlan>>,
+    CreatePlanMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPlan(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePlanMutationResult = NonNullable<Awaited<ReturnType<typeof createPlan>>>;
+export type CreatePlanMutationBody = PlanWrite;
+export type CreatePlanMutationError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | ProviderUnavailableResponse
+  | UnavailableResponse
+>;
+export type CreatePlanMutationVariables = { data: PlanWrite };
+
+export const useCreatePlan = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof createPlan>>,
+      TError,
+      CreatePlanMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof createPlan>>,
+  TError,
+  CreatePlanMutationVariables,
+  TContext
+> => {
+  return useMutation(getCreatePlanMutationOptions(options), queryClient);
+};
+
+export type getPlanResponse200 = {
+  data: Plan;
+  status: 200;
+};
+
+export type getPlanResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getPlanResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getPlanResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getPlanResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getPlanResponseSuccess = getPlanResponse200 & {
+  headers: Headers;
+};
+export type getPlanResponseError = (
+  | getPlanResponse401
+  | getPlanResponse403
+  | getPlanResponse404
+  | getPlanResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetPlanUrl = (planId: number) => {
+  return `/v1/plans/${encodeURIComponent(String(planId))}`;
+};
+
+export const getPlan = async (
+  planId: number,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getPlanResponseSuccess> => {
+  return domestiqueRequest<getPlanResponseSuccess>(getGetPlanUrl(planId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPlanQueryKey = (planId: number) => {
+  return [`/v1/plans/${planId}`] as const;
+};
+
+export const getGetPlanQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPlan>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlan>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPlanQueryKey(planId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlan>>> = ({ signal }) =>
+    getPlan(planId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: planId !== null && planId !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getPlan>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetPlanQueryResult = NonNullable<Awaited<ReturnType<typeof getPlan>>>;
+export type GetPlanQueryError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+>;
+
+export function useGetPlan<
+  TData = Awaited<ReturnType<typeof getPlan>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlan>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPlan>>,
+          TError,
+          Awaited<ReturnType<typeof getPlan>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetPlan<
+  TData = Awaited<ReturnType<typeof getPlan>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlan>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPlan>>,
+          TError,
+          Awaited<ReturnType<typeof getPlan>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetPlan<
+  TData = Awaited<ReturnType<typeof getPlan>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlan>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetPlan<
+  TData = Awaited<ReturnType<typeof getPlan>>,
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlan>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetPlanQueryOptions(planId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type replacePlanResponse200 = {
+  data: Plan;
+  status: 200;
+};
+
+export type replacePlanResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type replacePlanResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type replacePlanResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type replacePlanResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type replacePlanResponse412 = {
+  data: PreconditionFailedResponse;
+  status: 412;
+};
+
+export type replacePlanResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type replacePlanResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type replacePlanResponseSuccess = replacePlanResponse200 & {
+  headers: Headers;
+};
+export type replacePlanResponseError = (
+  | replacePlanResponse400
+  | replacePlanResponse401
+  | replacePlanResponse403
+  | replacePlanResponse404
+  | replacePlanResponse412
+  | replacePlanResponse502
+  | replacePlanResponse503
+) & {
+  headers: Headers;
+};
+
+export const getReplacePlanUrl = (planId: number) => {
+  return `/v1/plans/${encodeURIComponent(String(planId))}`;
+};
+
+/**
+ * Replaces one plan whole, published state included, routing the waypoints server-side again. The version last read travels as If-Match; a stale version is refused with 412 so one admin cannot overwrite what another has just changed.
+ */
+export const replacePlan = async (
+  planId: number,
+  planWrite: PlanWrite,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<replacePlanResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<replacePlanResponseSuccess>(getReplacePlanUrl(planId), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    body: JSON.stringify(planWrite),
+  });
+};
+
+export const getReplacePlanMutationKey = () => ["replacePlan"] as const;
+
+export const getReplacePlanMutationOptions = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | PreconditionFailedResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof replacePlan>>,
+    TError,
+    ReplacePlanMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof replacePlan>>,
+  TError,
+  ReplacePlanMutationVariables,
+  TContext
+> => {
+  const mutationKey = getReplacePlanMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof replacePlan>>,
+    ReplacePlanMutationVariables
+  > = (props) => {
+    const { planId, data } = props ?? {};
+
+    return replacePlan(planId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ReplacePlanMutationResult = NonNullable<Awaited<ReturnType<typeof replacePlan>>>;
+export type ReplacePlanMutationBody = PlanWrite;
+export type ReplacePlanMutationError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | PreconditionFailedResponse
+  | ProviderUnavailableResponse
+  | UnavailableResponse
+>;
+export type ReplacePlanMutationVariables = { planId: number; data: PlanWrite };
+
+export const useReplacePlan = <
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | PreconditionFailedResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof replacePlan>>,
+      TError,
+      ReplacePlanMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof replacePlan>>,
+  TError,
+  ReplacePlanMutationVariables,
+  TContext
+> => {
+  return useMutation(getReplacePlanMutationOptions(options), queryClient);
+};
+
+export type deletePlanResponse204 = {
+  data: NoContentResponse;
+  status: 204;
+};
+
+export type deletePlanResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type deletePlanResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type deletePlanResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type deletePlanResponse412 = {
+  data: PreconditionFailedResponse;
+  status: 412;
+};
+
+export type deletePlanResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type deletePlanResponseSuccess = deletePlanResponse204 & {
+  headers: Headers;
+};
+export type deletePlanResponseError = (
+  | deletePlanResponse401
+  | deletePlanResponse403
+  | deletePlanResponse404
+  | deletePlanResponse412
+  | deletePlanResponse503
+) & {
+  headers: Headers;
+};
+
+export const getDeletePlanUrl = (planId: number) => {
+  return `/v1/plans/${encodeURIComponent(String(planId))}`;
+};
+
+/**
+ * Removes one plan. The version last read travels as If-Match; a stale version is refused with 412.
+ */
+export const deletePlan = async (
+  planId: number,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<deletePlanResponseSuccess> => {
+  return domestiqueRequest<deletePlanResponseSuccess>(getDeletePlanUrl(planId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeletePlanMutationKey = () => ["deletePlan"] as const;
+
+export const getDeletePlanMutationOptions = <
+  TError = ErrorType<
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | PreconditionFailedResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePlan>>,
+    TError,
+    DeletePlanMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deletePlan>>,
+  TError,
+  DeletePlanMutationVariables,
+  TContext
+> => {
+  const mutationKey = getDeletePlanMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deletePlan>>,
+    DeletePlanMutationVariables
+  > = (props) => {
+    const { planId } = props ?? {};
+
+    return deletePlan(planId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeletePlanMutationResult = NonNullable<Awaited<ReturnType<typeof deletePlan>>>;
+
+export type DeletePlanMutationError = ErrorType<
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | PreconditionFailedResponse
+  | UnavailableResponse
+>;
+export type DeletePlanMutationVariables = { planId: number };
+
+export const useDeletePlan = <
+  TError = ErrorType<
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | PreconditionFailedResponse
+    | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deletePlan>>,
+      TError,
+      DeletePlanMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deletePlan>>,
+  TError,
+  DeletePlanMutationVariables,
+  TContext
+> => {
+  return useMutation(getDeletePlanMutationOptions(options), queryClient);
 };
 
 export type getSettingsResponse200 = {

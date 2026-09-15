@@ -56,7 +56,10 @@ func TestWireLocalSourceLeavesTheCacheEmptyWithoutPlanning(t *testing.T) {
 	t.Parallel()
 
 	cache := newSourceCache()
-	require.NoError(t, wireLocalSource(&config.Settings{}, testStore(t, t.TempDir()), cache))
+	service, wired, err := wireLocalSource(&config.Settings{}, testStore(t, t.TempDir()), cache)
+	require.NoError(t, err)
+	assert.False(t, wired, "wireLocalSource() without [planning]")
+	assert.Nil(t, service, "wireLocalSource() without [planning]")
 
 	_, configured, err := cache.sourceFor(testSettings(t, testStore(t, t.TempDir())), route.ProviderLocal)
 	require.NoError(t, err)
@@ -66,10 +69,13 @@ func TestWireLocalSourceLeavesTheCacheEmptyWithoutPlanning(t *testing.T) {
 func TestWireLocalSourceRegistersThePlanServiceWhenConfigured(t *testing.T) {
 	settings := testPlanningSettings(t)
 	cache := newSourceCache()
-	require.NoError(t, wireLocalSource(settings, testStore(t, t.TempDir()), cache))
-
-	source, configured, err := cache.sourceFor(testSettings(t, testStore(t, t.TempDir())), route.ProviderLocal)
+	service, wired, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
 	require.NoError(t, err)
+	require.True(t, wired, "wireLocalSource() with [planning] configured")
+	require.NotNil(t, service, "wireLocalSource() with [planning] configured")
+
+	source, configured, sourceErr := cache.sourceFor(testSettings(t, testStore(t, t.TempDir())), route.ProviderLocal)
+	require.NoError(t, sourceErr)
 	require.True(t, configured, "sourceFor(local) after wireLocalSource with [planning]")
 	assert.Equal(t, route.ProviderLocal, source.Provider(), "Provider()")
 }
@@ -81,7 +87,34 @@ func TestWireLocalSourceWarnsAboutUnusedSegments(t *testing.T) {
 	settings.Planning.Segments = []string{"E5_N45"}
 	cache := newSourceCache()
 
-	require.NoError(t, wireLocalSource(settings, testStore(t, t.TempDir()), cache))
+	_, _, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	require.NoError(t, err)
+}
+
+// wireLocalSource forwards newLocalSource's own construction failure rather
+// than swallowing it.
+func TestWireLocalSourceForwardsAConstructionFailure(t *testing.T) {
+	settings := testPlanningSettings(t)
+	settings.Planning.BRouterURL = "not a url"
+	cache := newSourceCache()
+
+	service, configured, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	require.Error(t, err)
+	assert.False(t, configured, "wireLocalSource() on a construction failure")
+	assert.Nil(t, service, "wireLocalSource() on a construction failure")
+}
+
+// httpapiPlans must not hand main's Options literal a typed nil pointer
+// behind the Plans interface, which Go would treat as non-nil.
+func TestHTTPAPIPlansAvoidsATypedNilInterface(t *testing.T) {
+	var unconfigured *plan.Service
+	assert.Nil(t, httpapiPlans(unconfigured), "httpapiPlans(nil)")
+
+	settings := testPlanningSettings(t)
+	service, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	require.NoError(t, err)
+	require.True(t, configured)
+	assert.NotNil(t, httpapiPlans(service), "httpapiPlans(configured)")
 }
 
 // brouterRouter converts plan types to the adapter's own before asking the

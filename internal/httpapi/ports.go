@@ -8,12 +8,35 @@ import (
 
 	activities "github.com/nobbs/domestique/internal/activity"
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
 	"github.com/nobbs/domestique/internal/trainingload"
 )
+
+// Plans is the admin-composed local route source as the plan endpoints need
+// it. Satisfied structurally by *plan.Service; this package consumes plan's
+// value types rather than adapting them, since plan owns no adapter boundary.
+type Plans interface {
+	// Route previews waypoints against the routing engine, storing nothing.
+	Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) (plan.Measured, error)
+	// Create routes and stores a new draft plan.
+	Create(ctx context.Context, name string, profile plan.Profile, waypoints []plan.Waypoint) (plan.Plan, error)
+	// Replace overwrites an existing plan whole, refusing a stale
+	// expectedVersion with plan.ErrVersionMismatch.
+	Replace(
+		ctx context.Context, id, expectedVersion int64, name string, profile plan.Profile,
+		waypoints []plan.Waypoint, published bool,
+	) (plan.Plan, error)
+	// Delete removes a plan whose expectedVersion still matches what is stored.
+	Delete(ctx context.Context, id, expectedVersion int64) error
+	// Get returns one plan, found reporting whether it exists.
+	Get(ctx context.Context, id int64) (plan.Plan, bool, error)
+	// List returns every plan, draft and published.
+	List(ctx context.Context) ([]plan.Plan, error)
+}
 
 // OAuth performs the protected Wahoo onboarding flow.
 type OAuth interface {
