@@ -54,6 +54,7 @@ import { Input } from "../../components/ui/input";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance } from "../../lib/format";
+import { useNarrowViewport } from "../../lib/mediaQuery";
 import { buildProfile, rangeBounds } from "../../lib/profile";
 import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
@@ -626,6 +627,8 @@ export function PlanPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [dockOpen, setDockOpen] = useState(true);
+  // Below the breakpoint the strip lives in the Drawer, so it never resizes the map.
+  const narrow = useNarrowViewport();
   const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
   const { mutate: previewRoute } = usePreviewPlanRoute();
   const loaded = useRef<string | null>(null);
@@ -823,7 +826,7 @@ export function PlanPage() {
                   maxZoom={framed ? ROUTE_MAX_ZOOM : LOCATION_ZOOM}
                   // The strip changes height when it folds and when a profile
                   // first fills it; the map re-frames after either.
-                  fitRevision={(dockOpen ? 1 : 0) + (profile ? 2 : 0)}
+                  fitRevision={narrow ? 0 : (dockOpen ? 1 : 0) + (profile ? 2 : 0)}
                 />
                 {line.length > 1 ? (
                   <RouteOverlay

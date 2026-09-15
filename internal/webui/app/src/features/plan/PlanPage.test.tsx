@@ -9,6 +9,7 @@ const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
+const narrowViewport = vi.hoisted(() => ({ value: false }));
 const routeOverlay = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/generated", async (importOriginal) => ({
@@ -50,6 +51,10 @@ vi.mock("../../components/Layout", () => ({
       {workspace === "sidebar" ? dock : null}
     </main>
   ),
+}));
+vi.mock("../../lib/mediaQuery", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/mediaQuery")>()),
+  useNarrowViewport: () => narrowViewport.value,
 }));
 vi.mock("../../components/map/MapWidget", () => ({
   MapWidget: ({
@@ -263,6 +268,19 @@ describe("PlanPage", () => {
     expect(screen.getByRole("button", { name: "Hide elevation" })).toBeInTheDocument();
     expect(screen.getByText("elevation profile")).toBeInTheDocument();
     expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
+  });
+
+  it("does not re-frame for the elevation panel while it lives in the Drawer", () => {
+    narrowViewport.value = true;
+    try {
+      renderPage();
+
+      expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
+      fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
+      expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
+    } finally {
+      narrowViewport.value = false;
+    }
   });
 
   it("keeps history controls on the map beside the planner and dispatches their actions", () => {
