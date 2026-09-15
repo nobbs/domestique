@@ -761,7 +761,10 @@ export function PlanPage() {
 
   const line = useMemo(() => positions(preview), [preview]);
   const framed = initialViewport.current?.planId === planId ? initialViewport.current.bounds : null;
-  const viewportBounds = framed ?? (planId === null && copySeed === null ? locationBox : null);
+  // A position that arrives once the rider has started placing waypoints is too
+  // late to frame: the camera is theirs by then.
+  const blank = planId === null && copySeed === null && state.waypoints.length === 0;
+  const viewportBounds = framed ?? (blank ? locationBox : null);
   const profile = useMemo(() => buildProfile(line), [line]);
   const save = async (published: boolean) => {
     const data = {

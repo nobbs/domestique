@@ -208,6 +208,9 @@ describe("PlanPage", () => {
       await act(async () => {});
 
       expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[7.99,48.99,8.01,49.01]");
+      fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+
+      expect(screen.getByTestId("plan-viewport")).toHaveTextContent("null");
     } finally {
       vi.unstubAllGlobals();
     }
