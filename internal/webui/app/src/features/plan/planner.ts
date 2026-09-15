@@ -29,6 +29,7 @@ export type PlannerAction =
   | { type: "delete"; index: number }
   | { type: "reverse" }
   | { type: "reorder"; index: number; direction: "up" | "down" }
+  | { type: "reorder"; order: number[] }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "reset" }
@@ -110,6 +111,23 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         ? state
         : apply(state, { ...snapshot(state), waypoints: [...state.waypoints].reverse() });
     case "reorder": {
+      if ("order" in action) {
+        if (
+          action.order.length !== state.waypoints.length ||
+          new Set(action.order).size !== state.waypoints.length
+        ) {
+          return state;
+        }
+        const byID = new Map(state.waypoints.map((waypoint) => [waypoint.id, waypoint]));
+        const waypoints = action.order.map((id) => byID.get(id));
+        if (waypoints.some((waypoint) => !waypoint)) {
+          return state;
+        }
+        const ordered = waypoints as PlannerWaypoint[];
+        return ordered.every((waypoint, index) => waypoint === state.waypoints[index])
+          ? state
+          : apply(state, { ...snapshot(state), waypoints: ordered });
+      }
       const nextIndex = action.index + (action.direction === "up" ? -1 : 1);
       if (!state.waypoints[action.index] || !state.waypoints[nextIndex]) {
         return state;

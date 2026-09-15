@@ -454,10 +454,9 @@ describe("PlanPage", () => {
     const map = screen.getByRole("button", { name: "Plan route map" });
 
     fireEvent.click(map);
-    expect(screen.getByRole("button", { name: "Drag Start waypoint to reorder" })).toHaveAttribute(
-      "title",
-      "Drag Start waypoint to reorder",
-    );
+    expect(
+      screen.getByRole("listitem", { name: "Drag Start waypoint to reorder" }),
+    ).toHaveAttribute("title", "Drag Start waypoint to reorder");
     expect(screen.getByRole("img", { name: "Start waypoint" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "Finish waypoint" })).toBeNull();
 
@@ -465,13 +464,13 @@ describe("PlanPage", () => {
     fireEvent.click(map);
     expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Drag Finish waypoint to reorder" }),
+      screen.getByRole("listitem", { name: "Drag Finish waypoint to reorder" }),
     ).toBeInTheDocument();
 
     mapPoint.value = { longitude: 8.2, latitude: 49 };
     fireEvent.click(map);
     expect(screen.getByRole("img", { name: "Waypoint 2" })).toHaveTextContent("2");
-    expect(screen.getByRole("button", { name: "Drag Waypoint 2 to reorder" })).toHaveTextContent(
+    expect(screen.getByRole("listitem", { name: "Drag Waypoint 2 to reorder" })).toHaveTextContent(
       "2",
     );
     expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
@@ -517,7 +516,7 @@ describe("PlanPage", () => {
     );
   });
 
-  it("reorders start and finish waypoint handles, then reroutes", async () => {
+  it("previews, commits, and cancels full-row waypoint reordering from its grip affordance", async () => {
     openedPlan.value = {
       data: {
         data: {
@@ -548,19 +547,44 @@ describe("PlanPage", () => {
     };
     renderPage("/plan/4");
     await act(async () => {});
+    act(() => vi.advanceTimersByTime(300));
     preview.mockClear();
 
-    const first = screen.getByRole("button", { name: "Drag Start waypoint to reorder" });
-    const third = screen.getByRole("button", { name: "Drag Finish waypoint to reorder" });
+    const first = screen.getByRole("listitem", { name: "Drag Start waypoint to reorder" });
+    const third = screen.getByRole("listitem", { name: "Drag Finish waypoint to reorder" });
+    const rows = () =>
+      Array.from(screen.getByRole("list", { name: "Waypoints" }).querySelectorAll("li"));
+    const rowIDs = () => rows().map((row) => row.getAttribute("data-waypoint-id"));
     expect(first).toHaveAttribute("title", "Drag Start waypoint to reorder");
     expect(third).toHaveAttribute("title", "Drag Finish waypoint to reorder");
+    expect(first).toHaveAttribute("draggable", "true");
+    expect(first.querySelector(".tabler-icon-grip-vertical")).toBeInTheDocument();
+    expect(screen.getByLabelText("Waypoint 1 longitude")).not.toHaveAttribute("draggable", "true");
     expect(screen.getByRole("button", { name: "Move Waypoint 2 up" })).toBeInTheDocument();
 
+    const dataTransfer = { effectAllowed: "", setData: vi.fn(), setDragImage: vi.fn() };
+    fireEvent.dragStart(first, { dataTransfer });
+    expect(dataTransfer.setDragImage).toHaveBeenCalledWith(
+      first,
+      expect.any(Number),
+      expect.any(Number),
+    );
+    fireEvent.dragOver(third);
+    expect(rowIDs()).toEqual(["1", "2", "0"]);
+    act(() => vi.advanceTimersByTime(300));
+    expect(preview).not.toHaveBeenCalled();
+    fireEvent.dragEnd(first);
+    expect(rowIDs()).toEqual(["0", "1", "2"]);
+    fireEvent.dragStart(screen.getByLabelText("Waypoint 1 longitude"));
+    fireEvent.dragStart(screen.getByRole("button", { name: "Delete waypoint 1" }));
+    expect(rowIDs()).toEqual(["0", "1", "2"]);
+
     fireEvent.dragStart(first);
-    fireEvent.dragOver(third.closest("li") as HTMLElement);
-    fireEvent.drop(third.closest("li") as HTMLElement);
+    fireEvent.dragOver(third);
+    fireEvent.drop(third);
     act(() => vi.advanceTimersByTime(300));
 
+    expect(rowIDs()).toEqual(["1", "2", "0"]);
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
     expect(preview).toHaveBeenCalledWith(
       expect.objectContaining({

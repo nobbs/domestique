@@ -3,6 +3,7 @@ import { initialPlannerState, plannerReducer } from "./planner";
 
 const first = { longitude: 8, latitude: 49 };
 const second = { longitude: 8.1, latitude: 49.1 };
+const third = { longitude: 8.2, latitude: 49.2 };
 
 function reduce(...actions: Parameters<typeof plannerReducer>[1][]) {
   return actions.reduce(plannerReducer, initialPlannerState);
@@ -31,6 +32,18 @@ describe("plannerReducer", () => {
     );
 
     expect(state.waypoints).toMatchObject([first, second]);
+  });
+
+  it("commits a dragged waypoint order as one history entry", () => {
+    const state = reduce(
+      { type: "append", waypoint: first },
+      { type: "append", waypoint: second },
+      { type: "append", waypoint: third },
+    );
+    const reordered = plannerReducer(state, { type: "reorder", order: [1, 2, 0] });
+
+    expect(reordered.waypoints).toMatchObject([second, third, first]);
+    expect(reordered.past).toHaveLength(state.past.length + 1);
   });
 
   it("deletes one waypoint", () => {
