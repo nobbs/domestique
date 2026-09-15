@@ -3,7 +3,6 @@ import {
   IconArrowForwardUp,
   IconArrowsExchange,
   IconChevronDown,
-  IconChevronsRight,
   IconDeviceFloppy,
   IconFlagCheck,
   IconGripVertical,
@@ -15,7 +14,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Dispatch, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Marker, ScaleControl } from "react-map-gl/maplibre";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   getGetPlanQueryKey,
   getListPlansQueryKey,
@@ -246,10 +245,6 @@ export interface PlannerSidebarProps {
   published: boolean;
   saving: boolean;
   saveError: string | null;
-  collapsed: boolean;
-  onCollapsedChange: (collapsed: boolean) => void;
-  /** Standing in the shell's sidebar column rather than as a card over the map. */
-  docked?: boolean;
   onSave: (published: boolean) => void;
   dispatch: Dispatch<Parameters<typeof plannerReducer>[1]>;
 }
@@ -263,9 +258,6 @@ export function PlannerSidebar({
   published,
   saving,
   saveError,
-  collapsed,
-  onCollapsedChange,
-  docked = false,
   onSave,
   dispatch,
 }: PlannerSidebarProps) {
@@ -288,298 +280,257 @@ export function PlannerSidebar({
   };
 
   return (
-    <div data-compact-workspace="" className={docked ? "" : "w-fit max-w-full"}>
-      <section
-        aria-label="Route planner controls"
-        className={
-          docked
-            ? "py-1.5"
-            : `max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[24rem]"}`
-        }
-      >
-        <div className="flex items-center gap-1 p-1.5">
-          <button
-            type="button"
-            aria-expanded={!collapsed}
-            aria-label={collapsed ? "Show planner controls" : "Hide planner controls"}
-            onClick={() => onCollapsedChange(!collapsed)}
-            className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
-          >
-            {docked ? null : (
-              <IconChevronsRight
-                size={16}
-                stroke={2}
-                aria-hidden="true"
-                className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
-              />
-            )}
-            <span className="font-semibold">{planId === null ? "Plan a route" : "Edit plan"}</span>
-            {collapsed && preview ? (
-              <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
-                {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
-              </span>
-            ) : null}
-          </button>
-          {collapsed ? null : (
-            <div className="ml-auto flex items-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button variant="ghost" icon={<IconChevronDown size={16} stroke={2} />} />
-                  }
-                  disabled={plans.length === 0}
-                >
-                  Plans
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-auto min-w-52">
-                  {plans.map((plan) => (
-                    <DropdownMenuItem key={plan.id} render={<Link to={`/plan/${plan.id}`} />}>
-                      <span className="flex-1">{plan.name}</span>
-                      {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <ButtonLink variant="ghost" to="/plan">
-                New
-              </ButtonLink>
-            </div>
-          )}
-        </div>
-        {collapsed ? null : (
-          <div className="grid gap-4 px-4 pt-2 pb-4">
-            <label className="grid gap-1 text-sm font-medium">
-              Name
-              <Input
-                value={state.name}
-                maxLength={120}
-                onChange={(event) => dispatch({ type: "setName", name: event.target.value })}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-medium">
-              Route type
-              <select
-                value={state.profile}
-                onChange={(event) =>
-                  dispatch({ type: "setProfile", profile: event.target.value as PlanProfile })
-                }
-                className="h-8 w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm outline-none hover:bg-[var(--panel)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+    <section className="py-1.5">
+      <div className="flex items-center gap-1 p-1.5">
+        <h2 className="px-2 py-1 font-semibold">
+          {planId === null ? "Plan a route" : "Edit plan"}
+        </h2>
+        {
+          <div className="ml-auto flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" icon={<IconChevronDown size={16} stroke={2} />} />}
+                disabled={plans.length === 0}
               >
-                {PLAN_PROFILES.map((profile) => (
-                  <option key={profile} value={profile}>
-                    {profile}
-                  </option>
+                Plans
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto min-w-52">
+                {plans.map((plan) => (
+                  <DropdownMenuItem key={plan.id} render={<Link to={`/plan/${plan.id}`} />}>
+                    <span className="flex-1">{plan.name}</span>
+                    {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
+                  </DropdownMenuItem>
                 ))}
-              </select>
-            </label>
-            <ol className="grid gap-1" aria-label="Waypoints">
-              {visualWaypoints.map((waypoint, index) => {
-                const stateIndex = state.waypoints.indexOf(waypoint);
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <ButtonLink variant="ghost" to="/plan">
+              New
+            </ButtonLink>
+          </div>
+        }
+      </div>
+      {
+        <div className="grid gap-4 px-4 pt-2 pb-4">
+          <label className="grid gap-1 text-sm font-medium">
+            Name
+            <Input
+              value={state.name}
+              maxLength={120}
+              onChange={(event) => dispatch({ type: "setName", name: event.target.value })}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-medium">
+            Route type
+            <select
+              value={state.profile}
+              onChange={(event) =>
+                dispatch({ type: "setProfile", profile: event.target.value as PlanProfile })
+              }
+              className="h-8 w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm outline-none hover:bg-[var(--panel)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {PLAN_PROFILES.map((profile) => (
+                <option key={profile} value={profile}>
+                  {profile}
+                </option>
+              ))}
+            </select>
+          </label>
+          <ol className="grid gap-1" aria-label="Waypoints">
+            {visualWaypoints.map((waypoint, index) => {
+              const stateIndex = state.waypoints.indexOf(waypoint);
 
-                return (
-                  <li
-                    key={waypoint.id}
-                    data-waypoint-id={waypoint.id}
-                    className="flex items-center gap-1 text-sm"
-                  >
-                    <div
-                      role="group"
-                      draggable
-                      aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                      title={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                      className={`flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-transparent bg-[var(--base)] p-1 hover:border-[var(--rule)] ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
-                      onDragStart={(event) => {
-                        if (isInteractiveDragOrigin(event.target)) {
-                          event.preventDefault();
-                          return;
-                        }
-                        const order = state.waypoints.map((entry) => entry.id);
-                        dragging.current = waypoint.id;
-                        dragTarget.current = null;
-                        dragOrder.current = order;
-                        setVisualOrder(order);
-                        event.dataTransfer?.setData("text/plain", String(waypoint.id));
-                        if (event.dataTransfer) {
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setDragImage(
-                            event.currentTarget,
-                            Math.round(event.currentTarget.clientWidth / 2),
-                            Math.round(event.currentTarget.clientHeight / 2),
-                          );
-                        }
-                      }}
-                      onDragOver={(event) => {
+              return (
+                <li
+                  key={waypoint.id}
+                  data-waypoint-id={waypoint.id}
+                  className="flex items-center gap-1 text-sm"
+                >
+                  <div
+                    role="group"
+                    draggable
+                    aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
+                    title={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
+                    className={`flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-transparent bg-[var(--base)] p-1 hover:border-[var(--rule)] ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
+                    onDragStart={(event) => {
+                      if (isInteractiveDragOrigin(event.target)) {
                         event.preventDefault();
-                        const waypointID = dragging.current;
-                        if (waypointID === null || dragTarget.current === waypoint.id) {
-                          return;
-                        }
-                        dragTarget.current = waypoint.id;
-                        const next = moveWaypoint(
-                          dragOrder.current ?? state.waypoints.map((entry) => entry.id),
-                          waypointID,
-                          waypoint.id,
+                        return;
+                      }
+                      const order = state.waypoints.map((entry) => entry.id);
+                      dragging.current = waypoint.id;
+                      dragTarget.current = null;
+                      dragOrder.current = order;
+                      setVisualOrder(order);
+                      event.dataTransfer?.setData("text/plain", String(waypoint.id));
+                      if (event.dataTransfer) {
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setDragImage(
+                          event.currentTarget,
+                          Math.round(event.currentTarget.clientWidth / 2),
+                          Math.round(event.currentTarget.clientHeight / 2),
                         );
-                        if (next !== dragOrder.current) {
-                          dragOrder.current = next;
-                          setVisualOrder(next);
-                        }
-                      }}
-                      onDrop={(event) => {
-                        event.preventDefault();
-                        const order = dragOrder.current;
-                        clearDrag();
-                        if (order) {
-                          dispatch({ type: "reorder", order });
-                        }
-                      }}
-                      onDragEnd={clearDrag}
+                      }
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      const waypointID = dragging.current;
+                      if (waypointID === null || dragTarget.current === waypoint.id) {
+                        return;
+                      }
+                      dragTarget.current = waypoint.id;
+                      const next = moveWaypoint(
+                        dragOrder.current ?? state.waypoints.map((entry) => entry.id),
+                        waypointID,
+                        waypoint.id,
+                      );
+                      if (next !== dragOrder.current) {
+                        dragOrder.current = next;
+                        setVisualOrder(next);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const order = dragOrder.current;
+                      clearDrag();
+                      if (order) {
+                        dispatch({ type: "reorder", order });
+                      }
+                    }}
+                    onDragEnd={clearDrag}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white"
                     >
-                      <span
-                        aria-hidden="true"
-                        className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white"
-                      >
-                        <WaypointMarker index={index} count={state.waypoints.length} />
-                      </span>
-                      <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
-                        <CoordinateInput
-                          label={`Waypoint ${index + 1} latitude`}
-                          value={waypoint.latitude}
-                          min={-90}
-                          max={90}
-                          onCommit={(latitude) =>
-                            dispatch({
-                              type: "move",
-                              index: stateIndex,
-                              waypoint: { ...waypoint, latitude },
-                            })
-                          }
-                        />
-                        <CoordinateInput
-                          label={`Waypoint ${index + 1} longitude`}
-                          value={waypoint.longitude}
-                          min={-180}
-                          max={180}
-                          onCommit={(longitude) =>
-                            dispatch({
-                              type: "move",
-                              index: stateIndex,
-                              waypoint: { ...waypoint, longitude },
-                            })
-                          }
-                        />
-                      </div>
-                      <Button
-                        variant="ghost"
-                        className="sr-only focus:not-sr-only"
-                        aria-label={`Move ${waypointLabel(index, state.waypoints.length)} up`}
-                        disabled={index === 0}
-                        onClick={() =>
-                          dispatch({ type: "reorder", index: stateIndex, direction: "up" })
+                      <WaypointMarker index={index} count={state.waypoints.length} />
+                    </span>
+                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
+                      <CoordinateInput
+                        label={`Waypoint ${index + 1} latitude`}
+                        value={waypoint.latitude}
+                        min={-90}
+                        max={90}
+                        onCommit={(latitude) =>
+                          dispatch({
+                            type: "move",
+                            index: stateIndex,
+                            waypoint: { ...waypoint, latitude },
+                          })
                         }
-                      >
-                        Move up
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="sr-only focus:not-sr-only"
-                        aria-label={`Move ${waypointLabel(index, state.waypoints.length)} down`}
-                        disabled={index === state.waypoints.length - 1}
-                        onClick={() =>
-                          dispatch({ type: "reorder", index: stateIndex, direction: "down" })
+                      />
+                      <CoordinateInput
+                        label={`Waypoint ${index + 1} longitude`}
+                        value={waypoint.longitude}
+                        min={-180}
+                        max={180}
+                        onCommit={(longitude) =>
+                          dispatch({
+                            type: "move",
+                            index: stateIndex,
+                            waypoint: { ...waypoint, longitude },
+                          })
                         }
-                      >
-                        Move down
-                      </Button>
-                      <span
-                        aria-hidden="true"
-                        className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-[var(--ink-2)]"
-                      >
-                        <IconGripVertical aria-hidden="true" size={16} stroke={2} />
-                      </span>
+                      />
                     </div>
                     <Button
                       variant="ghost"
-                      icon={<IconTrash size={16} />}
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
-                      aria-label={`Delete waypoint ${index + 1}`}
-                      onClick={() => dispatch({ type: "delete", index: stateIndex })}
-                    />
-                  </li>
-                );
-              })}
-            </ol>
-            <p className="text-sm text-[var(--ink-2)]">
-              Click the map to insert a waypoint, or Alt-click to append. Drag waypoint rows to
-              reorder; drag map pins to move them.
-            </p>
-            <div
-              className={
-                docked
-                  ? "-mx-4 sticky bottom-0 grid gap-2 border-[var(--rule)] border-t bg-[var(--panel)] px-4 py-3"
-                  : "contents"
-              }
-            >
-              {preview ? (
-                <output
-                  aria-label="Planned route summary"
-                  className="text-sm font-medium tabular-nums"
-                >
-                  {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
-                </output>
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  icon={<IconDeviceFloppy stroke={1.6} />}
-                  disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-                  onClick={() => onSave(planId === null ? false : published)}
-                >
-                  {planId === null ? "Save draft" : "Save changes"}
-                </Button>
-                {planId !== null && !published ? (
+                      className="sr-only focus:not-sr-only"
+                      aria-label={`Move ${waypointLabel(index, state.waypoints.length)} up`}
+                      disabled={index === 0}
+                      onClick={() =>
+                        dispatch({ type: "reorder", index: stateIndex, direction: "up" })
+                      }
+                    >
+                      Move up
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="sr-only focus:not-sr-only"
+                      aria-label={`Move ${waypointLabel(index, state.waypoints.length)} down`}
+                      disabled={index === state.waypoints.length - 1}
+                      onClick={() =>
+                        dispatch({ type: "reorder", index: stateIndex, direction: "down" })
+                      }
+                    >
+                      Move down
+                    </Button>
+                    <span
+                      aria-hidden="true"
+                      className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-[var(--ink-2)]"
+                    >
+                      <IconGripVertical aria-hidden="true" size={16} stroke={2} />
+                    </span>
+                  </div>
                   <Button
-                    variant="outline"
-                    disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-                    onClick={() => onSave(true)}
-                  >
-                    Publish — syncs on next run
-                  </Button>
-                ) : null}
-              </div>
-              {planId !== null && published ? (
+                    variant="ghost"
+                    icon={<IconTrash size={16} />}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                    aria-label={`Delete waypoint ${index + 1}`}
+                    onClick={() => dispatch({ type: "delete", index: stateIndex })}
+                  />
+                </li>
+              );
+            })}
+          </ol>
+          <p className="text-sm text-[var(--ink-2)]">
+            Click the map to insert a waypoint, or Alt-click to append. Drag waypoint rows to
+            reorder; drag map pins to move them.
+          </p>
+          <div className="-mx-4 sticky bottom-0 grid gap-2 border-[var(--rule)] border-t bg-[var(--panel)] px-4 py-3">
+            {preview ? (
+              <output
+                aria-label="Planned route summary"
+                className="text-sm font-medium tabular-nums"
+              >
+                {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
+              </output>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                icon={<IconDeviceFloppy stroke={1.6} />}
+                disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                onClick={() => onSave(planId === null ? false : published)}
+              >
+                {planId === null ? "Save draft" : "Save changes"}
+              </Button>
+              {planId !== null && !published ? (
                 <Button
-                  variant="warning"
+                  variant="outline"
                   disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-                  onClick={() => onSave(false)}
+                  onClick={() => onSave(true)}
                 >
-                  Unpublish — removes on next sync
+                  Publish — syncs on next run
                 </Button>
-              ) : null}
-              {saveError ? (
-                <Alert variant="destructive">
-                  <AlertTitle>Could not save plan</AlertTitle>
-                  <AlertDescription>{saveError}</AlertDescription>
-                </Alert>
               ) : null}
             </div>
+            {planId !== null && published ? (
+              <Button
+                variant="warning"
+                disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                onClick={() => onSave(false)}
+              >
+                Unpublish — removes on next sync
+              </Button>
+            ) : null}
+            {saveError ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not save plan</AlertTitle>
+                <AlertDescription>{saveError}</AlertDescription>
+              </Alert>
+            ) : null}
           </div>
-        )}
-      </section>
-    </div>
+        </div>
+      }
+    </section>
   );
 }
 
 function PlannerHistoryControls({
   state,
   dispatch,
-  collapsed,
-  insetLeft,
-}: Pick<PlannerSidebarProps, "state" | "dispatch"> & { collapsed: boolean; insetLeft: number }) {
+}: Pick<PlannerSidebarProps, "state" | "dispatch">) {
   return (
-    <div
-      className="pointer-events-auto absolute z-10 flex items-center gap-2"
-      style={{ left: collapsed ? 12 : insetLeft + 12, top: collapsed ? 60 : 12 }}
-    >
+    <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-2">
       <ButtonGroup
         aria-label="Planner history"
         orientation="horizontal"
@@ -629,26 +580,12 @@ function PlannerDock({
   activeMetres: number | null;
   onActiveChange: (metres: number | null) => void;
 }) {
-  if (!open) {
-    return (
-      <Button
-        variant="panel"
-        icon={<IconMountain stroke={1.6} />}
-        aria-expanded="false"
-        aria-label="Show elevation"
-        onClick={() => onOpenChange(true)}
-      >
-        Show elevation
-      </Button>
-    );
-  }
-
   return (
     <section
       aria-label="Planned route elevation"
-      className="w-full max-w-5xl rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
+      className="border-[var(--rule)] border-t bg-[var(--panel)] px-4 py-2"
     >
-      <div className="mb-2 flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         {preview ? (
           <output aria-label="Elevation summary" className="text-sm font-medium tabular-nums">
             {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
@@ -658,20 +595,22 @@ function PlannerDock({
         )}
         <Button
           variant="ghost"
-          icon={<IconLayoutBottombarCollapse stroke={1.6} />}
-          aria-expanded="true"
-          aria-label="Hide elevation"
-          onClick={() => onOpenChange(false)}
+          icon={open ? <IconLayoutBottombarCollapse stroke={1.6} /> : <IconMountain stroke={1.6} />}
+          aria-expanded={open}
+          aria-label={open ? "Hide elevation" : "Show elevation"}
+          onClick={() => onOpenChange(!open)}
         >
-          Hide
+          {open ? "Hide" : "Show"}
         </Button>
       </div>
-      <ElevationProfile
-        title="Planned route elevation"
-        profile={profile}
-        activeMetres={activeMetres}
-        onActiveChange={onActiveChange}
-      />
+      {open ? (
+        <ElevationProfile
+          title="Planned route elevation"
+          profile={profile}
+          activeMetres={activeMetres}
+          onActiveChange={onActiveChange}
+        />
+      ) : null}
     </section>
   );
 }
@@ -681,9 +620,6 @@ export function PlanPage() {
   const { planId: value } = useParams();
   const planId = value && /^\d+$/.test(value) ? Number(value) : null;
   const location = useLocation();
-  // ponytail: spike switch for the docked sidebar; pick one and drop the param.
-  const [params] = useSearchParams();
-  const docked = params.get("workspace") === "sidebar";
   const copySeed = planId === null && isPlannerSeed(location.state) ? location.state : null;
   const config = useQuery(webUIConfigQuery());
   const plans = useListPlans();
@@ -697,7 +633,6 @@ export function PlanPage() {
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
-  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [dockOpen, setDockOpen] = useState(true);
   const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
   const { mutate: previewRoute } = usePreviewPlanRoute();
@@ -855,7 +790,7 @@ export function PlanPage() {
       drawerLabel="Plan a route"
       drawerTitle="Route planner"
       workspaceLabel="Route planner controls"
-      workspace={docked ? "sidebar" : "overlay"}
+      workspace="sidebar"
       map={
         <div className="relative size-full">
           {basemap ? (
@@ -866,12 +801,7 @@ export function PlanPage() {
                 furniture={
                   <>
                     <ScaleControl position="bottom-left" unit="metric" />
-                    <PlannerHistoryControls
-                      state={state}
-                      dispatch={dispatch}
-                      collapsed={panelCollapsed}
-                      insetLeft={insets.left}
-                    />
+                    <PlannerHistoryControls state={state} dispatch={dispatch} />
                     <MapControls>
                       <BasemapPicker
                         basemaps={config.data?.basemaps ?? []}
@@ -973,9 +903,6 @@ export function PlanPage() {
         published={loadedPlan?.published ?? false}
         saving={saving}
         saveError={saveError}
-        collapsed={docked ? false : panelCollapsed}
-        onCollapsedChange={setPanelCollapsed}
-        docked={docked}
         onSave={(published) => void save(published)}
         dispatch={dispatch}
       />

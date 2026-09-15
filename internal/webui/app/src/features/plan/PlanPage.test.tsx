@@ -32,15 +32,17 @@ vi.mock("../../components/Layout", () => ({
     map,
     children,
     dock,
+    workspaceLabel,
   }: {
     map: React.ReactNode;
     children: React.ReactNode;
     dock: React.ReactNode;
+    workspaceLabel: string;
   }) => (
     <main>
       {map}
       <div className="shell__overlay">
-        {children}
+        <aside aria-label={workspaceLabel}>{children}</aside>
         {dock}
       </div>
     </main>
@@ -220,14 +222,8 @@ describe("PlanPage", () => {
     }
   });
 
-  it("folds and reopens its independent planner and elevation overlays", () => {
+  it("folds and reopens the elevation panel", () => {
     renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
-    expect(screen.getByRole("button", { name: "Show planner controls" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Name")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show planner controls" }));
-    expect(screen.getByLabelText("Name")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
     expect(screen.getByRole("button", { name: "Show elevation" })).toBeInTheDocument();
@@ -243,10 +239,10 @@ describe("PlanPage", () => {
     const reverse = screen.getByRole("button", { name: "Reverse" });
 
     expect(history).toHaveAttribute("data-orientation", "horizontal");
-    expect(history.parentElement).toHaveStyle({ left: "27px", top: "12px" });
-    expect(screen.getByRole("region", { name: "Route planner controls" })).not.toContainElement(
-      history,
-    );
+    expect(history.parentElement).toHaveClass("absolute");
+    expect(
+      screen.getByRole("complementary", { name: "Route planner controls" }),
+    ).not.toContainElement(history);
     expect(undo).toBeDisabled();
     expect(redo).toBeDisabled();
     expect(reverse).toBeDisabled();
@@ -267,9 +263,6 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
     fireEvent.click(redo);
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
-
-    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
-    expect(history.parentElement).toHaveStyle({ left: "12px", top: "60px" });
   });
 
   it("routes one preview after a burst and leaves the last good line up after a failure", () => {
