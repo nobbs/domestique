@@ -152,15 +152,16 @@ func planID(request *http.Request) (int64, bool) {
 // carries.
 func ifMatch(request *http.Request) (int64, bool) {
 	version, err := strconv.ParseInt(request.Header.Get("If-Match"), 10, 64)
+	if err != nil || version < 1 {
+		return 0, false
+	}
 
-	return version, err == nil
+	return version, true
 }
 
 // planFailed answers a plan operation's error in the shape the contract
-// names, and reports whether it already wrote a response. A validation
-// error out of plan.validate is a leaf value wrapping nothing; every other
-// error a Plans method can return wraps one, which is what tells the two
-// apart without the plan package tagging each itself.
+// names, and reports whether it already wrote a response. Every sentinel the
+// plan package declares maps to its own status; anything else is unavailable.
 func (h *Handler) planFailed(writer http.ResponseWriter, err error) bool {
 	switch {
 	case err == nil:
@@ -174,7 +175,7 @@ func (h *Handler) planFailed(writer http.ResponseWriter, err error) bool {
 		// about what was asked to route ever reaches a caller.
 		slog.Error("routing a plan failed", "error", err)
 		h.error(writer, http.StatusBadGateway, codeRoutingFailed, "the routing engine could not route these waypoints")
-	case errors.Unwrap(err) == nil:
+	case errors.Is(err, plan.ErrInvalid):
 		h.error(writer, http.StatusBadRequest, "invalid_request", err.Error())
 	default:
 		h.unavailable(writer)
@@ -226,7 +227,7 @@ func planOf(p *plan.Plan) openapi.Plan {
 		ID: p.ID, Name: p.Name, Profile: openapi.PlanProfile(p.Profile), Published: p.Published, Version: p.Version,
 		Waypoints: openapiWaypointsOf(p.Waypoints), Geometry: lineStringOf(p.Geometry),
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres,
-		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
+		CreatedAt: wireTime(p.CreatedAt), UpdatedAt: wireTime(p.UpdatedAt),
 	}
 }
 
@@ -235,6 +236,6 @@ func planSummaryOf(p *plan.Plan) openapi.PlanSummary {
 	return openapi.PlanSummary{
 		ID: p.ID, Name: p.Name, Profile: openapi.PlanProfile(p.Profile), Published: p.Published, Version: p.Version,
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, WaypointCount: len(p.Waypoints),
-		UpdatedAt: p.UpdatedAt,
+		UpdatedAt: wireTime(p.UpdatedAt),
 	}
 }

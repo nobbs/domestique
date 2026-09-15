@@ -904,6 +904,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         "502":
           $ref: '#/components/responses/ProviderUnavailable'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/plans:
     get:
       tags:
@@ -978,6 +980,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Plan'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -1044,6 +1048,8 @@ paths:
       responses:
         "204":
           $ref: '#/components/responses/NoContent'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -2924,6 +2930,7 @@ components:
         waypoints:
           type: array
           minItems: 2
+          maxItems: 50
           items:
             $ref: '#/components/schemas/PlanWaypoint'
     PlanRoutePreview:
@@ -2960,6 +2967,7 @@ components:
         waypoints:
           type: array
           minItems: 2
+          maxItems: 50
           items:
             $ref: '#/components/schemas/PlanWaypoint'
         published:

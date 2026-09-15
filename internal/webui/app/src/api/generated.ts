@@ -809,7 +809,10 @@ export interface PlanWaypoint {
 
 export interface PlanRouteRequest {
   profile: PlanProfile;
-  /** @minItems 2 */
+  /**
+   * @minItems 2
+   * @maxItems 50
+   */
   waypoints: PlanWaypoint[];
 }
 
@@ -842,7 +845,10 @@ export interface PlanWrite {
    */
   name: string;
   profile: PlanProfile;
-  /** @minItems 2 */
+  /**
+   * @minItems 2
+   * @maxItems 50
+   */
   waypoints: PlanWaypoint[];
   /** Whether the plan should be published. A create ignores this field and always stores a draft; a replace stores exactly what is sent. */
   published: boolean;
@@ -1382,6 +1388,20 @@ export type GetRouteActivitiesParams = {
    * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so the surface never confirms which targets exist.
    */
   target?: string;
+};
+
+export type ReplacePlanHeaders = {
+  /**
+   * The plan's version as last read, as a plain decimal string this service echoes back rather than interprets as an HTTP entity tag.
+   */
+  "If-Match": IfMatchParameter;
+};
+
+export type DeletePlanHeaders = {
+  /**
+   * The plan's version as last read, as a plain decimal string this service echoes back rather than interprets as an HTTP entity tag.
+   */
+  "If-Match": IfMatchParameter;
 };
 
 export type GetWeatherParams = {
@@ -5617,6 +5637,11 @@ export type previewPlanRouteResponse502 = {
   status: 502;
 };
 
+export type previewPlanRouteResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
 export type previewPlanRouteResponseSuccess = previewPlanRouteResponse200 & {
   headers: Headers;
 };
@@ -5626,6 +5651,7 @@ export type previewPlanRouteResponseError = (
   | previewPlanRouteResponse403
   | previewPlanRouteResponse404
   | previewPlanRouteResponse502
+  | previewPlanRouteResponse503
 ) & {
   headers: Headers;
 };
@@ -5666,6 +5692,7 @@ export const getPreviewPlanRouteMutationOptions = <
     | ForbiddenResponse
     | NotFoundResponse
     | ProviderUnavailableResponse
+    | UnavailableResponse
   >,
   TContext = unknown,
 >(options?: {
@@ -5711,6 +5738,7 @@ export type PreviewPlanRouteMutationError = ErrorType<
   | ForbiddenResponse
   | NotFoundResponse
   | ProviderUnavailableResponse
+  | UnavailableResponse
 >;
 export type PreviewPlanRouteMutationVariables = { data: PlanRouteRequest };
 
@@ -5721,6 +5749,7 @@ export const usePreviewPlanRoute = <
     | ForbiddenResponse
     | NotFoundResponse
     | ProviderUnavailableResponse
+    | UnavailableResponse
   >,
   TContext = unknown,
 >(
@@ -6070,6 +6099,11 @@ export type getPlanResponse200 = {
   status: 200;
 };
 
+export type getPlanResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
 export type getPlanResponse401 = {
   data: UnauthorizedResponse;
   status: 401;
@@ -6094,6 +6128,7 @@ export type getPlanResponseSuccess = getPlanResponse200 & {
   headers: Headers;
 };
 export type getPlanResponseError = (
+  | getPlanResponse400
   | getPlanResponse401
   | getPlanResponse403
   | getPlanResponse404
@@ -6123,7 +6158,11 @@ export const getGetPlanQueryKey = (planId: number) => {
 export const getGetPlanQueryOptions = <
   TData = Awaited<ReturnType<typeof getPlan>>,
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
   >,
 >(
   planId: number,
@@ -6151,13 +6190,21 @@ export const getGetPlanQueryOptions = <
 
 export type GetPlanQueryResult = NonNullable<Awaited<ReturnType<typeof getPlan>>>;
 export type GetPlanQueryError = ErrorType<
-  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
 >;
 
 export function useGetPlan<
   TData = Awaited<ReturnType<typeof getPlan>>,
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
   >,
 >(
   planId: number,
@@ -6178,7 +6225,11 @@ export function useGetPlan<
 export function useGetPlan<
   TData = Awaited<ReturnType<typeof getPlan>>,
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
   >,
 >(
   planId: number,
@@ -6199,7 +6250,11 @@ export function useGetPlan<
 export function useGetPlan<
   TData = Awaited<ReturnType<typeof getPlan>>,
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
   >,
 >(
   planId: number,
@@ -6213,7 +6268,11 @@ export function useGetPlan<
 export function useGetPlan<
   TData = Awaited<ReturnType<typeof getPlan>>,
   TError = ErrorType<
-    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | UnavailableResponse
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
   >,
 >(
   planId: number,
@@ -6297,6 +6356,7 @@ export const getReplacePlanUrl = (planId: number) => {
 export const replacePlan = async (
   planId: number,
   planWrite: PlanWrite,
+  headers: ReplacePlanHeaders,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<replacePlanResponseSuccess> => {
   const getHeaders = (
@@ -6310,7 +6370,7 @@ export const replacePlan = async (
   return domestiqueRequest<replacePlanResponseSuccess>(getReplacePlanUrl(planId), {
     ...options,
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+    headers: { "Content-Type": "application/json", ...headers, ...getHeaders(options?.headers) },
     body: JSON.stringify(planWrite),
   });
 };
@@ -6353,9 +6413,9 @@ export const getReplacePlanMutationOptions = <
     Awaited<ReturnType<typeof replacePlan>>,
     ReplacePlanMutationVariables
   > = (props) => {
-    const { planId, data } = props ?? {};
+    const { planId, data, headers } = props ?? {};
 
-    return replacePlan(planId, data, requestOptions);
+    return replacePlan(planId, data, headers, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -6372,7 +6432,11 @@ export type ReplacePlanMutationError = ErrorType<
   | ProviderUnavailableResponse
   | UnavailableResponse
 >;
-export type ReplacePlanMutationVariables = { planId: number; data: PlanWrite };
+export type ReplacePlanMutationVariables = {
+  planId: number;
+  data: PlanWrite;
+  headers: ReplacePlanHeaders;
+};
 
 export const useReplacePlan = <
   TError = ErrorType<
@@ -6410,6 +6474,11 @@ export type deletePlanResponse204 = {
   status: 204;
 };
 
+export type deletePlanResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
 export type deletePlanResponse401 = {
   data: UnauthorizedResponse;
   status: 401;
@@ -6439,6 +6508,7 @@ export type deletePlanResponseSuccess = deletePlanResponse204 & {
   headers: Headers;
 };
 export type deletePlanResponseError = (
+  | deletePlanResponse400
   | deletePlanResponse401
   | deletePlanResponse403
   | deletePlanResponse404
@@ -6457,11 +6527,21 @@ export const getDeletePlanUrl = (planId: number) => {
  */
 export const deletePlan = async (
   planId: number,
+  headers: DeletePlanHeaders,
   options?: Parameters<typeof domestiqueRequest>[1],
 ): Promise<deletePlanResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
   return domestiqueRequest<deletePlanResponseSuccess>(getDeletePlanUrl(planId), {
     ...options,
     method: "DELETE",
+    headers: { ...headers, ...getHeaders(options?.headers) },
   });
 };
 
@@ -6469,6 +6549,7 @@ export const getDeletePlanMutationKey = () => ["deletePlan"] as const;
 
 export const getDeletePlanMutationOptions = <
   TError = ErrorType<
+    | InvalidRequestResponse
     | UnauthorizedResponse
     | ForbiddenResponse
     | NotFoundResponse
@@ -6501,9 +6582,9 @@ export const getDeletePlanMutationOptions = <
     Awaited<ReturnType<typeof deletePlan>>,
     DeletePlanMutationVariables
   > = (props) => {
-    const { planId } = props ?? {};
+    const { planId, headers } = props ?? {};
 
-    return deletePlan(planId, requestOptions);
+    return deletePlan(planId, headers, requestOptions);
   };
 
   return { mutationFn, ...mutationOptions };
@@ -6512,16 +6593,18 @@ export const getDeletePlanMutationOptions = <
 export type DeletePlanMutationResult = NonNullable<Awaited<ReturnType<typeof deletePlan>>>;
 
 export type DeletePlanMutationError = ErrorType<
+  | InvalidRequestResponse
   | UnauthorizedResponse
   | ForbiddenResponse
   | NotFoundResponse
   | PreconditionFailedResponse
   | UnavailableResponse
 >;
-export type DeletePlanMutationVariables = { planId: number };
+export type DeletePlanMutationVariables = { planId: number; headers: DeletePlanHeaders };
 
 export const useDeletePlan = <
   TError = ErrorType<
+    | InvalidRequestResponse
     | UnauthorizedResponse
     | ForbiddenResponse
     | NotFoundResponse

@@ -927,11 +927,9 @@ browser origin described above, and answer 403 without it.
   configured, and a routing failure is `502` carrying a category and nothing
   of the engine's response. A plan carries no credential, no rider's data, and
   no geometry beyond the one the engine returned for its waypoints. These six
-  operations, and the planning flag `GET /v1/webui/config` carries, are
-  specified here in prose until the change that implements them adds them to
-  [`api/openapi.yaml`](../../api/openapi.yaml), which is normative from that
-  change on; a path there without a handler behind it would fail the contract
-  test that keeps the document and the served routes together.
+  operations and the planning flag are in
+  [`api/openapi.yaml`](../../api/openapi.yaml), which is normative for their
+  request and response shapes; this prose states the rules those shapes serve.
 - `POST /v1/activities/{activity-id}/reanalyse` (admin-only) asks a language model
   once more about one ride of the target the activity list would serve, as
   `activity:reanalyse` over that ride. It returns `202 Accepted`, `404` for a ride

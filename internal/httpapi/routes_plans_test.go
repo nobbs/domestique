@@ -245,7 +245,9 @@ func TestCreatePlanStoresADraft(t *testing.T) {
 }
 
 func TestCreatePlanRejectsAValidationError(t *testing.T) {
-	handler := plansHandler(t, newFakeSessions(), &fakePlans{createErr: errors.New("plan: name is required")})
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{
+		createErr: fmt.Errorf("%w: name is required", plan.ErrInvalid),
+	})
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, planRequest(http.MethodPost, plansPath, validPlanWriteBody, ""))
@@ -330,7 +332,7 @@ func directPlanRequest(method, path, body string) *http.Request {
 }
 
 func TestReplacePlanRejectsAnUnparseableOrMissingIfMatch(t *testing.T) {
-	for name, ifMatchValue := range map[string]string{"unparseable": "abc", "missing": ""} {
+	for name, ifMatchValue := range map[string]string{"unparseable": "abc", "missing": "", "zero": "0"} {
 		t.Run(name, func(t *testing.T) {
 			handler := plansHandler(t, newFakeSessions(), &fakePlans{})
 			request := directPlanRequest(http.MethodPut, plansPath+"/7", validPlanWriteBody)
@@ -347,7 +349,7 @@ func TestReplacePlanRejectsAnUnparseableOrMissingIfMatch(t *testing.T) {
 }
 
 func TestDeletePlanRejectsAnUnparseableOrMissingIfMatch(t *testing.T) {
-	for name, ifMatchValue := range map[string]string{"unparseable": "abc", "missing": ""} {
+	for name, ifMatchValue := range map[string]string{"unparseable": "abc", "missing": "", "zero": "0"} {
 		t.Run(name, func(t *testing.T) {
 			handler := plansHandler(t, newFakeSessions(), &fakePlans{})
 			request := directPlanRequest(http.MethodDelete, plansPath+"/7", "")
