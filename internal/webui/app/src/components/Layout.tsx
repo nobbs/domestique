@@ -17,10 +17,13 @@ export interface LayoutProps {
   /**
    * The wide panel along the map's foot, where a route is open.
    *
-   * A sibling of the workspace rather than part of it, which is what makes the
-   * camera work without any arithmetic here: `useOverlayInsets` measures the
-   * overlay's children, and `insetsFrom` gives a wide short panel to the bottom
-   * edge it eats least of.
+   * In the overlay workspace it is a sibling of the rail rather than part of
+   * it, which is what makes the camera work without any arithmetic here:
+   * `useOverlayInsets` measures the overlay's children, and `insetsFrom` gives
+   * a wide short panel to the bottom edge it eats least of. In the sidebar
+   * workspace it is a strip beneath the map, which shrinks the map's box
+   * instead; a page that frames bounds there passes `MapViewport` a
+   * `fitRevision` that changes with the strip's height.
    *
    * Below the breakpoint there is no map to stand on — the panels are a Drawer
    * — so it goes in the Drawer with everything else.

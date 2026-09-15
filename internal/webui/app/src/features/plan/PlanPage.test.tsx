@@ -231,7 +231,7 @@ describe("PlanPage", () => {
 
     act(() => vi.advanceTimersByTime(300));
     expect(screen.getByText("elevation profile")).toBeInTheDocument();
-    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "3");
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "2");
   });
 
   it("frames a blank draft on the rider's own position", async () => {

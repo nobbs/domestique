@@ -249,7 +249,7 @@ export interface PlannerSidebarProps {
   dispatch: Dispatch<Parameters<typeof plannerReducer>[1]>;
 }
 
-/** The controls over the map; the map remains visible while the list changes. */
+/** The planner's column beside the map; the map remains visible while the list changes. */
 export function PlannerSidebar({
   state,
   plans,
@@ -826,7 +826,7 @@ export function PlanPage() {
                   maxZoom={framed ? ROUTE_MAX_ZOOM : LOCATION_ZOOM}
                   // The strip changes height when it folds and when a profile
                   // first fills it; the map re-frames after either.
-                  fitRevision={narrow ? 0 : (dockOpen ? 1 : 0) + (profile ? 2 : 0)}
+                  fitRevision={narrow || !dockOpen ? 0 : profile ? 2 : 1}
                 />
                 {line.length > 1 ? (
                   <RouteOverlay
