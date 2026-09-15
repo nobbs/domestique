@@ -396,6 +396,34 @@ describe("PlanPage", () => {
     expect(preview).toHaveBeenCalledOnce();
   });
 
+  it("marks the first waypoint as start, the last as finish, and the middle ones by number", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    fireEvent.click(map);
+    expect(screen.getByRole("button", { name: "Drag Start waypoint to reorder" })).toHaveAttribute(
+      "title",
+      "Drag Start waypoint to reorder",
+    );
+    expect(screen.getByRole("img", { name: "Start waypoint" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Finish waypoint" })).toBeNull();
+
+    mapPoint.value = { longitude: 8.1, latitude: 49 };
+    fireEvent.click(map);
+    expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Drag Finish waypoint to reorder" }),
+    ).toBeInTheDocument();
+
+    mapPoint.value = { longitude: 8.2, latitude: 49 };
+    fireEvent.click(map);
+    expect(screen.getByRole("img", { name: "Waypoint 2" })).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: "Drag Waypoint 2 to reorder" })).toHaveTextContent(
+      "2",
+    );
+    expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
+  });
+
   it("inserts map clicks into the nearest leg and appends at the final endpoint, with Alt, or before two waypoints", () => {
     renderPage();
     const map = screen.getByRole("button", { name: "Plan route map" });
@@ -436,7 +464,7 @@ describe("PlanPage", () => {
     );
   });
 
-  it("numbers draggable waypoint handles and reroutes after reordering them", async () => {
+  it("reorders start and finish waypoint handles, then reroutes", async () => {
     openedPlan.value = {
       data: {
         data: {
@@ -469,11 +497,11 @@ describe("PlanPage", () => {
     await act(async () => {});
     preview.mockClear();
 
-    const first = screen.getByRole("button", { name: "Drag waypoint 1 to reorder" });
-    const third = screen.getByRole("button", { name: "Drag waypoint 3 to reorder" });
-    expect(first).toHaveTextContent("1");
-    expect(third).toHaveTextContent("3");
-    expect(screen.getByRole("button", { name: "Move waypoint 2 up" })).toBeInTheDocument();
+    const first = screen.getByRole("button", { name: "Drag Start waypoint to reorder" });
+    const third = screen.getByRole("button", { name: "Drag Finish waypoint to reorder" });
+    expect(first).toHaveAttribute("title", "Drag Start waypoint to reorder");
+    expect(third).toHaveAttribute("title", "Drag Finish waypoint to reorder");
+    expect(screen.getByRole("button", { name: "Move Waypoint 2 up" })).toBeInTheDocument();
 
     fireEvent.dragStart(first);
     fireEvent.dragOver(third.closest("li") as HTMLElement);

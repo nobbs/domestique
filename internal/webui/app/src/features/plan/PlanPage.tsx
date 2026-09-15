@@ -1,8 +1,10 @@
 import {
   IconChevronsRight,
   IconDeviceFloppy,
+  IconFlagCheck,
   IconLayoutBottombarCollapse,
   IconMountain,
+  IconPlayerPlay,
   IconPlayerTrackNext,
   IconPlayerTrackPrev,
   IconRestore,
@@ -75,6 +77,26 @@ function planWaypoints(waypoints: PlannerState["waypoints"]) {
 
 function waypointPositions(waypoints: PlannerState["waypoints"]): Position[] {
   return waypoints.map(({ longitude, latitude }) => [longitude, latitude]);
+}
+
+function waypointLabel(index: number, count: number): string {
+  if (index === 0) {
+    return "Start waypoint";
+  }
+  if (index === count - 1) {
+    return "Finish waypoint";
+  }
+  return `Waypoint ${index + 1}`;
+}
+
+function WaypointMarker({ index, count }: { index: number; count: number }) {
+  if (index === 0) {
+    return <IconPlayerPlay aria-hidden="true" size={14} stroke={3} />;
+  }
+  if (index === count - 1) {
+    return <IconFlagCheck aria-hidden="true" size={15} stroke={2.5} />;
+  }
+  return index + 1;
 }
 
 function insertionIndex(
@@ -303,8 +325,8 @@ export function PlannerSidebar({
                   <button
                     type="button"
                     draggable
-                    aria-label={`Drag waypoint ${index + 1} to reorder`}
-                    title="Drag to reorder"
+                    aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
+                    title={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
                     onDragStart={(event) => {
                       dragging.current = index;
                       event.dataTransfer?.setData("text/plain", String(index));
@@ -317,7 +339,7 @@ export function PlannerSidebar({
                     }}
                     className="grid size-6 shrink-0 cursor-grab place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow active:cursor-grabbing"
                   >
-                    {index + 1}
+                    <WaypointMarker index={index} count={state.waypoints.length} />
                   </button>
                   <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
                     <CoordinateInput
@@ -342,7 +364,7 @@ export function PlannerSidebar({
                   <Button
                     variant="ghost"
                     className="sr-only focus:not-sr-only"
-                    aria-label={`Move waypoint ${index + 1} up`}
+                    aria-label={`Move ${waypointLabel(index, state.waypoints.length)} up`}
                     disabled={index === 0}
                     onClick={() => dispatch({ type: "reorder", index, direction: "up" })}
                   >
@@ -351,7 +373,7 @@ export function PlannerSidebar({
                   <Button
                     variant="ghost"
                     className="sr-only focus:not-sr-only"
-                    aria-label={`Move waypoint ${index + 1} down`}
+                    aria-label={`Move ${waypointLabel(index, state.waypoints.length)} down`}
                     disabled={index === state.waypoints.length - 1}
                     onClick={() => dispatch({ type: "reorder", index, direction: "down" })}
                   >
@@ -367,8 +389,8 @@ export function PlannerSidebar({
               ))}
             </ol>
             <p className="text-sm text-[var(--ink-2)]">
-              Click the map to insert a waypoint, or Alt-click to append. Drag numbered markers to
-              reorder; drag map pins to move them.
+              Click the map to insert a waypoint, or Alt-click to append. Drag markers to reorder;
+              drag map pins to move them.
             </p>
             {preview ? (
               <output
@@ -714,10 +736,10 @@ export function PlanPage() {
                   >
                     <span
                       role="img"
-                      aria-label={`Waypoint ${index + 1}`}
+                      aria-label={waypointLabel(index, state.waypoints.length)}
                       className="grid size-6 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow"
                     >
-                      {index + 1}
+                      <WaypointMarker index={index} count={state.waypoints.length} />
                     </span>
                   </Marker>
                 ))}
