@@ -454,9 +454,10 @@ describe("PlanPage", () => {
     const map = screen.getByRole("button", { name: "Plan route map" });
 
     fireEvent.click(map);
-    expect(
-      screen.getByRole("listitem", { name: "Drag Start waypoint to reorder" }),
-    ).toHaveAttribute("title", "Drag Start waypoint to reorder");
+    expect(screen.getByRole("group", { name: "Drag Start waypoint to reorder" })).toHaveAttribute(
+      "title",
+      "Drag Start waypoint to reorder",
+    );
     expect(screen.getByRole("img", { name: "Start waypoint" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "Finish waypoint" })).toBeNull();
 
@@ -464,13 +465,13 @@ describe("PlanPage", () => {
     fireEvent.click(map);
     expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
     expect(
-      screen.getByRole("listitem", { name: "Drag Finish waypoint to reorder" }),
+      screen.getByRole("group", { name: "Drag Finish waypoint to reorder" }),
     ).toBeInTheDocument();
 
     mapPoint.value = { longitude: 8.2, latitude: 49 };
     fireEvent.click(map);
     expect(screen.getByRole("img", { name: "Waypoint 2" })).toHaveTextContent("2");
-    expect(screen.getByRole("listitem", { name: "Drag Waypoint 2 to reorder" })).toHaveTextContent(
+    expect(screen.getByRole("group", { name: "Drag Waypoint 2 to reorder" })).toHaveTextContent(
       "2",
     );
     expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
@@ -550,15 +551,23 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
     preview.mockClear();
 
-    const first = screen.getByRole("listitem", { name: "Drag Start waypoint to reorder" });
-    const third = screen.getByRole("listitem", { name: "Drag Finish waypoint to reorder" });
+    const first = screen.getByRole("group", { name: "Drag Start waypoint to reorder" });
+    const third = screen.getByRole("group", { name: "Drag Finish waypoint to reorder" });
     const rows = () =>
       Array.from(screen.getByRole("list", { name: "Waypoints" }).querySelectorAll("li"));
     const rowIDs = () => rows().map((row) => row.getAttribute("data-waypoint-id"));
     expect(first).toHaveAttribute("title", "Drag Start waypoint to reorder");
     expect(third).toHaveAttribute("title", "Drag Finish waypoint to reorder");
     expect(first).toHaveAttribute("draggable", "true");
-    expect(first.querySelector(".tabler-icon-grip-vertical")).toBeInTheDocument();
+    expect(first).toHaveClass("rounded-lg", "border", "bg-[var(--base)]");
+    expect(first.lastElementChild?.querySelector(".tabler-icon-grip-vertical")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete waypoint 1" }).previousElementSibling).toBe(
+      first,
+    );
+    expect(screen.getByRole("button", { name: "Delete waypoint 1" })).toHaveClass(
+      "bg-destructive/10",
+      "text-destructive",
+    );
     expect(screen.getByLabelText("Waypoint 1 longitude")).not.toHaveAttribute("draggable", "true");
     expect(screen.getByRole("button", { name: "Move Waypoint 2 up" })).toBeInTheDocument();
 

@@ -321,118 +321,126 @@ export function PlannerSidebar({
                   <li
                     key={waypoint.id}
                     data-waypoint-id={waypoint.id}
-                    draggable
-                    aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                    title={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                    className={`flex items-center gap-1 text-sm ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
-                    onDragStart={(event) => {
-                      if (isInteractiveDragOrigin(event.target)) {
-                        event.preventDefault();
-                        return;
-                      }
-                      const order = state.waypoints.map((entry) => entry.id);
-                      dragging.current = waypoint.id;
-                      dragTarget.current = null;
-                      dragOrder.current = order;
-                      setVisualOrder(order);
-                      event.dataTransfer?.setData("text/plain", String(waypoint.id));
-                      if (event.dataTransfer) {
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setDragImage(
-                          event.currentTarget,
-                          Math.round(event.currentTarget.clientWidth / 2),
-                          Math.round(event.currentTarget.clientHeight / 2),
-                        );
-                      }
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      const waypointID = dragging.current;
-                      if (waypointID === null || dragTarget.current === waypoint.id) {
-                        return;
-                      }
-                      dragTarget.current = waypoint.id;
-                      const next = moveWaypoint(
-                        dragOrder.current ?? state.waypoints.map((entry) => entry.id),
-                        waypointID,
-                        waypoint.id,
-                      );
-                      if (next !== dragOrder.current) {
-                        dragOrder.current = next;
-                        setVisualOrder(next);
-                      }
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const order = dragOrder.current;
-                      clearDrag();
-                      if (order) {
-                        dispatch({ type: "reorder", order });
-                      }
-                    }}
-                    onDragEnd={clearDrag}
+                    className="flex items-center gap-1 text-sm"
                   >
-                    <span
-                      aria-hidden="true"
-                      className="flex h-7 shrink-0 cursor-grab items-center gap-0.5 rounded-md bg-[var(--accent)] px-1 text-xs font-semibold text-white shadow"
+                    <div
+                      role="group"
+                      draggable
+                      aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
+                      title={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
+                      className={`flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-[var(--rule)] bg-[var(--base)] p-1 ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
+                      onDragStart={(event) => {
+                        if (isInteractiveDragOrigin(event.target)) {
+                          event.preventDefault();
+                          return;
+                        }
+                        const order = state.waypoints.map((entry) => entry.id);
+                        dragging.current = waypoint.id;
+                        dragTarget.current = null;
+                        dragOrder.current = order;
+                        setVisualOrder(order);
+                        event.dataTransfer?.setData("text/plain", String(waypoint.id));
+                        if (event.dataTransfer) {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setDragImage(
+                            event.currentTarget,
+                            Math.round(event.currentTarget.clientWidth / 2),
+                            Math.round(event.currentTarget.clientHeight / 2),
+                          );
+                        }
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        const waypointID = dragging.current;
+                        if (waypointID === null || dragTarget.current === waypoint.id) {
+                          return;
+                        }
+                        dragTarget.current = waypoint.id;
+                        const next = moveWaypoint(
+                          dragOrder.current ?? state.waypoints.map((entry) => entry.id),
+                          waypointID,
+                          waypoint.id,
+                        );
+                        if (next !== dragOrder.current) {
+                          dragOrder.current = next;
+                          setVisualOrder(next);
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const order = dragOrder.current;
+                        clearDrag();
+                        if (order) {
+                          dispatch({ type: "reorder", order });
+                        }
+                      }}
+                      onDragEnd={clearDrag}
                     >
-                      <span className="grid size-5 place-items-center rounded-full">
+                      <span
+                        aria-hidden="true"
+                        className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow"
+                      >
                         <WaypointMarker index={index} count={state.waypoints.length} />
                       </span>
-                      <IconGripVertical aria-hidden="true" size={14} stroke={2} />
-                    </span>
-                    <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
-                      <CoordinateInput
-                        label={`Waypoint ${index + 1} latitude`}
-                        value={waypoint.latitude}
-                        min={-90}
-                        max={90}
-                        onCommit={(latitude) =>
-                          dispatch({
-                            type: "move",
-                            index: stateIndex,
-                            waypoint: { ...waypoint, latitude },
-                          })
+                      <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
+                        <CoordinateInput
+                          label={`Waypoint ${index + 1} latitude`}
+                          value={waypoint.latitude}
+                          min={-90}
+                          max={90}
+                          onCommit={(latitude) =>
+                            dispatch({
+                              type: "move",
+                              index: stateIndex,
+                              waypoint: { ...waypoint, latitude },
+                            })
+                          }
+                        />
+                        <CoordinateInput
+                          label={`Waypoint ${index + 1} longitude`}
+                          value={waypoint.longitude}
+                          min={-180}
+                          max={180}
+                          onCommit={(longitude) =>
+                            dispatch({
+                              type: "move",
+                              index: stateIndex,
+                              waypoint: { ...waypoint, longitude },
+                            })
+                          }
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        className="sr-only focus:not-sr-only"
+                        aria-label={`Move ${waypointLabel(index, state.waypoints.length)} up`}
+                        disabled={index === 0}
+                        onClick={() =>
+                          dispatch({ type: "reorder", index: stateIndex, direction: "up" })
                         }
-                      />
-                      <CoordinateInput
-                        label={`Waypoint ${index + 1} longitude`}
-                        value={waypoint.longitude}
-                        min={-180}
-                        max={180}
-                        onCommit={(longitude) =>
-                          dispatch({
-                            type: "move",
-                            index: stateIndex,
-                            waypoint: { ...waypoint, longitude },
-                          })
+                      >
+                        Move up
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        className="sr-only focus:not-sr-only"
+                        aria-label={`Move ${waypointLabel(index, state.waypoints.length)} down`}
+                        disabled={index === state.waypoints.length - 1}
+                        onClick={() =>
+                          dispatch({ type: "reorder", index: stateIndex, direction: "down" })
                         }
-                      />
+                      >
+                        Move down
+                      </Button>
+                      <span
+                        aria-hidden="true"
+                        className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-[var(--ink-2)]"
+                      >
+                        <IconGripVertical aria-hidden="true" size={16} stroke={2} />
+                      </span>
                     </div>
                     <Button
-                      variant="ghost"
-                      className="sr-only focus:not-sr-only"
-                      aria-label={`Move ${waypointLabel(index, state.waypoints.length)} up`}
-                      disabled={index === 0}
-                      onClick={() =>
-                        dispatch({ type: "reorder", index: stateIndex, direction: "up" })
-                      }
-                    >
-                      Move up
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="sr-only focus:not-sr-only"
-                      aria-label={`Move ${waypointLabel(index, state.waypoints.length)} down`}
-                      disabled={index === state.waypoints.length - 1}
-                      onClick={() =>
-                        dispatch({ type: "reorder", index: stateIndex, direction: "down" })
-                      }
-                    >
-                      Move down
-                    </Button>
-                    <Button
-                      variant="ghost"
+                      variant="destructive"
                       icon={<IconTrash size={16} />}
                       aria-label={`Delete waypoint ${index + 1}`}
                       onClick={() => dispatch({ type: "delete", index: stateIndex })}
