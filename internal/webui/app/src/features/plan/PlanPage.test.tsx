@@ -33,18 +33,22 @@ vi.mock("../../components/Layout", () => ({
     children,
     dock,
     workspaceLabel,
+    workspace = "overlay",
   }: {
     map: React.ReactNode;
     children: React.ReactNode;
     dock: React.ReactNode;
     workspaceLabel: string;
+    workspace?: "overlay" | "sidebar";
   }) => (
     <main>
+      {workspace === "sidebar" ? <aside aria-label={workspaceLabel}>{children}</aside> : null}
       {map}
       <div className="shell__overlay">
-        <aside aria-label={workspaceLabel}>{children}</aside>
-        {dock}
+        {workspace === "sidebar" ? null : <aside aria-label={workspaceLabel}>{children}</aside>}
+        {workspace === "sidebar" ? null : dock}
       </div>
+      {workspace === "sidebar" ? dock : null}
     </main>
   ),
 }));
@@ -240,6 +244,12 @@ describe("PlanPage", () => {
 
     expect(history).toHaveAttribute("data-orientation", "horizontal");
     expect(history.parentElement).toHaveClass("absolute");
+    expect(document.querySelector(".shell__overlay")).not.toContainElement(
+      screen.getByRole("complementary", { name: "Route planner controls" }),
+    );
+    expect(document.querySelector(".shell__overlay")).not.toContainElement(
+      screen.getByRole("region", { name: "Planned route elevation" }),
+    );
     expect(
       screen.getByRole("complementary", { name: "Route planner controls" }),
     ).not.toContainElement(history);
