@@ -45,7 +45,6 @@ import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { ButtonGroup } from "../../components/ui/button-group";
 import { Input } from "../../components/ui/input";
-import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance } from "../../lib/format";
@@ -297,23 +296,22 @@ export function PlannerSidebar({
                 onChange={(event) => dispatch({ type: "setName", name: event.target.value })}
               />
             </label>
-            <fieldset className="grid gap-1">
-              <legend className="text-sm font-medium">Route type</legend>
-              <RadioGroup
+            <label className="grid gap-1 text-sm font-medium">
+              Route type
+              <select
                 value={state.profile}
-                onValueChange={(profile) =>
-                  dispatch({ type: "setProfile", profile: profile as PlanProfile })
+                onChange={(event) =>
+                  dispatch({ type: "setProfile", profile: event.target.value as PlanProfile })
                 }
-                className="flex flex-wrap gap-2"
+                className="h-8 w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm outline-none hover:bg-[var(--panel)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 {PLAN_PROFILES.map((profile) => (
-                  <label key={profile} className="flex items-center gap-1.5 text-sm">
-                    <RadioGroupItem value={profile} />
+                  <option key={profile} value={profile}>
                     {profile}
-                  </label>
+                  </option>
                 ))}
-              </RadioGroup>
-            </fieldset>
+              </select>
+            </label>
             <ol className="grid gap-1" aria-label="Waypoints">
               {visualWaypoints.map((waypoint, index) => {
                 const stateIndex = state.waypoints.indexOf(waypoint);

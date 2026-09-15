@@ -449,6 +449,21 @@ describe("PlanPage", () => {
     expect(preview).toHaveBeenCalledOnce();
   });
 
+  it("routes with the profile selected from the route type dropdown", () => {
+    renderPage();
+    fireEvent.change(screen.getByRole("combobox", { name: "Route type" }), {
+      target: { value: "gravel" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ profile: "gravel" }) }),
+      expect.anything(),
+    );
+  });
+
   it("marks the first waypoint as start, the last as finish, and the middle ones by number", () => {
     renderPage();
     const map = screen.getByRole("button", { name: "Plan route map" });
