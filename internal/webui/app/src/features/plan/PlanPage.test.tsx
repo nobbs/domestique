@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -158,11 +159,14 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("PlanPage", () => {
-  it("renders the planner with a mocked map and labels drafts", () => {
+  it("renders the planner with a mocked map and labels drafts", async () => {
+    vi.useRealTimers();
     renderPage();
 
     expect(screen.getByRole("button", { name: "Plan route map" })).toBeInTheDocument();
-    expect(screen.getByText("Draft loop")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Plans" }));
+    const item = await screen.findByText("Draft loop");
+    expect(item.closest("[role=menuitem]")).toHaveAttribute("href", "/plan/4");
     expect(screen.getByText("Draft")).toBeInTheDocument();
     expect(screen.getByTestId("plan-map-controls")).toBeInTheDocument();
     expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();

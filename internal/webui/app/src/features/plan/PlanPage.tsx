@@ -2,6 +2,7 @@ import {
   IconArrowBackUp,
   IconArrowForwardUp,
   IconArrowsExchange,
+  IconChevronDown,
   IconChevronsRight,
   IconDeviceFloppy,
   IconFlagCheck,
@@ -44,6 +45,12 @@ import { MapWidget } from "../../components/map/MapWidget";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { ButtonGroup } from "../../components/ui/button-group";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
@@ -314,9 +321,29 @@ export function PlannerSidebar({
             ) : null}
           </button>
           {collapsed ? null : (
-            <ButtonLink variant="ghost" className="ml-auto" to="/plan">
-              New
-            </ButtonLink>
+            <div className="ml-auto flex items-center gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="ghost" icon={<IconChevronDown size={16} stroke={2} />} />
+                  }
+                  disabled={plans.length === 0}
+                >
+                  Plans
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-auto min-w-52">
+                  {plans.map((plan) => (
+                    <DropdownMenuItem key={plan.id} render={<Link to={`/plan/${plan.id}`} />}>
+                      <span className="flex-1">{plan.name}</span>
+                      {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <ButtonLink variant="ghost" to="/plan">
+                New
+              </ButtonLink>
+            </div>
           )}
         </div>
         {collapsed ? null : (
@@ -534,19 +561,6 @@ export function PlannerSidebar({
                   <AlertDescription>{saveError}</AlertDescription>
                 </Alert>
               ) : null}
-            </div>
-            <div className="grid gap-1 border-[var(--rule)] border-t pt-3">
-              <h2 className="text-sm font-medium">Plans</h2>
-              {plans.map((plan) => (
-                <Link
-                  key={plan.id}
-                  to={`/plan/${plan.id}`}
-                  className="flex items-center justify-between rounded-md px-2 py-1 text-sm hover:bg-[var(--base)]"
-                >
-                  <span>{plan.name}</span>
-                  {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
-                </Link>
-              ))}
             </div>
           </div>
         )}
