@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { initialPlannerState, plannerReducer } from "./planner";
+import type { Position } from "../../api/types";
+import { initialPlannerState, isPlannerSeed, plannerReducer, samplePlanWaypoints } from "./planner";
 
 const first = { longitude: 8, latitude: 49 };
 const second = { longitude: 8.1, latitude: 49.1 };
@@ -10,6 +11,30 @@ function reduce(...actions: Parameters<typeof plannerReducer>[1][]) {
 }
 
 describe("plannerReducer", () => {
+  it("samples a valid source line deterministically within the waypoint cap", () => {
+    const coordinates: Position[] = Array.from({ length: 52 }, (_, index) => [8 + index / 100, 49]);
+    coordinates.splice(1, 0, [Number.NaN, 49]);
+
+    const sampled = samplePlanWaypoints(coordinates);
+
+    expect(sampled).toHaveLength(50);
+    expect(sampled[0]).toEqual({ longitude: 8, latitude: 49 });
+    expect(sampled.at(-1)).toEqual({ longitude: 8.51, latitude: 49 });
+  });
+
+  it("rejects malformed copy seeds", () => {
+    const seed = {
+      name: "Copied loop",
+      profile: "trekking",
+      waypoints: [first, second],
+    };
+
+    expect(isPlannerSeed({ ...seed, name: "" })).toBe(false);
+    expect(isPlannerSeed({ ...seed, name: " " })).toBe(false);
+    expect(isPlannerSeed({ ...seed, name: "x".repeat(121) })).toBe(false);
+    expect(isPlannerSeed({ ...seed, waypoints: [null, second] })).toBe(false);
+  });
+
   it("records name, profile, and waypoint edits in one history", () => {
     const state = reduce(
       { type: "setName", name: "Morning loop" },

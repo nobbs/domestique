@@ -14,7 +14,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Dispatch, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Marker, ScaleControl } from "react-map-gl/maplibre";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   getGetPlanQueryKey,
   getListPlansQueryKey,
@@ -53,7 +53,7 @@ import { buildProfile, rangeBounds } from "../../lib/profile";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { RouteOverlay } from "../routes/RouteOverlay";
-import { initialPlannerState, type PlannerState, plannerReducer } from "./planner";
+import { initialPlannerState, isPlannerSeed, type PlannerState, plannerReducer } from "./planner";
 
 function positions(preview: PlanRoutePreview | null): Position[] {
   return (preview?.geometry.coordinates ?? []).flatMap(([longitude, latitude, elevation]) => {
@@ -625,6 +625,8 @@ function PlannerDock({
 export function PlanPage() {
   const { planId: value } = useParams();
   const planId = value && /^\d+$/.test(value) ? Number(value) : null;
+  const location = useLocation();
+  const copySeed = planId === null && isPlannerSeed(location.state) ? location.state : null;
   const config = useQuery(webUIConfigQuery());
   const plans = useListPlans();
   const plan = useGetPlan(planId ?? 0, { query: { enabled: planId !== null } });
@@ -666,11 +668,14 @@ export function PlanPage() {
     dispatch({ type: "reset" });
     if (planId === null) {
       setPreview(null);
+      if (copySeed) {
+        dispatch({ type: "load", plan: copySeed });
+      }
     }
     setPreviewError(null);
     setSaveError(null);
     setActiveMetres(null);
-  }, [planId]);
+  }, [copySeed, planId]);
 
   useEffect(() => {
     if (!loadedPlan) {

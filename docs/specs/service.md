@@ -111,9 +111,9 @@ is the only navigation that leaves the authenticated origin, it opens in a new
 context without a referrer, and it sends nothing: no route, geometry, or
 origin address accompanies it.
 
-No upstream route is ever edited. The UI presents no editing affordance over a
-VeloPlanner or Komoot route, and the service writes nothing back to either. Any
-change to that boundary requires revising this document first.
+No upstream route is ever edited. The UI may let an admin copy a VeloPlanner or
+Komoot route into an unsaved local plan, but presents no action that writes back
+to either provider. Any change to that boundary requires revising this document first.
 
 The one provider this service may write is its own. A **plan** is an ordered
 list of waypoints and a routing profile that an admin composes on the map; the

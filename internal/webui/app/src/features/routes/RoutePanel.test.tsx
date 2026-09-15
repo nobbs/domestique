@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { BrowserRouter, MemoryRouter, useLocation } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { webUIConfigQuery } from "../../api/queries";
 import type { Route, WebUIConfig } from "../../api/types";
 import { RoutePanel, type RoutePanelProps } from "./RoutePanel";
@@ -42,11 +42,17 @@ function seededClient(admin: boolean, planning = false): QueryClient {
   return client;
 }
 
+function LocationState() {
+  const { state } = useLocation();
+
+  return <output data-testid="route-panel-location-state">{JSON.stringify(state)}</output>;
+}
+
 function renderPanel(
   overrides: Partial<RoutePanelProps> = {},
   admin = false,
   planning = false,
-  router = false,
+  router: boolean | "browser" = false,
 ) {
   const client = seededClient(admin, planning);
   const props: RoutePanelProps = {
@@ -70,9 +76,15 @@ function renderPanel(
 
   return render(
     <QueryClientProvider client={client}>
-      {router ? (
+      {router === "browser" ? (
+        <BrowserRouter>
+          <RoutePanel {...props} />
+          <LocationState />
+        </BrowserRouter>
+      ) : router ? (
         <MemoryRouter>
           <RoutePanel {...props} />
+          <LocationState />
         </MemoryRouter>
       ) : (
         <RoutePanel {...props} />
@@ -80,6 +92,8 @@ function renderPanel(
     </QueryClientProvider>,
   );
 }
+
+afterEach(() => window.history.replaceState(null, "", "/"));
 
 describe("RoutePanel", () => {
   it("offers edit only for a local route when planning is available", async () => {
@@ -90,6 +104,79 @@ describe("RoutePanel", () => {
       "href",
       "/plan/44",
     );
+    expect(screen.queryByRole("menuitem", { name: "Copy and edit" })).toBeNull();
+  });
+
+  it("offers copy and edit only to an admin with planning and usable geometry", async () => {
+    renderPanel(
+      {
+        copySeed: {
+          name: "Alpine loop — Descent",
+          profile: "trekking",
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+          ],
+        },
+      },
+      true,
+      true,
+      "browser",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
+
+    const action = await screen.findByRole("menuitem", { name: "Copy and edit" });
+    await userEvent.click(action);
+    expect(window.location.pathname).toBe("/plan");
+    expect(window.history.state.usr).toEqual({
+      name: "Alpine loop — Descent",
+      profile: "trekking",
+      waypoints: [
+        { longitude: 8, latitude: 49 },
+        { longitude: 8.1, latitude: 49.1 },
+      ],
+    });
+    expect(screen.getByTestId("route-panel-location-state")).toHaveTextContent(
+      JSON.stringify({
+        name: "Alpine loop — Descent",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8, latitude: 49 },
+          { longitude: 8.1, latitude: 49.1 },
+        ],
+      }),
+    );
+  });
+
+  it.each([
+    ["a rider", false, true],
+    ["an admin without planning", true, false],
+  ])("withholds copy and edit from %s", async (_reader, admin, planning) => {
+    renderPanel(
+      {
+        copySeed: {
+          name: "Alpine loop — Descent",
+          profile: "trekking",
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+          ],
+        },
+      },
+      admin,
+      planning,
+      true,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Copy and edit" })).toBeNull();
+  });
+
+  it("withholds copy and edit until geometry supplies two valid positions", async () => {
+    renderPanel({}, true, true, true);
+    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Copy and edit" })).toBeNull();
   });
 
   it("rests as a pill with the headline figures, not the full grid", () => {

@@ -117,7 +117,7 @@ vi.mock("../routes/ElevationProfile", () => ({
 
 const { PlanPage } = await import("./PlanPage");
 
-function renderPage(path = "/plan") {
+function renderPage(path: string | { pathname: string; state: unknown } = "/plan") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -170,6 +170,26 @@ describe("PlanPage", () => {
       "data-insets",
       JSON.stringify(overlayInsets.value),
     );
+  });
+
+  it("initializes a new draft from a copied route seed without saving it", async () => {
+    renderPage({
+      pathname: "/plan",
+      state: {
+        name: "Alpine loop — Descent",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8, latitude: 49 },
+          { longitude: 8.1, latitude: 49.1 },
+        ],
+      },
+    });
+    await act(async () => {});
+
+    expect(screen.getByLabelText("Name")).toHaveValue("Alpine loop — Descent");
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
+    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("folds and reopens its independent planner and elevation overlays", () => {
@@ -324,7 +344,17 @@ describe("PlanPage", () => {
       (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
         callbacks.onError(new Error("Stored route could not refresh")),
     );
-    renderPage("/plan/4");
+    renderPage({
+      pathname: "/plan/4",
+      state: {
+        name: "Copied route",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8.5, latitude: 49.5 },
+          { longitude: 8.6, latitude: 49.6 },
+        ],
+      },
+    });
     await act(async () => {});
     act(() => vi.advanceTimersByTime(300));
 
