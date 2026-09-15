@@ -8,7 +8,6 @@ const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
-const overlayInsets = vi.hoisted(() => ({ value: { top: 12, right: 13, bottom: 14, left: 15 } }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
 const routeOverlay = vi.hoisted(() => vi.fn());
 
@@ -52,9 +51,6 @@ vi.mock("../../components/Layout", () => ({
     </main>
   ),
 }));
-vi.mock("../../lib/overlayInsets", () => ({
-  useOverlayInsets: () => overlayInsets.value,
-}));
 vi.mock("../../components/map/MapWidget", () => ({
   MapWidget: ({
     children,
@@ -94,20 +90,8 @@ vi.mock("../../components/map/BasemapPicker", () => ({
   BasemapPicker: () => <span data-testid="plan-basemap-picker" />,
 }));
 vi.mock("../../components/map/MapViewport", () => ({
-  MapViewport: ({
-    bounds,
-    insets,
-    fitRevision,
-  }: {
-    bounds: unknown;
-    insets: unknown;
-    fitRevision: number;
-  }) => (
-    <output
-      data-testid="plan-viewport"
-      data-insets={JSON.stringify(insets)}
-      data-fit-revision={fitRevision}
-    >
+  MapViewport: ({ bounds, fitRevision }: { bounds: unknown; fitRevision: number }) => (
+    <output data-testid="plan-viewport" data-fit-revision={fitRevision}>
       {JSON.stringify(bounds)}
     </output>
   ),
@@ -190,13 +174,36 @@ describe("PlanPage", () => {
     expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-position", "bottom-left");
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-unit", "metric");
-    expect(screen.getByTestId("plan-viewport")).toHaveAttribute(
-      "data-insets",
-      JSON.stringify(overlayInsets.value),
-    );
   });
 
   it("initializes a new draft from a copied route seed without saving it", async () => {
+    preview.mockImplementation(
+      (
+        _variables: unknown,
+        callbacks: {
+          onSuccess: (value: {
+            data: {
+              geometry: { type: "LineString"; coordinates: number[][] };
+              distanceMetres: number;
+              ascentMetres: number;
+            };
+          }) => void;
+        },
+      ) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49, 100],
+                [8.1, 49.1, 200],
+              ],
+            },
+            distanceMetres: 10_000,
+            ascentMetres: 100,
+          },
+        }),
+    );
     renderPage({
       pathname: "/plan",
       state: {
@@ -214,7 +221,12 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
     expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
     expect(create).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByText("elevation profile")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "3");
   });
 
   it("frames a blank draft on the rider's own position", async () => {

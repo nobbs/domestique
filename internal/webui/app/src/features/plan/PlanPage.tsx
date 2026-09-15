@@ -54,7 +54,6 @@ import { Input } from "../../components/ui/input";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance } from "../../lib/format";
-import { useOverlayInsets } from "../../lib/overlayInsets";
 import { buildProfile, rangeBounds } from "../../lib/profile";
 import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
@@ -643,7 +642,6 @@ export function PlanPage() {
   const basemap = config.data
     ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
     : null;
-  const insets = useOverlayInsets();
   // Only a blank draft frames the rider's own position; a plan or seed keeps
   // its own framing, and the request is not made until a blank one is shown.
   const position = useStartupLocation(planId === null && copySeed === null);
@@ -823,8 +821,9 @@ export function PlanPage() {
                 <MapViewport
                   bounds={viewportBounds}
                   maxZoom={framed ? ROUTE_MAX_ZOOM : LOCATION_ZOOM}
-                  insets={insets}
-                  fitRevision={dockOpen ? 1 : 0}
+                  // The strip changes height when it folds and when a profile
+                  // first fills it; the map re-frames after either.
+                  fitRevision={(dockOpen ? 1 : 0) + (profile ? 2 : 0)}
                 />
                 {line.length > 1 ? (
                   <RouteOverlay
