@@ -60,6 +60,18 @@ export function samplePlanWaypoints(coordinates: Position[]): PlanWaypoint[] {
   );
 }
 
+/** The service refuses longer plan names, so a copied title is cut to fit. */
+export const MAX_PLAN_NAME_LENGTH = 120;
+
+/** An unsaved draft copied from another provider's route; null when the line is too short to plan. */
+export function plannerSeedFrom(title: string, coordinates: Position[]): PlannerSeed | null {
+  const waypoints = samplePlanWaypoints(coordinates);
+
+  return waypoints.length < 2
+    ? null
+    : { name: title.slice(0, MAX_PLAN_NAME_LENGTH), profile: "trekking", waypoints };
+}
+
 export function isPlannerSeed(value: unknown): value is PlannerSeed {
   if (!value || typeof value !== "object") {
     return false;
@@ -69,7 +81,7 @@ export function isPlannerSeed(value: unknown): value is PlannerSeed {
   return (
     typeof candidate.name === "string" &&
     candidate.name.trim().length > 0 &&
-    candidate.name.length <= 120 &&
+    candidate.name.length <= MAX_PLAN_NAME_LENGTH &&
     typeof candidate.profile === "string" &&
     PLAN_PROFILES.includes(candidate.profile as PlanProfile) &&
     Array.isArray(candidate.waypoints) &&

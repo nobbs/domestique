@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../../api/types";
-import { initialPlannerState, isPlannerSeed, plannerReducer, samplePlanWaypoints } from "./planner";
+import {
+  initialPlannerState,
+  isPlannerSeed,
+  plannerReducer,
+  plannerSeedFrom,
+  samplePlanWaypoints,
+} from "./planner";
 
 const first = { longitude: 8, latitude: 49 };
 const second = { longitude: 8.1, latitude: 49.1 };
@@ -20,6 +26,17 @@ describe("plannerReducer", () => {
     expect(sampled).toHaveLength(50);
     expect(sampled[0]).toEqual({ longitude: 8, latitude: 49 });
     expect(sampled.at(-1)).toEqual({ longitude: 8.51, latitude: 49 });
+  });
+
+  it("cuts a copied title to a name the planner accepts", () => {
+    const seed = plannerSeedFrom("x".repeat(130), [
+      [8, 49],
+      [8.1, 49.1],
+    ]);
+
+    expect(seed?.name).toHaveLength(120);
+    expect(seed && isPlannerSeed(seed)).toBe(true);
+    expect(plannerSeedFrom("Short", [[8, 49]])).toBeNull();
   });
 
   it("rejects malformed copy seeds", () => {
