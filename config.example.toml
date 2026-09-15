@@ -60,9 +60,10 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 # [analysis]
 # claude_token_file = "/run/secrets/claude_token"
 
-# Optional. The BRouter sidecar the route planner routes with, and the 5° tiles
-# the weekly task keeps current for it. Leaving the section out switches the
-# planner off: no plan endpoint, no local source, no segment task.
+# Optional. The BRouter engine the route planner routes with: a sidecar on
+# this host, or the project's public instance https://brouter.de at the cost
+# of sending each plan's waypoints there. Tiles are only for a sidecar.
+# Leaving the section out switches the planner off: no local source.
 # [planning]
 # brouter_url = "http://brouter:17777"
 # segments = ["E5_N45", "E10_N45", "E5_N50", "E10_N50"]

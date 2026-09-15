@@ -184,7 +184,9 @@ func (s *Service) runOneSource(
 	if err != nil {
 		return OutcomeFailed, FailureSource, 0
 	}
-	if len(ordered) == 0 && trustedCount > 0 && !s.allowEmptySourceDeletion() {
+	// The local source is exempt: an empty read of it is a true statement that
+	// the last plan was unpublished or deleted, never a truncated upstream listing.
+	if len(ordered) == 0 && trustedCount > 0 && provider != route.ProviderLocal && !s.allowEmptySourceDeletion() {
 		return OutcomeBlocked, FailureEmptySource, 0
 	}
 	exported := s.exportProfiles(ordered)
@@ -439,6 +441,13 @@ func logPassOutcome(pass string, completed, failed int, err error) {
 func (s *Service) exportProfiles(ordered []route.Route) []route.Route {
 	stages := make([]route.Route, 0, len(ordered))
 	for index := range ordered {
+		// A local stage was already normalised and measured on save
+		// (plan.Service.Route); running the processor again would smooth twice.
+		if ordered[index].Key().Provider() == route.ProviderLocal {
+			stages = append(stages, ordered[index])
+
+			continue
+		}
 		processed, err := s.processor.Process(&ordered[index])
 		if err != nil {
 			stages = append(stages, ordered[index])

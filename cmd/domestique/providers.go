@@ -511,7 +511,10 @@ func (a sourceApplication) equal(other sourceApplication) bool {
 // session it caches outlives the per-run rebuild that lets credential edits apply.
 type sourceCache struct {
 	entries map[route.Provider]sourceCacheEntry
-	mutex   sync.Mutex
+	// local is the plan service, present only when [planning] is configured. It
+	// has no credentials and is never rebuilt, unlike the cached upstream clients.
+	local syncservice.Source
+	mutex sync.Mutex
 }
 
 type sourceCacheEntry struct {
@@ -521,6 +524,15 @@ type sourceCacheEntry struct {
 
 func newSourceCache() *sourceCache {
 	return &sourceCache{entries: make(map[route.Provider]sourceCacheEntry)}
+}
+
+// setLocal registers the plan service as the local source. Called once at
+// startup, only when [planning] is configured.
+func (c *sourceCache) setLocal(local syncservice.Source) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	c.local = local
 }
 
 // get returns the cached client while its base URL and credentials are
@@ -545,13 +557,14 @@ func (c *sourceCache) get(entry runtimeconfig.Source, email, password []byte) (s
 }
 
 // sources builds the library clients a run reads, in configured order, reused
-// from the cache while unchanged. A source whose credentials are not entered
-// is not skipped: reading part of a library and calling it the whole
-// inventory is what the deletion gate exists to prevent.
+// from the cache while unchanged, plus the local plan source when configured.
+// A source whose credentials are not entered is not skipped: reading part of
+// a library and calling it the whole inventory is what the deletion gate
+// exists to prevent. The local source has no credentials and never refuses.
 func (c *sourceCache) sources(settings *runtimeconfig.Current) ([]syncservice.Source, error) {
 	snapshot := settings.Snapshot()
 	configured := snapshot.Values().Sources
-	built := make([]syncservice.Source, 0, len(configured))
+	built := make([]syncservice.Source, 0, len(configured)+1)
 	for _, source := range configured {
 		emailName, passwordName, known := runtimeconfig.SourceSecretNames(source.Provider)
 		if !known {
@@ -568,6 +581,12 @@ func (c *sourceCache) sources(settings *runtimeconfig.Current) ([]syncservice.So
 		}
 		built = append(built, client)
 	}
+	c.mutex.Lock()
+	local := c.local
+	c.mutex.Unlock()
+	if local != nil {
+		built = append(built, local)
+	}
 
 	return built, nil
 }
@@ -575,9 +594,17 @@ func (c *sourceCache) sources(settings *runtimeconfig.Current) ([]syncservice.So
 // sourceFor builds one library's client, reused from the cache while
 // unchanged. Unlike sources it never refuses for another library's missing
 // credentials; an unconfigured provider returns no client rather than an error.
+// The local source, when configured, has no credentials to be missing.
 func (c *sourceCache) sourceFor(
 	settings *runtimeconfig.Current, provider route.Provider,
 ) (source syncservice.Source, configured bool, err error) {
+	if provider == route.ProviderLocal {
+		c.mutex.Lock()
+		local := c.local
+		c.mutex.Unlock()
+
+		return local, local != nil, nil
+	}
 	snapshot := settings.Snapshot()
 	for _, entry := range snapshot.Values().Sources {
 		if entry.Provider != provider {

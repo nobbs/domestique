@@ -1026,6 +1026,27 @@ func (identityProcessor) Process(stage *route.Route) (route.Route, error) {
 	return *stage, nil
 }
 
+// markingProcessor records which routes it was asked to process and returns
+// each with its content hash suffixed, so a test can tell a processed stage
+// from an untouched one.
+type markingProcessor struct {
+	touched []route.Key
+}
+
+func (p *markingProcessor) Process(stage *route.Route) (route.Route, error) {
+	p.touched = append(p.touched, stage.Key())
+	key := stage.Key()
+	marked, err := route.NewRoute(
+		key.Provider(), key.SourceRouteID(), key.StageOrder(), stage.Revision(),
+		stage.SourceRouteName(), stage.RouteName(), stage.Geometry(), stage.ContentHash()+"-processed",
+	)
+	if err != nil {
+		return route.Route{}, fmt.Errorf("marking processor: %w", err)
+	}
+
+	return marked, nil
+}
+
 //nolint:gocritic // This test double conforms to the production encoder contract.
 func (e *fakeEncoder) Encode(_ context.Context, _ route.Route) ([]byte, error) {
 	if e.err != nil {
@@ -1462,6 +1483,44 @@ func TestServiceBlocksOnlyTheSourceThatBecameEmpty(t *testing.T) {
 	assert.ElementsMatch(t, []route.Route{staleVelo, freshSecond}, state.trusted, "the blocked source's stages must be kept as last known")
 }
 
+// The local source is exempt from the empty-source deletion gate: an empty
+// read of it is a true statement, and a sibling upstream source is still
+// blocked as normal.
+func TestServiceExemptsTheLocalSourceFromTheEmptySourceGate(t *testing.T) {
+	staleVelo := testStage(t, 1, 1, "old", "old-hash")
+	staleLocal := testProviderStage(t, route.ProviderLocal, 2, 1, "old", "old-local-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{staleVelo, staleLocal}
+	target := newFakeTarget()
+	emptiedVelo := &fakeSource{provider: route.ProviderVeloPlanner}
+	emptiedLocal := &fakeSource{provider: route.ProviderLocal}
+	service := newMultiSourceService(t, state, []Source{emptiedVelo, emptiedLocal}, target, false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeBlocked, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureEmptySource, result.Failure, "RunSource() failure")
+	assert.Equal(t, []SourceResult{
+		{Provider: route.ProviderVeloPlanner, Outcome: OutcomeBlocked, Failure: FailureEmptySource},
+		{Provider: route.ProviderLocal, Outcome: OutcomeSucceeded, StageCount: 0},
+	}, result.Sources, "RunSource() sources")
+	assert.ElementsMatch(t, []route.Route{staleVelo}, state.trusted, "the blocked veloplanner source must keep its stale stage")
+}
+
+// A local source whose read fails is a source failure like any other, not the
+// empty-source gate: it keeps the last-known local routes and stores nothing.
+func TestServiceFailsTheLocalSourceOnAReadError(t *testing.T) {
+	staleLocal := testProviderStage(t, route.ProviderLocal, 1, 1, "old", "old-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{staleLocal}
+	failing := &fakeSource{provider: route.ProviderLocal, err: errors.New("state unavailable")}
+	service := newMultiSourceService(t, state, []Source{failing}, newFakeTarget(), false)
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeFailed, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, FailureSource, result.Failure, "RunSource() failure")
+	assert.Equal(t, []route.Route{staleLocal}, state.trusted, "a failed local read must keep the last-known local routes")
+}
+
 // A real failure always outranks an empty-source block in the aggregate
 // failure category: the guard describes no fault, so recording it once a
 // later source has genuinely failed would report and alert on the wrong
@@ -1491,6 +1550,29 @@ func TestServiceEmptySourceAcknowledgementReleasesTheBlockedSource(t *testing.T)
 	result := service.RunSource(t.Context())
 	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
 	assert.Empty(t, state.trusted, "the acknowledged source's inventory must be allowed to empty out")
+}
+
+// A local stage was normalised and measured on save, so exportProfiles must
+// leave it byte-identical while still running the processor over a
+// veloplanner stage.
+func TestServiceExportProfilesSkipsTheLocalSource(t *testing.T) {
+	veloStage := testStage(t, 1, 1, "current", "current-hash")
+	localStage := testProviderStage(t, route.ProviderLocal, 2, 1, "current", "local-hash")
+	state := newFakeState("a")
+	sourceVelo := &fakeSource{provider: route.ProviderVeloPlanner, stages: []route.Route{veloStage}}
+	sourceLocal := &fakeSource{provider: route.ProviderLocal, stages: []route.Route{localStage}}
+	processor := &markingProcessor{}
+	service, err := New(
+		syncOptions(false, []Source{sourceVelo, sourceLocal}, "a"),
+		state, processor, &fakeEncoder{}, newFakeTarget(), nil, nil,
+	)
+	require.NoError(t, err, "New()")
+
+	result := service.RunSource(t.Context())
+	require.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
+	assert.Equal(t, []route.Key{veloStage.Key()}, processor.touched, "only the veloplanner stage must reach the processor")
+	assert.Contains(t, state.trusted, localStage, "the local stage must be stored byte-identical")
+	assert.NotContains(t, state.trusted, veloStage, "the veloplanner stage must have been processed")
 }
 
 func TestServiceFailsASourceWhenItsPriorCountCannotBeRead(t *testing.T) {

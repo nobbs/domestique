@@ -113,7 +113,7 @@ owns a distinct responsibility in this tree.
 | veloplanner | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | plan | plan validation, routing a plan's waypoints on preview and save through the same measuring path, the local source over published plans | SQL, HTTP routing, the engine's wire format |
-| brouter | one routing request to the sidecar and its GeoJSON answer as points | what a plan is, SQLite, Wahoo |
+| brouter | one routing request to the configured engine and its GeoJSON answer as points | what a plan is, SQLite, Wahoo |
 | fit | deterministic FIT bytes for one valid route | VeloPlanner or Komoot requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route and activity reads, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |

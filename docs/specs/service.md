@@ -117,7 +117,8 @@ change to that boundary requires revising this document first.
 
 The one provider this service may write is its own. A **plan** is an ordered
 list of waypoints and a routing profile that an admin composes on the map; the
-service hands the waypoints to a self-hosted routing engine, which snaps them to
+service hands the waypoints to a routing engine, self-hosted or the project's
+public instance, which snaps them to
 a bike-preferring road network, and the geometry that comes back is the plan's
 route. Only an admin session may create, replace or delete a plan, over the
 `/v1/plans` endpoints below; every other session sees a plan's route exactly as
@@ -1248,11 +1249,14 @@ external ID and adopt its Wahoo copy. Its inventory is the set of published
 plans, read from the geometry
 each plan stored when it was saved: a source read never asks the routing
 engine. Geometry comes from the routing engine the deployment names — BRouter,
-run as a sidecar beside the service ([delivery.md](delivery.md)) — which
-answers with the snapped line and an elevation per point; both are then treated
-exactly as a VeloPlanner stage's are, normalised and measured by this service
-and encoded by its own encoder. The engine is asked only with the waypoints and
-the profile; no plan name, rider, or stored route leaves the service for it.
+either as a sidecar beside the service ([delivery.md](delivery.md)) or as the
+project's public instance, on the terms
+[configuration.md](configuration.md#static-fields) states — which answers with
+the snapped line and an elevation per point; both are then treated exactly as
+a VeloPlanner stage's are, normalised and measured by this service and encoded
+by its own encoder. The engine is asked only with the waypoints and the
+profile; no plan name, rider, or stored route leaves the service for it, and
+with a public instance those waypoints are the whole of what leaves the host.
 
 ## Wahoo synchronisation
 

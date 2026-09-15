@@ -559,3 +559,81 @@ func TestLoadRejectsAnEmptyClaudeTokenFileOverride(t *testing.T) {
 	_, err := Load()
 	require.ErrorContains(t, err, "claude token is not configured")
 }
+
+func TestLoadLeavesThePlanningOffWithoutTheSection(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.False(t, settings.Planning.Enabled(), "Planning.Enabled()")
+}
+
+func TestLoadParsesThePlanningSection(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath,
+		"\n[planning]\nbrouter_url = \"http://brouter:17777\"\nsegments = [\"E5_N45\", \"E5_N45\", \"E0_N0\"]\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.True(t, settings.Planning.Enabled(), "Planning.Enabled()")
+	assert.Equal(t, "http://brouter:17777", settings.Planning.BRouterURL, "Planning.BRouterURL")
+	assert.Equal(t, []string{"E5_N45", "E0_N0"}, settings.Planning.Segments, "Planning.Segments")
+}
+
+func TestLoadRequiresBRouterURLWhenPlanningIsPresent(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[planning]\nsegments = [\"E5_N45\"]\n")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "planning.brouter_url")
+}
+
+func TestLoadRejectsABRouterURLWithAPath(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[planning]\nbrouter_url = \"https://brouter.example.test/path\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "planning.brouter_url")
+}
+
+func TestLoadRejectsInvalidSegmentTiles(t *testing.T) {
+	tests := []struct {
+		tile string
+	}{
+		{tile: "E1000_N1000"},
+		{tile: "W0_N45"},
+		{tile: "E7_N45"},
+		{tile: "not-a-tile"},
+		{tile: "E5_S0"},
+		{tile: "E05_N45"},
+		{tile: "E00_N00"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.tile, func(t *testing.T) {
+			configPath, _ := writeValidConfiguration(t, t.TempDir())
+			appendToFile(t, configPath,
+				fmt.Sprintf("\n[planning]\nbrouter_url = \"http://brouter:17777\"\nsegments = [%q]\n", tt.tile))
+			t.Setenv(configFileEnv, configPath)
+
+			_, err := Load()
+			require.ErrorContains(t, err, "planning.segments")
+		})
+	}
+}
+
+func TestLoadAcceptsTheExampleConfigurationsPlanningTiles(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath,
+		"\n[planning]\nbrouter_url = \"http://brouter:17777\"\n"+
+			"segments = [\"E5_N45\", \"E10_N45\", \"E5_N50\", \"E10_N50\"]\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t,
+		[]string{"E5_N45", "E10_N45", "E5_N50", "E10_N50"}, settings.Planning.Segments, "Planning.Segments")
+}

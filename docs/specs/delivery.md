@@ -633,7 +633,8 @@ The runtime image:
 - is usable with a read-only root filesystem plus a temporary writable mount if
   the selected runtime needs one.
 
-A deployment with the planner on runs one more container: the BRouter routing
+A deployment with the planner on, and its own routing engine rather than the
+project's public instance, runs one more container: the BRouter routing
 engine, from an image pinned by digest like every other, with a heap capped at
 half a gigabyte. It publishes no port. It joins an internal network the service
 also joins, so the service reaches it by name over that network alone; it is
