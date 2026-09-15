@@ -31,6 +31,7 @@ import (
 	"github.com/nobbs/domestique/internal/demo"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
+	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
@@ -228,12 +229,14 @@ func newHandler(
 		slots:   slots,
 		running: &atomic.Bool{},
 	}
+	planService := plan.NewService(planStore{store: store}, demo.StraightLineRouter{}, time.Now, plan.RandomID)
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
 			Alerts:           newDemoAlerts(),
 			Tasks:            newDemoTasks(demoReseeder.trigger),
 			BuildRevision:    "demo",
+			Plans:            planService,
 			Sessions:         sessions,
 			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
 			Auth0Domain:      settings.Auth.Auth0.Domain,
@@ -315,6 +318,14 @@ func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot) error {
 	now := func() time.Time { return time.Now().UTC() }
 	if err := demo.Seed(ctx, store, slots, now()); err != nil {
 		return fmt.Errorf("seeding the demo library and its rides: %w", err)
+	}
+	planSource := plan.NewService(planStore{store: store}, demo.StraightLineRouter{}, now, plan.RandomID)
+	plans, err := planSource.Inventory(ctx)
+	if err != nil {
+		return fmt.Errorf("reading the demo plans: %w", err)
+	}
+	if storeErr := store.StoreTrustedInventory(ctx, route.ProviderLocal, plans); storeErr != nil {
+		return fmt.Errorf("storing the demo plans: %w", storeErr)
 	}
 	deriver, err := activity.NewDeriver(store, store, rideWeather(), wahoo.IndoorWorkoutTypes(), now)
 	if err != nil {

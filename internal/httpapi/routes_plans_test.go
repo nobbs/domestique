@@ -189,6 +189,41 @@ func TestPlanRoutesAreUnregisteredWithoutAPlansPort(t *testing.T) {
 	}
 }
 
+func TestPlanDocumentsFollowPlanningAndAdminAccess(t *testing.T) {
+	for _, path := range []string{"/plan", "/plan/7"} {
+		t.Run(path, func(t *testing.T) {
+			configured := plansHandler(t, newFakeSessions(), &fakePlans{})
+			anonymous := httptest.NewRecorder()
+			configured.ServeHTTP(anonymous, httptest.NewRequestWithContext(
+				t.Context(), http.MethodGet, path, http.NoBody))
+			assert.Equal(t, http.StatusUnauthorized, anonymous.Code, anonymous.Body.String())
+
+			browser := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, http.NoBody)
+			browser.Header.Set("Accept", "text/html")
+			redirect := httptest.NewRecorder()
+			configured.ServeHTTP(redirect, browser)
+			assert.Equal(t, http.StatusFound, redirect.Code, redirect.Body.String())
+			assert.Equal(t, loginPath, redirect.Header().Get("Location"))
+
+			admin := httptest.NewRecorder()
+			configured.ServeHTTP(admin, authenticatedRequest(http.MethodGet, path))
+			assert.Equal(t, http.StatusOK, admin.Code, admin.Body.String())
+			assert.Equal(t, cacheDocument, admin.Header().Get("Cache-Control"))
+			assert.Contains(t, admin.Body.String(), "<!doctype html>")
+
+			nonAdmin := plansHandler(t, nonAdminSessions("rider-a"), &fakePlans{})
+			refused := httptest.NewRecorder()
+			nonAdmin.ServeHTTP(refused, authenticatedRequest(http.MethodGet, path))
+			assert.Equal(t, http.StatusNotFound, refused.Code, refused.Body.String())
+
+			unconfigured := plansHandler(t, newFakeSessions(), nil)
+			missing := httptest.NewRecorder()
+			unconfigured.ServeHTTP(missing, authenticatedRequest(http.MethodGet, path))
+			assert.Equal(t, http.StatusNotFound, missing.Code, missing.Body.String())
+		})
+	}
+}
+
 func TestWebUIConfigReportsWhetherPlanningIsConfigured(t *testing.T) {
 	for name, plans := range map[string]Plans{"configured": &fakePlans{}, "unconfigured": nil} {
 		t.Run(name, func(t *testing.T) {

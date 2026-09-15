@@ -23,8 +23,15 @@ import {
   type FitnessScaleOutlook,
   type FitnessWeek,
   type ActivityTrack as GeneratedActivityTrack,
+  PlanProfile as GeneratedPlanProfile,
   type WebUIConfig as GeneratedWebUIConfig,
   type GeoJSONFeature,
+  type Plan,
+  type PlanList,
+  type PlanRoutePreview,
+  type PlanSummary,
+  type PlanWaypoint,
+  type PlanWrite,
   type PowerCurvePoint,
   type RiderParameters,
   type RiderProfile,
@@ -83,6 +90,12 @@ export type {
   FitnessScaleOutlook,
   FitnessWeek,
   GeoJSONFeature,
+  Plan,
+  PlanList,
+  PlanRoutePreview,
+  PlanSummary,
+  PlanWaypoint,
+  PlanWrite,
   PowerCurvePoint,
   RiderParameters,
   RiderProfile,
@@ -129,6 +142,9 @@ export type SyncPhase = (typeof SYNC_PHASES)[number];
 
 export const SOURCE_PROVIDERS = Object.values(SourceSettingsProvider);
 export type SourceProvider = (typeof SOURCE_PROVIDERS)[number];
+
+export const PLAN_PROFILES = Object.values(GeneratedPlanProfile);
+export type PlanProfile = (typeof PLAN_PROFILES)[number];
 
 /** Defaults optional transport fields to the values the UI renders. */
 export type Basemap = Omit<BrowserBasemap, "darkCartography"> & { darkCartography: boolean };

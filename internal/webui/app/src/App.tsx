@@ -10,6 +10,7 @@ import { TasksPage } from "./features/admin/tasks/TasksPage";
 import { SignInPage } from "./features/auth/SignInPage";
 import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { FitnessPage } from "./features/fitness/FitnessPage";
+import { PlanPage } from "./features/plan/PlanPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { SyncPage } from "./features/sync/SyncPage";
@@ -31,6 +32,18 @@ function AdminOnly({ children }: { children: ReactNode }) {
   }
 
   return effectiveAdmin ? children : <Navigate to="/settings" replace />;
+}
+
+/** The planner exists only where an admin and a routing engine do. */
+function PlanningOnly({ children }: { children: ReactNode }) {
+  const { data, isPending } = useQuery(webUIConfigQuery());
+  const effectiveAdmin = useEffectiveAdmin();
+
+  if (isPending) {
+    return null;
+  }
+
+  return data?.planning && effectiveAdmin ? children : <Navigate to="/" replace />;
 }
 
 /**
@@ -66,6 +79,13 @@ function OpenedLegacyRoute() {
   const key = `veloplanner/${sourceRouteId}/${stageOrder}`;
 
   return <Navigate to={`/?route=${encodeURIComponent(key)}`} replace />;
+}
+
+/** Each address is a distinct draft, so an opened plan never leaks into the next one. */
+function OpenedPlan() {
+  const { planId } = useParams();
+
+  return <PlanPage key={planId ?? "new"} />;
 }
 
 /**
@@ -107,6 +127,22 @@ export function App() {
       <Route path="activities" element={<ActivitiesPage />} />
       <Route path="activities/:activityId" element={<ActivityPage />} />
       <Route path="settings" element={<SettingsPage />} />
+      <Route
+        path="plan"
+        element={
+          <PlanningOnly>
+            <OpenedPlan />
+          </PlanningOnly>
+        }
+      />
+      <Route
+        path="plan/:planId"
+        element={
+          <PlanningOnly>
+            <OpenedPlan />
+          </PlanningOnly>
+        }
+      />
       <Route
         path="admin"
         element={

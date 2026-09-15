@@ -10,6 +10,7 @@
 const PROVIDER_LABELS: Record<string, string> = {
   veloplanner: "VeloPlanner",
   komoot: "Komoot",
+  local: "Local",
 };
 
 /**

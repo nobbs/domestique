@@ -148,6 +148,8 @@ function renderPage(
     surfaceFor?: Record<string, RouteSurface>;
     basemaps?: WebUIConfig["basemaps"];
     themeChoice?: ThemeChoice;
+    admin?: boolean;
+    planning?: boolean;
     /** The rider's own rides, which an open route reads its history off. */
     activities?: Activity[];
     /** The rider's own stopping habit, which the open panel's window uses. */
@@ -172,7 +174,8 @@ function renderPage(
     ],
     sourceBaseUrls: {},
     timezone: "Europe/Berlin",
-    identity: { display: "rider@example.test", admin: false },
+    identity: { display: "rider@example.test", admin: options.admin ?? false },
+    ...(options.planning === undefined ? {} : { planning: options.planning }),
   });
   client.setQueryData(statusQuery().queryKey, {
     ready: true,
@@ -294,6 +297,18 @@ afterEach(() => {
 });
 
 describe("AtlasPage", () => {
+  it("offers planning only to an admin when routing is configured", () => {
+    renderPage(LIBRARY, { admin: true, planning: true });
+
+    expect(screen.getByRole("link", { name: "Plan a route" })).toHaveAttribute("href", "/plan");
+  });
+
+  it("does not offer planning to a rider", () => {
+    renderPage(LIBRARY, { planning: true });
+
+    expect(screen.queryByRole("link", { name: "Plan a route" })).toBeNull();
+  });
+
   it("draws every route in the library on one map", () => {
     renderPage();
 

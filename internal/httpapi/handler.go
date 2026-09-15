@@ -351,6 +351,8 @@ func (h *Handler) routes() {
 		h.mux.HandleFunc("GET /v1/plans/{planId}", h.adminOnly(h.GetPlan))
 		h.mux.HandleFunc("PUT /v1/plans/{planId}", h.adminOnly(h.ReplacePlan))
 		h.mux.HandleFunc("DELETE /v1/plans/{planId}", h.adminOnly(h.DeletePlan))
+		h.mux.HandleFunc("GET /plan", h.GetPlanPage)
+		h.mux.HandleFunc("GET /plan/{planId}", h.GetPlanPage)
 	}
 	// Not admin-gated: this section is the rider's own, read and written over
 	// their own subject and no other's.

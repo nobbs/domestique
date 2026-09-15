@@ -32,12 +32,16 @@ import {
   IconChevronsRight,
   IconDots,
   IconMountain,
+  IconPencil,
   IconRuler2,
   IconStopwatch,
   IconTrendingDown,
   IconTrendingUp,
   IconX,
 } from "@tabler/icons-react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router";
+import { webUIConfigQuery } from "../../api/queries";
 import type { Route, StoppingSuggestion } from "../../api/types";
 import { Button } from "../../components/Button";
 import { Slider } from "../../components/Slider";
@@ -45,6 +49,7 @@ import { SourceRouteLink } from "../../components/SourceRouteLink";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
@@ -184,6 +189,7 @@ export function RoutePanel({
     ? Math.min(stopping.medianSecondsPerHour, MAX_ALLOWANCE_SECONDS_PER_HOUR)
     : null;
   const effectiveAdmin = useEffectiveAdmin();
+  const config = useQuery(webUIConfigQuery());
 
   return (
     // The shell strips its own card off whatever carries this, which is what
@@ -267,6 +273,12 @@ export function RoutePanel({
                 baseUrl={sourceBaseUrls[route.provider]}
                 sourceRouteId={route.sourceRouteId}
               />
+              {effectiveAdmin && config.data?.planning && route.provider === "local" ? (
+                <DropdownMenuItem render={<Link to={`/plan/${route.sourceRouteId}`} />}>
+                  <IconPencil aria-hidden="true" />
+                  Edit
+                </DropdownMenuItem>
+              ) : null}
               {effectiveAdmin ? (
                 <>
                   <DropdownMenuSeparator />

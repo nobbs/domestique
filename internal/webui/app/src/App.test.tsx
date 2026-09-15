@@ -33,6 +33,9 @@ vi.mock("./features/admin/AdminPage", () => ({
 vi.mock("./features/admin/tasks/TasksPage", () => ({
   TasksPage: () => <p>the tasks page</p>,
 }));
+vi.mock("./features/plan/PlanPage", () => ({
+  PlanPage: () => <p>the planner</p>,
+}));
 
 const { App } = await import("./App");
 
@@ -42,12 +45,13 @@ function Address() {
   return <p data-testid="address">{`${pathname}${search}`}</p>;
 }
 
-function config(admin: boolean): WebUIConfig {
+function config(admin: boolean, planning = false): WebUIConfig {
   return {
     basemaps: [],
     sourceBaseUrls: {},
     timezone: "Europe/Berlin",
     identity: { display: "rider@example.test", admin },
+    planning,
   };
 }
 
@@ -55,12 +59,12 @@ function config(admin: boolean): WebUIConfig {
  * `admin` left undefined leaves the config query unseeded and unfetched, the
  * still-loading state `AdminOnly` must not read as "not admin".
  */
-function open(path: string, admin?: boolean): void {
+function open(path: string, admin?: boolean, planning = false): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   if (admin !== undefined) {
-    client.setQueryData(webUIConfigQuery().queryKey, config(admin));
+    client.setQueryData(webUIConfigQuery().queryKey, config(admin, planning));
   }
 
   render(
@@ -153,6 +157,20 @@ describe("the client routes", () => {
 
     expect(address()).toBe("/admin/tasks");
     expect(screen.getByText("the tasks page")).toBeInTheDocument();
+  });
+
+  it("mounts the planner only for an admin where routing is configured", () => {
+    open("/plan", true, true);
+
+    expect(address()).toBe("/plan");
+    expect(screen.getByText("the planner")).toBeInTheDocument();
+  });
+
+  it("keeps planner routes absent for a non-admin", () => {
+    open("/plan/4", false, true);
+
+    expect(address()).toBe("/");
+    expect(screen.queryByText("the planner")).not.toBeInTheDocument();
   });
 
   it("sends a non-admin from /admin/tasks back to their own settings", () => {

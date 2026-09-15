@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import { webUIConfigQuery } from "../../api/queries";
 import type { Route, WebUIConfig } from "../../api/types";
@@ -25,7 +26,7 @@ function route(overrides: Partial<Route> = {}): Route {
   };
 }
 
-function seededClient(admin: boolean): QueryClient {
+function seededClient(admin: boolean, planning = false): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -34,14 +35,20 @@ function seededClient(admin: boolean): QueryClient {
     sourceBaseUrls: {},
     timezone: "Europe/Berlin",
     identity: { display: "rider@example.test", admin },
+    planning,
   };
   client.setQueryData(webUIConfigQuery().queryKey, config);
 
   return client;
 }
 
-function renderPanel(overrides: Partial<RoutePanelProps> = {}, admin = false) {
-  const client = seededClient(admin);
+function renderPanel(
+  overrides: Partial<RoutePanelProps> = {},
+  admin = false,
+  planning = false,
+  router = false,
+) {
+  const client = seededClient(admin, planning);
   const props: RoutePanelProps = {
     route: route(),
     highestMetres: null,
@@ -63,12 +70,28 @@ function renderPanel(overrides: Partial<RoutePanelProps> = {}, admin = false) {
 
   return render(
     <QueryClientProvider client={client}>
-      <RoutePanel {...props} />
+      {router ? (
+        <MemoryRouter>
+          <RoutePanel {...props} />
+        </MemoryRouter>
+      ) : (
+        <RoutePanel {...props} />
+      )}
     </QueryClientProvider>,
   );
 }
 
 describe("RoutePanel", () => {
+  it("offers edit only for a local route when planning is available", async () => {
+    renderPanel({ route: route({ provider: "local", sourceRouteId: 44 }) }, true, true, true);
+    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
+
+    expect(await screen.findByRole("menuitem", { name: "Edit" })).toHaveAttribute(
+      "href",
+      "/plan/44",
+    );
+  });
+
   it("rests as a pill with the headline figures, not the full grid", () => {
     renderPanel({ collapsed: true });
 
