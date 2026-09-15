@@ -8,6 +8,7 @@ const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
 const overlayInsets = vi.hoisted(() => ({ value: { top: 12, right: 13, bottom: 14, left: 15 } }));
+const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
 
 vi.mock("../../api/generated", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/generated")>()),
@@ -54,13 +55,21 @@ vi.mock("../../components/map/MapWidget", () => ({
   }: {
     children: React.ReactNode;
     furniture?: React.ReactNode;
-    onClick?: (event: { lngLat: { lng: number; lat: number } }) => void;
+    onClick?: (event: {
+      lngLat: { lng: number; lat: number };
+      originalEvent: { altKey: boolean };
+    }) => void;
   }) => (
     <>
       <button
         type="button"
         aria-label="Plan route map"
-        onClick={() => onClick?.({ lngLat: { lng: 8, lat: 49 } })}
+        onClick={(event) =>
+          onClick?.({
+            lngLat: { lng: mapPoint.value.longitude, lat: mapPoint.value.latitude },
+            originalEvent: { altKey: event.altKey },
+          })
+        }
       >
         {children}
       </button>
@@ -132,6 +141,7 @@ beforeEach(() => {
   create.mockReset();
   replace.mockReset();
   openedPlan.value = {};
+  mapPoint.value = { longitude: 8, latitude: 49 };
 });
 
 afterEach(() => vi.useRealTimers());
@@ -384,5 +394,104 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
 
     expect(preview).toHaveBeenCalledOnce();
+  });
+
+  it("inserts map clicks into the nearest leg and appends at the final endpoint, with Alt, or before two waypoints", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    mapPoint.value = { longitude: 8, latitude: 49 };
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.2, latitude: 49 };
+    fireEvent.click(map);
+    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.2");
+
+    mapPoint.value = { longitude: 8.1, latitude: 49.01 };
+    fireEvent.click(map);
+    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
+    expect(screen.getByLabelText("Waypoint 3 longitude")).toHaveValue("8.2");
+
+    mapPoint.value = { longitude: 9, latitude: 50 };
+    fireEvent.click(map);
+    expect(screen.getByLabelText("Waypoint 4 longitude")).toHaveValue("9");
+
+    mapPoint.value = { longitude: 10, latitude: 50 };
+    fireEvent.click(map, { altKey: true });
+    expect(screen.getByLabelText("Waypoint 5 longitude")).toHaveValue("10");
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.01 },
+            { longitude: 8.2, latitude: 49 },
+            { longitude: 9, latitude: 50 },
+            { longitude: 10, latitude: 50 },
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("numbers draggable waypoint handles and reroutes after reordering them", async () => {
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          published: false,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+            { longitude: 8.2, latitude: 49.2 },
+          ],
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [8, 49],
+              [8.1, 49.1],
+              [8.2, 49.2],
+            ],
+          },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    preview.mockClear();
+
+    const first = screen.getByRole("button", { name: "Drag waypoint 1 to reorder" });
+    const third = screen.getByRole("button", { name: "Drag waypoint 3 to reorder" });
+    expect(first).toHaveTextContent("1");
+    expect(third).toHaveTextContent("3");
+    expect(screen.getByRole("button", { name: "Move waypoint 2 up" })).toBeInTheDocument();
+
+    fireEvent.dragStart(first);
+    fireEvent.dragOver(third.closest("li") as HTMLElement);
+    fireEvent.drop(third.closest("li") as HTMLElement);
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          waypoints: [
+            { longitude: 8.1, latitude: 49.1 },
+            { longitude: 8.2, latitude: 49.2 },
+            { longitude: 8, latitude: 49 },
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
   });
 });

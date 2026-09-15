@@ -1,10 +1,7 @@
 import {
-  IconArrowDown,
-  IconArrowUp,
   IconChevronsRight,
   IconDeviceFloppy,
   IconLayoutBottombarCollapse,
-  IconMapPin,
   IconMountain,
   IconPlayerTrackNext,
   IconPlayerTrackPrev,
@@ -80,6 +77,46 @@ function waypointPositions(waypoints: PlannerState["waypoints"]): Position[] {
   return waypoints.map(({ longitude, latitude }) => [longitude, latitude]);
 }
 
+function insertionIndex(
+  waypoints: PlannerState["waypoints"],
+  waypoint: { longitude: number; latitude: number },
+): number {
+  if (waypoints.length < 2) {
+    return waypoints.length;
+  }
+  let nearest = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  let nearestIsFinalEndpoint = false;
+
+  for (let index = 0; index < waypoints.length - 1; index++) {
+    const start = waypoints[index];
+    const end = waypoints[index + 1];
+    if (!start || !end) {
+      continue;
+    }
+    const longitudeScale = Math.max(
+      0.01,
+      Math.cos(((start.latitude + end.latitude + waypoint.latitude) / 3) * (Math.PI / 180)),
+    );
+    const endX = (end.longitude - start.longitude) * longitudeScale;
+    const endY = end.latitude - start.latitude;
+    const pointX = (waypoint.longitude - start.longitude) * longitudeScale;
+    const pointY = waypoint.latitude - start.latitude;
+    const lengthSquared = endX * endX + endY * endY;
+    const projection = lengthSquared === 0 ? 0 : (pointX * endX + pointY * endY) / lengthSquared;
+    const fraction = Math.max(0, Math.min(1, projection));
+    const distance = (pointX - endX * fraction) ** 2 + (pointY - endY * fraction) ** 2;
+
+    if (distance < nearestDistance) {
+      nearest = index;
+      nearestDistance = distance;
+      nearestIsFinalEndpoint = index === waypoints.length - 2 && projection >= 1;
+    }
+  }
+
+  return nearestIsFinalEndpoint ? waypoints.length : nearest + 1;
+}
+
 interface CoordinateInputProps {
   label: string;
   value: number;
@@ -148,6 +185,18 @@ export function PlannerSidebar({
   onSave,
   dispatch,
 }: PlannerSidebarProps) {
+  const dragging = useRef<number | null>(null);
+  const reorder = (from: number, to: number) => {
+    if (from === to) {
+      return;
+    }
+    const direction = from < to ? "down" : "up";
+    const step = direction === "down" ? 1 : -1;
+    for (let index = from; index !== to; index += step) {
+      dispatch({ type: "reorder", index, direction });
+    }
+  };
+
   return (
     <div data-compact-workspace="" className="w-fit max-w-full">
       <section
@@ -236,8 +285,40 @@ export function PlannerSidebar({
             </div>
             <ol className="grid gap-1" aria-label="Waypoints">
               {state.waypoints.map((waypoint, index) => (
-                <li key={waypoint.id} className="flex items-center gap-1 text-sm">
-                  <IconMapPin size={16} aria-hidden="true" />
+                <li
+                  key={waypoint.id}
+                  className="flex items-center gap-1 text-sm"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const transferred = event.dataTransfer?.getData("text/plain");
+                    const from =
+                      dragging.current ?? (transferred ? Number(transferred) : Number.NaN);
+                    dragging.current = null;
+                    if (Number.isInteger(from)) {
+                      reorder(from, index);
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    draggable
+                    aria-label={`Drag waypoint ${index + 1} to reorder`}
+                    title="Drag to reorder"
+                    onDragStart={(event) => {
+                      dragging.current = index;
+                      event.dataTransfer?.setData("text/plain", String(index));
+                      if (event.dataTransfer) {
+                        event.dataTransfer.effectAllowed = "move";
+                      }
+                    }}
+                    onDragEnd={() => {
+                      dragging.current = null;
+                    }}
+                    className="grid size-6 shrink-0 cursor-grab place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow active:cursor-grabbing"
+                  >
+                    {index + 1}
+                  </button>
                   <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
                     <CoordinateInput
                       label={`Waypoint ${index + 1} latitude`}
@@ -260,18 +341,22 @@ export function PlannerSidebar({
                   </div>
                   <Button
                     variant="ghost"
-                    icon={<IconArrowUp size={16} />}
+                    className="sr-only focus:not-sr-only"
                     aria-label={`Move waypoint ${index + 1} up`}
                     disabled={index === 0}
                     onClick={() => dispatch({ type: "reorder", index, direction: "up" })}
-                  />
+                  >
+                    Move up
+                  </Button>
                   <Button
                     variant="ghost"
-                    icon={<IconArrowDown size={16} />}
+                    className="sr-only focus:not-sr-only"
                     aria-label={`Move waypoint ${index + 1} down`}
                     disabled={index === state.waypoints.length - 1}
                     onClick={() => dispatch({ type: "reorder", index, direction: "down" })}
-                  />
+                  >
+                    Move down
+                  </Button>
                   <Button
                     variant="ghost"
                     icon={<IconTrash size={16} />}
@@ -282,7 +367,8 @@ export function PlannerSidebar({
               ))}
             </ol>
             <p className="text-sm text-[var(--ink-2)]">
-              Click the map to add up to 50 waypoints. Drag a pin to move it.
+              Click the map to insert a waypoint, or Alt-click to append. Drag numbered markers to
+              reorder; drag map pins to move them.
             </p>
             {preview ? (
               <output
@@ -589,12 +675,18 @@ export function PlanPage() {
                   </>
                 }
                 cursor={state.waypoints.length === 50 ? "" : "crosshair"}
-                onClick={(event) =>
-                  dispatch({
-                    type: "append",
-                    waypoint: { longitude: event.lngLat.lng, latitude: event.lngLat.lat },
-                  })
-                }
+                onClick={(event) => {
+                  const waypoint = { longitude: event.lngLat.lng, latitude: event.lngLat.lat };
+                  if (event.originalEvent.altKey || state.waypoints.length < 2) {
+                    dispatch({ type: "append", waypoint });
+                  } else {
+                    dispatch({
+                      type: "insert",
+                      index: insertionIndex(state.waypoints, waypoint),
+                      waypoint,
+                    });
+                  }
+                }}
               >
                 <MapViewport bounds={viewportBounds} maxZoom={ROUTE_MAX_ZOOM} insets={insets} />
                 {line.length > 1 ? (

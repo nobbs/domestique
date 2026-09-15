@@ -24,6 +24,7 @@ export type PlannerAction =
   | { type: "setName"; name: string }
   | { type: "setProfile"; profile: PlanProfile }
   | { type: "append"; waypoint: PlanWaypoint }
+  | { type: "insert"; index: number; waypoint: PlanWaypoint }
   | { type: "move"; index: number; waypoint: PlanWaypoint }
   | { type: "delete"; index: number }
   | { type: "reverse" }
@@ -68,6 +69,22 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
             waypoints: [...state.waypoints, { ...action.waypoint, id: state.nextWaypointID }],
             nextWaypointID: state.nextWaypointID + 1,
           });
+    case "insert": {
+      if (state.waypoints.length === 50) {
+        return state;
+      }
+      const index = Math.max(0, Math.min(action.index, state.waypoints.length));
+
+      return apply(state, {
+        ...snapshot(state),
+        waypoints: [
+          ...state.waypoints.slice(0, index),
+          { ...action.waypoint, id: state.nextWaypointID },
+          ...state.waypoints.slice(index),
+        ],
+        nextWaypointID: state.nextWaypointID + 1,
+      });
+    }
     case "move": {
       if (!state.waypoints[action.index]) {
         return state;

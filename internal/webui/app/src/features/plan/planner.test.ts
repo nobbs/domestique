@@ -43,6 +43,17 @@ describe("plannerReducer", () => {
     expect(state.waypoints).toMatchObject([second]);
   });
 
+  it("inserts a waypoint at the requested position", () => {
+    const middle = { longitude: 8.05, latitude: 49.05 };
+    const state = reduce(
+      { type: "append", waypoint: first },
+      { type: "append", waypoint: second },
+      { type: "insert", index: 1, waypoint: middle },
+    );
+
+    expect(state.waypoints).toMatchObject([first, middle, second]);
+  });
+
   it("does not record no-op waypoint actions", () => {
     const state = reduce(
       { type: "move", index: 0, waypoint: first },
