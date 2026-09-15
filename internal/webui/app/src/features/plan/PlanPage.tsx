@@ -182,6 +182,7 @@ function CoordinateInput({ label, value, min, max, onCommit }: CoordinateInputPr
 
   return (
     <Input
+      className="border-transparent bg-transparent hover:bg-[var(--panel)] focus-visible:border-ring"
       type="text"
       inputMode="decimal"
       aria-label={label}
@@ -328,7 +329,7 @@ export function PlannerSidebar({
                       draggable
                       aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
                       title={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                      className={`flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-[var(--rule)] bg-[var(--base)] p-1 ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
+                      className={`flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-transparent bg-[var(--base)] p-1 hover:border-[var(--rule)] ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
                       onDragStart={(event) => {
                         if (isInteractiveDragOrigin(event.target)) {
                           event.preventDefault();
@@ -378,7 +379,7 @@ export function PlannerSidebar({
                     >
                       <span
                         aria-hidden="true"
-                        className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow"
+                        className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white"
                       >
                         <WaypointMarker index={index} count={state.waypoints.length} />
                       </span>
@@ -440,8 +441,9 @@ export function PlannerSidebar({
                       </span>
                     </div>
                     <Button
-                      variant="destructive"
+                      variant="ghost"
                       icon={<IconTrash size={16} />}
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
                       aria-label={`Delete waypoint ${index + 1}`}
                       onClick={() => dispatch({ type: "delete", index: stateIndex })}
                     />

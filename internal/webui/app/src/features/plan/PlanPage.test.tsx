@@ -559,14 +559,19 @@ describe("PlanPage", () => {
     expect(first).toHaveAttribute("title", "Drag Start waypoint to reorder");
     expect(third).toHaveAttribute("title", "Drag Finish waypoint to reorder");
     expect(first).toHaveAttribute("draggable", "true");
-    expect(first).toHaveClass("rounded-lg", "border", "bg-[var(--base)]");
+    expect(first).toHaveClass("rounded-lg", "border", "border-transparent", "bg-[var(--base)]");
     expect(first.lastElementChild?.querySelector(".tabler-icon-grip-vertical")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete waypoint 1" }).previousElementSibling).toBe(
       first,
     );
     expect(screen.getByRole("button", { name: "Delete waypoint 1" })).toHaveClass(
-      "bg-destructive/10",
       "text-destructive",
+      "hover:bg-destructive/10",
+    );
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveClass(
+      "border-transparent",
+      "bg-transparent",
+      "focus-visible:border-ring",
     );
     expect(screen.getByLabelText("Waypoint 1 longitude")).not.toHaveAttribute("draggable", "true");
     expect(screen.getByRole("button", { name: "Move Waypoint 2 up" })).toBeInTheDocument();
