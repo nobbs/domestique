@@ -75,6 +75,46 @@ function waypointPositions(waypoints: PlannerState["waypoints"]): Position[] {
   return waypoints.map(({ longitude, latitude }) => [longitude, latitude]);
 }
 
+interface CoordinateInputProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+}
+
+function CoordinateInput({ label, value, min, max, onCommit }: CoordinateInputProps) {
+  const [raw, setRaw] = useState(String(value));
+
+  useEffect(() => setRaw(String(value)), [value]);
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      aria-label={label}
+      value={raw}
+      onChange={(event) => setRaw(event.target.value)}
+      onBlur={() => {
+        const complete = raw.trim();
+        const coordinate = Number(complete);
+        if (
+          complete !== "" &&
+          Number.isFinite(coordinate) &&
+          coordinate >= min &&
+          coordinate <= max
+        ) {
+          if (coordinate !== value) {
+            onCommit(coordinate);
+          }
+        } else {
+          setRaw(String(value));
+        }
+      }}
+    />
+  );
+}
+
 export interface PlannerSidebarProps {
   state: PlannerState;
   plans: PlanSummary[];
@@ -163,35 +203,23 @@ export function PlannerSidebar({
           <li key={waypoint.id} className="flex items-center gap-1 text-sm">
             <IconMapPin size={16} aria-hidden="true" />
             <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
-              <Input
-                type="number"
-                inputMode="decimal"
+              <CoordinateInput
+                label={`Waypoint ${index + 1} latitude`}
+                value={waypoint.latitude}
                 min={-90}
                 max={90}
-                step="any"
-                aria-label={`Waypoint ${index + 1} latitude`}
-                value={waypoint.latitude}
-                onChange={(event) => {
-                  const latitude = Number(event.target.value);
-                  if (Number.isFinite(latitude)) {
-                    dispatch({ type: "move", index, waypoint: { ...waypoint, latitude } });
-                  }
-                }}
+                onCommit={(latitude) =>
+                  dispatch({ type: "move", index, waypoint: { ...waypoint, latitude } })
+                }
               />
-              <Input
-                type="number"
-                inputMode="decimal"
+              <CoordinateInput
+                label={`Waypoint ${index + 1} longitude`}
+                value={waypoint.longitude}
                 min={-180}
                 max={180}
-                step="any"
-                aria-label={`Waypoint ${index + 1} longitude`}
-                value={waypoint.longitude}
-                onChange={(event) => {
-                  const longitude = Number(event.target.value);
-                  if (Number.isFinite(longitude)) {
-                    dispatch({ type: "move", index, waypoint: { ...waypoint, longitude } });
-                  }
-                }}
+                onCommit={(longitude) =>
+                  dispatch({ type: "move", index, waypoint: { ...waypoint, longitude } })
+                }
               />
             </div>
             <Button
@@ -294,6 +322,7 @@ export function PlanPage() {
   const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
   const { mutate: previewRoute } = usePreviewPlanRoute();
   const loaded = useRef<string | null>(null);
+  const hydrating = useRef(planId !== null);
   const request = useRef(0);
   const queryPlan = plan.data?.data;
   const loadedPlan =
@@ -307,6 +336,7 @@ export function PlanPage() {
 
   useEffect(() => {
     loaded.current = null;
+    hydrating.current = planId !== null;
     request.current += 1;
     setSavedPlan(null);
     dispatch({ type: "reset" });
@@ -332,16 +362,19 @@ export function PlanPage() {
   }, [loadedPlan]);
 
   useEffect(() => {
+    if (planId !== null && !loadedPlan) {
+      request.current += 1;
+      return;
+    }
     if (state.waypoints.length < 2) {
       request.current += 1;
-      const hydratingStoredPlan =
-        planId !== null && loadedPlan !== undefined && state.past.length === 0;
-      if (!hydratingStoredPlan) {
+      if (!hydrating.current) {
         setPreview(null);
       }
       setPreviewError(null);
       return;
     }
+    hydrating.current = false;
     const current = ++request.current;
     const timeout = window.setTimeout(() => {
       previewRoute(
@@ -363,7 +396,7 @@ export function PlanPage() {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [loadedPlan, planId, previewRoute, state.past.length, state.profile, state.waypoints]);
+  }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints]);
 
   const line = useMemo(() => positions(preview), [preview]);
   const viewportBounds = useMemo(() => {

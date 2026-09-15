@@ -284,25 +284,43 @@ describe("PlanPage", () => {
     expect(replace.mock.calls[1]?.[0]).toMatchObject({ headers: { "If-Match": "3" } });
   });
 
-  it("offers waypoint coordinates as native keyboard-editable controls", () => {
+  it("commits a negative waypoint coordinate after its text entry is complete", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Waypoint 1 latitude" }), {
-      target: { value: "49.5" },
+    const latitude = screen.getByRole("textbox", { name: "Waypoint 1 latitude" });
+    fireEvent.change(latitude, { target: { value: "-" } });
+    expect(latitude).toHaveValue("-");
+    fireEvent.change(latitude, {
+      target: { value: "-49.5" },
     });
+    expect(latitude).toHaveValue("-49.5");
+    fireEvent.blur(latitude);
     act(() => vi.advanceTimersByTime(300));
 
     expect(preview).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           waypoints: [
-            expect.objectContaining({ longitude: 8, latitude: 49.5 }),
+            expect.objectContaining({ longitude: 8, latitude: -49.5 }),
             expect.objectContaining({ longitude: 8, latitude: 49 }),
           ],
         }),
       }),
       expect.anything(),
     );
+  });
+
+  it("does not reroute after changing only the plan name", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(preview).toHaveBeenCalledOnce();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "No detour" } });
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(preview).toHaveBeenCalledOnce();
   });
 });

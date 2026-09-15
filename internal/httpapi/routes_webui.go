@@ -145,6 +145,11 @@ func (h *Handler) GetAdminTasksPage(writer http.ResponseWriter, request *http.Re
 	h.adminPage(writer, request)
 }
 
+// GetPlanPage serves the application document for an administrator's planner.
+func (h *Handler) GetPlanPage(writer http.ResponseWriter, request *http.Request) {
+	h.adminPage(writer, request)
+}
+
 func (h *Handler) adminPage(writer http.ResponseWriter, request *http.Request) {
 	if !identityOf(request.Context()).Admin {
 		h.notFound(writer)
