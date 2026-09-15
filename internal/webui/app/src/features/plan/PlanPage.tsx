@@ -50,10 +50,17 @@ import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance } from "../../lib/format";
 import { useOverlayInsets } from "../../lib/overlayInsets";
 import { buildProfile, rangeBounds } from "../../lib/profile";
+import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { RouteOverlay } from "../routes/RouteOverlay";
-import { initialPlannerState, isPlannerSeed, type PlannerState, plannerReducer } from "./planner";
+import {
+  initialPlannerState,
+  isPlannerSeed,
+  type PlannerSeed,
+  type PlannerState,
+  plannerReducer,
+} from "./planner";
 
 function positions(preview: PlanRoutePreview | null): Position[] {
   return (preview?.geometry.coordinates ?? []).flatMap(([longitude, latitude, elevation]) => {
@@ -86,6 +93,22 @@ function planWaypoints(waypoints: PlannerState["waypoints"]) {
 
 function waypointPositions(waypoints: Array<{ longitude: number; latitude: number }>): Position[] {
   return waypoints.map(({ longitude, latitude }) => [longitude, latitude]);
+}
+
+/** The one-shot framing of an opened plan or seed: later edits never move the camera. */
+function framing(planId: number | null, plan: Plan | PlannerSeed): PlannerFraming {
+  const line = "geometry" in plan ? positions(previewFrom(plan)) : [];
+  const coordinates = line.length > 1 ? line : waypointPositions(plan.waypoints);
+
+  return {
+    planId,
+    bounds: rangeBounds(coordinates, { startIndex: 0, endIndex: coordinates.length - 1 }),
+  };
+}
+
+interface PlannerFraming {
+  planId: number | null;
+  bounds: BoundingBox | null;
 }
 
 function waypointLabel(index: number, count: number): string {
@@ -645,7 +668,7 @@ export function PlanPage() {
   const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
   const { mutate: previewRoute } = usePreviewPlanRoute();
   const loaded = useRef<string | null>(null);
-  const initialViewport = useRef<{ planId: number; bounds: BoundingBox | null } | null>(null);
+  const initialViewport = useRef<PlannerFraming | null>(null);
   const hydrating = useRef(planId !== null);
   const request = useRef(0);
   const queryPlan = plan.data?.data;
@@ -659,6 +682,11 @@ export function PlanPage() {
     ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
     : null;
   const insets = useOverlayInsets();
+  // Decided once, at mount: only a blank draft frames the rider's own position,
+  // and a plan or seed that opens later keeps its own framing.
+  const [locationEnabled] = useState(() => planId === null && copySeed === null);
+  const position = useStartupLocation(locationEnabled);
+  const locationBox = useMemo(() => (position ? boxAround(position) : null), [position]);
 
   useEffect(() => {
     loaded.current = null;
@@ -670,6 +698,7 @@ export function PlanPage() {
     if (planId === null) {
       setPreview(null);
       if (copySeed) {
+        initialViewport.current = framing(null, copySeed);
         dispatch({ type: "load", plan: copySeed });
       }
     }
@@ -688,13 +717,7 @@ export function PlanPage() {
     }
     loaded.current = key;
     if (initialViewport.current?.planId !== loadedPlan.id) {
-      const initialLine = positions(previewFrom(loadedPlan));
-      const coordinates =
-        initialLine.length > 1 ? initialLine : waypointPositions(loadedPlan.waypoints);
-      initialViewport.current = {
-        planId: loadedPlan.id,
-        bounds: rangeBounds(coordinates, { startIndex: 0, endIndex: coordinates.length - 1 }),
-      };
+      initialViewport.current = framing(loadedPlan.id, loadedPlan);
     }
     dispatch({ type: "load", plan: loadedPlan });
     setPreview(previewFrom(loadedPlan));
@@ -738,8 +761,8 @@ export function PlanPage() {
   }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints]);
 
   const line = useMemo(() => positions(preview), [preview]);
-  const viewportBounds =
-    initialViewport.current?.planId === planId ? initialViewport.current.bounds : null;
+  const framed = initialViewport.current?.planId === planId ? initialViewport.current.bounds : null;
+  const viewportBounds = framed ?? (planId === null && copySeed === null ? locationBox : null);
   const profile = useMemo(() => buildProfile(line), [line]);
   const save = async (published: boolean) => {
     const data = {
@@ -837,7 +860,11 @@ export function PlanPage() {
                   }
                 }}
               >
-                <MapViewport bounds={viewportBounds} maxZoom={ROUTE_MAX_ZOOM} insets={insets} />
+                <MapViewport
+                  bounds={viewportBounds}
+                  maxZoom={framed ? ROUTE_MAX_ZOOM : LOCATION_ZOOM}
+                  insets={insets}
+                />
                 {line.length > 1 ? (
                   <RouteOverlay
                     coordinates={line}

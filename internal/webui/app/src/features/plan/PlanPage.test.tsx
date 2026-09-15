@@ -191,7 +191,26 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("Alpine loop — Descent");
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
     expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
+    expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("frames a blank draft on the rider's own position", async () => {
+    vi.stubGlobal("navigator", {
+      geolocation: {
+        getCurrentPosition: (
+          found: (position: { coords: { latitude: number; longitude: number } }) => void,
+        ) => found({ coords: { latitude: 49, longitude: 8 } }),
+      },
+    });
+    try {
+      renderPage();
+      await act(async () => {});
+
+      expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[7.99,48.99,8.01,49.01]");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("folds and reopens its independent planner and elevation overlays", () => {
