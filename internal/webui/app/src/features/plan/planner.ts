@@ -69,7 +69,11 @@ export function plannerSeedFrom(title: string, coordinates: Position[]): Planner
 
   return waypoints.length < 2
     ? null
-    : { name: title.slice(0, MAX_PLAN_NAME_LENGTH), profile: "trekking", waypoints };
+    : {
+        name: Array.from(title).slice(0, MAX_PLAN_NAME_LENGTH).join(""),
+        profile: "trekking",
+        waypoints,
+      };
 }
 
 export function isPlannerSeed(value: unknown): value is PlannerSeed {
@@ -81,7 +85,7 @@ export function isPlannerSeed(value: unknown): value is PlannerSeed {
   return (
     typeof candidate.name === "string" &&
     candidate.name.trim().length > 0 &&
-    candidate.name.length <= MAX_PLAN_NAME_LENGTH &&
+    Array.from(candidate.name).length <= MAX_PLAN_NAME_LENGTH &&
     typeof candidate.profile === "string" &&
     PLAN_PROFILES.includes(candidate.profile as PlanProfile) &&
     Array.isArray(candidate.waypoints) &&
