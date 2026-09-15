@@ -13,6 +13,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/sqlite"
+	"github.com/nobbs/domestique/internal/surface"
 )
 
 // newLocalSource builds the plan service, which is also the sync source for
@@ -28,6 +29,39 @@ func newLocalSource(settings *config.Settings, store *sqlite.Store) (service *pl
 	}
 
 	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), true, nil
+}
+
+type surfaceClassifier struct{ source surface.Source }
+
+var _ httpapi.SurfaceClassifier = surfaceClassifier{}
+
+func newSurfaceClassifier(source surface.Source) httpapi.SurfaceClassifier {
+	return surfaceClassifier{source: source}
+}
+
+func (c surfaceClassifier) Classify(
+	ctx context.Context, points []route.Point,
+) (*httpapi.SurfaceClassification, error) {
+	ranges, matchedMetres, err := surface.ClassifyGeometry(ctx, c.source, points)
+	if err != nil {
+		return nil, fmt.Errorf("classifying geometry: %w", err)
+	}
+	if ranges == nil {
+		return nil, nil //nolint:nilnil // no map generation is an optional classification result
+	}
+	classification := &httpapi.SurfaceClassification{
+		Ranges:        make([]httpapi.SurfaceRange, len(ranges)),
+		MatchedMetres: matchedMetres,
+	}
+	for index, band := range ranges {
+		classification.Ranges[index] = httpapi.SurfaceRange{
+			Kind:       band.Kind.String(),
+			StartIndex: band.StartIndex,
+			EndIndex:   band.EndIndex,
+		}
+	}
+
+	return classification, nil
 }
 
 // brouterRouter adapts *brouter.Client to plan.Router: the brouter package

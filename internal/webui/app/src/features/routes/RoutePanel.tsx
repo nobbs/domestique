@@ -17,10 +17,8 @@
  * that brings its own chrome gets a floating pill for free — and
  * `useOverlayInsets` keeps framing routes around whatever size it currently is.
  *
- * Read-only by design. There are deliberately no editing affordances, and the
- * service writes nothing back to VeloPlanner — the two quiet actions in the
- * overflow either leave for the provider or ask this service to work the route
- * out again.
+ * Read-only over the source route. Copying seeds an unsaved local plan; nothing
+ * in this panel writes back to a provider.
  */
 
 import {
@@ -30,6 +28,7 @@ import {
   IconArrowsVertical,
   IconChartLine,
   IconChevronsRight,
+  IconCopy,
   IconDots,
   IconMountain,
   IconPencil,
@@ -40,7 +39,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { webUIConfigQuery } from "../../api/queries";
 import type { Route, StoppingSuggestion } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -75,6 +74,7 @@ import {
   useStoppingAllowance,
 } from "../../lib/stoppingAllowance";
 import type { SurfaceSummary } from "../../lib/surface";
+import type { PlannerSeed } from "../plan/planner";
 import { MixRow } from "./MixRow";
 import { ReprocessButton } from "./ReprocessButton";
 
@@ -101,8 +101,21 @@ function Figure({ term, children }: { term: React.ReactNode; children: React.Rea
   );
 }
 
+function CopyAndEdit({ seed }: { seed: PlannerSeed }) {
+  const navigate = useNavigate();
+
+  return (
+    <DropdownMenuItem onClick={() => navigate("/plan", { state: seed })}>
+      <IconCopy aria-hidden="true" />
+      Copy and edit
+    </DropdownMenuItem>
+  );
+}
+
 export interface RoutePanelProps {
   route: Route;
+  /** An unsaved local-plan seed, available only once its source geometry arrived. */
+  copySeed?: PlannerSeed | null;
   /**
    * The moving time for the stretch currently on show, in place of the whole
    * route's. Undefined restores the whole-route figure — clearing the selection,
@@ -163,6 +176,7 @@ export interface RoutePanelProps {
 
 export function RoutePanel({
   route,
+  copySeed,
   movingSecondsOverride,
   highestMetres,
   lowestMetres,
@@ -278,6 +292,9 @@ export function RoutePanel({
                   <IconPencil aria-hidden="true" />
                   Edit
                 </DropdownMenuItem>
+              ) : null}
+              {effectiveAdmin && config.data?.planning && route.provider !== "local" && copySeed ? (
+                <CopyAndEdit seed={copySeed} />
               ) : null}
               {effectiveAdmin ? (
                 <>

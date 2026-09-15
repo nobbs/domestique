@@ -34,7 +34,7 @@ func TestTheDemoRiderOwnsTheFirstSlot(t *testing.T) {
 	slots, err := slotsFor([]string{demoSubject, "rider-b"}, "current,unauthorized")
 	require.NoError(t, err)
 	store := demoStore(t)
-	require.NoError(t, seed(t.Context(), store, slots))
+	require.NoError(t, seed(t.Context(), store, slots, noPlans{}))
 
 	owners := map[string]string{}
 	require.NoError(t, store.ForEachTarget(t.Context(), func(id, _, ownerSubject string) error {
@@ -54,7 +54,7 @@ func TestSeedLeavesTheDemoRiderARideWithEverythingDerived(t *testing.T) {
 	slots, err := slotsFor([]string{demoSubject}, "current")
 	require.NoError(t, err)
 	store := demoStore(t)
-	require.NoError(t, seed(t.Context(), store, slots))
+	require.NoError(t, seed(t.Context(), store, slots, noPlans{}))
 
 	rides, err := store.ActivitiesBetween(
 		t.Context(), demoSubject, time.Now().UTC().AddDate(0, 0, -30), time.Now().UTC(), 50,
@@ -87,8 +87,8 @@ func TestSeedIsRepeatable(t *testing.T) {
 	slots, err := slotsFor([]string{demoSubject}, "current")
 	require.NoError(t, err)
 	store := demoStore(t)
-	require.NoError(t, seed(t.Context(), store, slots))
-	require.NoError(t, seed(t.Context(), store, slots))
+	require.NoError(t, seed(t.Context(), store, slots, noPlans{}))
+	require.NoError(t, seed(t.Context(), store, slots, noPlans{}))
 
 	metrics, err := store.ActivityMetrics(t.Context(), demoSubject)
 	require.NoError(t, err)

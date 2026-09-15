@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nobbs/domestique/internal/elevation"
 	"github.com/nobbs/domestique/internal/route"
@@ -328,7 +329,7 @@ func validate(name string, profile Profile, waypoints []Waypoint) (string, error
 	if trimmed == "" {
 		return "", fmt.Errorf("%w: name is required", ErrInvalid)
 	}
-	if len(trimmed) > maxNameLength {
+	if utf8.RuneCountInString(trimmed) > maxNameLength {
 		return "", fmt.Errorf("%w: name exceeds %d characters", ErrInvalid, maxNameLength)
 	}
 	if err := validateRouting(profile, waypoints); err != nil {

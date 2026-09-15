@@ -3,10 +3,88 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/nobbs/domestique/internal/brouter"
+	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
+	"github.com/nobbs/domestique/internal/surface"
 )
+
+const demoBRouterURL = "https://brouter.de"
+
+type demoSurfaceClassifier struct{}
+
+var _ httpapi.SurfaceClassifier = demoSurfaceClassifier{}
+
+func (demoSurfaceClassifier) Classify(
+	ctx context.Context, points []route.Point,
+) (*httpapi.SurfaceClassification, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("classifying demo surface: %w", err)
+	}
+	if len(points) == 0 {
+		return nil, fmt.Errorf("classifying demo surface: geometry is empty")
+	}
+
+	kinds := make([]surface.Kind, len(points))
+	classes := []surface.Kind{surface.KindAsphalt, surface.KindGravel, surface.KindGround, surface.KindPaving}
+	for index := range kinds {
+		classIndex := index * len(classes) / len(kinds)
+		if classIndex >= len(classes) {
+			classIndex = len(classes) - 1
+		}
+		kinds[index] = classes[classIndex]
+	}
+	ranges := surface.Compress(kinds)
+	classification := &httpapi.SurfaceClassification{
+		Ranges:        make([]httpapi.SurfaceRange, len(ranges)),
+		MatchedMetres: surface.MatchedMetres(points, kinds),
+	}
+	for index, band := range ranges {
+		classification.Ranges[index] = httpapi.SurfaceRange{
+			Kind:       band.Kind.String(),
+			StartIndex: band.StartIndex,
+			EndIndex:   band.EndIndex,
+		}
+	}
+
+	return classification, nil
+}
+
+// newDemoPlanService builds the one planner used by the demo API and its
+// reseed path. BRouter's client owns the 20-second timeout and context flow.
+func newDemoPlanService(store *sqlite.Store) (*plan.Service, error) {
+	client, err := brouter.New(&brouter.Options{BaseURL: demoBRouterURL})
+	if err != nil {
+		return nil, fmt.Errorf("creating demo BRouter client: %w", err)
+	}
+
+	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), nil
+}
+
+// brouterRouter adapts *brouter.Client to plan.Router: the brouter package
+// knows nothing about plan.Waypoint or plan.Profile, so this is the one place
+// that converts between them.
+type brouterRouter struct{ client *brouter.Client }
+
+var _ plan.Router = brouterRouter{}
+
+func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) ([]route.Point, error) {
+	converted := make([]brouter.Waypoint, len(waypoints))
+	for index, waypoint := range waypoints {
+		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+	}
+
+	points, err := r.client.Route(ctx, converted, string(profile))
+	if err != nil {
+		return nil, fmt.Errorf("routing waypoints: %w", err)
+	}
+
+	return points, nil
+}
 
 // planStore adapts the SQLite plan records to the plan service used by the
 // demo. The shipped composition root has the same adapter for its BRouter

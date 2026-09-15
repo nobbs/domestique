@@ -279,7 +279,9 @@ generated; VeloPlanner, Wahoo and Pushover all point at an unroutable address;
 and no scheduler, source client or reporter is wired, so a manual
 synchronisation re-seeds the synthetic library at the current instant instead of
 contacting anything. The run it reports is a real one, and its data comes from
-nowhere.
+nowhere. The planner is the one exception: a preview or save routes through the
+public BRouter instance at `brouter.de`, sending the waypoint coordinates and
+the profile name and nothing else, and reports a routing failure without it.
 
 The identity gate is not switched off there. `dev/demoapi` runs a fake
 Auth0-shaped issuer in-process and mints a real session against it, and it is
@@ -302,8 +304,9 @@ for logic that a component test could reach.
 
 The suite runs against `mise run demo`, so it is subject to everything that
 environment guarantees above: the synthetic library, the unroutable providers,
-and the production identity gate in front of them. No test in it reads a real
-route, and no personal data is involved in running it.
+and the production identity gate in front of them. No test in it drives the
+planner, so the suite runs offline. No test in it reads a real route, and no
+personal data is involved in running it.
 
 That one stack is driven as three projects. The `dev-server` project runs the
 specs in `e2e` against the Vite dev server. The `bundle` and `mutations`

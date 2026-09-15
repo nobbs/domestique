@@ -53,6 +53,7 @@ import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupL
 import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
 import { useEscapeKey } from "../../lib/useEscapeKey";
+import { type PlannerSeed, plannerSeedFrom } from "../plan/planner";
 import { LibraryMap, type MapLine } from "./LibraryMap";
 import { RouteDock } from "./RouteDock";
 import { RouteOverlay } from "./RouteOverlay";
@@ -269,6 +270,12 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    */
   const openFailed = openRoute !== null && openGeometry.isError;
   const shownRoute = openFailed ? null : openRoute;
+  const copySeed = useMemo<PlannerSeed | null>(() => {
+    if (!shownRoute) {
+      return null;
+    }
+    return plannerSeedFrom(shownRoute.title, openCoordinates);
+  }, [openCoordinates, shownRoute]);
 
   // The rides matched to the open route, off the query the activity pages share.
   // Not asked for until one is open: the library map has no history to show.
@@ -585,6 +592,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           libraryCount={library.length}
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
+          copySeed={copySeed}
           stopping={riderProfile.data?.suggestions.stopping}
         />
       ) : library.length > 0 ? (

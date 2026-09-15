@@ -39,6 +39,18 @@ type fakePlans struct {
 	hasStored bool
 }
 
+type fakeSurfaceClassifier struct {
+	classification *SurfaceClassification
+	err            error
+	points         []route.Point
+}
+
+func (f *fakeSurfaceClassifier) Classify(_ context.Context, points []route.Point) (*SurfaceClassification, error) {
+	f.points = append([]route.Point(nil), points...)
+
+	return f.classification, f.err
+}
+
 func (p *fakePlans) Route(context.Context, []plan.Waypoint, plan.Profile) (plan.Measured, error) {
 	return p.measured, p.routeErr
 }
@@ -115,16 +127,23 @@ func (p *fakePlans) List(_ context.Context) ([]plan.Plan, error) {
 // plansHandler builds a handler over the given session identity and Plans
 // port. plans nil is a build with no routing engine configured.
 func plansHandler(t *testing.T, sessions Sessions, plans Plans) *Handler {
+	return plansHandlerWithSurface(t, sessions, plans, nil)
+}
+
+func plansHandlerWithSurface(
+	t *testing.T, sessions Sessions, plans Plans, classifier SurfaceClassifier,
+) *Handler {
 	t.Helper()
 	handler, err := New(
 		&Options{
-			schemaCache:      testSchemaCache,
-			Alerts:           &fakeAlerts{},
-			Tasks:            &fakeTasks{},
-			Settings:         settingsWith(testBasemaps()),
-			Sessions:         sessions,
-			BrowserOriginURL: testBrowserOriginURL,
-			Plans:            plans,
+			schemaCache:       testSchemaCache,
+			Alerts:            &fakeAlerts{},
+			Tasks:             &fakeTasks{},
+			Settings:          settingsWith(testBasemaps()),
+			Sessions:          sessions,
+			BrowserOriginURL:  testBrowserOriginURL,
+			Plans:             plans,
+			SurfaceClassifier: classifier,
 		},
 		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
@@ -264,6 +283,96 @@ func TestPreviewPlanRouteReturnsGeometryDistanceAndAscent(t *testing.T) {
 	assert.Len(t, body.Geometry.Coordinates[0], 2, "the first point carries no elevation")
 	require.Len(t, body.Geometry.Coordinates[1], 3, "the second point carries its elevation")
 	assert.InDelta(t, elevationMetres, body.Geometry.Coordinates[1][2], 0)
+}
+
+func TestPlanResponsesCarryCurrentSurfaceClassification(t *testing.T) {
+	geometry := []route.Point{
+		{Longitude: 8, Latitude: 49},
+		{Longitude: 8.1, Latitude: 49.1},
+	}
+	classification := &SurfaceClassification{
+		Ranges:        []SurfaceRange{{Kind: "gravel", StartIndex: 0, EndIndex: 1}},
+		MatchedMetres: 1200,
+	}
+	for _, operation := range []struct {
+		readResult func(*testing.T, []byte)
+		name       string
+		method     string
+		path       string
+		body       string
+		ifMatch    string
+		status     int
+	}{
+		{name: "preview", method: http.MethodPost, path: planRoutePath, body: validPlanRouteBody, status: http.StatusOK,
+			readResult: func(t *testing.T, body []byte) {
+				var response openapi.PlanRoutePreview
+				require.NoError(t, json.Unmarshal(body, &response))
+				require.NotNil(t, response.Surface)
+				assert.Equal(t, "gravel", string(response.Surface.Ranges[0].Kind))
+				assert.InDelta(t, 1200, response.Surface.MatchedMetres, 0)
+			}},
+		{name: "create", method: http.MethodPost, path: plansPath, body: validPlanWriteBody, status: http.StatusCreated,
+			readResult: func(t *testing.T, body []byte) {
+				var response openapi.Plan
+				require.NoError(t, json.Unmarshal(body, &response))
+				require.NotNil(t, response.Surface)
+				assert.Equal(t, "gravel", string(response.Surface.Ranges[0].Kind))
+			}},
+		{name: "replace", method: http.MethodPut, path: plansPath + "/7", body: validPlanWriteBody, ifMatch: "1", status: http.StatusOK,
+			readResult: func(t *testing.T, body []byte) {
+				var response openapi.Plan
+				require.NoError(t, json.Unmarshal(body, &response))
+				require.NotNil(t, response.Surface)
+				assert.Equal(t, "gravel", string(response.Surface.Ranges[0].Kind))
+			}},
+		{name: "get", method: http.MethodGet, path: plansPath + "/7", status: http.StatusOK,
+			readResult: func(t *testing.T, body []byte) {
+				var response openapi.Plan
+				require.NoError(t, json.Unmarshal(body, &response))
+				require.NotNil(t, response.Surface)
+				assert.Equal(t, "gravel", string(response.Surface.Ranges[0].Kind))
+			}},
+	} {
+		t.Run(operation.name, func(t *testing.T) {
+			fake := &fakePlans{
+				measured: plan.Measured{Geometry: geometry},
+				stored:   plan.Plan{ID: 7, Version: 1, Geometry: geometry}, hasStored: true,
+			}
+			classifier := &fakeSurfaceClassifier{classification: classification}
+			handler := plansHandlerWithSurface(t, newFakeSessions(), fake, classifier)
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, planRequest(operation.method, operation.path, operation.body, operation.ifMatch))
+			require.Equal(t, operation.status, response.Code, response.Body.String())
+			operation.readResult(t, response.Body.Bytes())
+			assert.Equal(t, geometry, classifier.points)
+		})
+	}
+}
+
+func TestPlanSurfaceClassificationFailureIsOmitted(t *testing.T) {
+	classifier := &fakeSurfaceClassifier{err: errors.New("surface lookup failed at 8,49")}
+	handler := plansHandlerWithSurface(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry: []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+	}}, classifier)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.NotContains(t, response.Body.String(), "surface lookup failed")
+	assert.NotContains(t, response.Body.String(), "matchedMetres")
+}
+
+func TestPlanSurfaceClassificationUnavailableIsOmitted(t *testing.T) {
+	classifier := &fakeSurfaceClassifier{}
+	handler := plansHandlerWithSurface(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry: []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+	}}, classifier)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.NotContains(t, response.Body.String(), "surface")
 }
 
 func TestCreatePlanStoresADraft(t *testing.T) {

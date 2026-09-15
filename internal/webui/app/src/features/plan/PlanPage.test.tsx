@@ -7,6 +7,9 @@ const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
+const overlayInsets = vi.hoisted(() => ({ value: { top: 12, right: 13, bottom: 14, left: 15 } }));
+const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
+const routeOverlay = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/generated", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/generated")>()),
@@ -24,36 +27,91 @@ vi.mock("../../api/queries", () => ({
 }));
 vi.mock("../../components/Layout", () => ({
   PageShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
+  Layout: ({
+    map,
+    children,
+    dock,
+  }: {
+    map: React.ReactNode;
+    children: React.ReactNode;
+    dock: React.ReactNode;
+  }) => (
+    <main>
+      {map}
+      <div className="shell__overlay">
+        {children}
+        {dock}
+      </div>
+    </main>
+  ),
+}));
+vi.mock("../../lib/overlayInsets", () => ({
+  useOverlayInsets: () => overlayInsets.value,
 }));
 vi.mock("../../components/map/MapWidget", () => ({
   MapWidget: ({
     children,
+    furniture,
     onClick,
   }: {
     children: React.ReactNode;
-    onClick?: (event: { lngLat: { lng: number; lat: number } }) => void;
+    furniture?: React.ReactNode;
+    onClick?: (event: {
+      lngLat: { lng: number; lat: number };
+      originalEvent: { altKey: boolean };
+    }) => void;
   }) => (
-    <button
-      type="button"
-      aria-label="Plan route map"
-      onClick={() => onClick?.({ lngLat: { lng: 8, lat: 49 } })}
-    >
-      {children}
-    </button>
+    <>
+      <button
+        type="button"
+        aria-label="Plan route map"
+        onClick={(event) =>
+          onClick?.({
+            lngLat: { lng: mapPoint.value.longitude, lat: mapPoint.value.latitude },
+            originalEvent: { altKey: event.altKey },
+          })
+        }
+      >
+        {children}
+      </button>
+      {furniture}
+    </>
   ),
 }));
+vi.mock("../../components/map/MapControls", () => ({
+  MapControls: ({ children }: { children?: React.ReactNode }) => (
+    <div data-testid="plan-map-controls">{children}</div>
+  ),
+}));
+vi.mock("../../components/map/BasemapPicker", () => ({
+  BasemapPicker: () => <span data-testid="plan-basemap-picker" />,
+}));
 vi.mock("../../components/map/MapViewport", () => ({
-  MapViewport: ({ bounds }: { bounds: unknown }) => (
-    <output data-testid="plan-viewport">{JSON.stringify(bounds)}</output>
+  MapViewport: ({ bounds, insets }: { bounds: unknown; insets: unknown }) => (
+    <output data-testid="plan-viewport" data-insets={JSON.stringify(insets)}>
+      {JSON.stringify(bounds)}
+    </output>
   ),
 }));
 vi.mock("react-map-gl/maplibre", () => ({
   Marker: ({ children }: { children: React.ReactNode }) => children,
+  ScaleControl: ({ position, unit }: { position: string; unit: string }) => (
+    <output data-testid="plan-scale" data-position={position} data-unit={unit} />
+  ),
 }));
 vi.mock("../routes/RouteOverlay", () => ({
-  RouteOverlay: ({ coordinates }: { coordinates: unknown[] }) => (
-    <output data-testid="route-line">{coordinates.length}</output>
-  ),
+  RouteOverlay: ({
+    coordinates,
+    showTerminals,
+    surface,
+  }: {
+    coordinates: unknown[];
+    showTerminals?: boolean;
+    surface?: unknown;
+  }) => {
+    routeOverlay({ coordinates, showTerminals, surface });
+    return <output data-testid="route-line">{coordinates.length}</output>;
+  },
 }));
 vi.mock("../routes/ElevationProfile", () => ({
   ElevationProfile: () => <div>elevation profile</div>,
@@ -61,7 +119,7 @@ vi.mock("../routes/ElevationProfile", () => ({
 
 const { PlanPage } = await import("./PlanPage");
 
-function renderPage(path = "/plan") {
+function renderPage(path: string | { pathname: string; state: unknown } = "/plan") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -92,7 +150,9 @@ beforeEach(() => {
   preview.mockReset();
   create.mockReset();
   replace.mockReset();
+  routeOverlay.mockReset();
   openedPlan.value = {};
+  mapPoint.value = { longitude: 8, latitude: 49 };
 });
 
 afterEach(() => vi.useRealTimers());
@@ -104,6 +164,108 @@ describe("PlanPage", () => {
     expect(screen.getByRole("button", { name: "Plan route map" })).toBeInTheDocument();
     expect(screen.getByText("Draft loop")).toBeInTheDocument();
     expect(screen.getByText("Draft")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-map-controls")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-position", "bottom-left");
+    expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-unit", "metric");
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute(
+      "data-insets",
+      JSON.stringify(overlayInsets.value),
+    );
+  });
+
+  it("initializes a new draft from a copied route seed without saving it", async () => {
+    renderPage({
+      pathname: "/plan",
+      state: {
+        name: "Alpine loop — Descent",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8, latitude: 49 },
+          { longitude: 8.1, latitude: 49.1 },
+        ],
+      },
+    });
+    await act(async () => {});
+
+    expect(screen.getByLabelText("Name")).toHaveValue("Alpine loop — Descent");
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
+    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
+    expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("frames a blank draft on the rider's own position", async () => {
+    vi.stubGlobal("navigator", {
+      geolocation: {
+        getCurrentPosition: (
+          found: (position: { coords: { latitude: number; longitude: number } }) => void,
+        ) => found({ coords: { latitude: 49, longitude: 8 } }),
+      },
+    });
+    try {
+      renderPage();
+      await act(async () => {});
+
+      expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[7.99,48.99,8.01,49.01]");
+      fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+
+      expect(screen.getByTestId("plan-viewport")).toHaveTextContent("null");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("folds and reopens its independent planner and elevation overlays", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
+    expect(screen.getByRole("button", { name: "Show planner controls" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Name")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show planner controls" }));
+    expect(screen.getByLabelText("Name")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
+    expect(screen.getByRole("button", { name: "Show elevation" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show elevation" }));
+    expect(screen.getByRole("button", { name: "Hide elevation" })).toBeInTheDocument();
+  });
+
+  it("keeps history controls on the map beside the planner and dispatches their actions", () => {
+    renderPage();
+    const history = screen.getByRole("group", { name: "Planner history" });
+    const undo = screen.getByRole("button", { name: "Undo" });
+    const redo = screen.getByRole("button", { name: "Redo" });
+    const reverse = screen.getByRole("button", { name: "Reverse" });
+
+    expect(history).toHaveAttribute("data-orientation", "horizontal");
+    expect(history.parentElement).toHaveStyle({ left: "27px", top: "12px" });
+    expect(screen.getByRole("region", { name: "Route planner controls" })).not.toContainElement(
+      history,
+    );
+    expect(undo).toBeDisabled();
+    expect(redo).toBeDisabled();
+    expect(reverse).toBeDisabled();
+    expect(undo).toHaveAttribute("title", "Undo");
+    expect(redo).toHaveAttribute("title", "Redo");
+    expect(reverse).toHaveAttribute("title", "Reverse");
+
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.1, latitude: 49.1 };
+    fireEvent.click(map);
+    expect(undo).toBeEnabled();
+    expect(reverse).toBeEnabled();
+
+    fireEvent.click(reverse);
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+    fireEvent.click(undo);
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
+    fireEvent.click(redo);
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
+    expect(history.parentElement).toHaveStyle({ left: "12px", top: "60px" });
   });
 
   it("routes one preview after a burst and leaves the last good line up after a failure", () => {
@@ -151,6 +313,9 @@ describe("PlanPage", () => {
 
     expect(preview).toHaveBeenCalledOnce();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    expect(screen.getByTestId("plan-viewport")).toHaveTextContent("null");
+    expect(routeOverlay).toHaveBeenCalledWith(expect.objectContaining({ showTerminals: false }));
+    expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: undefined }));
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
     failed = true;
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
@@ -158,6 +323,88 @@ describe("PlanPage", () => {
 
     expect(screen.getByText("Routing unavailable")).toBeInTheDocument();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+  });
+
+  it("passes classified preview ranges to the route overlay", () => {
+    const ranges = [{ kind: "gravel" as const, startIndex: 0, endIndex: 1 }];
+    preview.mockImplementation(
+      (
+        _variables: unknown,
+        callbacks: {
+          onSuccess: (value: {
+            data: {
+              geometry: { type: "LineString"; coordinates: number[][] };
+              distanceMetres: number;
+              ascentMetres: number;
+              surface: { ranges: typeof ranges; matchedMetres: number };
+            };
+          }) => void;
+        },
+      ) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49],
+                [8.1, 49.1],
+              ],
+            },
+            distanceMetres: 10_000,
+            ascentMetres: 100,
+            surface: { ranges, matchedMetres: 10_000 },
+          },
+        }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: ranges }));
+  });
+
+  it("leaves the route unpainted when the classification matched nothing", () => {
+    preview.mockImplementation(
+      (
+        _variables: unknown,
+        callbacks: {
+          onSuccess: (value: {
+            data: {
+              geometry: { type: "LineString"; coordinates: number[][] };
+              distanceMetres: number;
+              ascentMetres: number;
+              surface: { ranges: unknown[]; matchedMetres: number };
+            };
+          }) => void;
+        },
+      ) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49],
+                [8.1, 49.1],
+              ],
+            },
+            distanceMetres: 10_000,
+            ascentMetres: 100,
+            surface: {
+              ranges: [{ kind: "unknown", startIndex: 0, endIndex: 1 }],
+              matchedMetres: 0,
+            },
+          },
+        }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: undefined }));
   });
 
   it("shows a save failure instead of leaving a rejected action behind", async () => {
@@ -174,6 +421,7 @@ describe("PlanPage", () => {
   });
 
   it("starts a new draft after leaving an opened plan", async () => {
+    const savedSurface = [{ kind: "asphalt" as const, startIndex: 0, endIndex: 1 }];
     openedPlan.value = {
       data: {
         data: {
@@ -195,6 +443,7 @@ describe("PlanPage", () => {
           },
           distanceMetres: 10_000,
           ascentMetres: 100,
+          surface: { ranges: savedSurface, matchedMetres: 10_000 },
           createdAt: "2026-09-15T09:00:00Z",
           updatedAt: "2026-09-15T09:00:00Z",
         },
@@ -204,7 +453,17 @@ describe("PlanPage", () => {
       (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
         callbacks.onError(new Error("Stored route could not refresh")),
     );
-    renderPage("/plan/4");
+    renderPage({
+      pathname: "/plan/4",
+      state: {
+        name: "Copied route",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8.5, latitude: 49.5 },
+          { longitude: 8.6, latitude: 49.6 },
+        ],
+      },
+    });
     await act(async () => {});
     act(() => vi.advanceTimersByTime(300));
 
@@ -212,12 +471,32 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
     expect(screen.getByText("Stored route could not refresh")).toBeInTheDocument();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    expect(routeOverlay).toHaveBeenLastCalledWith(
+      expect.objectContaining({ surface: savedSurface }),
+    );
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
-    fireEvent.click(screen.getByRole("link", { name: "New" }));
-    await act(async () => {});
+    mapPoint.value = { longitude: 8.05, latitude: 49.05 };
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
 
-    expect(screen.getByDisplayValue("")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Planned route summary")).toBeNull();
+    expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
+    vi.stubGlobal("navigator", {
+      geolocation: {
+        getCurrentPosition: (
+          found: (position: { coords: { latitude: number; longitude: number } }) => void,
+        ) => found({ coords: { latitude: 49, longitude: 8 } }),
+      },
+    });
+    try {
+      fireEvent.click(screen.getByRole("link", { name: "New" }));
+      await act(async () => {});
+
+      expect(screen.getByDisplayValue("")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Planned route summary")).toBeNull();
+      expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[7.99,48.99,8.01,49.01]");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("waits for an opened plan and keeps its controls out of a failed load", () => {
@@ -322,5 +601,185 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
 
     expect(preview).toHaveBeenCalledOnce();
+  });
+
+  it("routes with the profile selected from the route type dropdown", () => {
+    renderPage();
+    fireEvent.change(screen.getByRole("combobox", { name: "Route type" }), {
+      target: { value: "gravel" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ profile: "gravel" }) }),
+      expect.anything(),
+    );
+  });
+
+  it("marks the first waypoint as start, the last as finish, and the middle ones by number", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    fireEvent.click(map);
+    expect(screen.getByRole("group", { name: "Drag Start waypoint to reorder" })).toHaveAttribute(
+      "title",
+      "Drag Start waypoint to reorder",
+    );
+    expect(screen.getByRole("img", { name: "Start waypoint" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Finish waypoint" })).toBeNull();
+
+    mapPoint.value = { longitude: 8.1, latitude: 49 };
+    fireEvent.click(map);
+    expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Drag Finish waypoint to reorder" }),
+    ).toBeInTheDocument();
+
+    mapPoint.value = { longitude: 8.2, latitude: 49 };
+    fireEvent.click(map);
+    expect(screen.getByRole("img", { name: "Waypoint 2" })).toHaveTextContent("2");
+    expect(screen.getByRole("group", { name: "Drag Waypoint 2 to reorder" })).toHaveTextContent(
+      "2",
+    );
+    expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
+  });
+
+  it("inserts map clicks into the nearest leg and appends at the final endpoint, with Alt, or before two waypoints", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    mapPoint.value = { longitude: 8, latitude: 49 };
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.2, latitude: 49 };
+    fireEvent.click(map);
+    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.2");
+
+    mapPoint.value = { longitude: 8.1, latitude: 49.01 };
+    fireEvent.click(map);
+    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
+    expect(screen.getByLabelText("Waypoint 3 longitude")).toHaveValue("8.2");
+
+    mapPoint.value = { longitude: 9, latitude: 50 };
+    fireEvent.click(map);
+    expect(screen.getByLabelText("Waypoint 4 longitude")).toHaveValue("9");
+
+    mapPoint.value = { longitude: 10, latitude: 50 };
+    fireEvent.click(map, { altKey: true });
+    expect(screen.getByLabelText("Waypoint 5 longitude")).toHaveValue("10");
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.01 },
+            { longitude: 8.2, latitude: 49 },
+            { longitude: 9, latitude: 50 },
+            { longitude: 10, latitude: 50 },
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("previews, commits, and cancels full-row waypoint reordering from its grip affordance", async () => {
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          published: false,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+            { longitude: 8.2, latitude: 49.2 },
+          ],
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [8, 49],
+              [8.1, 49.1],
+              [8.2, 49.2],
+            ],
+          },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    act(() => vi.advanceTimersByTime(300));
+    preview.mockClear();
+
+    const first = screen.getByRole("group", { name: "Drag Start waypoint to reorder" });
+    const third = screen.getByRole("group", { name: "Drag Finish waypoint to reorder" });
+    const rows = () =>
+      Array.from(screen.getByRole("list", { name: "Waypoints" }).querySelectorAll("li"));
+    const rowIDs = () => rows().map((row) => row.getAttribute("data-waypoint-id"));
+    expect(first).toHaveAttribute("title", "Drag Start waypoint to reorder");
+    expect(third).toHaveAttribute("title", "Drag Finish waypoint to reorder");
+    expect(first).toHaveAttribute("draggable", "true");
+    expect(first).toHaveClass("rounded-lg", "border", "border-transparent", "bg-[var(--base)]");
+    expect(first.lastElementChild?.querySelector(".tabler-icon-grip-vertical")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete waypoint 1" }).previousElementSibling).toBe(
+      first,
+    );
+    expect(screen.getByRole("button", { name: "Delete waypoint 1" })).toHaveClass(
+      "text-destructive",
+      "hover:bg-destructive/10",
+    );
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveClass(
+      "border-transparent",
+      "bg-transparent",
+      "focus-visible:border-ring",
+    );
+    expect(screen.getByLabelText("Waypoint 1 longitude")).not.toHaveAttribute("draggable", "true");
+    expect(screen.getByRole("button", { name: "Move Waypoint 2 up" })).toBeInTheDocument();
+
+    const dataTransfer = { effectAllowed: "", setData: vi.fn(), setDragImage: vi.fn() };
+    fireEvent.dragStart(first, { dataTransfer });
+    expect(dataTransfer.setDragImage).toHaveBeenCalledWith(
+      first,
+      expect.any(Number),
+      expect.any(Number),
+    );
+    fireEvent.dragOver(third);
+    expect(rowIDs()).toEqual(["1", "2", "0"]);
+    act(() => vi.advanceTimersByTime(300));
+    expect(preview).not.toHaveBeenCalled();
+    fireEvent.dragEnd(first);
+    expect(rowIDs()).toEqual(["0", "1", "2"]);
+    fireEvent.dragStart(screen.getByLabelText("Waypoint 1 longitude"));
+    fireEvent.dragStart(screen.getByRole("button", { name: "Delete waypoint 1" }));
+    expect(rowIDs()).toEqual(["0", "1", "2"]);
+
+    fireEvent.dragStart(first);
+    fireEvent.dragOver(third);
+    fireEvent.drop(third);
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(rowIDs()).toEqual(["1", "2", "0"]);
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          waypoints: [
+            { longitude: 8.1, latitude: 49.1 },
+            { longitude: 8.2, latitude: 49.2 },
+            { longitude: 8, latitude: 49 },
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
   });
 });

@@ -1,14 +1,72 @@
 import { describe, expect, it } from "vitest";
-import { initialPlannerState, plannerReducer } from "./planner";
+import type { Position } from "../../api/types";
+import {
+  initialPlannerState,
+  isPlannerSeed,
+  plannerReducer,
+  plannerSeedFrom,
+  samplePlanWaypoints,
+} from "./planner";
 
 const first = { longitude: 8, latitude: 49 };
 const second = { longitude: 8.1, latitude: 49.1 };
+const third = { longitude: 8.2, latitude: 49.2 };
 
 function reduce(...actions: Parameters<typeof plannerReducer>[1][]) {
   return actions.reduce(plannerReducer, initialPlannerState);
 }
 
 describe("plannerReducer", () => {
+  it("samples a valid source line deterministically within the waypoint cap", () => {
+    const coordinates: Position[] = Array.from({ length: 52 }, (_, index) => [8 + index / 100, 49]);
+    coordinates.splice(1, 0, [Number.NaN, 49]);
+
+    const sampled = samplePlanWaypoints(coordinates);
+
+    expect(sampled).toHaveLength(50);
+    expect(sampled[0]).toEqual({ longitude: 8, latitude: 49 });
+    expect(sampled.at(-1)).toEqual({ longitude: 8.51, latitude: 49 });
+  });
+
+  it("cuts a copied title to a name the planner accepts", () => {
+    const seed = plannerSeedFrom("x".repeat(130), [
+      [8, 49],
+      [8.1, 49.1],
+    ]);
+
+    expect(seed?.name).toHaveLength(120);
+    expect(seed && isPlannerSeed(seed)).toBe(true);
+    expect(plannerSeedFrom("Short", [[8, 49]])).toBeNull();
+    expect(
+      plannerSeedFrom("  ", [
+        [8, 49],
+        [8.1, 49.1],
+      ]),
+    ).toBeNull();
+
+    // Characters, as the service counts them: an emoji is one, not two.
+    const astral = plannerSeedFrom("\u{1F6B4}".repeat(121), [
+      [8, 49],
+      [8.1, 49.1],
+    ]);
+    expect(Array.from(astral?.name ?? "")).toHaveLength(120);
+    expect(astral?.name.endsWith("\u{1F6B4}")).toBe(true);
+    expect(astral && isPlannerSeed(astral)).toBe(true);
+  });
+
+  it("rejects malformed copy seeds", () => {
+    const seed = {
+      name: "Copied loop",
+      profile: "trekking",
+      waypoints: [first, second],
+    };
+
+    expect(isPlannerSeed({ ...seed, name: "" })).toBe(false);
+    expect(isPlannerSeed({ ...seed, name: " " })).toBe(false);
+    expect(isPlannerSeed({ ...seed, name: "x".repeat(121) })).toBe(false);
+    expect(isPlannerSeed({ ...seed, waypoints: [null, second] })).toBe(false);
+  });
+
   it("records name, profile, and waypoint edits in one history", () => {
     const state = reduce(
       { type: "setName", name: "Morning loop" },
@@ -33,6 +91,18 @@ describe("plannerReducer", () => {
     expect(state.waypoints).toMatchObject([first, second]);
   });
 
+  it("commits a dragged waypoint order as one history entry", () => {
+    const state = reduce(
+      { type: "append", waypoint: first },
+      { type: "append", waypoint: second },
+      { type: "append", waypoint: third },
+    );
+    const reordered = plannerReducer(state, { type: "reorder", order: [1, 2, 0] });
+
+    expect(reordered.waypoints).toMatchObject([second, third, first]);
+    expect(reordered.past).toHaveLength(state.past.length + 1);
+  });
+
   it("deletes one waypoint", () => {
     const state = reduce(
       { type: "append", waypoint: first },
@@ -41,6 +111,17 @@ describe("plannerReducer", () => {
     );
 
     expect(state.waypoints).toMatchObject([second]);
+  });
+
+  it("inserts a waypoint at the requested position", () => {
+    const middle = { longitude: 8.05, latitude: 49.05 };
+    const state = reduce(
+      { type: "append", waypoint: first },
+      { type: "append", waypoint: second },
+      { type: "insert", index: 1, waypoint: middle },
+    );
+
+    expect(state.waypoints).toMatchObject([first, middle, second]);
   });
 
   it("does not record no-op waypoint actions", () => {

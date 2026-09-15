@@ -111,9 +111,9 @@ is the only navigation that leaves the authenticated origin, it opens in a new
 context without a referrer, and it sends nothing: no route, geometry, or
 origin address accompanies it.
 
-No upstream route is ever edited. The UI presents no editing affordance over a
-VeloPlanner or Komoot route, and the service writes nothing back to either. Any
-change to that boundary requires revising this document first.
+No upstream route is ever edited. The UI may let an admin copy a VeloPlanner or
+Komoot route into an unsaved local plan, but presents no action that writes back
+to either provider. Any change to that boundary requires revising this document first.
 
 The one provider this service may write is its own. A **plan** is an ordered
 list of waypoints and a routing profile that an admin composes on the map; the
@@ -914,6 +914,12 @@ browser origin described above, and answer 403 without it.
   normalised geometry with its distance and ascent out, nothing stored. It is
   a `POST` that makes the service do outbound work, so it is Origin-checked
   like every state-changing request, storing nothing notwithstanding.
+  The preview and every response that carries a plan's geometry, that is the
+  single-plan read, create and replace, optionally classify that geometry
+  against the current local OpenStreetMap index.
+  The surface is omitted when the index or classification is unavailable;
+  classification failure never blocks routing or saving, and no classification
+  is persisted with the plan.
   `GET /v1/plans` lists every plan with its summary and whether it is
   published, and carries no geometry; `GET /v1/plans/{plan-id}` returns one
   plan's waypoints, profile, name, published state, version, and its stored

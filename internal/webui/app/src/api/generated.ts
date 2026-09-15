@@ -816,10 +816,16 @@ export interface PlanRouteRequest {
   waypoints: PlanWaypoint[];
 }
 
+export interface SurfaceClassification {
+  ranges: SurfaceRange[];
+  matchedMetres: number;
+}
+
 export interface PlanRoutePreview {
   geometry: GeoJSONLineString;
   distanceMetres: number;
   ascentMetres: number;
+  surface?: SurfaceClassification;
 }
 
 export interface PlanSummary {
@@ -864,6 +870,7 @@ export interface Plan {
   geometry: GeoJSONLineString;
   distanceMetres: number;
   ascentMetres: number;
+  surface?: SurfaceClassification;
   createdAt: string;
   updatedAt: string;
 }

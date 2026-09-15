@@ -116,6 +116,10 @@ type Options struct {
 	// as unconfigured — the shape a build with no routing engine takes.
 	Plans Plans
 
+	// SurfaceClassifier optionally classifies plan geometry against the current
+	// local map. A missing classifier leaves plan responses unclassified.
+	SurfaceClassifier SurfaceClassifier
+
 	// WebhookTokens verifies the token an inbound provider notification carries.
 	// Optional: without it, or until a webhook token is stored, POST
 	// /webhooks/wahoo answers not found.
@@ -204,6 +208,7 @@ type Handler struct {
 	alerts              Alerts
 	tasks               Tasks
 	plans               Plans
+	surface             SurfaceClassifier
 	webhookTokens       WebhookTokens
 	zwiftWorldMaps      ZwiftWorldMaps
 	zwiftWorldOf        ZwiftWorldOf
@@ -281,6 +286,7 @@ func New(
 		rideModelStatus:     options.RideModelStatusFunc,
 		now:                 time.Now,
 		plans:               options.Plans,
+		surface:             options.SurfaceClassifier,
 
 		sessions: options.Sessions,
 	}
