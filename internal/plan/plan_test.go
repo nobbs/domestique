@@ -262,6 +262,17 @@ func TestInventoryReturnsOnlyPublishedPlansOrderedByID(t *testing.T) {
 	assert.False(t, stored.Published, "the draft must remain unpublished")
 }
 
+// The contract's name limit counts characters, so a multibyte name at the
+// limit is accepted rather than refused for its byte length.
+func TestValidateCountsNameCharactersNotBytes(t *testing.T) {
+	t.Parallel()
+	name, err := validate(strings.Repeat("\u00fc", 120), Gravel, []Waypoint{
+		{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.5, Latitude: 49.1},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, strings.Repeat("\u00fc", 120), name)
+}
+
 func TestValidateRejectsOutOfRangeInput(t *testing.T) {
 	t.Parallel()
 	valid := testWaypoints()
@@ -280,7 +291,7 @@ func TestValidateRejectsOutOfRangeInput(t *testing.T) {
 		"too many waypoints":     {name: "Plan", profile: Gravel, waypoints: tooMany},
 		"unknown profile":        {name: "Plan", profile: Profile("unicycle"), waypoints: valid},
 		"empty name":             {name: "   ", profile: Gravel, waypoints: valid},
-		"name too long":          {name: strings.Repeat("x", 121), profile: Gravel, waypoints: valid},
+		"name too long":          {name: strings.Repeat("\u00fc", 121), profile: Gravel, waypoints: valid},
 		"out of range longitude": {name: "Plan", profile: Gravel, waypoints: []Waypoint{{Longitude: 200, Latitude: 49.0}, {Longitude: 8.4, Latitude: 49.0}}},
 		"out of range latitude":  {name: "Plan", profile: Gravel, waypoints: []Waypoint{{Longitude: 8.4, Latitude: 200}, {Longitude: 8.4, Latitude: 49.0}}},
 	}
