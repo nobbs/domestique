@@ -8,20 +8,21 @@ import type { Status, WebUIConfig } from "../api/types";
 import { IDLE_STATUS } from "../test/status";
 import { MenuBar } from "./MenuBar";
 
-function config(admin: boolean): WebUIConfig {
+function config(admin: boolean, planning?: boolean): WebUIConfig {
   return {
     basemaps: [],
     sourceBaseUrls: {},
     timezone: "Europe/Berlin",
     identity: { display: "rider@example.test", admin },
+    ...(planning === undefined ? {} : { planning }),
   };
 }
 
-function renderBar(admin: boolean, status: Status = IDLE_STATUS) {
+function renderBar(admin: boolean, status: Status = IDLE_STATUS, planning?: boolean) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
-  client.setQueryData(webUIConfigQuery().queryKey, config(admin));
+  client.setQueryData(webUIConfigQuery().queryKey, config(admin, planning));
   client.setQueryData(statusQuery().queryKey, status);
 
   return render(
@@ -104,6 +105,28 @@ describe("the Admin link", () => {
     renderBar(false);
 
     expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the Plan link", () => {
+  it("is offered to an admin between Atlas and Catalogue when routing is configured", () => {
+    renderBar(true, IDLE_STATUS, true);
+
+    const links = screen.getAllByRole("link").map((link) => link.textContent);
+    expect(links.indexOf("Plan")).toBe(links.indexOf("Atlas") + 1);
+    expect(screen.getByRole("link", { name: "Plan" })).toHaveAttribute("href", "/plan");
+  });
+
+  it("is not offered to a non-admin", () => {
+    renderBar(false, IDLE_STATUS, true);
+
+    expect(screen.queryByRole("link", { name: "Plan" })).not.toBeInTheDocument();
+  });
+
+  it("is not offered where routing is not configured", () => {
+    renderBar(true, IDLE_STATUS, false);
+
+    expect(screen.queryByRole("link", { name: "Plan" })).not.toBeInTheDocument();
   });
 });
 
