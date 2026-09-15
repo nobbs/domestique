@@ -94,8 +94,20 @@ vi.mock("../../components/map/BasemapPicker", () => ({
   BasemapPicker: () => <span data-testid="plan-basemap-picker" />,
 }));
 vi.mock("../../components/map/MapViewport", () => ({
-  MapViewport: ({ bounds, insets }: { bounds: unknown; insets: unknown }) => (
-    <output data-testid="plan-viewport" data-insets={JSON.stringify(insets)}>
+  MapViewport: ({
+    bounds,
+    insets,
+    fitRevision,
+  }: {
+    bounds: unknown;
+    insets: unknown;
+    fitRevision: number;
+  }) => (
+    <output
+      data-testid="plan-viewport"
+      data-insets={JSON.stringify(insets)}
+      data-fit-revision={fitRevision}
+    >
       {JSON.stringify(bounds)}
     </output>
   ),
@@ -229,10 +241,16 @@ describe("PlanPage", () => {
   it("folds and reopens the elevation panel", () => {
     renderPage();
 
+    expect(screen.getByText("elevation profile")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
     fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
     expect(screen.getByRole("button", { name: "Show elevation" })).toBeInTheDocument();
+    expect(screen.queryByText("elevation profile")).toBeNull();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
     fireEvent.click(screen.getByRole("button", { name: "Show elevation" }));
     expect(screen.getByRole("button", { name: "Hide elevation" })).toBeInTheDocument();
+    expect(screen.getByText("elevation profile")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
   });
 
   it("keeps history controls on the map beside the planner and dispatches their actions", () => {

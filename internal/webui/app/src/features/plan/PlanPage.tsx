@@ -824,6 +824,7 @@ export function PlanPage() {
                   bounds={viewportBounds}
                   maxZoom={framed ? ROUTE_MAX_ZOOM : LOCATION_ZOOM}
                   insets={insets}
+                  fitRevision={dockOpen ? 1 : 0}
                 />
                 {line.length > 1 ? (
                   <RouteOverlay

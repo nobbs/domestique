@@ -52,6 +52,8 @@ describe("Layout", () => {
     expect(overlay).not.toContainElement(screen.getByRole("button", { name: "Route control" }));
     expect(overlay).not.toContainElement(screen.getByText("Dock"));
     expect(overlay?.children).toHaveLength(0);
+    const pane = screen.getByRole("img", { name: "Route map" }).parentElement?.parentElement;
+    expect(pane?.nextElementSibling).toBe(screen.getByText("Dock"));
   });
 
   it("opens the mobile workspace as a dismissible, labelled Drawer", async () => {
