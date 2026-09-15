@@ -4,7 +4,8 @@
 // in against, so this stands up an Auth0-shaped issuer of its own on a loopback
 // port, and pre-mints one session so the UI dev server can load without a
 // round trip through it. The real gate runs; only the tenant behind it is
-// local, and nothing leaves this machine.
+// local. Planner waypoint coordinates and profile names may be sent to the
+// public BRouter instance; all other demo data stays local.
 //
 // Development tooling, not part of the shipped binary. See dev/demo.sh.
 package main
@@ -108,7 +109,11 @@ func run(ctx context.Context, sessionFile, states, callbackURL string) error {
 	if err != nil {
 		return err
 	}
-	if seedErr := seed(ctx, store, slots); seedErr != nil {
+	planService, err := newDemoPlanService(store)
+	if err != nil {
+		return err
+	}
+	if seedErr := seed(ctx, store, slots, planService); seedErr != nil {
 		return seedErr
 	}
 
@@ -137,7 +142,7 @@ func run(ctx context.Context, sessionFile, states, callbackURL string) error {
 		return mintErr
 	}
 
-	handler, err := newHandler(settings, runtimeSettings, store, sessions, slots)
+	handler, err := newHandler(settings, runtimeSettings, store, sessions, slots, planService)
 	if err != nil {
 		return err
 	}
@@ -200,9 +205,10 @@ func newHandler(
 	store *sqlite.Store,
 	sessions httpapi.Sessions,
 	slots []demo.Slot,
+	plans *plan.Service,
 ) (http.Handler, error) {
 	// Built once from the seeded settings rather than per request: a demo has
-	// nobody editing them, and nothing here ever reaches the address anyway.
+	// nobody editing them, and this Wahoo client never makes a request.
 	values := runtimeSettings.Values()
 	destination, err := wahoo.New(&wahoo.Options{
 		APIBaseURL:   values.Wahoo.APIBaseURL,
@@ -225,18 +231,16 @@ func newHandler(
 	// The full and single-target triggers share one reseeder and one `running`
 	// flag; two would let their writes interleave over the same rows.
 	demoReseeder := reseeder{
-		store:   store,
-		slots:   slots,
+		run:     func() error { return seed(context.Background(), store, slots, plans) },
 		running: &atomic.Bool{},
 	}
-	planService := plan.NewService(planStore{store: store}, demo.StraightLineRouter{}, time.Now, plan.RandomID)
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
 			Alerts:           newDemoAlerts(),
 			Tasks:            newDemoTasks(demoReseeder.trigger),
 			BuildRevision:    "demo",
-			Plans:            planService,
+			Plans:            plans,
 			Sessions:         sessions,
 			BrowserOriginURL: settings.HTTP.BrowserOriginURL,
 			Auth0Domain:      settings.Auth.Auth0.Domain,
@@ -292,9 +296,8 @@ const unbuiltMessage = "no browser UI bundle is embedded in this binary: " +
 // interleave their writes over the same rows, and the second caller is in the
 // state the served surface already has a word for: a run is in progress.
 type reseeder struct {
-	store   *sqlite.Store
 	running *atomic.Bool
-	slots   []demo.Slot
+	run     func() error
 }
 
 func (r reseeder) trigger() bool {
@@ -303,7 +306,7 @@ func (r reseeder) trigger() bool {
 	}
 	defer r.running.Store(false)
 
-	if err := seed(context.Background(), r.store, r.slots); err != nil {
+	if err := r.run(); err != nil {
 		fmt.Fprintf(os.Stderr, "demoapi: re-seeding: %v\n", err)
 	}
 
@@ -314,12 +317,15 @@ func (r reseeder) trigger() bool {
 // then derives what the shipped binary would: the training numbers, the
 // estimated power and the weather. The clock is the wall clock, because a demo
 // whose last run is dated years ago reads as broken rather than as a fixture.
-func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot) error {
+type planInventory interface {
+	Inventory(context.Context) ([]route.Route, error)
+}
+
+func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot, planSource planInventory) error {
 	now := func() time.Time { return time.Now().UTC() }
 	if err := demo.Seed(ctx, store, slots, now()); err != nil {
 		return fmt.Errorf("seeding the demo library and its rides: %w", err)
 	}
-	planSource := plan.NewService(planStore{store: store}, demo.StraightLineRouter{}, now, plan.RandomID)
 	plans, err := planSource.Inventory(ctx)
 	if err != nil {
 		return fmt.Errorf("reading the demo plans: %w", err)

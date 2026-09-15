@@ -3,10 +3,47 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 )
+
+const demoBRouterURL = "https://brouter.de"
+
+// newDemoPlanService builds the one planner used by the demo API and its
+// reseed path. BRouter's client owns the 20-second timeout and context flow.
+func newDemoPlanService(store *sqlite.Store) (*plan.Service, error) {
+	client, err := brouter.New(&brouter.Options{BaseURL: demoBRouterURL})
+	if err != nil {
+		return nil, fmt.Errorf("creating demo BRouter client: %w", err)
+	}
+
+	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), nil
+}
+
+// brouterRouter adapts *brouter.Client to plan.Router: the brouter package
+// knows nothing about plan.Waypoint or plan.Profile, so this is the one place
+// that converts between them.
+type brouterRouter struct{ client *brouter.Client }
+
+var _ plan.Router = brouterRouter{}
+
+func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) ([]route.Point, error) {
+	converted := make([]brouter.Waypoint, len(waypoints))
+	for index, waypoint := range waypoints {
+		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+	}
+
+	points, err := r.client.Route(ctx, converted, string(profile))
+	if err != nil {
+		return nil, fmt.Errorf("routing waypoints: %w", err)
+	}
+
+	return points, nil
+}
 
 // planStore adapts the SQLite plan records to the plan service used by the
 // demo. The shipped composition root has the same adapter for its BRouter
