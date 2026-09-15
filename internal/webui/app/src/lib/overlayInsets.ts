@@ -205,44 +205,61 @@ export function useOverlayInsets(): Insets {
 
       return;
     }
-    const overlay = document.querySelector<HTMLElement>(OVERLAY_SELECTOR);
-    if (
-      !overlay ||
-      typeof ResizeObserver === "undefined" ||
-      typeof MutationObserver === "undefined"
-    ) {
+    if (typeof ResizeObserver === "undefined" || typeof MutationObserver === "undefined") {
       return;
     }
-    const panels = () => Array.from(overlay.children);
-    const measure = () => {
-      const next = insetsFrom(
-        overlay.getBoundingClientRect(),
-        panels().map((panel) => panel.getBoundingClientRect()),
-      );
-      setInsets((previous) => (same(previous, next) ? previous : next));
-    };
+    const attach = (overlay: HTMLElement) => {
+      const panels = () => Array.from(overlay.children);
+      const measure = () => {
+        const next = insetsFrom(
+          overlay.getBoundingClientRect(),
+          panels().map((panel) => panel.getBoundingClientRect()),
+        );
+        setInsets((previous) => (same(previous, next) ? previous : next));
+      };
 
-    const sizes = new ResizeObserver(measure);
-    const watch = () => {
-      sizes.disconnect();
-      sizes.observe(overlay);
-      for (const panel of panels()) {
-        sizes.observe(panel);
-      }
-    };
-    const arrivals = new MutationObserver(() => {
+      const sizes = new ResizeObserver(measure);
+      const watch = () => {
+        sizes.disconnect();
+        sizes.observe(overlay);
+        for (const panel of panels()) {
+          sizes.observe(panel);
+        }
+      };
+      const arrivals = new MutationObserver(() => {
+        watch();
+        measure();
+      });
+
       watch();
       measure();
-    });
+      arrivals.observe(overlay, { childList: true });
 
-    watch();
-    measure();
-    arrivals.observe(overlay, { childList: true });
-
-    return () => {
-      sizes.disconnect();
-      arrivals.disconnect();
+      return () => {
+        sizes.disconnect();
+        arrivals.disconnect();
+      };
     };
+
+    // A page that loads before it lays out has no overlay yet; the hook waits
+    // for it rather than measuring nothing for the rest of the page's life.
+    let detach = () => {};
+    const overlay = document.querySelector<HTMLElement>(OVERLAY_SELECTOR);
+    if (overlay) {
+      detach = attach(overlay);
+    } else {
+      const appearance = new MutationObserver(() => {
+        const found = document.querySelector<HTMLElement>(OVERLAY_SELECTOR);
+        if (found) {
+          appearance.disconnect();
+          detach = attach(found);
+        }
+      });
+      appearance.observe(document.body, { childList: true, subtree: true });
+      detach = () => appearance.disconnect();
+    }
+
+    return () => detach();
   }, [narrow]);
 
   return insets;
