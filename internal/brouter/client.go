@@ -162,7 +162,7 @@ func (c *Client) Route(
 	}()
 
 	// Classified before the body is read: only a 200 is worth the cost and the
-	// exposure of parsing; every other status is drained and closed unread.
+	// exposure of parsing; every other status is closed unread.
 	switch {
 	case response.StatusCode >= http.StatusInternalServerError:
 		return nil, &Error{Category: FailureEngine, Status: response.StatusCode}
