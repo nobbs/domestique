@@ -175,6 +175,7 @@ function show(
     /** Defaults to the same whole-route profile `profile` builds, as an unzoomed chart would. */
     activeProfile?: Profile | null;
     profileCollapsed?: boolean;
+    showTerminals?: boolean;
     /** The forecast measure asked for, with a forecast seeded to answer it. */
     measure?: MeasureKey | null;
     withForecast?: boolean;
@@ -211,6 +212,7 @@ function show(
           profile={profile}
           activeProfile={props.activeProfile ?? profile}
           activeMetres={activeMetres}
+          {...(props.showTerminals === undefined ? {} : { showTerminals: props.showTerminals })}
           profileCollapsed={props.profileCollapsed ?? false}
           zoomWindow={props.zoomWindow ?? null}
           onZoomChange={onZoomChange}
@@ -349,6 +351,13 @@ describe("the route's start, finish, and direction cues", () => {
 
     expect(document.querySelector(".route-terminal--start")).toBeInTheDocument();
     expect(document.querySelector(".route-terminal--finish")).toBeInTheDocument();
+  });
+
+  it("can leave terminals to an editable caller", () => {
+    show({ showTerminals: false });
+
+    expect(document.querySelector(".route-terminal--start")).toBeNull();
+    expect(document.querySelector(".route-terminal--finish")).toBeNull();
   });
 
   it("says which way a point-to-point route is ridden", () => {

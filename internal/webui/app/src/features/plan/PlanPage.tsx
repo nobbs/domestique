@@ -24,7 +24,14 @@ import {
   useReplacePlan,
 } from "../../api/generated";
 import { webUIConfigQuery } from "../../api/queries";
-import type { Plan, PlanProfile, PlanRoutePreview, PlanSummary, Position } from "../../api/types";
+import type {
+  BoundingBox,
+  Plan,
+  PlanProfile,
+  PlanRoutePreview,
+  PlanSummary,
+  Position,
+} from "../../api/types";
 import { PLAN_PROFILES } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
 import { Layout, PageShell } from "../../components/Layout";
@@ -35,6 +42,7 @@ import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
+import { ButtonGroup } from "../../components/ui/button-group";
 import { Input } from "../../components/ui/input";
 import { RadioGroup, RadioGroupItem } from "../../components/ui/radio-group";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
@@ -75,7 +83,7 @@ function planWaypoints(waypoints: PlannerState["waypoints"]) {
   return waypoints.map(({ longitude, latitude }) => ({ longitude, latitude }));
 }
 
-function waypointPositions(waypoints: PlannerState["waypoints"]): Position[] {
+function waypointPositions(waypoints: Array<{ longitude: number; latitude: number }>): Position[] {
   return waypoints.map(({ longitude, latitude }) => [longitude, latitude]);
 }
 
@@ -279,32 +287,6 @@ export function PlannerSidebar({
                 ))}
               </RadioGroup>
             </fieldset>
-            <div className="flex flex-wrap gap-1">
-              <Button
-                variant="outline"
-                icon={<IconPlayerTrackPrev stroke={1.6} />}
-                disabled={state.past.length === 0}
-                onClick={() => dispatch({ type: "undo" })}
-              >
-                Undo
-              </Button>
-              <Button
-                variant="outline"
-                icon={<IconPlayerTrackNext stroke={1.6} />}
-                disabled={state.future.length === 0}
-                onClick={() => dispatch({ type: "redo" })}
-              >
-                Redo
-              </Button>
-              <Button
-                variant="outline"
-                icon={<IconRestore stroke={1.6} />}
-                disabled={state.waypoints.length < 2}
-                onClick={() => dispatch({ type: "reverse" })}
-              >
-                Reverse
-              </Button>
-            </div>
             <ol className="grid gap-1" aria-label="Waypoints">
               {state.waypoints.map((waypoint, index) => (
                 <li
@@ -453,6 +435,51 @@ export function PlannerSidebar({
   );
 }
 
+function PlannerHistoryControls({
+  state,
+  dispatch,
+  collapsed,
+  insetLeft,
+}: Pick<PlannerSidebarProps, "state" | "dispatch"> & { collapsed: boolean; insetLeft: number }) {
+  return (
+    <div
+      className="pointer-events-auto absolute z-10 flex items-center gap-2"
+      style={{ left: collapsed ? 12 : insetLeft + 12, top: collapsed ? 60 : 12 }}
+    >
+      <ButtonGroup
+        aria-label="Planner history"
+        orientation="horizontal"
+        className="divide-x divide-[var(--rule)] rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-l-none [&>*:not(:last-child)]:rounded-r-none"
+      >
+        <Button
+          variant="ghost"
+          icon={<IconPlayerTrackPrev stroke={1.6} />}
+          disabled={state.past.length === 0}
+          aria-label="Undo"
+          title="Undo"
+          onClick={() => dispatch({ type: "undo" })}
+        />
+        <Button
+          variant="ghost"
+          icon={<IconPlayerTrackNext stroke={1.6} />}
+          disabled={state.future.length === 0}
+          aria-label="Redo"
+          title="Redo"
+          onClick={() => dispatch({ type: "redo" })}
+        />
+      </ButtonGroup>
+      <Button
+        variant="panel"
+        icon={<IconRestore stroke={1.6} />}
+        disabled={state.waypoints.length < 2}
+        aria-label="Reverse"
+        title="Reverse"
+        onClick={() => dispatch({ type: "reverse" })}
+      />
+    </div>
+  );
+}
+
 function PlannerDock({
   open,
   onOpenChange,
@@ -536,6 +563,7 @@ export function PlanPage() {
   const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
   const { mutate: previewRoute } = usePreviewPlanRoute();
   const loaded = useRef<string | null>(null);
+  const initialViewport = useRef<{ planId: number; bounds: BoundingBox | null } | null>(null);
   const hydrating = useRef(planId !== null);
   const request = useRef(0);
   const queryPlan = plan.data?.data;
@@ -552,6 +580,7 @@ export function PlanPage() {
 
   useEffect(() => {
     loaded.current = null;
+    initialViewport.current = null;
     hydrating.current = planId !== null;
     request.current += 1;
     setSavedPlan(null);
@@ -573,6 +602,15 @@ export function PlanPage() {
       return;
     }
     loaded.current = key;
+    if (initialViewport.current?.planId !== loadedPlan.id) {
+      const initialLine = positions(previewFrom(loadedPlan));
+      const coordinates =
+        initialLine.length > 1 ? initialLine : waypointPositions(loadedPlan.waypoints);
+      initialViewport.current = {
+        planId: loadedPlan.id,
+        bounds: rangeBounds(coordinates, { startIndex: 0, endIndex: coordinates.length - 1 }),
+      };
+    }
     dispatch({ type: "load", plan: loadedPlan });
     setPreview(previewFrom(loadedPlan));
   }, [loadedPlan]);
@@ -615,10 +653,8 @@ export function PlanPage() {
   }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints]);
 
   const line = useMemo(() => positions(preview), [preview]);
-  const viewportBounds = useMemo(() => {
-    const coordinates = line.length > 1 ? line : waypointPositions(state.waypoints);
-    return rangeBounds(coordinates, { startIndex: 0, endIndex: coordinates.length - 1 });
-  }, [line, state.waypoints]);
+  const viewportBounds =
+    initialViewport.current?.planId === planId ? initialViewport.current.bounds : null;
   const profile = useMemo(() => buildProfile(line), [line]);
   const save = async (published: boolean) => {
     const data = {
@@ -685,6 +721,12 @@ export function PlanPage() {
                 furniture={
                   <>
                     <ScaleControl position="bottom-left" unit="metric" />
+                    <PlannerHistoryControls
+                      state={state}
+                      dispatch={dispatch}
+                      collapsed={panelCollapsed}
+                      insetLeft={insets.left}
+                    />
                     <MapControls>
                       <BasemapPicker
                         basemaps={config.data?.basemaps ?? []}
@@ -718,6 +760,7 @@ export function PlanPage() {
                     activeProfile={profile}
                     activeMetres={activeMetres}
                     onActiveChange={setActiveMetres}
+                    showTerminals={false}
                   />
                 ) : null}
                 {state.waypoints.map((waypoint, index) => (

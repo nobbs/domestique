@@ -126,6 +126,8 @@ export interface RouteOverlayProps {
   /** Shared with the elevation chart, in metres from the start of the route. */
   activeMetres?: number | null;
   onActiveChange?: (metres: number | null) => void;
+  /** Whether this read-only overlay draws its start and finish markers. */
+  showTerminals?: boolean;
   /**
    * Whether the profile card is folded to its row, which unmounts the chart's
    * own `aria-live` readout along with it.
@@ -183,6 +185,7 @@ export function RouteOverlay({
   activeProfile = null,
   activeMetres = null,
   onActiveChange,
+  showTerminals = true,
   profileCollapsed = false,
   zoomWindow = null,
   onZoomChange,
@@ -488,7 +491,7 @@ export function RouteOverlay({
        * The two ends are DOM markers, so their pictograms stay legible at every
        * zoom instead of becoming two nearly identical dots on the canvas.
        */}
-      {cues ? (
+      {showTerminals && cues ? (
         <>
           <RouteTerminal kind="start" position={cues.start} offset={-nudge} accent={accent} />
           <RouteTerminal kind="finish" position={cues.finish} offset={nudge} accent={accent} />

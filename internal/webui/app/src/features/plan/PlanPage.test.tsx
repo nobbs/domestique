@@ -9,6 +9,7 @@ const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
 const overlayInsets = vi.hoisted(() => ({ value: { top: 12, right: 13, bottom: 14, left: 15 } }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
+const routeOverlay = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/generated", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/generated")>()),
@@ -99,9 +100,16 @@ vi.mock("react-map-gl/maplibre", () => ({
   ),
 }));
 vi.mock("../routes/RouteOverlay", () => ({
-  RouteOverlay: ({ coordinates }: { coordinates: unknown[] }) => (
-    <output data-testid="route-line">{coordinates.length}</output>
-  ),
+  RouteOverlay: ({
+    coordinates,
+    showTerminals,
+  }: {
+    coordinates: unknown[];
+    showTerminals?: boolean;
+  }) => {
+    routeOverlay({ coordinates, showTerminals });
+    return <output data-testid="route-line">{coordinates.length}</output>;
+  },
 }));
 vi.mock("../routes/ElevationProfile", () => ({
   ElevationProfile: () => <div>elevation profile</div>,
@@ -140,6 +148,7 @@ beforeEach(() => {
   preview.mockReset();
   create.mockReset();
   replace.mockReset();
+  routeOverlay.mockReset();
   openedPlan.value = {};
   mapPoint.value = { longitude: 8, latitude: 49 };
 });
@@ -176,6 +185,43 @@ describe("PlanPage", () => {
     expect(screen.getByRole("button", { name: "Show elevation" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show elevation" }));
     expect(screen.getByRole("button", { name: "Hide elevation" })).toBeInTheDocument();
+  });
+
+  it("keeps history controls on the map beside the planner and dispatches their actions", () => {
+    renderPage();
+    const history = screen.getByRole("group", { name: "Planner history" });
+    const undo = screen.getByRole("button", { name: "Undo" });
+    const redo = screen.getByRole("button", { name: "Redo" });
+    const reverse = screen.getByRole("button", { name: "Reverse" });
+
+    expect(history).toHaveAttribute("data-orientation", "horizontal");
+    expect(history.parentElement).toHaveStyle({ left: "27px", top: "12px" });
+    expect(screen.getByRole("region", { name: "Route planner controls" })).not.toContainElement(
+      history,
+    );
+    expect(undo).toBeDisabled();
+    expect(redo).toBeDisabled();
+    expect(reverse).toBeDisabled();
+    expect(undo).toHaveAttribute("title", "Undo");
+    expect(redo).toHaveAttribute("title", "Redo");
+    expect(reverse).toHaveAttribute("title", "Reverse");
+
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.1, latitude: 49.1 };
+    fireEvent.click(map);
+    expect(undo).toBeEnabled();
+    expect(reverse).toBeEnabled();
+
+    fireEvent.click(reverse);
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+    fireEvent.click(undo);
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
+    fireEvent.click(redo);
+    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
+    expect(history.parentElement).toHaveStyle({ left: "12px", top: "60px" });
   });
 
   it("routes one preview after a burst and leaves the last good line up after a failure", () => {
@@ -223,6 +269,8 @@ describe("PlanPage", () => {
 
     expect(preview).toHaveBeenCalledOnce();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    expect(screen.getByTestId("plan-viewport")).toHaveTextContent("null");
+    expect(routeOverlay).toHaveBeenCalledWith(expect.objectContaining({ showTerminals: false }));
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
     failed = true;
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
@@ -284,6 +332,11 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
     expect(screen.getByText("Stored route could not refresh")).toBeInTheDocument();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
+    mapPoint.value = { longitude: 8.05, latitude: 49.05 };
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
     fireEvent.click(screen.getByRole("link", { name: "New" }));
     await act(async () => {});
