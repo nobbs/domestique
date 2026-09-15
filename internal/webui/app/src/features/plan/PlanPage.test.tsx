@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,8 +8,8 @@ const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
-const overlayInsets = vi.hoisted(() => ({ value: { top: 12, right: 13, bottom: 14, left: 15 } }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
+const narrowViewport = vi.hoisted(() => ({ value: false }));
 const routeOverlay = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/generated", async (importOriginal) => ({
@@ -31,22 +32,29 @@ vi.mock("../../components/Layout", () => ({
     map,
     children,
     dock,
+    workspaceLabel,
+    workspace = "overlay",
   }: {
     map: React.ReactNode;
     children: React.ReactNode;
     dock: React.ReactNode;
+    workspaceLabel: string;
+    workspace?: "overlay" | "sidebar";
   }) => (
     <main>
+      {workspace === "sidebar" ? <aside aria-label={workspaceLabel}>{children}</aside> : null}
       {map}
       <div className="shell__overlay">
-        {children}
-        {dock}
+        {workspace === "sidebar" ? null : <aside aria-label={workspaceLabel}>{children}</aside>}
+        {workspace === "sidebar" ? null : dock}
       </div>
+      {workspace === "sidebar" ? dock : null}
     </main>
   ),
 }));
-vi.mock("../../lib/overlayInsets", () => ({
-  useOverlayInsets: () => overlayInsets.value,
+vi.mock("../../lib/mediaQuery", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/mediaQuery")>()),
+  useNarrowViewport: () => narrowViewport.value,
 }));
 vi.mock("../../components/map/MapWidget", () => ({
   MapWidget: ({
@@ -87,8 +95,8 @@ vi.mock("../../components/map/BasemapPicker", () => ({
   BasemapPicker: () => <span data-testid="plan-basemap-picker" />,
 }));
 vi.mock("../../components/map/MapViewport", () => ({
-  MapViewport: ({ bounds, insets }: { bounds: unknown; insets: unknown }) => (
-    <output data-testid="plan-viewport" data-insets={JSON.stringify(insets)}>
+  MapViewport: ({ bounds, fitRevision }: { bounds: unknown; fitRevision: number }) => (
+    <output data-testid="plan-viewport" data-fit-revision={fitRevision}>
       {JSON.stringify(bounds)}
     </output>
   ),
@@ -158,23 +166,49 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("PlanPage", () => {
-  it("renders the planner with a mocked map and labels drafts", () => {
+  it("renders the planner with a mocked map and labels drafts", async () => {
+    vi.useRealTimers();
     renderPage();
 
     expect(screen.getByRole("button", { name: "Plan route map" })).toBeInTheDocument();
-    expect(screen.getByText("Draft loop")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Plans" }));
+    const item = await screen.findByText("Draft loop");
+    expect(item.closest("[role=menuitem]")).toHaveAttribute("href", "/plan/4");
     expect(screen.getByText("Draft")).toBeInTheDocument();
     expect(screen.getByTestId("plan-map-controls")).toBeInTheDocument();
     expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-position", "bottom-left");
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-unit", "metric");
-    expect(screen.getByTestId("plan-viewport")).toHaveAttribute(
-      "data-insets",
-      JSON.stringify(overlayInsets.value),
-    );
   });
 
   it("initializes a new draft from a copied route seed without saving it", async () => {
+    preview.mockImplementation(
+      (
+        _variables: unknown,
+        callbacks: {
+          onSuccess: (value: {
+            data: {
+              geometry: { type: "LineString"; coordinates: number[][] };
+              distanceMetres: number;
+              ascentMetres: number;
+            };
+          }) => void;
+        },
+      ) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49, 100],
+                [8.1, 49.1, 200],
+              ],
+            },
+            distanceMetres: 10_000,
+            ascentMetres: 100,
+          },
+        }),
+    );
     renderPage({
       pathname: "/plan",
       state: {
@@ -192,7 +226,12 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
     expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
     expect(create).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByText("elevation profile")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "2");
   });
 
   it("frames a blank draft on the rider's own position", async () => {
@@ -216,19 +255,32 @@ describe("PlanPage", () => {
     }
   });
 
-  it("folds and reopens its independent planner and elevation overlays", () => {
+  it("folds and reopens the elevation panel", () => {
     renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
-    expect(screen.getByRole("button", { name: "Show planner controls" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Name")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show planner controls" }));
-    expect(screen.getByLabelText("Name")).toBeInTheDocument();
-
+    expect(screen.getByText("elevation profile")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
     fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
     expect(screen.getByRole("button", { name: "Show elevation" })).toBeInTheDocument();
+    expect(screen.queryByText("elevation profile")).toBeNull();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
     fireEvent.click(screen.getByRole("button", { name: "Show elevation" }));
     expect(screen.getByRole("button", { name: "Hide elevation" })).toBeInTheDocument();
+    expect(screen.getByText("elevation profile")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
+  });
+
+  it("does not re-frame for the elevation panel while it lives in the Drawer", () => {
+    narrowViewport.value = true;
+    try {
+      renderPage();
+
+      expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
+      fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
+      expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
+    } finally {
+      narrowViewport.value = false;
+    }
   });
 
   it("keeps history controls on the map beside the planner and dispatches their actions", () => {
@@ -239,10 +291,16 @@ describe("PlanPage", () => {
     const reverse = screen.getByRole("button", { name: "Reverse" });
 
     expect(history).toHaveAttribute("data-orientation", "horizontal");
-    expect(history.parentElement).toHaveStyle({ left: "27px", top: "12px" });
-    expect(screen.getByRole("region", { name: "Route planner controls" })).not.toContainElement(
-      history,
+    expect(history.parentElement).toHaveClass("absolute");
+    expect(document.querySelector(".shell__overlay")).not.toContainElement(
+      screen.getByRole("complementary", { name: "Route planner controls" }),
     );
+    expect(document.querySelector(".shell__overlay")).not.toContainElement(
+      screen.getByRole("region", { name: "Planned route elevation" }),
+    );
+    expect(
+      screen.getByRole("complementary", { name: "Route planner controls" }),
+    ).not.toContainElement(history);
     expect(undo).toBeDisabled();
     expect(redo).toBeDisabled();
     expect(reverse).toBeDisabled();
@@ -263,9 +321,6 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
     fireEvent.click(redo);
     expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
-
-    fireEvent.click(screen.getByRole("button", { name: "Hide planner controls" }));
-    expect(history.parentElement).toHaveStyle({ left: "12px", top: "60px" });
   });
 
   it("routes one preview after a burst and leaves the last good line up after a failure", () => {

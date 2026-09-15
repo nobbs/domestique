@@ -17,10 +17,13 @@ export interface LayoutProps {
   /**
    * The wide panel along the map's foot, where a route is open.
    *
-   * A sibling of the workspace rather than part of it, which is what makes the
-   * camera work without any arithmetic here: `useOverlayInsets` measures the
-   * overlay's children, and `insetsFrom` gives a wide short panel to the bottom
-   * edge it eats least of.
+   * In the overlay workspace it is a sibling of the rail rather than part of
+   * it, which is what makes the camera work without any arithmetic here:
+   * `useOverlayInsets` measures the overlay's children, and `insetsFrom` gives
+   * a wide short panel to the bottom edge it eats least of. In the sidebar
+   * workspace it is a strip beneath the map, which shrinks the map's box
+   * instead; a page that frames bounds there passes `MapViewport` a
+   * `fitRevision` that changes with the strip's height.
    *
    * Below the breakpoint there is no map to stand on — the panels are a Drawer
    * — so it goes in the Drawer with everything else.
@@ -32,6 +35,8 @@ export interface LayoutProps {
   drawerTitle?: string;
   /** The wide-screen workspace's accessible name. */
   workspaceLabel?: string;
+  /** Where the wide-screen workspace stands: a card over the map, or a column beside it. */
+  workspace?: "overlay" | "sidebar";
 }
 
 /** The map stays mounted while the same workspace becomes a rail or a Drawer. */
@@ -42,6 +47,7 @@ export function Layout({
   drawerLabel = "Browse routes",
   drawerTitle = "Route library",
   workspaceLabel = "Route library controls",
+  workspace = "overlay",
 }: LayoutProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const narrow = useNarrowViewport();
@@ -53,46 +59,61 @@ export function Layout({
      */
     <div className="flex h-dvh flex-col bg-[var(--ground)] text-[var(--ink)]">
       <MenuBar />
-      <main className="relative isolate min-h-0 flex-1 overflow-hidden">
-        <div className="absolute inset-0">{map}</div>
-        {narrow ? (
-          <div className="absolute right-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30">
-            <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} showSwipeHandle>
-              <DrawerTrigger className="rounded-lg bg-[var(--panel)] px-3 py-2 text-sm font-semibold shadow-[var(--shadow)] ring-1 ring-black/5">
-                {drawerLabel}
-              </DrawerTrigger>
-              <DrawerContent className="bg-[var(--panel)] text-[var(--ink)]">
-                <DrawerHeader className="sr-only">
-                  <DrawerTitle>{drawerTitle}</DrawerTitle>
-                </DrawerHeader>
-                <div className="min-h-0 overflow-y-auto p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-                  {children}
-                  {dock}
-                </div>
-              </DrawerContent>
-            </Drawer>
-          </div>
-        ) : (
-          <div className="shell__overlay pointer-events-none absolute inset-0 z-20">
-            <aside
-              className="pointer-events-auto absolute top-3 left-3 max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5 transition-[background-color,box-shadow,padding] duration-200 has-[>[data-compact-workspace]]:overflow-visible has-[>[data-compact-workspace]]:bg-transparent has-[>[data-compact-workspace]]:p-0 has-[>[data-compact-workspace]]:shadow-none has-[>[data-compact-workspace]]:ring-0"
-              aria-label={workspaceLabel}
-            >
-              {children}
-            </aside>
-            {dock === undefined ? null : (
-              // The whole width of the foot. The card above it is a fixed
-              // height that clears this by a long way, so there is nothing to
-              // start clear of — and the lanes drawn against distance want
-              // every pixel of width there is, because width is what resolves
-              // them. Centred within it, so a dock that folds to a pill leaves
-              // it in the middle of the ground it had.
-              <div className="pointer-events-auto absolute right-3 bottom-3 left-3 flex justify-center">
-                {dock}
+      <main className="relative isolate flex min-h-0 flex-1 overflow-hidden">
+        {workspace === "sidebar" && !narrow ? (
+          <aside
+            className="flex w-[24rem] shrink-0 flex-col overflow-y-auto border-[var(--rule)] border-r bg-[var(--panel)]"
+            aria-label={workspaceLabel}
+          >
+            {children}
+          </aside>
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="relative min-h-0 flex-1">
+            <div className="absolute inset-0">{map}</div>
+            {narrow ? (
+              <div className="absolute right-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30">
+                <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} showSwipeHandle>
+                  <DrawerTrigger className="rounded-lg bg-[var(--panel)] px-3 py-2 text-sm font-semibold shadow-[var(--shadow)] ring-1 ring-black/5">
+                    {drawerLabel}
+                  </DrawerTrigger>
+                  <DrawerContent className="bg-[var(--panel)] text-[var(--ink)]">
+                    <DrawerHeader className="sr-only">
+                      <DrawerTitle>{drawerTitle}</DrawerTitle>
+                    </DrawerHeader>
+                    <div className="min-h-0 overflow-y-auto p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+                      {children}
+                      {dock}
+                    </div>
+                  </DrawerContent>
+                </Drawer>
+              </div>
+            ) : (
+              <div className="shell__overlay pointer-events-none absolute inset-0 z-20">
+                {workspace === "sidebar" ? null : (
+                  <aside
+                    className="pointer-events-auto absolute top-3 left-3 max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5 transition-[background-color,box-shadow,padding] duration-200 has-[>[data-compact-workspace]]:overflow-visible has-[>[data-compact-workspace]]:bg-transparent has-[>[data-compact-workspace]]:p-0 has-[>[data-compact-workspace]]:shadow-none has-[>[data-compact-workspace]]:ring-0"
+                    aria-label={workspaceLabel}
+                  >
+                    {children}
+                  </aside>
+                )}
+                {dock === undefined || workspace === "sidebar" ? null : (
+                  // The whole width of the foot. The card above it is a fixed
+                  // height that clears this by a long way, so there is nothing to
+                  // start clear of — and the lanes drawn against distance want
+                  // every pixel of width there is, because width is what resolves
+                  // them. Centred within it, so a dock that folds to a pill leaves
+                  // it in the middle of the ground it had.
+                  <div className="pointer-events-auto absolute right-3 bottom-3 left-3 flex justify-center">
+                    {dock}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
+          {dock === undefined || workspace !== "sidebar" || narrow ? null : dock}
+        </div>
       </main>
     </div>
   );

@@ -101,10 +101,12 @@ zoom, and the arrow keys answer. Nothing is printed over the cartography to ask
 for them. A drag that begins on the painted route picks a stretch of the ride
 instead of moving the camera.
 
-The elevation chart floats across the foot of the map rather than sitting in a
-column beside it, and it can be folded away to a pill that still states the
-route's total climbing and the heights it runs between. That choice lasts as
-long as the tab and is not stored.
+In the atlas, the elevation chart floats across the foot of the map rather than
+sitting in a column beside it, and it can be folded away to a pill that still
+states the route's total climbing and the heights it runs between. The planner
+instead stands its controls in a column beside the map and its chart in a strip
+beneath it, which folds to a bar carrying the distance and climbing. Either
+choice lasts as long as the tab and is not stored.
 
 The UI carries one outbound link, to this service's public source repository. It
 is the only navigation that leaves the authenticated origin, it opens in a new

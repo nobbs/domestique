@@ -23,8 +23,6 @@ const meta = {
     published: false,
     saving: false,
     saveError: null,
-    collapsed: false,
-    onCollapsedChange: () => {},
     onSave: () => {},
     dispatch: () => {},
   },

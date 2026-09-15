@@ -36,6 +36,26 @@ describe("Layout", () => {
     expect(screen.queryByRole("button", { name: "Browse routes" })).toBeNull();
   });
 
+  it("stands a sidebar workspace and its dock beside the map, off the overlay", () => {
+    vi.mocked(useNarrowViewport).mockReturnValue(false);
+    render(
+      <Layout
+        map={<div aria-label="Route map" role="img" />}
+        workspace="sidebar"
+        dock={<output>Dock</output>}
+      >
+        <button type="button">Route control</button>
+      </Layout>,
+    );
+
+    const overlay = document.querySelector(".shell__overlay");
+    expect(overlay).not.toContainElement(screen.getByRole("button", { name: "Route control" }));
+    expect(overlay).not.toContainElement(screen.getByText("Dock"));
+    expect(overlay?.children).toHaveLength(0);
+    const pane = screen.getByRole("img", { name: "Route map" }).parentElement?.parentElement;
+    expect(pane?.nextElementSibling).toBe(screen.getByText("Dock"));
+  });
+
   it("opens the mobile workspace as a dismissible, labelled Drawer", async () => {
     const user = userEvent.setup();
     show(true);
