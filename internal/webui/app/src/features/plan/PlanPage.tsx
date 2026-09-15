@@ -14,7 +14,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Dispatch, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Marker, ScaleControl } from "react-map-gl/maplibre";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import {
   getGetPlanQueryKey,
   getListPlansQueryKey,
@@ -241,6 +241,8 @@ export interface PlannerSidebarProps {
   saveError: string | null;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
+  /** Standing in the shell's sidebar column rather than as a card over the map. */
+  docked?: boolean;
   onSave: (published: boolean) => void;
   dispatch: Dispatch<Parameters<typeof plannerReducer>[1]>;
 }
@@ -256,6 +258,7 @@ export function PlannerSidebar({
   saveError,
   collapsed,
   onCollapsedChange,
+  docked = false,
   onSave,
   dispatch,
 }: PlannerSidebarProps) {
@@ -278,10 +281,14 @@ export function PlannerSidebar({
   };
 
   return (
-    <div data-compact-workspace="" className="w-fit max-w-full">
+    <div data-compact-workspace="" className={docked ? "" : "w-fit max-w-full"}>
       <section
         aria-label="Route planner controls"
-        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[24rem]"}`}
+        className={
+          docked
+            ? "py-1.5"
+            : `max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5 ${collapsed ? "w-fit" : "w-[24rem]"}`
+        }
       >
         <div className="flex items-center gap-1 p-1.5">
           <button
@@ -291,12 +298,14 @@ export function PlannerSidebar({
             onClick={() => onCollapsedChange(!collapsed)}
             className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
           >
-            <IconChevronsRight
-              size={16}
-              stroke={2}
-              aria-hidden="true"
-              className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
-            />
+            {docked ? null : (
+              <IconChevronsRight
+                size={16}
+                stroke={2}
+                aria-hidden="true"
+                className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
+              />
+            )}
             <span className="font-semibold">{planId === null ? "Plan a route" : "Edit plan"}</span>
             {collapsed && preview ? (
               <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
@@ -477,47 +486,55 @@ export function PlannerSidebar({
               Click the map to insert a waypoint, or Alt-click to append. Drag waypoint rows to
               reorder; drag map pins to move them.
             </p>
-            {preview ? (
-              <output
-                aria-label="Planned route summary"
-                className="text-sm font-medium tabular-nums"
-              >
-                {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
-              </output>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                icon={<IconDeviceFloppy stroke={1.6} />}
-                disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-                onClick={() => onSave(planId === null ? false : published)}
-              >
-                {planId === null ? "Save draft" : "Save changes"}
-              </Button>
-              {planId !== null && !published ? (
-                <Button
-                  variant="outline"
-                  disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-                  onClick={() => onSave(true)}
+            <div
+              className={
+                docked
+                  ? "-mx-4 sticky bottom-0 grid gap-2 border-[var(--rule)] border-t bg-[var(--panel)] px-4 py-3"
+                  : "contents"
+              }
+            >
+              {preview ? (
+                <output
+                  aria-label="Planned route summary"
+                  className="text-sm font-medium tabular-nums"
                 >
-                  Publish — syncs on next run
+                  {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
+                </output>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  icon={<IconDeviceFloppy stroke={1.6} />}
+                  disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                  onClick={() => onSave(planId === null ? false : published)}
+                >
+                  {planId === null ? "Save draft" : "Save changes"}
+                </Button>
+                {planId !== null && !published ? (
+                  <Button
+                    variant="outline"
+                    disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                    onClick={() => onSave(true)}
+                  >
+                    Publish — syncs on next run
+                  </Button>
+                ) : null}
+              </div>
+              {planId !== null && published ? (
+                <Button
+                  variant="warning"
+                  disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
+                  onClick={() => onSave(false)}
+                >
+                  Unpublish — removes on next sync
                 </Button>
               ) : null}
+              {saveError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Could not save plan</AlertTitle>
+                  <AlertDescription>{saveError}</AlertDescription>
+                </Alert>
+              ) : null}
             </div>
-            {planId !== null && published ? (
-              <Button
-                variant="warning"
-                disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-                onClick={() => onSave(false)}
-              >
-                Unpublish — removes on next sync
-              </Button>
-            ) : null}
-            {saveError ? (
-              <Alert variant="destructive">
-                <AlertTitle>Could not save plan</AlertTitle>
-                <AlertDescription>{saveError}</AlertDescription>
-              </Alert>
-            ) : null}
             <div className="grid gap-1 border-[var(--rule)] border-t pt-3">
               <h2 className="text-sm font-medium">Plans</h2>
               {plans.map((plan) => (
@@ -650,6 +667,9 @@ export function PlanPage() {
   const { planId: value } = useParams();
   const planId = value && /^\d+$/.test(value) ? Number(value) : null;
   const location = useLocation();
+  // ponytail: spike switch for the docked sidebar; pick one and drop the param.
+  const [params] = useSearchParams();
+  const docked = params.get("workspace") === "sidebar";
   const copySeed = planId === null && isPlannerSeed(location.state) ? location.state : null;
   const config = useQuery(webUIConfigQuery());
   const plans = useListPlans();
@@ -821,6 +841,7 @@ export function PlanPage() {
       drawerLabel="Plan a route"
       drawerTitle="Route planner"
       workspaceLabel="Route planner controls"
+      workspace={docked ? "sidebar" : "overlay"}
       map={
         <div className="relative size-full">
           {basemap ? (
@@ -938,8 +959,9 @@ export function PlanPage() {
         published={loadedPlan?.published ?? false}
         saving={saving}
         saveError={saveError}
-        collapsed={panelCollapsed}
+        collapsed={docked ? false : panelCollapsed}
         onCollapsedChange={setPanelCollapsed}
+        docked={docked}
         onSave={(published) => void save(published)}
         dispatch={dispatch}
       />
