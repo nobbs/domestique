@@ -305,7 +305,7 @@ input, textarea, [contenteditable]:not([contenteditable="false"]) { user-select:
 
 /* A joined toggle group is a segmented control: a muted pill with the pressed
    segment raised white on it, rather than a run of outlined buttons. */
-[data-slot="toggle-group"][data-spacing="0"] { gap: 2px; padding: 3px; border-radius: 12px; background: var(--muted); }
+[data-slot="toggle-group"][data-spacing="0"] { gap: 2px; padding: 3px; border-radius: 12px; background: var(--ground); }
 [data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"] { border: 0; border-radius: 9px; background: transparent; color: var(--ink-2); }
 [data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"]:hover { color: var(--ink); }
 [data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"][aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }

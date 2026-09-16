@@ -526,7 +526,7 @@ export function RouteDock({
         className="flex gap-3"
       >
         <div className="flex shrink-0 flex-col border-r border-[var(--rule)] pr-2">
-          <Tabs.List className="flex flex-col gap-0.5 rounded-lg bg-[var(--muted)] p-[3px]">
+          <Tabs.List className="flex flex-col gap-0.5 rounded-lg bg-[var(--ground)] p-[3px]">
             <Tabs.Tab value="profile" className={RAIL_TAB}>
               <IconMountain size={15} stroke={2} aria-hidden="true" />
               Profile
