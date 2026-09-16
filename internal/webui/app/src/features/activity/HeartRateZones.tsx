@@ -108,7 +108,7 @@ export function HeartRateZones({
               active={active}
               onActive={setActive}
             >
-              <span className="font-semibold text-lg tabular-nums">
+              <span className="font-semibold text-2xl leading-tight tabular-nums">
                 {formatDuration(active === null ? total : zoneSeconds[active])}
               </span>
               <span className="text-[var(--ink-2)] text-xs">
