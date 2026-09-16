@@ -11,7 +11,9 @@ import {
   IconArrowBarUp,
   IconBike,
   IconBolt,
+  IconChevronLeft,
   IconFlame,
+  IconRoute,
   IconRuler2,
   IconStopwatch,
 } from "@tabler/icons-react";
@@ -65,11 +67,19 @@ function Mark({ children, size = 8 }: { children: ReactNode; size?: 7 | 8 | 9 })
 
 function Title() {
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[var(--ink-2)] text-xs underline">Activities</span>
-      <h1 className="font-semibold text-3xl tracking-tight">{TITLE}</h1>
-      <p className="text-[var(--ink-2)] text-sm">{WEATHER_LINE}</p>
-      <span className="text-sm underline">{ROUTE}</span>
+    <div className="flex flex-col gap-1.5">
+      <span className="inline-flex w-fit items-center gap-0.5 text-[var(--ink-2)] text-xs hover:text-[var(--ink)]">
+        <IconChevronLeft size={14} stroke={2} aria-hidden="true" />
+        Activities
+      </span>
+      <h1 className="font-semibold text-2xl leading-tight tracking-tight">{TITLE}</h1>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[var(--ink-2)] text-sm">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--muted)] px-2.5 py-1 font-medium text-[var(--ink)] text-xs hover:bg-[var(--rule)]">
+          <IconRoute size={13} stroke={2} aria-hidden="true" />
+          {ROUTE}
+        </span>
+        <span>{WEATHER_LINE}</span>
+      </div>
     </div>
   );
 }
