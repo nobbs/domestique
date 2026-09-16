@@ -13,7 +13,6 @@
 
 import type { ReactNode } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
-import { Separator } from "../../components/ui/separator";
 import { formatCoverage } from "../../lib/format";
 import { HeartRateZones } from "./HeartRateZones";
 
@@ -27,6 +26,7 @@ export interface Scale {
   coverage?: number | undefined;
 }
 
+/** One row of the ledger: the name on the left, the figure and its scale on the right. */
 export function Figure({ label, scale, value, decimals = 0, coverage }: Scale) {
   if (value === undefined) {
     return null;
@@ -34,13 +34,18 @@ export function Figure({ label, scale, value, decimals = 0, coverage }: Scale) {
   const coverageNote = formatCoverage(coverage);
 
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[var(--ink-2)] text-xs">{label}</span>
-      <span className="font-semibold text-lg tabular-nums">{value.toFixed(decimals)}</span>
-      <span className="text-[var(--ink-2)] text-xs">{scale}</span>
-      {coverageNote ? (
-        <span className="text-[10px] text-[var(--ink-2)] opacity-70">{coverageNote}</span>
-      ) : null}
+    <div className="flex items-baseline justify-between gap-4 border-[var(--rule)] border-b py-2 last:border-b-0">
+      <span className="text-[var(--ink-2)] text-sm">{label}</span>
+      <span className="text-right">
+        <span className="font-semibold text-base tabular-nums">{value.toFixed(decimals)}</span>{" "}
+        <span className="text-[var(--ink-2)] text-xs">{scale}</span>
+        {coverageNote ? (
+          <span className="text-[var(--ink-2)] text-xs opacity-70">
+            {" · "}
+            <span>{coverageNote}</span>
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -218,7 +223,7 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
   };
 }
 
-const GRID = "grid grid-cols-3 gap-x-4 gap-y-3";
+const GRID = "flex flex-col";
 
 function figureGrid(figures: Scale[]): ReactNode {
   return (
@@ -271,10 +276,9 @@ function GroupList({ groups }: { groups: Group[] }) {
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group, index) => (
-        <div key={group.title} className="flex flex-col gap-2">
-          {index > 0 ? <Separator /> : null}
+        <div key={group.title} className="flex flex-col gap-1">
           {index === 0 ? null : (
-            <h3 className="text-[10px] text-[var(--ink-2)] font-semibold uppercase tracking-[0.08em]">
+            <h3 className="pt-1 font-semibold text-[10px] text-[var(--ink-2)] uppercase tracking-[0.08em]">
               {group.title}
             </h3>
           )}
