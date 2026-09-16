@@ -169,8 +169,8 @@ export function ActivityPage() {
           <div
             className={
               mapExpanded
-                ? "h-[75vh] overflow-hidden rounded-2xl shadow-[var(--shadow)]"
-                : "h-80 overflow-hidden rounded-2xl shadow-[var(--shadow)]"
+                ? "h-[75vh] overflow-hidden rounded-2xl border border-[var(--rule)] shadow-[var(--shadow)]"
+                : "h-80 overflow-hidden rounded-2xl border border-[var(--rule)] shadow-[var(--shadow)]"
             }
           >
             <ActivityMap
