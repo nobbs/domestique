@@ -44,57 +44,69 @@ function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
   const span = arc / 360;
   let offset = 0;
   const text = figure === "lg" ? "text-lg" : figure === "2xl" ? "text-2xl" : "text-3xl";
+  // The lifted stroke is the widest thing drawn, and a round cap reaches half
+  // of it past the arc: the frame keeps that much clear on every side.
+  const pad = (stroke * 1.3) / 2 + 0.5;
   // An open arc starts at the bottom left, so the gap sits under the figure.
   const rotate = arc === 360 ? -90 : 90 + (360 - arc) / 2;
+  // The lowest point the arc reaches, so the frame stops there instead of at
+  // the circle's foot; a closed ring reaches the whole way down.
+  const half = ((360 - arc) / 2) * (Math.PI / 180);
+  const bottom = arc === 360 ? 21 + RADIUS : 21 + RADIUS * Math.cos(half);
+  const top = -pad;
+  const height = bottom + pad - top;
+  const width = 42 + 2 * pad;
+  const box = size * (height / width);
 
   return (
-    <div className="relative shrink-0" style={{ width: `${size}rem`, height: `${size}rem` }}>
-      <svg
-        viewBox="0 0 42 42"
-        className="size-full"
-        style={{ transform: `rotate(${rotate}deg)` }}
-        aria-hidden="true"
-      >
-        {arc < 360 ? (
-          <circle
-            cx="21"
-            cy="21"
-            r={RADIUS}
-            fill="none"
-            stroke="var(--muted)"
-            strokeWidth={stroke}
-            strokeLinecap={round ? "round" : "butt"}
-            strokeDasharray={`${span * 100} ${100 - span * 100}`}
-          />
-        ) : null}
-        {ZONES.map((zone, index) => {
-          const length = (zone.seconds / TOTAL) * 100 * span;
-          const start = offset;
-          offset += length;
-          const drawn = Math.max(length - gap, round ? 0.01 : 0.3);
-          return (
+    <div className="relative shrink-0" style={{ width: `${size}rem`, height: `${box}rem` }}>
+      <svg viewBox={`${-pad} ${top} ${width} ${height}`} className="size-full" aria-hidden="true">
+        <g transform={`rotate(${rotate} 21 21)`}>
+          {arc < 360 ? (
             <circle
-              key={zone.name}
               cx="21"
               cy="21"
               r={RADIUS}
               fill="none"
-              stroke={zone.colour}
-              strokeWidth={active === index ? stroke * 1.3 : stroke}
+              stroke="var(--muted)"
+              strokeWidth={stroke}
               strokeLinecap={round ? "round" : "butt"}
-              opacity={active !== null && active !== index ? 0.2 : 1}
-              // Round caps grow past the dash by half the stroke each side, so
-              // the dash is trimmed and its start pushed on to keep the gap.
-              strokeDasharray={`${drawn} ${100 - drawn}`}
-              strokeDashoffset={-(start + gap / 2)}
-              className="transition-[opacity,stroke-width] duration-150"
-              onMouseEnter={() => setActive(index)}
-              onMouseLeave={() => setActive(null)}
+              strokeDasharray={`${span * 100} ${100 - span * 100}`}
             />
-          );
-        })}
+          ) : null}
+          {ZONES.map((zone, index) => {
+            const length = (zone.seconds / TOTAL) * 100 * span;
+            const start = offset;
+            offset += length;
+            const drawn = Math.max(length - gap, round ? 0.01 : 0.3);
+            return (
+              <circle
+                key={zone.name}
+                cx="21"
+                cy="21"
+                r={RADIUS}
+                fill="none"
+                stroke={zone.colour}
+                strokeWidth={active === index ? stroke * 1.3 : stroke}
+                strokeLinecap={round ? "round" : "butt"}
+                opacity={active !== null && active !== index ? 0.2 : 1}
+                // Round caps grow past the dash by half the stroke each side, so
+                // the dash is trimmed and its start pushed on to keep the gap.
+                strokeDasharray={`${drawn} ${100 - drawn}`}
+                strokeDashoffset={-(start + gap / 2)}
+                className="transition-[opacity,stroke-width] duration-150"
+                onMouseEnter={() => setActive(index)}
+                onMouseLeave={() => setActive(null)}
+              />
+            );
+          })}
+        </g>
       </svg>
-      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+      {/* Centred on the ring's own centre, which an open arc's frame no longer has in its middle. */}
+      <div
+        className="pointer-events-none absolute inset-x-0 flex -translate-y-1/2 flex-col items-center justify-center text-center"
+        style={{ top: `${((21 - top) / height) * 100}%` }}
+      >
         <span className={`font-semibold ${text} leading-tight tabular-nums`}>
           {duration(active === null ? TOTAL : (ZONES[active]?.seconds ?? 0))}
         </span>
