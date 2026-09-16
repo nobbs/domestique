@@ -221,7 +221,7 @@ export function RoutePanel({
          * lands inside a panel about a route that never named itself.
          */}
         <h2 className="visually-hidden">{route.title}</h2>
-        <div className="flex items-center gap-1 p-1.5">
+        <div className="flex items-center gap-1.5 p-2">
           <button
             type="button"
             aria-expanded={!collapsed}
@@ -262,7 +262,7 @@ export function RoutePanel({
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="More about this route"
-              className="ml-auto rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+              className="ml-auto grid size-7 place-items-center rounded-full bg-[var(--muted)] text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
             >
               <IconDots size={16} stroke={2} aria-hidden="true" />
             </DropdownMenuTrigger>
@@ -313,7 +313,7 @@ export function RoutePanel({
                 ? "Close the route and go back to the library"
                 : `Close the route and go back to ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
             }
-            className="rounded-lg p-1.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+            className="grid size-7 place-items-center rounded-full bg-[var(--muted)] text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
           >
             <IconX size={16} stroke={2} aria-hidden="true" />
           </button>
