@@ -219,7 +219,7 @@ function Pill({
 /** B · Pills: the aging card — each figure a tinted pill, its label and reading beneath. */
 export function PillsHero() {
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+    <div className="grid gap-4">
       <div className="grid content-start gap-4 rounded-2xl bg-[var(--panel)] p-5 shadow-[var(--shadow)]">
         <div className="flex items-center gap-3">
           <Mark size={9}>
@@ -232,7 +232,7 @@ export function PillsHero() {
             </p>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-6">
           <Pill
             tone="info"
             value={FIGURES.distance}
@@ -263,7 +263,7 @@ export function PillsHero() {
           />
         </div>
       </div>
-      <MapBox className="min-h-56" />
+      <MapBox className="h-72" />
     </div>
   );
 }
