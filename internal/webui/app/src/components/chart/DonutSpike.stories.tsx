@@ -26,6 +26,40 @@ function duration(seconds: number): string {
 
 const RADIUS = 50 / Math.PI;
 
+/** A point on the circle at `r` from the centre, `a` radians clockwise from twelve. */
+function at(r: number, a: number): string {
+  return `${(21 + r * Math.sin(a)).toFixed(3)} ${(21 - r * Math.cos(a)).toFixed(3)}`;
+}
+
+/**
+ * An annular sector from `a0` to `a1` with every corner rounded by `rc`.
+ *
+ * The rounding eats an angle of `rc / r` at each end on each edge, so the
+ * corner radius is clamped to what the inner edge can spare.
+ */
+function sector(rIn: number, rOut: number, a0: number, a1: number, rc: number): string {
+  const span = a1 - a0;
+  const r = Math.min(rc, (rOut - rIn) / 2, (span * rIn) / 2);
+  const dOut = r / rOut;
+  const dIn = r / rIn;
+  const big = (angle: number) => (angle > Math.PI ? 1 : 0);
+  if (r <= 0.001) {
+    return `M ${at(rOut, a0)} A ${rOut} ${rOut} 0 ${big(span)} 1 ${at(rOut, a1)} L ${at(rIn, a1)} A ${rIn} ${rIn} 0 ${big(span)} 0 ${at(rIn, a0)} Z`;
+  }
+  return [
+    `M ${at(rOut, a0 + dOut)}`,
+    `A ${rOut} ${rOut} 0 ${big(span - 2 * dOut)} 1 ${at(rOut, a1 - dOut)}`,
+    `A ${r} ${r} 0 0 1 ${at(rOut - r, a1)}`,
+    `L ${at(rIn + r, a1)}`,
+    `A ${r} ${r} 0 0 1 ${at(rIn, a1 - dIn)}`,
+    `A ${rIn} ${rIn} 0 ${big(span - 2 * dIn)} 0 ${at(rIn, a0 + dIn)}`,
+    `A ${r} ${r} 0 0 1 ${at(rIn + r, a0)}`,
+    `L ${at(rOut - r, a0)}`,
+    `A ${r} ${r} 0 0 1 ${at(rOut, a0 + dOut)}`,
+    "Z",
+  ].join(" ");
+}
+
 interface RingProps {
   /** The box's side, in rem. */
   size: number;
@@ -33,38 +67,40 @@ interface RingProps {
   stroke: number;
   /** Percent of the ring left clear between segments. */
   gap: number;
-  round: boolean;
+  /** Corner radius in viewBox units; 0 is square, half the stroke is a full round. */
+  corner: number;
   /** Degrees of the circle the ring covers; 360 is a closed ring. */
   arc?: number;
   figure: "lg" | "2xl" | "3xl";
 }
 
-function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
+function Ring({ size, stroke, gap, corner, arc = 360, figure }: RingProps) {
   const [active, setActive] = useState<number | null>(null);
   const span = arc / 360;
-  // With round ends a dash is drawn `stroke` shorter than its slot: half a
-  // stroke of cap grows back at each end. The slot itself is never smaller
-  // than one dot plus the gap, and the long zones give up the difference.
-  const reserve = round ? stroke + gap : gap;
+  const text = figure === "lg" ? "text-lg" : figure === "2xl" ? "text-2xl" : "text-3xl";
+  // A slot holds at least its two rounded corners and the gap; the long
+  // zones give up the difference.
+  const least = gap + ((2 * corner) / (2 * Math.PI * (RADIUS - stroke / 2))) * 100 + 0.2;
   const raw = ZONES.map((zone) => (zone.seconds / TOTAL) * 100 * span);
-  const floored = raw.map((length) => Math.max(length, round ? reserve + 0.01 : length));
+  const floored = raw.map((length) => Math.max(length, least));
   const scale = (100 * span) / floored.reduce((sum, length) => sum + length, 0);
   const slots = floored.map((length) => length * scale);
-  let offset = 0;
-  const text = figure === "lg" ? "text-lg" : figure === "2xl" ? "text-2xl" : "text-3xl";
-  // The lifted stroke is the widest thing drawn, and a round cap reaches half
-  // of it past the arc: the frame keeps that much clear on every side.
-  const pad = (stroke * 1.3) / 2 + 0.5;
-  // An open arc starts at the bottom left, so the gap sits under the figure.
-  const rotate = arc === 360 ? -90 : 90 + (360 - arc) / 2;
-  // The lowest point the arc reaches, so the frame stops there instead of at
-  // the circle's foot; a closed ring reaches the whole way down.
+  // The lifted segment is the widest thing drawn; the frame keeps that clear.
+  const lift = stroke * 0.3;
+  const pad = lift + 0.5;
+  // An open arc starts at the bottom left, so the opening sits under the figure.
+  const first = arc === 360 ? 0 : Math.PI + ((360 - arc) / 2) * (Math.PI / 180);
   const half = ((360 - arc) / 2) * (Math.PI / 180);
-  const bottom = arc === 360 ? 21 + RADIUS : 21 + RADIUS * Math.cos(half);
+  const bottom =
+    arc === 360 ? 21 + RADIUS + stroke / 2 : 21 + (RADIUS + stroke / 2) * Math.cos(half);
   const top = -pad;
   const height = bottom + pad - top;
   const width = 42 + 2 * pad;
   const box = size * (height / width);
+  const rIn = RADIUS - stroke / 2;
+  const rOut = RADIUS + stroke / 2;
+  const toAngle = (percent: number) => first + (percent / 100) * 2 * Math.PI;
+  let offset = 0;
 
   return (
     <div
@@ -72,46 +108,31 @@ function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
       style={{ width: `${size}rem`, height: `${box}rem`, marginBottom: arc === 360 ? 0 : "3.5rem" }}
     >
       <svg viewBox={`${-pad} ${top} ${width} ${height}`} className="size-full" aria-hidden="true">
-        <g transform={`rotate(${rotate} 21 21)`}>
-          {arc < 360 ? (
-            <circle
-              cx="21"
-              cy="21"
-              r={RADIUS}
-              fill="none"
-              stroke="var(--muted)"
-              strokeWidth={stroke}
-              strokeLinecap={round ? "round" : "butt"}
-              // Trimmed and shifted like the segments, so its caps end where theirs do.
-              strokeDasharray={`${span * 100 - reserve} ${100 - span * 100 + reserve}`}
-              strokeDashoffset={-(reserve / 2)}
+        {arc < 360 ? (
+          <path
+            d={sector(rIn, rOut, toAngle(gap / 2), toAngle(span * 100 - gap / 2), corner)}
+            fill="var(--muted)"
+          />
+        ) : null}
+        {ZONES.map((zone, index) => {
+          const length = slots[index] ?? 0;
+          const start = offset;
+          offset += length;
+          const a0 = toAngle(start + gap / 2);
+          const a1 = toAngle(start + length - gap / 2);
+          const on = active === index;
+          return (
+            <path
+              key={zone.name}
+              d={sector(on ? rIn - lift : rIn, on ? rOut + lift : rOut, a0, a1, corner)}
+              fill={zone.colour}
+              opacity={active !== null && !on ? 0.2 : 1}
+              className="transition-opacity duration-150"
+              onMouseEnter={() => setActive(index)}
+              onMouseLeave={() => setActive(null)}
             />
-          ) : null}
-          {ZONES.map((zone, index) => {
-            const length = slots[index] ?? 0;
-            const start = offset;
-            offset += length;
-            const drawn = Math.max(length - reserve, 0.01);
-            return (
-              <circle
-                key={zone.name}
-                cx="21"
-                cy="21"
-                r={RADIUS}
-                fill="none"
-                stroke={zone.colour}
-                strokeWidth={active === index ? stroke * 1.3 : stroke}
-                strokeLinecap={round ? "round" : "butt"}
-                opacity={active !== null && active !== index ? 0.2 : 1}
-                strokeDasharray={`${drawn} ${100 - drawn}`}
-                strokeDashoffset={-(start + reserve / 2)}
-                className="transition-[opacity,stroke-width] duration-150"
-                onMouseEnter={() => setActive(index)}
-                onMouseLeave={() => setActive(null)}
-              />
-            );
-          })}
-        </g>
+          );
+        })}
       </svg>
       {/* Inside a closed ring; under an open one, whose middle is not its centre. */}
       <div
@@ -144,27 +165,27 @@ const VARIANTS: Array<{ name: string; note: string; props: RingProps }> = [
   {
     name: "Today",
     note: "As shipped: 10rem, a 5-wide stroke, square ends.",
-    props: { size: 10, stroke: 5, gap: 0.6, round: false, figure: "lg" },
+    props: { size: 10, stroke: 5, gap: 0.6, corner: 0, figure: "lg" },
   },
   {
     name: "A · Room",
     note: "13rem and a thinner ring; the figure steps up two sizes.",
-    props: { size: 13, stroke: 3.5, gap: 0.8, round: false, figure: "2xl" },
+    props: { size: 13, stroke: 3.5, gap: 0.8, corner: 0, figure: "2xl" },
   },
   {
     name: "B · Rounded",
-    note: "Round ends on every segment, with the gap widened so they do not touch.",
-    props: { size: 13, stroke: 4, gap: 1, round: true, figure: "2xl" },
+    note: "Softened corners on every segment, a quarter of the stroke.",
+    props: { size: 13, stroke: 4, gap: 1, corner: 1, figure: "2xl" },
   },
   {
     name: "C · Wide",
-    note: "A fat rounded ring; the smallest zones become dots.",
-    props: { size: 13, stroke: 7, gap: 1.2, round: true, figure: "2xl" },
+    note: "A fat ring with softened corners; the smallest zones become pills.",
+    props: { size: 13, stroke: 7, gap: 1.2, corner: 1.6, figure: "2xl" },
   },
   {
     name: "D · Gauge",
     note: "Three quarters of a circle, open at the foot, the way the sample draws its score.",
-    props: { size: 11, stroke: 5, gap: 1, round: true, arc: 270, figure: "2xl" },
+    props: { size: 11, stroke: 5, gap: 1, corner: 1.2, arc: 270, figure: "2xl" },
   },
 ];
 
