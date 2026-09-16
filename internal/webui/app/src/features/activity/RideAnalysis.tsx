@@ -32,7 +32,7 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
       aria-label="Analysis"
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-medium text-sm">Analysis</h2>
+        <h2 className="font-semibold text-base">Analysis</h2>
         {canAsk ? (
           <Button
             variant="outline"

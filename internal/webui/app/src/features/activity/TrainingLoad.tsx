@@ -313,7 +313,7 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
       ) : null}
       {sections.length > 0 ? (
         <section className={BOX} aria-label={sections[0]?.title}>
-          <h2 className="font-medium text-sm">{sections[0]?.title}</h2>
+          <h2 className="font-semibold text-base">{sections[0]?.title}</h2>
           <GroupList groups={sections} />
         </section>
       ) : null}

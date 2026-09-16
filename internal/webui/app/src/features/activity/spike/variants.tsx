@@ -140,7 +140,7 @@ function Panel({
     >
       {title ? (
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-medium text-sm">{title}</h2>
+          <h2 className="font-semibold text-base">{title}</h2>
           {action}
         </div>
       ) : null}

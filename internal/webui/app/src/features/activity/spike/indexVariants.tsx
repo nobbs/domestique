@@ -127,7 +127,7 @@ export function LedgerIndex() {
       {months.map((month) => (
         <section key={month.key} className="flex flex-col gap-2">
           <div className="flex items-end justify-between gap-4 px-2">
-            <h2 className="font-medium">{month.key}</h2>
+            <h2 className="font-semibold text-base">{month.key}</h2>
             <Totals group={month} />
           </div>
           <div className="overflow-x-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)]">
