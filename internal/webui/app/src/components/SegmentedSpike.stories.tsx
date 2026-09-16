@@ -62,12 +62,13 @@ function Segmented<K extends string>({
 
   const ease = `${duration}ms cubic-bezier(0.2, 0, 0, 1)`;
   const band = "color-mix(in oklab, var(--ink-2) 28%, var(--panel))";
-  // The unselected segments to the thumb's left share one pill, and those to
-  // its right another; each shrinks to nothing when the thumb is at that end.
+  // Both pills are the full band, revealed by a clip that moves with the
+  // thumb: a clip keeps its rounded ends at any width, where a shrinking box
+  // would squash them, and it costs no layout.
   const first = 3;
-  const leftWidth = thumb ? Math.max(thumb.left - GAP - first, 0) : 0;
-  const rightStart = thumb ? thumb.left + thumb.width + GAP : 0;
-  const rightWidth = thumb ? Math.max(thumb.end - rightStart, 0) : 0;
+  const span = thumb ? thumb.end - first : 0;
+  const leftClip = thumb ? Math.max(span - (thumb.left - GAP - first), 0) : span;
+  const rightClip = thumb ? Math.max(thumb.left + thumb.width + GAP - first, 0) : span;
 
   return (
     <div
@@ -81,20 +82,21 @@ function Segmented<K extends string>({
             className="absolute top-[3px] bottom-[3px] rounded-[9px]"
             style={{
               left: first,
-              width: leftWidth,
+              width: span,
               background: band,
-              transition: `width ${ease}`,
+              clipPath: `inset(0 ${leftClip}px 0 0 round 9px)`,
+              transition: `clip-path ${ease}`,
             }}
           />
           <div
             aria-hidden="true"
             className="absolute top-[3px] bottom-[3px] rounded-[9px]"
             style={{
-              left: 0,
-              width: rightWidth,
-              transform: `translateX(${rightStart}px)`,
+              left: first,
+              width: span,
               background: band,
-              transition: `transform ${ease}, width ${ease}`,
+              clipPath: `inset(0 0 0 ${rightClip}px round 9px)`,
+              transition: `clip-path ${ease}`,
             }}
           />
           {/* The thumb, under the labels and over the pills. */}
@@ -129,7 +131,14 @@ function Segmented<K extends string>({
             className="relative z-10 flex h-7 items-center gap-1.5 rounded-[9px] px-3 text-sm transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
             style={{ color: on ? "var(--ink)" : "var(--ink-2)", fontWeight: on ? 600 : 400 }}
           >
-            {item.label}
+            {/* The label over an invisible bold copy of itself, so the button
+                is as wide bold as regular and selecting it moves nothing. */}
+            <span className="grid">
+              <span className="col-start-1 row-start-1">{item.label}</span>
+              <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
+                {item.label}
+              </span>
+            </span>
             {item.count !== undefined ? (
               <span
                 className="rounded-full px-1.5 py-px text-[11px] tabular-nums transition-colors duration-200"
