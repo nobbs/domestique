@@ -110,7 +110,7 @@ export function DonutChart<K extends string | number>({
   let offset = 0;
 
   return (
-    <div className="flex w-44 shrink-0 flex-col items-center">
+    <div className="flex w-56 shrink-0 flex-col items-center">
       <svg
         viewBox={`${-PAD} ${TOP} ${WIDTH} ${HEIGHT}`}
         className="w-full"
