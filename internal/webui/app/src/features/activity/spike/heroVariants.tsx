@@ -196,15 +196,12 @@ function Pill({
 }) {
   return (
     <div className="grid min-w-0 flex-1 gap-1.5">
+      <div className="text-[var(--ink-2)] text-sm">{label}</div>
       <div
-        className="rounded-full px-4 py-2 font-semibold text-lg tabular-nums"
+        className="rounded-lg px-3 py-2 font-semibold text-xl tabular-nums"
         style={{ color: ink(tone), background: tint(tone, 14) }}
       >
         {value}
-      </div>
-      <div className="flex items-center gap-1.5 text-[var(--ink-2)] text-xs">
-        <span className="size-1.5 rounded-full" style={{ background: ink(tone) }} />
-        {label}
       </div>
       <div className="text-sm">{note}</div>
       {verdict ? (
