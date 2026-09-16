@@ -7,14 +7,7 @@
  */
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import {
-  IconActivity,
-  IconBolt,
-  IconGauge,
-  IconHeart,
-  IconRotate,
-  IconTrendingUp,
-} from "@tabler/icons-react";
+import { IconActivity, IconBolt, IconGauge, IconHeart, IconRotate } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import { StoryProviders } from "../../../storybook/fixtures";
 
@@ -200,38 +193,53 @@ function Tile({
   icon,
   label,
   value,
+  unit,
   scale,
+  max,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
-  scale: string;
+  unit?: string;
+  scale?: string;
+  max?: string;
 }) {
   return (
     <div className="grid gap-0.5 rounded-xl border border-[var(--rule)] p-3">
-      <span className="text-[var(--ink-2)]">{icon}</span>
-      <span className="text-[var(--ink-2)] text-xs">{label}</span>
-      <span className="font-semibold text-xl leading-tight tabular-nums">{value}</span>
-      <span className="text-[var(--ink-2)] text-xs">{scale}</span>
+      <span className="flex items-center gap-1.5 text-[var(--ink-2)] text-xs">
+        {icon}
+        {label}
+      </span>
+      <span className="font-semibold text-xl leading-tight tabular-nums">
+        {value}
+        {unit ? <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{unit}</span> : null}
+      </span>
+      {max ? (
+        <span className="text-[var(--ink-2)] text-xs tabular-nums">
+          average · max <span className="text-[var(--ink)]">{max}</span>
+        </span>
+      ) : scale ? (
+        <span className="text-[var(--ink-2)] text-xs">{scale}</span>
+      ) : null}
     </div>
   );
 }
 
-/** C · Tiles: "who owes it" — outlined tiles with a quiet mark, three across. */
+/** C · Tiles: "who owes it" — one outlined tile per sensor, its max folded in beneath the average. */
 function Tiles() {
-  const marks = [IconGauge, IconTrendingUp, IconHeart, IconTrendingUp, IconRotate, IconTrendingUp];
   return (
     <Card title="Sensors">
       <div className="grid grid-cols-3 gap-2">
-        {SENSORS.map((row, index) => {
-          const Mark = marks[index] ?? IconActivity;
+        {PAIRS.map((pair) => {
+          const Mark = pair.icon;
           return (
             <Tile
-              key={row.label}
-              icon={<Mark size={16} stroke={1.6} aria-hidden="true" />}
-              label={row.label}
-              value={row.value}
-              scale={row.scale}
+              key={pair.label}
+              icon={<Mark size={14} stroke={1.8} aria-hidden="true" />}
+              label={pair.label}
+              value={String(pair.average)}
+              unit={pair.unit}
+              max={String(pair.max)}
             />
           );
         })}
@@ -241,7 +249,7 @@ function Tiles() {
         {POWER.map((row) => (
           <Tile
             key={row.label}
-            icon={<IconBolt size={16} stroke={1.6} aria-hidden="true" />}
+            icon={<IconBolt size={14} stroke={1.8} aria-hidden="true" />}
             label={row.label}
             value={row.value}
             scale={row.scale}
@@ -253,7 +261,7 @@ function Tiles() {
         {LOAD.map((row) => (
           <Tile
             key={row.label}
-            icon={<IconActivity size={16} stroke={1.6} aria-hidden="true" />}
+            icon={<IconActivity size={14} stroke={1.8} aria-hidden="true" />}
             label={row.label}
             value={row.value}
             scale={row.scale}
@@ -290,7 +298,11 @@ const VARIANTS = [
     note: "The average drawn as a bar against the max; power and load stay rows.",
     Card: Bars,
   },
-  { name: "C · Tiles", note: "Outlined tiles with a quiet mark, three across.", Card: Tiles },
+  {
+    name: "C · Tiles",
+    note: "One tile per sensor, the max folded in under the average.",
+    Card: Tiles,
+  },
 ] as const;
 
 export const SideBySide: Story = {
