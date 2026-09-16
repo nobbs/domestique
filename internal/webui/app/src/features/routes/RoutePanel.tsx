@@ -22,9 +22,9 @@
  */
 
 import {
-  IconChevronsRight,
+  IconChevronUp,
   IconCopy,
-  IconDots,
+  IconDotsVertical,
   IconPencil,
   IconTrendingDown,
   IconTrendingUp,
@@ -221,52 +221,49 @@ export function RoutePanel({
          * lands inside a panel about a route that never named itself.
          */}
         <h2 className="visually-hidden">{route.title}</h2>
-        <div className="flex items-center gap-1.5 p-2">
-          <button
-            type="button"
-            aria-expanded={!collapsed}
-            onClick={() => {
-              const next = !collapsed;
-              onCollapsedChange(next);
-              // Collapsing takes the class labels away with it, so a class
-              // picked before is left with no visible cause. Clears only the
-              // highlight, not a zoom the reader dragged in separately.
-              if (next) {
-                onHighlightClear();
-              }
-            }}
-            className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 text-left hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
-          >
-            <IconChevronsRight
-              size={16}
-              stroke={2}
-              aria-hidden="true"
-              className={collapsed ? "transition-transform" : "rotate-90 transition-transform"}
-            />
-            <span className="min-w-0 max-w-[15rem] truncate font-semibold">{route.title}</span>
-            {/*
-             * The two figures a ride is decided on, on the line that is visible
-             * far more often than the card is. A pill that only named the route
-             * would make every reading of them cost a press.
-             *
-             * Only on the pill: open, they are the first two rows of the list
-             * immediately below, and the width they cost is the width the title
-             * then has to truncate into.
-             */}
-            {collapsed ? (
-              <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
-                {formatDistance(route.distanceMetres)} · {formatAscent(route.ascentMetres)}
-              </span>
-            ) : null}
-          </button>
-          {/* One pill for the two things that are not the route: the menu and the way out. */}
+        <div className="flex items-center gap-1.5 p-2 pl-4">
+          <span className="min-w-0 max-w-[15rem] truncate font-semibold">{route.title}</span>
+          {/*
+           * The two figures a ride is decided on, on the line that is visible
+           * far more often than the card is. Only on the pill: open, they are
+           * the first two rows immediately below.
+           */}
+          {collapsed ? (
+            <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
+              {formatDistance(route.distanceMetres)} · {formatAscent(route.ascentMetres)}
+            </span>
+          ) : null}
+          {/* One pill for everything that is not the route: fold, menu, the way out. */}
           <div className="ml-auto flex shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+            <button
+              type="button"
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? "Expand the route card" : "Collapse the route card"}
+              onClick={() => {
+                const next = !collapsed;
+                onCollapsedChange(next);
+                // Collapsing takes the class labels away with it, so a class
+                // picked before is left with no visible cause. Clears only the
+                // highlight, not a zoom the reader dragged in separately.
+                if (next) {
+                  onHighlightClear();
+                }
+              }}
+              className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+            >
+              <IconChevronUp
+                size={16}
+                stroke={2}
+                aria-hidden="true"
+                className={collapsed ? "rotate-180 transition-transform" : "transition-transform"}
+              />
+            </button>
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label="More about this route"
-                className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+                className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] border-[var(--rule)] border-l"
               >
-                <IconDots size={16} stroke={2} aria-hidden="true" />
+                <IconDotsVertical size={16} stroke={2} aria-hidden="true" />
               </DropdownMenuTrigger>
               {/*
                * `w-auto` because the menu's own width follows its anchor, and the
