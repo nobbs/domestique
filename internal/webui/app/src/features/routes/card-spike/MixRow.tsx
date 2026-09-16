@@ -138,7 +138,7 @@ export function MixRow({
                   // split by a hairline rather than as two stacked pills. The
                   // bar sits on the far side of its own tags, so the edge to
                   // round is the one the tags are not on.
-                  `overflow-hidden ${above ? "rounded-t-md" : "rounded-b-md"}`
+                  `overflow-hidden ${above ? "rounded-t-sm" : "rounded-b-sm"}`
             }`}
             style={{ height: BAR_HEIGHT, ...(above ? { bottom: 0 } : { top: 0 }) }}
             aria-hidden="true"

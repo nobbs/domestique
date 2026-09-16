@@ -157,7 +157,7 @@ export function MixRow({
       <div
         role="img"
         aria-label={`${classesLabel}: ${absence}`}
-        className={`bg-[var(--ink-2)] opacity-15 ${above ? "rounded-t-md" : "rounded-b-md"}`}
+        className={`bg-[var(--ink-2)] opacity-15 ${above ? "rounded-t-sm" : "rounded-b-sm"}`}
         style={{ height: BAR_HEIGHT }}
       />
     );
@@ -168,7 +168,7 @@ export function MixRow({
       <div
         // Rounded on the outside only, so the pair reads as one bar split by a
         // hairline rather than as two stacked pills.
-        className={`absolute inset-x-0 flex overflow-hidden ${above ? "rounded-t-md" : "rounded-b-md"}`}
+        className={`absolute inset-x-0 flex overflow-hidden ${above ? "rounded-t-sm" : "rounded-b-sm"}`}
         style={{ height: BAR_HEIGHT, ...(above ? { bottom: 0 } : { top: 0 }) }}
         aria-hidden="true"
       >
