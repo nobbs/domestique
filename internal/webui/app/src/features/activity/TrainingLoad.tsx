@@ -6,46 +6,89 @@
  * different questions and neither converts to the other — and each is named,
  * so a number is never a bare figure the reader has to guess the meaning of.
  * Anything the ride's sensors or the rider's profile did not allow is left out
- * rather than shown as a zero. The figures group under small headings — the
- * box's own Sensors, then Power, Load, Physiology — so a reader can skim past what a ride's
- * shape does not carry rather than meet an eighteen-tile grid every time.
+ * rather than shown as a zero. The figures are tiles in rows — the sensors,
+ * then power, load, physiology — each tinted in the colour its series is
+ * drawn in, so the colour does the grouping and no heading has to.
  */
 
-import type { ReactNode } from "react";
+import {
+  IconActivity,
+  IconBolt,
+  IconFlame,
+  IconGauge,
+  IconHeart,
+  IconRotate,
+} from "@tabler/icons-react";
+import type { ComponentType } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
 import { formatCoverage } from "../../lib/format";
 import { HeartRateZones } from "./HeartRateZones";
 
-/** One figure: what it is called, and the scale it is on. */
+type Mark = ComponentType<{ size?: number; stroke?: number; "aria-hidden"?: "true" }>;
+
+/** One figure: what it is called, the scale it is on, and the colour its series wears. */
 export interface Scale {
   label: string;
+  /** What the figure measures, under it; the unit alone where `max` is folded in. */
   scale: string;
   value: number | undefined;
   decimals?: number;
+  /** The ride's peak of the same series, folded in beneath the average. */
+  max?: number | undefined;
   /** The series' own share of the ride's moving time it held a reading for. Shown only below 100%: a full series has nothing to add. */
   coverage?: number | undefined;
+  colour: string;
+  icon: Mark;
 }
 
-/** One row of the ledger: the name on the left, the figure and its scale on the right. */
-export function Figure({ label, scale, value, decimals = 0, coverage }: Scale) {
+/** One tile: the mark and name, the figure, then its scale or its peak. */
+export function Figure({
+  label,
+  scale,
+  value,
+  decimals = 0,
+  max,
+  coverage,
+  colour,
+  icon: Icon,
+}: Scale) {
   if (value === undefined) {
     return null;
   }
   const coverageNote = formatCoverage(coverage);
 
   return (
-    <div className="flex items-baseline justify-between gap-4 border-[var(--rule)] border-b py-2 last:border-b-0">
-      <span className="text-[var(--ink-2)] text-sm">{label}</span>
-      <span className="text-right">
-        <span className="font-semibold text-base tabular-nums">{value.toFixed(decimals)}</span>{" "}
-        <span className="text-[var(--ink-2)] text-xs">{scale}</span>
-        {coverageNote ? (
-          <span className="text-[var(--ink-2)] text-xs opacity-70">
-            {" · "}
-            <span>{coverageNote}</span>
-          </span>
+    <div
+      className="grid content-start gap-0.5 rounded-xl border p-3"
+      style={{
+        borderColor: `color-mix(in oklab, ${colour} 25%, transparent)`,
+        background: `color-mix(in oklab, ${colour} 7%, transparent)`,
+      }}
+    >
+      <span className="flex items-center gap-1.5 text-[var(--ink-2)] text-xs">
+        <span style={{ color: colour }}>
+          <Icon size={14} stroke={1.8} aria-hidden="true" />
+        </span>
+        {label}
+      </span>
+      <span className="font-semibold text-xl leading-tight tabular-nums" style={{ color: colour }}>
+        {value.toFixed(decimals)}
+        {max !== undefined ? (
+          <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{scale}</span>
         ) : null}
       </span>
+      {max !== undefined ? (
+        <span className="whitespace-nowrap text-[var(--ink-2)] text-xs tabular-nums">
+          max <span className="text-[var(--ink)]">{max.toFixed(decimals)}</span>
+        </span>
+      ) : (
+        <span className="text-[var(--ink-2)] text-xs">{scale}</span>
+      )}
+      {coverageNote ? (
+        <span className="text-[var(--ink-2)] text-xs opacity-70">
+          <span>{coverageNote}</span>
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -83,44 +126,85 @@ function averageSpeedKmh(ride: Activity, metrics: ActivityMetrics | undefined): 
   return (ride.distanceMetres / ride.movingSeconds) * 3.6;
 }
 
+const SPEED = "var(--series-speed)";
+const HEART = "var(--series-heart-rate)";
+const CADENCE = "var(--series-cadence)";
+const POWER = "var(--series-power)";
+const LOAD = "var(--alert)";
+const PHYSIOLOGY = "var(--hold)";
+
+/** A sensor's average with its peak folded in, or the peak alone where nothing was averaged. */
+function paired(
+  label: string,
+  unit: string,
+  average: number | undefined,
+  max: number | undefined,
+  colour: string,
+  icon: Mark,
+  extra: Pick<Scale, "decimals" | "coverage"> = {},
+): Scale[] {
+  if (average !== undefined) {
+    return [{ label, scale: unit, value: average, max, colour, icon, ...extra }];
+  }
+  if (max !== undefined) {
+    return [
+      { label: `Max ${label.toLowerCase()}`, scale: unit, value: max, colour, icon, ...extra },
+    ];
+  }
+
+  return [];
+}
+
 interface Groups {
   sensors: Scale[];
-  power: Scale | undefined;
-  devicePower: Scale[];
-  normalizedPower: Scale | undefined;
+  power: Scale[];
   load: Scale[];
   physiology: Scale[];
 }
 
 function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Groups {
   const sensors: Scale[] = [
-    { label: "Speed", scale: "km/h average", value: averageSpeedKmh(ride, metrics), decimals: 1 },
-    { label: "Max speed", scale: "km/h", value: metrics?.maxSpeedKmh, decimals: 1 },
-    {
-      label: "Heart rate",
-      scale: "bpm average",
-      value: metrics?.averageHeartRateBpm,
-      coverage: metrics?.heartRateCoverage,
-    },
-    {
-      label: "Max heart rate",
-      scale: "bpm",
-      value: metrics?.maxHeartRateBpm,
-      coverage: metrics?.heartRateCoverage,
-    },
-    { label: "Cadence", scale: "rpm average", value: metrics?.averageCadenceRpm },
-    { label: "Max cadence", scale: "rpm", value: metrics?.maxCadenceRpm },
-  ].filter((figure) => figure.value !== undefined);
+    ...paired(
+      "Speed",
+      "km/h",
+      averageSpeedKmh(ride, metrics),
+      metrics?.maxSpeedKmh,
+      SPEED,
+      IconGauge,
+      {
+        decimals: 1,
+      },
+    ),
+    ...paired(
+      "Heart rate",
+      "bpm",
+      metrics?.averageHeartRateBpm,
+      metrics?.maxHeartRateBpm,
+      HEART,
+      IconHeart,
+      { coverage: metrics?.heartRateCoverage },
+    ),
+    ...paired(
+      "Cadence",
+      "rpm",
+      metrics?.averageCadenceRpm,
+      metrics?.maxCadenceRpm,
+      CADENCE,
+      IconRotate,
+    ),
+  ];
 
   // Never beside a measured average: the service serves one or the other, and
   // the label carries the estimate's provenance so it cannot read as a reading.
-  const power: Scale | undefined =
+  const average: Scale | undefined =
     metrics?.averagePowerWatts !== undefined
       ? {
           label: "Power",
           scale: "watts average",
           value: metrics.averagePowerWatts,
           coverage: metrics.powerCoverage,
+          colour: POWER,
+          icon: IconBolt,
         }
       : metrics?.estimatedPowerWatts !== undefined
         ? {
@@ -130,31 +214,40 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
                 ? "watts, from the track"
                 : `watts while pedalling, ${Math.round(metrics.estimatedPedallingShare * 100)}% of its estimated samples`,
             value: metrics.estimatedPowerWatts,
+            colour: POWER,
+            icon: IconBolt,
           }
         : undefined;
 
-  const devicePower: Scale[] = [
+  const power: Scale[] = [
+    ...(average ? [average] : []),
     // No coverage mark: this is the device's own session maximum, never a
     // figure our own power series produces, so our series' coverage is not
     // a fact about it -- unlike the average beside it, which the series
     // itself yields whenever the session declares none.
-    { label: "Max power", scale: "watts", value: metrics?.maxPowerWatts },
+    {
+      label: "Max power",
+      scale: "watts",
+      value: metrics?.maxPowerWatts,
+      colour: POWER,
+      icon: IconBolt,
+    },
+    {
+      label: "Normalized power",
+      scale: "watts",
+      value: metrics?.normalizedPowerWatts,
+      coverage: metrics?.powerCoverage,
+      colour: POWER,
+      icon: IconBolt,
+    },
     {
       label: "Threshold power",
       scale: "watts set on the device",
       value: metrics?.thresholdPowerWatts,
+      colour: POWER,
+      icon: IconBolt,
     },
   ].filter((figure) => figure.value !== undefined);
-
-  const normalizedPower: Scale | undefined =
-    metrics?.normalizedPowerWatts !== undefined
-      ? {
-          label: "Normalized power",
-          scale: "watts",
-          value: metrics.normalizedPowerWatts,
-          coverage: metrics.powerCoverage,
-        }
-      : undefined;
 
   const load: Scale[] = [
     {
@@ -163,19 +256,32 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
       value: metrics?.intensityFactor,
       decimals: 2,
       coverage: metrics?.powerCoverage,
+      colour: LOAD,
+      icon: IconFlame,
     },
-    { label: "TSS", scale: "power", value: metrics?.powerTss, coverage: metrics?.powerCoverage },
+    {
+      label: "TSS",
+      scale: "power",
+      value: metrics?.powerTss,
+      coverage: metrics?.powerCoverage,
+      colour: LOAD,
+      icon: IconFlame,
+    },
     {
       label: "hrTSS",
       scale: "heart rate",
       value: metrics?.heartRateTss,
       coverage: metrics?.heartRateCoverage,
+      colour: LOAD,
+      icon: IconFlame,
     },
     {
       label: "TRIMP",
       scale: "Banister",
       value: metrics?.trimp,
       coverage: metrics?.heartRateCoverage,
+      colour: LOAD,
+      icon: IconFlame,
     },
   ].filter((figure) => figure.value !== undefined);
 
@@ -201,6 +307,8 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
       value: metrics?.decouplingPercent,
       decimals: 1,
       coverage: physiologyCoverage,
+      colour: PHYSIOLOGY,
+      icon: IconActivity,
     },
     {
       label: "Heat drift",
@@ -210,79 +318,45 @@ function buildGroups(ride: Activity, metrics: ActivityMetrics | undefined): Grou
           : `bpm in the endurance band at ${Math.round(metrics.heatDrift.temperatureCelsius)} °C`,
       value: metrics?.heatDrift?.heartRateBpm,
       coverage: physiologyCoverage,
+      colour: PHYSIOLOGY,
+      icon: IconActivity,
     },
   ].filter((figure) => figure.value !== undefined);
 
-  return {
-    sensors,
-    power,
-    devicePower,
-    normalizedPower,
-    load,
-    physiology,
-  };
-}
-
-const GRID = "flex flex-col";
-
-function figureGrid(figures: Scale[]): ReactNode {
-  return (
-    <div className={GRID}>
-      {figures.map((figure) => (
-        <Figure key={figure.label} {...figure} />
-      ))}
-    </div>
-  );
+  return { sensors, power, load, physiology };
 }
 
 interface Group {
   title: string;
-  content: ReactNode;
+  figures: Scale[];
 }
 
+/** The rows, in order, leaving out any the ride has nothing for. */
 function groupedSections(groups: Groups): Group[] {
-  const powerContent: ReactNode[] = [];
-  if (groups.power) {
-    powerContent.push(<Figure key={groups.power.label} {...groups.power} />);
-  }
-  for (const figure of groups.devicePower) {
-    powerContent.push(<Figure key={figure.label} {...figure} />);
-  }
-  if (groups.normalizedPower) {
-    powerContent.push(<Figure key="normalized-power" {...groups.normalizedPower} />);
-  }
-
-  const sections: Group[] = [];
-  if (groups.sensors.length > 0) {
-    sections.push({ title: "Sensors", content: figureGrid(groups.sensors) });
-  }
-  if (powerContent.length > 0) {
-    sections.push({ title: "Power", content: <div className={GRID}>{powerContent}</div> });
-  }
-  if (groups.load.length > 0) {
-    sections.push({ title: "Load", content: figureGrid(groups.load) });
-  }
-  if (groups.physiology.length > 0) {
-    sections.push({ title: "Physiology", content: figureGrid(groups.physiology) });
-  }
-
-  return sections;
+  return [
+    { title: "Sensors", figures: groups.sensors },
+    { title: "Power", figures: groups.power },
+    { title: "Load", figures: groups.load },
+    { title: "Physiology", figures: groups.physiology },
+  ].filter((group) => group.figures.length > 0);
 }
 
 const BOX = "flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]";
 
-/** The box is titled by its first group, so that group needs no heading of its own. */
+/** One row of tiles per group; three across where there are three, two otherwise. */
 function GroupList({ groups }: { groups: Group[] }) {
   return (
-    <div className="flex flex-col gap-4">
-      {groups.map((group, index) => (
-        <div key={group.title} className="flex flex-col gap-1">
-          {index === 0 ? null : (
-            <h3 className="pt-1 font-semibold text-[10px] text-[var(--ink-2)] uppercase tracking-[0.08em]">
-              {group.title}
-            </h3>
-          )}
-          {group.content}
+    <div className="flex flex-col gap-2">
+      {groups.map((group) => (
+        <div
+          key={group.title}
+          className={
+            group.figures.length === 3 ? "grid grid-cols-3 gap-2" : "grid grid-cols-2 gap-2"
+          }
+        >
+          {group.figures.map((figure) => (
+            <Figure key={figure.label} {...figure} />
+          ))}
         </div>
       ))}
     </div>
