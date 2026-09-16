@@ -11,16 +11,16 @@
 
 :root {
   --font-sans: "Karla Variable", Karla, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --ground: #e4e6e9;
-  --base: #f3f5f6;
-  --panel: #fcfdff;
-  --rule: #d7d9dc;
-  --ink: #1c2126;
-  --ink-2: #60656b;
+  --ground: #e6e4df;
+  --base: #f4f3f0;
+  --panel: #ffffff;
+  --rule: #e7e5e1;
+  --ink: #1a1a1a;
+  --ink-2: #6e6d6a;
   --accent: #236fc7;
-  --alert: #b63132;
-  --good: #317a45;
-  --hold: #8f6100;
+  --alert: #c0392b;
+  --good: #2f8a4a;
+  --hold: #9a6700;
   --letterbox: #000;
   --grade-0: #8e979f;
   --grade-1: #22a94e;
@@ -63,38 +63,38 @@
   --surface-gravel: #d4a21e;
   --surface-ground: #b23a26;
   --surface-unsurveyed: #bbbec1;
-  --shadow: 0 1px 1px rgb(20 25 30 / 5%), 0 4px 12px rgb(20 25 30 / 6%);
-  --background: #f3f5f6;
-  --foreground: #1c2126;
-  --card: #fcfdff;
-  --card-foreground: #1c2126;
-  --popover: #fcfdff;
-  --popover-foreground: #1c2126;
-  --primary: #236fc7;
+  --shadow: 0 1px 2px rgb(20 20 20 / 4%), 0 8px 24px rgb(20 20 20 / 6%);
+  --background: #f4f3f0;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #1f1f1f;
   --primary-foreground: #fff;
-  --secondary: #e9edf0;
-  --secondary-foreground: #1c2126;
-  --muted: #e9edf0;
-  --muted-foreground: #60656b;
-  --accent-foreground: #1c2126;
-  --destructive: #b63132;
-  --border: #d7d9dc;
-  --input: #d7d9dc;
+  --secondary: #ecebe7;
+  --secondary-foreground: #1a1a1a;
+  --muted: #ecebe7;
+  --muted-foreground: #6e6d6a;
+  --accent-foreground: #1a1a1a;
+  --destructive: #c0392b;
+  --border: #e7e5e1;
+  --input: #dedcd7;
   --ring: #236fc7;
-  --radius: 0.625rem;
+  --radius: 0.875rem;
 }
 
 :root[data-theme="dark"] {
-  --ground: #171a1d;
-  --base: #101316;
-  --panel: #24282c;
-  --rule: #3c4247;
-  --ink: #eef0f3;
-  --ink-2: #a5aaaf;
+  --ground: #151412;
+  --base: #1c1b19;
+  --panel: #262522;
+  --rule: #37352f;
+  --ink: #f1efea;
+  --ink-2: #a29f98;
   --accent: #70adfb;
-  --alert: #f2857d;
-  --good: #82c38f;
-  --hold: #e5b562;
+  --alert: #f08a7e;
+  --good: #7fc78d;
+  --hold: #e2b45f;
   --grade-0: #a9b3bc;
   --grade-1: #3fd074;
   --grade-2: #f7d13f;
@@ -136,38 +136,38 @@
   --surface-gravel: #fbc959;
   --surface-ground: #f47d67;
   --surface-unsurveyed: #dbdee2;
-  --shadow: 0 1px 1px rgb(20 25 30 / 14%), 0 4px 12px rgb(20 25 30 / 22%);
-  --background: #101316;
-  --foreground: #eef0f3;
-  --card: #24282c;
-  --card-foreground: #eef0f3;
-  --popover: #24282c;
-  --popover-foreground: #eef0f3;
-  --primary: #70adfb;
-  --primary-foreground: #101316;
-  --secondary: #30353a;
-  --secondary-foreground: #eef0f3;
-  --muted: #30353a;
-  --muted-foreground: #a5aaaf;
-  --accent-foreground: #eef0f3;
-  --destructive: #f2857d;
-  --border: #3c4247;
-  --input: #3c4247;
+  --shadow: 0 1px 2px rgb(0 0 0 / 20%), 0 8px 24px rgb(0 0 0 / 28%);
+  --background: #1c1b19;
+  --foreground: #f1efea;
+  --card: #262522;
+  --card-foreground: #f1efea;
+  --popover: #262522;
+  --popover-foreground: #f1efea;
+  --primary: #f1efea;
+  --primary-foreground: #1c1b19;
+  --secondary: #33312c;
+  --secondary-foreground: #f1efea;
+  --muted: #33312c;
+  --muted-foreground: #a29f98;
+  --accent-foreground: #f1efea;
+  --destructive: #f08a7e;
+  --border: #37352f;
+  --input: #3f3d36;
   --ring: #70adfb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground: #171a1d;
-    --base: #101316;
-    --panel: #24282c;
-    --rule: #3c4247;
-    --ink: #eef0f3;
-    --ink-2: #a5aaaf;
+    --ground: #151412;
+    --base: #1c1b19;
+    --panel: #262522;
+    --rule: #37352f;
+    --ink: #f1efea;
+    --ink-2: #a29f98;
     --accent: #70adfb;
-    --alert: #f2857d;
-    --good: #82c38f;
-    --hold: #e5b562;
+    --alert: #f08a7e;
+    --good: #7fc78d;
+    --hold: #e2b45f;
     --grade-0: #a9b3bc;
     --grade-1: #3fd074;
     --grade-2: #f7d13f;
@@ -209,23 +209,23 @@
     --surface-gravel: #fbc959;
     --surface-ground: #f47d67;
     --surface-unsurveyed: #dbdee2;
-    --shadow: 0 1px 1px rgb(20 25 30 / 14%), 0 4px 12px rgb(20 25 30 / 22%);
-    --background: #101316;
-    --foreground: #eef0f3;
-    --card: #24282c;
-    --card-foreground: #eef0f3;
-    --popover: #24282c;
-    --popover-foreground: #eef0f3;
-    --primary: #70adfb;
-    --primary-foreground: #101316;
-    --secondary: #30353a;
-    --secondary-foreground: #eef0f3;
-    --muted: #30353a;
-    --muted-foreground: #a5aaaf;
-    --accent-foreground: #eef0f3;
-    --destructive: #f2857d;
-    --border: #3c4247;
-    --input: #3c4247;
+    --shadow: 0 1px 2px rgb(0 0 0 / 20%), 0 8px 24px rgb(0 0 0 / 28%);
+    --background: #1c1b19;
+    --foreground: #f1efea;
+    --card: #262522;
+    --card-foreground: #f1efea;
+    --popover: #262522;
+    --popover-foreground: #f1efea;
+    --primary: #f1efea;
+    --primary-foreground: #1c1b19;
+    --secondary: #33312c;
+    --secondary-foreground: #f1efea;
+    --muted: #33312c;
+    --muted-foreground: #a29f98;
+    --accent-foreground: #f1efea;
+    --destructive: #f08a7e;
+    --border: #37352f;
+    --input: #3f3d36;
     --ring: #70adfb;
   }
 }
@@ -298,6 +298,10 @@ input, textarea, [contenteditable]:not([contenteditable="false"]) { user-select:
 /* The drawer is registry output and carries `select-text` of its own, which the
    document overrules from here rather than by editing the primitive. */
 [data-slot="drawer-content"] { user-select: none; -webkit-user-select: none; }
+
+/* Cards float on the ground rather than outlining themselves: the registry
+   card hardcodes a ring, overruled here rather than by editing the primitive. */
+[data-slot="card"] { --tw-ring-shadow: 0 0 #0000; box-shadow: var(--shadow); }
 body { margin: 0; background: var(--base); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.55; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
