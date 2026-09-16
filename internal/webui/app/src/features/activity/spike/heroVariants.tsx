@@ -112,7 +112,10 @@ function StripCell({
     <div className="flex min-w-0 flex-1 items-center gap-3 border-[var(--rule)] px-4 py-3 not-first:border-l">
       <Mark size={9}>{icon}</Mark>
       <div className="min-w-0 flex-1">
-        <div className="text-[var(--ink-2)] text-xs">{label}</div>
+        <div className="flex items-center gap-2 text-[var(--ink-2)] text-xs">
+          {label}
+          {chip}
+        </div>
         <div className="whitespace-nowrap font-semibold text-xl leading-tight tabular-nums">
           {value}
           {unit ? (
@@ -120,7 +123,6 @@ function StripCell({
           ) : null}
         </div>
       </div>
-      {chip}
     </div>
   );
 }
