@@ -67,7 +67,10 @@ function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
   const box = size * (height / width);
 
   return (
-    <div className="relative shrink-0" style={{ width: `${size}rem`, height: `${box}rem` }}>
+    <div
+      className="relative shrink-0"
+      style={{ width: `${size}rem`, height: `${box}rem`, marginBottom: arc === 360 ? 0 : "3.5rem" }}
+    >
       <svg viewBox={`${-pad} ${top} ${width} ${height}`} className="size-full" aria-hidden="true">
         <g transform={`rotate(${rotate} 21 21)`}>
           {arc < 360 ? (
@@ -79,7 +82,9 @@ function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
               stroke="var(--muted)"
               strokeWidth={stroke}
               strokeLinecap={round ? "round" : "butt"}
-              strokeDasharray={`${span * 100} ${100 - span * 100}`}
+              // Trimmed and shifted like the segments, so its caps end where theirs do.
+              strokeDasharray={`${span * 100 - reserve} ${100 - span * 100 + reserve}`}
+              strokeDashoffset={-(reserve / 2)}
             />
           ) : null}
           {ZONES.map((zone, index) => {
@@ -108,10 +113,13 @@ function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
           })}
         </g>
       </svg>
-      {/* Centred on the ring's own centre, which an open arc's frame no longer has in its middle. */}
+      {/* Inside a closed ring; under an open one, whose middle is not its centre. */}
       <div
-        className="pointer-events-none absolute inset-x-0 flex -translate-y-1/2 flex-col items-center justify-center text-center"
-        style={{ top: `${((21 - top) / height) * 100}%` }}
+        className={
+          arc === 360
+            ? "pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center"
+            : "pointer-events-none absolute inset-x-0 top-full flex flex-col items-center pt-1 text-center"
+        }
       >
         <span className={`font-semibold ${text} leading-tight tabular-nums`}>
           {duration(active === null ? TOTAL : (ZONES[active]?.seconds ?? 0))}
@@ -156,7 +164,7 @@ const VARIANTS: Array<{ name: string; note: string; props: RingProps }> = [
   {
     name: "D · Gauge",
     note: "Three quarters of a circle, open at the foot, the way the sample draws its score.",
-    props: { size: 14, stroke: 5, gap: 1, round: true, arc: 270, figure: "3xl" },
+    props: { size: 11, stroke: 5, gap: 1, round: true, arc: 270, figure: "2xl" },
   },
 ];
 
