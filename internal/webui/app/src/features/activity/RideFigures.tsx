@@ -180,11 +180,11 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
 
   return (
     <dl
-      className="flex flex-wrap gap-x-6 gap-y-4 [&>div]:min-w-[10rem] [&>div]:flex-1"
+      className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3 lg:grid-cols-6"
       aria-label="Ride figures"
     >
       {ride.provider === "zwift" ? (
-        <div className="flex basis-full flex-col gap-1">
+        <div className="col-span-full flex flex-col gap-1">
           <dt className="sr-only">Recorded on</dt>
           <dd>
             <Badge variant="secondary" className="w-fit">
