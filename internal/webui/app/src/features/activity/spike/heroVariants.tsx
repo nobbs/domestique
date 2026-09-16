@@ -13,7 +13,6 @@ import {
   IconBolt,
   IconChevronLeft,
   IconFlame,
-  IconRoute,
   IconRuler2,
   IconStopwatch,
 } from "@tabler/icons-react";
@@ -72,14 +71,10 @@ function Title() {
         <IconChevronLeft size={14} stroke={2} aria-hidden="true" />
         Activities
       </span>
-      <h1 className="font-semibold text-2xl leading-tight tracking-tight">{TITLE}</h1>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[var(--ink-2)] text-sm">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--muted)] px-2.5 py-1 font-medium text-[var(--ink)] text-xs hover:bg-[var(--rule)]">
-          <IconRoute size={13} stroke={2} aria-hidden="true" />
-          {ROUTE}
-        </span>
-        <span>{WEATHER_LINE}</span>
-      </div>
+      <h1 className="font-semibold text-2xl leading-tight tracking-tight">{ROUTE}</h1>
+      <p className="text-[var(--ink-2)] text-sm">
+        {TITLE} · {WEATHER_LINE}
+      </p>
     </div>
   );
 }
