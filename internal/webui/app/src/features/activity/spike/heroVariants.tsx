@@ -46,7 +46,7 @@ function ink(tone: Tone): string {
 function Chip({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <span
-      className="inline-flex items-center rounded-full px-1.5 py-0.5 font-medium text-[11px] tabular-nums"
+      className="inline-flex items-center whitespace-nowrap rounded-full px-1.5 py-0.5 font-medium text-[11px] tabular-nums"
       style={{ color: ink(tone), background: tint(tone) }}
     >
       {children}
@@ -136,9 +136,9 @@ function StripCell({
 export function StripHero() {
   return (
     <div className="grid gap-4">
-      <div className="flex overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]">
-        {/* The ride itself as the strip's first cell: what was ridden, when, in what. */}
-        <div className="flex min-w-0 flex-[1.6] items-center gap-3 px-4 py-3">
+      <div className="overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]">
+        {/* The ride itself as the strip's header: what was ridden, when, in what. */}
+        <div className="flex items-center gap-3 border-[var(--rule)] border-b px-4 py-3">
           <Mark size={9}>
             <IconBike size={18} stroke={1.8} aria-hidden="true" />
           </Mark>
@@ -149,31 +149,33 @@ export function StripHero() {
             </div>
           </div>
         </div>
-        <StripCell
-          icon={<IconRuler2 size={18} stroke={1.8} aria-hidden="true" />}
-          label="Distance"
-          value={FIGURES.distance}
-          chip={<Chip tone="good">+4.2 km</Chip>}
-        />
-        <StripCell
-          icon={<IconStopwatch size={18} stroke={1.8} aria-hidden="true" />}
-          label="Moving"
-          value={FIGURES.moving}
-          chip={<Chip tone="quiet">+17 min stopped</Chip>}
-        />
-        <StripCell
-          icon={<IconArrowBarUp size={18} stroke={1.8} aria-hidden="true" />}
-          label="Climbed"
-          value={FIGURES.climbed}
-          chip={<Chip tone="hold">55 m/km</Chip>}
-        />
-        <StripCell
-          icon={<IconBolt size={18} stroke={1.8} aria-hidden="true" />}
-          label="Training stress"
-          value={FIGURES.tss}
-          unit="TSS"
-          chip={<Chip tone="alert">{FIGURES.intensity} IF</Chip>}
-        />
+        <div className="flex">
+          <StripCell
+            icon={<IconRuler2 size={18} stroke={1.8} aria-hidden="true" />}
+            label="Distance"
+            value={FIGURES.distance}
+            chip={<Chip tone="good">+4.2 km</Chip>}
+          />
+          <StripCell
+            icon={<IconStopwatch size={18} stroke={1.8} aria-hidden="true" />}
+            label="Moving"
+            value={FIGURES.moving}
+            chip={<Chip tone="quiet">+17 min stopped</Chip>}
+          />
+          <StripCell
+            icon={<IconArrowBarUp size={18} stroke={1.8} aria-hidden="true" />}
+            label="Climbed"
+            value={FIGURES.climbed}
+            chip={<Chip tone="hold">55 m/km</Chip>}
+          />
+          <StripCell
+            icon={<IconBolt size={18} stroke={1.8} aria-hidden="true" />}
+            label="Training stress"
+            value={FIGURES.tss}
+            unit="TSS"
+            chip={<Chip tone="alert">{FIGURES.intensity} IF</Chip>}
+          />
+        </div>
       </div>
       <MapBox className="h-72" />
     </div>
