@@ -259,64 +259,70 @@ export function RoutePanel({
               </span>
             ) : null}
           </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="More about this route"
-              className="ml-auto grid size-7 place-items-center rounded-full bg-[var(--muted)] text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-            >
-              <IconDots size={16} stroke={2} aria-hidden="true" />
-            </DropdownMenuTrigger>
-            {/*
-             * `w-auto` because the menu's own width follows its anchor, and the
-             * anchor here is a 28-pixel icon button.
-             */}
-            <DropdownMenuContent align="end" className="w-auto min-w-52">
+          {/* One pill for the two things that are not the route: the menu and the way out. */}
+          <div className="ml-auto flex shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="More about this route"
+                className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+              >
+                <IconDots size={16} stroke={2} aria-hidden="true" />
+              </DropdownMenuTrigger>
               {/*
-               * The two quiet actions that used to hold a bordered row of their
-               * own at the foot of the card. Both are rare — one leaves for the
-               * provider, the other asks the service to work the route out
-               * again — and a row spent on them is a row not spent on the route.
+               * `w-auto` because the menu's own width follows its anchor, and the
+               * anchor here is a 28-pixel icon button.
                */}
-              <SourceRouteLink
-                provider={route.provider}
-                baseUrl={sourceBaseUrls[route.provider]}
-                sourceRouteId={route.sourceRouteId}
-              />
-              {effectiveAdmin && config.data?.planning && route.provider === "local" ? (
-                <DropdownMenuItem render={<Link to={`/plan/${route.sourceRouteId}`} />}>
-                  <IconPencil aria-hidden="true" />
-                  Edit
-                </DropdownMenuItem>
-              ) : null}
-              {effectiveAdmin && config.data?.planning && route.provider !== "local" && copySeed ? (
-                <CopyAndEdit seed={copySeed} />
-              ) : null}
-              {effectiveAdmin ? (
-                <>
-                  <DropdownMenuSeparator />
-                  <ReprocessButton
-                    provider={route.provider}
-                    sourceRouteId={route.sourceRouteId}
-                    stageOrder={route.stageOrder}
-                  />
-                </>
-              ) : null}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={
-              // Zero is the listing still loading, not an empty library, and
-              // "go back to 0 routes" reads as the second.
-              libraryCount === 0
-                ? "Close the route and go back to the library"
-                : `Close the route and go back to ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
-            }
-            className="grid size-7 place-items-center rounded-full bg-[var(--muted)] text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-          >
-            <IconX size={16} stroke={2} aria-hidden="true" />
-          </button>
+              <DropdownMenuContent align="end" className="w-auto min-w-52">
+                {/*
+                 * The two quiet actions that used to hold a bordered row of their
+                 * own at the foot of the card. Both are rare — one leaves for the
+                 * provider, the other asks the service to work the route out
+                 * again — and a row spent on them is a row not spent on the route.
+                 */}
+                <SourceRouteLink
+                  provider={route.provider}
+                  baseUrl={sourceBaseUrls[route.provider]}
+                  sourceRouteId={route.sourceRouteId}
+                />
+                {effectiveAdmin && config.data?.planning && route.provider === "local" ? (
+                  <DropdownMenuItem render={<Link to={`/plan/${route.sourceRouteId}`} />}>
+                    <IconPencil aria-hidden="true" />
+                    Edit
+                  </DropdownMenuItem>
+                ) : null}
+                {effectiveAdmin &&
+                config.data?.planning &&
+                route.provider !== "local" &&
+                copySeed ? (
+                  <CopyAndEdit seed={copySeed} />
+                ) : null}
+                {effectiveAdmin ? (
+                  <>
+                    <DropdownMenuSeparator />
+                    <ReprocessButton
+                      provider={route.provider}
+                      sourceRouteId={route.sourceRouteId}
+                      stageOrder={route.stageOrder}
+                    />
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={
+                // Zero is the listing still loading, not an empty library, and
+                // "go back to 0 routes" reads as the second.
+                libraryCount === 0
+                  ? "Close the route and go back to the library"
+                  : `Close the route and go back to ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
+              }
+              className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] border-[var(--rule)] border-l"
+            >
+              <IconX size={16} stroke={2} aria-hidden="true" />
+            </button>
+          </div>
         </div>
         {collapsed ? null : (
           <div className="grid w-full gap-3 px-3 pt-2 pb-3">
