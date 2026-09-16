@@ -34,7 +34,7 @@ interface BodyProps {
 function Header({ subtitle }: { subtitle?: string | undefined }) {
   return (
     <div className="flex items-center gap-3 px-4 pt-4">
-      <span className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-[var(--ink)] text-[var(--panel)]">
+      <span className="grid size-9 shrink-0 place-items-center rounded-md bg-[var(--ink)] text-[var(--panel)]">
         <IconRoute size={18} stroke={1.8} aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1">
@@ -211,7 +211,7 @@ export function LedgerCard(props: BodyProps) {
 function Cell({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="grid size-8 shrink-0 place-items-center rounded-[9px] bg-[var(--ink)] text-[var(--panel)]">
+      <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[var(--ink)] text-[var(--panel)]">
         {icon}
       </span>
       <div className="min-w-0">
@@ -289,7 +289,7 @@ export function CalloutCard(props: BodyProps) {
         }}
       >
         <span
-          className="grid size-7 shrink-0 place-items-center rounded-[8px] text-[var(--panel)]"
+          className="grid size-7 shrink-0 place-items-center rounded-sm text-[var(--panel)]"
           style={{ background: "var(--hold)" }}
         >
           <IconMountain size={14} stroke={2} aria-hidden="true" />
