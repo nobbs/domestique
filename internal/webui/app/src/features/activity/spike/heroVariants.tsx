@@ -9,7 +9,6 @@
 
 import {
   IconArrowBarUp,
-  IconBike,
   IconBolt,
   IconChevronLeft,
   IconFlame,
@@ -48,16 +47,6 @@ function Chip({ tone, children }: { tone: Tone; children: ReactNode }) {
     <span
       className="inline-flex items-center whitespace-nowrap rounded-md px-2 py-0.5 font-medium text-xs tabular-nums"
       style={{ color: ink(tone), background: tint(tone) }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Mark({ children, size = 8 }: { children: ReactNode; size?: 7 | 8 | 9 }) {
-  return (
-    <span
-      className={`grid shrink-0 place-items-center rounded-md bg-[var(--ink)] text-[var(--panel)] ${size === 7 ? "size-7" : size === 9 ? "size-9" : "size-8"}`}
     >
       {children}
     </span>
@@ -224,16 +213,11 @@ export function PillsHero() {
   return (
     <div className="grid gap-4">
       <div className="grid content-start gap-4 rounded-2xl bg-[var(--panel)] p-5 shadow-[var(--shadow)]">
-        <div className="flex items-center gap-3">
-          <Mark size={9}>
-            <IconBike size={18} stroke={1.8} aria-hidden="true" />
-          </Mark>
-          <div className="min-w-0">
-            <h1 className="font-semibold text-base leading-tight">{TITLE}</h1>
-            <p className="text-[var(--ink-2)] text-xs">
-              {ROUTE} · {WEATHER_LINE}
-            </p>
-          </div>
+        <div className="min-w-0">
+          <h1 className="truncate font-semibold text-lg leading-tight">{ROUTE}</h1>
+          <p className="truncate text-[var(--ink-2)] text-sm">
+            {TITLE} · {WEATHER_LINE}
+          </p>
         </div>
         <div className="flex gap-6">
           <Pill
