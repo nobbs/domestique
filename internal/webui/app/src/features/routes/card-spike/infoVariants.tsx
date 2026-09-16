@@ -33,7 +33,7 @@ interface BodyProps {
 /** The Elera card header: icon square, title, muted subtitle, actions at the end. */
 function Header({ subtitle }: { subtitle?: string | undefined }) {
   return (
-    <div className="flex items-center gap-3 px-4 pt-4">
+    <div className="flex items-center gap-3 px-5 pt-5">
       <span className="grid size-9 shrink-0 place-items-center rounded-md bg-[var(--ink)] text-[var(--panel)]">
         <IconRoute size={18} stroke={1.8} aria-hidden="true" />
       </span>
@@ -55,7 +55,7 @@ function Shell({ subtitle, children }: { subtitle?: string; children: ReactNode 
   return (
     <div className="w-[24rem] overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]">
       <Header subtitle={subtitle} />
-      <div className="grid gap-4 p-4">{children}</div>
+      <div className="grid gap-4 px-5 pt-4 pb-5">{children}</div>
     </div>
   );
 }
