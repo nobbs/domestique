@@ -15,7 +15,6 @@
   --base: #f4f3f0;
   --panel: #ffffff;
   --rule: #e7e5e1;
-  --track: #dcd9d3;
   --ink: #1a1a1a;
   --ink-2: #6e6d6a;
   --accent: #236fc7;
@@ -90,7 +89,6 @@
   --base: #1c1b19;
   --panel: #262522;
   --rule: #37352f;
-  --track: #3a3833;
   --ink: #f1efea;
   --ink-2: #a29f98;
   --accent: #70adfb;
@@ -164,8 +162,7 @@
     --base: #1c1b19;
     --panel: #262522;
     --rule: #37352f;
-    --track: #3a3833;
-    --ink: #f1efea;
+      --ink: #f1efea;
     --ink-2: #a29f98;
     --accent: #70adfb;
     --alert: #f08a7e;
@@ -306,12 +303,12 @@ input, textarea, [contenteditable]:not([contenteditable="false"]) { user-select:
    card hardcodes a ring, overruled here rather than by editing the primitive. */
 [data-slot="card"] { --tw-ring-shadow: 0 0 #0000; box-shadow: var(--shadow); }
 
-/* A joined toggle group is a segmented control: a muted pill with the pressed
-   segment raised white on it, rather than a run of outlined buttons. */
-[data-slot="toggle-group"][data-spacing="0"] { gap: 2px; padding: 3px; border-radius: 12px; background: var(--track); }
-[data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"] { border: 0; border-radius: 9px; background: transparent; color: var(--ink-2); }
+/* A joined toggle group is a segmented control: each segment a quiet pill and
+   the pressed one raised white above them, rather than a run of outlined buttons. */
+[data-slot="toggle-group"][data-spacing="0"] { gap: 4px; padding: 0; border-radius: 0; background: transparent; }
+[data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"] { border: 0; border-radius: 9px; background: var(--muted); color: var(--ink-2); }
 [data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"]:hover { color: var(--ink); }
-[data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"][aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
+[data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"][aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--rule), var(--shadow); }
 body { margin: 0; background: var(--base); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.55; }
 
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

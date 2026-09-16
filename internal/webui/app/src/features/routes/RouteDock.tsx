@@ -394,7 +394,7 @@ function ForecastStop({
 
 /* A segment of the rail's pill: raised white when it is the stop being read. */
 const RAIL_TAB =
-  "flex w-14 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] data-[active]:bg-[var(--panel)] data-[active]:font-semibold data-[active]:text-[var(--ink)] data-[active]:shadow-[var(--shadow)]";
+  "flex w-14 flex-col items-center gap-0.5 rounded-md bg-[var(--muted)] px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] data-[active]:bg-[var(--panel)] data-[active]:font-semibold data-[active]:text-[var(--ink)] data-[active]:shadow-[0_0_0_1px_var(--rule),var(--shadow)]";
 
 /* The hide control stands alone under the pill, so it keeps a plain hover instead. */
 const RAIL_HIDE =
@@ -526,7 +526,7 @@ export function RouteDock({
         className="flex gap-3"
       >
         <div className="flex shrink-0 flex-col border-r border-[var(--rule)] pr-2">
-          <Tabs.List className="flex flex-col gap-0.5 rounded-lg bg-[var(--track)] p-[3px]">
+          <Tabs.List className="flex flex-col gap-1">
             <Tabs.Tab value="profile" className={RAIL_TAB}>
               <IconMountain size={15} stroke={2} aria-hidden="true" />
               Profile
