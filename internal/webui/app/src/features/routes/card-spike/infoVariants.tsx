@@ -22,6 +22,7 @@ import {
 } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 import type { Highlight } from "../../../lib/highlight";
+import type { MixEntry } from "../../../lib/mix";
 import { FIGURES, GRADIENT_MIX, SURFACE_MIX, TITLE } from "./data";
 import { MixRow } from "./MixRow";
 
@@ -299,6 +300,150 @@ export function CalloutCard(props: BodyProps) {
           12%, most of it on gravel and ground — plan the moving time as a floor.
         </p>
       </div>
+    </Shell>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+
+function StackedBar({
+  entries,
+  highlight,
+  onHighlightChange,
+}: BodyProps & { entries: MixEntry[] }) {
+  return (
+    <div className="flex h-2.5 overflow-hidden rounded-sm bg-[var(--muted)]" aria-hidden="true">
+      {entries.map((entry) => (
+        <button
+          type="button"
+          key={entry.label}
+          className="h-full transition-opacity"
+          style={{
+            flex: entry.share,
+            background: entry.colour,
+            opacity:
+              highlight && JSON.stringify(highlight) !== JSON.stringify(entry.highlight) ? 0.3 : 1,
+          }}
+          onClick={() => onHighlightChange(entry.highlight)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Legend({ entries, highlight, onHighlightChange }: BodyProps & { entries: MixEntry[] }) {
+  return (
+    <ul className="grid">
+      {entries.map((entry) => {
+        const on = JSON.stringify(highlight) === JSON.stringify(entry.highlight);
+        return (
+          <li key={entry.label}>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 py-1 text-left text-[13px] hover:text-[var(--ink)] data-[on=true]:font-medium"
+              data-on={on}
+              onClick={() => onHighlightChange(on ? null : entry.highlight)}
+            >
+              <span className="size-2 shrink-0 rounded-full" style={{ background: entry.colour }} />
+              <span className="flex-1 text-[var(--ink-2)]">{entry.description}</span>
+              <span className="tabular-nums">{(entry.metres / 1000).toFixed(1)} km</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** E · Stacked: one hero figure, one bar, a legend of rows — the "closed this quarter" card. */
+export function StackedCard(props: BodyProps) {
+  return (
+    <Shell>
+      <div className="flex items-baseline gap-2">
+        <span className="font-semibold text-3xl leading-none tabular-nums">{FIGURES.distance}</span>
+        <span className="text-[var(--ink-2)] text-sm">
+          {FIGURES.movingTime} moving · {FIGURES.ascent} up
+        </span>
+      </div>
+      <div className="grid gap-2">
+        <StackedBar entries={GRADIENT_MIX} {...props} />
+        <p className="text-[12px] text-[var(--ink-2)]">
+          13.7 km at 12% or steeper · 28% of the route · max {FIGURES.steepestClimbing}
+        </p>
+        <Legend entries={GRADIENT_MIX} {...props} />
+      </div>
+      <div className="grid gap-2 border-[var(--rule)] border-t pt-3">
+        <StackedBar entries={SURFACE_MIX} {...props} />
+        <p className="text-[12px] text-[var(--ink-2)]">13.1 km unsealed · 27% of the route</p>
+        <Legend entries={SURFACE_MIX} {...props} />
+      </div>
+      <p className="border-[var(--rule)] border-t pt-3 text-[12px] text-[var(--ink-2)]">
+        Most of the steep ground is also the loose ground: the 12%+ bands and the gravel overlap on
+        the two big climbs.
+      </p>
+    </Shell>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+
+function Entry({
+  title,
+  chip,
+  sub,
+  value,
+}: {
+  title: string;
+  chip: ReactNode;
+  sub: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="grid gap-1 border-[var(--rule)] border-b py-3 first:pt-0 last:border-b-0 last:pb-0">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-medium text-[15px]">{title}</span>
+        {chip}
+      </div>
+      <div className="flex items-baseline justify-between gap-3 text-[13px]">
+        <span className="text-[var(--ink-2)]">{sub}</span>
+        <span className="font-medium tabular-nums">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+/** F · Entries: three titled entries with a status chip each — the "value-based contracts" card. */
+export function EntriesCard(props: BodyProps) {
+  return (
+    <Shell>
+      <div>
+        <Entry
+          title={`${FIGURES.distance} loop`}
+          chip={<Chip tone="info">{FIGURES.movingTime}</Chip>}
+          sub={FIGURES.uncertainty}
+          value={FIGURES.elevation}
+        />
+        <Entry
+          title={`${FIGURES.ascent} of climbing`}
+          chip={<Chip tone="alert">Hard</Chip>}
+          sub={`${FIGURES.averageClimbing} average · 1,820 m down`}
+          value={
+            <span className="inline-flex items-center gap-1">
+              max <Grades />
+            </span>
+          }
+        />
+        <Entry
+          title="Mixed surface"
+          chip={<Chip tone="hold">27% unsealed</Chip>}
+          sub="asphalt 16.9 km · paving 8.8 km"
+          value="loose 13.1 km"
+        />
+      </div>
+      <Mixes {...props} />
+      <p className="border-[var(--rule)] border-t pt-3 text-[12px] text-[var(--ink-2)]">
+        Over half the route is 9% or steeper. Plan the moving time as a floor, not an estimate.
+      </p>
     </Shell>
   );
 }

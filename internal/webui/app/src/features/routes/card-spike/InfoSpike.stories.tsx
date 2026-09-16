@@ -8,7 +8,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
 import type { Highlight } from "../../../lib/highlight";
 import { StoryProviders } from "../../../storybook/fixtures";
-import { CalloutCard, LedgerCard, StripCard, TilesCard } from "./infoVariants";
+import {
+  CalloutCard,
+  EntriesCard,
+  LedgerCard,
+  StackedCard,
+  StripCard,
+  TilesCard,
+} from "./infoVariants";
 
 const meta = {
   title: "Spikes/Route Card (Elera)",
@@ -43,6 +50,18 @@ const VARIANTS = [
     name: "D · Callout",
     note: "Headline figures move into the subtitle; a tinted bar says what they add up to.",
     Card: CalloutCard,
+  },
+  {
+    key: "stacked",
+    name: "E · Stacked",
+    note: "One hero figure, one bar per mix, a legend of rows; the bars lose their tags.",
+    Card: StackedCard,
+  },
+  {
+    key: "entries",
+    name: "F · Entries",
+    note: "Three titled entries with a verdict chip each, then the bars, then the footnote.",
+    Card: EntriesCard,
   },
 ] as const;
 
