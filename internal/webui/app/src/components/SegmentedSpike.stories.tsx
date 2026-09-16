@@ -15,6 +15,9 @@ interface Item<K extends string> {
   count?: number;
 }
 
+/** The clear ground between the thumb and the pill beside it, in pixels. */
+const GAP = 3;
+
 interface SegmentedProps<K extends string> {
   items: readonly Item<K>[];
   value: K;
@@ -25,9 +28,9 @@ interface SegmentedProps<K extends string> {
 
 /**
  * The track is the muted tone. The unselected segments do not paint
- * themselves: one darker band behind all of them is what merges them, and the
- * white thumb rides over that band to whichever segment is chosen, measured
- * rather than computed so a label of any length is fine.
+ * themselves: the run to the thumb's left shares one darker pill and the run
+ * to its right another, and the white thumb slides between them, all of it
+ * measured rather than computed so a label of any length is fine.
  */
 function Segmented<K extends string>({
   items,
@@ -36,43 +39,76 @@ function Segmented<K extends string>({
   duration = 220,
 }: SegmentedProps<K>) {
   const buttons = useRef(new Map<K, HTMLButtonElement>());
-  const [thumb, setThumb] = useState<{ left: number; width: number } | null>(null);
+  const [thumb, setThumb] = useState<{ left: number; width: number; end: number } | null>(null);
 
   useLayoutEffect(() => {
     const chosen = buttons.current.get(value);
-    if (!chosen) {
+    const last = buttons.current.get(items[items.length - 1]?.key as K);
+    if (!chosen || !last) {
       return;
     }
-    const measure = () => setThumb({ left: chosen.offsetLeft, width: chosen.offsetWidth });
+    const measure = () =>
+      setThumb({
+        left: chosen.offsetLeft,
+        width: chosen.offsetWidth,
+        end: last.offsetLeft + last.offsetWidth,
+      });
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(chosen);
+    observer.observe(last);
     return () => observer.disconnect();
-  }, [value]);
+  }, [value, items]);
+
+  const ease = `${duration}ms cubic-bezier(0.2, 0, 0, 1)`;
+  const band = "color-mix(in oklab, var(--ink-2) 28%, var(--panel))";
+  // The unselected segments to the thumb's left share one pill, and those to
+  // its right another; each shrinks to nothing when the thumb is at that end.
+  const first = 3;
+  const leftWidth = thumb ? Math.max(thumb.left - GAP - first, 0) : 0;
+  const rightStart = thumb ? thumb.left + thumb.width + GAP : 0;
+  const rightWidth = thumb ? Math.max(thumb.end - rightStart, 0) : 0;
 
   return (
     <div
       role="tablist"
       className="relative inline-flex w-fit rounded-[12px] bg-[var(--muted)] p-[3px]"
     >
-      {/* The band every unselected segment shares. */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-[3px] rounded-[9px]"
-        style={{ background: "color-mix(in oklab, var(--ink-2) 28%, var(--panel))" }}
-      />
-      {/* The thumb, under the labels and over the band. */}
       {thumb ? (
-        <div
-          aria-hidden="true"
-          className="absolute top-[3px] bottom-[3px] rounded-[9px] bg-[var(--panel)] shadow-[0_0_0_1px_var(--rule),var(--shadow)]"
-          style={{
-            left: 0,
-            width: thumb.width,
-            transform: `translateX(${thumb.left}px)`,
-            transition: `transform ${duration}ms cubic-bezier(0.2, 0, 0, 1), width ${duration}ms cubic-bezier(0.2, 0, 0, 1)`,
-          }}
-        />
+        <>
+          <div
+            aria-hidden="true"
+            className="absolute top-[3px] bottom-[3px] rounded-[9px]"
+            style={{
+              left: first,
+              width: leftWidth,
+              background: band,
+              transition: `width ${ease}`,
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="absolute top-[3px] bottom-[3px] rounded-[9px]"
+            style={{
+              left: 0,
+              width: rightWidth,
+              transform: `translateX(${rightStart}px)`,
+              background: band,
+              transition: `transform ${ease}, width ${ease}`,
+            }}
+          />
+          {/* The thumb, under the labels and over the pills. */}
+          <div
+            aria-hidden="true"
+            className="absolute top-[3px] bottom-[3px] rounded-[9px] bg-[var(--panel)] shadow-[0_0_0_1px_var(--rule),var(--shadow)]"
+            style={{
+              left: 0,
+              width: thumb.width,
+              transform: `translateX(${thumb.left}px)`,
+              transition: `transform ${ease}, width ${ease}`,
+            }}
+          />
+        </>
       ) : null}
       {items.map((item) => {
         const on = item.key === value;
