@@ -21,6 +21,7 @@ import {
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
 import type { Activity, ActivityMetrics } from "../../api/types";
+import { PanelHeading } from "../../components/PanelHeading";
 import { formatCoverage } from "../../lib/format";
 import { HeartRateZones } from "./HeartRateZones";
 
@@ -391,7 +392,7 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
       ) : null}
       {sections.length > 0 ? (
         <section className={BOX} aria-label={sections[0]?.title}>
-          <h2 className="font-semibold text-base">{sections[0]?.title}</h2>
+          <PanelHeading icon={<IconActivity size={18} stroke={1.8} />} title={sections[0]?.title} />
           <GroupList groups={sections} />
         </section>
       ) : null}

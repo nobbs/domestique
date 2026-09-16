@@ -6,6 +6,7 @@
  * track request; a direct link fetches both.
  */
 
+import { IconMountain } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
@@ -18,6 +19,7 @@ import {
 import type { Activity, ActivityTrackState } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
+import { PanelHeading } from "../../components/PanelHeading";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatTimestamp } from "../../lib/format";
 import type { DistanceWindow } from "../../lib/profile";
@@ -191,7 +193,7 @@ export function ActivityPage() {
         )}
         {drawable && profile ? (
           <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
-            <h2 className="font-semibold text-base">Profile</h2>
+            <PanelHeading icon={<IconMountain size={18} stroke={1.8} />} title="Profile" />
             <ElevationProfile
               profile={shownProfile}
               title={title}

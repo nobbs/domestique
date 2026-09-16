@@ -9,7 +9,9 @@
  * test for dropping "By the kilometre" in this panel's place.
  */
 
+import { IconStairs } from "@tabler/icons-react";
 import type { RouteClimb, RouteClimbAttempt } from "../../api/types";
+import { PanelHeading } from "../../components/PanelHeading";
 import { formatClimbTime, formatDistance, formatGradient } from "../../lib/format";
 
 /** Measured power only if the bicycle carried a meter; an estimate never sums or ranks against it. */
@@ -114,7 +116,7 @@ export function RideClimbs({ climbs, activityId }: RideClimbsProps) {
       className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
       aria-label="By the climb"
     >
-      <h2 className="font-semibold text-base">By the climb</h2>
+      <PanelHeading icon={<IconStairs size={18} stroke={1.8} />} title="By the climb" />
       <table className="w-full border-collapse">
         <thead>
           <tr>
