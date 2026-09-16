@@ -17,6 +17,7 @@
 import { Tooltip } from "@base-ui/react/tooltip";
 import { IconCircleOff } from "@tabler/icons-react";
 import type { ReactNode } from "react";
+import { SegmentedTrack, SegmentLabel, segmentClass } from "../../components/Segmented";
 import type { ForecastSample } from "../../lib/forecastSamples";
 import type { Measure, MeasureKey } from "../../lib/measures";
 import {
@@ -26,10 +27,6 @@ import {
   WIND_RELATION_KEY,
   windRelationVariable,
 } from "../../lib/measures";
-
-/* A segment of the wash switch: raised white when it is the wash on the map. */
-const CHOICE =
-  "flex items-center gap-1 rounded-md bg-[color-mix(in_oklab,var(--ink-2)_28%,var(--panel))] px-2 py-1 text-[11px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:bg-[var(--panel)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)] aria-pressed:shadow-[0_0_0_1px_var(--rule),var(--shadow)]";
 
 export interface ConditionsChoicesProps {
   /** The measure the reader asked for, and null — the default — for none. */
@@ -60,40 +57,40 @@ export function ConditionsChoices({
 
   return (
     <div className="grid gap-1.5">
-      <div
-        role="group"
-        aria-label="Conditions washed along the route"
-        className="flex w-fit flex-wrap items-center gap-[3px] rounded-lg bg-[var(--muted)] p-[3px]"
-      >
-        <button
-          type="button"
-          aria-pressed={measure === null}
-          disabled={!available}
-          onClick={() => onMeasureChange(null)}
-          className={CHOICE}
-        >
-          <IconCircleOff size={12} stroke={2} aria-hidden="true" />
-          Off
-        </button>
-        {MEASURES.map((entry) => {
-          const Icon = entry.icon;
-          return (
-            <button
-              key={entry.key}
-              type="button"
-              aria-pressed={measure === entry.key}
-              disabled={!available}
-              // Pressing the pressed one is the way back out, the same gesture
-              // the ground key offers for a class already picked.
-              onClick={() => onMeasureChange(measure === entry.key ? null : entry.key)}
-              className={CHOICE}
-            >
-              <Icon size={12} stroke={2} aria-hidden="true" />
-              {entry.label}
-            </button>
-          );
-        })}
-      </div>
+      <SegmentedTrack active={measure ?? "off"}>
+        <div role="group" aria-label="Conditions washed along the route" className="contents">
+          <button
+            type="button"
+            data-segment="off"
+            aria-pressed={measure === null}
+            disabled={!available}
+            onClick={() => onMeasureChange(null)}
+            className={segmentClass("sm")}
+          >
+            <IconCircleOff size={12} stroke={2} aria-hidden="true" />
+            <SegmentLabel>Off</SegmentLabel>
+          </button>
+          {MEASURES.map((entry) => {
+            const Icon = entry.icon;
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                data-segment={entry.key}
+                aria-pressed={measure === entry.key}
+                disabled={!available}
+                // Pressing the pressed one is the way back out, the same gesture
+                // the ground key offers for a class already picked.
+                onClick={() => onMeasureChange(measure === entry.key ? null : entry.key)}
+                className={segmentClass("sm")}
+              >
+                <Icon size={12} stroke={2} aria-hidden="true" />
+                <SegmentLabel>{entry.label}</SegmentLabel>
+              </button>
+            );
+          })}
+        </div>
+      </SegmentedTrack>
       {available ? null : <p className="text-[11px] text-[var(--ink-2)]">{absence}</p>}
     </div>
   );

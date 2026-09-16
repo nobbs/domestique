@@ -11,10 +11,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { activitiesQuery, fitnessQuery, webUIConfigQuery } from "../../api/queries";
 import { formatCalendarDay } from "../../components/chart/TimeFrame";
 import { PageShell } from "../../components/Layout";
+import { Segmented } from "../../components/Segmented";
 import { Skeleton } from "../../components/ui/skeleton";
 import { DecouplingPanel, DecouplingSummary, decouplingRides } from "./DecouplingPanel";
 import { FitnessSection, FitnessStat } from "./FitnessSection";
@@ -108,45 +108,20 @@ export function FitnessPage() {
           </div>
           {readings.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <ToggleGroup
-                aria-label="Range"
-                variant="outline"
+              <Segmented
+                label="Range"
                 size="sm"
-                spacing={0}
-                value={[range]}
-                onValueChange={(next) => {
-                  // Pressing the pressed one empties the group; the page always reads one range.
-                  const chosen = RANGES.find(({ value }) => value === next[0]);
-                  if (chosen) {
-                    setRange(chosen.value);
-                  }
-                }}
-              >
-                {RANGES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <ToggleGroup
-                aria-label="Scale"
-                variant="outline"
+                items={RANGES.map(({ value, label }) => ({ key: value, label }))}
+                value={range}
+                onChange={setRange}
+              />
+              <Segmented
+                label="Scale"
                 size="sm"
-                spacing={0}
-                value={[scale]}
-                onValueChange={(next) => {
-                  const chosen = SCALES.find(({ value }) => value === next[0]);
-                  if (chosen) {
-                    setScale(chosen.value);
-                  }
-                }}
-              >
-                {SCALES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+                items={SCALES.map(({ value, label }) => ({ key: value, label }))}
+                value={scale}
+                onChange={setScale}
+              />
             </div>
           ) : null}
         </header>

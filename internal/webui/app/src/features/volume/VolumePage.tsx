@@ -10,9 +10,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import { PageShell } from "../../components/Layout";
+import { Segmented } from "../../components/Segmented";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatAscent, formatCount, formatDistance, formatDuration } from "../../lib/format";
 import {
@@ -72,26 +72,12 @@ export function VolumePage() {
             <Totals totals={totals} />
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-semibold text-lg">{heading}</h2>
-              <ToggleGroup
-                aria-label="Period"
-                variant="outline"
-                spacing={0}
-                value={[granularity]}
-                onValueChange={(next) => {
-                  // Pressing the pressed one empties the group; the page is
-                  // always by week or by month, so that leaves it as it was.
-                  const chosen = next[0];
-                  if (chosen === "week" || chosen === "month") {
-                    setGranularity(chosen);
-                  }
-                }}
-              >
-                {GRANULARITIES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+              <Segmented
+                label="Period"
+                items={GRANULARITIES.map(({ value, label }) => ({ key: value, label }))}
+                value={granularity}
+                onChange={setGranularity}
+              />
             </div>
             <ul className="flex flex-col gap-2">
               {buckets.map((bucket) => (

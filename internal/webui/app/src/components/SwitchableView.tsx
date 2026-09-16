@@ -7,7 +7,7 @@
  */
 
 import { type ReactNode, useState } from "react";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Segmented } from "./Segmented";
 
 export interface View<V extends string> {
   value: V;
@@ -45,28 +45,16 @@ export function SwitchableView<V extends string>({
         <div className="flex min-h-7 items-center justify-between gap-3">
           {heading ?? <span />}
           {views.length > 1 ? (
-            <ToggleGroup
-              aria-label={label}
-              variant="outline"
+            <Segmented
+              label={label}
               size="sm"
-              spacing={0}
-              value={[current.value]}
-              onValueChange={(next) => {
-                // Pressing the pressed one empties the group; a view is always
-                // shown, so that leaves it as it was.
-                const picked = views.find((view) => view.value === next[0]);
-                if (picked) {
-                  setChosen(picked.value);
-                  onValueChange?.(picked.value);
-                }
+              items={views.map((view) => ({ key: view.value, label: view.label }))}
+              value={current.value}
+              onChange={(next) => {
+                setChosen(next);
+                onValueChange?.(next);
               }}
-            >
-              {views.map((view) => (
-                <ToggleGroupItem key={view.value} value={view.value}>
-                  {view.label}
-                </ToggleGroupItem>
-              ))}
-            </ToggleGroup>
+            />
           ) : null}
         </div>
       ) : null}
