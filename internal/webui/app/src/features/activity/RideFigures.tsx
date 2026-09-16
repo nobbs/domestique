@@ -10,6 +10,15 @@
  * recorded file was never readable.
  */
 
+import {
+  IconArrowBarDown,
+  IconArrowBarUp,
+  IconBolt,
+  IconFlame,
+  IconRuler2,
+  IconStopwatch,
+} from "@tabler/icons-react";
+import type { ComponentType } from "react";
 import type { Activity } from "../../api/types";
 import { Badge } from "../../components/ui/badge";
 import {
@@ -36,6 +45,20 @@ interface Headline {
   unit?: string;
   note?: string;
 }
+
+/** The mark each figure wears in its cell; keyed by label so the figures stay plain data. */
+const MARKS: Record<
+  string,
+  ComponentType<{ size?: number; stroke?: number; "aria-hidden"?: "true" }>
+> = {
+  Distance: IconRuler2,
+  Moving: IconStopwatch,
+  Climbed: IconArrowBarUp,
+  Descended: IconArrowBarDown,
+  Calories: IconFlame,
+  "Calories (est.)": IconFlame,
+  "Training stress": IconBolt,
+};
 
 /** Which load scale the ride can be named on, and what it came to. */
 function loadFigure(ride: Activity): Headline | null {
@@ -128,9 +151,12 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
   ];
 
   return (
-    <dl className="grid grid-cols-2 gap-x-6 gap-y-5" aria-label="Ride figures">
+    <dl
+      className="grid grid-cols-2 overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]"
+      aria-label="Ride figures"
+    >
       {ride.provider === "zwift" ? (
-        <div className="col-span-2 flex flex-col gap-1">
+        <div className="col-span-2 flex flex-col gap-1 border-[var(--rule)] border-b px-4 py-3">
           <dt className="sr-only">Recorded on</dt>
           <dd>
             <Badge variant="secondary" className="w-fit">
@@ -149,20 +175,35 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
           ) : null}
         </div>
       ) : null}
-      {figures.map((figure) => (
-        <div key={figure.label} className="flex flex-col gap-0.5">
-          <dt className="font-semibold text-[10px] text-[var(--ink-2)] uppercase tracking-[0.08em]">
-            {figure.label}
-          </dt>
-          <dd className="font-semibold text-4xl tabular-nums tracking-tight">
-            {figure.value}
-            {figure.unit ? (
-              <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{figure.unit}</span>
+      {figures.map((figure, index) => {
+        const Mark = MARKS[figure.label];
+        return (
+          // Hairlines between cells rather than around them: a rule on the
+          // right of every left cell, and above every row but the first.
+          <div
+            key={figure.label}
+            className={`flex gap-3 border-[var(--rule)] px-4 py-3 ${index >= 2 ? "border-t" : ""} ${index % 2 === 1 ? "" : index === figures.length - 1 ? "col-span-2" : "border-r"}`}
+          >
+            {Mark ? (
+              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[var(--ink)] text-[var(--panel)]">
+                <Mark size={16} stroke={1.8} aria-hidden="true" />
+              </span>
             ) : null}
-          </dd>
-          {figure.note ? <dd className="text-[var(--ink-2)] text-xs">{figure.note}</dd> : null}
-        </div>
-      ))}
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <dt className="text-[11px] text-[var(--ink-2)]">{figure.label}</dt>
+              <dd className="font-semibold text-2xl leading-tight tabular-nums tracking-tight">
+                {figure.value}
+                {figure.unit ? (
+                  <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">
+                    {figure.unit}
+                  </span>
+                ) : null}
+              </dd>
+              {figure.note ? <dd className="text-[var(--ink-2)] text-xs">{figure.note}</dd> : null}
+            </div>
+          </div>
+        );
+      })}
     </dl>
   );
 }
