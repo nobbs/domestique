@@ -22,9 +22,10 @@
  */
 
 import {
-  IconChevronUp,
   IconCopy,
-  IconDotsVertical,
+  IconLayoutNavbarCollapse,
+  IconLayoutNavbarExpand,
+  IconMenu2,
   IconPencil,
   IconTrendingDown,
   IconTrendingUp,
@@ -251,19 +252,19 @@ export function RoutePanel({
               }}
               className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
             >
-              <IconChevronUp
-                size={16}
-                stroke={2}
-                aria-hidden="true"
-                className={collapsed ? "rotate-180 transition-transform" : "transition-transform"}
-              />
+              {/* The dock's own fold glyph, for the bar at the top rather than the bottom. */}
+              {collapsed ? (
+                <IconLayoutNavbarExpand size={16} stroke={2} aria-hidden="true" />
+              ) : (
+                <IconLayoutNavbarCollapse size={16} stroke={2} aria-hidden="true" />
+              )}
             </button>
             <DropdownMenu>
               <DropdownMenuTrigger
                 aria-label="More about this route"
                 className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] border-[var(--rule)] border-l"
               >
-                <IconDotsVertical size={16} stroke={2} aria-hidden="true" />
+                <IconMenu2 size={16} stroke={2} aria-hidden="true" />
               </DropdownMenuTrigger>
               {/*
                * `w-auto` because the menu's own width follows its anchor, and the
