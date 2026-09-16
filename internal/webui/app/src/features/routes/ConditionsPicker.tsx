@@ -63,7 +63,7 @@ export function ConditionsChoices({
       <div
         role="group"
         aria-label="Conditions washed along the route"
-        className="flex w-fit flex-wrap items-center gap-0.5 rounded-lg bg-[var(--ground)] p-[3px]"
+        className="flex w-fit flex-wrap items-center gap-0.5 rounded-lg bg-[var(--track)] p-[3px]"
       >
         <button
           type="button"

@@ -15,6 +15,7 @@
   --base: #f4f3f0;
   --panel: #ffffff;
   --rule: #e7e5e1;
+  --track: #dcd9d3;
   --ink: #1a1a1a;
   --ink-2: #6e6d6a;
   --accent: #236fc7;
@@ -89,6 +90,7 @@
   --base: #1c1b19;
   --panel: #262522;
   --rule: #37352f;
+  --track: #3a3833;
   --ink: #f1efea;
   --ink-2: #a29f98;
   --accent: #70adfb;
@@ -162,6 +164,7 @@
     --base: #1c1b19;
     --panel: #262522;
     --rule: #37352f;
+    --track: #3a3833;
     --ink: #f1efea;
     --ink-2: #a29f98;
     --accent: #70adfb;
@@ -305,7 +308,7 @@ input, textarea, [contenteditable]:not([contenteditable="false"]) { user-select:
 
 /* A joined toggle group is a segmented control: a muted pill with the pressed
    segment raised white on it, rather than a run of outlined buttons. */
-[data-slot="toggle-group"][data-spacing="0"] { gap: 2px; padding: 3px; border-radius: 12px; background: var(--ground); }
+[data-slot="toggle-group"][data-spacing="0"] { gap: 2px; padding: 3px; border-radius: 12px; background: var(--track); }
 [data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"] { border: 0; border-radius: 9px; background: transparent; color: var(--ink-2); }
 [data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"]:hover { color: var(--ink); }
 [data-slot="toggle-group"][data-spacing="0"] > [data-slot="toggle-group-item"][aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); }
