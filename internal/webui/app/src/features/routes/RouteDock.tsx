@@ -414,7 +414,7 @@ function RidesStop({ rides }: Pick<RouteDockProps, "rides">) {
 }
 
 const FOLDED_CONTROL =
-  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]";
+  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]";
 
 export function RouteDock({
   title,
@@ -450,8 +450,6 @@ export function RouteDock({
   const shownStop = rides.length === 0 && stop === "rides" ? "profile" : stop;
 
   if (!open) {
-    // Nothing is raised: no stop is on while the dock is folded, so the track
-    // says where a press leads without claiming one of them is open.
     const stops: Array<{
       label: string;
       name: string;
@@ -490,30 +488,28 @@ export function RouteDock({
       <div
         role="group"
         aria-label="Route detail, folded"
-        className="w-fit rounded-xl bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]"
+        className="flex w-fit items-center gap-0.5 rounded-xl bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]"
       >
-        <div className="flex items-center gap-0.5 rounded-lg bg-[var(--muted)] p-[3px]">
-          {stops.map((entry) => (
-            <button
-              key={entry.stop}
-              type="button"
-              aria-label={entry.count === null ? entry.name : `${entry.name}, ${entry.count}`}
-              onClick={() => {
-                setStop(entry.stop);
-                onOpenChange(true);
-              }}
-              className={FOLDED_CONTROL}
-            >
-              {entry.icon}
-              {entry.label}
-              {entry.count === null ? null : (
-                <span className="rounded-full bg-[var(--rule)] px-1.5 py-px text-[10px] text-[var(--ink)] tabular-nums">
-                  {entry.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        {stops.map((entry) => (
+          <button
+            key={entry.stop}
+            type="button"
+            aria-label={entry.count === null ? entry.name : `${entry.name}, ${entry.count}`}
+            onClick={() => {
+              setStop(entry.stop);
+              onOpenChange(true);
+            }}
+            className={FOLDED_CONTROL}
+          >
+            {entry.icon}
+            {entry.label}
+            {entry.count === null ? null : (
+              <span className="rounded-full bg-[var(--rule)] px-1.5 py-px text-[10px] text-[var(--ink)] tabular-nums">
+                {entry.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
     );
   }
