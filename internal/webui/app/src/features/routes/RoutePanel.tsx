@@ -41,9 +41,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router";
 import { webUIConfigQuery } from "../../api/queries";
-import type { Route, StoppingSuggestion } from "../../api/types";
-import { Button } from "../../components/Button";
-import { Slider } from "../../components/Slider";
+import type { Route } from "../../api/types";
 import { SourceRouteLink } from "../../components/SourceRouteLink";
 import {
   DropdownMenu,
@@ -65,14 +63,6 @@ import type { Highlight } from "../../lib/highlight";
 import { useEffectiveAdmin } from "../../lib/identity";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
-import {
-  arrivalWindow,
-  CORPUS_RIDES,
-  CORPUS_SPREAD,
-  formatAllowance,
-  MAX_ALLOWANCE_SECONDS_PER_HOUR,
-  useStoppingAllowance,
-} from "../../lib/stoppingAllowance";
 import type { SurfaceSummary } from "../../lib/surface";
 import type { PlannerSeed } from "../plan/planner";
 import { MixRow } from "./MixRow";
@@ -166,12 +156,6 @@ export interface RoutePanelProps {
   onClose: () => void;
   /** Each configured source's web application, keyed by provider. */
   sourceBaseUrls: Record<string, string>;
-  /**
-   * The rider's own stopping habit, where their rides measure one. It replaces
-   * the corpus's spread and is offered as the allowance; undefined leaves both
-   * seeded.
-   */
-  stopping?: StoppingSuggestion | undefined;
 }
 
 export function RoutePanel({
@@ -192,16 +176,8 @@ export function RoutePanel({
   libraryCount,
   onClose,
   sourceBaseUrls,
-  stopping,
 }: RoutePanelProps) {
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
-  const [allowance, chooseAllowance] = useStoppingAllowance();
-  const doorToDoor = arrivalWindow(movingSeconds, allowance, stopping ?? CORPUS_SPREAD);
-  // Where a habit runs past the slider's end, accepting it lands on the end, so
-  // that is what the offer applies, is withdrawn at, and says it will do.
-  const offered = stopping
-    ? Math.min(stopping.medianSecondsPerHour, MAX_ALLOWANCE_SECONDS_PER_HOUR)
-    : null;
   const effectiveAdmin = useEffectiveAdmin();
   const config = useQuery(webUIConfigQuery());
 
@@ -467,44 +443,6 @@ export function RoutePanel({
                 </span>
               </Figure>
             </dl>
-            {/* The allowance is a rider preference kept in this browser; nothing is stored or sent. */}
-            {doorToDoor === null ? null : (
-              <div className="grid gap-1 border-[var(--rule)] border-t pt-2">
-                <div className="flex items-baseline justify-between gap-1.5">
-                  <span className="text-[11px] text-[var(--ink-2)]">Door to door</span>
-                  <span className="text-sm leading-tight tabular-nums">
-                    {formatMovingTime(doorToDoor.earliestSeconds)} to{" "}
-                    {formatMovingTime(doorToDoor.latestSeconds)}
-                  </span>
-                </div>
-                <Slider
-                  aria-label={`Stopping allowance, ${formatAllowance(allowance)} per moving hour`}
-                  min={0}
-                  max={MAX_ALLOWANCE_SECONDS_PER_HOUR}
-                  step={15}
-                  value={allowance}
-                  onValueChange={(value) =>
-                    chooseAllowance(Array.isArray(value) ? (value[0] ?? 0) : value)
-                  }
-                />
-                <p className="text-[11px] text-[var(--ink-2)]">
-                  {formatAllowance(allowance)} stopped per moving hour · spread from{" "}
-                  {stopping ? `your ${stopping.rides} rides` : `${CORPUS_RIDES} current-bike rides`}
-                </p>
-                {stopping && offered !== null && Math.round(allowance) !== Math.round(offered) ? (
-                  <Button
-                    variant="ghost"
-                    className="h-auto justify-start p-0 text-[11px]"
-                    onClick={() => chooseAllowance(offered)}
-                  >
-                    Your rides stop {formatAllowance(stopping.medianSecondsPerHour)} per moving hour
-                    {offered < stopping.medianSecondsPerHour
-                      ? ` — use the ${formatAllowance(offered)} this allows`
-                      : " — use that"}
-                  </Button>
-                ) : null}
-              </div>
-            )}
             {/*
              * Mirrored: gradient's tags above its bar, surface's below its
              * own, so the two meet with nothing between them. What a reader is
