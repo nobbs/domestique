@@ -136,8 +136,19 @@ function StripCell({
 export function StripHero() {
   return (
     <div className="grid gap-4">
-      <Title />
       <div className="flex overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]">
+        {/* The ride itself as the strip's first cell: what was ridden, when, in what. */}
+        <div className="flex min-w-0 flex-[1.6] items-center gap-3 px-4 py-3">
+          <Mark size={9}>
+            <IconBike size={18} stroke={1.8} aria-hidden="true" />
+          </Mark>
+          <div className="min-w-0">
+            <div className="truncate font-semibold text-base leading-tight">{ROUTE}</div>
+            <div className="truncate text-[var(--ink-2)] text-xs">
+              {TITLE} · {WEATHER_LINE}
+            </div>
+          </div>
+        </div>
         <StripCell
           icon={<IconRuler2 size={18} stroke={1.8} aria-hidden="true" />}
           label="Distance"
