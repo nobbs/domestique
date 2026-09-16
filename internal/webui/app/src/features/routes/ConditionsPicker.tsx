@@ -29,7 +29,7 @@ import {
 
 /* A segment of the wash switch: raised white when it is the wash on the map. */
 const CHOICE =
-  "flex items-center gap-1 rounded-md bg-[color-mix(in_oklab,var(--ink-2)_14%,var(--panel))] px-2 py-1 text-[11px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:bg-[var(--panel)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)] aria-pressed:shadow-[0_0_0_1px_var(--rule),var(--shadow)]";
+  "flex items-center gap-1 rounded-md bg-[color-mix(in_oklab,var(--ink-2)_28%,var(--panel))] px-2 py-1 text-[11px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-50 aria-pressed:bg-[var(--panel)] aria-pressed:font-semibold aria-pressed:text-[var(--ink)] aria-pressed:shadow-[0_0_0_1px_var(--rule),var(--shadow)]";
 
 export interface ConditionsChoicesProps {
   /** The measure the reader asked for, and null — the default — for none. */
