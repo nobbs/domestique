@@ -42,6 +42,14 @@ interface RingProps {
 function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
   const [active, setActive] = useState<number | null>(null);
   const span = arc / 360;
+  // With round ends a dash is drawn `stroke` shorter than its slot: half a
+  // stroke of cap grows back at each end. The slot itself is never smaller
+  // than one dot plus the gap, and the long zones give up the difference.
+  const reserve = round ? stroke + gap : gap;
+  const raw = ZONES.map((zone) => (zone.seconds / TOTAL) * 100 * span);
+  const floored = raw.map((length) => Math.max(length, round ? reserve + 0.01 : length));
+  const scale = (100 * span) / floored.reduce((sum, length) => sum + length, 0);
+  const slots = floored.map((length) => length * scale);
   let offset = 0;
   const text = figure === "lg" ? "text-lg" : figure === "2xl" ? "text-2xl" : "text-3xl";
   // The lifted stroke is the widest thing drawn, and a round cap reaches half
@@ -75,10 +83,10 @@ function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
             />
           ) : null}
           {ZONES.map((zone, index) => {
-            const length = (zone.seconds / TOTAL) * 100 * span;
+            const length = slots[index] ?? 0;
             const start = offset;
             offset += length;
-            const drawn = Math.max(length - gap, round ? 0.01 : 0.3);
+            const drawn = Math.max(length - reserve, 0.01);
             return (
               <circle
                 key={zone.name}
@@ -90,10 +98,8 @@ function Ring({ size, stroke, gap, round, arc = 360, figure }: RingProps) {
                 strokeWidth={active === index ? stroke * 1.3 : stroke}
                 strokeLinecap={round ? "round" : "butt"}
                 opacity={active !== null && active !== index ? 0.2 : 1}
-                // Round caps grow past the dash by half the stroke each side, so
-                // the dash is trimmed and its start pushed on to keep the gap.
                 strokeDasharray={`${drawn} ${100 - drawn}`}
-                strokeDashoffset={-(start + gap / 2)}
+                strokeDashoffset={-(start + reserve / 2)}
                 className="transition-[opacity,stroke-width] duration-150"
                 onMouseEnter={() => setActive(index)}
                 onMouseLeave={() => setActive(null)}
@@ -140,17 +146,17 @@ const VARIANTS: Array<{ name: string; note: string; props: RingProps }> = [
   {
     name: "B · Rounded",
     note: "Round ends on every segment, with the gap widened so they do not touch.",
-    props: { size: 13, stroke: 4, gap: 2.5, round: true, figure: "2xl" },
+    props: { size: 13, stroke: 4, gap: 1, round: true, figure: "2xl" },
   },
   {
     name: "C · Wide",
     note: "A fat rounded ring; the smallest zones become dots.",
-    props: { size: 13, stroke: 7, gap: 4, round: true, figure: "2xl" },
+    props: { size: 13, stroke: 7, gap: 1.2, round: true, figure: "2xl" },
   },
   {
     name: "D · Gauge",
     note: "Three quarters of a circle, open at the foot, the way the sample draws its score.",
-    props: { size: 14, stroke: 5, gap: 2.5, round: true, arc: 270, figure: "3xl" },
+    props: { size: 14, stroke: 5, gap: 1, round: true, arc: 270, figure: "3xl" },
   },
 ];
 
