@@ -180,11 +180,13 @@ describe("RoutePanel", () => {
   });
 
   it("rests as a pill with the headline figures, not the full grid", () => {
-    renderPanel({ collapsed: true });
+    renderPanel({ collapsed: true, route: route({ movingSeconds: 6420 }) });
 
     expect(screen.getByText("42.5 km · 620 m")).toBeInTheDocument();
+    expect(screen.getByText("Moving time").parentElement).toHaveTextContent("1 h 45 min");
+    expect(screen.getByText("Rolling")).toBeInTheDocument();
     expect(screen.queryByText("620 m of climbing")).toBeNull();
-    expect(screen.queryByText("Moving time")).toBeNull();
+    expect(screen.queryByText("Mixed surface")).toBeNull();
   });
 
   it("clears the highlight on collapse without touching the zoom", async () => {

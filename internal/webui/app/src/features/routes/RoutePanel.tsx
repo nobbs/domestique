@@ -211,7 +211,7 @@ export function RoutePanel({
         // card took its width from whichever row was widest, so a long title
         // stretched the panel and left every rule below it stopping short of
         // the edge. Open, the width is the card's and the header lives in it.
-        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ${collapsed ? "w-fit" : "w-[24rem]"}`}
+        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] w-[24rem]`}
       >
         {/*
          * The route's name as the panel's heading, drawn nowhere: the pill
@@ -224,16 +224,6 @@ export function RoutePanel({
         <h2 className="visually-hidden">{route.title}</h2>
         <div className="flex items-center gap-1.5 p-2 pl-4">
           <span className="min-w-0 max-w-[15rem] truncate font-semibold">{route.title}</span>
-          {/*
-           * The two figures a ride is decided on, on the line that is visible
-           * far more often than the card is. Only on the pill: open, they are
-           * the first two rows immediately below.
-           */}
-          {collapsed ? (
-            <span className="shrink-0 text-sm text-[var(--ink-2)] tabular-nums">
-              {formatDistance(route.distanceMetres)} · {formatAscent(route.ascentMetres)}
-            </span>
-          ) : null}
           {/* One pill for everything that is not the route: fold, menu, the way out. */}
           <div className="ml-auto flex shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
             <button
@@ -322,7 +312,24 @@ export function RoutePanel({
             </button>
           </div>
         </div>
-        {collapsed ? null : (
+        {/*
+         * Folded, the figures a ride is decided on stay on the second line,
+         * with the two verdicts: open, they are the first entries below.
+         */}
+        {collapsed ? (
+          <div className="flex items-center justify-between gap-3 px-4 pb-2.5 text-sm">
+            <span className="text-[var(--ink-2)] tabular-nums">
+              {formatDistance(route.distanceMetres)} · {formatAscent(route.ascentMetres)}
+            </span>
+            <span className="inline-flex gap-1">
+              <Chip tone="info">
+                <span className="sr-only">Moving time </span>
+                {formatMovingTime(movingSeconds)}
+              </Chip>
+              {climbing ? <Chip tone={climbing.tone}>{climbing.label}</Chip> : null}
+            </span>
+          </div>
+        ) : (
           <div className="grid w-full gap-3 px-3 pt-2 pb-3">
             <div>
               {/*
