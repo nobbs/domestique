@@ -46,7 +46,7 @@ function ink(tone: Tone): string {
 function Chip({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <span
-      className="inline-flex items-center whitespace-nowrap rounded-full px-1.5 py-0.5 font-medium text-[11px] tabular-nums"
+      className="inline-flex items-center whitespace-nowrap rounded-md px-2 py-0.5 font-medium text-xs tabular-nums"
       style={{ color: ink(tone), background: tint(tone) }}
     >
       {children}
@@ -114,18 +114,18 @@ function StripCell({
   chip?: ReactNode;
 }) {
   return (
-    <div className="relative flex min-w-0 flex-1 items-center gap-3 px-4 py-3 not-first:before:absolute not-first:before:top-1/2 not-first:before:left-0 not-first:before:h-8 not-first:before:w-px not-first:before:-translate-y-1/2 not-first:before:bg-[var(--rule)] not-first:before:content-['']">
-      <Mark size={9}>{icon}</Mark>
+    <div className="relative flex min-w-0 flex-1 items-center gap-4 px-5 py-5 not-first:before:absolute not-first:before:top-1/2 not-first:before:left-0 not-first:before:h-10 not-first:before:w-px not-first:before:-translate-y-1/2 not-first:before:bg-[var(--rule)] not-first:before:content-['']">
+      <span className="grid size-9 shrink-0 place-items-center rounded-md bg-[radial-gradient(circle_at_50%_35%,#6e6e6e,#3d3d3d_85%)] text-[var(--panel)]">
+        {icon}
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-[var(--ink-2)] text-xs">
-          {label}
-          {chip}
-        </div>
-        <div className="whitespace-nowrap font-semibold text-xl leading-tight tabular-nums">
-          {value}
-          {unit ? (
-            <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{unit}</span>
-          ) : null}
+        <div className="text-[var(--ink-2)] text-sm">{label}</div>
+        <div className="flex items-baseline gap-3">
+          <span className="whitespace-nowrap font-semibold text-2xl leading-tight tabular-nums">
+            {value}
+            {unit ? <span className="ml-1.5 font-normal text-[var(--ink-2)]">{unit}</span> : null}
+          </span>
+          <span className="ml-auto">{chip}</span>
         </div>
       </div>
     </div>
@@ -138,10 +138,7 @@ export function StripHero() {
     <div className="grid gap-4">
       <div className="overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]">
         {/* The ride itself as the strip's header: what was ridden, when, in what. */}
-        <div className="flex items-center gap-3 px-4 pt-4 pb-1">
-          <Mark size={9}>
-            <IconBike size={18} stroke={1.8} aria-hidden="true" />
-          </Mark>
+        <div className="flex items-center gap-3 px-5 pt-5 pb-0">
           <div className="min-w-0">
             <div className="truncate font-semibold text-base leading-tight">{ROUTE}</div>
             <div className="truncate text-[var(--ink-2)] text-xs">
@@ -160,7 +157,7 @@ export function StripHero() {
             icon={<IconStopwatch size={18} stroke={1.8} aria-hidden="true" />}
             label="Moving"
             value={FIGURES.moving}
-            chip={<Chip tone="quiet">+17 min stopped</Chip>}
+            chip={<Chip tone="quiet">+17 min</Chip>}
           />
           <StripCell
             icon={<IconArrowBarUp size={18} stroke={1.8} aria-hidden="true" />}
