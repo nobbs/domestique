@@ -206,12 +206,12 @@ function Pill({
         <span className="size-1.5 rounded-full" style={{ background: ink(tone) }} />
         {label}
       </div>
+      <div className="text-sm">{note}</div>
       {verdict ? (
         <div>
           <Chip tone={verdict.tone}>{verdict.text}</Chip>
         </div>
       ) : null}
-      <div className="text-[var(--ink-2)] text-xs">{note}</div>
     </div>
   );
 }
