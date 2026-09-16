@@ -275,7 +275,6 @@ function Tiles() {
           );
         })}
       </div>
-      <Heading>Power</Heading>
       <div className="grid grid-cols-2 gap-2">
         {POWER.map((row) => (
           <Tile
@@ -288,7 +287,6 @@ function Tiles() {
           />
         ))}
       </div>
-      <Heading>Load</Heading>
       <div className="grid grid-cols-2 gap-2">
         {LOAD.map((row) => (
           <Tile
