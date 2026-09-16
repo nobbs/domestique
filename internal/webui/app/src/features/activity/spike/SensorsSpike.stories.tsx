@@ -215,8 +215,8 @@ function Tile({
         {unit ? <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{unit}</span> : null}
       </span>
       {max ? (
-        <span className="text-[var(--ink-2)] text-xs tabular-nums">
-          average · max <span className="text-[var(--ink)]">{max}</span>
+        <span className="whitespace-nowrap text-[var(--ink-2)] text-xs tabular-nums">
+          max <span className="text-[var(--ink)]">{max}</span>
         </span>
       ) : scale ? (
         <span className="text-[var(--ink-2)] text-xs">{scale}</span>
