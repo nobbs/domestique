@@ -190,7 +190,8 @@ export function ActivityPage() {
           </div>
         )}
         {drawable && profile ? (
-          <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
+          <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
+            <h2 className="font-semibold text-base">Profile</h2>
             <ElevationProfile
               profile={shownProfile}
               title={title}
