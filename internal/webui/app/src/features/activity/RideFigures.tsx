@@ -128,7 +128,9 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
   }
   const load = loadFigure(ride);
   const stoppedSeconds = ride.elapsedSeconds - ride.movingSeconds;
-  const climbing = climbingVerdict(ride.ascentMetres, ride.distanceMetres);
+  // A dash for the ascent is "no usable profile", not a flat ride; nothing to grade.
+  const climbing =
+    ride.ascentMetres > 0 ? climbingVerdict(ride.ascentMetres, ride.distanceMetres) : null;
   const match = ride.routeMatch;
   const figures: Headline[] = [
     {
@@ -165,7 +167,7 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
       value: formatAscent(ride.ascentMetres),
       tone: climbing?.tone ?? "hold",
       ...(climbing ? { verdict: climbing } : {}),
-      ...(ride.distanceMetres > 0
+      ...(climbing
         ? { note: `${Math.round(ride.ascentMetres / (ride.distanceMetres / 1000))} m per km` }
         : {}),
     },
