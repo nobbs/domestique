@@ -22,18 +22,10 @@
  */
 
 import {
-  IconArrowBarDown,
-  IconArrowBarUp,
-  IconArrowsUpDown,
-  IconArrowsVertical,
-  IconChartLine,
   IconChevronsRight,
   IconCopy,
   IconDots,
-  IconMountain,
   IconPencil,
-  IconRuler2,
-  IconStopwatch,
   IconTrendingDown,
   IconTrendingUp,
   IconX,
@@ -64,29 +56,52 @@ import { useEffectiveAdmin } from "../../lib/identity";
 import { bandEntries, surfaceEntries } from "../../lib/mix";
 import type { BandShare, GradientSummary } from "../../lib/profile";
 import type { SurfaceSummary } from "../../lib/surface";
+import { climbingVerdict, surfaceVerdict, type VerdictTone } from "../../lib/verdict";
 import type { PlannerSeed } from "../plan/planner";
 import { MixRow } from "./MixRow";
 import { ReprocessButton } from "./ReprocessButton";
 
-/**
- * One figure, as a line rather than as a stack.
- *
- * The name left and the number right, so the numbers land on two rules down
- * the card and a reader comparing them reads down a column rather than
- * hunting. Stacked, each pair cost two lines and the figures sat wherever
- * their labels happened to end.
- *
- * `items-baseline` because the two really are different sizes on one line,
- * which is what a baseline is for — unlike a row taller than its own text,
- * where it only pins the words to the ceiling.
- */
-function Figure({ term, children }: { term: React.ReactNode; children: React.ReactNode }) {
+/** A soft tinted chip in one of the page's tones: a claim about the route, not decoration. */
+function Chip({ tone, children }: { tone: VerdictTone; children: React.ReactNode }) {
+  const colour = tone === "info" ? "var(--accent)" : `var(--${tone})`;
+
   return (
-    <div className="flex items-baseline justify-between gap-1.5">
-      <dt className="flex min-w-0 items-center gap-1 truncate text-[11px] text-[var(--ink-2)] [&_svg]:size-3 [&_svg]:shrink-0">
-        {term}
-      </dt>
-      <dd className="shrink-0 text-sm leading-tight tabular-nums">{children}</dd>
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 rounded-full px-1.5 py-0.5 font-medium text-[11px] tabular-nums"
+      style={{ color: colour, background: `color-mix(in oklab, ${colour} 12%, transparent)` }}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * One statement about the route: a title with a verdict beside it, and one
+ * quieter line of the figures behind the statement.
+ */
+function Entry({
+  title,
+  chip,
+  sub,
+  value,
+}: {
+  title: React.ReactNode;
+  chip?: React.ReactNode;
+  sub?: React.ReactNode;
+  value?: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-0.5 border-[var(--rule)] border-b py-2.5 first:pt-0 last:border-b-0 last:pb-0">
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate font-medium">{title}</span>
+        {chip}
+      </div>
+      {sub !== undefined || value !== undefined ? (
+        <div className="flex items-baseline justify-between gap-3 text-[13px]">
+          <span className="min-w-0 truncate text-[var(--ink-2)]">{sub}</span>
+          <span className="shrink-0 font-medium tabular-nums">{value}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -178,6 +193,10 @@ export function RoutePanel({
   sourceBaseUrls,
 }: RoutePanelProps) {
   const movingSeconds = movingSecondsOverride ?? route.movingSeconds;
+  const climbing = climbingVerdict(route.ascentMetres, route.distanceMetres);
+  const ground = surfaceVerdict(surface);
+  // Largest share first, so the sub-line names what the route is mostly made of.
+  const surfaces = surfaceEntries(surface).sort((left, right) => right.metres - left.metres);
   const effectiveAdmin = useEffectiveAdmin();
   const config = useQuery(webUIConfigQuery());
 
@@ -301,148 +320,67 @@ export function RoutePanel({
         </div>
         {collapsed ? null : (
           <div className="grid w-full gap-3 px-3 pt-2 pb-3">
-            {/*
-             * Paired by row: what it is next to how long it takes, then its
-             * shape next to how much it climbs, then the average next to the
-             * extremes of the same statistic — six figures filling the grid
-             * exactly, an icon on each naming it before the number is read.
-             */}
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-              <Figure
-                term={
-                  <>
-                    <IconRuler2 stroke={2} aria-hidden="true" />
-                    Distance
-                  </>
-                }
-              >
-                {formatDistance(route.distanceMetres)}
-              </Figure>
+            <div>
               {/*
-               * Predicted, not measured — the label says "moving time", not
-               * "arrival time", and carries no stops, traffic or day-specific
-               * weather. The qualifier names how far off that estimate usually
-               * runs, from the frozen profile's own held-out benchmark.
+               * Predicted, not measured: the chip says "moving time", carries
+               * no stops or weather, and the sub-line names how far off that
+               * estimate usually runs, from the frozen profile's own benchmark.
                */}
-              <Figure
-                term={
-                  <>
-                    <IconStopwatch stroke={2} aria-hidden="true" />
-                    Moving time
-                  </>
+              <Entry
+                title={formatDistance(route.distanceMetres)}
+                chip={
+                  <Chip tone="info">
+                    <span className="sr-only">Moving time </span>
+                    {formatMovingTime(movingSeconds)}
+                  </Chip>
                 }
-              >
-                {formatMovingTime(movingSeconds)}
-                {movingSeconds !== undefined && route.validation ? (
-                  <span className="ml-1 text-[11px] font-normal text-[var(--ink-2)]">
-                    {formatMovingTimeUncertainty(route.validation)}
+                sub={
+                  movingSeconds === undefined
+                    ? "no moving time predicted"
+                    : `moving time ${formatMovingTimeUncertainty(route.validation) ?? "predicted"}`
+                }
+                value={
+                  lowestMetres === null || highestMetres === null
+                    ? undefined
+                    : `${Math.round(lowestMetres).toLocaleString()}–${formatElevation(highestMetres)}`
+                }
+              />
+              <Entry
+                title={`${formatAscent(route.ascentMetres)} of climbing`}
+                chip={climbing ? <Chip tone={climbing.tone}>{climbing.label}</Chip> : undefined}
+                sub={`${formatGradient(gradients.averageClimbing)} average · ${formatDescent(route.descentMetres)} down`}
+                value={
+                  <span className="inline-flex items-center gap-1">
+                    <span className="font-normal text-[var(--ink-2)]">max</span>
+                    <Chip tone="alert">
+                      <IconTrendingUp size={12} stroke={2} aria-hidden="true" />
+                      <span className="sr-only">climb</span>
+                      {formatGradient(gradients.steepestClimbing)}
+                    </Chip>
+                    <Chip tone="hold">
+                      <IconTrendingDown size={12} stroke={2} aria-hidden="true" />
+                      <span className="sr-only">descent</span>
+                      {formatGradient(gradients.steepestDescent)}
+                    </Chip>
                   </span>
-                ) : null}
-              </Figure>
-              {/*
-               * One figure rather than two: the two ends of a range are read
-               * together or not at all, and asking for the height of the top
-               * without the height of the bottom is asking half a question.
-               * It is how the dock has always said it.
-               */}
-              <Figure
-                term={
-                  <>
-                    <IconMountain stroke={2} aria-hidden="true" />
-                    Elevation
-                  </>
                 }
-              >
-                {lowestMetres === null || highestMetres === null
-                  ? "—"
-                  : // The unit once, on the end it belongs to. Printed on both
-                    // ends the pair is the widest figure on the card, and in
-                    // feet — where both ends are four digits — it is wide
-                    // enough to start eating its own label.
-                    `${Math.round(lowestMetres).toLocaleString()}–${formatElevation(highestMetres)}`}
-              </Figure>
-              {/*
-               * One row rather than two: a point-to-point route's climb and
-               * drop genuinely differ, so showing only Ascent was quietly
-               * assuming every route loops back to its start.
-               */}
-              <Figure
-                term={
-                  <>
-                    <IconArrowsUpDown stroke={2} aria-hidden="true" />
-                    Ascent
-                  </>
+              />
+              <Entry
+                title={ground?.title ?? "Surface"}
+                chip={ground ? <Chip tone={ground.tone}>{ground.label}</Chip> : undefined}
+                sub={
+                  ground
+                    ? surfaces
+                        .slice(0, 2)
+                        .map(
+                          (entry) => `${entry.label.toLowerCase()} ${formatDistance(entry.metres)}`,
+                        )
+                        .join(" · ")
+                    : surfaceAbsence
                 }
-              >
-                <span className="inline-flex items-center gap-px">
-                  <IconArrowBarUp stroke={2} aria-hidden="true" className="size-3 shrink-0" />
-                  <span className="sr-only">ascent</span>
-                  {formatAscent(route.ascentMetres)}
-                </span>
-                <span aria-hidden="true" className="mx-0.5 text-[var(--ink-2)]">
-                  /
-                </span>
-                <span className="inline-flex items-center gap-px">
-                  <IconArrowBarDown stroke={2} aria-hidden="true" className="size-3 shrink-0" />
-                  <span className="sr-only">descent</span>
-                  {formatDescent(route.descentMetres)}
-                </span>
-              </Figure>
-              <Figure
-                term={
-                  <>
-                    <IconChartLine
-                      stroke={2}
-                      aria-hidden="true"
-                      style={{ color: "var(--grade-2)" }}
-                    />
-                    Avg climbing
-                  </>
-                }
-              >
-                {formatGradient(gradients.averageClimbing)}
-              </Figure>
-              {/*
-               * The steepest each way, which the service's own figure cannot
-               * say: it takes the absolute value, so a savage descent reaches
-               * the page as a savage climb. One row rather than two, since
-               * both are the same statistic's extremes — the word that used to
-               * tell them apart moves to a screen-reader-only label, and the
-               * two arrows keep their own colour off the mix's grade scale.
-               */}
-              <Figure
-                term={
-                  <>
-                    <IconArrowsVertical stroke={2} aria-hidden="true" />
-                    Max grade
-                  </>
-                }
-              >
-                <span className="inline-flex items-center gap-px">
-                  <IconTrendingUp
-                    stroke={2}
-                    aria-hidden="true"
-                    className="size-3 shrink-0"
-                    style={{ color: "var(--grade-4)" }}
-                  />
-                  <span className="sr-only">climb</span>
-                  {formatGradient(gradients.steepestClimbing)}
-                </span>
-                <span aria-hidden="true" className="mx-0.5 text-[var(--ink-2)]">
-                  /
-                </span>
-                <span className="inline-flex items-center gap-px">
-                  <IconTrendingDown
-                    stroke={2}
-                    aria-hidden="true"
-                    className="size-3 shrink-0"
-                    style={{ color: "var(--grade-3)" }}
-                  />
-                  <span className="sr-only">descent</span>
-                  {formatGradient(gradients.steepestDescent)}
-                </span>
-              </Figure>
-            </dl>
+                value={ground ? `unsealed ${formatDistance(ground.unsealedMetres)}` : undefined}
+              />
+            </div>
             {/*
              * Mirrored: gradient's tags above its bar, surface's below its
              * own, so the two meet with nothing between them. What a reader is
@@ -461,7 +399,7 @@ export function RoutePanel({
               />
               <MixRow
                 classesLabel="Surface classes"
-                entries={surfaceEntries(surface)}
+                entries={surfaces}
                 absence={surfaceAbsence}
                 tagSide="below"
                 highlight={highlight}

@@ -183,7 +183,7 @@ describe("RoutePanel", () => {
     renderPanel({ collapsed: true });
 
     expect(screen.getByText("42.5 km · 620 m")).toBeInTheDocument();
-    expect(screen.queryByText("Elevation")).toBeNull();
+    expect(screen.queryByText("620 m of climbing")).toBeNull();
     expect(screen.queryByText("Moving time")).toBeNull();
   });
 
@@ -201,15 +201,45 @@ describe("RoutePanel", () => {
   it("shows nothing for a route nothing has predicted", () => {
     renderPanel({ route: route() });
 
-    expect(screen.getByText("Moving time").nextElementSibling).toHaveTextContent("—");
+    expect(screen.getByText("Moving time").parentElement).toHaveTextContent("Moving time —");
+    expect(screen.getByText("no moving time predicted")).toBeInTheDocument();
   });
 
-  it("shows ascent and descent together as one Ascent figure", () => {
+  it("reads the climbing as a verdict beside the ascent", () => {
+    renderPanel({ route: route({ distanceMetres: 42_500, ascentMetres: 620 }) });
+
+    expect(screen.getByText("620 m of climbing").nextElementSibling).toHaveTextContent("Rolling");
+  });
+
+  it("reads the surface as a verdict, naming what the route is mostly made of", () => {
+    renderPanel({
+      surface: {
+        bands: [],
+        totalMetres: 10_000,
+        shares: [
+          { kind: "asphalt", metres: 6_000, share: 0.6 },
+          { kind: "gravel", metres: 4_000, share: 0.4 },
+        ],
+      },
+    });
+
+    expect(screen.getByText("Mixed surface").nextElementSibling).toHaveTextContent("40% unsealed");
+    expect(screen.getByText("asphalt 6.0 km · gravel 4.0 km")).toBeInTheDocument();
+    expect(screen.getByText("unsealed 4.0 km")).toBeInTheDocument();
+  });
+
+  it("says why there is no surface verdict", () => {
+    renderPanel({ surface: null, surfaceAbsence: "Surface not classified yet." });
+
+    expect(screen.getByText("Surface")).toBeInTheDocument();
+    expect(screen.getByText("Surface not classified yet.")).toBeInTheDocument();
+  });
+
+  it("shows ascent and descent together in one climbing entry", () => {
     renderPanel({ route: route({ ascentMetres: 620, descentMetres: 540 }) });
 
-    const value = screen.getByText("Ascent").nextElementSibling;
-    expect(value).toHaveTextContent("620 m");
-    expect(value).toHaveTextContent("540 m");
+    expect(screen.getByText("620 m of climbing")).toBeInTheDocument();
+    expect(screen.getByText("540 m down", { exact: false })).toBeInTheDocument();
   });
 
   it("shows the steepest climb and descent together as one Max grade figure", () => {
@@ -217,9 +247,8 @@ describe("RoutePanel", () => {
       gradients: { averageClimbing: 4.8, steepestClimbing: 11, steepestDescent: 9.2 },
     });
 
-    const value = screen.getByText("Max grade").nextElementSibling;
-    expect(value).toHaveTextContent("11%");
-    expect(value).toHaveTextContent("9.2%");
+    expect(screen.getByText("11%")).toBeInTheDocument();
+    expect(screen.getByText("9.2%")).toBeInTheDocument();
   });
 
   it("shows the predicted moving time and its qualifier", () => {
@@ -231,7 +260,7 @@ describe("RoutePanel", () => {
     });
 
     expect(screen.getByText("1 h 45 min")).toBeInTheDocument();
-    expect(screen.getByText("±7% typical")).toBeInTheDocument();
+    expect(screen.getByText("moving time ±7% typical")).toBeInTheDocument();
   });
 
   it("omits the qualifier when the loaded profile carries no measured result", () => {
