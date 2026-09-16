@@ -203,12 +203,18 @@ function Pill({
       >
         {value}
       </div>
-      <div className="text-sm">{note}</div>
-      {verdict ? (
-        <div>
-          <Chip tone={verdict.tone}>{verdict.text}</Chip>
-        </div>
-      ) : null}
+      <div className="text-sm">
+        {verdict ? (
+          <>
+            <span className="font-medium" style={{ color: ink(verdict.tone) }}>
+              {verdict.text}
+            </span>
+            <span className="text-[var(--ink-2)]"> · {note}</span>
+          </>
+        ) : (
+          note
+        )}
+      </div>
     </div>
   );
 }
