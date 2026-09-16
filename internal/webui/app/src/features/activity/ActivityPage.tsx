@@ -28,7 +28,6 @@ import {
   rangeBounds,
   sampleIndexAt,
 } from "../../lib/profile";
-import { WHOLE_LAP_COVERAGE } from "../../lib/rideHistory";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { conditionsSentence } from "../../lib/weather";
 import { ElevationProfile } from "../routes/ElevationProfile";
@@ -156,57 +155,40 @@ export function ActivityPage() {
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-          <div className="flex flex-col justify-between gap-6 py-1">
-            <div className="flex flex-col gap-1">
-              <Link className="text-[var(--ink-2)] text-xs underline" to="/activities">
-                Activities
-              </Link>
-              <h1 className="font-semibold text-4xl tracking-tight">{title}</h1>
-              {ride?.weather ? (
-                <p className="text-[var(--ink-2)] text-sm">{conditionsSentence(ride.weather)}</p>
-              ) : null}
-              <MatchedRoute ride={ride} />
-            </div>
-            <RideFigures ride={ride} />
-          </div>
-          {id === null ? (
-            <p className="self-center text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
-          ) : track.isPending ? (
-            <Skeleton
-              className="h-80 w-full"
-              role="status"
-              aria-label="Loading the recorded track"
-            />
-          ) : !drawable || !track.data?.bbox ? (
-            <p className="self-center text-[var(--ink-2)] text-sm">
-              {absenceMessage(track.data?.state)}
-            </p>
-          ) : (
-            <div
-              className={
-                mapExpanded
-                  ? "h-[75vh] overflow-hidden rounded-2xl shadow-[var(--shadow)] lg:col-span-2"
-                  : "h-80 overflow-hidden rounded-2xl shadow-[var(--shadow)]"
-              }
-            >
-              <ActivityMap
-                coordinates={coordinates}
-                bounds={track.data.bbox}
-                world={track.data.world}
-                windowBounds={windowBounds}
-                profile={profile}
-                activeProfile={shownProfile}
-                activeMetres={activeMetres}
-                onActiveChange={setActiveMetres}
-                zoomWindow={shownWindow}
-                onZoomChange={onZoomChange}
-                expanded={mapExpanded}
-                onExpandedChange={setMapExpanded}
-              />
-            </div>
-          )}
+        <div className="grid gap-4 rounded-2xl bg-[var(--panel)] p-5 shadow-[var(--shadow)]">
+          <RideHeader ride={ride} />
+          <RideFigures ride={ride} />
         </div>
+        {id === null ? (
+          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
+        ) : track.isPending ? (
+          <Skeleton className="h-80 w-full" role="status" aria-label="Loading the recorded track" />
+        ) : !drawable || !track.data?.bbox ? (
+          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(track.data?.state)}</p>
+        ) : (
+          <div
+            className={
+              mapExpanded
+                ? "h-[75vh] overflow-hidden rounded-2xl shadow-[var(--shadow)]"
+                : "h-80 overflow-hidden rounded-2xl shadow-[var(--shadow)]"
+            }
+          >
+            <ActivityMap
+              coordinates={coordinates}
+              bounds={track.data.bbox}
+              world={track.data.world}
+              windowBounds={windowBounds}
+              profile={profile}
+              activeProfile={shownProfile}
+              activeMetres={activeMetres}
+              onActiveChange={setActiveMetres}
+              zoomWindow={shownWindow}
+              onZoomChange={onZoomChange}
+              expanded={mapExpanded}
+              onExpandedChange={setMapExpanded}
+            />
+          </div>
+        )}
         {drawable && profile ? (
           <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
             <ElevationProfile
@@ -247,30 +229,36 @@ export function ActivityPage() {
 
 /** The library route this ride was ridden on. A ride the listing has no route
  * for names nothing, and a partial lap says how much of it it covered. */
-function MatchedRoute({ ride }: { ride: Activity | undefined }) {
+/**
+ * The card's header: the route the ride was a lap of, where the library
+ * knows one, else the date; whichever is not the title goes beneath it with
+ * the weather. The distance figure carries how much of the route was ridden.
+ */
+function RideHeader({ ride }: { ride: Activity | undefined }) {
   const match = ride?.routeMatch;
   // The listing is only worth a request once there is a route to name in it.
   const routes = useQuery({ ...routesQuery(), enabled: match !== undefined });
   const route = match ? routes.data?.find((held) => routeKey(held) === routeKey(match)) : undefined;
-  if (!match || !route) {
-    return null;
-  }
+  const when = ride ? formatTimestamp(ride.startedAt) : "Activity";
+  const weather = ride?.weather ? conditionsSentence(ride.weather) : null;
+  const subline = [route ? when : null, weather].filter((part) => part !== null).join(" · ");
 
   return (
-    <p className="text-sm">
-      <Link
-        className="underline"
-        to={`/routes/${route.provider}/${route.sourceRouteId}/${route.stageOrder}`}
-      >
-        {route.title}
-      </Link>
-      {match.routeCoverage >= WHOLE_LAP_COVERAGE ? null : (
-        <span className="text-[var(--ink-2)]">
-          {" "}
-          · {Math.round(match.routeCoverage * 100)}% of the route
-        </span>
-      )}
-    </p>
+    <div className="min-w-0">
+      <h1 className="truncate font-semibold text-lg leading-tight">
+        {route ? (
+          <Link
+            className="hover:underline"
+            to={`/routes/${route.provider}/${route.sourceRouteId}/${route.stageOrder}`}
+          >
+            {route.title}
+          </Link>
+        ) : (
+          when
+        )}
+      </h1>
+      {subline ? <p className="truncate text-[var(--ink-2)] text-sm">{subline}</p> : null}
+    </div>
   );
 }
 

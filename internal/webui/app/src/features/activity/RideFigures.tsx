@@ -10,15 +10,6 @@
  * recorded file was never readable.
  */
 
-import {
-  IconArrowBarDown,
-  IconArrowBarUp,
-  IconBolt,
-  IconFlame,
-  IconRuler2,
-  IconStopwatch,
-} from "@tabler/icons-react";
-import type { ComponentType } from "react";
 import type { Activity } from "../../api/types";
 import { Badge } from "../../components/ui/badge";
 import {
@@ -28,6 +19,8 @@ import {
   formatDistance,
   formatDuration,
 } from "../../lib/format";
+import { WHOLE_LAP_COVERAGE } from "../../lib/rideHistory";
+import { climbingVerdict, intensityVerdict, type VerdictTone } from "../../lib/verdict";
 
 /** A figure's own note, with a coverage share appended where the series held less than the whole ride. */
 function withCoverage(note: string | undefined, coverage: number | undefined): string | undefined {
@@ -39,26 +32,22 @@ function withCoverage(note: string | undefined, coverage: number | undefined): s
   return note ? `${note} · ${coverageNote}` : coverageNote;
 }
 
+/** The page's tones plus a quiet one for figures that make no claim. */
+type Tone = VerdictTone | "quiet";
+
 interface Headline {
   label: string;
   value: string;
   unit?: string;
+  /** What the figure adds up to, in a tone; leads the note where there is one. */
+  verdict?: { label: string; tone: Tone };
   note?: string;
+  tone: Tone;
 }
 
-/** The mark each figure wears in its cell; keyed by label so the figures stay plain data. */
-const MARKS: Record<
-  string,
-  ComponentType<{ size?: number; stroke?: number; "aria-hidden"?: "true" }>
-> = {
-  Distance: IconRuler2,
-  Moving: IconStopwatch,
-  Climbed: IconArrowBarUp,
-  Descended: IconArrowBarDown,
-  Calories: IconFlame,
-  "Calories (est.)": IconFlame,
-  "Training stress": IconBolt,
-};
+function colour(tone: Tone): string {
+  return tone === "quiet" ? "var(--ink)" : tone === "info" ? "var(--accent)" : `var(--${tone})`;
+}
 
 /** Which load scale the ride can be named on, and what it came to. */
 function loadFigure(ride: Activity): Headline | null {
@@ -71,10 +60,14 @@ function loadFigure(ride: Activity): Headline | null {
       metrics.powerCoverage,
     );
 
+    const verdict = intensityVerdict(metrics.intensityFactor);
+
     return {
       label: "Training stress",
       value: metrics.powerTss.toFixed(0),
       unit: "TSS",
+      tone: verdict?.tone ?? "alert",
+      ...(verdict ? { verdict } : {}),
       ...(note !== undefined ? { note } : {}),
     };
   }
@@ -85,6 +78,7 @@ function loadFigure(ride: Activity): Headline | null {
       label: "Training stress",
       value: metrics.heartRateTss.toFixed(0),
       unit: "hrTSS",
+      tone: "alert",
       ...(note !== undefined ? { note } : {}),
     };
   }
@@ -95,6 +89,7 @@ function loadFigure(ride: Activity): Headline | null {
       label: "Training impulse",
       value: metrics.trimp.toFixed(0),
       unit: "TRIMP",
+      tone: "alert",
       ...(note !== undefined ? { note } : {}),
     };
   }
@@ -113,6 +108,7 @@ function caloriesFigure(ride: Activity): Headline[] {
     return [
       {
         label: "Calories",
+        tone: "quiet",
         value: ride.caloriesKcal.toFixed(0),
         unit: "kcal",
         ...(estimated !== undefined ? { note: `~${estimated.toFixed(0)} kcal estimated` } : {}),
@@ -120,7 +116,7 @@ function caloriesFigure(ride: Activity): Headline[] {
     ];
   }
   if (estimated !== undefined) {
-    return [{ label: "Calories (est.)", value: estimated.toFixed(0), unit: "kcal" }];
+    return [{ label: "Calories (est.)", value: estimated.toFixed(0), unit: "kcal", tone: "quiet" }];
   }
 
   return [];
@@ -131,20 +127,50 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
     return null;
   }
   const load = loadFigure(ride);
+  const stoppedSeconds = ride.elapsedSeconds - ride.movingSeconds;
+  const climbing = climbingVerdict(ride.ascentMetres, ride.distanceMetres);
+  const match = ride.routeMatch;
   const figures: Headline[] = [
-    { label: "Distance", value: formatDistance(ride.distanceMetres) },
+    {
+      label: "Distance",
+      value: formatDistance(ride.distanceMetres),
+      tone: "info",
+      ...(match
+        ? {
+            verdict: {
+              label:
+                match.routeCoverage >= WHOLE_LAP_COVERAGE
+                  ? "Whole route"
+                  : `${Math.round(match.routeCoverage * 100)}% of the route`,
+              tone: "info",
+            },
+          }
+        : {}),
+    },
     {
       label: "Moving",
       value: formatDuration(ride.movingSeconds),
+      tone: "quiet",
       // Elapsed time is only worth a reader's eye where it says something
       // moving time did not.
-      ...(ride.elapsedSeconds - ride.movingSeconds >= 60
-        ? { note: `${formatDuration(ride.elapsedSeconds)} elapsed` }
+      ...(stoppedSeconds >= 60
+        ? {
+            verdict: { label: `${Math.round(stoppedSeconds / 60)} min stopped`, tone: "quiet" },
+            note: `${formatDuration(ride.elapsedSeconds)} elapsed`,
+          }
         : {}),
     },
-    { label: "Climbed", value: formatAscent(ride.ascentMetres) },
+    {
+      label: "Climbed",
+      value: formatAscent(ride.ascentMetres),
+      tone: climbing?.tone ?? "hold",
+      ...(climbing ? { verdict: climbing } : {}),
+      ...(ride.distanceMetres > 0
+        ? { note: `${Math.round(ride.ascentMetres / (ride.distanceMetres / 1000))} m per km` }
+        : {}),
+    },
     ...(ride.descentMetres !== undefined
-      ? [{ label: "Descended", value: formatDescent(ride.descentMetres) }]
+      ? [{ label: "Descended", value: formatDescent(ride.descentMetres), tone: "quiet" as const }]
       : []),
     ...caloriesFigure(ride),
     ...(load ? [load] : []),
@@ -152,11 +178,11 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
 
   return (
     <dl
-      className="grid grid-cols-2 overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]"
+      className="flex flex-wrap gap-x-6 gap-y-4 [&>div]:min-w-[10rem] [&>div]:flex-1"
       aria-label="Ride figures"
     >
       {ride.provider === "zwift" ? (
-        <div className="col-span-2 flex flex-col gap-1 border-[var(--rule)] border-b px-4 py-3">
+        <div className="flex basis-full flex-col gap-1">
           <dt className="sr-only">Recorded on</dt>
           <dd>
             <Badge variant="secondary" className="w-fit">
@@ -175,35 +201,34 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
           ) : null}
         </div>
       ) : null}
-      {figures.map((figure, index) => {
-        const Mark = MARKS[figure.label];
-        return (
-          // Hairlines between cells rather than around them: a rule on the
-          // right of every left cell, and above every row but the first.
-          <div
-            key={figure.label}
-            className={`flex gap-3 border-[var(--rule)] px-4 py-3 ${index >= 2 ? "border-t" : ""} ${index % 2 === 1 ? "" : index === figures.length - 1 ? "col-span-2" : "border-r"}`}
+      {figures.map((figure) => (
+        <div key={figure.label} className="flex min-w-0 flex-col gap-1.5">
+          <dt className="text-[var(--ink-2)] text-sm">{figure.label}</dt>
+          <dd
+            className="rounded-lg px-3 py-2 font-semibold text-xl leading-tight tabular-nums"
+            style={{
+              color: colour(figure.tone),
+              background: `color-mix(in oklab, ${figure.tone === "quiet" ? "var(--ink-2)" : colour(figure.tone)} 14%, transparent)`,
+            }}
           >
-            {Mark ? (
-              <span className="grid size-8 shrink-0 place-items-center rounded-md bg-[var(--ink)] text-[var(--panel)]">
-                <Mark size={16} stroke={1.8} aria-hidden="true" />
-              </span>
-            ) : null}
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <dt className="text-[11px] text-[var(--ink-2)]">{figure.label}</dt>
-              <dd className="font-semibold text-2xl leading-tight tabular-nums tracking-tight">
-                {figure.value}
-                {figure.unit ? (
-                  <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">
-                    {figure.unit}
-                  </span>
-                ) : null}
-              </dd>
-              {figure.note ? <dd className="text-[var(--ink-2)] text-xs">{figure.note}</dd> : null}
-            </div>
-          </div>
-        );
-      })}
+            {figure.value}
+            {figure.unit ? <span className="ml-1.5 font-normal text-sm">{figure.unit}</span> : null}
+          </dd>
+          {figure.verdict || figure.note ? (
+            <dd className="text-sm">
+              {figure.verdict ? (
+                <span className="font-medium" style={{ color: colour(figure.verdict.tone) }}>
+                  {figure.verdict.label}
+                </span>
+              ) : null}
+              {figure.verdict && figure.note ? (
+                <span className="text-[var(--ink-2)]"> · </span>
+              ) : null}
+              {figure.note ? <span className="text-[var(--ink-2)]">{figure.note}</span> : null}
+            </dd>
+          ) : null}
+        </div>
+      ))}
     </dl>
   );
 }
