@@ -42,9 +42,30 @@ const LOAD: Row[] = [
 
 /** Average against max, for the three sensors that report both. */
 const PAIRS = [
-  { label: "Speed", unit: "km/h", average: 21.3, max: 64.7, icon: IconGauge },
-  { label: "Heart rate", unit: "bpm", average: 123, max: 159, icon: IconHeart },
-  { label: "Cadence", unit: "rpm", average: 70, max: 129, icon: IconRotate },
+  {
+    label: "Speed",
+    unit: "km/h",
+    average: 21.3,
+    max: 64.7,
+    icon: IconGauge,
+    colour: "var(--series-speed)",
+  },
+  {
+    label: "Heart rate",
+    unit: "bpm",
+    average: 123,
+    max: 159,
+    icon: IconHeart,
+    colour: "var(--series-heart-rate)",
+  },
+  {
+    label: "Cadence",
+    unit: "rpm",
+    average: 70,
+    max: 129,
+    icon: IconRotate,
+    colour: "var(--series-cadence)",
+  },
 ];
 
 function Card({ title, children }: { title: string; children: ReactNode }) {
@@ -196,6 +217,7 @@ function Tile({
   unit,
   scale,
   max,
+  colour,
 }: {
   icon: ReactNode;
   label: string;
@@ -203,14 +225,22 @@ function Tile({
   unit?: string;
   scale?: string;
   max?: string;
+  /** The series' own colour, as the chart draws it; the tile is tinted with it. */
+  colour: string;
 }) {
   return (
-    <div className="grid gap-0.5 rounded-xl border border-[var(--rule)] p-3">
+    <div
+      className="grid gap-0.5 rounded-xl border p-3"
+      style={{
+        borderColor: `color-mix(in oklab, ${colour} 25%, transparent)`,
+        background: `color-mix(in oklab, ${colour} 7%, transparent)`,
+      }}
+    >
       <span className="flex items-center gap-1.5 text-[var(--ink-2)] text-xs">
-        {icon}
+        <span style={{ color: colour }}>{icon}</span>
         {label}
       </span>
-      <span className="font-semibold text-xl leading-tight tabular-nums">
+      <span className="font-semibold text-xl leading-tight tabular-nums" style={{ color: colour }}>
         {value}
         {unit ? <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{unit}</span> : null}
       </span>
@@ -240,6 +270,7 @@ function Tiles() {
               value={String(pair.average)}
               unit={pair.unit}
               max={String(pair.max)}
+              colour={pair.colour}
             />
           );
         })}
@@ -253,6 +284,7 @@ function Tiles() {
             label={row.label}
             value={row.value}
             scale={row.scale}
+            colour="var(--series-power)"
           />
         ))}
       </div>
@@ -265,6 +297,7 @@ function Tiles() {
             label={row.label}
             value={row.value}
             scale={row.scale}
+            colour="var(--alert)"
           />
         ))}
       </div>
