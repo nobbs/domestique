@@ -42,7 +42,7 @@ interface BodyProps {
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="w-[23rem] overflow-hidden rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-black/5">
+    <div className="w-[23rem] overflow-hidden rounded-xl bg-[var(--panel)] shadow-[var(--shadow)]">
       <div className="flex items-center gap-1 p-1.5">
         <button
           type="button"

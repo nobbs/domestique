@@ -130,7 +130,7 @@ export function LedgerIndex() {
             <h2 className="font-medium">{month.key}</h2>
             <Totals group={month} />
           </div>
-          <div className="overflow-x-auto rounded-xl bg-[var(--panel)] ring-1 ring-black/5">
+          <div className="overflow-x-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)]">
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="text-[var(--ink-2)] text-xs">
@@ -207,7 +207,7 @@ export function CardsIndex() {
         {RIDES.map((ride) => (
           <li
             key={ride.id}
-            className="flex cursor-pointer gap-3 rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5 hover:bg-[var(--base)]"
+            className="flex cursor-pointer gap-3 rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] hover:bg-[var(--base)]"
           >
             <div className="size-16 shrink-0 rounded-lg bg-[var(--base)] p-1.5">
               <RouteGlyph coordinates={ride.coordinates} title="ride" band={ride.band} />
@@ -273,7 +273,7 @@ export function WeeksIndex() {
       {weeks.map((week) => (
         <section
           key={week.key}
-          className="grid gap-x-2 rounded-xl bg-[var(--panel)] p-2 ring-1 ring-black/5"
+          className="grid gap-x-2 rounded-xl bg-[var(--panel)] p-2 shadow-[var(--shadow)]"
           style={{ gridTemplateColumns: WEEK_COLUMNS }}
         >
           <div className="flex flex-col gap-2 pr-2">

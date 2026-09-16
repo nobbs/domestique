@@ -136,7 +136,7 @@ function Panel({
 }) {
   return (
     <section
-      className={`flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5 ${className}`}
+      className={`flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ${className}`}
     >
       {title ? (
         <div className="flex items-baseline justify-between gap-3">
@@ -582,7 +582,7 @@ export function HeadlinePage() {
         <TrackMap
           active={active}
           onActive={setActive}
-          className="h-80 overflow-hidden rounded-2xl ring-1 ring-black/5"
+          className="h-80 overflow-hidden rounded-2xl shadow-[var(--shadow)]"
         />
       </div>
       <Panel>
@@ -690,7 +690,7 @@ function Tile({
 }) {
   return (
     <div
-      className={`flex flex-col gap-2 rounded-2xl bg-[var(--panel)] p-4 ring-1 ring-black/5 ${className}`}
+      className={`flex flex-col gap-2 rounded-2xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ${className}`}
     >
       {label ? <Label>{label}</Label> : null}
       {children}
@@ -721,7 +721,7 @@ export function BentoPage() {
         <TrackMap
           active={active}
           onActive={setActive}
-          className="col-span-4 row-span-2 overflow-hidden rounded-2xl ring-1 ring-black/5"
+          className="col-span-4 row-span-2 overflow-hidden rounded-2xl shadow-[var(--shadow)]"
         />
         <Tile label="Distance">
           <Big value={formatDistance(TOTAL_METRES)} />
@@ -868,10 +868,10 @@ export function LanesPage() {
       <TrackMap
         active={active}
         onActive={setActive}
-        className="h-64 overflow-hidden rounded-xl ring-1 ring-black/5"
+        className="h-64 overflow-hidden rounded-xl shadow-[var(--shadow)]"
       />
       <div
-        className="grid grid-cols-[6rem_minmax(0,1fr)_7rem] gap-x-2 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
+        className="grid grid-cols-[6rem_minmax(0,1fr)_7rem] gap-x-2 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
         onPointerMove={onPointerMove}
         onPointerLeave={onPointerLeave}
       >
@@ -991,9 +991,9 @@ export function AtlasPage() {
 
   return (
     <Page wide>
-      <div className="relative h-[38rem] overflow-hidden rounded-2xl ring-1 ring-black/5">
+      <div className="relative h-[38rem] overflow-hidden rounded-2xl shadow-[var(--shadow)]">
         <TrackMap active={active} onActive={setActive} className="absolute inset-0" />
-        <aside className="absolute top-3 left-3 flex w-[21rem] max-h-[calc(100%-1.5rem)] flex-col gap-4 overflow-y-auto rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5">
+        <aside className="absolute top-3 left-3 flex w-[21rem] max-h-[calc(100%-1.5rem)] flex-col gap-4 overflow-y-auto rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
           <div className="flex flex-col gap-0.5">
             <Crumb />
             <h1 className="font-semibold text-xl tracking-tight">{TITLE}</h1>
@@ -1038,7 +1038,7 @@ export function AtlasPage() {
             </>
           ) : null}
         </aside>
-        <div className="absolute right-3 bottom-3 left-[23rem] rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5">
+        <div className="absolute right-3 bottom-3 left-[23rem] rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
           <ElevationProfile
             profile={profile}
             title={TITLE}

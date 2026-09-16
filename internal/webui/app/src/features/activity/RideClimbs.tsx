@@ -100,7 +100,7 @@ export function RideClimbs({ climbs, activityId }: RideClimbsProps) {
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
+      className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
       aria-label="By the climb"
     >
       <h2 className="font-medium text-sm">By the climb</h2>

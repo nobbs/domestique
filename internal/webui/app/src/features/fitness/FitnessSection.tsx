@@ -13,7 +13,7 @@ export function FitnessSection({
   return (
     <section
       aria-label={title}
-      className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
+      className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-semibold text-base">{title}</h2>
@@ -43,7 +43,7 @@ export function FitnessStat({
     <div
       role="group"
       aria-label={label}
-      className="flex flex-col gap-0.5 rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5"
+      className="flex flex-col gap-0.5 rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]"
     >
       <span className="text-[var(--ink-2)] text-xs">{label}</span>
       <span className="font-semibold text-2xl tabular-nums tracking-tight">

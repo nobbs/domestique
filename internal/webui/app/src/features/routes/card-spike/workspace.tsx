@@ -177,7 +177,7 @@ export function Workspace({ card }: { card: "slide" | "fold" | "plain" | "rows" 
        * Edge to edge, which is the point: the card no longer reaches down here,
        * so nothing has to be left clear on the left.
        */}
-      <div className="absolute inset-x-3 bottom-3 rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] ring-1 ring-black/5">
+      <div className="absolute inset-x-3 bottom-3 rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
         <div className="flex items-stretch gap-3">
           <div className="min-w-0 flex-1">
             <p className="pb-1 text-xs text-[var(--ink-2)]">

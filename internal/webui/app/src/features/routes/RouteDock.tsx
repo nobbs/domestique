@@ -449,7 +449,7 @@ export function RouteDock({
       <div
         role="group"
         aria-label="Route detail, folded"
-        className="flex h-9 w-fit items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)] ring-1 ring-black/5"
+        className="flex h-9 w-fit items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)]"
       >
         <button
           type="button"
@@ -499,7 +499,7 @@ export function RouteDock({
   return (
     <section
       aria-label="Route detail"
-      className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
+      className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
     >
       <Tabs.Root
         value={shownStop}

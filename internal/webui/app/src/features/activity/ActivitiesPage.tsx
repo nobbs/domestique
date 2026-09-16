@@ -120,7 +120,7 @@ function WeekPanel({ week, zone, longest }: { week: RideWeek; zone: string; long
     return (
       <section
         aria-label={`Week ${range}`}
-        className="rounded-xl bg-[var(--panel)] px-3 py-2 ring-1 ring-black/5"
+        className="rounded-xl bg-[var(--panel)] px-3 py-2 shadow-[var(--shadow)]"
       >
         <span className="font-medium text-sm">{range}</span>
         <span className="ml-2 text-[var(--ink-2)] text-xs">No rides</span>
@@ -131,7 +131,7 @@ function WeekPanel({ week, zone, longest }: { week: RideWeek; zone: string; long
   return (
     <section
       aria-label={`Week ${range}`}
-      className="grid gap-x-2 rounded-xl bg-[var(--panel)] p-2 ring-1 ring-black/5"
+      className="grid gap-x-2 rounded-xl bg-[var(--panel)] p-2 shadow-[var(--shadow)]"
       style={{ gridTemplateColumns: WEEK_COLUMNS }}
     >
       <div className="flex flex-col gap-2 pr-2">
@@ -200,7 +200,7 @@ export function ActivitiesPage() {
             <label className="flex items-center gap-2 text-[var(--ink-2)] text-xs">
               Route
               <select
-                className="rounded-lg bg-[var(--panel)] px-2 py-1 text-[var(--ink)] text-sm ring-1 ring-black/5"
+                className="rounded-lg bg-[var(--panel)] px-2 py-1 text-[var(--ink)] text-sm shadow-[var(--shadow)]"
                 value={routeFilter}
                 onChange={(event) => setRouteFilter(event.target.value)}
               >
