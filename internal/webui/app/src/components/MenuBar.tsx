@@ -34,7 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { statusQuery } from "../api/queries";
+import { statusQuery, webUIConfigQuery } from "../api/queries";
 import { useEffectiveAdmin } from "../lib/identity";
 import { type StateTone, syncState } from "../lib/syncState";
 import { useFittingCount } from "../lib/useFittingCount";
@@ -54,8 +54,12 @@ interface Destination {
  * `end` only on the map, whose path is a prefix of nothing but is matched by
  * everything without it.
  */
-const DESTINATIONS: readonly Destination[] = [
-  { to: "/", label: "Atlas", end: true },
+const ATLAS_DESTINATION: Destination = { to: "/", label: "Atlas", end: true };
+
+/** Between Atlas and Catalogue: shown only where the planner exists — an admin and a routing engine. */
+const PLAN_DESTINATION: Destination = { to: "/plan", label: "Plan", end: false };
+
+const REST_DESTINATIONS: readonly Destination[] = [
   { to: "/catalogue", label: "Catalogue", end: false },
   { to: "/volume", label: "Volume", end: false },
   { to: "/fitness", label: "Fitness", end: false },
@@ -106,8 +110,14 @@ export function MenuBar() {
   const { data } = useQuery(statusQuery());
   const state = data ? syncState(data) : null;
   const described = state ? `Sync · ${state.label}` : undefined;
+  const { data: config } = useQuery(webUIConfigQuery());
   const effectiveAdmin = useEffectiveAdmin();
-  const destinations = effectiveAdmin ? [...DESTINATIONS, ADMIN_DESTINATION] : DESTINATIONS;
+  const destinations = [
+    ATLAS_DESTINATION,
+    ...(config?.planning && effectiveAdmin ? [PLAN_DESTINATION] : []),
+    ...REST_DESTINATIONS,
+    ...(effectiveAdmin ? [ADMIN_DESTINATION] : []),
+  ];
   const { pathname } = useLocation();
   const { frameRef, measureRef, visible } = useFittingCount(destinations.length);
   const shown = destinations.slice(0, visible);
