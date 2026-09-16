@@ -114,7 +114,7 @@ function StripCell({
   chip?: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-3 border-[var(--rule)] px-4 py-3 not-first:border-l">
+    <div className="relative flex min-w-0 flex-1 items-center gap-3 px-4 py-3 not-first:before:absolute not-first:before:top-1/2 not-first:before:left-0 not-first:before:h-8 not-first:before:w-px not-first:before:-translate-y-1/2 not-first:before:bg-[var(--rule)] not-first:before:content-['']">
       <Mark size={9}>{icon}</Mark>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 text-[var(--ink-2)] text-xs">
@@ -138,7 +138,7 @@ export function StripHero() {
     <div className="grid gap-4">
       <div className="overflow-hidden rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]">
         {/* The ride itself as the strip's header: what was ridden, when, in what. */}
-        <div className="flex items-center gap-3 border-[var(--rule)] border-b px-4 py-3">
+        <div className="flex items-center gap-3 px-4 pt-4 pb-1">
           <Mark size={9}>
             <IconBike size={18} stroke={1.8} aria-hidden="true" />
           </Mark>
