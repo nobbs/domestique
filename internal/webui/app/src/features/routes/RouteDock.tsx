@@ -414,7 +414,7 @@ function RidesStop({ rides }: Pick<RouteDockProps, "rides">) {
 }
 
 const FOLDED_CONTROL =
-  "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
+  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]";
 
 export function RouteDock({
   title,
@@ -450,53 +450,70 @@ export function RouteDock({
   const shownStop = rides.length === 0 && stop === "rides" ? "profile" : stop;
 
   if (!open) {
+    // Nothing is raised: no stop is on while the dock is folded, so the track
+    // says where a press leads without claiming one of them is open.
+    const stops: Array<{
+      label: string;
+      name: string;
+      icon: ReactNode;
+      stop: Stop;
+      count: string | null;
+    }> = [
+      {
+        label: "Profile",
+        name: "Show the profile",
+        icon: <IconMountain size={15} stroke={2} aria-hidden="true" />,
+        stop: "profile",
+        count: climbs.length === 0 ? null : String(climbs.length),
+      },
+      {
+        label: "Forecast",
+        name: "Show the forecast",
+        icon: <IconCloud size={15} stroke={2} aria-hidden="true" />,
+        stop: "forecast",
+        count: back === undefined ? null : formatClock(back),
+      },
+      ...(rides.length === 0
+        ? []
+        : [
+            {
+              label: "Rides",
+              name: "Show the ride history",
+              icon: <IconBike size={15} stroke={2} aria-hidden="true" />,
+              stop: "rides" as const,
+              count: String(rides.length),
+            },
+          ]),
+    ];
+
     return (
       <div
         role="group"
         aria-label="Route detail, folded"
-        className="flex h-9 w-fit items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)]"
+        className="w-fit rounded-xl bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]"
       >
-        <button
-          type="button"
-          aria-label="Show the profile"
-          onClick={() => {
-            setStop("profile");
-            onOpenChange(true);
-          }}
-          className={FOLDED_CONTROL}
-        >
-          <IconMountain size={15} stroke={2} aria-hidden="true" />
-          Profile
-        </button>
-        <button
-          type="button"
-          aria-label="Show the forecast"
-          onClick={() => {
-            setStop("forecast");
-            onOpenChange(true);
-          }}
-          className={FOLDED_CONTROL}
-        >
-          <IconCloud size={15} stroke={2} aria-hidden="true" />
-          Forecast
-        </button>
-        {rides.length === 0 ? null : (
-          <button
-            type="button"
-            aria-label="Show the ride history"
-            onClick={() => {
-              setStop("rides");
-              onOpenChange(true);
-            }}
-            className={FOLDED_CONTROL}
-          >
-            <IconBike size={15} stroke={2} aria-hidden="true" />
-            Rides
-          </button>
-        )}
-        {back === undefined ? null : (
-          <span className="px-1 text-[10px] text-[var(--ink-2)]">back {formatClock(back)}</span>
-        )}
+        <div className="flex items-center gap-0.5 rounded-lg bg-[var(--muted)] p-[3px]">
+          {stops.map((entry) => (
+            <button
+              key={entry.stop}
+              type="button"
+              aria-label={entry.count === null ? entry.name : `${entry.name}, ${entry.count}`}
+              onClick={() => {
+                setStop(entry.stop);
+                onOpenChange(true);
+              }}
+              className={FOLDED_CONTROL}
+            >
+              {entry.icon}
+              {entry.label}
+              {entry.count === null ? null : (
+                <span className="rounded-full bg-[var(--rule)] px-1.5 py-px text-[10px] text-[var(--ink)] tabular-nums">
+                  {entry.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
