@@ -210,7 +210,7 @@ export function RoutePanel({
         // card took its width from whichever row was widest, so a long title
         // stretched the panel and left every rule below it stopping short of
         // the edge. Open, the width is the card's and the header lives in it.
-        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ${collapsed ? "w-fit" : "w-[30rem]"}`}
+        className={`max-h-[calc(100dvh-9rem)] max-w-full overflow-y-auto rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] ${collapsed ? "w-fit" : "w-[24rem]"}`}
       >
         {/*
          * The route's name as the panel's heading, drawn nowhere: the pill
