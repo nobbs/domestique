@@ -18,7 +18,7 @@ function HistoryRow({ entry }: { entry: RiddenRide }) {
     <li>
       <Link
         to={`/activities/${ride.id}`}
-        className="flex flex-wrap items-baseline gap-x-3 rounded-md px-2 py-1 text-xs hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
+        className="flex flex-wrap items-baseline gap-x-3 border-[var(--rule)] border-b px-1 py-2 text-xs hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
       >
         <span className="w-40 shrink-0 text-[var(--ink-2)]">{formatTimestamp(ride.startedAt)}</span>
         <span className="w-20 shrink-0 font-semibold text-sm tabular-nums">
@@ -26,7 +26,7 @@ function HistoryRow({ entry }: { entry: RiddenRide }) {
         </span>
         <span className="w-20 shrink-0 tabular-nums">{formatSpeed(speedKmh)}</span>
         {personalBest ? (
-          <span className="inline-flex items-center gap-1 text-[var(--accent)]">
+          <span className="inline-flex items-center gap-1 rounded-full bg-[var(--good)]/12 px-1.5 py-0.5 font-medium text-[11px] text-[var(--good)]">
             <IconTrophy size={12} stroke={2} aria-hidden="true" />
             Best
           </span>
@@ -49,7 +49,10 @@ function HistoryRow({ entry }: { entry: RiddenRide }) {
 
 export function RouteHistory({ rides }: { rides: RiddenRide[] }) {
   return (
-    <ul aria-label="Ride history" className="min-h-0 flex-1 overflow-y-auto">
+    <ul
+      aria-label="Ride history"
+      className="min-h-0 flex-1 overflow-y-auto [&>li:last-child>a]:border-b-0"
+    >
       {rides.map((entry) => (
         <HistoryRow key={entry.ride.id} entry={entry} />
       ))}
