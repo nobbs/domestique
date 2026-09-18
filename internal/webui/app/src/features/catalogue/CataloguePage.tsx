@@ -13,7 +13,8 @@
  * an out-and-back — has nowhere else to come from. Arriving from the atlas those
  * requests are already answered; arriving here first answers them for the atlas
  * in turn. Rows render without geometry and gain their glyph and mix bars as it
- * lands, so a cold catalogue is readable before any of it arrives.
+ * lands, so a cold catalogue is readable before any of it arrives. An admin on a
+ * deployment that plans also reads the plan listing and each draft, for the Drafts shelf.
  *
  * Opening a route hands it to the atlas at `/?route=…` rather than showing it
  * here. There is one place a route is read, and this is a way into it.
@@ -582,11 +583,14 @@ export function CataloguePage() {
                 update(() => ({ query: value }));
               }}
             />
-            <FiltersToggle
-              open={filtersOpen}
-              onOpen={setFiltersOpen}
-              count={activeFilterCount(view.filters)}
-            />
+            {/* The filters measure routes; a draft carries none of what they bound. */}
+            {onDrafts ? null : (
+              <FiltersToggle
+                open={filtersOpen}
+                onOpen={setFiltersOpen}
+                count={activeFilterCount(view.filters)}
+              />
+            )}
           </span>
         </header>
         <div className="flex flex-col gap-5 lg:grid lg:items-start lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -620,7 +624,11 @@ export function CataloguePage() {
                       <AlertTitle>Could not load the drafts.</AlertTitle>
                     </Alert>
                   ) : drafted.isPending ? null : (
-                    <DraftList drafts={shownDrafts} narrow={narrow} />
+                    <DraftList
+                      drafts={shownDrafts}
+                      searched={shownDrafts.length < drafted.drafts.length}
+                      narrow={narrow}
+                    />
                   )}
                 </>
               ) : (
@@ -687,7 +695,7 @@ export function CataloguePage() {
             </Panel>
           </div>
           <div className="order-1 flex flex-col gap-5 lg:order-2 lg:sticky lg:top-20">
-            {filtersOpen ? (
+            {filtersOpen && !onDrafts ? (
               <CatalogueFilters
                 library={library}
                 filters={view.filters}

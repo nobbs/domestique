@@ -3,8 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { expect, userEvent } from "storybook/test";
 import { getGetPlanQueryKey, getListPlansQueryKey } from "../../api/generated";
-import { routesQuery, webUIConfigQuery } from "../../api/queries";
-import { coordinates, route, StoryProviders } from "../../storybook/fixtures";
+import { routeGeometryQuery, routesQuery, webUIConfigQuery } from "../../api/queries";
+import { coordinates, route, routeGeometryFixture, StoryProviders } from "../../storybook/fixtures";
 import { CataloguePage } from "./CataloguePage";
 
 // No map: the catalogue is a ledger, and the
@@ -82,6 +82,10 @@ function AsPlanner({ children }: { children: ReactNode }) {
     route,
     { ...route, provider: "local", sourceRouteId: 8, title: "Weekday loop", contentHash: "plan-8" },
   ]);
+  client.setQueryData(
+    routeGeometryQuery("local", 8, route.stageOrder).queryKey,
+    routeGeometryFixture,
+  );
   client.setQueryData(getListPlansQueryKey(), { data: { plans: DRAFTS } });
   for (const draft of DRAFTS) {
     client.setQueryData(getGetPlanQueryKey(draft.id), {

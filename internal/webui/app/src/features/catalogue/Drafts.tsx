@@ -138,11 +138,22 @@ function DraftCard({ draft }: { draft: Draft }) {
   );
 }
 
-export function DraftList({ drafts, narrow }: { drafts: Draft[]; narrow: boolean }) {
+export function DraftList({
+  drafts,
+  searched,
+  narrow,
+}: {
+  drafts: Draft[];
+  /** Whether a search hid drafts that exist, so an empty list is a miss rather than none. */
+  searched: boolean;
+  narrow: boolean;
+}) {
   if (drafts.length === 0) {
     return (
       <p className="py-6 text-center text-[var(--ink-2)] text-sm">
-        No drafts. A plan stays here until it is published.
+        {searched
+          ? "No draft is called that."
+          : "No drafts. A plan stays here until it is published."}
       </p>
     );
   }

@@ -594,7 +594,9 @@ describe("CataloguePage", () => {
     expect(within(drafts).getByRole("link", { name: /Saturday gravel/ })).toBeInTheDocument();
     await userEvent.clear(screen.getByRole("searchbox"));
     await userEvent.type(screen.getByRole("searchbox"), "nothing like it");
-    expect(within(drafts).getByText(/No drafts/)).toBeInTheDocument();
+    expect(within(drafts).getByText("No draft is called that.")).toBeInTheDocument();
+    // The route filters bound nothing a draft has, so they are not offered here.
+    expect(screen.queryByRole("button", { name: /Filters/ })).toBeNull();
   });
 
   it("asks for no draft while an admin views the page as a rider, though the listing is cached", async () => {
