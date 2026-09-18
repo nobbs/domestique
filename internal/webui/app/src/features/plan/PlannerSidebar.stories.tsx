@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import type { PlanRoutePreview } from "../../api/types";
 import { StoryProviders } from "../../storybook/fixtures";
-import { PlannerSidebar } from "./PlanPage";
-import { initialPlannerState } from "./planner";
+import { PlannerSidebar } from "./PlannerSidebar";
+import { initialPlannerState, type PlannerWaypoint } from "./planner";
 
 const meta = {
   title: "Features/Planner/Sidebar",
@@ -9,7 +10,7 @@ const meta = {
   decorators: [
     (Story) => (
       <StoryProviders>
-        <div className="max-w-sm p-4">
+        <div className="flex h-[640px] w-[24rem] flex-col">
           <Story />
         </div>
       </StoryProviders>
@@ -17,10 +18,10 @@ const meta = {
   ],
   args: {
     state: initialPlannerState,
-    plans: [],
     preview: null,
     planId: null,
     published: false,
+    changed: false,
     saving: false,
     saveError: null,
     onSave: () => {},
@@ -31,45 +32,60 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const NewPlan: Story = { args: { saveError: null } };
+function waypoints(count: number, straight: number[] = []): PlannerWaypoint[] {
+  return Array.from({ length: count }, (_, id) => ({
+    id,
+    longitude: 8 + id * 0.02,
+    latitude: 49 + (id % 3) * 0.01,
+    ...(straight.includes(id) ? { straight: true } : {}),
+  }));
+}
 
-export const DraftList: Story = {
+function preview(count: number): PlanRoutePreview {
+  return {
+    geometry: { type: "LineString", coordinates: [] },
+    distanceMetres: count * 4_200,
+    ascentMetres: count * 35,
+    movingSeconds: count * 720,
+    waypointProgress: Array.from({ length: count }, (_, index) => ({
+      distanceMetres: index * 4_200,
+      movingSeconds: index * 720,
+    })),
+  };
+}
+
+export const NewPlan: Story = {};
+
+export const Draft: Story = {
   args: {
     state: {
       ...initialPlannerState,
       name: "Saturday gravel",
-      waypoints: [
-        { id: 0, longitude: 8, latitude: 49 },
-        { id: 1, longitude: 8.1, latitude: 49.1, straight: true },
-      ],
+      profile: "gravel",
+      cues: true,
+      waypoints: waypoints(4, [2]),
       avoid: [{ id: 0, longitude: 8.05, latitude: 49.05, radiusMetres: 250 }],
     },
-    plans: [
-      {
-        id: 4,
-        name: "Saturday gravel",
-        profile: "gravel",
-        published: false,
-        version: 2,
-        distanceMetres: 32_000,
-        ascentMetres: 510,
-        waypointCount: 2,
-        updatedAt: "2026-09-15T09:00:00Z",
-      },
-      {
-        id: 5,
-        name: "Weekday loop",
-        profile: "fastbike",
-        published: true,
-        version: 1,
-        distanceMetres: 18_000,
-        ascentMetres: 120,
-        waypointCount: 3,
-        updatedAt: "2026-09-15T09:00:00Z",
-      },
-    ],
+    preview: preview(4),
     planId: 4,
-    saveError: null,
+    changed: true,
     turnCount: 12,
+  },
+};
+
+export const LongListFolded: Story = {
+  args: {
+    state: { ...initialPlannerState, name: "Long loop", waypoints: waypoints(15, [6, 11]) },
+    preview: preview(15),
+    planId: 5,
+    published: true,
+    focusId: 8,
+  },
+};
+
+export const SaveFailed: Story = {
+  args: {
+    ...Draft.args,
+    saveError: "The plan changed since it was loaded.",
   },
 };

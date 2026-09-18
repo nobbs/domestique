@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
+const remove = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
 const narrowViewport = vi.hoisted(() => ({ value: false }));
@@ -28,9 +29,7 @@ vi.mock("../../api/generated", async (importOriginal) => ({
   getGetPlanQueryKey: (id: number) => ["plan", id],
   useCreatePlan: () => ({ isPending: false, mutateAsync: create }),
   useGetPlan: () => openedPlan.value,
-  useListPlans: () => ({
-    data: { data: { plans: [{ id: 4, name: "Draft loop", published: false }] } },
-  }),
+  useDeletePlan: () => ({ isPending: false, mutateAsync: remove }),
   usePreviewPlanRoute: () => ({ mutate: preview }),
   useReplacePlan: () => ({ isPending: false, mutateAsync: replace }),
   snapPlace: snap,
@@ -197,6 +196,7 @@ beforeEach(() => {
   preview.mockReset();
   create.mockReset();
   replace.mockReset();
+  remove.mockReset();
   routeOverlay.mockReset();
   openedPlan.value = {};
   mapPoint.value = { longitude: 8, latitude: 49 };
@@ -219,7 +219,7 @@ function firstWaypointCoordinates(): string {
 
 describe("edgeSpeed", () => {
   it("scrolls up near the top, down near the bottom, and not in between", async () => {
-    const { edgeSpeed } = await import("./PlanPage");
+    const { edgeSpeed } = await import("./PlannerSidebar");
 
     expect(edgeSpeed(100, 500, 300)).toBe(0);
     expect(edgeSpeed(100, 500, 110)).toBeLessThan(0);
@@ -274,9 +274,13 @@ describe("PlanPage", () => {
 
     expect(screen.getByRole("button", { name: "Plan route map" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Plans" }));
-    const item = await screen.findByText("Draft loop");
-    expect(item.closest("[role=menuitem]")).toHaveAttribute("href", "/plan/4");
-    expect(screen.getByText("Draft")).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "New plan" })).toHaveAttribute(
+      "href",
+      "/plan",
+    );
+    // An unsaved plan has nothing to delete.
+    expect(screen.queryByRole("menuitem", { name: /Delete this plan/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Draft" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("plan-map-controls")).toBeInTheDocument();
     expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-position", "bottom-left");
@@ -681,10 +685,10 @@ describe("PlanPage", () => {
     fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await act(async () => {});
-    expect(screen.getByText("Save unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Save unavailable");
   });
 
   it("starts a new draft after leaving an opened plan", async () => {
@@ -757,7 +761,9 @@ describe("PlanPage", () => {
       },
     });
     try {
-      fireEvent.click(screen.getByRole("link", { name: "New" }));
+      fireEvent.click(screen.getByRole("button", { name: "Plans" }));
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("menuitem", { name: "New plan" }));
       await act(async () => {});
 
       expect(screen.getByDisplayValue("")).toBeInTheDocument();
@@ -824,13 +830,21 @@ describe("PlanPage", () => {
     renderPage("/plan/4");
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Publish — sends to Wahoo" }));
+    // Publishing takes effect only on the save that follows it.
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    expect(replace).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await act(async () => {});
 
     expect(replace.mock.calls[0]?.[0]).toMatchObject({ headers: { "If-Match": "2" } });
-    expect(replace.mock.calls[1]?.[0]).toMatchObject({ headers: { "If-Match": "3" } });
+    expect(replace.mock.calls[1]?.[0]).toMatchObject({
+      headers: { "If-Match": "3" },
+      data: expect.objectContaining({ published: true }),
+    });
   });
 
   it("shows the turn cues switch with the loaded plan's turn count and sends it on save", async () => {
@@ -863,15 +877,16 @@ describe("PlanPage", () => {
     renderPage("/plan/4");
     await act(async () => {});
 
-    const toggle = screen.getByRole("switch");
-    expect(toggle).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText(/12 turns/)).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Turn cues" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
     fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(toggle).toHaveTextContent("Turn cues · 12");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await act(async () => {});
 
     expect(replace.mock.calls[0]?.[0]).toMatchObject({
@@ -894,7 +909,9 @@ describe("PlanPage", () => {
 
   it("routes with the profile chosen from the route type control", () => {
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Gravel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Route type" }));
+    act(() => vi.advanceTimersByTime(0));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Gravel" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
@@ -1193,6 +1210,129 @@ describe("PlanPage", () => {
     expect(
       screen.getByRole("button", { name: "Route to Finish waypoint normally" }),
     ).toBeInTheDocument();
-    expect(waypointRows()[1]).toContain("Straight");
+    expect(
+      screen.getByRole("button", { name: "Route to Finish waypoint normally" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("folds a long plan to its ends and the waypoint in focus, lighting a folded run on hover", async () => {
+    const count = 10;
+    const stops = Array.from({ length: count }, (_, index) => ({
+      longitude: 8 + index * 0.01,
+      latitude: 49,
+    }));
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Long loop",
+          profile: "trekking",
+          cues: false,
+          published: false,
+          version: 2,
+          waypoints: stops,
+          geometry: {
+            type: "LineString",
+            coordinates: stops.map(({ longitude, latitude }) => [longitude, latitude]),
+          },
+          distanceMetres: 6_600,
+          ascentMetres: 10,
+          waypointProgress: stops.map((_, index) => ({ distanceMetres: index * 730 })),
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    const rowIDs = () =>
+      Array.from(screen.getByRole("list", { name: "Waypoints" }).querySelectorAll("li")).map(
+        (row) => row.getAttribute("data-waypoint-id") ?? "gap",
+      );
+    const litLine = () =>
+      JSON.parse(screen.getByTestId("plan-hidden-run").dataset.geometry ?? "{}").features[0]
+        ?.geometry.coordinates ?? [];
+
+    expect(rowIDs()).toEqual(["0", "gap", "9"]);
+    const run = screen.getByRole("button", { name: /8 more waypoints/ });
+    fireEvent.mouseEnter(run);
+    expect(litLine().length).toBeGreaterThan(1);
+    fireEvent.mouseLeave(run);
+    expect(litLine()).toEqual([]);
+
+    fireEvent.mouseEnter(screen.getByRole("img", { name: "Waypoint 5" }));
+    expect(rowIDs()).toEqual(["0", "gap", "3", "4", "5", "gap", "9"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /2 more waypoints/ }));
+    expect(rowIDs()).toEqual(["0", "1", "2", "3", "4", "5", "gap", "9"]);
+    // A new focus folds what was opened again.
+    fireEvent.mouseEnter(screen.getByRole("img", { name: "Waypoint 8" }));
+    expect(rowIDs()).toEqual(["0", "gap", "6", "7", "8", "9"]);
+  });
+
+  it("deletes a saved plan after confirming, then starts a new one", async () => {
+    vi.useRealTimers();
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          cues: false,
+          published: true,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+          ],
+          geometry: { type: "LineString", coordinates: [] },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    remove.mockResolvedValue({ status: 204 });
+    renderPage("/plan/4");
+    await act(async () => {});
+
+    await userEvent.click(screen.getByRole("button", { name: "Plans" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Delete this plan…" }));
+    expect(await screen.findByText(/removed from every rider's Wahoo/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete plan" }));
+
+    expect(remove).toHaveBeenCalledWith({ planId: 4, headers: { "If-Match": "2" } });
+    expect(await screen.findByDisplayValue("")).toBeInTheDocument();
+  });
+
+  it("publishes a new plan on its first save when Published is chosen", async () => {
+    create.mockResolvedValue({ data: { id: 7, version: 1 } });
+    replace.mockResolvedValue({ data: { id: 7, version: 2, published: true } });
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Fresh" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await act(async () => {});
+
+    expect(replace).toHaveBeenCalledWith({
+      planId: 7,
+      data: expect.objectContaining({ name: "Fresh", published: true }),
+      headers: { "If-Match": "1" },
+    });
+  });
+});
+
+describe("avoidRadiusTo", () => {
+  it("measures from the centre to the dragged edge and keeps to the service's bounds", async () => {
+    const { avoidRadiusTo } = await import("./PlanPage");
+    const centre = { longitude: 8, latitude: 0 };
+
+    expect(avoidRadiusTo(centre, { longitude: 8 + 1000 / 111_320, latitude: 0 })).toBe(1000);
+    expect(avoidRadiusTo(centre, centre)).toBe(10);
+    expect(avoidRadiusTo(centre, { longitude: 9, latitude: 0 })).toBe(5000);
   });
 });

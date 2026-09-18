@@ -6,41 +6,24 @@ import {
   IconArrowsExchange,
   IconArrowUpRight,
   IconBan,
-  IconBike,
-  IconChevronDown,
   IconClock,
-  IconDeviceFloppy,
-  IconFlagCheck,
-  IconGripVertical,
   IconLayoutBottombarCollapse,
-  IconLine,
   IconMountain,
-  IconPlayerPlay,
   IconRoad,
-  IconRoute,
-  IconTrash,
   IconWalk,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  type Dispatch,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Layer, Marker, ScaleControl, Source } from "react-map-gl/maplibre";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import {
   getGetPlanDeliveryQueryKey,
   getGetPlanQueryKey,
   getListPlansQueryKey,
   snapPlace,
   useCreatePlan,
+  useDeletePlan,
   useGetPlan,
-  useListPlans,
   usePreviewPlanRoute,
   useReplacePlan,
 } from "../../api/generated";
@@ -48,37 +31,24 @@ import { webUIConfigQuery } from "../../api/queries";
 import type {
   BoundingBox,
   Plan,
-  PlanProfile,
   PlanRoutePreview,
-  PlanSummary,
   PlanWindow,
   Position,
   SnappedPlace,
 } from "../../api/types";
-import { Button, ButtonLink } from "../../components/Button";
-import { InfoDot } from "../../components/InsetForm";
+import { Button } from "../../components/Button";
 import { Layout, PageShell } from "../../components/Layout";
 import { BasemapPicker } from "../../components/map/BasemapPicker";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
-import { Panel } from "../../components/PanelHeading";
-import { Segmented, SegmentedTrack, SegmentLabel, segmentClass } from "../../components/Segmented";
+import { SegmentedTrack, SegmentLabel, segmentClass } from "../../components/Segmented";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
-import { Badge } from "../../components/ui/badge";
 import { ButtonGroup } from "../../components/ui/button-group";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
-import { Input } from "../../components/ui/input";
-import { Switch } from "../../components/ui/switch";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
-import { formatAscent, formatCount, formatDistance, formatDuration } from "../../lib/format";
+import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { groundSegments, steepnessEntries, surfaceEntries } from "../../lib/mix";
 import {
@@ -94,8 +64,13 @@ import { useEscapeKey } from "../../lib/useEscapeKey";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { GroundRibbon } from "../routes/GroundRibbon";
 import { RouteOverlay } from "../routes/RouteOverlay";
-import { PlanDeliveryTrigger } from "./PlanDelivery";
-import { usePlaceName } from "./placeName";
+import {
+  type HiddenRun,
+  PlannerSidebar,
+  type PlannerSidebarProps,
+  WaypointMarker,
+  waypointLabel,
+} from "./PlannerSidebar";
 import {
   initialPlannerState,
   isPlannerSeed,
@@ -173,13 +148,27 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Could not route these waypoints.";
 }
 
-function planWaypoints(waypoints: PlannerState["waypoints"]) {
+function planWaypoints(waypoints: Plan["waypoints"]) {
   return waypoints.map(({ longitude, latitude, straight }) =>
     straight ? { longitude, latitude, straight } : { longitude, latitude },
   );
 }
 
-function planAvoid(avoid: PlannerState["avoid"]) {
+/** What a save sends, the publication aside; also what tells an edited plan from its stored one. */
+function planBody(
+  plan: Pick<Plan, "name" | "profile" | "cues" | "waypoints"> & { avoid?: Plan["avoid"] },
+) {
+  const avoid = plan.avoid ?? [];
+  return {
+    name: plan.name.trim(),
+    profile: plan.profile,
+    cues: plan.cues,
+    waypoints: planWaypoints(plan.waypoints),
+    ...(avoid.length === 0 ? {} : { avoid: planAvoid(avoid) }),
+  };
+}
+
+function planAvoid(avoid: NonNullable<Plan["avoid"]>) {
   return avoid.map(({ longitude, latitude, radiusMetres }) => ({
     longitude,
     latitude,
@@ -207,22 +196,90 @@ function avoidCirclePolygon(area: PlannerAvoid): Position[] {
 }
 
 /** MapLibre paint properties take literal colours, not CSS custom properties. */
-function useAlertColour(): string {
+function useThemeColour(property: string, fallback: string): string {
   return useMemo(() => {
     if (typeof document === "undefined") {
-      return "#c0392b";
+      return fallback;
     }
-    const value = getComputedStyle(document.documentElement).getPropertyValue("--alert").trim();
+    const value = getComputedStyle(document.documentElement).getPropertyValue(property).trim();
 
-    return value || "#c0392b";
-  }, []);
+    return value || fallback;
+  }, [property, fallback]);
 }
 
-const AVOID_RADII = [100, 250, 500, 1000, 2000] as const;
+const AVOID_MIN_METRES = 10;
+const AVOID_MAX_METRES = 5000;
+
+/** The point on an avoided circle's eastern edge, where its resize handle sits. */
+function avoidEdge(area: PlannerAvoid): { longitude: number; latitude: number } {
+  return {
+    longitude:
+      area.longitude +
+      area.radiusMetres / (EARTH_METRES_PER_DEGREE * Math.cos((area.latitude * Math.PI) / 180)),
+    latitude: area.latitude,
+  };
+}
+
+/** The radius a handle dragged to `edge` gives an area, clamped to what the service accepts. */
+export function avoidRadiusTo(
+  area: { longitude: number; latitude: number },
+  edge: { longitude: number; latitude: number },
+): number {
+  const x =
+    (edge.longitude - area.longitude) *
+    EARTH_METRES_PER_DEGREE *
+    Math.cos((area.latitude * Math.PI) / 180);
+  const y = (edge.latitude - area.latitude) * EARTH_METRES_PER_DEGREE;
+
+  return Math.round(Math.min(AVOID_MAX_METRES, Math.max(AVOID_MIN_METRES, Math.hypot(x, y))));
+}
+
+/** The stretch of line a folded run of waypoints covers, drawn over the route while its row is hovered. */
+function HiddenRunLayer({
+  line,
+  preview,
+  run,
+}: {
+  line: Position[];
+  preview: PlanRoutePreview | null;
+  run: HiddenRun | null;
+}) {
+  const colour = useThemeColour("--accent", "#2f6fdb");
+  const progress = preview?.waypointProgress;
+  const start = run ? progress?.[run.from - 1]?.distanceMetres : undefined;
+  const end = run ? progress?.[run.to + 1]?.distanceMetres : undefined;
+  const range = start === undefined || end === undefined ? null : coordinateRange(line, start, end);
+  const data = {
+    type: "FeatureCollection" as const,
+    features: range
+      ? [
+          {
+            type: "Feature" as const,
+            properties: {},
+            geometry: {
+              type: "LineString" as const,
+              coordinates: line.slice(range.startIndex, range.endIndex + 1),
+            },
+          },
+        ]
+      : [],
+  };
+
+  return (
+    <Source id="plan-hidden-run" type="geojson" data={data}>
+      <Layer
+        id="plan-hidden-run-line"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{ "line-color": colour, "line-width": 7, "line-opacity": 0.9 }}
+      />
+    </Source>
+  );
+}
 
 /** The circles a plan keeps its route out of, filled and outlined in the alert tone. */
 function AvoidAreasLayer({ areas }: { areas: PlannerAvoid[] }) {
-  const colour = useAlertColour();
+  const colour = useThemeColour("--alert", "#c0392b");
   const data = useMemo(
     () => ({
       type: "Feature" as const,
@@ -275,45 +332,6 @@ interface PlannerFraming {
   bounds: BoundingBox | null;
 }
 
-function waypointLabel(index: number, count: number): string {
-  if (index === 0) {
-    return "Start waypoint";
-  }
-  if (index === count - 1) {
-    return "Finish waypoint";
-  }
-  return `Waypoint ${index + 1}`;
-}
-
-function WaypointMarker({ index, count }: { index: number; count: number }) {
-  if (index === 0) {
-    return <IconPlayerPlay aria-hidden="true" size={14} stroke={3} />;
-  }
-  if (index === count - 1) {
-    return <IconFlagCheck aria-hidden="true" size={15} stroke={2.5} />;
-  }
-  return index + 1;
-}
-
-function moveWaypoint(order: number[], waypointID: number, targetID: number): number[] {
-  const from = order.indexOf(waypointID);
-  const target = order.indexOf(targetID);
-  if (from < 0 || target < 0 || from === target) {
-    return order;
-  }
-  const next = [...order];
-  next.splice(from, 1);
-  next.splice(target, 0, waypointID);
-  return next;
-}
-
-function isInteractiveDragOrigin(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    target.closest("input, button, a, [contenteditable=true]") !== null
-  );
-}
-
 function insertionIndex(
   waypoints: PlannerState["waypoints"],
   waypoint: { longitude: number; latitude: number },
@@ -352,74 +370,6 @@ function insertionIndex(
   }
 
   return nearestIsFinalEndpoint ? waypoints.length : nearest + 1;
-}
-
-const PROFILES = [
-  { key: "trekking", label: "Trekking", icon: <IconBike size={14} stroke={1.8} /> },
-  { key: "fastbike", label: "Road", icon: <IconRoad size={14} stroke={1.8} /> },
-  { key: "gravel", label: "Gravel", icon: <IconRoute size={14} stroke={1.8} /> },
-] as const satisfies readonly { key: PlanProfile; label: string; icon: ReactNode }[];
-
-const coordinatesOf = (latitude: number, longitude: number) =>
-  `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-
-/**
- * What the waypoint is called, falling back to its own position: the service
- * names nothing without a geocoder, and a geocoder names nothing in open
- * country.
- */
-function WaypointName({ latitude, longitude }: { latitude: number; longitude: number }) {
-  const name = usePlaceName(latitude, longitude);
-
-  return (
-    <span className="truncate">{name === "" ? coordinatesOf(latitude, longitude) : name}</span>
-  );
-}
-
-/** One row's worth of edge, and the fastest the list is nudged, in pixels a frame. */
-const EDGE_ZONE = 44;
-const EDGE_SPEED = 12;
-
-/**
- * How fast a dragged row should scroll the list it is over: negative up,
- * positive down, zero away from either edge. WebKit scrolls no element but the
- * page during a drag, so the planner does this itself.
- */
-export function edgeSpeed(top: number, bottom: number, pointerY: number): number {
-  const intoTop = EDGE_ZONE - (pointerY - top);
-  const intoBottom = EDGE_ZONE - (bottom - pointerY);
-  if (intoTop > 0) {
-    return -Math.min(EDGE_SPEED, (intoTop / EDGE_ZONE) * EDGE_SPEED);
-  }
-  if (intoBottom > 0) {
-    return Math.min(EDGE_SPEED, (intoBottom / EDGE_ZONE) * EDGE_SPEED);
-  }
-
-  return 0;
-}
-
-/** The row's own short word for a stop, where waypointLabel names it for a reader. */
-function stopLabel(index: number, count: number): string {
-  if (index === 0) {
-    return "Start";
-  }
-  if (index === count - 1) {
-    return "Finish";
-  }
-
-  return `Via ${index}`;
-}
-
-/** How far and how long the routed line has run by the time it reaches a waypoint. */
-function progressLabel(preview: PlanRoutePreview | null, index: number): string {
-  const at = index === 0 ? undefined : preview?.waypointProgress?.[index];
-  if (!at) {
-    return "";
-  }
-  const minutes = Math.round((at.movingSeconds ?? 0) / 60);
-  const elapsed = minutes === 0 ? "" : ` · ${formatDuration(minutes * 60)}`;
-
-  return ` · ${formatDistance(at.distanceMetres)}${elapsed}`;
 }
 
 /** The plan's own figures, on the strip beneath the map where the chart is. */
@@ -464,415 +414,6 @@ function PlanFigures({ preview }: { preview: PlanRoutePreview | null }) {
         </span>
       ) : null}
     </output>
-  );
-}
-
-export interface PlannerSidebarProps {
-  state: PlannerState;
-  plans: PlanSummary[];
-  preview: PlanRoutePreview | null;
-  planId: number | null;
-  published: boolean;
-  saving: boolean;
-  saveError: string | null;
-  /** How many turn instructions the routing engine gave the loaded/saved plan's line. */
-  turnCount?: number;
-  onSave: (published: boolean) => void;
-  dispatch: Dispatch<Parameters<typeof plannerReducer>[1]>;
-}
-
-/** The planner's column beside the map; the map remains visible while the list changes. */
-export function PlannerSidebar({
-  state,
-  plans,
-  preview,
-  planId,
-  published,
-  saving,
-  saveError,
-  turnCount,
-  onSave,
-  dispatch,
-}: PlannerSidebarProps) {
-  const dragging = useRef<number | null>(null);
-  const dragTarget = useRef<number | null>(null);
-  const dragOrder = useRef<number[] | null>(null);
-  const [visualOrder, setVisualOrder] = useState<number[] | null>(null);
-  const visualWaypoints = useMemo(() => {
-    if (!visualOrder) {
-      return state.waypoints;
-    }
-    const byID = new Map(state.waypoints.map((waypoint) => [waypoint.id, waypoint]));
-    return visualOrder.flatMap((id) => byID.get(id) ?? []);
-  }, [state.waypoints, visualOrder]);
-  const list = useRef<HTMLOListElement>(null);
-  const speed = useRef(0);
-  const frame = useRef<number | null>(null);
-  const step = () => {
-    if (!list.current || speed.current === 0) {
-      frame.current = null;
-
-      return;
-    }
-    list.current.scrollTop += speed.current;
-    frame.current = requestAnimationFrame(step);
-  };
-  const scrollNearEdge = (pointerY: number) => {
-    if (!list.current) {
-      return;
-    }
-    const box = list.current.getBoundingClientRect();
-    speed.current = edgeSpeed(box.top, box.bottom, pointerY);
-    if (speed.current !== 0 && frame.current === null) {
-      frame.current = requestAnimationFrame(step);
-    }
-  };
-  const stopScrolling = () => {
-    speed.current = 0;
-    if (frame.current !== null) {
-      cancelAnimationFrame(frame.current);
-      frame.current = null;
-    }
-  };
-  useEffect(
-    () => () => {
-      if (frame.current !== null) {
-        cancelAnimationFrame(frame.current);
-      }
-    },
-    [],
-  );
-  const clearDrag = () => {
-    dragging.current = null;
-    dragTarget.current = null;
-    dragOrder.current = null;
-    stopScrolling();
-    setVisualOrder(null);
-  };
-
-  return (
-    // The column fills the rail and only the stops scroll, so the actions and
-    // the plan's own figures stay in view however long the route is.
-    <section className="flex min-h-0 flex-1 flex-col gap-3 bg-[var(--base)] p-3">
-      <Panel
-        className="min-h-0 flex-1"
-        icon={<IconRoute size={18} stroke={1.8} />}
-        title={
-          <Input
-            aria-label="Plan name"
-            className="min-w-0 border-transparent border-b-2 bg-transparent px-0 font-semibold text-base shadow-none focus-visible:border-[var(--accent)] focus-visible:ring-0"
-            placeholder={planId === null ? "Plan a route" : "Edit plan"}
-            value={state.name}
-            maxLength={120}
-            onChange={(event) => dispatch({ type: "setName", name: event.target.value })}
-          />
-        }
-        aside={
-          <div className="flex items-center gap-1">
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<Button variant="ghost" icon={<IconChevronDown size={16} stroke={2} />} />}
-                disabled={plans.length === 0}
-              >
-                Plans
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-auto min-w-52">
-                {plans.map((plan) => (
-                  <DropdownMenuItem key={plan.id} render={<Link to={`/plan/${plan.id}`} />}>
-                    <span className="flex-1">{plan.name}</span>
-                    {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <ButtonLink variant="ghost" to="/plan">
-              New
-            </ButtonLink>
-            <PlanDeliveryTrigger planId={planId} published={published} />
-          </div>
-        }
-      >
-        <Segmented
-          label="Route type"
-          items={PROFILES}
-          value={state.profile}
-          onChange={(profile) => dispatch({ type: "setProfile", profile })}
-        />
-        <label className="flex items-start gap-2.5 text-sm">
-          <Switch
-            className="mt-0.5"
-            checked={state.cues}
-            onCheckedChange={(cues) => dispatch({ type: "setCues", cues })}
-          />
-          <span className="flex flex-col">
-            Turn cues on Wahoo
-            <span className="text-[var(--ink-2)] text-xs">
-              Adds turn instructions to the course on riders' devices.
-              {turnCount === undefined ? "" : ` ${formatCount(turnCount, "turn")}.`}
-            </span>
-          </span>
-        </label>
-        <h3 className="-mb-2 flex items-center gap-2 font-semibold text-sm">
-          Waypoints
-          <span className="flex-1 font-normal text-[var(--ink-2)] text-xs">
-            {state.waypoints.length === 1 ? "1 stop" : `${state.waypoints.length} stops`}
-          </span>
-          <InfoDot label="Waypoints">
-            Click the map to insert a waypoint, or Alt-click to append. Drag waypoint rows to
-            reorder; drag map pins to move them.
-          </InfoDot>
-        </h3>
-        <ol
-          ref={list}
-          onDragOver={(event) => scrollNearEdge(event.clientY)}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-              stopScrolling();
-            }
-          }}
-          // The card pads by 20px; the rows keep 4 of it, so a name has the width.
-          // Rows are one height and snap, so scrolling never stops on half a stop.
-          // Snapping is off while a row is being dragged: it fights the
-          // browser's own scrolling at the list's edges.
-          data-dragging={visualOrder === null ? undefined : true}
-          className="-mx-4 flex min-h-0 snap-y snap-mandatory flex-col overflow-y-auto rounded-xl bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)] empty:hidden data-dragging:snap-none"
-          aria-label="Waypoints"
-        >
-          {visualWaypoints.map((waypoint, index) => {
-            const stateIndex = state.waypoints.indexOf(waypoint);
-
-            return (
-              <li
-                key={waypoint.id}
-                data-waypoint-id={waypoint.id}
-                // The start and the finish stay in view while the stops between
-                // them scroll under, so a long route keeps its ends.
-                className="flex h-11 shrink-0 snap-start scroll-mt-11 items-center gap-1 border-[var(--panel)] border-b-2 bg-[color-mix(in_oklab,var(--ink-2)_7%,var(--panel))] pr-1.5 pl-3 text-sm last:sticky last:bottom-0 last:border-b-0 first:sticky first:top-0"
-              >
-                <div
-                  role="group"
-                  draggable
-                  // No title: the hint under the list says rows drag, and a
-                  // tooltip over every row covers the map beside it.
-                  aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                  className={`flex min-w-0 flex-1 items-center gap-2.5 ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
-                  onDragStart={(event) => {
-                    if (isInteractiveDragOrigin(event.target)) {
-                      event.preventDefault();
-                      return;
-                    }
-                    const order = state.waypoints.map((entry) => entry.id);
-                    dragging.current = waypoint.id;
-                    dragTarget.current = null;
-                    dragOrder.current = order;
-                    setVisualOrder(order);
-                    event.dataTransfer?.setData("text/plain", String(waypoint.id));
-                    if (event.dataTransfer) {
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setDragImage(
-                        event.currentTarget,
-                        Math.round(event.currentTarget.clientWidth / 2),
-                        Math.round(event.currentTarget.clientHeight / 2),
-                      );
-                    }
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    const waypointID = dragging.current;
-                    if (waypointID === null || dragTarget.current === waypoint.id) {
-                      return;
-                    }
-                    dragTarget.current = waypoint.id;
-                    const next = moveWaypoint(
-                      dragOrder.current ?? state.waypoints.map((entry) => entry.id),
-                      waypointID,
-                      waypoint.id,
-                    );
-                    if (next !== dragOrder.current) {
-                      dragOrder.current = next;
-                      setVisualOrder(next);
-                    }
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    const order = dragOrder.current;
-                    clearDrag();
-                    if (order) {
-                      dispatch({ type: "reorder", order });
-                    }
-                  }}
-                  onDragEnd={clearDrag}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`grid size-6 shrink-0 place-items-center rounded-[8px] font-semibold text-white text-xs ${
-                      index === 0 || index === state.waypoints.length - 1
-                        ? "bg-[var(--accent)]"
-                        : "bg-[var(--ink-2)]"
-                    }`}
-                  >
-                    <WaypointMarker index={index} count={state.waypoints.length} />
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <WaypointName latitude={waypoint.latitude} longitude={waypoint.longitude} />
-                    <span className="truncate text-[var(--ink-2)] text-xs tabular-nums">
-                      {stopLabel(index, state.waypoints.length)}
-                      {waypoint.straight ? " · Straight" : ""}
-                      {progressLabel(preview, stateIndex)}
-                    </span>
-                  </span>
-                  <Button
-                    variant="ghost"
-                    className="sr-only focus:not-sr-only"
-                    aria-label={`Move ${waypointLabel(index, state.waypoints.length)} up`}
-                    disabled={index === 0}
-                    onClick={() =>
-                      dispatch({ type: "reorder", index: stateIndex, direction: "up" })
-                    }
-                  >
-                    Move up
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="sr-only focus:not-sr-only"
-                    aria-label={`Move ${waypointLabel(index, state.waypoints.length)} down`}
-                    disabled={index === state.waypoints.length - 1}
-                    onClick={() =>
-                      dispatch({ type: "reorder", index: stateIndex, direction: "down" })
-                    }
-                  >
-                    Move down
-                  </Button>
-                  <IconGripVertical
-                    aria-hidden="true"
-                    size={15}
-                    className="shrink-0 cursor-grab text-[var(--ink-2)]"
-                  />
-                </div>
-                {index === 0 ? null : (
-                  <Button
-                    variant="ghost"
-                    icon={<IconLine size={15} />}
-                    aria-pressed={Boolean(waypoint.straight)}
-                    className={waypoint.straight ? "text-[var(--accent)]" : undefined}
-                    aria-label={
-                      waypoint.straight
-                        ? `Route to ${waypointLabel(index, state.waypoints.length)} normally`
-                        : `Straight line to ${waypointLabel(index, state.waypoints.length)}`
-                    }
-                    title={waypoint.straight ? "Straight line to here" : "Route normally"}
-                    onClick={() =>
-                      dispatch({
-                        type: "setStraight",
-                        id: waypoint.id,
-                        straight: !waypoint.straight,
-                      })
-                    }
-                  />
-                )}
-                <Button
-                  variant="ghost"
-                  icon={<IconTrash size={15} />}
-                  aria-label={`Delete waypoint ${index + 1}`}
-                  onClick={() => dispatch({ type: "delete", index: stateIndex })}
-                />
-              </li>
-            );
-          })}
-        </ol>
-        <h3 className="-mb-2 flex items-center gap-2 font-semibold text-sm">
-          Avoided areas
-          {state.avoid.length === 0 ? null : (
-            <span className="flex-1 font-normal text-[var(--ink-2)] text-xs">
-              {state.avoid.length === 1 ? "1 area" : `${state.avoid.length} areas`}
-            </span>
-          )}
-        </h3>
-        {state.avoid.length === 0 ? (
-          <p className="text-[var(--ink-2)] text-xs">
-            Use "Avoid an area" on the map to keep the route out of a place.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-1.5">
-            {state.avoid.map((area) => (
-              <li
-                key={area.id}
-                className="flex items-center gap-2 rounded-lg bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)] px-3 py-2 text-sm"
-              >
-                <IconBan
-                  aria-hidden="true"
-                  size={14}
-                  stroke={1.8}
-                  className="shrink-0 text-[var(--alert)]"
-                />
-                <span className="min-w-0 flex-1 truncate text-[var(--ink-2)] text-xs tabular-nums">
-                  {coordinatesOf(area.latitude, area.longitude)}
-                </span>
-                <select
-                  aria-label="Avoided area radius"
-                  className="h-8 rounded-lg border border-[var(--rule)] bg-transparent px-2 text-sm"
-                  value={area.radiusMetres}
-                  onChange={(event) =>
-                    dispatch({
-                      type: "setAvoidRadius",
-                      id: area.id,
-                      radiusMetres: Number(event.target.value),
-                    })
-                  }
-                >
-                  {AVOID_RADII.map((metres) => (
-                    <option key={metres} value={metres}>
-                      {metres} m
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  variant="ghost"
-                  icon={<IconTrash size={15} />}
-                  aria-label="Delete avoided area"
-                  onClick={() => dispatch({ type: "deleteAvoid", id: area.id })}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-      <div className="grid shrink-0 gap-2">
-        <div className="flex flex-wrap gap-2">
-          <Button
-            icon={<IconDeviceFloppy stroke={1.6} />}
-            disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-            onClick={() => onSave(planId === null ? false : published)}
-          >
-            {planId === null ? "Save draft" : "Save changes"}
-          </Button>
-          {planId !== null && !published ? (
-            <Button
-              variant="outline"
-              disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-              onClick={() => onSave(true)}
-            >
-              Publish — sends to Wahoo
-            </Button>
-          ) : null}
-        </div>
-        {planId !== null && published ? (
-          <Button
-            variant="warning"
-            disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
-            onClick={() => onSave(false)}
-          >
-            Unpublish — removes from Wahoo
-          </Button>
-        ) : null}
-        {saveError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Could not save plan</AlertTitle>
-            <AlertDescription>{saveError}</AlertDescription>
-          </Alert>
-        ) : null}
-      </div>
-    </section>
   );
 }
 
@@ -1074,10 +615,10 @@ export function PlanPage() {
   const location = useLocation();
   const copySeed = planId === null && isPlannerSeed(location.state) ? location.state : null;
   const config = useQuery(webUIConfigQuery());
-  const plans = useListPlans();
   const plan = useGetPlan(planId ?? 0, { query: { enabled: planId !== null } });
   const create = useCreatePlan();
   const replace = useReplacePlan();
+  const remove = useDeletePlan();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [state, dispatch] = useReducer(plannerReducer, initialPlannerState);
@@ -1087,6 +628,14 @@ export function PlanPage() {
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [dockOpen, setDockOpen] = useState(true);
   const [avoidArmed, setAvoidArmed] = useState(false);
+  const [focusId, setFocusId] = useState<number | null>(null);
+  const [hiddenRun, setHiddenRun] = useState<HiddenRun | null>(null);
+  // A resize handle mid-drag: where it is, so the marker and the circle follow it.
+  const [resizing, setResizing] = useState<{
+    id: number;
+    longitude: number;
+    latitude: number;
+  } | null>(null);
   useEscapeKey(avoidArmed, () => setAvoidArmed(false));
   // Below the breakpoint the strip lives in the Drawer, so it never resizes the map.
   const narrow = useNarrowViewport();
@@ -1128,6 +677,8 @@ export function PlanPage() {
     setPreviewError(null);
     setSaveError(null);
     setActiveMetres(null);
+    setFocusId(null);
+    setHiddenRun(null);
   }, [copySeed, planId]);
 
   useEffect(() => {
@@ -1196,20 +747,28 @@ export function PlanPage() {
   const blank = planId === null && copySeed === null && state.waypoints.length === 0;
   const viewportBounds = framed ?? (blank ? locationBox : null);
   const profile = useMemo(() => buildProfile(line), [line]);
+  const changed =
+    !loadedPlan || JSON.stringify(planBody(state)) !== JSON.stringify(planBody(loadedPlan));
   const save = async (published: boolean) => {
-    const data = {
-      name: state.name.trim(),
-      profile: state.profile,
-      cues: state.cues,
-      waypoints: planWaypoints(state.waypoints),
-      published,
-      ...(state.avoid.length === 0 ? {} : { avoid: planAvoid(state.avoid) }),
-    };
+    const data = { ...planBody(state), published };
     setSaveError(null);
     try {
       if (planId === null) {
         const response = await create.mutateAsync({ data });
         queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
+        // A create always stores a draft; publishing it is the replace that follows.
+        if (published) {
+          await replace
+            .mutateAsync({
+              planId: response.data.id,
+              data,
+              headers: { "If-Match": String(response.data.version) },
+            })
+            .then((replaced) =>
+              queryClient.setQueryData(getGetPlanQueryKey(response.data.id), replaced),
+            )
+            .catch(() => {});
+        }
         navigate(`/plan/${response.data.id}`, { replace: true });
         return;
       }
@@ -1250,6 +809,19 @@ export function PlanPage() {
       .catch(() => {});
   };
   const saving = create.isPending || replace.isPending;
+  const deletePlan = async () => {
+    if (planId === null || !loadedPlan) {
+      return;
+    }
+    setSaveError(null);
+    try {
+      await remove.mutateAsync({ planId, headers: { "If-Match": String(loadedPlan.version) } });
+      queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
+      navigate("/plan", { replace: true });
+    } catch (error) {
+      setSaveError(errorMessage(error));
+    }
+  };
 
   if (planId !== null && (plan.isPending || plan.isError || !loadedPlan)) {
     return (
@@ -1331,6 +903,7 @@ export function PlanPage() {
                       waypoint: point,
                     });
                   }
+                  setFocusId(state.nextWaypointID);
                   settleOnRoad(state.nextWaypointID, point);
                 }}
               >
@@ -1359,7 +932,16 @@ export function PlanPage() {
                 {line.length > 1 && preview?.pushing ? (
                   <PushingLine line={line} pushing={preview.pushing} />
                 ) : null}
-                <AvoidAreasLayer areas={state.avoid} />
+                {line.length > 1 ? (
+                  <HiddenRunLayer line={line} preview={preview} run={hiddenRun} />
+                ) : null}
+                <AvoidAreasLayer
+                  areas={state.avoid.map((area) =>
+                    area.id === resizing?.id
+                      ? { ...area, radiusMetres: avoidRadiusTo(area, resizing) }
+                      : area,
+                  )}
+                />
                 {state.waypoints.map((waypoint, index) => (
                   <Marker
                     key={waypoint.id}
@@ -1372,6 +954,7 @@ export function PlanPage() {
                         latitude: event.lngLat.lat,
                       });
                       dispatch({ type: "move", index, waypoint: moved });
+                      setFocusId(waypoint.id);
                       if (!waypoint.straight) {
                         settleOnRoad(waypoint.id, moved);
                       }
@@ -1380,6 +963,7 @@ export function PlanPage() {
                     <span
                       role="img"
                       aria-label={waypointLabel(index, state.waypoints.length)}
+                      onMouseEnter={() => setFocusId(waypoint.id)}
                       className="grid size-6 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white shadow"
                     >
                       <WaypointMarker index={index} count={state.waypoints.length} />
@@ -1412,6 +996,41 @@ export function PlanPage() {
                     />
                   </Marker>
                 ))}
+                {state.avoid.map((area) => {
+                  const edge = resizing?.id === area.id ? resizing : avoidEdge(area);
+                  return (
+                    <Marker
+                      key={`edge-${area.id}`}
+                      longitude={edge.longitude}
+                      latitude={edge.latitude}
+                      draggable
+                      onDrag={(event) =>
+                        setResizing({
+                          id: area.id,
+                          longitude: event.lngLat.lng,
+                          latitude: event.lngLat.lat,
+                        })
+                      }
+                      onDragEnd={(event) => {
+                        setResizing(null);
+                        dispatch({
+                          type: "setAvoidRadius",
+                          id: area.id,
+                          radiusMetres: avoidRadiusTo(area, {
+                            longitude: event.lngLat.lng,
+                            latitude: event.lngLat.lat,
+                          }),
+                        });
+                      }}
+                    >
+                      <span
+                        role="img"
+                        aria-label="Avoided area edge, drag to resize"
+                        className="block size-3 cursor-ew-resize rounded-full border-2 border-[var(--alert)] bg-white shadow"
+                      />
+                    </Marker>
+                  );
+                })}
               </MapWidget>
             </CartographyProvider>
           ) : null}
@@ -1440,14 +1059,18 @@ export function PlanPage() {
     >
       <PlannerSidebar
         state={state}
-        plans={plans.data?.data.plans ?? []}
         preview={preview}
         planId={planId}
         published={loadedPlan?.published ?? false}
+        changed={changed}
         saving={saving}
+        deleting={remove.isPending}
         saveError={saveError}
+        focusId={focusId}
         {...(loadedPlan?.turnCount === undefined ? {} : { turnCount: loadedPlan.turnCount })}
         onSave={(published) => void save(published)}
+        onDelete={() => void deletePlan()}
+        onHighlight={setHiddenRun}
         dispatch={dispatch}
       />
     </Layout>
