@@ -3059,6 +3059,20 @@ components:
         latitude:
           type: number
           format: double
+    PlanWindow:
+      type: object
+      additionalProperties: false
+      description: A stretch of a plan, in metres from its start.
+      required:
+        - startMetres
+        - endMetres
+      properties:
+        startMetres:
+          type: number
+          format: double
+        endMetres:
+          type: number
+          format: double
     PlanProgress:
       type: object
       additionalProperties: false
@@ -3128,6 +3142,14 @@ components:
           description: One entry per waypoint, in the order they were routed.
           items:
             $ref: '#/components/schemas/PlanProgress'
+        pushing:
+          type: array
+          description: >-
+            Where the line runs along a way bicycles are refused and a rider
+            walks, as the routing engine priced it. Absent where it runs along
+            none.
+          items:
+            $ref: '#/components/schemas/PlanWindow'
         surface:
           $ref: '#/components/schemas/SurfaceClassification'
     PlanWrite:
@@ -3210,6 +3232,14 @@ components:
           description: One entry per waypoint, in the order they were routed.
           items:
             $ref: '#/components/schemas/PlanProgress'
+        pushing:
+          type: array
+          description: >-
+            Where the line runs along a way bicycles are refused and a rider
+            walks, as the routing engine priced it. Absent where it runs along
+            none.
+          items:
+            $ref: '#/components/schemas/PlanWindow'
         surface:
           $ref: '#/components/schemas/SurfaceClassification'
         createdAt:

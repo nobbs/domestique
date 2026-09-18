@@ -82,7 +82,10 @@ type Plan struct {
 	Geometry  []route.Point
 	// Progress and MovingSeconds are predicted on read, never stored: the
 	// coefficients they are predicted with are replaced by a calibration.
-	Progress       []Progress
+	Progress []Progress
+	// Pushing is measured when the plan is routed and stored with it: only the
+	// engine's answer says which ways a rider walks.
+	Pushing        []Window
 	DistanceMetres float64
 	AscentMetres   float64
 	DescentMetres  float64
@@ -96,7 +99,7 @@ type Plan struct {
 // network for one profile, returning the snapped line with an elevation per
 // point.
 type Router interface {
-	Route(ctx context.Context, waypoints []Waypoint, profile Profile) ([]route.Point, error)
+	Route(ctx context.Context, waypoints []Waypoint, profile Profile) (Routed, error)
 }
 
 // Pace predicts a routed line's moving time, as this service predicts a
@@ -131,7 +134,10 @@ type Store interface {
 type Measured struct {
 	Geometry []route.Point
 	// Progress carries one entry per waypoint, in the order they were routed.
-	Progress       []Progress
+	Progress []Progress
+	// Pushing is where the line runs along a way bicycles are refused and a
+	// rider walks.
+	Pushing        []Window
 	DistanceMetres float64
 	AscentMetres   float64
 	DescentMetres  float64
@@ -188,11 +194,11 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 	if err := validateRouting(profile, waypoints); err != nil {
 		return Measured{}, err
 	}
-	points, err := s.router.Route(ctx, waypoints, profile)
+	routed, err := s.router.Route(ctx, waypoints, profile)
 	if err != nil {
 		return Measured{}, fmt.Errorf("plan: routing waypoints: %w: %w", ErrRouting, err)
 	}
-	built, err := route.NewRoute(route.ProviderLocal, 1, 1, previewRevision, "", "", points, previewRevision)
+	built, err := route.NewRoute(route.ProviderLocal, 1, 1, previewRevision, "", "", routed.Points, previewRevision)
 	if err != nil {
 		return Measured{}, fmt.Errorf("plan: building routed geometry: %w", err)
 	}
@@ -207,6 +213,7 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 	return Measured{
 		Geometry:       geometry,
 		Progress:       progressAt(waypoints, geometry, cumulative),
+		Pushing:        pushingOf(routed.Ways, normalized.DistanceMetres()),
 		DistanceMetres: normalized.DistanceMetres(),
 		AscentMetres:   normalized.ElevationGainMetres(),
 		DescentMetres:  normalized.ElevationLossMetres(),
@@ -296,8 +303,8 @@ func (s *Service) Create(ctx context.Context, name string, profile Profile, wayp
 	created := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
-		DescentMetres: measured.DescentMetres,
-		Progress:      measured.Progress, MovingSeconds: measured.MovingSeconds,
+		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing,
+		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: false, Version: 1, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.store.InsertPlan(ctx, &created); err != nil {
@@ -335,8 +342,8 @@ func (s *Service) Replace(
 	replaced := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
-		DescentMetres: measured.DescentMetres,
-		Progress:      measured.Progress, MovingSeconds: measured.MovingSeconds,
+		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing,
+		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: published, Version: expectedVersion + 1, CreatedAt: existing.CreatedAt, UpdatedAt: s.now().UTC(),
 	}
 	ok, err := s.store.ReplacePlan(ctx, &replaced, expectedVersion)

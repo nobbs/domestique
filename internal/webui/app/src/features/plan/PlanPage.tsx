@@ -17,6 +17,7 @@ import {
   IconRoad,
   IconRoute,
   IconTrash,
+  IconWalk,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -28,7 +29,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Marker, ScaleControl } from "react-map-gl/maplibre";
+import { Layer, Marker, ScaleControl, Source } from "react-map-gl/maplibre";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   getGetPlanQueryKey,
@@ -47,6 +48,7 @@ import type {
   PlanProfile,
   PlanRoutePreview,
   PlanSummary,
+  PlanWindow,
   Position,
   SnappedPlace,
 } from "../../api/types";
@@ -75,7 +77,12 @@ import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { groundSegments, steepnessEntries, surfaceEntries } from "../../lib/mix";
-import { buildProfile, gradientSharesBySign, rangeBounds } from "../../lib/profile";
+import {
+  buildProfile,
+  coordinateRange,
+  gradientSharesBySign,
+  rangeBounds,
+} from "../../lib/profile";
 import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
 import { type SurfaceSummary, summariseSurface } from "../../lib/surface";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
@@ -108,8 +115,50 @@ function previewFrom(plan: Plan): PlanRoutePreview {
     geometry: plan.geometry,
     distanceMetres: plan.distanceMetres,
     ascentMetres: plan.ascentMetres,
+    ...(plan.descentMetres === undefined ? {} : { descentMetres: plan.descentMetres }),
+    ...(plan.movingSeconds === undefined ? {} : { movingSeconds: plan.movingSeconds }),
+    ...(plan.waypointProgress === undefined ? {} : { waypointProgress: plan.waypointProgress }),
+    ...(plan.pushing === undefined ? {} : { pushing: plan.pushing }),
     ...(plan.surface === undefined ? {} : { surface: plan.surface }),
   };
+}
+
+/** How far a plan runs along ways a rider walks, in metres. */
+function pushingMetres(preview: PlanRoutePreview | null): number {
+  return (preview?.pushing ?? []).reduce(
+    (total, window) => total + window.endMetres - window.startMetres,
+    0,
+  );
+}
+
+/**
+ * The stretches a rider walks, dashed over the route so they read as footpath
+ * whatever colour the ground under them paints the line.
+ */
+function PushingLine({ line, pushing }: { line: Position[]; pushing: PlanWindow[] }) {
+  const data = useMemo(() => {
+    const stretches = pushing.flatMap((window) => {
+      const range = coordinateRange(line, window.startMetres, window.endMetres);
+      return range ? [line.slice(range.startIndex, range.endIndex + 1)] : [];
+    });
+
+    return {
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "MultiLineString" as const, coordinates: stretches },
+    };
+  }, [line, pushing]);
+
+  return (
+    <Source id="plan-pushing" type="geojson" data={data}>
+      <Layer
+        id="plan-pushing-line"
+        type="line"
+        layout={{ "line-cap": "butt", "line-join": "round" }}
+        paint={{ "line-color": "#ffffff", "line-width": 3, "line-dasharray": [0.8, 1.6] }}
+      />
+    </Source>
+  );
 }
 
 function errorMessage(error: unknown): string {
@@ -320,6 +369,14 @@ function PlanFigures({ preview }: { preview: PlanRoutePreview | null }) {
             <IconClock size={14} stroke={1.8} aria-hidden="true" />,
             formatDuration(Math.round(preview.movingSeconds / 60) * 60),
           )}
+      {pushingMetres(preview) > 0 ? (
+        <span title="Walked, where bicycles are refused">
+          {figure(
+            <IconWalk size={14} stroke={1.8} aria-label="Walked" />,
+            formatDistance(pushingMetres(preview)),
+          )}
+        </span>
+      ) : null}
     </output>
   );
 }
@@ -683,15 +740,24 @@ const STOPS = [
 ] as const;
 
 /** The surface's own rows beside the steepness bands, over the ribbon that places them. */
-function GroundStop({ surface, line }: { surface: SurfaceSummary; line: Position[] }) {
+function GroundStop({
+  surface,
+  line,
+  walkedMetres,
+}: {
+  surface: SurfaceSummary;
+  line: Position[];
+  walkedMetres: number;
+}) {
   const rows = useMemo(
     () => [
       ...surfaceEntries(surface),
       ...steepnessEntries(gradientSharesBySign(line), surface.totalMetres).filter(
         (entry) => entry.share > 0.005,
       ),
+      ...(walkedMetres > 0 ? [{ label: "Walked", metres: walkedMetres, colour: "--ink-2" }] : []),
     ],
-    [surface, line],
+    [surface, line, walkedMetres],
   );
 
   return (
@@ -809,7 +875,7 @@ function PlannerDock({
             </Tabs.Panel>
             {surface === null ? null : (
               <Tabs.Panel value="ground">
-                <GroundStop surface={surface} line={line} />
+                <GroundStop surface={surface} line={line} walkedMetres={pushingMetres(preview)} />
               </Tabs.Panel>
             )}
           </>
@@ -1070,6 +1136,9 @@ export function PlanPage() {
                     onActiveChange={setActiveMetres}
                     showTerminals={false}
                   />
+                ) : null}
+                {line.length > 1 && preview?.pushing ? (
+                  <PushingLine line={line} pushing={preview.pushing} />
                 ) : null}
                 {state.waypoints.map((waypoint, index) => (
                   <Marker

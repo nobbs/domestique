@@ -60,8 +60,9 @@ func TestRouteDecodesGeometryWithAndWithoutElevation(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	points, err := client.Route(context.Background(), testWaypoints(), "trekking")
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
 	require.NoError(t, err)
+	points := answer.Points
 	require.Len(t, points, 2)
 	require.NotNil(t, points[0].Elevation)
 	assert.InDelta(t, 100.0, *points[0].Elevation, 0, "points[0].Elevation")
@@ -296,4 +297,46 @@ func TestErrorStringWithoutAStatus(t *testing.T) {
 	err := &Error{Category: FailureRefused}
 	assert.Contains(t, err.Error(), string(FailureRefused))
 	assert.NotContains(t, err.Error(), "HTTP")
+}
+
+func TestRouteReadsTheWaysUnderTheLine(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"properties":{"messages":[` +
+			`["Longitude","Latitude","Elevation","Distance","CostPerKm","WayTags"],` +
+			`["8680000","50110000","100","34","2250","highway=pedestrian bicycle=yes"],` +
+			`["8690000","50115000","101","62","5050","highway=footway surface=concrete"]]},` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11,100.0],[8.70,50.12,101.0]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
+
+	require.NoError(t, err)
+	require.Len(t, answer.Ways, 2)
+	assert.InDelta(t, 34, answer.Ways[0].EndMetres, 0)
+	assert.Equal(t, map[string]string{"highway": "pedestrian", "bicycle": "yes"}, answer.Ways[0].Tags)
+	assert.InDelta(t, 96, answer.Ways[1].EndMetres, 0, "each stretch ends where the ones before it add up to")
+	assert.Equal(t, "footway", answer.Ways[1].Tags["highway"])
+}
+
+func TestRouteKeepsTheLineWhenTheWaysTableIsUnreadable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"properties":{"messages":[["Longitude","Latitude"],["8680000","50110000"]]},` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11,100.0],[8.70,50.12,101.0]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
+
+	require.NoError(t, err)
+	assert.Len(t, answer.Points, 2, "the line stands")
+	assert.Empty(t, answer.Ways, "a table without distances or tags says nothing")
 }

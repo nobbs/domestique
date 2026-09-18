@@ -110,6 +110,12 @@ vi.mock("../../components/map/MapViewport", () => ({
 }));
 vi.mock("react-map-gl/maplibre", () => ({
   Marker: ({ children }: { children: React.ReactNode }) => children,
+  Source: ({ id, data, children }: { id: string; data: unknown; children: React.ReactNode }) => (
+    <div data-testid={id} data-geometry={JSON.stringify(data)}>
+      {children}
+    </div>
+  ),
+  Layer: () => null,
   ScaleControl: ({ position, unit }: { position: string; unit: string }) => (
     <output data-testid="plan-scale" data-position={position} data-unit={unit} />
   ),
@@ -493,6 +499,73 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Ground" }));
     // The ribbon labels the stretch and the table measures it.
     expect(screen.getAllByText("Gravel").length).toBeGreaterThan(1);
+  });
+
+  it("marks where the rider walks, on the strip and dashed over the route", () => {
+    preview.mockImplementation(
+      (_variables: unknown, callbacks: { onSuccess: (value: unknown) => void }) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49, 100],
+                [8.001, 49, 100],
+                [8.002, 49, 100],
+                [8.003, 49, 100],
+              ],
+            },
+            distanceMetres: 219,
+            ascentMetres: 0,
+            // The two middle vertices sit about 73 m and 146 m along.
+            pushing: [{ startMetres: 73, endMetres: 145 }],
+          },
+        }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("72 m");
+    const walked = JSON.parse(
+      screen.getByTestId("plan-pushing").getAttribute("data-geometry") ?? "{}",
+    ) as { geometry: { coordinates: number[][][] } };
+    // The middle third of the line, and only that.
+    expect(walked.geometry.coordinates).toEqual([
+      [
+        [8.001, 49, 100],
+        [8.002, 49, 100],
+      ],
+    ]);
+  });
+
+  it("draws no walked line on a route ridden throughout", () => {
+    preview.mockImplementation(
+      (_variables: unknown, callbacks: { onSuccess: (value: unknown) => void }) =>
+        callbacks.onSuccess({
+          data: {
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [8, 49],
+                [8.1, 49.1],
+              ],
+            },
+            distanceMetres: 10_000,
+            ascentMetres: 100,
+          },
+        }),
+    );
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(screen.queryByTestId("plan-pushing")).toBeNull();
+    expect(screen.queryByLabelText("Walked")).toBeNull();
   });
 
   it("leaves the route unpainted when the classification matched nothing", () => {

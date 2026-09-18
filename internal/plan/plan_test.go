@@ -17,16 +17,17 @@ import (
 type fakeRouter struct {
 	err      error
 	geometry []route.Point
+	ways     []RoutedWay
 	calls    int
 }
 
-func (r *fakeRouter) Route(_ context.Context, _ []Waypoint, _ Profile) ([]route.Point, error) {
+func (r *fakeRouter) Route(_ context.Context, _ []Waypoint, _ Profile) (Routed, error) {
 	r.calls++
 	if r.err != nil {
-		return nil, r.err
+		return Routed{}, r.err
 	}
 
-	return r.geometry, nil
+	return Routed{Points: r.geometry, Ways: r.ways}, nil
 }
 
 // fakeStore is an in-memory Store recording every call, for asserting a
@@ -628,4 +629,43 @@ func TestGetPredictsAStoredPlanOnRead(t *testing.T) {
 	assert.InDelta(t, 20, read.MovingSeconds, 0, "predicted from the stored geometry, not from the row")
 	require.Len(t, read.Progress, 2)
 	assert.InDelta(t, 20, read.Progress[1].MovingSeconds, 0)
+}
+
+func TestRouteMarksWhereTheRiderWalks(t *testing.T) {
+	t.Parallel()
+	router := &fakeRouter{
+		geometry: testGeometry(),
+		ways: []RoutedWay{
+			{EndMetres: 50, Tags: tags("highway", "residential")},
+			{EndMetres: 100, Tags: tags("highway", "footway")},
+		},
+	}
+	service := NewService(newFakeStore(), router, testPace{}, fixedNow, sequentialID())
+
+	measured, err := service.Route(t.Context(), testWaypoints(), Trekking)
+
+	require.NoError(t, err)
+	require.Len(t, measured.Pushing, 1)
+	// The engine's second half, scaled onto the normalised line's own length.
+	assert.InDelta(t, measured.DistanceMetres/2, measured.Pushing[0].StartMetres, 0.01)
+	assert.InDelta(t, measured.DistanceMetres, measured.Pushing[0].EndMetres, 0.01)
+}
+
+func TestCreateStoresWhereTheRiderWalks(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	router := &fakeRouter{
+		geometry: testGeometry(),
+		ways:     []RoutedWay{{EndMetres: 100, Tags: tags("highway", "footway")}},
+	}
+	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
+
+	created, err := service.Create(t.Context(), "Walked", Trekking, testWaypoints())
+
+	require.NoError(t, err)
+	require.Len(t, created.Pushing, 1)
+	stored, found, err := service.Get(t.Context(), created.ID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, created.Pushing, stored.Pushing)
 }

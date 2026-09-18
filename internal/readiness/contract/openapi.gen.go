@@ -413,6 +413,12 @@ type PlanWaypoint struct {
 	Latitude  float64 `json:"latitude"`
 }
 
+// PlanWindow A stretch of a plan, in metres from its start.
+type PlanWindow struct {
+	StartMetres float64 `json:"startMetres"`
+	EndMetres   float64 `json:"endMetres"`
+}
+
 // PlanProgress How far into a plan one waypoint is, read along the routed line rather than between waypoints. movingSeconds is absent where the line carries no prediction.
 type PlanProgress struct {
 	DistanceMetres float64  `json:"distanceMetres"`
@@ -441,8 +447,10 @@ type PlanRoutePreview struct {
 	// MovingSeconds The whole line's predicted moving time, from the same model a stage's is predicted with. Absent where the line cannot be predicted, which incomplete elevation makes it.
 	MovingSeconds *float64 `json:"movingSeconds,omitempty"`
 	// WaypointProgress One entry per waypoint, in the order they were routed.
-	WaypointProgress []PlanProgress         `json:"waypointProgress,omitempty"`
-	Surface          *SurfaceClassification `json:"surface,omitempty"`
+	WaypointProgress []PlanProgress `json:"waypointProgress,omitempty"`
+	// Pushing Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none.
+	Pushing []PlanWindow           `json:"pushing,omitempty"`
+	Surface *SurfaceClassification `json:"surface,omitempty"`
 }
 
 type PlanWrite struct {
@@ -467,10 +475,12 @@ type Plan struct {
 	// MovingSeconds Predicted on read with the coefficients in force, never stored: a calibration replaces them and the plan's own time follows.
 	MovingSeconds *float64 `json:"movingSeconds,omitempty"`
 	// WaypointProgress One entry per waypoint, in the order they were routed.
-	WaypointProgress []PlanProgress         `json:"waypointProgress,omitempty"`
-	Surface          *SurfaceClassification `json:"surface,omitempty"`
-	CreatedAt        time.Time              `json:"createdAt"`
-	UpdatedAt        time.Time              `json:"updatedAt"`
+	WaypointProgress []PlanProgress `json:"waypointProgress,omitempty"`
+	// Pushing Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none.
+	Pushing   []PlanWindow           `json:"pushing,omitempty"`
+	Surface   *SurfaceClassification `json:"surface,omitempty"`
+	CreatedAt time.Time              `json:"createdAt"`
+	UpdatedAt time.Time              `json:"updatedAt"`
 }
 
 type PlanSummary struct {

@@ -37,6 +37,7 @@ func (h *Handler) PreviewPlanRoute(writer http.ResponseWriter, request *http.Req
 		DescentMetres:    optionalMetres(measured.DescentMetres),
 		MovingSeconds:    optionalSeconds(measured.MovingSeconds),
 		WaypointProgress: progressOf(measured.Progress),
+		Pushing:          windowsOf(measured.Pushing),
 		Surface:          h.planSurface(request.Context(), measured.Geometry),
 	})
 }
@@ -234,6 +235,7 @@ func (h *Handler) planOf(ctx context.Context, p *plan.Plan) openapi.Plan {
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres,
 		DescentMetres: optionalMetres(p.DescentMetres),
 		MovingSeconds: optionalSeconds(p.MovingSeconds), WaypointProgress: progressOf(p.Progress),
+		Pushing:   windowsOf(p.Pushing),
 		Surface:   h.planSurface(ctx, p.Geometry),
 		CreatedAt: wireTime(p.CreatedAt), UpdatedAt: wireTime(p.UpdatedAt),
 	}
@@ -257,6 +259,19 @@ func optionalMetres(metres float64) *float64 {
 	}
 
 	return &metres
+}
+
+// windowsOf renders stretches of a plan, absent where there are none.
+func windowsOf(windows []plan.Window) []openapi.PlanWindow {
+	if len(windows) == 0 {
+		return nil
+	}
+	views := make([]openapi.PlanWindow, len(windows))
+	for index, window := range windows {
+		views[index] = openapi.PlanWindow{StartMetres: window.StartMetres, EndMetres: window.EndMetres}
+	}
+
+	return views
 }
 
 // progressOf renders each waypoint's place along the line, leaving its time

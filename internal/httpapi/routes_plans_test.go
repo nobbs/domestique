@@ -310,6 +310,22 @@ func TestPreviewPlanRouteCarriesThePredictedTimePerWaypoint(t *testing.T) {
 	assert.InDelta(t, 1200, body.WaypointProgress[1].DistanceMetres, 0)
 }
 
+func TestPreviewPlanRouteCarriesWhereTheRiderWalks(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry:       []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+		DistanceMetres: 1200, AscentMetres: 42,
+		Pushing: []plan.Window{{StartMetres: 300, EndMetres: 420}},
+	}})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var body openapi.PlanRoutePreview
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, []openapi.PlanWindow{{StartMetres: 300, EndMetres: 420}}, body.Pushing)
+}
+
 func TestPreviewPlanRouteOmitsATimeItCannotPredict(t *testing.T) {
 	handler := plansHandler(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
 		Geometry:       []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},

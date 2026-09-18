@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -125,14 +126,28 @@ func parseOrigin(value string) (*url.URL, error) {
 	return parsed, nil
 }
 
-// Route asks the engine for the snapped line over waypoints for profile,
-// returning one point per vertex of the returned track with an elevation
-// where the engine supplied one.
+// Answer is the engine's route: one point per vertex of the snapped line, with
+// an elevation where the engine supplied one, and the ways it runs along.
+type Answer struct {
+	Points []route.Point
+	// Ways are the line's stretches in order, as the engine reports them. Empty
+	// where its answer carries no such table, which costs the route nothing.
+	Ways []Way
+}
+
+// Way is one stretch of an answer: where along the line it ends, by the
+// engine's own reckoning, and the OSM tags of the way under it.
+type Way struct {
+	Tags      map[string]string
+	EndMetres float64
+}
+
+// Route asks the engine for the snapped line over waypoints for profile.
 func (c *Client) Route(
 	ctx context.Context, waypoints []Waypoint, profile string,
-) (points []route.Point, err error) {
+) (answer Answer, err error) {
 	if len(waypoints) < 2 {
-		return nil, &Error{Category: FailureRefused}
+		return Answer{}, &Error{Category: FailureRefused}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
@@ -149,13 +164,13 @@ func (c *Client) Route(
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("brouter: creating request: %w", err)
+		return Answer{}, fmt.Errorf("brouter: creating request: %w", err)
 	}
 	request.Header.Set("Accept", "application/vnd.geo+json, application/json")
 
 	response, err := c.client.Do(request)
 	if err != nil {
-		return nil, &Error{Category: FailureUnreachable}
+		return Answer{}, &Error{Category: FailureUnreachable}
 	}
 	defer func() {
 		err = errors.Join(err, response.Body.Close())
@@ -165,22 +180,27 @@ func (c *Client) Route(
 	// exposure of parsing; every other status is closed unread.
 	switch {
 	case response.StatusCode >= http.StatusInternalServerError:
-		return nil, &Error{Category: FailureEngine, Status: response.StatusCode}
+		return Answer{}, &Error{Category: FailureEngine, Status: response.StatusCode}
 	case response.StatusCode >= http.StatusBadRequest:
-		return nil, &Error{Category: FailureRefused, Status: response.StatusCode}
+		return Answer{}, &Error{Category: FailureRefused, Status: response.StatusCode}
 	case response.StatusCode != http.StatusOK:
-		return nil, &Error{Category: FailureResponse, Status: response.StatusCode}
+		return Answer{}, &Error{Category: FailureResponse, Status: response.StatusCode}
 	}
 
 	body, readErr := io.ReadAll(io.LimitReader(response.Body, maximumBodyBytes+1))
 	if readErr != nil {
-		return nil, &Error{Category: FailureUnreachable, Status: response.StatusCode}
+		return Answer{}, &Error{Category: FailureUnreachable, Status: response.StatusCode}
 	}
 	if len(body) > maximumBodyBytes {
-		return nil, &Error{Category: FailureResponse, Status: response.StatusCode}
+		return Answer{}, &Error{Category: FailureResponse, Status: response.StatusCode}
 	}
 
-	return parseGeometry(body, response.StatusCode)
+	points, parseErr := parseGeometry(body, response.StatusCode)
+	if parseErr != nil {
+		return Answer{}, parseErr
+	}
+
+	return Answer{Points: points, Ways: parseWays(body)}, nil
 }
 
 // lonlats formats waypoints as BRouter's pipe-separated lon,lat list.
@@ -241,6 +261,60 @@ func parseGeometry(body []byte, status int) ([]route.Point, error) {
 	}
 
 	return points, nil
+}
+
+// messagesAnswer is the other part of the answer this adapter reads: the table
+// of the line's stretches, whose first row names its columns.
+type messagesAnswer struct {
+	Features []struct {
+		Properties struct {
+			Messages [][]string `json:"messages"`
+		} `json:"properties"`
+	} `json:"features"`
+}
+
+// parseWays reads the stretches of the line and the tags under each. A table
+// it cannot read yields none rather than failing a route whose line is sound.
+func parseWays(body []byte) []Way {
+	var decoded messagesAnswer
+	if json.Unmarshal(body, &decoded) != nil || len(decoded.Features) == 0 {
+		return nil
+	}
+	rows := decoded.Features[0].Properties.Messages
+	if len(rows) < 2 {
+		return nil
+	}
+	distance, tagged := slices.Index(rows[0], "Distance"), slices.Index(rows[0], "WayTags")
+	if distance < 0 || tagged < 0 {
+		return nil
+	}
+	ways := make([]Way, 0, len(rows)-1)
+	along := 0.0
+	for _, row := range rows[1:] {
+		if len(row) <= max(distance, tagged) {
+			return nil
+		}
+		metres, err := strconv.ParseFloat(row[distance], 64)
+		if err != nil || metres < 0 {
+			return nil
+		}
+		along += metres
+		ways = append(ways, Way{EndMetres: along, Tags: parseTags(row[tagged])})
+	}
+
+	return ways
+}
+
+// parseTags reads the engine's space-separated key=value list.
+func parseTags(value string) map[string]string {
+	tags := make(map[string]string)
+	for pair := range strings.FieldsSeq(value) {
+		if key, tagValue, found := strings.Cut(pair, "="); found {
+			tags[key] = tagValue
+		}
+	}
+
+	return tags
 }
 
 // validCoordinate reports whether value is a finite number within [min, max].

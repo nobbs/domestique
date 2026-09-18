@@ -826,6 +826,14 @@ export interface PlanProgress {
   movingSeconds?: number;
 }
 
+/**
+ * A stretch of a plan, in metres from its start.
+ */
+export interface PlanWindow {
+  startMetres: number;
+  endMetres: number;
+}
+
 export interface SurfaceClassification {
   ranges: SurfaceRange[];
   matchedMetres: number;
@@ -840,6 +848,8 @@ export interface PlanRoutePreview {
   movingSeconds?: number;
   /** One entry per waypoint, in the order they were routed. */
   waypointProgress?: PlanProgress[];
+  /** Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none. */
+  pushing?: PlanWindow[];
   surface?: SurfaceClassification;
 }
 
@@ -904,6 +914,8 @@ export interface Plan {
   movingSeconds?: number;
   /** One entry per waypoint, in the order they were routed. */
   waypointProgress?: PlanProgress[];
+  /** Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none. */
+  pushing?: PlanWindow[];
   surface?: SurfaceClassification;
   createdAt: string;
   updatedAt: string;

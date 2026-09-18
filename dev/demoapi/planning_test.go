@@ -19,8 +19,8 @@ import (
 
 type testRouter struct{}
 
-func (testRouter) Route(context.Context, []plan.Waypoint, plan.Profile) ([]route.Point, error) {
-	return []route.Point{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.5, Latitude: 49.1}}, nil
+func (testRouter) Route(context.Context, []plan.Waypoint, plan.Profile) (plan.Routed, error) {
+	return plan.Routed{Points: []route.Point{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.5, Latitude: 49.1}}}, nil
 }
 
 type noPlans struct{}
@@ -47,11 +47,11 @@ func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
 		}),
 	})
 	require.NoError(t, err)
-	points, err := (brouterRouter{client: client}).Route(
+	routed, err := (brouterRouter{client: client}).Route(
 		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel,
 	)
 	require.NoError(t, err)
-	assert.Len(t, points, 2)
+	assert.Len(t, routed.Points, 2)
 }
 
 func TestSeedAddsPublishedPlansToTheDemoInventory(t *testing.T) {

@@ -16,11 +16,13 @@ import (
 // published local route, its routed geometry, and the version a replace or
 // delete must present as If-Match.
 type PlanRecord struct {
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	Name           string
-	Profile        string
-	Waypoints      [][2]float64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Name      string
+	Profile   string
+	Waypoints [][2]float64
+	// Pushing is [start, end] pairs in metres where a rider walks.
+	Pushing        [][2]float64
 	Geometry       []route.Point
 	DistanceMetres float64
 	AscentMetres   float64
@@ -39,9 +41,14 @@ func (s *Store) InsertPlan(ctx context.Context, record *PlanRecord) error {
 	if err != nil {
 		return err
 	}
+	pushing, err := encodePairs(record.Pushing)
+	if err != nil {
+		return err
+	}
 	if err := s.queries.InsertPlan(ctx, sqlcgen.InsertPlanParams{
 		ID: record.ID, Name: record.Name, Profile: record.Profile, Waypoints: string(waypoints),
 		Coordinates: coordinates, DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres,
+		Pushing:   string(pushing),
 		Published: boolToInt(record.Published), Version: record.Version,
 		CreatedAtUnixNano: record.CreatedAt.UnixNano(), UpdatedAtUnixNano: record.UpdatedAt.UnixNano(),
 	}); err != nil {
@@ -100,9 +107,13 @@ func (s *Store) ReplacePlan(ctx context.Context, record *PlanRecord, expectedVer
 	if err != nil {
 		return false, err
 	}
+	pushing, err := encodePairs(record.Pushing)
+	if err != nil {
+		return false, err
+	}
 	updated, err := s.queries.UpdatePlan(ctx, sqlcgen.UpdatePlanParams{
 		Name: record.Name, Profile: record.Profile, Waypoints: string(waypoints), Coordinates: coordinates,
-		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres,
+		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Pushing: string(pushing),
 		Published: boolToInt(record.Published), Version: record.Version,
 		UpdatedAtUnixNano: record.UpdatedAt.UnixNano(),
 		ID:                record.ID, Version_2: expectedVersion,
@@ -147,9 +158,17 @@ func planRecordFromRow(row *sqlcgen.Plan) (PlanRecord, error) {
 	if err != nil {
 		return PlanRecord{}, fmt.Errorf("decoding plan geometry: %w", err)
 	}
+	pushing, err := decodeWaypoints([]byte(row.Pushing))
+	if err != nil {
+		return PlanRecord{}, fmt.Errorf("decoding plan pushing: %w", err)
+	}
+	if len(pushing) == 0 {
+		pushing = nil
+	}
 
 	return PlanRecord{
 		ID: row.ID, Name: row.Name, Profile: row.Profile, Waypoints: waypoints, Geometry: geometry,
+		Pushing:        pushing,
 		DistanceMetres: row.DistanceMetres, AscentMetres: row.AscentMetres,
 		Published: row.Published != 0, Version: row.Version,
 		CreatedAt: time.Unix(0, row.CreatedAtUnixNano).UTC(),
@@ -173,6 +192,16 @@ func encodeWaypoints(waypoints [][2]float64) ([]byte, error) {
 	}
 
 	return encoded, nil
+}
+
+// encodePairs renders [start, end] pairs as JSON, an empty list rather than
+// null, since the column holds one for every plan.
+func encodePairs(pairs [][2]float64) ([]byte, error) {
+	if pairs == nil {
+		pairs = [][2]float64{}
+	}
+
+	return encodeWaypoints(pairs)
 }
 
 // decodeWaypoints reads back what encodeWaypoints wrote.

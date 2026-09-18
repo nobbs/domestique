@@ -159,11 +159,11 @@ func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
 	require.NoError(t, err)
 	router := brouterRouter{client: client}
 
-	points, err := router.Route(
+	routed, err := router.Route(
 		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
 	require.NoError(t, err)
 	assert.Equal(t, "gravel", gotProfile, "profile")
-	require.Len(t, points, 2, "points")
+	require.Len(t, routed.Points, 2, "points")
 }
 
 // A routing failure is wrapped rather than passed through bare, but the
