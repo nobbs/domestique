@@ -2,8 +2,8 @@
  * The catalogue, as a reader drives it.
  *
  * What is tested here is the agreement the page exists to keep: the order the
- * headings promise is the order the rows are in, the address carries that order
- * across a visit to the atlas, and a row leads to the route it names.
+ * sort control promises is the order the rows are in, the address carries that
+ * order across a visit to the atlas, and a row leads to the route it names.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -108,8 +108,8 @@ function show(
   client.setQueryData(routesQuery().queryKey, library);
   client.setQueryData(statusQuery().queryKey, STATUS);
   client.setQueryData(webUIConfigQuery().queryKey, CONFIG);
-  // Seeded rather than fetched: the glyphs and the surface filter both read
-  // this, under the same keys the atlas caches it with.
+  // Seeded rather than fetched: the glyphs and the mix bars both read this,
+  // under the same keys the atlas caches it with.
   if (!geometry) {
     stubPendingFetch();
   }
@@ -141,14 +141,21 @@ function show(
 }
 
 /**
- * The route names in the order the table has them, read off each row's own
- * link rather than off a column index — the shape column has no name in it.
+ * The "Library" card, scoped so a route also listed under "Recently updated"
+ * is not confused with it. jsdom does not resolve `<section>` to the "region"
+ * role, so the card is found by its own heading and read from there.
  */
+function libraryRegion(): HTMLElement {
+  // The heading's accessible name also carries the count subtitle, so this
+  // matches on the leading word rather than the whole thing.
+  return screen.getByRole("heading", { name: /^Library/ }).closest("section") as HTMLElement;
+}
+
+/** The route names in the order the ledger has them, read off each row's own link. */
 function shownTitles(): string[] {
-  return screen
-    .getAllByRole("row")
-    .slice(1)
-    .map((row) => within(row).getByRole("link").textContent ?? "");
+  return within(libraryRegion())
+    .getAllByRole("link")
+    .map((link) => link.textContent ?? "");
 }
 
 /**
@@ -184,7 +191,7 @@ describe("CataloguePage", () => {
     expect(screen.getByText(/3 routes/)).toBeInTheDocument();
   });
 
-  it("ranks by a column when its heading is pressed, and turns it around on a second press", async () => {
+  it("ranks by a measure when it is chosen, and turns it around on a second press", async () => {
     const user = userEvent.setup();
     show();
 
@@ -194,10 +201,8 @@ describe("CataloguePage", () => {
       expect.stringContaining("Coast ride"),
       expect.stringContaining("Border run"),
     ]);
-    expect(screen.getByRole("columnheader", { name: /Distance/ })).toHaveAttribute(
-      "aria-sort",
-      "descending",
-    );
+    expect(screen.getByRole("button", { name: "Distance", pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Descending" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Distance" }));
     expect(shownTitles()).toEqual([
@@ -205,10 +210,7 @@ describe("CataloguePage", () => {
       expect.stringContaining("Coast ride"),
       expect.stringContaining("Alpine loop"),
     ]);
-    expect(screen.getByRole("columnheader", { name: /Distance/ })).toHaveAttribute(
-      "aria-sort",
-      "ascending",
-    );
+    expect(screen.getByRole("button", { name: "Ascending" })).toBeInTheDocument();
   });
 
   it("keeps the order and the search in the address, so leaving and returning restores them", async () => {
@@ -260,21 +262,36 @@ describe("CataloguePage", () => {
     expect(screen.getByTestId("address")).toHaveTextContent("q=coast");
   });
 
-  it("says a search matched nothing rather than showing an empty table", async () => {
+  it("stays lit while it holds text, and a clear button empties it", async () => {
+    const user = userEvent.setup();
+    show();
+
+    const field = screen.getByRole("searchbox");
+    expect(field.closest("label")).not.toHaveAttribute("data-lit");
+
+    await user.type(field, "coast");
+    expect(field.closest("label")).toHaveAttribute("data-lit");
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(field).toHaveValue("");
+    expect(field.closest("label")).not.toHaveAttribute("data-lit");
+  });
+
+  it("says a search matched nothing rather than showing an empty ledger", async () => {
     const user = userEvent.setup();
     show();
 
     await user.type(screen.getByRole("searchbox"), "montreal");
 
     expect(screen.getByText("Nothing here is called that.")).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(within(libraryRegion()).queryAllByRole("link")).toHaveLength(0);
   });
 
   it("hands a route to the atlas rather than opening it here", async () => {
     const user = userEvent.setup();
     show();
 
-    await user.click(screen.getByRole("link", { name: "Coast ride" }));
+    await user.click(within(libraryRegion()).getByRole("link", { name: /Coast ride/ }));
 
     expect(screen.getByText("the atlas")).toBeInTheDocument();
     expect(screen.getByTestId("address")).toHaveTextContent("route=veloplanner%2F3%2F1");
@@ -283,66 +300,68 @@ describe("CataloguePage", () => {
   it("draws each route's shape from the geometry the atlas caches", () => {
     show();
 
-    expect(screen.getByRole("img", { name: "Shape of Alpine loop" })).toBeInTheDocument();
-    expect(screen.getAllByRole("img", { name: /^Shape of / })).toHaveLength(3);
+    expect(
+      within(libraryRegion()).getByRole("img", { name: "Shape of Alpine loop" }),
+    ).toBeInTheDocument();
+    expect(within(libraryRegion()).getAllByRole("img", { name: /^Shape of / })).toHaveLength(3);
   });
 
   it("divides each route by surface and by gradient, from that same geometry", () => {
     show();
 
-    const [first] = screen.getAllByRole("row").slice(1);
+    const [first] = within(libraryRegion()).getAllByRole("listitem");
     // The seeded geometry makes the first route wholly gravel and, with every
     // point at one elevation, wholly flat.
-    expect(within(first as HTMLElement).getByText(/Gravel 100%/)).toBeInTheDocument();
-    expect(within(first as HTMLElement).getByText(/flat 100%/)).toBeInTheDocument();
+    expect(
+      within(first as HTMLElement).getByRole("img", { name: /Surface: Gravel 100%/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(first as HTMLElement).getByRole("img", { name: /Gradient: flat 100%/ }),
+    ).toBeInTheDocument();
   });
 
-  it("says so rather than dividing a route nothing has measured", () => {
-    // Geometry present and flat throughout, with no surface on it: the page
-    // has its answer and the answer is that there is nothing to divide.
+  it("shows no bars for a route nothing has measured", () => {
+    // Geometry present and flat throughout, with no surface on it: there is
+    // nothing to divide, so the row shows plain figures and no mix bars.
     show([libraryRoute("Unmeasured", { sourceRouteId: 9 })], "/catalogue", {
       nothingToDivide: true,
     });
 
-    expect(screen.getByText("surface not classified")).toBeInTheDocument();
-    expect(screen.getByText("no elevation data")).toBeInTheDocument();
+    expect(within(libraryRegion()).getByText("Unmeasured")).toBeInTheDocument();
+    expect(
+      within(libraryRegion()).queryByRole("img", { name: /^Surface:/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(libraryRegion()).queryByRole("img", { name: /^Gradient:/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("claims nothing about a route whose geometry has not arrived", () => {
-    // Nothing seeded, so the divisions are empty for want of an answer rather
-    // than because there is none. Saying "no elevation data" here would state
-    // a result the page does not have.
+    // Nothing seeded, so the row shows no bars for want of an answer rather
+    // than because there is none.
     show([libraryRoute("Pending", { sourceRouteId: 8 })], "/catalogue", { geometry: false });
 
-    expect(screen.getByText("Pending")).toBeInTheDocument();
-    expect(screen.queryByText("surface not classified")).not.toBeInTheDocument();
-    expect(screen.queryByText("no elevation data")).not.toBeInTheDocument();
+    expect(within(libraryRegion()).getByText("Pending")).toBeInTheDocument();
+    expect(
+      within(libraryRegion()).queryByRole("img", { name: /^Surface:/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(libraryRegion()).queryByRole("img", { name: /^Gradient:/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it("dashes only the marker on an updated row, never the rule above it", () => {
-    show();
-    const row = screen.getAllByRole("row")[1] as HTMLElement;
-
-    // `border-dashed` is every edge at once, and the row draws a top rule of
-    // its own; the dash belongs to the left marker alone.
-    expect(row.className).toContain("[border-left-style:dashed]");
-    expect(row.className).not.toMatch(/(?:^|\s)data-\[change=updated\]:border-dashed(?:\s|$)/);
-  });
-
-  it("marks a route that is new or updated on the row itself", () => {
+  it("marks a route that is new or updated beside its name", () => {
     show();
 
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows.every((row) => row.getAttribute("data-change") === "new")).toBe(true);
-    expect(screen.getAllByText("New")).toHaveLength(3);
+    expect(within(libraryRegion()).getAllByText("New")).toHaveLength(3);
   });
 
   it("narrows by a slider bound and writes it to the address", async () => {
     show();
 
-    // The sliders sit in view rather than behind a toggle on a wide screen;
-    // ascents of 900, 300 and 100 m give a track to 900 m by 20 m, and the
-    // thumb is a native range input, so one change event reaches it.
+    // The filters card sits open on a wide screen; ascents of 900, 300 and
+    // 100 m give a track to 900 m by 20 m, and the thumb is a native range
+    // input, so one change event reaches it.
     screen.getByRole("slider", { name: "Ascent min" }).focus();
     fireEvent.change(document.activeElement as HTMLInputElement, { target: { value: "400" } });
 
@@ -381,7 +400,68 @@ describe("CataloguePage", () => {
     expect(screen.getByText("the listener refused the connection")).toBeInTheDocument();
   });
 
-  describe("where a table will not fit", () => {
+  describe("the filters toggle", () => {
+    it("hides and shows the filters card, and counts what is active while closed", async () => {
+      const user = userEvent.setup();
+      show(LIBRARY, "/catalogue?ascentMin=400");
+
+      const toggle = screen.getByRole("button", { name: /Filters/ });
+      expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+      await user.click(toggle);
+
+      expect(toggle).toHaveAttribute("aria-expanded", "false");
+      expect(toggle).toHaveTextContent("1");
+      expect(screen.queryByRole("slider", { name: "Ascent min" })).not.toBeInTheDocument();
+
+      await user.click(toggle);
+      expect(screen.getByRole("slider", { name: "Ascent min" })).toBeInTheDocument();
+    });
+  });
+
+  describe("the library card", () => {
+    it("states routes, distance, the longest ride and the most climbing", () => {
+      show();
+
+      const totals = screen
+        .getByRole("heading", { name: "The library" })
+        .closest("section") as HTMLElement;
+      expect(within(totals).getByText("3")).toBeInTheDocument();
+      expect(within(totals).getByText("60.0 km")).toBeInTheDocument();
+      expect(within(totals).getByText(/Alpine loop · 30.0 km/)).toBeInTheDocument();
+      expect(within(totals).getByText(/Alpine loop · 900 m/)).toBeInTheDocument();
+    });
+
+    it("does not show when the library is empty", () => {
+      show([]);
+
+      expect(screen.queryByRole("heading", { name: "The library" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("recently updated", () => {
+    it("lists the routes with the newest parseable revision, newest first", () => {
+      show();
+
+      const recent = screen
+        .getByRole("heading", { name: "Recently updated" })
+        .closest("section") as HTMLElement;
+      expect(
+        within(recent)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["Alpine loop", "Border run", "Coast ride"]);
+      expect(within(recent).getAllByText("New")).toHaveLength(3);
+    });
+
+    it("hides when no route has a revision that parses as a date", () => {
+      show([libraryRoute("Unversioned", { sourceRouteId: 5, sourceRevision: "not-a-date" })]);
+
+      expect(screen.queryByRole("heading", { name: "Recently updated" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("where a ledger will not fit", () => {
     beforeEach(() => {
       stubViewport(true);
     });
@@ -390,10 +470,9 @@ describe("CataloguePage", () => {
       const user = userEvent.setup();
       show();
 
-      expect(screen.queryByRole("table")).not.toBeInTheDocument();
-      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+      expect(within(libraryRegion()).getAllByRole("listitem")).toHaveLength(3);
 
-      await user.click(screen.getByRole("link", { name: /Coast ride/ }));
+      await user.click(within(libraryRegion()).getByRole("link", { name: /Coast ride/ }));
 
       expect(screen.getByText("the atlas")).toBeInTheDocument();
     });
@@ -401,20 +480,20 @@ describe("CataloguePage", () => {
     it("still ranks, since the order is in the address rather than in the headings", () => {
       show(LIBRARY, "/catalogue?sort=ascent&dir=asc");
 
-      expect(screen.getAllByRole("listitem").map((item) => item.textContent ?? "")).toEqual([
+      expect(shownTitles()).toEqual([
         expect.stringContaining("Coast ride"),
         expect.stringContaining("Border run"),
         expect.stringContaining("Alpine loop"),
       ]);
     });
 
-    it("folds the sliders behind a toggle where there is no room to spare", async () => {
+    it("keeps the filters closed until asked, above the ledger when opened", async () => {
       const user = userEvent.setup();
       show();
 
       expect(screen.queryByRole("slider", { name: "Ascent min" })).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole("button", { name: "Show the library filters" }));
+      await user.click(screen.getByRole("button", { name: /Filters/ }));
 
       expect(screen.getByRole("slider", { name: "Ascent min" })).toBeInTheDocument();
     });

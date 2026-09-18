@@ -3,7 +3,7 @@ import { expect, userEvent } from "storybook/test";
 import { StoryProviders } from "../../storybook/fixtures";
 import { CataloguePage } from "./CataloguePage";
 
-// No map: the catalogue is a table, and the
+// No map: the catalogue is a ledger, and the
 // geometry it fetches for the glyphs is already seeded by `StoryProviders`
 // under the same keys the atlas caches it with.
 //
@@ -34,10 +34,9 @@ export const RankedByDistance: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(await canvas.findByRole("button", { name: "Distance" }));
 
-    await expect(await canvas.findByRole("columnheader", { name: /Distance/ })).toHaveAttribute(
-      "aria-sort",
-      "descending",
-    );
+    await expect(
+      await canvas.findByRole("button", { name: "Distance", pressed: true }),
+    ).toBeInTheDocument();
   },
 };
 

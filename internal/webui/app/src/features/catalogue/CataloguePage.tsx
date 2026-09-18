@@ -4,36 +4,44 @@
  * The atlas answers where a ride goes, and its column is a way to one route the
  * reader already has in mind. Neither answers "which of these is about eighty
  * kilometres with under a thousand metres of climbing", because answering that
- * means comparing every route against every other one — which is a table, and a
- * table needs the width the atlas spends on cartography.
+ * means comparing every route against every other one — which is a ledger, and
+ * a ledger needs the width the atlas spends on cartography.
  *
  * It asks the service for exactly what the atlas asks for, under the same keys:
  * the listing, and one geometry per route. The listing carries no coordinates,
  * so a row's glyph — the shape that says at a glance whether a ride is a loop or
  * an out-and-back — has nowhere else to come from. Arriving from the atlas those
  * requests are already answered; arriving here first answers them for the atlas
- * in turn. Rows render without geometry and gain their glyph as it lands, so a
- * cold catalogue is readable before any of it arrives.
- *
- * Having it is also what lets the surface filter stand here: a route's ground
- * classes ride with its geometry rather than with the listing.
+ * in turn. Rows render without geometry and gain their glyph and mix bars as it
+ * lands, so a cold catalogue is readable before any of it arrives.
  *
  * Opening a route hands it to the atlas at `/?route=…` rather than showing it
  * here. There is one place a route is read, and this is a way into it.
  */
 
-import { IconArrowDown, IconArrowUp, IconSearch, IconSelector } from "@tabler/icons-react";
+import {
+  IconAdjustmentsHorizontal,
+  IconArrowDown,
+  IconArrowUp,
+  IconBooks,
+  IconChartBar,
+  IconClockEdit,
+  IconSearch,
+  IconX,
+} from "@tabler/icons-react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
-import type { Position, Route, RouteGeometry, SurfaceKind, SurfaceRange } from "../../api/types";
+import type { Position, Route, RouteGeometry, SurfaceRange } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
+import { Panel } from "../../components/PanelHeading";
 import { RouteGlyph } from "../../components/RouteGlyph";
+import type { SegmentedItem } from "../../components/Segmented";
+import { Segmented } from "../../components/Segmented";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "../../components/ui/input-group";
 import type { CatalogueView, SortColumn } from "../../lib/catalogue";
 import {
   initialDirection,
@@ -42,7 +50,7 @@ import {
   sortRoutes,
   writeView,
 } from "../../lib/catalogue";
-import { hasActiveFilters, matchesFilters } from "../../lib/filters";
+import { activeFilterCount, hasActiveFilters, matchesFilters } from "../../lib/filters";
 import {
   formatAscent,
   formatCount,
@@ -51,45 +59,23 @@ import {
   formatMovingTime,
   formatMovingTimeUncertainty,
   formatReadTime,
+  formatTimestamp,
 } from "../../lib/format";
 import { matchingRoutes } from "../../lib/library";
 import { useNarrowViewport } from "../../lib/mediaQuery";
-import { gradientBand } from "../../lib/profile";
+import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
+import { gradientBand, gradientShares } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { useSeenRoutes } from "../../lib/seenRoutes";
+import { summariseSurface } from "../../lib/surface";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
 import { CatalogueFilters } from "./CatalogueFilters";
-import { CatalogueHeader } from "./CatalogueHeader";
-import { CatalogueRow } from "./CatalogueRow";
+import type { ThinBarSegment } from "./ThinBar";
+import { ThinBar } from "./ThinBar";
 
 /** The address the atlas reads a route back off. */
 function atlasLink(route: Route): string {
   return `/?route=${encodeURIComponent(routeKey(route))}`;
-}
-
-/**
- * The figures every row states, in the order the columns stand.
- *
- * Moving time carries a qualifier where the loaded ride model has measured its
- * own error, which is set apart rather than run together with the figure: it
- * says how much to trust the number beside it, not a second number.
- */
-function measures(
-  route: Route,
-): Array<{ key: string; figure: string; qualifier?: string | undefined }> {
-  return [
-    { key: "distance", figure: formatDistance(route.distanceMetres) },
-    { key: "ascent", figure: formatAscent(route.ascentMetres) },
-    { key: "gradient", figure: formatGradient(route.maxGradientPercent) },
-    {
-      key: "movingTime",
-      figure: formatMovingTime(route.movingSeconds),
-      qualifier:
-        route.movingSeconds === undefined
-          ? undefined
-          : formatMovingTimeUncertainty(route.validation),
-    },
-  ];
 }
 
 /** The source route this one came off, where the title does not already say it. */
@@ -97,64 +83,222 @@ function secondName(route: Route): string | null {
   return route.sourceRouteName !== route.title ? route.sourceRouteName : null;
 }
 
-/**
- * One column heading, and the control that ranks by it.
- *
- * `aria-sort` on the header rather than a mark inside the button: it is the
- * column that is sorted, and a reader moving by column hears which one is in
- * force without having to land on the control.
- */
-function SortHeader({
-  column,
-  label,
-  view,
-  onSort,
-  numeric,
-}: {
-  column: SortColumn;
-  label: string;
-  view: CatalogueView;
-  onSort: (column: SortColumn) => void;
-  numeric: boolean;
-}) {
-  const active = view.sort === column;
-  const ascending = view.direction === "asc";
+const SORT_ITEMS: ReadonlyArray<SegmentedItem<SortColumn>> = [
+  { key: "title", label: "Name" },
+  { key: "distance", label: "Distance" },
+  { key: "ascent", label: "Ascent" },
+  { key: "movingTime", label: "Time" },
+  { key: "gradient", label: "Steepest" },
+];
 
+/** Focuses the search field on ⌘K or Ctrl+K, as its hint says. */
+function useShortcut(ref: React.RefObject<HTMLInputElement | null>) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        ref.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ref]);
+}
+
+const Kbd = ({ children }: { children: React.ReactNode }) => (
+  <kbd className="rounded-[7px] bg-[var(--muted)] px-2 py-0.5 font-sans text-[var(--ink-2)] text-xs">
+    {children}
+  </kbd>
+);
+
+/**
+ * A search field that stays lit — white against the muted header — while it
+ * is focused or holds text, so a search still in force reads as one at a
+ * glance even once the reader has looked away.
+ */
+function SoftSearch({ typed, onChange }: { typed: string; onChange: (value: string) => void }) {
+  const field = useRef<HTMLInputElement>(null);
+  useShortcut(field);
+  const lit = typed !== "";
   return (
-    <th
-      scope="col"
-      aria-sort={active ? (ascending ? "ascending" : "descending") : "none"}
-      className={`p-0 font-semibold ${numeric ? "text-right" : "text-left"}`}
+    <label
+      data-lit={lit || undefined}
+      className="flex h-10 w-72 items-center gap-2 rounded-[11px] bg-[var(--muted)] px-3 focus-within:bg-[var(--panel)] focus-within:shadow-[0_0_0_1px_var(--rule),var(--shadow)] data-lit:bg-[var(--panel)] data-lit:shadow-[0_0_0_1px_var(--rule),var(--shadow)]"
     >
+      <IconSearch
+        size={16}
+        stroke={1.8}
+        className={lit ? "text-[var(--ink)]" : "text-[var(--ink-2)]"}
+        aria-hidden="true"
+      />
+      <input
+        ref={field}
+        type="search"
+        value={typed}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Search the catalogue"
+        aria-label="Search the route library"
+        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--ink-2)] [&::-webkit-search-cancel-button]:appearance-none"
+      />
+      {lit ? (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => onChange("")}
+          className="text-[var(--ink-2)] hover:text-[var(--ink)]"
+        >
+          <IconX size={14} />
+        </button>
+      ) : (
+        <Kbd>⌘K</Kbd>
+      )}
+    </label>
+  );
+}
+
+function FiltersToggle({
+  open,
+  onOpen,
+  count,
+}: {
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  count: number;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={() => onOpen(!open)}
+      className={`flex h-10 items-center gap-2 rounded-[11px] px-3 text-sm ${open ? "bg-[var(--panel)] text-[var(--ink)] shadow-[0_0_0_1px_var(--rule),var(--shadow)]" : count > 0 ? "bg-[var(--ink)] text-[var(--panel)]" : "bg-[var(--muted)] text-[var(--ink-2)] hover:text-[var(--ink)]"}`}
+    >
+      <IconAdjustmentsHorizontal size={16} stroke={1.8} aria-hidden="true" />
+      Filters
+      {count > 0 ? (
+        <span
+          className={`grid size-5 place-items-center rounded-[6px] font-semibold text-xs ${open ? "bg-[var(--ink)] text-[var(--panel)]" : "bg-[var(--panel)] text-[var(--ink)]"}`}
+        >
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function SortControl({
+  view,
+  sortBy,
+}: {
+  view: CatalogueView;
+  sortBy: (column: SortColumn) => void;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <Segmented label="Sort by" size="sm" items={SORT_ITEMS} value={view.sort} onChange={sortBy} />
       <button
         type="button"
-        onClick={() => onSort(column)}
-        className={`flex w-full items-center gap-1 rounded-[9px] px-3 py-2 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] ${
-          numeric ? "justify-end" : "justify-start"
-        }`}
+        aria-label={view.direction === "asc" ? "Ascending" : "Descending"}
+        onClick={() => sortBy(view.sort)}
+        className="grid size-8 place-items-center rounded-[9px] bg-[var(--muted)] text-[var(--ink-2)] hover:text-[var(--ink)]"
       >
-        {label}
-        {active ? (
-          ascending ? (
-            <IconArrowUp size={14} stroke={2} aria-hidden="true" />
-          ) : (
-            <IconArrowDown size={14} stroke={2} aria-hidden="true" />
-          )
-        ) : (
-          <IconSelector
-            size={14}
-            stroke={2}
-            aria-hidden="true"
-            className="text-[var(--ink-2)] opacity-50"
-          />
-        )}
+        {view.direction === "asc" ? <IconArrowUp size={14} /> : <IconArrowDown size={14} />}
       </button>
-    </th>
+    </span>
+  );
+}
+
+/** The two mixes one route draws in its row, off geometry already fetched for the glyphs. */
+function RouteMixBars({
+  coordinates,
+  surface,
+}: {
+  coordinates: Position[];
+  surface: SurfaceRange[] | undefined;
+}) {
+  // Nothing is said until the geometry is in hand: a route drawn before its
+  // shape arrives shows no bars rather than a premature "not classified".
+  if (coordinates.length === 0) {
+    return null;
+  }
+  const summary = surface ? summariseSurface(coordinates, surface) : null;
+  const bands = gradientShares(coordinates);
+  const surfaceSegments: ThinBarSegment[] =
+    summary?.shares.map((entry) => ({
+      key: entry.kind,
+      label: surfaceLabel(entry.kind),
+      colour: surfaceVariable(entry.kind),
+      share: entry.share,
+    })) ?? [];
+  const gradientSegments: ThinBarSegment[] = bands.map((entry) => ({
+    key: `${entry.band}`,
+    label: bandLabel(entry.band),
+    colour: bandVariable(entry.band),
+    share: entry.share,
+  }));
+  if (surfaceSegments.length === 0 && gradientSegments.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="flex max-w-72 flex-col gap-1">
+      {surfaceSegments.length > 0 ? <ThinBar segments={surfaceSegments} label="Surface" /> : null}
+      {gradientSegments.length > 0 ? (
+        <ThinBar segments={gradientSegments} label="Gradient" />
+      ) : null}
+    </span>
+  );
+}
+
+/** One route, as an inset ledger row: shape, name and mixes, then its figures. */
+function LedgerRow({
+  route,
+  coordinates,
+  surface,
+  change,
+  to,
+}: {
+  route: Route;
+  coordinates: Position[];
+  surface: SurfaceRange[] | undefined;
+  change: RouteChange;
+  to: string;
+}) {
+  return (
+    <li className="border-[var(--panel)] border-b-2 last:border-b-0">
+      <Link
+        to={to}
+        className="relative grid grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem] items-center gap-x-4 px-3 py-2.5 text-sm tabular-nums before:absolute before:inset-1 before:rounded-[7px] hover:before:bg-[color-mix(in_oklab,var(--ink-2)_8%,transparent)]"
+      >
+        <span className="relative block size-10">
+          <RouteGlyph
+            coordinates={coordinates}
+            title={route.title}
+            band={gradientBand(route.maxGradientPercent)}
+          />
+        </span>
+        <span className="relative flex min-w-0 flex-col gap-1.5">
+          <span className="truncate font-semibold">
+            {route.title} {change === null ? null : <RouteChangeBadge change={change} />}
+          </span>
+          <RouteMixBars coordinates={coordinates} surface={surface} />
+        </span>
+        <span className="relative text-right font-semibold">
+          {formatDistance(route.distanceMetres)}
+        </span>
+        <span className="relative text-right" title={formatMovingTimeUncertainty(route.validation)}>
+          {formatMovingTime(route.movingSeconds)}
+        </span>
+        <span className="relative text-right">{formatAscent(route.ascentMetres)}</span>
+        <span className="relative text-right text-[var(--ink-2)]">
+          {formatGradient(route.maxGradientPercent)}
+        </span>
+      </Link>
+    </li>
   );
 }
 
 /**
- * One route where a table will not fit.
+ * One route, as a card, where a ledger row will not fit.
  *
  * Not `ResultRow`: that row's verb is "select", which is a step this page does
  * not have, and its glyph column would stand empty without the geometry this
@@ -186,12 +330,6 @@ function CatalogueCard({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block font-semibold">{route.title}</span>
-          {/*
-           * The badge rides on the second line rather than after the title: a
-           * card is as wide as the phone, titles here run to two lines of it,
-           * and a mark chasing the end of a wrapped title lands alone in the
-           * middle of the card.
-           */}
           {change === null && where === null ? null : (
             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-[var(--ink-2)]">
               <RouteChangeBadge change={change} />
@@ -199,13 +337,108 @@ function CatalogueCard({
             </span>
           )}
           <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--ink-2)] tabular-nums">
-            {measures(route).map(({ key, figure }) => (
-              <span key={key}>{figure}</span>
-            ))}
+            <span>{formatDistance(route.distanceMetres)}</span>
+            <span>{formatAscent(route.ascentMetres)}</span>
+            <span>{formatGradient(route.maxGradientPercent)}</span>
+            <span>{formatMovingTime(route.movingSeconds)}</span>
           </span>
         </span>
       </Link>
     </li>
+  );
+}
+
+/** Routes, distance, and the two records worth naming, over the whole library. */
+function Totals({ library }: { library: Route[] }) {
+  if (library.length === 0) {
+    return null;
+  }
+  const distanceMetres = library.reduce((sum, route) => sum + route.distanceMetres, 0);
+  const longest = [...library].sort((a, b) => b.distanceMetres - a.distanceMetres)[0];
+  const hilliest = [...library].sort((a, b) => b.ascentMetres - a.ascentMetres)[0];
+  const rows: Array<[string, string]> = [
+    ["Routes", String(library.length)],
+    ["Distance in all", formatDistance(distanceMetres)],
+    ["Longest", longest ? `${longest.title} · ${formatDistance(longest.distanceMetres)}` : "–"],
+    [
+      "Most climbing",
+      hilliest ? `${hilliest.title} · ${formatAscent(hilliest.ascentMetres)}` : "–",
+    ],
+  ];
+
+  return (
+    <Panel icon={<IconChartBar size={18} stroke={1.8} aria-hidden="true" />} title="The library">
+      <dl className="flex flex-col divide-y divide-[var(--rule)] text-sm">
+        {rows.map(([name, value]) => (
+          <div key={name} className="flex justify-between gap-3 py-2 first:pt-0 last:pb-0">
+            <dt className="text-[var(--ink-2)]">{name}</dt>
+            <dd className="truncate text-right font-medium tabular-nums">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Panel>
+  );
+}
+
+/** The four routes revised most recently, newest first, where a revision date parses at all. */
+function Recent({
+  library,
+  shapeOf,
+  changeOf,
+}: {
+  library: Route[];
+  shapeOf: (route: Route) => Position[];
+  changeOf: (route: Route) => RouteChange;
+}) {
+  const recent = useMemo(
+    () =>
+      library
+        .filter((route) => !Number.isNaN(Date.parse(route.sourceRevision)))
+        .sort((a, b) => Date.parse(b.sourceRevision) - Date.parse(a.sourceRevision))
+        .slice(0, 4),
+    [library],
+  );
+  if (recent.length === 0) {
+    return null;
+  }
+
+  return (
+    <Panel
+      icon={<IconClockEdit size={18} stroke={1.8} aria-hidden="true" />}
+      title="Recently updated"
+    >
+      <ul className="flex flex-col overflow-hidden rounded-[11px] bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)]">
+        {recent.map((route) => {
+          const change = changeOf(route);
+          return (
+            <li
+              key={routeKey(route)}
+              className="flex items-center gap-3 border-[var(--panel)] border-b-2 px-3 py-2 last:border-b-0"
+            >
+              <span className="block size-8 shrink-0">
+                <RouteGlyph
+                  coordinates={shapeOf(route)}
+                  title={route.title}
+                  band={gradientBand(route.maxGradientPercent)}
+                />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col text-sm">
+                <Link to={atlasLink(route)} className="truncate font-medium hover:underline">
+                  {route.title}
+                </Link>
+                <span className="text-[var(--ink-2)] text-xs">
+                  {change === "new"
+                    ? "New"
+                    : change === "updated"
+                      ? "Updated"
+                      : formatTimestamp(route.sourceRevision)}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
   );
 }
 
@@ -216,45 +449,25 @@ export function CataloguePage() {
   // stage seen. Only the atlas does, from the moment a route's own panel shows.
   const { changeOf } = useSeenRoutes();
   const narrow = useNarrowViewport();
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  // Open by default on a wide screen, closed on a narrow one; the reader's own
+  // later toggling is never revisited when the viewport itself changes.
+  const [filtersOpen, setFiltersOpen] = useState(() => !narrow);
 
   const [params, setParams] = useSearchParams();
   const view = useMemo(() => readView(params), [params]);
 
   /*
-   * What is in the search field, held here as well as in the address.
-   *
-   * The field cannot be driven by the address alone. A keystroke reaches the
-   * address through the router and comes back a render later, and typing
-   * faster than that round trip leaves the input showing the value it had
-   * before the last letter — so the letter after that is typed onto a stale
-   * string and the ones before it are lost. Typed quickly enough, an eight
-   * letter search arrives as its last letter alone.
-   *
-   * So the field reads from here, which changes as fast as it is typed, and
-   * the address follows. The effect below carries the traffic the other way,
-   * for an address that changed without this field: the reader pressing Back,
-   * or a link opened into the page.
+   * What is in the search field, held here as well as in the address. See the
+   * effect below: the field reads from here, which changes as fast as it is
+   * typed, and the address follows rather than leads — a keystroke reaching
+   * the address through the router and back would drop letters typed faster
+   * than that round trip.
    */
   const [typed, setTyped] = useState(view.query);
   useEffect(() => {
     setTyped(view.query);
   }, [view.query]);
 
-  /*
-   * Replaced rather than pushed. Every keystroke in the search field is a
-   * change of view, and a history with one entry per letter typed would take a
-   * dozen presses of Back to leave the page — while one entry holding the
-   * latest view is exactly what makes coming back from an opened route land on
-   * the table the reader left.
-   *
-   * The change is asked for as a function of the address being changed, rather
-   * than merged into the view this render happened to read. Two keystrokes
-   * inside one frame both see that render's view, so the second would write
-   * the first back out: type quickly and the field keeps only the last letter.
-   * Reading the address inside the updater means each change applies to the
-   * one before it, however fast they arrive.
-   */
   const update = useCallback(
     (next: (current: CatalogueView) => Partial<CatalogueView>) => {
       setParams(
@@ -269,8 +482,6 @@ export function CataloguePage() {
     [setParams],
   );
 
-  // The first press of a heading ranks by it; pressing the one already in force
-  // turns the ranking around.
   const sortBy = useCallback(
     (column: SortColumn) => {
       update((current) =>
@@ -286,15 +497,11 @@ export function CataloguePage() {
 
   /*
    * One request per route, in parallel, under the same keys the atlas uses —
-   * so whichever page the reader opens first pays for both. Combined against
-   * the results rather than in a memo over them, for the reason the atlas
-   * gives: `useQueries` hands back a new array every render, and a memo keyed
-   * on it would rebuild the collection each time.
+   * so whichever page the reader opens first pays for both.
    */
   const combine = useCallback(
     (results: Array<UseQueryResult<RouteGeometry>>) => {
       const shapes = new Map<string, Position[]>();
-      const surfaces = new Map<string, Set<SurfaceKind>>();
       const ranges = new Map<string, SurfaceRange[]>();
       library.forEach((route, index) => {
         const geometry = results[index]?.data;
@@ -303,16 +510,12 @@ export function CataloguePage() {
         }
         const key = routeKey(route);
         shapes.set(key, geometry.coordinates);
-        // The distinct kinds a filter checks against, not a share of the
-        // route — the same reading the atlas takes off the same fetch.
-        const surface = geometry.surface;
-        if (surface && surface.matchedMetres > 0 && surface.ranges.length > 0) {
-          surfaces.set(key, new Set(surface.ranges.map((range) => range.kind)));
-          ranges.set(key, surface.ranges);
+        if (geometry.surface && geometry.surface.matchedMetres > 0) {
+          ranges.set(key, geometry.surface.ranges);
         }
       });
 
-      return { shapes, surfaces, ranges };
+      return { shapes, ranges };
     },
     [library],
   );
@@ -323,6 +526,10 @@ export function CataloguePage() {
     ),
     combine,
   });
+  const shapeOf = useCallback(
+    (route: Route) => drawn.shapes.get(routeKey(route)) ?? [],
+    [drawn.shapes],
+  );
 
   const shown = useMemo(
     () =>
@@ -342,129 +549,105 @@ export function CataloguePage() {
   const counted = narrowed
     ? `${shown.length} of ${formatCount(library.length, "route")}`
     : formatCount(library.length, "route");
-
-  const filters = (
-    <CatalogueFilters
-      library={library}
-      filters={view.filters}
-      onFiltersChange={(next) => update(() => ({ filters: next }))}
-      narrow={narrow}
-      expanded={filtersExpanded}
-      onExpandedChange={setFiltersExpanded}
-    />
-  );
+  const subtitle = readAt ? `${counted} · read ${formatReadTime(readAt)}` : counted;
 
   return (
     <PageShell>
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">Catalogue</h1>
-        <div className="flex items-center gap-2">
-          <InputGroup className="min-w-0 flex-1 max-w-64 bg-[var(--panel)]">
-            <InputGroupAddon>
-              <IconSearch size={16} stroke={1.6} aria-hidden="true" />
-            </InputGroupAddon>
-            <InputGroupInput
-              type="search"
-              value={typed}
-              onChange={(event) => {
-                const { value } = event.target;
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="font-semibold text-2xl tracking-tight">Catalogue</h1>
+          <span className="flex items-center gap-2">
+            <SoftSearch
+              typed={typed}
+              onChange={(value) => {
                 setTyped(value);
                 update(() => ({ query: value }));
               }}
-              placeholder="Search the catalogue"
-              aria-label="Search the route library"
             />
-          </InputGroup>
-          {/* On a narrow phone there is no room to spare, so the sliders fold
-           * behind this same toggle; on a wide screen the row below is them. */}
-          {narrow ? filters : null}
-        </div>
-        {narrow ? null : filters}
-        <p className="text-sm text-[var(--ink-2)]">
-          {counted}
-          {readAt ? ` · read ${formatReadTime(readAt)}` : ""}
-        </p>
-        {routes.isError ? (
-          <Alert variant="destructive">
-            <AlertTitle>Could not load the route library.</AlertTitle>
-            {routes.error instanceof Error ? (
-              <AlertDescription>{routes.error.message}</AlertDescription>
-            ) : null}
-          </Alert>
-        ) : null}
-        {routes.isSuccess && library.length === 0 ? (
-          <Alert role="status">
-            <AlertTitle>No routes yet.</AlertTitle>
-            <AlertDescription>
-              Routes appear here after the first successful read of the library.
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        {library.length > 0 && shown.length === 0 ? (
-          <p className="text-sm text-[var(--ink-2)]">
-            {/*
-             * Whichever of the two actually narrowed the library to nothing,
-             * said the way the atlas says it: blaming a filter for what a
-             * misremembered name caused points the reader at the wrong control.
-             */}
-            {hasQuery && filtersActive
-              ? "Nothing here matches this search and these filters."
-              : filtersActive
-                ? "Nothing here matches these filters."
-                : "Nothing here is called that."}
-          </p>
-        ) : null}
-        {shown.length === 0 ? null : narrow ? (
-          <ul className="grid gap-2">
-            {shown.map((route) => (
-              <CatalogueCard
-                key={routeKey(route)}
-                route={route}
-                coordinates={drawn.shapes.get(routeKey(route)) ?? []}
-                change={changeOf(route)}
-              />
-            ))}
-          </ul>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-[var(--rule)] bg-[var(--panel)]">
-            <table className="w-full text-sm">
-              {/*
-               * The table's own name, which is also where the ranking is
-               * stated in words: `aria-sort` says which column to a reader
-               * moving through the headings, and this says it to one who
-               * lands in the body.
-               */}
-              <caption className="sr-only">
+            <FiltersToggle
+              open={filtersOpen}
+              onOpen={setFiltersOpen}
+              count={activeFilterCount(view.filters)}
+            />
+          </span>
+        </header>
+        <div className="flex flex-col gap-5 lg:grid lg:items-start lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="order-2 flex min-w-0 flex-col gap-4 lg:order-1">
+            <Panel
+              icon={<IconBooks size={18} stroke={1.8} aria-hidden="true" />}
+              title="Library"
+              subtitle={subtitle}
+              aside={<SortControl view={view} sortBy={sortBy} />}
+            >
+              <p className="sr-only">
                 {`The route library, ranked by ${sortedLabel.toLowerCase()}, ${
                   view.direction === "asc" ? "ascending" : "descending"
                 }`}
-              </caption>
-              <thead>
-                <CatalogueHeader view={view} onSort={sortBy}>
-                  <SortHeader
-                    column="title"
-                    label="Route"
-                    view={view}
-                    onSort={sortBy}
-                    numeric={false}
-                  />
-                </CatalogueHeader>
-              </thead>
-              <tbody>
-                {shown.map((route) => (
-                  <CatalogueRow
-                    key={routeKey(route)}
-                    route={route}
-                    coordinates={drawn.shapes.get(routeKey(route)) ?? []}
-                    surface={drawn.ranges.get(routeKey(route))}
-                    change={changeOf(route)}
-                    to={atlasLink(route)}
-                  />
-                ))}
-              </tbody>
-            </table>
+              </p>
+              {routes.isError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>Could not load the route library.</AlertTitle>
+                  {routes.error instanceof Error ? (
+                    <AlertDescription>{routes.error.message}</AlertDescription>
+                  ) : null}
+                </Alert>
+              ) : null}
+              {routes.isSuccess && library.length === 0 ? (
+                <Alert role="status">
+                  <AlertTitle>No routes yet.</AlertTitle>
+                  <AlertDescription>
+                    Routes appear here after the first successful read of the library.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {library.length > 0 && shown.length === 0 ? (
+                <p className="text-[var(--ink-2)] text-sm">
+                  {hasQuery && filtersActive
+                    ? "Nothing here matches this search and these filters."
+                    : filtersActive
+                      ? "Nothing here matches these filters."
+                      : "Nothing here is called that."}
+                </p>
+              ) : null}
+              {shown.length === 0 ? null : narrow ? (
+                <ul className="grid gap-2">
+                  {shown.map((route) => (
+                    <CatalogueCard
+                      key={routeKey(route)}
+                      route={route}
+                      coordinates={shapeOf(route)}
+                      change={changeOf(route)}
+                    />
+                  ))}
+                </ul>
+              ) : (
+                <ul className="flex flex-col overflow-hidden rounded-[11px] bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)]">
+                  {shown.map((route) => (
+                    <LedgerRow
+                      key={routeKey(route)}
+                      route={route}
+                      coordinates={shapeOf(route)}
+                      surface={drawn.ranges.get(routeKey(route))}
+                      change={changeOf(route)}
+                      to={atlasLink(route)}
+                    />
+                  ))}
+                </ul>
+              )}
+            </Panel>
           </div>
-        )}
+          <div className="order-1 flex flex-col gap-5 lg:order-2 lg:sticky lg:top-20">
+            {filtersOpen ? (
+              <CatalogueFilters
+                library={library}
+                filters={view.filters}
+                onFiltersChange={(next) => update(() => ({ filters: next }))}
+              />
+            ) : null}
+            <Totals library={library} />
+            <Recent library={library} shapeOf={shapeOf} changeOf={changeOf} />
+          </div>
+        </div>
       </div>
     </PageShell>
   );
