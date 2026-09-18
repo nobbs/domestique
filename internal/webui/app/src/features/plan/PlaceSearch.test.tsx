@@ -254,4 +254,21 @@ describe("PlaceSearch", () => {
     expect(onAdd).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
+
+  it("never adds a place from the search before while the next one is still being asked", async () => {
+    answering({ turm: [TURMBERG], ettlingen: [ETTLINGEN] });
+    const onAdd = renderSearch();
+
+    const user = await openAndType("turm");
+    await screen.findByRole("option", { name: /Turmberg/ }, ANSWERED);
+    await user.clear(screen.getByRole("searchbox"));
+    await user.type(screen.getByRole("searchbox"), "ettlingen");
+    expect(screen.queryByRole("option", { name: /Turmberg/ })).toBeNull();
+    await user.keyboard("{Enter}");
+    expect(onAdd).not.toHaveBeenCalled();
+
+    await screen.findByRole("option", { name: /Ettlingen/ }, ANSWERED);
+    await user.keyboard("{Enter}");
+    expect(onAdd).toHaveBeenCalledExactlyOnceWith([ETTLINGEN]);
+  });
 });

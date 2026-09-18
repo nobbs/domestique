@@ -21,7 +21,7 @@ import {
   IconTrain,
   IconX,
 } from "@tabler/icons-react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useMap } from "react-map-gl/maplibre";
 import { getSearchPlacesQueryOptions } from "../../api/generated";
@@ -121,9 +121,11 @@ export function PlaceSearch({ onAdd }: PlaceSearchProps) {
     enabled: open && asking,
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
-    placeholderData: keepPreviousData,
   });
-  const hits = asking && query.trim().length >= MINIMUM_QUERY ? (search.data ?? []) : [];
+  // Answers count only once they are for the text in the field: Enter must never
+  // add a place from the search before, while this one is still pausing or asking.
+  const current = asking && settled === query.trim();
+  const hits = current ? (search.data ?? []) : [];
 
   const show = (next: boolean) => {
     if (next) {
@@ -222,12 +224,12 @@ export function PlaceSearch({ onAdd }: PlaceSearchProps) {
         : "Search for a place, an address, a station or a peak."
       : typed < MINIMUM_QUERY
         ? "Keep typing…"
-        : search.isError
-          ? "Place search is unavailable just now."
-          : search.isSuccess && !search.isPlaceholderData && hits.length === 0
-            ? "No place by that name."
+        : !current || search.isPending
+          ? "Searching…"
+          : search.isError
+            ? "Place search is unavailable just now."
             : hits.length === 0
-              ? "Searching…"
+              ? "No place by that name."
               : null;
 
   return (
