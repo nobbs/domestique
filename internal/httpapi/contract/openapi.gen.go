@@ -396,6 +396,11 @@ type RouteList struct {
 	Routes []Route `json:"routes"`
 }
 
+// Place One short label for a coordinate. The name is absent where the geocoder knows of no place there, which open country legitimately is.
+type Place struct {
+	Name *string `json:"name,omitempty"`
+}
+
 type PlanWaypoint struct {
 	Longitude float64 `json:"longitude"`
 	Latitude  float64 `json:"latitude"`
@@ -884,6 +889,8 @@ type WebUIConfig struct {
 	Identity BrowserIdentity `json:"identity"`
 	// Planning Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off.
 	Planning *bool `json:"planning,omitempty"`
+	// PlaceNames Whether a geocoder is configured, so the planner asks what a waypoint is called only where the answer exists. Absent means off, and waypoints read as coordinates.
+	PlaceNames *bool `json:"placeNames,omitempty"`
 }
 
 // BrowserIdentity Who the gate let through. It names the reader rather than identifying them: it is how a session can be seen to be the one intended.

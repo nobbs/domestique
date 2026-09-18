@@ -71,6 +71,7 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 # Optional: switches the route planner on.
 # [planning]
 # brouter_url = "http://brouter:17777"
+# photon_url = "https://photon.komoot.io"
 # segments = ["E5_N45", "E10_N45", "E5_N50", "E10_N50"]
 
 [log]
@@ -176,6 +177,15 @@ application dependency.
   Leaving the section out switches the planner off: no plan endpoint is
   registered, no local source is read, and the segment task is not
   registered ([the task](task-layer.md#the-registered-tasks)).
+- `planning.photon_url` is optional, and names the Photon geocoder a plan's
+  waypoints are named after: the absolute `http` or `https` origin, with no
+  path, of a self-hosted instance or komoot's public one. Leaving it out is not
+  an error; it leaves every waypoint reading as its coordinates, and leaves
+  `GET /v1/places/reverse` unregistered so the address answers `404`. It is a
+  file field for the same reason `brouter_url` is, and it carries the same
+  cost: the public instance has no terms beyond fair use, and each coordinate
+  asked about leaves the host. Answers are held in memory for the life of the
+  process, so a coordinate is asked about once.
 - `planning.segments` is optional and names the BRouter routing segments the
   service keeps current for that engine. Each entry is one of BRouter's 5°×5°
   tiles, named for its south-west corner: `E` or `W` and a longitude from 0 to

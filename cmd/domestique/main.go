@@ -278,6 +278,11 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("creating the basemap style reader: %w", err)
 	}
 
+	placeNamer, err := newPlaceNamer(settings)
+	if err != nil {
+		return fmt.Errorf("configuring the geocoder: %w", err)
+	}
+
 	handler, err := httpapi.New(
 		&httpapi.Options{
 			Settings:         runtimeSettings,
@@ -306,6 +311,7 @@ func run(ctx context.Context) error {
 			RideModelValidationFunc: rideModel.validationView,
 			RideModelStatusFunc:     rideModel.statusView,
 			Plans:                   httpapiPlans(planService),
+			Places:                  placeNamer,
 			SurfaceClassifier:       newSurfaceClassifier(surfaceIndex),
 		},
 		oauthService,

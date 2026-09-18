@@ -38,6 +38,13 @@ type Plans interface {
 	List(ctx context.Context) ([]plan.Plan, error)
 }
 
+// Places names a coordinate, for a planner that would otherwise show a route
+// as pairs of numbers. Satisfied structurally by a geocoding adapter. An empty
+// name with no error means the geocoder knows of no place there.
+type Places interface {
+	Reverse(ctx context.Context, latitude, longitude float64) (string, error)
+}
+
 // SurfaceClassification is the current local map's reading of one routed
 // geometry. A nil result means that no classification is available.
 type SurfaceClassification struct {

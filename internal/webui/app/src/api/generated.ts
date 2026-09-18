@@ -830,6 +830,13 @@ export interface PlanRoutePreview {
   surface?: SurfaceClassification;
 }
 
+/**
+ * One short label for a coordinate. The name is absent where the geocoder knows of no place there, which open country legitimately is.
+ */
+export interface Place {
+  name?: string;
+}
+
 export interface PlanSummary {
   id: number;
   name: string;
@@ -1193,6 +1200,8 @@ export interface WebUIConfig {
   identity: BrowserIdentity;
   /** Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off. */
   planning?: boolean;
+  /** Whether a geocoder is configured, so the planner asks what a waypoint is called only where the answer exists. Absent means off, and waypoints read as coordinates. */
+  placeNames?: boolean;
 }
 
 export interface WeatherPoint {
@@ -1397,6 +1406,19 @@ export type GetRouteActivitiesParams = {
    * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so the surface never confirms which targets exist.
    */
   target?: string;
+};
+
+export type ReversePlaceParams = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
 };
 
 export type ReplacePlanHeaders = {
@@ -5780,6 +5802,227 @@ export const usePreviewPlanRoute = <
 > => {
   return useMutation(getPreviewPlanRouteMutationOptions(options), queryClient);
 };
+
+export type reversePlaceResponse200 = {
+  data: Place;
+  status: 200;
+};
+
+export type reversePlaceResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type reversePlaceResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type reversePlaceResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type reversePlaceResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type reversePlaceResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type reversePlaceResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type reversePlaceResponseSuccess = reversePlaceResponse200 & {
+  headers: Headers;
+};
+export type reversePlaceResponseError = (
+  | reversePlaceResponse400
+  | reversePlaceResponse401
+  | reversePlaceResponse403
+  | reversePlaceResponse404
+  | reversePlaceResponse502
+  | reversePlaceResponse503
+) & {
+  headers: Headers;
+};
+
+export const getReversePlaceUrl = (params: ReversePlaceParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/places/reverse?${stringifiedParams}`
+    : `/v1/places/reverse`;
+};
+
+/**
+ * What the place at a coordinate is called, for naming a plan's waypoints where a pair of coordinates says nothing. Answers an absent name where the geocoder knows of no place there, which is an answer and not a failure. Registered only where a geocoder is configured; absent, the address is not served at all.
+ */
+export const reversePlace = async (
+  params: ReversePlaceParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<reversePlaceResponseSuccess> => {
+  return domestiqueRequest<reversePlaceResponseSuccess>(getReversePlaceUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getReversePlaceQueryKey = (params?: ReversePlaceParams) => {
+  return [`/v1/places/reverse`, ...(params ? [params] : [])] as const;
+};
+
+export const getReversePlaceQueryOptions = <
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getReversePlaceQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof reversePlace>>> = ({ signal }) =>
+    reversePlace(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof reversePlace>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ReversePlaceQueryResult = NonNullable<Awaited<ReturnType<typeof reversePlace>>>;
+export type ReversePlaceQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | ProviderUnavailableResponse
+  | UnavailableResponse
+>;
+
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof reversePlace>>,
+          TError,
+          Awaited<ReturnType<typeof reversePlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof reversePlace>>,
+          TError,
+          Awaited<ReturnType<typeof reversePlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getReversePlaceQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export type listPlansResponse200 = {
   data: PlanList;

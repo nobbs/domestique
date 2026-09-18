@@ -9,6 +9,7 @@ import (
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/httpapi"
+	"github.com/nobbs/domestique/internal/photon"
 	"github.com/nobbs/domestique/internal/route"
 
 	"github.com/nobbs/domestique/internal/plan"
@@ -29,6 +30,21 @@ func newLocalSource(settings *config.Settings, store *sqlite.Store) (service *pl
 	}
 
 	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), true, nil
+}
+
+// newPlaceNamer builds the geocoder the planner names waypoints with, when
+// planning.photon_url is set. A nil result is the shape a build without one
+// takes: waypoints read as coordinates.
+func newPlaceNamer(settings *config.Settings) (httpapi.Places, error) {
+	if !settings.Planning.Enabled() || settings.Planning.PhotonURL == "" {
+		return nil, nil //nolint:nilnil // an absent geocoder is a configuration, not a failure
+	}
+	client, err := photon.New(&photon.Options{BaseURL: settings.Planning.PhotonURL})
+	if err != nil {
+		return nil, fmt.Errorf("creating Photon client: %w", err)
+	}
+
+	return client, nil
 }
 
 type surfaceClassifier struct{ source surface.Source }

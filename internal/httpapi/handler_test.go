@@ -2231,7 +2231,8 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 			BrowserOriginURL: testBrowserOriginURL,
 			// So every contract operation, plan ones included, is registered for
 			// the suite's own document/route coverage tests.
-			Plans: &fakePlans{},
+			Plans:  &fakePlans{},
+			Places: &fakePlaces{name: "Kaiserstraße 12, Karlsruhe"},
 		},
 		oauthService, state, syncRuns, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)

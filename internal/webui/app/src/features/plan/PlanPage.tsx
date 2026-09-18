@@ -60,6 +60,7 @@ import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupL
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { RouteOverlay } from "../routes/RouteOverlay";
+import { usePlaceName } from "./placeName";
 import {
   initialPlannerState,
   isPlannerSeed,
@@ -237,6 +238,20 @@ function CoordinateInput({ label, value, min, max, onCommit }: CoordinateInputPr
   );
 }
 
+/**
+ * What the waypoint's place is called, where a geocoder is configured and
+ * knows of one. Silent otherwise: the coordinates beneath it already say
+ * where the waypoint is.
+ */
+function PlaceName({ latitude, longitude }: { latitude: number; longitude: number }) {
+  const name = usePlaceName(latitude, longitude);
+  if (name === "") {
+    return null;
+  }
+
+  return <span className="truncate px-1 text-xs font-medium">{name}</span>;
+}
+
 export interface PlannerSidebarProps {
   state: PlannerState;
   plans: PlanSummary[];
@@ -401,33 +416,36 @@ export function PlannerSidebar({
                   >
                     <WaypointMarker index={index} count={state.waypoints.length} />
                   </span>
-                  <div className="grid min-w-0 flex-1 grid-cols-2 gap-1">
-                    <CoordinateInput
-                      label={`Waypoint ${index + 1} latitude`}
-                      value={waypoint.latitude}
-                      min={-90}
-                      max={90}
-                      onCommit={(latitude) =>
-                        dispatch({
-                          type: "move",
-                          index: stateIndex,
-                          waypoint: { ...waypoint, latitude },
-                        })
-                      }
-                    />
-                    <CoordinateInput
-                      label={`Waypoint ${index + 1} longitude`}
-                      value={waypoint.longitude}
-                      min={-180}
-                      max={180}
-                      onCommit={(longitude) =>
-                        dispatch({
-                          type: "move",
-                          index: stateIndex,
-                          waypoint: { ...waypoint, longitude },
-                        })
-                      }
-                    />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <PlaceName latitude={waypoint.latitude} longitude={waypoint.longitude} />
+                    <div className="grid min-w-0 grid-cols-2 gap-1">
+                      <CoordinateInput
+                        label={`Waypoint ${index + 1} latitude`}
+                        value={waypoint.latitude}
+                        min={-90}
+                        max={90}
+                        onCommit={(latitude) =>
+                          dispatch({
+                            type: "move",
+                            index: stateIndex,
+                            waypoint: { ...waypoint, latitude },
+                          })
+                        }
+                      />
+                      <CoordinateInput
+                        label={`Waypoint ${index + 1} longitude`}
+                        value={waypoint.longitude}
+                        min={-180}
+                        max={180}
+                        onCommit={(longitude) =>
+                          dispatch({
+                            type: "move",
+                            index: stateIndex,
+                            waypoint: { ...waypoint, longitude },
+                          })
+                        }
+                      />
+                    </div>
                   </div>
                   <Button
                     variant="ghost"

@@ -116,6 +116,11 @@ type Options struct {
 	// as unconfigured — the shape a build with no routing engine takes.
 	Plans Plans
 
+	// Places optionally names a plan's waypoints. Nil leaves the address
+	// unregistered, answering 404, and reports place names as unconfigured:
+	// the shape a build with no geocoder takes.
+	Places Places
+
 	// SurfaceClassifier optionally classifies plan geometry against the current
 	// local map. A missing classifier leaves plan responses unclassified.
 	SurfaceClassifier SurfaceClassifier
@@ -208,6 +213,7 @@ type Handler struct {
 	alerts              Alerts
 	tasks               Tasks
 	plans               Plans
+	places              Places
 	surface             SurfaceClassifier
 	webhookTokens       WebhookTokens
 	zwiftWorldMaps      ZwiftWorldMaps
@@ -286,6 +292,7 @@ func New(
 		rideModelStatus:     options.RideModelStatusFunc,
 		now:                 time.Now,
 		plans:               options.Plans,
+		places:              options.Places,
 		surface:             options.SurfaceClassifier,
 
 		sessions: options.Sessions,
@@ -357,6 +364,9 @@ func (h *Handler) routes() {
 		h.mux.HandleFunc("GET /v1/plans/{planId}", h.adminOnly(h.GetPlan))
 		h.mux.HandleFunc("PUT /v1/plans/{planId}", h.adminOnly(h.ReplacePlan))
 		h.mux.HandleFunc("DELETE /v1/plans/{planId}", h.adminOnly(h.DeletePlan))
+		if h.places != nil {
+			h.mux.HandleFunc("GET /v1/places/reverse", h.adminOnly(h.ReversePlace))
+		}
 		h.mux.HandleFunc("GET /plan", h.GetPlanPage)
 		h.mux.HandleFunc("GET /plan/{planId}", h.GetPlanPage)
 	}

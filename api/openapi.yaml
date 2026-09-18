@@ -906,6 +906,53 @@ paths:
           $ref: '#/components/responses/ProviderUnavailable'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/places/reverse:
+    get:
+      tags:
+        - browser-api
+      operationId: reversePlace
+      description: >-
+        What the place at a coordinate is called, for naming a plan's waypoints
+        where a pair of coordinates says nothing. Answers an absent name where
+        the geocoder knows of no place there, which is an answer and not a
+        failure. Registered only where a geocoder is configured; absent, the
+        address is not served at all.
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        "200":
+          description: What the coordinate is called, if anything.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/plans:
     get:
       tags:
@@ -2929,6 +2976,15 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Route'
+    Place:
+      type: object
+      additionalProperties: false
+      description: >-
+        One short label for a coordinate. The name is absent where the geocoder
+        knows of no place there, which open country legitimately is.
+      properties:
+        name:
+          type: string
     PlanWaypoint:
       type: object
       additionalProperties: false
@@ -3999,6 +4055,12 @@ components:
           description: >-
             Whether a routing engine is configured, so the page offers the
             planner only where it will answer. Absent means off.
+        placeNames:
+          type: boolean
+          description: >-
+            Whether a geocoder is configured, so the planner asks what a
+            waypoint is called only where the answer exists. Absent means off,
+            and waypoints read as coordinates.
     BrowserIdentity:
       type: object
       additionalProperties: false

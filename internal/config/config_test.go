@@ -591,6 +591,37 @@ func TestLoadRequiresBRouterURLWhenPlanningIsPresent(t *testing.T) {
 	require.ErrorContains(t, err, "planning.brouter_url")
 }
 
+func TestLoadParsesAnOptionalPhotonURL(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath,
+		"\n[planning]\nbrouter_url = \"http://brouter:17777\"\nphoton_url = \"https://photon.komoot.io\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "https://photon.komoot.io", settings.Planning.PhotonURL, "Planning.PhotonURL")
+}
+
+func TestLoadLeavesPhotonURLEmptyWhenUnnamed(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath, "\n[planning]\nbrouter_url = \"http://brouter:17777\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Empty(t, settings.Planning.PhotonURL, "Planning.PhotonURL")
+}
+
+func TestLoadRejectsAPhotonURLWithAPath(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	appendToFile(t, configPath,
+		"\n[planning]\nbrouter_url = \"http://brouter:17777\"\nphoton_url = \"https://photon.example.test/api\"\n")
+	t.Setenv(configFileEnv, configPath)
+
+	_, err := Load()
+	require.ErrorContains(t, err, "planning.photon_url")
+}
+
 func TestLoadRejectsABRouterURLWithAPath(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	appendToFile(t, configPath, "\n[planning]\nbrouter_url = \"https://brouter.example.test/path\"\n")
