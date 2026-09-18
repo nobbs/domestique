@@ -43,7 +43,7 @@ test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await expect(page.locator(".maplibregl-canvas")).toBeVisible();
   await expect(page.getByText("domestique")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Sync/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Signed in as/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
   await expect(await openSearch(page)).toHaveAttribute(
     "placeholder",
