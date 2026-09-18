@@ -1,8 +1,20 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import { getGetPlanDeliveryQueryKey } from "../../api/generated";
 import type { PlanRoutePreview } from "../../api/types";
 import { StoryProviders } from "../../storybook/fixtures";
 import { PlannerSidebar } from "./PlannerSidebar";
 import { initialPlannerState, type PlannerWaypoint } from "./planner";
+
+/** Answers the delivery query up front: asked for real, a story's 401 would send the frame to sign-in. */
+function NoDeliveries({ children }: { children: ReactNode }) {
+  const client = useQueryClient();
+  for (const planId of [4, 5]) {
+    client.setQueryData(getGetPlanDeliveryQueryKey(planId), { data: { targets: [] } });
+  }
+  return children;
+}
 
 const meta = {
   title: "Features/Planner/Sidebar",
@@ -10,9 +22,11 @@ const meta = {
   decorators: [
     (Story) => (
       <StoryProviders>
-        <div className="flex h-[640px] w-[24rem] flex-col">
-          <Story />
-        </div>
+        <NoDeliveries>
+          <div className="flex h-[640px] w-[24rem] flex-col">
+            <Story />
+          </div>
+        </NoDeliveries>
       </StoryProviders>
     ),
   ],
