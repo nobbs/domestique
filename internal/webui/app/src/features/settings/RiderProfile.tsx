@@ -6,16 +6,15 @@
  * their own subject, and every derived training metric downstream needs them.
  *
  * Beside three of the fields sits what the rider's own recent rides suggest.
- * A suggestion is offered, never applied: nothing uses one until the rider has
- * typed it in and saved it as their own.
+ * A suggestion is offered, never applied: taking it only fills the field, and
+ * nothing uses it until the rider has saved it as their own.
  */
 
-import { IconUser } from "@tabler/icons-react";
+import { IconSparkles, IconUser } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useId, useState } from "react";
+import { FormFooter, FormGroup, FormRow, InfoDot, UnitInput } from "@/components/InsetForm";
 import { Panel } from "@/components/PanelHeading";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useSetRiderProfile } from "../../api/generated";
 import { riderProfileQuery } from "../../api/queries";
@@ -26,6 +25,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 /** One editable parameter: what it is called, its unit, and how precisely it reads. */
 interface Parameter {
   field: keyof RiderParameters;
+  group: "Heart rate" | "Power" | "Rider and bicycle";
   label: string;
   unit: string;
   description: string;
@@ -40,6 +40,7 @@ interface Parameter {
 const PARAMETERS: Parameter[] = [
   {
     field: "maxHeartRateBpm",
+    group: "Heart rate",
     label: "Maximum heart rate",
     unit: "bpm",
     description: "The highest rate you reach, which the top of every zone is a share of.",
@@ -47,6 +48,7 @@ const PARAMETERS: Parameter[] = [
   },
   {
     field: "restingHeartRateBpm",
+    group: "Heart rate",
     label: "Resting heart rate",
     unit: "bpm",
     description:
@@ -54,6 +56,7 @@ const PARAMETERS: Parameter[] = [
   },
   {
     field: "thresholdHeartRateBpm",
+    group: "Heart rate",
     label: "Threshold heart rate",
     unit: "bpm",
     description:
@@ -62,6 +65,7 @@ const PARAMETERS: Parameter[] = [
   },
   {
     field: "functionalThresholdPowerWatts",
+    group: "Power",
     label: "Functional threshold power",
     unit: "W",
     description: "The power you hold for an hour, which every ride's load is measured against.",
@@ -69,18 +73,21 @@ const PARAMETERS: Parameter[] = [
   },
   {
     field: "riderMassKg",
+    group: "Rider and bicycle",
     label: "Rider mass",
     unit: "kg",
     description: "You, dressed to ride.",
   },
   {
     field: "bikeMassKg",
+    group: "Rider and bicycle",
     label: "Bike mass",
     unit: "kg",
     description: "The bicycle and everything carried on it.",
   },
   {
     field: "dragAreaM2",
+    group: "Rider and bicycle",
     label: "Drag area",
     unit: "m²",
     description:
@@ -88,11 +95,14 @@ const PARAMETERS: Parameter[] = [
   },
   {
     field: "rollingResistance",
+    group: "Rider and bicycle",
     label: "Rolling resistance",
     unit: "",
     description: "The tyres' Crr on tarmac: 0.005 for a road slick, 0.008 for a wide gravel tyre.",
   },
 ];
+
+const GROUPS = ["Heart rate", "Power", "Rider and bicycle"] as const;
 
 /**
  * The boxes this form has edited, keyed by the parameter each one is: a
@@ -125,7 +135,16 @@ function submission(profile: RiderParameters, draft: RiderDraft) {
 
 function CardShell({ children }: { children: React.ReactNode }) {
   return (
-    <Panel icon={<IconUser size={18} stroke={1.8} />} title="Rider profile">
+    <Panel
+      icon={<IconUser size={18} stroke={1.8} />}
+      title="Rider profile"
+      aside={
+        <InfoDot label="Rider profile" framed>
+          What this service knows about you, which every derived training figure is worked out from.
+          A field left empty is a number this service does not have.
+        </InfoDot>
+      }
+    >
       <div className="grid gap-3">{children}</div>
     </Panel>
   );
@@ -168,59 +187,64 @@ export function RiderProfile() {
   return (
     <CardShell>
       <form
-        className="grid gap-6"
+        className="grid gap-5"
         onSubmit={(event: FormEvent) => {
           event.preventDefault();
           onSave();
         }}
       >
-        <FieldDescription>
-          What this service knows about you, which every derived training figure is worked out from.
-          A field left empty is a number this service does not have.
-        </FieldDescription>
-        <FieldGroup>
-          {PARAMETERS.map((parameter) => {
-            const suggestion = parameter.suggested && data.suggestions[parameter.suggested];
+        {GROUPS.map((group) => (
+          <FormGroup key={group} title={group}>
+            {PARAMETERS.filter((parameter) => parameter.group === group).map((parameter) => {
+              const suggestion = parameter.suggested && data.suggestions[parameter.suggested];
+              const rounded = suggestion === undefined ? undefined : Math.round(suggestion);
+              const inputId = `${id}-${parameter.field}`;
 
-            return (
-              <Field key={parameter.field}>
-                <FieldLabel htmlFor={`${id}-${parameter.field}`}>
-                  {parameter.unit ? `${parameter.label} (${parameter.unit})` : parameter.label}
-                </FieldLabel>
-                <Input
-                  id={`${id}-${parameter.field}`}
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  value={draft[parameter.field] ?? shown(data.profile[parameter.field])}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, [parameter.field]: event.target.value }))
-                  }
-                />
-                <FieldDescription>
-                  {parameter.description}
-                  {suggestion === undefined ? null : (
+              return (
+                <FormRow
+                  key={parameter.field}
+                  label={parameter.label}
+                  srLabel={parameter.unit ? `(${parameter.unit})` : undefined}
+                  htmlFor={inputId}
+                  hint={
                     <>
-                      {" "}
-                      Your rides of the last 90 days suggest {Math.round(suggestion)}{" "}
-                      {parameter.unit}.
+                      {parameter.description}
+                      {rounded === undefined
+                        ? null
+                        : ` Your rides of the last 90 days suggest ${rounded} ${parameter.unit}.`}
                     </>
+                  }
+                >
+                  {rounded === undefined ? null : (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-full bg-[color-mix(in_oklab,var(--primary)_10%,transparent)] px-2 py-0.5 text-xs hover:bg-[color-mix(in_oklab,var(--primary)_18%,transparent)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2"
+                      aria-label={`Use the suggested ${parameter.label.toLowerCase()}, ${rounded} ${parameter.unit}`}
+                      onClick={() =>
+                        setDraft((current) => ({ ...current, [parameter.field]: String(rounded) }))
+                      }
+                    >
+                      <IconSparkles size={12} aria-hidden="true" />
+                      Use {rounded}
+                    </button>
                   )}
-                </FieldDescription>
-              </Field>
-            );
-          })}
-        </FieldGroup>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button
-            variant="default"
-            aria-label="Save rider profile"
-            disabled={save.isPending}
-            onClick={onSave}
-          >
-            {save.isPending ? <Spinner aria-label="Saving" /> : null}
-            Save
-          </Button>
+                  <UnitInput
+                    id={inputId}
+                    unit={parameter.unit}
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    value={draft[parameter.field] ?? shown(data.profile[parameter.field])}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, [parameter.field]: event.target.value }))
+                    }
+                  />
+                </FormRow>
+              );
+            })}
+          </FormGroup>
+        ))}
+        <FormFooter>
           {save.isError ? (
             <p className="text-sm text-[var(--alert)]" role="alert">
               {save.error instanceof Error && save.error.message
@@ -233,7 +257,16 @@ export function RiderProfile() {
               Saved.
             </p>
           ) : null}
-        </div>
+          <Button
+            variant="default"
+            aria-label="Save rider profile"
+            disabled={save.isPending}
+            onClick={onSave}
+          >
+            {save.isPending ? <Spinner aria-label="Saving" /> : null}
+            Save
+          </Button>
+        </FormFooter>
       </form>
     </CardShell>
   );

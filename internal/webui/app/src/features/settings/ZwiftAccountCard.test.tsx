@@ -26,8 +26,8 @@ describe("ZwiftAccountCard", () => {
   it("shows set for a credential the rider has entered, unset for the other", () => {
     show({ profile: {}, suggestions: {}, zwift: { emailSet: true, passwordSet: false } });
 
-    expect(screen.getByLabelText("Zwift email").getAttribute("placeholder")).toContain("Set");
-    expect(screen.getByLabelText("Zwift password")).toHaveAttribute("placeholder", "");
+    expect(screen.getByLabelText("Email").getAttribute("placeholder")).toContain("Stored");
+    expect(screen.getByLabelText("Password")).toHaveAttribute("placeholder", "Not set");
   });
 
   it("mentions that Zwift's API is unofficial and the rider's own account terms apply", () => {
@@ -48,7 +48,7 @@ describe("ZwiftAccountCard", () => {
     vi.stubGlobal("fetch", fetchMock);
     show(view);
 
-    await userEvent.type(screen.getByLabelText("Zwift password"), "newpassword");
+    await userEvent.type(screen.getByLabelText("Password"), "newpassword");
     await userEvent.click(screen.getByRole("button", { name: "Save Zwift account" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -92,12 +92,12 @@ describe("ZwiftAccountCard", () => {
     );
     show({ profile: {}, suggestions: {}, zwift: { emailSet: false, passwordSet: false } });
 
-    await userEvent.type(screen.getByLabelText("Zwift email"), "rider@example.test");
-    await userEvent.type(screen.getByLabelText("Zwift password"), "opensesame");
+    await userEvent.type(screen.getByLabelText("Email"), "rider@example.test");
+    await userEvent.type(screen.getByLabelText("Password"), "opensesame");
     await userEvent.click(screen.getByRole("button", { name: "Save Zwift account" }));
 
-    await waitFor(() => expect(screen.getByLabelText("Zwift email")).toHaveValue(""));
-    expect(screen.getByLabelText("Zwift password")).toHaveValue("");
+    await waitFor(() => expect(screen.getByLabelText("Email")).toHaveValue(""));
+    expect(screen.getByLabelText("Password")).toHaveValue("");
   });
 
   it("says so when a save or a disconnect was refused", async () => {
@@ -110,7 +110,7 @@ describe("ZwiftAccountCard", () => {
     );
     show({ profile: {}, suggestions: {}, zwift: { emailSet: true, passwordSet: true } });
 
-    await userEvent.type(screen.getByLabelText("Zwift email"), "rider@example.test");
+    await userEvent.type(screen.getByLabelText("Email"), "rider@example.test");
     await userEvent.click(screen.getByRole("button", { name: "Save Zwift account" }));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("Your Zwift account was not saved."),

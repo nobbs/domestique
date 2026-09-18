@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { riderProfileQuery } from "../../api/queries";
@@ -43,7 +43,7 @@ describe("RiderProfile", () => {
   });
 
   // A suggestion is offered beside the field it is about and applied to none of
-  // them: nothing uses one until the rider has typed it in and saved it.
+  // them: nothing uses one until the rider has taken it and saved it.
   it("offers a suggestion only where the rides carry that sensor", () => {
     show({
       profile: {},
@@ -54,6 +54,40 @@ describe("RiderProfile", () => {
     expect(screen.getByText(/Your rides of the last 90 days suggest 183 bpm/)).toBeInTheDocument();
     expect(screen.queryByText(/suggest \d+ W/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Maximum heart rate (bpm)")).toHaveValue(null);
+  });
+
+  it("steps a field by its own precision", async () => {
+    show({
+      profile: { riderMassKg: 74.5, maxHeartRateBpm: 188 },
+      suggestions: {},
+      zwift: { emailSet: false, passwordSet: false },
+    });
+    const field = (label: string) => {
+      const input = screen.getByLabelText(label);
+      return within(input.closest("[data-slot=input-group]") as HTMLElement);
+    };
+
+    await userEvent.click(field("Rider mass (kg)").getByRole("button", { name: "Increase" }));
+    await userEvent.click(
+      field("Maximum heart rate (bpm)").getByRole("button", { name: "Decrease" }),
+    );
+
+    expect(screen.getByLabelText("Rider mass (kg)")).toHaveValue(74.6);
+    expect(screen.getByLabelText("Maximum heart rate (bpm)")).toHaveValue(187);
+  });
+
+  it("fills a field with its suggestion only when the rider takes it", async () => {
+    show({
+      profile: {},
+      suggestions: { maxHeartRateBpm: 183.4 },
+      zwift: { emailSet: false, passwordSet: false },
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Use the suggested maximum heart rate, 183 bpm" }),
+    );
+
+    expect(screen.getByLabelText("Maximum heart rate (bpm)")).toHaveValue(183);
   });
 
   it("sends the whole profile, leaving out a box the rider cleared", async () => {
