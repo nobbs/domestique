@@ -173,6 +173,8 @@ func TestReversePlaceRefusesACoordinateItCannotRead(t *testing.T) {
 		"not a number":     "/v1/places/reverse?latitude=north&longitude=8",
 		"off the earth":    "/v1/places/reverse?latitude=91&longitude=8",
 		"past the equator": "/v1/places/reverse?latitude=49&longitude=181",
+		"not a coordinate": "/v1/places/reverse?latitude=NaN&longitude=8",
+		"endless":          "/v1/places/reverse?latitude=49&longitude=Inf",
 	} {
 		t.Run(name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()

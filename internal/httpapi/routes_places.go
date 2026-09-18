@@ -69,7 +69,8 @@ func coordinate(
 ) (float64, bool) {
 	raw := request.URL.Query().Get(name)
 	value, err := strconv.ParseFloat(raw, 64)
-	if raw == "" || err != nil || value < -limit || value > limit {
+	// Asked as a range, so NaN, which no comparison holds for, is refused too.
+	if raw == "" || err != nil || !(value >= -limit && value <= limit) {
 		h.error(writer, http.StatusBadRequest, "invalid_request", name+" must be a coordinate")
 
 		return 0, false

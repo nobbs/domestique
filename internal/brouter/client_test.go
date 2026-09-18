@@ -323,6 +323,28 @@ func TestRouteReadsTheWaysUnderTheLine(t *testing.T) {
 	assert.Equal(t, "footway", answer.Ways[1].Tags["highway"])
 }
 
+func TestRouteRefusesAWaysTableWithADistanceThatIsNotOne(t *testing.T) {
+	for name, distance := range map[string]string{"negative": "-1", "not a number": "NaN", "endless": "Inf"} {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+					`"properties":{"messages":[["Longitude","Latitude","Distance","WayTags"],` +
+					`["8680000","50110000","` + distance + `","highway=footway"]]},` +
+					`"geometry":{"type":"LineString","coordinates":[[8.68,50.11,100.0],[8.70,50.12,101.0]]}}]}`))
+				assert.NoError(t, writeErr)
+			}))
+			defer server.Close()
+			client, err := New(&Options{BaseURL: server.URL})
+			require.NoError(t, err)
+
+			answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
+
+			require.NoError(t, err)
+			assert.Empty(t, answer.Ways)
+		})
+	}
+}
+
 func TestRouteKeepsTheLineWhenTheWaysTableIsUnreadable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +

@@ -295,7 +295,7 @@ func parseWays(body []byte) []Way {
 			return nil
 		}
 		metres, err := strconv.ParseFloat(row[distance], 64)
-		if err != nil || metres < 0 {
+		if err != nil || !(metres >= 0) || math.IsInf(metres, 1) {
 			return nil
 		}
 		along += metres
