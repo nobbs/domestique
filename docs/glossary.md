@@ -89,7 +89,8 @@ a table, ranked by whatever the reader sorted on. The atlas answers *where does
 this ride go*; the catalogue answers *which of these rides is the one I want*.
 Its nav label and its path are both "catalogue", and like the atlas it is a
 browser UI word only — the API has no catalogue, and the page asks it for
-nothing the atlas does not already ask for.
+nothing the atlas does not already ask for, apart from an admin's plan
+listing and drafts, which it shows on a Drafts shelf of its own.
 
 ## Identity and the map
 

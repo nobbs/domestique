@@ -42,8 +42,8 @@ export function useDrafts(enabled: boolean): {
   const drafts = (enabled ? (plans.data?.data.plans ?? []) : [])
     .filter((plan) => !plan.published)
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
-  // Under the planner's own keys, so opening a draft from here finds it already read; the
-  // planner refreshes them on save, so a glyph needs no refetch of its own.
+  // Under the planner's keys: an opened draft shows at once while the planner refreshes it,
+  // and a save there updates the cache, so a glyph needs no refetch of its own.
   const lines = useQueries({
     queries: drafts.map((plan) =>
       getGetPlanQueryOptions(plan.id, { query: { enabled, staleTime: Number.POSITIVE_INFINITY } }),

@@ -519,6 +519,17 @@ describe("CataloguePage", () => {
       stubViewport(true);
     });
 
+    it("stacks an admin's drafts as cards too, each opening the planner", async () => {
+      show(LIBRARY, "/catalogue", { planner: true });
+
+      await userEvent.click(screen.getByRole("button", { name: "Drafts · 1" }));
+
+      const card = screen.getByRole("link", { name: /Saturday gravel/ });
+      expect(card).toHaveAttribute("href", "/plan/7");
+      expect(card).toHaveTextContent("6 waypoints");
+      expect(card).toHaveTextContent("42.0 km");
+    });
+
     it("stacks the same routes as cards, each leading to the atlas", async () => {
       const user = userEvent.setup();
       show();
