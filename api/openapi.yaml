@@ -3052,6 +3052,9 @@ components:
         ascentMetres:
           type: number
           format: double
+        descentMetres:
+          type: number
+          format: double
         movingSeconds:
           type: number
           format: double
@@ -3130,6 +3133,9 @@ components:
           type: number
           format: double
         ascentMetres:
+          type: number
+          format: double
+        descentMetres:
           type: number
           format: double
         movingSeconds:

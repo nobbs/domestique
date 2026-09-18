@@ -85,6 +85,7 @@ type Plan struct {
 	Progress       []Progress
 	DistanceMetres float64
 	AscentMetres   float64
+	DescentMetres  float64
 	MovingSeconds  float64
 	ID             int64
 	Version        int64
@@ -133,6 +134,7 @@ type Measured struct {
 	Progress       []Progress
 	DistanceMetres float64
 	AscentMetres   float64
+	DescentMetres  float64
 	// MovingSeconds is the whole line's predicted time, zero where the model
 	// has no prediction for it.
 	MovingSeconds float64
@@ -207,6 +209,7 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 		Progress:       progressAt(waypoints, geometry, cumulative),
 		DistanceMetres: normalized.DistanceMetres(),
 		AscentMetres:   normalized.ElevationGainMetres(),
+		DescentMetres:  normalized.ElevationLossMetres(),
 		MovingSeconds:  movingSeconds,
 	}, nil
 }
@@ -293,7 +296,8 @@ func (s *Service) Create(ctx context.Context, name string, profile Profile, wayp
 	created := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
-		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
+		DescentMetres: measured.DescentMetres,
+		Progress:      measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: false, Version: 1, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.store.InsertPlan(ctx, &created); err != nil {
@@ -331,7 +335,8 @@ func (s *Service) Replace(
 	replaced := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
-		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
+		DescentMetres: measured.DescentMetres,
+		Progress:      measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: published, Version: expectedVersion + 1, CreatedAt: existing.CreatedAt, UpdatedAt: s.now().UTC(),
 	}
 	ok, err := s.store.ReplacePlan(ctx, &replaced, expectedVersion)
@@ -380,8 +385,24 @@ func (s *Service) Get(ctx context.Context, id int64) (result Plan, found bool, e
 		return Plan{}, false, nil
 	}
 	result.MovingSeconds, result.Progress = s.progressOf(result.Waypoints, result.Geometry)
+	result.DescentMetres = descentOf(result.Geometry)
 
 	return result, true, nil
+}
+
+// descentOf measures a stored plan's descent, which no column holds: the
+// ascent beside it was measured when the plan was routed, and this is the same
+// sum over the same normalised altitudes.
+func descentOf(geometry []route.Point) float64 {
+	altitudes := make([]float64, 0, len(geometry))
+	for _, point := range geometry {
+		if point.Elevation == nil {
+			return 0
+		}
+		altitudes = append(altitudes, *point.Elevation)
+	}
+
+	return measure.DescentMetres(altitudes)
 }
 
 // progressOf predicts a stored plan's time on read, so a plan always reports

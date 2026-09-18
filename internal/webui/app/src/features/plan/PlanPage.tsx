@@ -1,7 +1,10 @@
+import { Tabs } from "@base-ui/react/tabs";
 import {
   IconArrowBackUp,
+  IconArrowDownRight,
   IconArrowForwardUp,
   IconArrowsExchange,
+  IconArrowUpRight,
   IconBike,
   IconChevronDown,
   IconClock,
@@ -54,7 +57,7 @@ import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
 import { Panel } from "../../components/PanelHeading";
-import { Segmented } from "../../components/Segmented";
+import { Segmented, SegmentedTrack, SegmentLabel, segmentClass } from "../../components/Segmented";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { ButtonGroup } from "../../components/ui/button-group";
@@ -69,10 +72,13 @@ import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/ba
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
 import { useNarrowViewport } from "../../lib/mediaQuery";
-import { buildProfile, rangeBounds } from "../../lib/profile";
+import { groundSegments, steepnessEntries, surfaceEntries } from "../../lib/mix";
+import { buildProfile, gradientSharesBySign, rangeBounds } from "../../lib/profile";
 import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
+import { type SurfaceSummary, summariseSurface } from "../../lib/surface";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { ElevationProfile } from "../routes/ElevationProfile";
+import { GroundRibbon } from "../routes/GroundRibbon";
 import { RouteOverlay } from "../routes/RouteOverlay";
 import { usePlaceName } from "./placeName";
 import {
@@ -279,29 +285,39 @@ function progressLabel(preview: PlanRoutePreview | null, index: number): string 
   return ` · ${formatDistance(at.distanceMetres)}${elapsed}`;
 }
 
-/** The plan's own figures, once the engine has routed it. */
+/** The plan's own figures, on the strip beneath the map where the chart is. */
 function PlanFigures({ preview }: { preview: PlanRoutePreview | null }) {
   if (!preview) {
     return null;
   }
+  const figure = (icon: ReactNode, value: string) => (
+    <span className="flex items-baseline gap-1 text-[var(--ink-2)]">
+      {icon}
+      <span className="font-medium text-[var(--ink)] tabular-nums">{value}</span>
+    </span>
+  );
 
   return (
-    <output aria-label="Planned route summary" className="flex items-center gap-4">
-      <span className="font-semibold text-xl tabular-nums tracking-tight">
+    <output aria-label="Planned route summary" className="flex items-center gap-4 text-sm">
+      <span className="font-semibold text-base tabular-nums">
         {formatDistance(preview.distanceMetres)}
       </span>
-      <span className="flex items-baseline gap-1 text-[var(--ink-2)]">
-        <IconMountain size={14} stroke={1.8} aria-hidden="true" />
-        <span className="font-medium tabular-nums">{formatAscent(preview.ascentMetres)}</span>
-      </span>
-      {preview.movingSeconds === undefined ? null : (
-        <span className="flex items-baseline gap-1 text-[var(--ink-2)]">
-          <IconClock size={14} stroke={1.8} aria-hidden="true" />
-          <span className="font-medium tabular-nums">
-            {formatDuration(Math.round(preview.movingSeconds / 60) * 60)}
-          </span>
-        </span>
+      {figure(
+        <IconArrowUpRight size={14} stroke={1.8} aria-hidden="true" />,
+        formatAscent(preview.ascentMetres),
       )}
+      {preview.descentMetres === undefined
+        ? null
+        : figure(
+            <IconArrowDownRight size={14} stroke={1.8} aria-hidden="true" />,
+            formatAscent(preview.descentMetres),
+          )}
+      {preview.movingSeconds === undefined
+        ? null
+        : figure(
+            <IconClock size={14} stroke={1.8} aria-hidden="true" />,
+            formatDuration(Math.round(preview.movingSeconds / 60) * 60),
+          )}
     </output>
   );
 }
@@ -427,7 +443,6 @@ export function PlannerSidebar({
           </div>
         }
       >
-        <PlanFigures preview={preview} />
         <Segmented
           label="Route type"
           items={PROFILES}
@@ -660,11 +675,60 @@ function PlannerHistoryControls({
   );
 }
 
+const STOPS = [
+  { key: "profile", label: "Profile", icon: <IconMountain size={14} stroke={1.8} /> },
+  { key: "ground", label: "Ground", icon: <IconRoad size={14} stroke={1.8} /> },
+] as const;
+
+/** The surface's own rows beside the steepness bands, over the ribbon that places them. */
+function GroundStop({ surface, line }: { surface: SurfaceSummary; line: Position[] }) {
+  const rows = useMemo(
+    () => [
+      ...surfaceEntries(surface),
+      ...steepnessEntries(gradientSharesBySign(line), surface.totalMetres).filter(
+        (entry) => entry.share > 0.005,
+      ),
+    ],
+    [surface, line],
+  );
+
+  return (
+    <div className="flex flex-col gap-3 py-3">
+      <GroundRibbon
+        segments={groundSegments(surface)}
+        surface={surface}
+        highlight={null}
+        onHighlightChange={() => {}}
+      />
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm tabular-nums">
+        {rows.map((entry) => (
+          <span key={entry.label} className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="size-2.5 shrink-0 rounded-[3px]"
+              style={{ background: `var(${entry.colour})` }}
+            />
+            <span className="flex-1 truncate text-[var(--ink-2)]">{entry.label}</span>
+            <span>{formatDistance(entry.metres)}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The strip beneath the map: the plan's figures, and the ground it covers read
+ * either as its profile or as its surface. The stop switcher appears only
+ * where there is a second stop to switch to — a deployment with no surface map
+ * classifies nothing, and a lone tab is not a choice.
+ */
 function PlannerDock({
   open,
   onOpenChange,
   preview,
   profile,
+  line,
   activeMetres,
   onActiveChange,
 }: {
@@ -672,40 +736,83 @@ function PlannerDock({
   onOpenChange: (open: boolean) => void;
   preview: PlanRoutePreview | null;
   profile: ReturnType<typeof buildProfile>;
+  line: Position[];
   activeMetres: number | null;
   onActiveChange: (metres: number | null) => void;
 }) {
+  const [stop, setStop] = useState<"profile" | "ground">("profile");
+  const surface = useMemo(
+    () =>
+      preview?.surface && preview.surface.matchedMetres > 0
+        ? summariseSurface(line, preview.surface.ranges)
+        : null,
+    [line, preview],
+  );
+  // A plan whose ground is unclassified falls back to its profile, including
+  // one that was classified until its waypoints moved off the mapped region.
+  const showing = surface === null ? "profile" : stop;
+
   return (
     <section
-      aria-label="Planned route elevation"
+      aria-label="Planned route"
       className="border-[var(--rule)] border-t bg-[var(--panel)] px-4 py-2"
     >
-      <div className="flex items-center justify-between gap-3">
-        {preview ? (
-          <output aria-label="Elevation summary" className="text-sm font-medium tabular-nums">
-            {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
-          </output>
-        ) : (
-          <span className="text-sm font-medium">Elevation</span>
-        )}
-        <Button
-          variant="ghost"
-          icon={open ? <IconLayoutBottombarCollapse stroke={1.6} /> : <IconMountain stroke={1.6} />}
-          aria-expanded={open}
-          aria-label={open ? "Hide elevation" : "Show elevation"}
-          onClick={() => onOpenChange(!open)}
-        >
-          {open ? "Hide" : "Show"}
-        </Button>
-      </div>
-      {open ? (
-        <ElevationProfile
-          title="Planned route elevation"
-          profile={profile}
-          activeMetres={activeMetres}
-          onActiveChange={onActiveChange}
-        />
-      ) : null}
+      <Tabs.Root value={showing} onValueChange={(next) => setStop(next as "profile" | "ground")}>
+        <div className="flex items-center justify-between gap-3">
+          {preview ? (
+            <PlanFigures preview={preview} />
+          ) : (
+            <span className="font-medium text-sm">Elevation</span>
+          )}
+          <div className="flex items-center gap-2">
+            {surface === null ? null : (
+              <SegmentedTrack active={showing}>
+                <Tabs.List className="contents">
+                  {STOPS.map((item) => (
+                    <Tabs.Tab
+                      key={item.key}
+                      value={item.key}
+                      data-segment={item.key}
+                      className={segmentClass("sm")}
+                    >
+                      {item.icon}
+                      <SegmentLabel>{item.label}</SegmentLabel>
+                    </Tabs.Tab>
+                  ))}
+                </Tabs.List>
+              </SegmentedTrack>
+            )}
+            <Button
+              variant="ghost"
+              icon={
+                open ? <IconLayoutBottombarCollapse stroke={1.6} /> : <IconMountain stroke={1.6} />
+              }
+              aria-expanded={open}
+              aria-label={open ? "Hide the route detail" : "Show the route detail"}
+              onClick={() => onOpenChange(!open)}
+            >
+              {open ? "Hide" : "Show"}
+            </Button>
+          </div>
+        </div>
+        {open ? (
+          <>
+            <Tabs.Panel value="profile">
+              <ElevationProfile
+                title="Planned route elevation"
+                profile={profile}
+                activeMetres={activeMetres}
+                onActiveChange={onActiveChange}
+              />
+            </Tabs.Panel>
+            {surface === null ? null : (
+              <Tabs.Panel value="ground">
+                <GroundStop surface={surface} line={line} />
+              </Tabs.Panel>
+            )}
+          </>
+        ) : null}
+      </Tabs.Root>
     </section>
   );
 }
@@ -988,6 +1095,7 @@ export function PlanPage() {
           onOpenChange={setDockOpen}
           preview={preview}
           profile={profile}
+          line={line}
           activeMetres={activeMetres}
           onActiveChange={setActiveMetres}
         />

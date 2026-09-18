@@ -430,6 +430,7 @@ type PlanRoutePreview struct {
 	Geometry       GeoJSONLineString `json:"geometry"`
 	DistanceMetres float64           `json:"distanceMetres"`
 	AscentMetres   float64           `json:"ascentMetres"`
+	DescentMetres  *float64          `json:"descentMetres,omitempty"`
 	// MovingSeconds The whole line's predicted moving time, from the same model a stage's is predicted with. Absent where the line cannot be predicted, which incomplete elevation makes it.
 	MovingSeconds *float64 `json:"movingSeconds,omitempty"`
 	// WaypointProgress One entry per waypoint, in the order they were routed.
@@ -455,6 +456,7 @@ type Plan struct {
 	Geometry       GeoJSONLineString `json:"geometry"`
 	DistanceMetres float64           `json:"distanceMetres"`
 	AscentMetres   float64           `json:"ascentMetres"`
+	DescentMetres  *float64          `json:"descentMetres,omitempty"`
 	// MovingSeconds Predicted on read with the coefficients in force, never stored: a calibration replaces them and the plan's own time follows.
 	MovingSeconds *float64 `json:"movingSeconds,omitempty"`
 	// WaypointProgress One entry per waypoint, in the order they were routed.

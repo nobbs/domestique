@@ -285,12 +285,12 @@ describe("PlanPage", () => {
 
     expect(screen.getByText("elevation profile")).toBeInTheDocument();
     expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
-    fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
-    expect(screen.getByRole("button", { name: "Show elevation" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide the route detail" }));
+    expect(screen.getByRole("button", { name: "Show the route detail" })).toBeInTheDocument();
     expect(screen.queryByText("elevation profile")).toBeNull();
     expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
-    fireEvent.click(screen.getByRole("button", { name: "Show elevation" }));
-    expect(screen.getByRole("button", { name: "Hide elevation" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show the route detail" }));
+    expect(screen.getByRole("button", { name: "Hide the route detail" })).toBeInTheDocument();
     expect(screen.getByText("elevation profile")).toBeInTheDocument();
     expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
   });
@@ -301,7 +301,7 @@ describe("PlanPage", () => {
       renderPage();
 
       expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
-      fireEvent.click(screen.getByRole("button", { name: "Hide elevation" }));
+      fireEvent.click(screen.getByRole("button", { name: "Hide the route detail" }));
       expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "0");
     } finally {
       narrowViewport.value = false;
@@ -321,7 +321,7 @@ describe("PlanPage", () => {
       screen.getByRole("complementary", { name: "Route planner controls" }),
     );
     expect(document.querySelector(".shell__overlay")).not.toContainElement(
-      screen.getByRole("region", { name: "Planned route elevation" }),
+      screen.getByRole("region", { name: "Planned route" }),
     );
     expect(
       screen.getByRole("complementary", { name: "Route planner controls" }),
@@ -444,6 +444,48 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
 
     expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: ranges }));
+  });
+
+  it("offers the ground stop only where the plan's surface was classified", () => {
+    const ranges = [{ kind: "gravel" as const, startIndex: 0, endIndex: 1 }];
+    const answer = (surface: { ranges: typeof ranges; matchedMetres: number } | undefined) =>
+      preview.mockImplementation(
+        (_variables: unknown, callbacks: { onSuccess: (value: unknown) => void }) =>
+          callbacks.onSuccess({
+            data: {
+              geometry: {
+                type: "LineString",
+                coordinates: [
+                  [8, 49, 100],
+                  [8.1, 49.1, 140],
+                ],
+              },
+              distanceMetres: 10_000,
+              ascentMetres: 100,
+              ...(surface === undefined ? {} : { surface }),
+            },
+          }),
+      );
+
+    answer(undefined);
+    const { unmount } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+    // One reading is not a choice, so the switcher stays away.
+    expect(screen.queryByRole("tab", { name: "Ground" })).toBeNull();
+    unmount();
+
+    answer({ ranges, matchedMetres: 10_000 });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(screen.getByRole("tab", { name: "Profile" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Ground" }));
+    // The ribbon labels the stretch and the table measures it.
+    expect(screen.getAllByText("Gravel").length).toBeGreaterThan(1);
   });
 
   it("leaves the route unpainted when the classification matched nothing", () => {
