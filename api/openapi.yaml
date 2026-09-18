@@ -953,6 +953,62 @@ paths:
           $ref: '#/components/responses/ProviderUnavailable'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/places/search:
+    get:
+      tags:
+        - browser-api
+      operationId: searchPlaces
+      description: >-
+        The places whose name or address matches a query, for adding a plan's
+        waypoints by name. Nearest to the given point first where one is
+        given; the point biases the answer and never confines it. No match is
+        an empty list, not a failure. Registered only where a geocoder is
+        configured; absent, the address is not served at all.
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 200
+        - name: latitude
+          in: query
+          required: false
+          description: Given together with longitude, or not at all.
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: false
+          description: Given together with latitude, or not at all.
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        "200":
+          description: The places that match, best first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceSearch'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/places/snap:
     get:
       tags:
@@ -3058,6 +3114,48 @@ components:
       properties:
         name:
           type: string
+    PlaceSearch:
+      type: object
+      additionalProperties: false
+      required:
+        - places
+      properties:
+        places:
+          type: array
+          maxItems: 6
+          items:
+            $ref: '#/components/schemas/PlaceMatch'
+    PlaceMatch:
+      type: object
+      additionalProperties: false
+      description: >-
+        One place a search found. Context names the wider places it lies
+        within, and is absent where the geocoder holds none.
+      required:
+        - name
+        - kind
+        - latitude
+        - longitude
+      properties:
+        name:
+          type: string
+        context:
+          type: string
+        kind:
+          type: string
+          enum:
+            - address
+            - settlement
+            - station
+            - peak
+            - place
+          description: What sort of place it is, for the icon it is drawn with.
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
     SnappedPlace:
       type: object
       additionalProperties: false
@@ -4327,9 +4425,9 @@ components:
         placeNames:
           type: boolean
           description: >-
-            Whether a geocoder is configured, so the planner asks what a
-            waypoint is called only where the answer exists. Absent means off,
-            and waypoints read as coordinates.
+            Whether a geocoder is configured, so the planner names waypoints
+            and searches for places only where the answer exists. Absent means
+            off: waypoints read as coordinates and there is no place search.
     BrowserIdentity:
       type: object
       additionalProperties: false

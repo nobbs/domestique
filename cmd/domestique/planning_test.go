@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/photon"
 	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
@@ -527,4 +529,34 @@ func TestCueEncoderFailsWhenThePlanCannotBeRead(t *testing.T) {
 
 func TestCourseEncoderReadsCuesWithAPlanner(t *testing.T) {
 	assert.NotNil(t, courseEncoder(&plan.Service{}).plans, "planner")
+}
+
+func TestPhotonPlacesAnswersASearchInThePortsTerms(t *testing.T) {
+	var asked url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		asked = request.URL.Query()
+		_, err := writer.Write([]byte(`{"features":[{"geometry":{"coordinates":[8.4868,49.0006]},` +
+			`"properties":{"osm_key":"natural","osm_value":"peak","name":"Turmberg","district":"Durlach","city":"Karlsruhe"}}]}`))
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+	client, err := photon.New(&photon.Options{BaseURL: server.URL, MinInterval: time.Nanosecond})
+	require.NoError(t, err)
+	places := photonPlaces{client}
+
+	matches, err := places.Search(t.Context(), "Turmberg", &httpapi.PlaceNear{Latitude: 49, Longitude: 8.4})
+
+	require.NoError(t, err)
+	assert.Equal(t, []httpapi.PlaceMatch{{
+		Name: "Turmberg", Context: "Durlach, Karlsruhe", Kind: "peak", Latitude: 49.0006, Longitude: 8.4868,
+	}}, matches)
+	assert.Equal(t, "49", asked.Get("lat"))
+
+	_, err = places.Search(t.Context(), "Turmberg", nil)
+	require.NoError(t, err)
+	assert.False(t, asked.Has("lat"), "no point, no bias")
+
+	server.Close()
+	_, err = places.Search(t.Context(), "Turmberg", nil)
+	require.ErrorContains(t, err, "searching Photon")
 }

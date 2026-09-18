@@ -870,6 +870,18 @@ The read-only JSON surface is small:
   not a failure; it is registered alongside the plan endpoints whatever the
   surface map's own state, and a failure reading the map is `503`. Both are
   `400` on a coordinate that is missing or out of range.
+- `GET /v1/places/search` (admin-only) finds places by name for the planner:
+  a required `query` of 3 to 200 characters once trimmed, and an optional
+  `latitude` and `longitude` pair, given together or not at all, that the
+  answer is biased towards without being confined to. It answers a
+  `PlaceSearch` of at most six `PlaceMatch` entries from the configured Photon
+  geocoder, each a name, the wider places it lies within where Photon holds
+  any, a `kind` the planner draws an icon for, and its point; no match is an
+  empty list, not a failure. It is registered only where `planning.photon_url`
+  is configured, otherwise `404`; a malformed query or a lone coordinate is
+  `400`, and a search Photon refuses or cannot answer is `502` carrying a
+  category alone. Neither the query nor the point is logged, and nothing
+  about a search is cached by the service.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
   values, so the page can show a ride's weather without reaching Open-Meteo
   itself. Each `point` is `latitude,longitude,time`: decimal-degree latitude
