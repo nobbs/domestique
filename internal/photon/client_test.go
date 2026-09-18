@@ -238,3 +238,43 @@ func TestReverseStopsOnACancelledContext(t *testing.T) {
 
 	require.Error(t, err)
 }
+
+func TestReverseLabelsAPlaceByWhatItKnowsOfIt(t *testing.T) {
+	t.Parallel()
+	for expected, properties := range map[string]string{
+		"Kaiserstraße, Karlsruhe": `"street":"Kaiserstraße","city":"Karlsruhe"`,
+		"Durlach":                 `"district":"Durlach"`,
+	} {
+		t.Run(expected, func(t *testing.T) {
+			t.Parallel()
+			client, _ := serving(t, func(writer http.ResponseWriter, _ *http.Request) {
+				write(t, writer, answer(properties))
+			})
+
+			name, err := client.Reverse(t.Context(), 49, 8)
+
+			require.NoError(t, err)
+			assert.Equal(t, expected, name)
+		})
+	}
+}
+
+func TestReverseFollowsNoRedirect(t *testing.T) {
+	t.Parallel()
+	client, _ := serving(t, func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, "https://elsewhere.example.test/reverse", http.StatusFound)
+	})
+
+	_, err := client.Reverse(t.Context(), 49, 8)
+
+	var failure *photon.Error
+	require.ErrorAs(t, err, &failure)
+	assert.Equal(t, http.StatusFound, failure.Status)
+}
+
+func TestErrorNamesItsCategoryAndStatusOnly(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "photon: refused (HTTP 400)",
+		(&photon.Error{Category: photon.FailureRefused, Status: http.StatusBadRequest}).Error())
+	assert.Equal(t, "photon: unreachable", (&photon.Error{Category: photon.FailureUnreachable}).Error())
+}
