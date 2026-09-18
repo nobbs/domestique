@@ -61,6 +61,7 @@ func TestSeedAddsPublishedPlansToTheDemoInventory(t *testing.T) {
 	planService := plan.NewService(
 		planStore{store: store},
 		testRouter{},
+		demoPace{},
 		func() time.Time { return time.Date(2026, time.September, 15, 12, 0, 0, 0, time.UTC) },
 		func() (int64, error) { return 42, nil },
 	)

@@ -285,6 +285,49 @@ func TestPreviewPlanRouteReturnsGeometryDistanceAndAscent(t *testing.T) {
 	assert.InDelta(t, elevationMetres, body.Geometry.Coordinates[1][2], 0)
 }
 
+func TestPreviewPlanRouteCarriesThePredictedTimePerWaypoint(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry:       []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+		DistanceMetres: 1200, AscentMetres: 42, MovingSeconds: 300,
+		Progress: []plan.Progress{
+			{DistanceMetres: 0},
+			{DistanceMetres: 1200, MovingSeconds: 300},
+		},
+	}})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var body openapi.PlanRoutePreview
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.NotNil(t, body.MovingSeconds)
+	assert.InDelta(t, 300, *body.MovingSeconds, 0)
+	require.Len(t, body.WaypointProgress, 2)
+	assert.Nil(t, body.WaypointProgress[0].MovingSeconds, "the start has taken no time")
+	require.NotNil(t, body.WaypointProgress[1].MovingSeconds)
+	assert.InDelta(t, 300, *body.WaypointProgress[1].MovingSeconds, 0)
+	assert.InDelta(t, 1200, body.WaypointProgress[1].DistanceMetres, 0)
+}
+
+func TestPreviewPlanRouteOmitsATimeItCannotPredict(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry:       []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+		DistanceMetres: 1200, AscentMetres: 42,
+		Progress: []plan.Progress{{DistanceMetres: 0}, {DistanceMetres: 1200}},
+	}})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var body openapi.PlanRoutePreview
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	assert.Nil(t, body.MovingSeconds)
+	require.Len(t, body.WaypointProgress, 2, "a waypoint still knows its distance")
+	assert.Nil(t, body.WaypointProgress[1].MovingSeconds)
+}
+
 func TestPlanResponsesCarryCurrentSurfaceClassification(t *testing.T) {
 	geometry := []route.Point{
 		{Longitude: 8, Latitude: 49},

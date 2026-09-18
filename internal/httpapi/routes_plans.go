@@ -31,10 +31,12 @@ func (h *Handler) PreviewPlanRoute(writer http.ResponseWriter, request *http.Req
 		return
 	}
 	h.writeJSON(writer, http.StatusOK, openapi.PlanRoutePreview{
-		Geometry:       lineStringOf(measured.Geometry),
-		DistanceMetres: measured.DistanceMetres,
-		AscentMetres:   measured.AscentMetres,
-		Surface:        h.planSurface(request.Context(), measured.Geometry),
+		Geometry:         lineStringOf(measured.Geometry),
+		DistanceMetres:   measured.DistanceMetres,
+		AscentMetres:     measured.AscentMetres,
+		MovingSeconds:    optionalSeconds(measured.MovingSeconds),
+		WaypointProgress: progressOf(measured.Progress),
+		Surface:          h.planSurface(request.Context(), measured.Geometry),
 	})
 }
 
@@ -229,9 +231,37 @@ func (h *Handler) planOf(ctx context.Context, p *plan.Plan) openapi.Plan {
 		ID: p.ID, Name: p.Name, Profile: openapi.PlanProfile(p.Profile), Published: p.Published, Version: p.Version,
 		Waypoints: openapiWaypointsOf(p.Waypoints), Geometry: lineStringOf(p.Geometry),
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres,
+		MovingSeconds: optionalSeconds(p.MovingSeconds), WaypointProgress: progressOf(p.Progress),
 		Surface:   h.planSurface(ctx, p.Geometry),
 		CreatedAt: wireTime(p.CreatedAt), UpdatedAt: wireTime(p.UpdatedAt),
 	}
+}
+
+// optionalSeconds omits an unpredicted time rather than reporting it as zero,
+// which is a plan of no length rather than one the model cannot read.
+func optionalSeconds(seconds float64) *float64 {
+	if seconds <= 0 {
+		return nil
+	}
+
+	return &seconds
+}
+
+// progressOf renders each waypoint's place along the line, leaving its time
+// absent where the line carries no prediction.
+func progressOf(progress []plan.Progress) []openapi.PlanProgress {
+	if len(progress) == 0 {
+		return nil
+	}
+	views := make([]openapi.PlanProgress, len(progress))
+	for index, at := range progress {
+		views[index] = openapi.PlanProgress{
+			DistanceMetres: at.DistanceMetres,
+			MovingSeconds:  optionalSeconds(at.MovingSeconds),
+		}
+	}
+
+	return views
 }
 
 func (h *Handler) planSurface(ctx context.Context, geometry []route.Point) *openapi.SurfaceClassification {

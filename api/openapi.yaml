@@ -2998,6 +2998,22 @@ components:
         latitude:
           type: number
           format: double
+    PlanProgress:
+      type: object
+      additionalProperties: false
+      description: >-
+        How far into a plan one waypoint is, read along the routed line rather
+        than between waypoints. movingSeconds is absent where the line carries
+        no prediction.
+      required:
+        - distanceMetres
+      properties:
+        distanceMetres:
+          type: number
+          format: double
+        movingSeconds:
+          type: number
+          format: double
     PlanProfile:
       type: string
       description: The routing engine profile a plan is drawn against.
@@ -3036,6 +3052,18 @@ components:
         ascentMetres:
           type: number
           format: double
+        movingSeconds:
+          type: number
+          format: double
+          description: >-
+            The whole line's predicted moving time, from the same model a
+            stage's is predicted with. Absent where the line cannot be
+            predicted, which incomplete elevation makes it.
+        waypointProgress:
+          type: array
+          description: One entry per waypoint, in the order they were routed.
+          items:
+            $ref: '#/components/schemas/PlanProgress'
         surface:
           $ref: '#/components/schemas/SurfaceClassification'
     PlanWrite:
@@ -3104,6 +3132,17 @@ components:
         ascentMetres:
           type: number
           format: double
+        movingSeconds:
+          type: number
+          format: double
+          description: >-
+            Predicted on read with the coefficients in force, never stored:
+            a calibration replaces them and the plan's own time follows.
+        waypointProgress:
+          type: array
+          description: One entry per waypoint, in the order they were routed.
+          items:
+            $ref: '#/components/schemas/PlanProgress'
         surface:
           $ref: '#/components/schemas/SurfaceClassification'
         createdAt:

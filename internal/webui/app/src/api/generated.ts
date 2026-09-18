@@ -818,6 +818,14 @@ export interface PlanRouteRequest {
   waypoints: PlanWaypoint[];
 }
 
+/**
+ * How far into a plan one waypoint is, read along the routed line rather than between waypoints. movingSeconds is absent where the line carries no prediction.
+ */
+export interface PlanProgress {
+  distanceMetres: number;
+  movingSeconds?: number;
+}
+
 export interface SurfaceClassification {
   ranges: SurfaceRange[];
   matchedMetres: number;
@@ -827,6 +835,10 @@ export interface PlanRoutePreview {
   geometry: GeoJSONLineString;
   distanceMetres: number;
   ascentMetres: number;
+  /** The whole line's predicted moving time, from the same model a stage's is predicted with. Absent where the line cannot be predicted, which incomplete elevation makes it. */
+  movingSeconds?: number;
+  /** One entry per waypoint, in the order they were routed. */
+  waypointProgress?: PlanProgress[];
   surface?: SurfaceClassification;
 }
 
@@ -879,6 +891,10 @@ export interface Plan {
   geometry: GeoJSONLineString;
   distanceMetres: number;
   ascentMetres: number;
+  /** Predicted on read with the coefficients in force, never stored: a calibration replaces them and the plan's own time follows. */
+  movingSeconds?: number;
+  /** One entry per waypoint, in the order they were routed. */
+  waypointProgress?: PlanProgress[];
   surface?: SurfaceClassification;
   createdAt: string;
   updatedAt: string;

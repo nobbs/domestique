@@ -37,7 +37,7 @@ func (s planningSurfaceSource) Generation() string { return s.generation }
 func TestNewLocalSourceIsNilWithoutPlanning(t *testing.T) {
 	t.Parallel()
 
-	source, configured, err := newLocalSource(&config.Settings{}, testStore(t, t.TempDir()))
+	source, configured, err := newLocalSource(&config.Settings{}, testStore(t, t.TempDir()), nil)
 	require.NoError(t, err)
 	assert.False(t, configured, "newLocalSource() without [planning]")
 	assert.Nil(t, source, "newLocalSource() without [planning]")
@@ -60,7 +60,7 @@ func TestSurfaceClassifierOmitsMissingMapAndKeepsUnknownClassification(t *testin
 func TestNewLocalSourceBuildsThePlanServiceWhenConfigured(t *testing.T) {
 	settings := testPlanningSettings(t)
 
-	source, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	source, configured, err := newLocalSource(settings, testStore(t, t.TempDir()), nil)
 	require.NoError(t, err)
 	require.True(t, configured, "newLocalSource() with [planning] configured")
 	require.NotNil(t, source, "newLocalSource() with [planning] configured")
@@ -73,7 +73,7 @@ func TestNewLocalSourceForwardsABRouterConstructionFailure(t *testing.T) {
 	settings := testPlanningSettings(t)
 	settings.Planning.BRouterURL = "not a url"
 
-	_, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	_, configured, err := newLocalSource(settings, testStore(t, t.TempDir()), nil)
 	require.Error(t, err)
 	assert.False(t, configured, "newLocalSource() on a construction failure")
 }
@@ -82,7 +82,7 @@ func TestWireLocalSourceLeavesTheCacheEmptyWithoutPlanning(t *testing.T) {
 	t.Parallel()
 
 	cache := newSourceCache()
-	service, wired, err := wireLocalSource(&config.Settings{}, testStore(t, t.TempDir()), cache)
+	service, wired, err := wireLocalSource(&config.Settings{}, testStore(t, t.TempDir()), cache, nil)
 	require.NoError(t, err)
 	assert.False(t, wired, "wireLocalSource() without [planning]")
 	assert.Nil(t, service, "wireLocalSource() without [planning]")
@@ -95,7 +95,7 @@ func TestWireLocalSourceLeavesTheCacheEmptyWithoutPlanning(t *testing.T) {
 func TestWireLocalSourceRegistersThePlanServiceWhenConfigured(t *testing.T) {
 	settings := testPlanningSettings(t)
 	cache := newSourceCache()
-	service, wired, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	service, wired, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache, nil)
 	require.NoError(t, err)
 	require.True(t, wired, "wireLocalSource() with [planning] configured")
 	require.NotNil(t, service, "wireLocalSource() with [planning] configured")
@@ -113,7 +113,7 @@ func TestWireLocalSourceWarnsAboutUnusedSegments(t *testing.T) {
 	settings.Planning.Segments = []string{"E5_N45"}
 	cache := newSourceCache()
 
-	_, _, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	_, _, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache, nil)
 	require.NoError(t, err)
 }
 
@@ -124,7 +124,7 @@ func TestWireLocalSourceForwardsAConstructionFailure(t *testing.T) {
 	settings.Planning.BRouterURL = "not a url"
 	cache := newSourceCache()
 
-	service, configured, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	service, configured, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache, nil)
 	require.Error(t, err)
 	assert.False(t, configured, "wireLocalSource() on a construction failure")
 	assert.Nil(t, service, "wireLocalSource() on a construction failure")
@@ -137,7 +137,7 @@ func TestHTTPAPIPlansAvoidsATypedNilInterface(t *testing.T) {
 	assert.Nil(t, httpapiPlans(unconfigured), "httpapiPlans(nil)")
 
 	settings := testPlanningSettings(t)
-	service, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	service, configured, err := newLocalSource(settings, testStore(t, t.TempDir()), nil)
 	require.NoError(t, err)
 	require.True(t, configured)
 	assert.NotNil(t, httpapiPlans(service), "httpapiPlans(configured)")

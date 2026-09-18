@@ -166,7 +166,7 @@ func run(ctx context.Context) error {
 	sourceClients := newSourceCache()
 	// [planning] absent switches the planner off: no local source, and the
 	// plan endpoints stay unregistered.
-	planService, _, wireErr := wireLocalSource(settings, store, sourceClients)
+	planService, _, wireErr := wireLocalSource(settings, store, sourceClients, modelPace{model: rideModel})
 	if wireErr != nil {
 		return wireErr
 	}

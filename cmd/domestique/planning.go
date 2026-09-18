@@ -13,6 +13,7 @@ import (
 	"github.com/nobbs/domestique/internal/route"
 
 	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
 )
@@ -20,7 +21,9 @@ import (
 // newLocalSource builds the plan service, which is also the sync source for
 // [planning], when that section is configured. configured is false, with a
 // nil service and error, when it is absent.
-func newLocalSource(settings *config.Settings, store *sqlite.Store) (service *plan.Service, configured bool, err error) {
+func newLocalSource(
+	settings *config.Settings, store *sqlite.Store, pace plan.Pace,
+) (service *plan.Service, configured bool, err error) {
 	if !settings.Planning.Enabled() {
 		return nil, false, nil
 	}
@@ -29,7 +32,22 @@ func newLocalSource(settings *config.Settings, store *sqlite.Store) (service *pl
 		return nil, false, fmt.Errorf("creating BRouter client: %w", err)
 	}
 
-	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), true, nil
+	return plan.NewService(
+		planStore{store: store}, brouterRouter{client: client}, pace, time.Now, plan.RandomID,
+	), true, nil
+}
+
+// modelPace adapts the ride model to plan.Pace: the same forward model a
+// stage's moving time is predicted with, over whatever pair is in force now.
+type modelPace struct{ model *rideModelProvider }
+
+func (p modelPace) Predict(points []route.Point) (movingSeconds float64, cumulative []float64, ok bool) {
+	result, ok := ridemodel.Predict(points, p.model.pair())
+	if !ok {
+		return 0, nil, false
+	}
+
+	return result.MovingSeconds, result.CumulativeSeconds, true
 }
 
 // newPlaceNamer builds the geocoder the planner names waypoints with, when
@@ -104,9 +122,9 @@ func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, pro
 // wire it into the HTTP surface's plan endpoints. configured is false, with
 // a nil service, when the section is absent.
 func wireLocalSource(
-	settings *config.Settings, store *sqlite.Store, cache *sourceCache,
+	settings *config.Settings, store *sqlite.Store, cache *sourceCache, pace plan.Pace,
 ) (service *plan.Service, configured bool, err error) {
-	service, configured, err = newLocalSource(settings, store)
+	service, configured, err = newLocalSource(settings, store, pace)
 	if err != nil {
 		return nil, false, err
 	}

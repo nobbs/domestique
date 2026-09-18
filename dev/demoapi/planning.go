@@ -8,6 +8,7 @@ import (
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
@@ -62,7 +63,22 @@ func newDemoPlanService(store *sqlite.Store) (*plan.Service, error) {
 		return nil, fmt.Errorf("creating demo BRouter client: %w", err)
 	}
 
-	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), nil
+	return plan.NewService(
+		planStore{store: store}, brouterRouter{client: client}, demoPace{}, time.Now, plan.RandomID,
+	), nil
+}
+
+// demoPace predicts the demo's plans with the built-in coefficient pair: the
+// demo calibrates nothing, so there is no stored pair to read.
+type demoPace struct{}
+
+func (demoPace) Predict(points []route.Point) (movingSeconds float64, cumulative []float64, ok bool) {
+	result, ok := ridemodel.Predict(points, ridemodel.Default())
+	if !ok {
+		return 0, nil, false
+	}
+
+	return result.MovingSeconds, result.CumulativeSeconds, true
 }
 
 // brouterRouter adapts *brouter.Client to plan.Router: the brouter package
