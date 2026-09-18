@@ -108,3 +108,22 @@ func TestDemoSurfaceClassifierProvidesDeterministicBands(t *testing.T) {
 	assert.Equal(t, "paving", first.Ranges[3].Kind)
 	assert.Greater(t, first.MatchedMetres, 0.0)
 }
+
+// A demo plan keeps its cue switch, turns, straight legs and avoided areas through the store.
+func TestPlanRecordKeepsRoutingOptions(t *testing.T) {
+	stored := plan.Plan{
+		ID: 1, Name: "Loop", Profile: plan.Gravel, Cues: true,
+		Waypoints: []plan.Waypoint{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1, Straight: true}},
+		Avoid:     []plan.Avoid{{Longitude: 8.05, Latitude: 49.05, RadiusMetres: 250}},
+		Turns:     []route.Cue{{Turn: route.TurnLeft, Metres: 120}},
+	}
+
+	record := planRecordOf(&stored)
+	read, err := planOf(&record)
+
+	require.NoError(t, err)
+	assert.Equal(t, stored.Waypoints, read.Waypoints)
+	assert.Equal(t, stored.Avoid, read.Avoid)
+	assert.Equal(t, stored.Turns, read.Turns)
+	assert.True(t, read.Cues)
+}

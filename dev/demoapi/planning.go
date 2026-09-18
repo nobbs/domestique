@@ -188,8 +188,16 @@ func (s planStore) DeletePlan(ctx context.Context, id, expectedVersion int64) (b
 
 func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 	waypoints := make([][2]float64, len(p.Waypoints))
+	var straight []int
 	for index, waypoint := range p.Waypoints {
 		waypoints[index] = [2]float64{waypoint.Longitude, waypoint.Latitude}
+		if waypoint.Straight {
+			straight = append(straight, index)
+		}
+	}
+	var avoid [][3]float64
+	for _, area := range p.Avoid {
+		avoid = append(avoid, [3]float64{area.Longitude, area.Latitude, area.RadiusMetres})
 	}
 
 	pushing := make([][2]float64, len(p.Pushing))
@@ -199,7 +207,7 @@ func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 
 	return sqlite.PlanRecord{
 		ID: p.ID, Name: p.Name, Profile: string(p.Profile), Waypoints: waypoints, Geometry: p.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: p.Turns, Cues: p.Cues, Straight: straight, Avoid: avoid,
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, Published: p.Published,
 		Version: p.Version, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
@@ -214,6 +222,15 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 	for index, coordinate := range record.Waypoints {
 		waypoints[index] = plan.Waypoint{Longitude: coordinate[0], Latitude: coordinate[1]}
 	}
+	for _, index := range record.Straight {
+		if index > 0 && index < len(waypoints) {
+			waypoints[index].Straight = true
+		}
+	}
+	var avoid []plan.Avoid
+	for _, area := range record.Avoid {
+		avoid = append(avoid, plan.Avoid{Longitude: area[0], Latitude: area[1], RadiusMetres: area[2]})
+	}
 
 	pushing := make([]plan.Window, len(record.Pushing))
 	for index, pair := range record.Pushing {
@@ -222,7 +239,7 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 
 	return plan.Plan{
 		ID: record.ID, Name: record.Name, Profile: profile, Waypoints: waypoints, Geometry: record.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: record.Turns, Cues: record.Cues, Avoid: avoid,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Published: record.Published,
 		Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}, nil
