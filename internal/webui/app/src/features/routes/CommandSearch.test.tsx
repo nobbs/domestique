@@ -167,6 +167,19 @@ describe("CommandSearch", () => {
     expect(screen.queryByRole("searchbox")).toBeNull();
   });
 
+  it("leaves Enter on the panel's own buttons to them", async () => {
+    const onOpen = vi.fn();
+    render(<Harness onOpen={onOpen} />);
+    await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
+
+    const filters = screen.getByRole("button", { name: "Filters" });
+    filters.focus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(filters).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("opens the route a row is clicked on", async () => {
     const onOpen = vi.fn();
     render(<Harness onOpen={onOpen} />);

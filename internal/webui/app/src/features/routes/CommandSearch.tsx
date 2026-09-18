@@ -183,6 +183,11 @@ export function CommandSearch({
     onOpenChange(false);
   };
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // The list answers keys typed into the query; the panel's buttons and
+    // sliders keep their own.
+    if (event.target !== field.current) {
+      return;
+    }
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setActive((index) => Math.min(index + 1, shown.length - 1));
