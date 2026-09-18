@@ -74,7 +74,7 @@ export function MapControls({
          */}
         <ButtonGroup
           orientation="vertical"
-          className="map-zoom divide-y divide-[var(--rule)] rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-t-none [&>*:not(:last-child)]:rounded-b-none"
+          className="map-zoom divide-y divide-[var(--rule)] rounded-[9px] bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-t-none [&>*:not(:last-child)]:rounded-b-none"
         >
           <Button
             variant="ghost"

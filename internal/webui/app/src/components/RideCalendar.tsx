@@ -61,10 +61,13 @@ export function RideCalendar({
   const length = new Date(Date.UTC(cursor.year, cursor.month + 1, 0)).getUTCDate();
   const lead = (first.getUTCDay() + 6) % 7;
   const title = first.toLocaleString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
-  const toToday = () => {
-    const today = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format();
-    setCursor({ year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) - 1 });
-  };
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format();
+  const thisMonth = { year: Number(today.slice(0, 4)), month: Number(today.slice(5, 7)) - 1 };
+  // A month past this one holds nothing ridden, so the calendar stops here.
+  const atThisMonth =
+    cursor.year > thisMonth.year ||
+    (cursor.year === thisMonth.year && cursor.month >= thisMonth.month);
+  const toToday = () => setCursor(thisMonth);
   const step = (by: number) =>
     setCursor(({ year, month }) => {
       const next = new Date(Date.UTC(year, month + by, 1));
@@ -89,7 +92,13 @@ export function RideCalendar({
         <button type="button" aria-label="Previous month" className={NAV} onClick={() => step(-1)}>
           <IconChevronLeft size={16} aria-hidden="true" />
         </button>
-        <button type="button" aria-label="Next month" className={NAV} onClick={() => step(1)}>
+        <button
+          type="button"
+          aria-label="Next month"
+          className={`${NAV} disabled:pointer-events-none disabled:opacity-30`}
+          disabled={atThisMonth}
+          onClick={() => step(1)}
+        >
           <IconChevronRight size={16} aria-hidden="true" />
         </button>
       </div>
@@ -107,9 +116,10 @@ export function RideCalendar({
           const date = index + 1;
           const key = `${cursor.year}-${pad(cursor.month + 1)}-${pad(date)}`;
           const ground = days.get(key);
+          const future = key > today;
           const cell = {
-            "aria-label": `${date} ${title}: ${ground ? `ridden, ${ground}` : "no ride"}`,
-            className: `grid aspect-square place-items-center rounded-[9px] tabular-nums ${ground ? "font-semibold text-white" : "bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)] text-[var(--ink-2)]"}`,
+            "aria-label": `${date} ${title}: ${ground ? `ridden, ${ground}` : future ? "still to come" : "no ride"}`,
+            className: `grid aspect-square place-items-center rounded-[9px] tabular-nums ${ground ? "font-semibold text-white" : "bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)] text-[var(--ink-2)]"} ${future ? "opacity-35" : ""}`,
             style: ground ? { background: PAINT[ground] } : undefined,
           };
           return ground && onDay && listed?.has(key) ? (

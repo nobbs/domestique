@@ -55,4 +55,23 @@ describe("RideCalendar", () => {
 
     expect(screen.getByRole("heading", { name: "September 2026" })).toBeInTheDocument();
   });
+
+  it("fades the days still to come and goes no further than this month", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-17T12:00:00Z"));
+    render(<RideCalendar rides={[ride("2026-08-10T08:00:00Z", false)]} zone="Europe/Berlin" />);
+
+    const next = screen.getByRole("button", { name: "Next month" });
+    expect(next).toBeEnabled();
+    await userEvent.click(next);
+
+    expect(screen.getByRole("heading", { name: "September 2026" })).toBeInTheDocument();
+    expect(next).toBeDisabled();
+    expect(screen.getByRole("img", { name: "17 September 2026: no ride" })).not.toHaveClass(
+      "opacity-35",
+    );
+    expect(screen.getByRole("img", { name: "18 September 2026: still to come" })).toHaveClass(
+      "opacity-35",
+    );
+  });
 });

@@ -106,14 +106,7 @@ export function FitnessPage() {
     <PageShell>
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5">
         <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="font-semibold text-2xl tracking-tight">Fitness</h1>
-            {today ? (
-              <p className="text-[var(--ink-2)] text-sm">
-                As of {formatCalendarDay(today.date)}, on the {scaleInfo?.name} scale
-              </p>
-            ) : null}
-          </div>
+          <h1 className="font-semibold text-2xl tracking-tight">Fitness</h1>
           {readings.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <Segmented
