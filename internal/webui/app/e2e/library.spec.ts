@@ -29,9 +29,9 @@ const LOOP = {
   title: "Synthetic Kaiserstuhl Loop",
 };
 
-/** Result rows are buttons named by their decorative route shape and route title. */
+/** Result rows are options named by their decorative route shape and route title. */
 function results(page: Page) {
-  return page.getByRole("button", { name: /^Shape of Synthetic/ });
+  return page.getByRole("option", { name: /^Shape of Synthetic/ });
 }
 
 test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
@@ -137,36 +137,33 @@ test("nothing a reader types leaves the page", async ({ offlinePage: page }) => 
   expect(asked.filter((url) => url.toLowerCase().includes("kaiserstuhl"))).toEqual([]);
 });
 
-test("picking a route lifts it out of the library and opens its card", async ({
+test("narrowing the search to one route settles the camera on it", async ({
   offlinePage: page,
 }) => {
   await openLibrary(page);
   const before = await settleMap(page);
 
   await (await openSearch(page)).fill("kaiserstuhl");
-  await page.getByRole("button", { name: new RegExp(LOOP.title) }).click();
 
-  // The row is replaced by the card, so the column never says the same route
-  // twice.
-  await expect(page.getByRole("heading", { name: LOOP.title })).toBeVisible();
-  await expect(page.getByRole("button", { name: new RegExp(LOOP.title) })).toHaveCount(0);
-  await expect(page.getByTestId("gradient-mix").locator("span").first()).toBeVisible();
+  await expect(page.getByRole("option", { name: new RegExp(LOOP.title) })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 
-  // The camera followed the selection and the accent went on: comparing the map
-  // against itself within the run is a visual assertion with no stored image to
-  // go stale.
+  // The camera follows the search's own active row, with no row to click:
+  // comparing the map against itself within the run is a visual assertion
+  // with no stored image to go stale.
   const after = await settleMap(page);
   expect(after.equals(before)).toBe(false);
 });
 
-test("the card is the way into a route, and the route takes the same column", async ({
+test("the search is the way into a route, and the route takes the same column", async ({
   offlinePage: page,
 }) => {
   await openLibrary(page);
   await (await openSearch(page)).fill("kaiserstuhl");
-  await page.getByRole("button", { name: new RegExp(LOOP.title) }).click();
 
-  await page.getByRole("button", { name: "Open route" }).click();
+  await page.getByRole("option", { name: new RegExp(LOOP.title) }).click();
 
   // The route is a panel over the same map, not a page of its own — but it is in
   // the address, so it is still a view that can be sent to someone else.
@@ -246,72 +243,24 @@ async function pointAtALine(page: Page): Promise<{ x: number; y: number }> {
   throw new Error("expected a route somewhere on the map");
 }
 
-/*
- * The map is the library, so a line on it is the route itself — and picking one
- * off the ground takes the same two steps the column does. The first click says
- * which route was hit, and the second is the map's own way of saying yes.
- *
- * The two clicks cannot be at the same point: the first one flies the camera to
- * what it picked, so the line has to be found again afterwards. What is found
- * is not guaranteed to be the same line — routes in this library overlap, and a
- * scan returns whichever one is under the first point it tries — and landing on
- * a neighbour is a first click on that neighbour rather than a second on this
- * route. That is the map behaving correctly, so the loop below follows the
- * selection wherever it goes and asks for the second click against whatever the
- * panel names at the time, instead of assuming the scan came back to the same
- * route.
- */
-/*
- * Longer than the default, because this test's own bounds are longer than it.
- * `pointAtALine` hunts for a line by walking a grid of 4 rows by 39 steps,
- * pausing 60ms at each to ask the canvas what is under the pointer — up to 9.4s
- * to find one. The search below runs it once, then up to five more times with a
- * `settleMap` (up to 5s) before each, which puts the bounded worst case around
- * 81s. It usually lands in a fraction of that, which is why 60s held for so
- * long, but a run that has to hunt was always going to exceed it. A slower
- * machine only decides how often that happens.
- */
-test("pointing at a line on the map picks that route out, twice to open it", async ({
+// The map is the library, so a line on it is the route itself: pointing at one
+// opens the search with that route active, whichever route the scan actually
+// hit — routes in this library overlap, so this asks for whatever the panel
+// settled on rather than a route named up front.
+test("pointing at a line on the map opens the search on that route", async ({
   offlinePage: page,
 }) => {
-  test.setTimeout(120_000);
   await openLibrary(page);
 
-  /** What the card in the column is currently about. */
-  const picked = () => page.getByRole("heading", { level: 2 }).innerText();
+  const point = await pointAtALine(page);
+  await page.mouse.click(point.x, point.y);
 
-  const first = await pointAtALine(page);
-  await page.mouse.click(first.x, first.y);
+  const active = page.getByRole("option", { selected: true });
+  await expect(active).toBeVisible();
 
-  // Bounded: each pass either opens the route or moves the selection to the one
-  // it actually hit, and a library of seven routes cannot hand out new
-  // neighbours for ever.
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    await settleMap(page);
-    const next = await pointAtALine(page);
-    await page.mouse.click(next.x, next.y);
-    // `isVisible` does not wait, and an opened route puts the library away: a
-    // pass that read too early would hunt a line that is no longer there.
-    await settleMap(page);
+  await active.click();
 
-    // Re-read rather than trusting the title from before the click: the camera
-    // reframes around the panels as they come and go, so the line under the
-    // pointer can be a different one by the time the click lands. What is being
-    // proved is that a second click on a line opens *that* line's route, and
-    // the heading on show is what says which route that is.
-    const opened = page.getByRole("region", { name: await picked() });
-    if (await opened.isVisible()) {
-      await expect(opened).toBeVisible();
-      await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
-
-      return;
-    }
-
-    // Not opened, so that click picked a different line out. It is now the
-    // selected route, and the next pass is its second click.
-  }
-
-  throw new Error("expected two clicks on one line to open it");
+  await expect(page.getByRole("img", { name: /^Elevation profile of / })).toBeVisible();
 });
 
 test("the bar names the session the gate admitted", async ({ offlinePage: page }) => {

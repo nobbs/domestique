@@ -34,7 +34,6 @@ import type {
 } from "../../api/types";
 import { routeKey } from "../../api/types";
 import type { ThemeChoice } from "../../lib/theme";
-import { focusThumb } from "../../test/filterPanel";
 
 interface Drawing {
   keys: string[];
@@ -350,11 +349,14 @@ describe("AtlasPage", () => {
     expect(heading).toHaveClass("visually-hidden");
   });
 
-  it("keeps the library size in the expanded search prompt", async () => {
+  it("shows the library size on the trigger, and the fixed prompt once opened", async () => {
     renderPage();
 
+    expect(screen.getByRole("button", { name: "Search the route library" })).toHaveTextContent(
+      "Search 3 routes",
+    );
     const search = await searchBox();
-    expect(search).toHaveAttribute("placeholder", "Search 3 routes");
+    expect(search).toHaveAttribute("placeholder", "Route name or place");
     await userEvent.type(search, "rhine");
 
     expect(search).toHaveValue("rhine");
@@ -366,8 +368,8 @@ describe("AtlasPage", () => {
     renderPage();
     await userEvent.type(await searchBox(), "kaiserstuhl");
 
-    expect(screen.getByRole("button", { name: /Kaiserstuhl Loop/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Rhine Traverse/ })).toBeNull();
+    expect(screen.getByRole("option", { name: /Kaiserstuhl Loop/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Rhine Traverse/ })).toBeNull();
     expect(lastDrawing().keys).toEqual(["veloplanner/1/1", "veloplanner/1/2", "veloplanner/2/1"]);
   });
 
@@ -375,61 +377,26 @@ describe("AtlasPage", () => {
   // query having to be typed, and the map keeps drawing the whole library.
   it("narrows the column by a slider bound read off the listing", async () => {
     renderPage();
-    await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
+    await searchBox();
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
     // The library ascends 100, 200 and 100 m, so the track runs to 200 m by 10 m.
-    await focusThumb("Ascent min");
+    screen.getByRole("slider", { name: "Ascent min" }).focus();
     await userEvent.keyboard("{ArrowRight}".repeat(11));
 
-    expect(await screen.findByRole("button", { name: /Forest ramps/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Valley floor/ })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Kaiserstuhl Loop/ })).toBeNull();
+    expect(screen.getByRole("option", { name: /Forest ramps/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Valley floor/ })).toBeNull();
+    expect(screen.queryByRole("option", { name: /Kaiserstuhl Loop/ })).toBeNull();
     expect(lastDrawing().keys).toEqual(["veloplanner/1/1", "veloplanner/1/2", "veloplanner/2/1"]);
   });
 
   it("says so when a filter leaves nothing", async () => {
     renderPage();
-    await userEvent.click(screen.getByRole("button", { name: "Show the library filters" }));
-    await focusThumb("Ascent max");
+    await searchBox();
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+    screen.getByRole("slider", { name: "Ascent max" }).focus();
     await userEvent.keyboard("{Home}");
 
-    expect(await screen.findByText("Nothing here matches these filters.")).toBeInTheDocument();
-  });
-
-  /*
-   * A route picked out of the column is a route the reader now wants to see the
-   * shape of, so the camera follows the selection rather than staying on the
-   * library.
-   */
-  it("picks a route out on the map and flies to it", async () => {
-    renderPage();
-    await userEvent.type(await searchBox(), "kaiserstuhl");
-    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
-
-    expect(lastDrawing().pickedKey).toBe("veloplanner/2/1");
-    expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
-    expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
-  });
-
-  // A search that no longer holds the open route would leave its card expanded
-  // in a column it is not in.
-  it("closes the open route when the search moves on", async () => {
-    renderPage();
-    await userEvent.type(await searchBox(), "kaiserstuhl");
-    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
-    await userEvent.clear(await searchBox());
-
-    expect(lastDrawing().pickedKey).toBeNull();
-    expect(screen.queryByRole("button", { name: "Open route" })).toBeNull();
-  });
-
-  // One timestamp for the whole library: the service reads it in a single pass,
-  // so a per-route time would be the same time repeated.
-  it("says when the library was read, from the read half's own last run", async () => {
-    renderPage(LIBRARY, { readAt: "2026-08-18T06:30:00Z" });
-    await userEvent.type(await searchBox(), "kaiserstuhl");
-    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
-
-    expect(screen.getByText(/read /)).toBeInTheDocument();
+    expect(screen.getByText("Nothing here matches these filters.")).toBeInTheDocument();
   });
 
   /*
@@ -468,7 +435,7 @@ describe("AtlasPage", () => {
   it("frames the selected route even when routes above it are still in flight", async () => {
     renderPage(LIBRARY, { geometryFor: [LIBRARY[1] as Route, LIBRARY[2] as Route] });
     await userEvent.type(await searchBox(), "kaiserstuhl");
-    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
+    await userEvent.click(screen.getByRole("option", { name: /Kaiserstuhl Loop/ }));
 
     expect(lastDrawing().pickedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.4, 49, 8.5, 49.1]);
@@ -476,47 +443,52 @@ describe("AtlasPage", () => {
 
   /*
    * The map is the library, so a line on it is the route itself: pointing at
-   * where a ride goes asks about that ride. It is the same two steps the column
-   * has — the card first, the route second — because the lines cross and the
-   * reader is panning across them.
+   * where a ride goes asks about that ride, by opening the search over it
+   * with that route already active — the lines cross and the reader is
+   * panning across them, so a map where one click opened the route outright
+   * would be a minefield.
    */
-  it("shows the card of a route pointed at on the map", async () => {
+  it("opens the search with the route pointed at on the map already active", async () => {
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
 
     expect(lastDrawing().pickedKey).toBe("veloplanner/2/1");
     expect(lastDrawing().bounds).toEqual([8.8, 49, 8.9, 49.1]);
-    expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
     expect(screen.getByRole("searchbox")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Kaiserstuhl Loop/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
-  // The second step, on the same line: the card said which route was hit, and
-  // pointing at it again is the map's own way of saying yes.
-  it("opens a route pointed at a second time", async () => {
+  // The search is what confirms the pick: clicking the active row opens it.
+  it("opens the route pointed at once the search confirms it", async () => {
     renderPage();
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
 
     expect(screen.queryByRole("region", { name: "Kaiserstuhl Loop" })).toBeNull();
 
-    await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/2/1" }));
+    await userEvent.click(screen.getByRole("option", { name: /Kaiserstuhl Loop/ }));
 
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
     expect(lastDrawing().overlaid).toBe(true);
   });
 
   /*
-   * The search is one way to a route and the map is another. A card that stayed
-   * hidden behind a query it does not match would be a selection the reader can
-   * see on the ground and nowhere else.
+   * The search is one way to a route and the map is another. A route that
+   * stayed hidden behind a query it does not match would be a selection the
+   * reader can see on the ground and nowhere else.
    */
+  // The dialog is modal, so the map is only reachable once it is closed again —
+  // the query it leaves behind is what a stale search looks like to a pick.
   it("clears a search the route pointed at is not in", async () => {
     renderPage();
     await userEvent.type(await searchBox(), "kaiserstuhl");
+    await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("");
     expect(lastDrawing().pickedKey).toBe("veloplanner/1/2");
-    expect(screen.getByRole("button", { name: "Open route" })).toBeInTheDocument();
   });
 
   // A search the route is already in is left alone: it is how the reader got
@@ -524,6 +496,7 @@ describe("AtlasPage", () => {
   it("keeps a search the route pointed at is in", async () => {
     renderPage();
     await userEvent.type(await searchBox(), "rhine");
+    await userEvent.keyboard("{Escape}");
     await userEvent.click(screen.getByRole("button", { name: "point at veloplanner/1/2" }));
 
     expect(screen.getByRole("searchbox")).toHaveValue("rhine");
@@ -623,8 +596,7 @@ describe("AtlasPage", () => {
   it("swaps the search for the route in the same column", async () => {
     renderPage();
     await userEvent.type(await searchBox(), "kaiserstuhl");
-    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Open route" }));
+    await userEvent.click(screen.getByRole("option", { name: /Kaiserstuhl Loop/ }));
 
     expect(screen.getByRole("region", { name: "Kaiserstuhl Loop" })).toBeInTheDocument();
     expect(screen.queryByRole("searchbox")).toBeNull();
@@ -727,18 +699,18 @@ describe("AtlasPage", () => {
     expect(screen.queryByText("New")).toBeNull();
   });
 
-  // Opening it by pressing "Open route" is the same trigger as opening it by
-  // address, so it must leave the same mark behind. The search query outlives
-  // the round trip, so it is not retyped on the way back.
+  // Opening it from the search is the same trigger as opening it by address,
+  // so it must leave the same mark behind. The search query outlives the round
+  // trip, so it is not retyped on the way back.
   it("stops marking a route new once it is opened by hand", async () => {
     stubStorage();
     renderPage();
     await userEvent.type(await searchBox(), "kaiserstuhl");
-    await userEvent.click(screen.getByRole("button", { name: /Kaiserstuhl Loop/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Open route" }));
+    await userEvent.click(screen.getByRole("option", { name: /Kaiserstuhl Loop/ }));
     await userEvent.click(
       screen.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
     );
+    await searchBox();
 
     expect(screen.queryByText("New")).toBeNull();
   });

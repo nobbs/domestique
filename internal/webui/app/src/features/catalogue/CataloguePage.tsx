@@ -300,9 +300,9 @@ function LedgerRow({
 /**
  * One route, as a card, where a ledger row will not fit.
  *
- * Not `ResultRow`: that row's verb is "select", which is a step this page does
- * not have, and its glyph column would stand empty without the geometry this
- * page does not fetch.
+ * Not the atlas's own search row: that row's verb is "select", which is a step
+ * this page does not have, and its glyph column would stand empty without the
+ * geometry this page does not fetch.
  */
 function CatalogueCard({
   route,

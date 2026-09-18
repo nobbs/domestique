@@ -12,7 +12,7 @@
  * that is small enough that covering the map with it permanently is a bad
  * trade. So the panel rests as a pill and unfolds on request.
  *
- * The pill is the mechanism `SearchPanel` already uses: `data-compact-workspace`
+ * The pill is the mechanism `CommandSearch`'s own trigger uses too: `data-compact-workspace`
  * makes the shell drop its own background, padding, shadow and ring, so a panel
  * that brings its own chrome gets a floating pill for free — and
  * `useOverlayInsets` keeps framing routes around whatever size it currently is.

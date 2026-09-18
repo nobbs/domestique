@@ -286,7 +286,7 @@ export async function openWorkspace(page: Page): Promise<void> {
   }
 }
 
-/** Opens the library search and returns the field it puts under the control. */
+/** Opens the library's command search and returns the dialog's own search field. */
 export async function openSearch(page: Page): Promise<Locator> {
   const field = page.getByRole("searchbox", { name: "Search the route library" });
   await openWorkspace(page);
