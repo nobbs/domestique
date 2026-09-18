@@ -199,7 +199,7 @@ interface RidesBucket extends VolumeBucket {
 }
 
 /** One week, with its rides: the shape the activities index reads, and reads only. */
-export type RideWeek = Omit<RidesBucket, "rides"> & { rides: readonly Activity[] };
+export type RidePeriod = Omit<RidesBucket, "rides"> & { rides: readonly Activity[] };
 
 /**
  * One bucket per period from the earliest activity, or from `from` when
@@ -267,9 +267,14 @@ export function bucketActivities(
   );
 }
 
-/** Every week from the earliest activity to `now`, each with its own rides attached. Volume's totals-only buckets skip the attaching. */
-export function weeksWithRides(activities: Activity[], zone: string, now = new Date()): RideWeek[] {
-  return bucketsWithRides(activities, "week", zone, now, true);
+/** Every week or month from the earliest activity to `now`, each with its own rides attached. Volume's totals-only buckets skip the attaching. */
+export function ridesByPeriod(
+  activities: Activity[],
+  granularity: Granularity,
+  zone: string,
+  now = new Date(),
+): RidePeriod[] {
+  return bucketsWithRides(activities, granularity, zone, now, true);
 }
 
 /** Which weekday `activity` falls on in `zone`, Monday 0 through Sunday 6. */

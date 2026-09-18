@@ -150,12 +150,7 @@ func (h *Handler) adminPage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)
 }
 
-// GetVolumePage serves the application document for the recorded-volume view.
-func (h *Handler) GetVolumePage(writer http.ResponseWriter, request *http.Request) {
-	h.index(writer, request)
-}
-
-// GetActivitiesPage serves the application document for the activity list.
+// GetActivitiesPage serves the application document for the activities overview.
 func (h *Handler) GetActivitiesPage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)
 }

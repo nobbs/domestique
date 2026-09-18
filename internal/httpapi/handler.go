@@ -395,7 +395,6 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /routes/{provider}/{routeId}/{stage}", h.GetRoutePage)
 	h.mux.HandleFunc("GET /routes/{routeId}/{stage}", h.RedirectLegacyRoutePage)
 	h.mux.HandleFunc("GET /catalogue", h.GetCataloguePage)
-	h.mux.HandleFunc("GET /volume", h.GetVolumePage)
 	h.mux.HandleFunc("GET /activities", h.GetActivitiesPage)
 	h.mux.HandleFunc("GET /activities/{activityId}", h.GetActivityPage)
 	h.mux.HandleFunc("GET /account", h.GetAccountPage)

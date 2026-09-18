@@ -206,7 +206,6 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/account/profile",
 		"/admin",
 		"/admin/tasks",
-		"/volume",
 		"/activities",
 		"/activities/1",
 		"/unknown",
@@ -316,7 +315,6 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/routes/veloplanner/1/1",
 		"/routes/1/1",
 		"/catalogue",
-		"/volume",
 		"/activities",
 		"/activities/1",
 		"/account",
@@ -1130,8 +1128,8 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
 	for _, path := range []string{
-		"/", "/routes/veloplanner/12/1", "/catalogue", "/account", "/account/sync", "/volume",
-		"/activities", "/activities/1",
+		"/", "/routes/veloplanner/12/1", "/catalogue", "/account", "/account/sync",
+		"/activities", "/activities/rides", "/activities/1",
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -1255,7 +1253,7 @@ func TestAdminDocumentsAreServedToAnAdmin(t *testing.T) {
 // The pages Account replaced are gone, not redirected.
 func TestRemovedSyncAndSettingsDocumentsAnswerNotFound(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{"/sync", "/settings", "/settings/tasks"} {
+	for _, path := range []string{"/sync", "/settings", "/settings/tasks", "/volume"} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))

@@ -15,6 +15,9 @@
   --base: #f4f3f0;
   --panel: #ffffff;
   --rule: #e7e5e1;
+  /* The dark tile a heading's glyph sits in, lit from above, and the glyph on it. */
+  --mark: radial-gradient(circle at 50% 35%, #6e6e6e, #3d3d3d 85%);
+  --mark-ink: #ffffff;
   --ink: #1a1a1a;
   --ink-2: #6e6d6a;
   --accent: #236fc7;
@@ -87,6 +90,8 @@
 }
 
 :root[data-theme="dark"] {
+  --mark: radial-gradient(circle at 50% 35%, #f4f2ec, #c9c5bc 85%);
+  --mark-ink: #262522;
   --ground: #151412;
   --base: #1c1b19;
   --panel: #262522;
@@ -162,6 +167,8 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
+    --mark: radial-gradient(circle at 50% 35%, #f4f2ec, #c9c5bc 85%);
+    --mark-ink: #262522;
     --ground: #151412;
     --base: #1c1b19;
     --panel: #262522;

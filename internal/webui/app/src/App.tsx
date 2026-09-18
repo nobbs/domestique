@@ -12,7 +12,6 @@ import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { FitnessPage } from "./features/fitness/FitnessPage";
 import { PlanPage } from "./features/plan/PlanPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
-import { VolumePage } from "./features/volume/VolumePage";
 import { useEffectiveAdmin } from "./lib/identity";
 import { useThemeChoice } from "./lib/theme";
 
@@ -119,9 +118,12 @@ export function App() {
       {/* The one page reached without a session. The service serves this same
           document there, so the sign-in form is the application's own. */}
       <Route path="auth/login" element={<SignInPage />} />
-      <Route path="volume" element={<VolumePage />} />
       <Route path="fitness" element={<FitnessPage />} />
-      <Route path="activities" element={<ActivitiesPage />} />
+      {/* One element for both views, so the range and ground chosen survive a switch. */}
+      <Route path="activities" element={<ActivitiesPage />}>
+        <Route index />
+        <Route path="rides" />
+      </Route>
       <Route path="activities/:activityId" element={<ActivityPage />} />
       <Route path="account" element={<AccountPage />} />
       <Route path="account/:section" element={<AccountPage />} />

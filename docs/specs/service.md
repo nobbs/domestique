@@ -1011,12 +1011,13 @@ The browser UI is served from the same origin and the same listener: an
 application entry document and immutable hashed static assets. `/auth/login`
 is the one unauthenticated browser entry route, and serves that same entry
 document: the sign-in form is the application's, and this service renders no
-HTML of its own. `/`, `/catalogue`, `/volume`, `/activities` and
+HTML of its own. `/`, `/catalogue`, `/activities` (its rides at
+`/activities/rides`, one ride at `/activities/{id}`) and
 `/account` with any tab under it (`/account/{section}`) require a session, and
 `/admin` with any tab under it (`/admin/{section}`, tasks among them) requires
 an admin session: any other session is answered not found rather than `403`,
 since a document is not one of the contract's operations. The former `/sync`,
-`/settings` and `/settings/tasks` documents are gone and answer not found. The catalogue reads the same inventory listing `/` does and asks the
+`/settings`, `/settings/tasks` and `/volume` documents are gone and answer not found. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
 ordering, searching and narrowing it offers all happen in the browser. Account
 holds this rider's sync status and history, their own Wahoo and Zwift

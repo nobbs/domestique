@@ -39,7 +39,7 @@ export function PanelMark({ children }: { children: ReactNode }) {
   return (
     <span
       aria-hidden="true"
-      className="grid size-9 shrink-0 place-items-center rounded-md bg-[radial-gradient(circle_at_50%_35%,#6e6e6e,#3d3d3d_85%)] text-[var(--panel)]"
+      className="grid size-9 shrink-0 place-items-center rounded-md [background:var(--mark)] text-[var(--mark-ink)]"
     >
       {children}
     </span>

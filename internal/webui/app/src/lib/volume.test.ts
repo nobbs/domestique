@@ -3,13 +3,13 @@ import type { Activity } from "../api/types";
 import { LOCALE } from "./format";
 import {
   bucketActivities,
+  ridesByPeriod,
   startOfYear,
   volumeRecords,
   volumeTotals,
   weekdayIndex,
   weekdayTotals,
   weekRangeLabel,
-  weeksWithRides,
   yearToDate,
 } from "./volume";
 
@@ -169,20 +169,28 @@ it("leaves an activity with an unreadable start out of the totals too", () => {
   expect(totals.distanceMetres).toBe(30_000);
 });
 
-describe("weeksWithRides", () => {
+describe("ridesByPeriod", () => {
   it("attaches each activity to its own week, in the order given", () => {
     const first = activity(new Date(2026, 8, 5, 8));
     const second = activity(new Date(2026, 8, 5, 18));
-    const weeks = weeksWithRides([first, second], ZONE, NOW);
+    const weeks = ridesByPeriod([first, second], "week", ZONE, NOW);
 
     expect(weeks).toHaveLength(1);
     expect(weeks[0]?.rides).toEqual([first, second]);
   });
 
   it("leaves a rideless week with an empty rides array", () => {
-    const weeks = weeksWithRides([activity(new Date(2026, 7, 17, 8))], ZONE, NOW);
+    const weeks = ridesByPeriod([activity(new Date(2026, 7, 17, 8))], "week", ZONE, NOW);
 
     expect(weeks.map((week) => week.rides.length)).toEqual([0, 0, 1]);
+  });
+
+  it("attaches each activity to its own month, newest month first", () => {
+    const august = activity(new Date(2026, 7, 17, 8));
+    const september = activity(new Date(2026, 8, 2, 8));
+    const months = ridesByPeriod([august, september], "month", ZONE, NOW);
+
+    expect(months.map((month) => month.rides)).toEqual([[september], [august]]);
   });
 });
 

@@ -61,16 +61,20 @@ export interface SegmentedTrackProps {
   /** The `data-segment` of the chosen segment. */
   active: string;
   orientation?: Orientation;
+  /** Paints the thumb instead of the panel white: a colour or a gradient. */
+  thumbFill?: string | undefined;
   className?: string | undefined;
   children: ReactNode;
 }
 
+const FILLED_LABEL = { color: "white", textShadow: "0 1px 1px rgb(0 0 0 / 0.25)" };
 const PILL = "color-mix(in oklab, var(--ink-2) 28%, var(--panel))";
 const EASE = "duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none";
 
 export function SegmentedTrack({
   active,
   orientation = "horizontal",
+  thumbFill,
   className,
   children,
 }: SegmentedTrackProps) {
@@ -170,6 +174,7 @@ export function SegmentedTrack({
                     top: 0,
                     height: thumb.length,
                     transform: `translateY(${thumb.start}px)`,
+                    ...(thumbFill ? { background: thumbFill } : {}),
                   }
                 : {
                     top: INSET,
@@ -177,6 +182,7 @@ export function SegmentedTrack({
                     left: 0,
                     width: thumb.length,
                     transform: `translateX(${thumb.start}px)`,
+                    ...(thumbFill ? { background: thumbFill } : {}),
                   }
             }
           />
@@ -193,6 +199,8 @@ export interface SegmentedItem<K extends string> {
   /** A mark before the label. */
   icon?: ReactNode;
   disabled?: boolean;
+  /** The thumb's paint while this item is chosen; its label turns white over it. */
+  fill?: string;
 }
 
 export interface SegmentedProps<K extends string> {
@@ -215,7 +223,11 @@ export function Segmented<K extends string>({
   className,
 }: SegmentedProps<K>) {
   return (
-    <SegmentedTrack active={value} className={className}>
+    <SegmentedTrack
+      active={value}
+      thumbFill={items.find((item) => item.key === value)?.fill}
+      className={className}
+    >
       <div role="group" aria-label={label} className="contents">
         {items.map((item) => (
           <button
@@ -226,6 +238,7 @@ export function Segmented<K extends string>({
             disabled={item.disabled}
             onClick={() => onChange(item.key)}
             className={segmentClass(size)}
+            style={item.fill && item.key === value ? FILLED_LABEL : undefined}
           >
             {item.icon}
             <SegmentLabel>{item.label}</SegmentLabel>

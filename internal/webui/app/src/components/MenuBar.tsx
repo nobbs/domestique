@@ -61,7 +61,6 @@ const PLAN_DESTINATION: Destination = { to: "/plan", label: "Plan", end: false }
 
 const REST_DESTINATIONS: readonly Destination[] = [
   { to: "/catalogue", label: "Catalogue", end: false },
-  { to: "/volume", label: "Volume", end: false },
   { to: "/fitness", label: "Fitness", end: false },
   { to: "/activities", label: "Activities", end: false },
 ];
