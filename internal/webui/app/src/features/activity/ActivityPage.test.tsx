@@ -567,7 +567,7 @@ describe("one ride's page", () => {
   it("says how much of the route a partial lap covered", () => {
     show(track(), RIDE.id, undefined, matchedRide(0.94), [], [LIBRARY_ROUTE]);
 
-    expect(screen.getByText("· 94% of the route")).toBeInTheDocument();
+    expect(screen.getByText("94% of the route")).toBeInTheDocument();
   });
 
   it("names no route, and asks for no library, for a ride matched to none", () => {

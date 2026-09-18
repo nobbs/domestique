@@ -9,7 +9,9 @@
  * test for dropping "By the kilometre" in this panel's place.
  */
 
+import { IconStairs } from "@tabler/icons-react";
 import type { RouteClimb, RouteClimbAttempt } from "../../api/types";
+import { PanelHeading } from "../../components/PanelHeading";
 import { formatClimbTime, formatDistance, formatGradient } from "../../lib/format";
 
 /** Measured power only if the bicycle carried a meter; an estimate never sums or ranks against it. */
@@ -41,6 +43,9 @@ function standingAt(attempts: RouteClimbAttempt[], mine: RouteClimbAttempt) {
   return { hasEarlierAttempts: soFar.length > 1, rank, total: soFar.length, best };
 }
 
+const HEAD = "pb-2 text-left font-normal text-[var(--ink-2)] text-xs";
+const CELL = "border-[var(--rule)] border-t py-3 align-top text-sm tabular-nums";
+
 function ClimbRow({
   climb,
   ordinal,
@@ -55,30 +60,38 @@ function ClimbRow({
     return null;
   }
   const { hasEarlierAttempts, rank, total, best } = standingAt(climb.attempts, mine);
+  // Green for the quickest so far, amber for any other placing; the tone is a
+  // claim about this ride, and a first attempt makes none.
+  const standingTone = rank === 0 ? "var(--good)" : "var(--hold)";
+  const beaten = hasEarlierAttempts && best && best.activityId !== mine.activityId;
 
   return (
-    <div className="flex items-start justify-between gap-4 border-[var(--rule)] border-t pt-2 text-sm first:border-t-0 first:pt-0">
-      <div>
+    <tr>
+      <td className={CELL}>
         <div className="font-medium">Climb {ordinal}</div>
-        <div className="text-[var(--ink-2)] text-xs tabular-nums">
+        <div className="text-[var(--ink-2)] text-xs">
           {formatDistance(climb.distanceMetres)} · {formatGradient(climb.averageGradePercent)} avg ·{" "}
           {formatGradient(climb.maxGradePercent)} max
         </div>
-      </div>
-      <div className="text-right text-xs tabular-nums">
-        <div className="text-[var(--ink)]">
-          {formatClimbTime(mine.seconds)}
-          {hasEarlierAttempts ? ` · #${rank + 1} of ${total}` : ""}
-        </div>
-        <div className="text-[var(--ink-2)]">
-          {mine.heartRateBpm !== undefined ? `${Math.round(mine.heartRateBpm)} bpm · ` : ""}
-          {attemptPower(mine)}
-        </div>
-        {hasEarlierAttempts && best && best.activityId !== mine.activityId ? (
-          <div className="text-[var(--ink-2)]">best here {formatClimbTime(best.seconds)}</div>
-        ) : null}
-      </div>
-    </div>
+      </td>
+      <td className={CELL}>{formatClimbTime(mine.seconds)}</td>
+      <td className={`${CELL} text-[var(--ink-2)]`}>
+        {mine.heartRateBpm !== undefined ? `${Math.round(mine.heartRateBpm)} bpm` : "—"}
+      </td>
+      <td className={`${CELL} text-[var(--ink-2)]`}>{attemptPower(mine)}</td>
+      <td className={`${CELL} text-right font-medium`}>
+        {hasEarlierAttempts ? (
+          <span style={{ color: standingTone }}>
+            #{rank + 1} of {total}
+          </span>
+        ) : (
+          <span className="font-normal text-[var(--ink-2)]">first attempt</span>
+        )}
+      </td>
+      <td className={`${CELL} text-right`}>
+        {beaten ? formatClimbTime(best.seconds) : <span className="text-[var(--ink-2)]">—</span>}
+      </td>
+    </tr>
   );
 }
 
@@ -103,17 +116,29 @@ export function RideClimbs({ climbs, activityId }: RideClimbsProps) {
       className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
       aria-label="By the climb"
     >
-      <h2 className="font-semibold text-base">By the climb</h2>
-      <div className="flex flex-col gap-2">
-        {ridden.map(({ climb, ordinal }) => (
-          <ClimbRow
-            key={climb.startMetres}
-            climb={climb}
-            ordinal={ordinal}
-            activityId={activityId}
-          />
-        ))}
-      </div>
+      <PanelHeading icon={<IconStairs size={18} stroke={1.8} />} title="By the climb" />
+      <table className="w-full border-collapse">
+        <thead>
+          <tr>
+            <th className={HEAD}>Climb</th>
+            <th className={HEAD}>Time</th>
+            <th className={HEAD}>Heart rate</th>
+            <th className={HEAD}>Power</th>
+            <th className={`${HEAD} text-right`}>Standing</th>
+            <th className={`${HEAD} text-right`}>Best before</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ridden.map(({ climb, ordinal }) => (
+            <ClimbRow
+              key={climb.startMetres}
+              climb={climb}
+              ordinal={ordinal}
+              activityId={activityId}
+            />
+          ))}
+        </tbody>
+      </table>
     </section>
   );
 }

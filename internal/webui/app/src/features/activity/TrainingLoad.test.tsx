@@ -45,8 +45,9 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Heart rate")).toBeInTheDocument();
     expect(screen.getByText("142")).toBeInTheDocument();
-    expect(screen.getByText("Max heart rate")).toBeInTheDocument();
+    // The peak is folded into the same tile as the average.
     expect(screen.getByText("178")).toBeInTheDocument();
+    expect(screen.queryByText("Max heart rate")).not.toBeInTheDocument();
     expect(screen.getByText("Cadence")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
     // "Power" also names the group heading, so the figure is found by its tag.
@@ -54,7 +55,7 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("196")).toBeInTheDocument();
   });
 
-  it("groups a power-meter ride's figures under Sensors, Power, Load and Physiology", () => {
+  it("lays a power-meter ride's figures out in rows without headings", () => {
     show({
       averageHeartRateBpm: 142.4,
       averageCadenceRpm: 81.6,
@@ -65,11 +66,12 @@ describe("TrainingLoad", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Sensors" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Power" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Load" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Physiology" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Power" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Load" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Physiology" })).not.toBeInTheDocument();
     expect(screen.getByText("Power", { selector: "span" })).toBeInTheDocument();
     expect(screen.getByText("Normalized power")).toBeInTheDocument();
+    expect(screen.getByText("Decoupling")).toBeInTheDocument();
   });
 
   it("renders only the Sensors heading for a bare ride with speed alone", () => {
@@ -84,14 +86,15 @@ describe("TrainingLoad", () => {
   it("shows the ride's maximum speed beside its average", () => {
     show({ maxSpeedKmh: 54.2 });
 
-    expect(screen.getByText("Max speed")).toBeInTheDocument();
+    expect(screen.getByText("Speed")).toBeInTheDocument();
     expect(screen.getByText("54.2")).toBeInTheDocument();
+    expect(screen.queryByText("Max speed")).not.toBeInTheDocument();
   });
 
   it("shows no maximum speed for a ride with no speed series", () => {
     show({ averageHeartRateBpm: 142.4 });
 
-    expect(screen.queryByText("Max speed")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^max/)).not.toBeInTheDocument();
   });
 
   // Distance over moving time, so it is there for a ride whose recorded file

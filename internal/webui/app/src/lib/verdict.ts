@@ -72,3 +72,23 @@ export function surfaceVerdict(surface: SurfaceSummary | null): SurfaceVerdict |
     unsealedMetres,
   };
 }
+
+/**
+ * How hard a ride was, from its intensity factor: normalised power over the
+ * rider's threshold. The bands are the usual training-zone ones.
+ */
+export function intensityVerdict(intensityFactor: number | undefined): Verdict | null {
+  if (intensityFactor === undefined || !Number.isFinite(intensityFactor)) {
+    return null;
+  }
+  if (intensityFactor < 0.75) {
+    return { label: "Easy", tone: "good" };
+  }
+  if (intensityFactor < 0.85) {
+    return { label: "Steady", tone: "info" };
+  }
+  if (intensityFactor < 0.95) {
+    return { label: "Hard", tone: "hold" };
+  }
+  return { label: "Very hard", tone: "alert" };
+}

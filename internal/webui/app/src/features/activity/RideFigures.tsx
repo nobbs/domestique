@@ -19,6 +19,8 @@ import {
   formatDistance,
   formatDuration,
 } from "../../lib/format";
+import { WHOLE_LAP_COVERAGE } from "../../lib/rideHistory";
+import { climbingVerdict, intensityVerdict, type VerdictTone } from "../../lib/verdict";
 
 /** A figure's own note, with a coverage share appended where the series held less than the whole ride. */
 function withCoverage(note: string | undefined, coverage: number | undefined): string | undefined {
@@ -30,11 +32,21 @@ function withCoverage(note: string | undefined, coverage: number | undefined): s
   return note ? `${note} · ${coverageNote}` : coverageNote;
 }
 
+/** The page's tones plus a quiet one for figures that make no claim. */
+type Tone = VerdictTone | "quiet";
+
 interface Headline {
   label: string;
   value: string;
   unit?: string;
+  /** What the figure adds up to, in a tone; leads the note where there is one. */
+  verdict?: { label: string; tone: Tone };
   note?: string;
+  tone: Tone;
+}
+
+function colour(tone: Tone): string {
+  return tone === "quiet" ? "var(--ink)" : tone === "info" ? "var(--accent)" : `var(--${tone})`;
 }
 
 /** Which load scale the ride can be named on, and what it came to. */
@@ -48,10 +60,14 @@ function loadFigure(ride: Activity): Headline | null {
       metrics.powerCoverage,
     );
 
+    const verdict = intensityVerdict(metrics.intensityFactor);
+
     return {
       label: "Training stress",
       value: metrics.powerTss.toFixed(0),
       unit: "TSS",
+      tone: verdict?.tone ?? "alert",
+      ...(verdict ? { verdict } : {}),
       ...(note !== undefined ? { note } : {}),
     };
   }
@@ -62,6 +78,7 @@ function loadFigure(ride: Activity): Headline | null {
       label: "Training stress",
       value: metrics.heartRateTss.toFixed(0),
       unit: "hrTSS",
+      tone: "alert",
       ...(note !== undefined ? { note } : {}),
     };
   }
@@ -72,6 +89,7 @@ function loadFigure(ride: Activity): Headline | null {
       label: "Training impulse",
       value: metrics.trimp.toFixed(0),
       unit: "TRIMP",
+      tone: "alert",
       ...(note !== undefined ? { note } : {}),
     };
   }
@@ -90,6 +108,7 @@ function caloriesFigure(ride: Activity): Headline[] {
     return [
       {
         label: "Calories",
+        tone: "quiet",
         value: ride.caloriesKcal.toFixed(0),
         unit: "kcal",
         ...(estimated !== undefined ? { note: `~${estimated.toFixed(0)} kcal estimated` } : {}),
@@ -97,7 +116,7 @@ function caloriesFigure(ride: Activity): Headline[] {
     ];
   }
   if (estimated !== undefined) {
-    return [{ label: "Calories (est.)", value: estimated.toFixed(0), unit: "kcal" }];
+    return [{ label: "Calories (est.)", value: estimated.toFixed(0), unit: "kcal", tone: "quiet" }];
   }
 
   return [];
@@ -108,29 +127,64 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
     return null;
   }
   const load = loadFigure(ride);
+  const stoppedSeconds = ride.elapsedSeconds - ride.movingSeconds;
+  // A dash for the ascent is "no usable profile", not a flat ride; nothing to grade.
+  const climbing =
+    ride.ascentMetres > 0 ? climbingVerdict(ride.ascentMetres, ride.distanceMetres) : null;
+  const match = ride.routeMatch;
   const figures: Headline[] = [
-    { label: "Distance", value: formatDistance(ride.distanceMetres) },
+    {
+      label: "Distance",
+      value: formatDistance(ride.distanceMetres),
+      tone: "info",
+      ...(match
+        ? {
+            verdict: {
+              label:
+                match.routeCoverage >= WHOLE_LAP_COVERAGE
+                  ? "Whole route"
+                  : `${Math.round(match.routeCoverage * 100)}% of the route`,
+              tone: "info",
+            },
+          }
+        : {}),
+    },
     {
       label: "Moving",
       value: formatDuration(ride.movingSeconds),
+      tone: "quiet",
       // Elapsed time is only worth a reader's eye where it says something
       // moving time did not.
-      ...(ride.elapsedSeconds - ride.movingSeconds >= 60
-        ? { note: `${formatDuration(ride.elapsedSeconds)} elapsed` }
+      ...(stoppedSeconds >= 60
+        ? {
+            verdict: { label: `${Math.round(stoppedSeconds / 60)} min stopped`, tone: "quiet" },
+            note: `${formatDuration(ride.elapsedSeconds)} elapsed`,
+          }
         : {}),
     },
-    { label: "Climbed", value: formatAscent(ride.ascentMetres) },
+    {
+      label: "Climbed",
+      value: formatAscent(ride.ascentMetres),
+      tone: climbing?.tone ?? "hold",
+      ...(climbing ? { verdict: climbing } : {}),
+      ...(climbing
+        ? { note: `${Math.round(ride.ascentMetres / (ride.distanceMetres / 1000))} m per km` }
+        : {}),
+    },
     ...(ride.descentMetres !== undefined
-      ? [{ label: "Descended", value: formatDescent(ride.descentMetres) }]
+      ? [{ label: "Descended", value: formatDescent(ride.descentMetres), tone: "quiet" as const }]
       : []),
     ...caloriesFigure(ride),
     ...(load ? [load] : []),
   ];
 
   return (
-    <dl className="grid grid-cols-2 gap-x-6 gap-y-5" aria-label="Ride figures">
+    <dl
+      className="grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-3 lg:grid-cols-6"
+      aria-label="Ride figures"
+    >
       {ride.provider === "zwift" ? (
-        <div className="col-span-2 flex flex-col gap-1">
+        <div className="col-span-full flex flex-col gap-1">
           <dt className="sr-only">Recorded on</dt>
           <dd>
             <Badge variant="secondary" className="w-fit">
@@ -150,17 +204,31 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
         </div>
       ) : null}
       {figures.map((figure) => (
-        <div key={figure.label} className="flex flex-col gap-0.5">
-          <dt className="font-semibold text-[10px] text-[var(--ink-2)] uppercase tracking-[0.08em]">
-            {figure.label}
-          </dt>
-          <dd className="font-semibold text-4xl tabular-nums tracking-tight">
+        <div key={figure.label} className="flex min-w-0 flex-col gap-1.5">
+          <dt className="text-[var(--ink-2)] text-sm">{figure.label}</dt>
+          <dd
+            className="rounded-lg px-3 py-2 font-semibold text-xl leading-tight tabular-nums"
+            style={{
+              color: colour(figure.tone),
+              background: `color-mix(in oklab, ${figure.tone === "quiet" ? "var(--ink-2)" : colour(figure.tone)} 14%, transparent)`,
+            }}
+          >
             {figure.value}
-            {figure.unit ? (
-              <span className="ml-1 font-normal text-[var(--ink-2)] text-sm">{figure.unit}</span>
-            ) : null}
+            {figure.unit ? <span className="ml-1.5 font-normal text-sm">{figure.unit}</span> : null}
           </dd>
-          {figure.note ? <dd className="text-[var(--ink-2)] text-xs">{figure.note}</dd> : null}
+          {figure.verdict || figure.note ? (
+            <dd className="text-sm">
+              {figure.verdict ? (
+                <span className="font-medium" style={{ color: colour(figure.verdict.tone) }}>
+                  {figure.verdict.label}
+                </span>
+              ) : null}
+              {figure.verdict && figure.note ? (
+                <span className="text-[var(--ink-2)]"> · </span>
+              ) : null}
+              {figure.note ? <span className="text-[var(--ink-2)]">{figure.note}</span> : null}
+            </dd>
+          ) : null}
         </div>
       ))}
     </dl>

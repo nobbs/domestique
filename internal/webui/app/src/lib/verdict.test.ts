@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SurfaceSummary } from "./surface";
-import { climbingVerdict, surfaceVerdict } from "./verdict";
+import { climbingVerdict, intensityVerdict, surfaceVerdict } from "./verdict";
 
 describe("climbingVerdict", () => {
   it.each([
@@ -78,5 +78,20 @@ describe("surfaceVerdict", () => {
   it("says nothing without a survey", () => {
     expect(surfaceVerdict(null)).toBeNull();
     expect(surfaceVerdict(summary([["unknown", 5_000]]))).toBeNull();
+  });
+});
+
+describe("intensityVerdict", () => {
+  it.each([
+    [0.6, "Easy", "good"],
+    [0.8, "Steady", "info"],
+    [0.9, "Hard", "hold"],
+    [1.02, "Very hard", "alert"],
+  ])("reads an intensity factor of %s", (factor, label, tone) => {
+    expect(intensityVerdict(factor)).toEqual({ label, tone });
+  });
+
+  it("says nothing without a factor", () => {
+    expect(intensityVerdict(undefined)).toBeNull();
   });
 });

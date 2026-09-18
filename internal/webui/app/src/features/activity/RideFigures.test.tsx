@@ -88,6 +88,16 @@ describe("RideFigures", () => {
     expect(screen.queryByText(/Training/)).not.toBeInTheDocument();
   });
 
+  it("grades the climbing and says nothing where the ride has no ascent figure", () => {
+    const { rerender } = render(<RideFigures ride={ride()} />);
+    expect(screen.getByText("Rolling")).toBeInTheDocument();
+    expect(screen.getByText("12 m per km")).toBeInTheDocument();
+
+    rerender(<RideFigures ride={ride(undefined, { ascentMetres: 0 })} />);
+    expect(screen.queryByText(/m per km/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Flat")).not.toBeInTheDocument();
+  });
+
   it("shows nothing at all for a ride the page does not hold", () => {
     render(<RideFigures ride={undefined} />);
 
