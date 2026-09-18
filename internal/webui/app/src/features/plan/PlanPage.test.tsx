@@ -72,6 +72,8 @@ vi.mock("../../components/map/MapWidget", () => ({
     children,
     furniture,
     onClick,
+    onMouseDown,
+    onMoveStart,
   }: {
     children: React.ReactNode;
     furniture?: React.ReactNode;
@@ -79,11 +81,22 @@ vi.mock("../../components/map/MapWidget", () => ({
       lngLat: { lng: number; lat: number };
       originalEvent: { altKey: boolean };
     }) => void;
+    onMouseDown?: (event: {
+      lngLat: { lng: number; lat: number };
+      originalEvent: { altKey: boolean; button: number; target: EventTarget | null };
+    }) => void;
+    onMoveStart?: () => void;
   }) => (
     <>
       <button
         type="button"
         aria-label="Plan route map"
+        onMouseDown={(event) =>
+          onMouseDown?.({
+            lngLat: { lng: mapPoint.value.longitude, lat: mapPoint.value.latitude },
+            originalEvent: { altKey: event.altKey, button: event.button, target: event.target },
+          })
+        }
         onClick={(event) =>
           onClick?.({
             lngLat: { lng: mapPoint.value.longitude, lat: mapPoint.value.latitude },
@@ -93,6 +106,7 @@ vi.mock("../../components/map/MapWidget", () => ({
       >
         {children}
       </button>
+      <button type="button" aria-label="Pan map" onClick={() => onMoveStart?.()} />
       {furniture}
     </>
   ),
@@ -440,6 +454,7 @@ describe("PlanPage", () => {
               geometry: { type: "LineString"; coordinates: number[][] };
               distanceMetres: number;
               ascentMetres: number;
+              waypointProgress: { distanceMetres: number }[];
             };
           }) => void;
           onError: (error: Error) => void;
@@ -459,6 +474,7 @@ describe("PlanPage", () => {
               },
               distanceMetres: 10_000,
               ascentMetres: 100,
+              waypointProgress: [{ distanceMetres: 0 }, { distanceMetres: 13_400 }],
             },
           });
         }
@@ -471,6 +487,8 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(299));
     expect(preview).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(preview).toHaveBeenCalledOnce();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
@@ -480,11 +498,16 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km");
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("100 m");
     failed = true;
-    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    mapPoint.value = { longitude: 8.2, latitude: 49.2 };
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }), { altKey: true });
     act(() => vi.advanceTimersByTime(300));
 
     expect(screen.getByText("Routing unavailable")).toBeInTheDocument();
-    expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    // The routed leg keeps its shape; the unroutable one stays a straight provisional line.
+    const drawn = JSON.parse(screen.getByTestId("plan-transition").dataset.geometry ?? "{}");
+    expect(
+      drawn.features.map((leg: { properties: { provisional: boolean } }) => leg.properties),
+    ).toEqual([{ provisional: false }, { provisional: true }]);
   });
 
   it("passes classified preview ranges to the route overlay", () => {
@@ -523,6 +546,8 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: ranges }));
   });
@@ -595,6 +620,8 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("72 m");
     const walked = JSON.parse(
@@ -674,6 +701,8 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: undefined }));
   });
@@ -1323,6 +1352,28 @@ describe("PlanPage", () => {
       data: expect.objectContaining({ name: "Fresh", published: true }),
       headers: { "If-Match": "1" },
     });
+  });
+
+  it("draws a pressed waypoint and its legs straight before the click lands, and drops it on a pan", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    const drawn = () =>
+      JSON.parse(screen.getByTestId("plan-transition").dataset.geometry ?? "{}").features.map(
+        (leg: { properties: { provisional: boolean } }) => leg.properties.provisional,
+      );
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.1, latitude: 49.1 };
+    fireEvent.mouseDown(map);
+
+    expect(drawn()).toEqual([true]);
+    fireEvent.click(screen.getByRole("button", { name: "Pan map" }));
+    expect(drawn()).toEqual([]);
+
+    fireEvent.mouseDown(map);
+    fireEvent.click(map);
+    // Placed but not yet routed: still straight, and its row claims no distance.
+    expect(drawn()).toEqual([true]);
+    expect(waypointRows()[1]).not.toMatch(/km/);
   });
 });
 

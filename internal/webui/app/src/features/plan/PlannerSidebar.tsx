@@ -408,6 +408,8 @@ export interface PlannerSidebarProps {
   turnCount?: number;
   /** The waypoint last touched or hovered on the map. */
   focusId?: number | null;
+  /** The waypoints `preview` was routed for; a row it no longer describes shows no distance. */
+  routedFor?: PlannerState["waypoints"] | null;
   onSave: (published: boolean) => void;
   onDelete?: () => void;
   onHighlight?: (run: HiddenRun | null) => void;
@@ -426,6 +428,7 @@ export function PlannerSidebar({
   saveError,
   turnCount,
   focusId = null,
+  routedFor,
   onSave,
   onDelete = () => {},
   onHighlight = () => {},
@@ -511,8 +514,19 @@ export function PlannerSidebar({
     index === count - 1 ||
     (focus >= 0 && Math.abs(index - focus) <= 1) ||
     opened.has(state.waypoints[index]?.id ?? -1);
+  // Undefined `routedFor` trusts the preview as it stands, as a story or a stored plan does.
+  const routed = (index: number) => {
+    const at = routedFor?.[index];
+    const waypoint = state.waypoints[index];
+    return (
+      routedFor === undefined ||
+      (at?.id === waypoint?.id &&
+        at?.longitude === waypoint?.longitude &&
+        at?.latitude === waypoint?.latitude)
+    );
+  };
   const progress = (index: number) =>
-    preview?.waypointProgress?.[index]?.distanceMetres ?? Number.NaN;
+    routed(index) ? (preview?.waypointProgress?.[index]?.distanceMetres ?? Number.NaN) : Number.NaN;
   const canSave = state.name.trim() !== "" && count >= 2;
   const edited = changed || publish !== published;
 
@@ -731,7 +745,7 @@ export function PlannerSidebar({
                         longitude={waypoint.longitude}
                         className={cn("text-sm", focused ? "font-semibold" : undefined)}
                       />
-                      {progressLabel(preview, stateIndex) === "" ? null : (
+                      {!routed(stateIndex) || progressLabel(preview, stateIndex) === "" ? null : (
                         <span className="truncate text-[var(--ink-2)] text-xs tabular-nums">
                           {progressLabel(preview, stateIndex)}
                         </span>

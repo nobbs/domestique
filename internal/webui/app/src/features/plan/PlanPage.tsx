@@ -77,9 +77,11 @@ import {
   type PlannerAvoid,
   type PlannerSeed,
   type PlannerState,
+  type PlannerWaypoint,
   plannerReducer,
   unwrapped,
 } from "./planner";
+import { provisionalLegs, RouteTransition, routedLegs } from "./RouteTransition";
 
 function positions(preview: PlanRoutePreview | null): Position[] {
   return (preview?.geometry.coordinates ?? []).flatMap(([longitude, latitude, elevation]) => {
@@ -312,6 +314,11 @@ function AvoidAreasLayer({ areas }: { areas: PlannerAvoid[] }) {
   );
 }
 
+/** A stored plan's waypoints under the ids `load` gives them. */
+function identified(waypoints: Plan["waypoints"]): PlannerWaypoint[] {
+  return waypoints.map((waypoint, id) => ({ ...waypoint, id }));
+}
+
 function waypointPositions(waypoints: Array<{ longitude: number; latitude: number }>): Position[] {
   return waypoints.map(({ longitude, latitude }) => [longitude, latitude]);
 }
@@ -330,6 +337,18 @@ function framing(planId: number | null, plan: Plan | PlannerSeed): PlannerFramin
 interface PlannerFraming {
   planId: number | null;
   bounds: BoundingBox | null;
+}
+
+/** Stands in for the pressed waypoint, which has no id until the click places it. */
+const PRESSED_ID = -1;
+
+/** Where a new waypoint goes: appended with Alt or while there is no line yet, otherwise into the nearest leg. */
+function placementIndex(
+  waypoints: PlannerState["waypoints"],
+  waypoint: { longitude: number; latitude: number },
+  append: boolean,
+): number {
+  return append || waypoints.length < 2 ? waypoints.length : insertionIndex(waypoints, waypoint);
 }
 
 function insertionIndex(
@@ -631,6 +650,21 @@ export function PlanPage() {
   const [focusId, setFocusId] = useState<number | null>(null);
   const [hiddenRun, setHiddenRun] = useState<HiddenRun | null>(null);
   // A resize handle mid-drag: where it is, so the marker and the circle follow it.
+  // The waypoints the preview was routed for, so a leg they no longer match is drawn straight.
+  const [routedFor, setRoutedFor] = useState<PlannerWaypoint[] | null>(null);
+  const [morphing, setMorphing] = useState(false);
+  // A waypoint mid-drag, so its legs follow the pointer before the router sees it.
+  const [dragged, setDragged] = useState<{
+    id: number;
+    longitude: number;
+    latitude: number;
+  } | null>(null);
+  // A waypoint pressed onto the map but not yet let go of, drawn with its legs until the click lands.
+  const [pressed, setPressed] = useState<{
+    index: number;
+    longitude: number;
+    latitude: number;
+  } | null>(null);
   const [resizing, setResizing] = useState<{
     id: number;
     longitude: number;
@@ -679,6 +713,8 @@ export function PlanPage() {
     setActiveMetres(null);
     setFocusId(null);
     setHiddenRun(null);
+    setRoutedFor(null);
+    setMorphing(false);
   }, [copySeed, planId]);
 
   useEffect(() => {
@@ -695,6 +731,7 @@ export function PlanPage() {
     }
     dispatch({ type: "load", plan: loadedPlan });
     setPreview(previewFrom(loadedPlan));
+    setRoutedFor(identified(loadedPlan.waypoints));
   }, [loadedPlan]);
 
   useEffect(() => {
@@ -712,6 +749,7 @@ export function PlanPage() {
     }
     hydrating.current = false;
     const current = ++request.current;
+    const requested = state.waypoints;
     const timeout = window.setTimeout(() => {
       previewRoute(
         {
@@ -724,7 +762,13 @@ export function PlanPage() {
         {
           onSuccess: (response) => {
             if (request.current === current) {
+              setMorphing(
+                pending.current ||
+                  JSON.stringify(response.data.geometry) !==
+                    JSON.stringify(previewRef.current?.geometry),
+              );
               setPreview(response.data);
+              setRoutedFor(requested);
               setPreviewError(null);
             }
           },
@@ -741,6 +785,46 @@ export function PlanPage() {
   }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid]);
 
   const line = useMemo(() => positions(preview), [preview]);
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const shownWaypoints = useMemo(
+    () =>
+      dragged
+        ? state.waypoints.map((waypoint) =>
+            waypoint.id === dragged.id ? { ...waypoint, ...dragged } : waypoint,
+          )
+        : state.waypoints,
+    [state.waypoints, dragged],
+  );
+  const legWaypoints = useMemo(
+    () =>
+      pressed
+        ? [
+            ...shownWaypoints.slice(0, pressed.index),
+            { id: PRESSED_ID, longitude: pressed.longitude, latitude: pressed.latitude },
+            ...shownWaypoints.slice(pressed.index),
+          ]
+        : shownWaypoints,
+    [shownWaypoints, pressed],
+  );
+  const legs = useMemo(
+    () =>
+      provisionalLegs(
+        legWaypoints,
+        routedFor,
+        routedLegs(
+          line,
+          preview?.waypointProgress?.map((at) => at.distanceMetres),
+        ),
+        line,
+      ),
+    [legWaypoints, routedFor, line, preview],
+  );
+  const unsettled = legs.some((leg) => leg.provisional);
+  const pending = useRef(unsettled);
+  pending.current = unsettled;
+  // The route's own overlay returns once every leg is routed and the morph into it has run.
+  const settled = !unsettled && !morphing;
   const framed = initialViewport.current?.planId === planId ? initialViewport.current.bounds : null;
   // A position that arrives once the rider has started placing waypoints is too
   // late to frame: the camera is theirs by then.
@@ -784,6 +868,7 @@ export function PlanPage() {
       setSavedPlan(response.data);
       dispatch({ type: "load", plan: response.data });
       setPreview(previewFrom(response.data));
+      setRoutedFor(identified(response.data.waypoints));
       queryClient.setQueryData(getGetPlanQueryKey(planId), response);
       queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetPlanDeliveryQueryKey(planId) });
@@ -880,7 +965,29 @@ export function PlanPage() {
                   </>
                 }
                 cursor={state.waypoints.length === 50 && !avoidArmed ? "" : "crosshair"}
+                onMouseDown={(event) => {
+                  if (
+                    avoidArmed ||
+                    state.waypoints.length >= 50 ||
+                    event.originalEvent.button !== 0 ||
+                    (event.originalEvent.target instanceof Element &&
+                      event.originalEvent.target.closest(".maplibregl-marker") !== null)
+                  ) {
+                    return;
+                  }
+                  const point = unwrapped({
+                    longitude: event.lngLat.lng,
+                    latitude: event.lngLat.lat,
+                  });
+                  setPressed({
+                    ...point,
+                    index: placementIndex(state.waypoints, point, event.originalEvent.altKey),
+                  });
+                }}
+                // A press that becomes a pan places nothing.
+                onMoveStart={() => setPressed(null)}
                 onClick={(event) => {
+                  setPressed(null);
                   const point = unwrapped({
                     longitude: event.lngLat.lng,
                     latitude: event.lngLat.lat,
@@ -894,15 +1001,11 @@ export function PlanPage() {
                     setAvoidArmed(false);
                     return;
                   }
-                  if (event.originalEvent.altKey || state.waypoints.length < 2) {
-                    dispatch({ type: "append", waypoint: point });
-                  } else {
-                    dispatch({
-                      type: "insert",
-                      index: insertionIndex(state.waypoints, point),
-                      waypoint: point,
-                    });
-                  }
+                  dispatch({
+                    type: "insert",
+                    index: placementIndex(state.waypoints, point, event.originalEvent.altKey),
+                    waypoint: point,
+                  });
                   setFocusId(state.nextWaypointID);
                   settleOnRoad(state.nextWaypointID, point);
                 }}
@@ -914,7 +1017,13 @@ export function PlanPage() {
                   // first fills it; the map re-frames after either.
                   fitRevision={narrow || !dockOpen ? 0 : profile ? 2 : 1}
                 />
-                {line.length > 1 ? (
+                <RouteTransition
+                  legs={legs}
+                  morph={morphing}
+                  visible={!settled}
+                  onMorphed={() => setMorphing(false)}
+                />
+                {line.length > 1 && settled ? (
                   <RouteOverlay
                     coordinates={line}
                     surface={
@@ -929,7 +1038,7 @@ export function PlanPage() {
                     showTerminals={false}
                   />
                 ) : null}
-                {line.length > 1 && preview?.pushing ? (
+                {line.length > 1 && settled && preview?.pushing ? (
                   <PushingLine line={line} pushing={preview.pushing} />
                 ) : null}
                 {line.length > 1 ? (
@@ -942,17 +1051,24 @@ export function PlanPage() {
                       : area,
                   )}
                 />
-                {state.waypoints.map((waypoint, index) => (
+                {shownWaypoints.map((waypoint, index) => (
                   <Marker
                     key={waypoint.id}
                     longitude={waypoint.longitude}
                     latitude={waypoint.latitude}
                     draggable
+                    onDrag={(event) =>
+                      setDragged({
+                        id: waypoint.id,
+                        ...unwrapped({ longitude: event.lngLat.lng, latitude: event.lngLat.lat }),
+                      })
+                    }
                     onDragEnd={(event) => {
                       const moved = unwrapped({
                         longitude: event.lngLat.lng,
                         latitude: event.lngLat.lat,
                       });
+                      setDragged(null);
                       dispatch({ type: "move", index, waypoint: moved });
                       setFocusId(waypoint.id);
                       if (!waypoint.straight) {
@@ -970,6 +1086,14 @@ export function PlanPage() {
                     </span>
                   </Marker>
                 ))}
+                {pressed ? (
+                  <Marker longitude={pressed.longitude} latitude={pressed.latitude}>
+                    <span
+                      aria-hidden="true"
+                      className="block size-6 rounded-full border-2 border-white bg-[var(--accent)] opacity-60 shadow"
+                    />
+                  </Marker>
+                ) : null}
                 {state.avoid.map((area) => (
                   <Marker
                     key={area.id}
@@ -1067,6 +1191,7 @@ export function PlanPage() {
         deleting={remove.isPending}
         saveError={saveError}
         focusId={focusId}
+        routedFor={routedFor}
         {...(loadedPlan?.turnCount === undefined ? {} : { turnCount: loadedPlan.turnCount })}
         onSave={(published) => void save(published)}
         onDelete={() => void deletePlan()}
