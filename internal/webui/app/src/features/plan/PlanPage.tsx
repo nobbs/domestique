@@ -426,7 +426,7 @@ function PlannerHistoryControls({
       <ButtonGroup
         aria-label="Planner history"
         orientation="horizontal"
-        className="divide-x divide-[var(--rule)] rounded-lg bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-l-none [&>*:not(:last-child)]:rounded-r-none"
+        className="divide-x divide-[var(--rule)] rounded-[9px] bg-[var(--panel)] shadow-[var(--shadow)] ring-1 ring-[var(--rule)] ring-inset [&>*:not(:first-child)]:rounded-l-none [&>*:not(:last-child)]:rounded-r-none"
       >
         <Button
           variant="ghost"
