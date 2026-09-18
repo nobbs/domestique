@@ -1069,7 +1069,10 @@ an admin session: any other session is answered not found rather than `403`,
 since a document is not one of the contract's operations. The former `/sync`,
 `/settings`, `/settings/tasks` and `/volume` documents are gone and answer not found. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
-ordering, searching and narrowing it offers all happen in the browser. Account
+ordering, searching and narrowing it offers all happen in the browser. For an
+admin on a deployment that plans, it also reads the plan listing and each
+unpublished plan, to show those drafts on a shelf of their own that opens them
+in the planner, and marks each published plan's row with a way into it there. Account
 holds this rider's sync status and history, their own Wahoo and Zwift
 connections and rider profile, and lists the data sources this service credits, while the service's runtime settings are read and written over the
 endpoints above and are the same for every browser. The colour scheme is

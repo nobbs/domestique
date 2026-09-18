@@ -33,7 +33,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { routeGeometryQuery, routesQuery, statusQuery } from "../../api/queries";
+import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Position, Route, RouteGeometry, SurfaceRange } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
@@ -61,6 +61,7 @@ import {
   formatReadTime,
   formatTimestamp,
 } from "../../lib/format";
+import { useEffectiveAdmin } from "../../lib/identity";
 import { matchingRoutes } from "../../lib/library";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
@@ -70,6 +71,7 @@ import { useSeenRoutes } from "../../lib/seenRoutes";
 import { summariseSurface } from "../../lib/surface";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
 import { CatalogueFilters } from "./CatalogueFilters";
+import { DraftList, EditPlanButton, useDrafts } from "./Drafts";
 import type { ThinBarSegment } from "./ThinBar";
 import { ThinBar } from "./ThinBar";
 
@@ -256,18 +258,21 @@ function LedgerRow({
   surface,
   change,
   to,
+  planner,
 }: {
   route: Route;
   coordinates: Position[];
   surface: SurfaceRange[] | undefined;
   change: RouteChange;
   to: string;
+  /** Whether the reader edits plans; every row then keeps room for a published plan's pencil. */
+  planner: boolean;
 }) {
   return (
-    <li className="border-[var(--panel)] border-b-2 last:border-b-0">
+    <li className="group relative border-[var(--panel)] border-b-2 last:border-b-0">
       <Link
         to={to}
-        className="relative grid grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem] items-center gap-x-4 px-3 py-2.5 text-sm tabular-nums before:absolute before:inset-1 before:rounded-[7px] hover:before:bg-[color-mix(in_oklab,var(--ink-2)_8%,transparent)]"
+        className={`${planner ? "pr-12 " : ""}relative grid grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem] items-center gap-x-4 px-3 py-2.5 text-sm tabular-nums before:absolute before:inset-1 before:rounded-[7px] hover:before:bg-[color-mix(in_oklab,var(--ink-2)_8%,transparent)]`}
       >
         <span className="relative block size-10">
           <RouteGlyph
@@ -293,6 +298,9 @@ function LedgerRow({
           {formatGradient(route.maxGradientPercent)}
         </span>
       </Link>
+      {planner ? (
+        <EditPlanButton route={route} className="absolute top-1/2 right-2 z-10 -translate-y-1/2" />
+      ) : null}
     </li>
   );
 }
@@ -308,15 +316,17 @@ function CatalogueCard({
   route,
   coordinates,
   change,
+  planner,
 }: {
   route: Route;
   coordinates: Position[];
   change: RouteChange;
+  planner: boolean;
 }) {
   const where = secondName(route);
 
   return (
-    <li>
+    <li className="group relative">
       <Link
         to={atlasLink(route)}
         className="flex items-start gap-3 rounded-lg border border-[var(--rule)] p-3 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
@@ -344,6 +354,7 @@ function CatalogueCard({
           </span>
         </span>
       </Link>
+      {planner ? <EditPlanButton route={route} className="absolute top-2 right-2" /> : null}
     </li>
   );
 }
@@ -445,6 +456,12 @@ function Recent({
 export function CataloguePage() {
   const routes = useQuery(routesQuery());
   const status = useQuery(statusQuery());
+  const config = useQuery(webUIConfigQuery());
+  // Only an admin on a planning deployment has drafts, and edits published plans.
+  const planner = useEffectiveAdmin() && config.data?.planning === true;
+  const [shelf, setShelf] = useState<"library" | "drafts">("library");
+  const drafted = useDrafts(planner);
+  const onDrafts = planner && shelf === "drafts";
   // Read, never written: a row is not an opened route, so nothing here marks a
   // stage seen. Only the atlas does, from the moment a route's own panel shows.
   const { changeOf } = useSeenRoutes();
@@ -542,6 +559,9 @@ export function CataloguePage() {
   );
 
   const hasQuery = view.query.trim() !== "";
+  const shownDrafts = drafted.drafts.filter(({ plan }) =>
+    plan.name.toLocaleLowerCase().includes(view.query.trim().toLocaleLowerCase()),
+  );
   const filtersActive = hasActiveFilters(view.filters);
   const sortedLabel = SORT_COLUMNS.find((entry) => entry.column === view.sort)?.label ?? "Route";
   const narrowed = shown.length !== library.length;
@@ -575,64 +595,95 @@ export function CataloguePage() {
           <div className="order-2 flex min-w-0 flex-col gap-4 lg:order-1">
             <Panel
               icon={<IconBooks size={18} stroke={1.8} aria-hidden="true" />}
-              title="Library"
-              subtitle={subtitle}
-              aside={<SortControl view={view} sortBy={sortBy} />}
-            >
-              <p className="sr-only">
-                {`The route library, ranked by ${sortedLabel.toLowerCase()}, ${
-                  view.direction === "asc" ? "ascending" : "descending"
-                }`}
-              </p>
-              {routes.isError ? (
-                <Alert variant="destructive">
-                  <AlertTitle>Could not load the route library.</AlertTitle>
-                  {routes.error instanceof Error ? (
-                    <AlertDescription>{routes.error.message}</AlertDescription>
+              title={onDrafts ? "Drafts" : "Library"}
+              subtitle={onDrafts ? formatCount(shownDrafts.length, "draft") : subtitle}
+              aside={
+                <span className="flex flex-wrap items-center justify-end gap-2">
+                  {onDrafts ? null : <SortControl view={view} sortBy={sortBy} />}
+                  {planner ? (
+                    <Segmented
+                      label="Shelf"
+                      size="sm"
+                      items={[
+                        { key: "library", label: "Library" },
+                        { key: "drafts", label: `Drafts · ${drafted.drafts.length}` },
+                      ]}
+                      value={shelf}
+                      onChange={setShelf}
+                    />
                   ) : null}
-                </Alert>
-              ) : null}
-              {routes.isSuccess && library.length === 0 ? (
-                <Alert role="status">
-                  <AlertTitle>No routes yet.</AlertTitle>
-                  <AlertDescription>
-                    Routes appear here after the first successful read of the library.
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-              {library.length > 0 && shown.length === 0 ? (
-                <p className="text-[var(--ink-2)] text-sm">
-                  {hasQuery && filtersActive
-                    ? "Nothing here matches this search and these filters."
-                    : filtersActive
-                      ? "Nothing here matches these filters."
-                      : "Nothing here is called that."}
-                </p>
-              ) : null}
-              {shown.length === 0 ? null : narrow ? (
-                <ul className="grid gap-2">
-                  {shown.map((route) => (
-                    <CatalogueCard
-                      key={routeKey(route)}
-                      route={route}
-                      coordinates={shapeOf(route)}
-                      change={changeOf(route)}
-                    />
-                  ))}
-                </ul>
+                </span>
+              }
+            >
+              {onDrafts ? (
+                <>
+                  {drafted.isError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>Could not load the drafts.</AlertTitle>
+                    </Alert>
+                  ) : null}
+                  <DraftList drafts={shownDrafts} narrow={narrow} />
+                </>
               ) : (
-                <ul className="flex flex-col overflow-hidden rounded-[11px] bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)]">
-                  {shown.map((route) => (
-                    <LedgerRow
-                      key={routeKey(route)}
-                      route={route}
-                      coordinates={shapeOf(route)}
-                      surface={drawn.ranges.get(routeKey(route))}
-                      change={changeOf(route)}
-                      to={atlasLink(route)}
-                    />
-                  ))}
-                </ul>
+                <>
+                  <p className="sr-only">
+                    {`The route library, ranked by ${sortedLabel.toLowerCase()}, ${
+                      view.direction === "asc" ? "ascending" : "descending"
+                    }`}
+                  </p>
+                  {routes.isError ? (
+                    <Alert variant="destructive">
+                      <AlertTitle>Could not load the route library.</AlertTitle>
+                      {routes.error instanceof Error ? (
+                        <AlertDescription>{routes.error.message}</AlertDescription>
+                      ) : null}
+                    </Alert>
+                  ) : null}
+                  {routes.isSuccess && library.length === 0 ? (
+                    <Alert role="status">
+                      <AlertTitle>No routes yet.</AlertTitle>
+                      <AlertDescription>
+                        Routes appear here after the first successful read of the library.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  {library.length > 0 && shown.length === 0 ? (
+                    <p className="text-[var(--ink-2)] text-sm">
+                      {hasQuery && filtersActive
+                        ? "Nothing here matches this search and these filters."
+                        : filtersActive
+                          ? "Nothing here matches these filters."
+                          : "Nothing here is called that."}
+                    </p>
+                  ) : null}
+                  {shown.length === 0 ? null : narrow ? (
+                    <ul className="grid gap-2">
+                      {shown.map((route) => (
+                        <CatalogueCard
+                          key={routeKey(route)}
+                          route={route}
+                          coordinates={shapeOf(route)}
+                          change={changeOf(route)}
+                          planner={planner}
+                        />
+                      ))}
+                    </ul>
+                  ) : (
+                    <ul className="flex flex-col overflow-hidden rounded-[11px] bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)]">
+                      {shown.map((route) => (
+                        <LedgerRow
+                          key={routeKey(route)}
+                          route={route}
+                          coordinates={shapeOf(route)}
+                          surface={drawn.ranges.get(routeKey(route))}
+                          change={changeOf(route)}
+                          to={atlasLink(route)}
+                          planner={planner}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </Panel>
           </div>
