@@ -16,12 +16,14 @@ import (
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/plan"
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
+	syncservice "github.com/nobbs/domestique/internal/sync"
 )
 
 type planningSurfaceSource struct {
@@ -406,4 +408,42 @@ func TestHTTPAPISnapperSnapsOnlyForAPlanner(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, configured)
 	assert.NotNil(t, httpapiSnapper(service, planningSurfaceSource{}))
+}
+
+type fakeReconciler struct {
+	err        error
+	deliveries []syncservice.Delivery
+}
+
+func (r fakeReconciler) PlanDelivery(context.Context, int64, string) ([]syncservice.Delivery, error) {
+	return r.deliveries, r.err
+}
+
+func TestPlanDeliveriesCarryEachTargetsStandingAcross(t *testing.T) {
+	deliveredAt := time.Date(2026, 9, 18, 10, 0, 0, 0, time.UTC)
+	adapter := planDeliveries{reconciler: fakeReconciler{deliveries: []syncservice.Delivery{
+		{TargetID: "rider-a", State: syncservice.DeliveryCurrent, DeliveredAt: deliveredAt},
+		{TargetID: "rider-b", State: syncservice.DeliveryFailed, Failure: syncservice.FailureAuthorization},
+	}}}
+
+	views, err := adapter.PlanDelivery(t.Context(), 1, "r1")
+
+	require.NoError(t, err, "PlanDelivery()")
+	assert.Equal(t, []httpapi.PlanDelivery{
+		{TargetID: "rider-a", State: "current", DeliveredAt: deliveredAt},
+		{TargetID: "rider-b", State: "failed", Failure: "authorization"},
+	}, views, "views")
+}
+
+func TestPlanDeliveriesForwardAFailure(t *testing.T) {
+	adapter := planDeliveries{reconciler: fakeReconciler{err: fmt.Errorf("down")}}
+
+	_, err := adapter.PlanDelivery(t.Context(), 1, "r1")
+
+	assert.Error(t, err, "PlanDelivery()")
+}
+
+func TestHTTPAPIPlanDeliveriesFollowThePlanner(t *testing.T) {
+	assert.Nil(t, httpapiPlanDeliveries(nil, nil), "without a planner")
+	assert.NotNil(t, httpapiPlanDeliveries(&plan.Service{}, nil), "with a planner")
 }

@@ -134,8 +134,11 @@ silent. A plan is a **draft** until it is
 published, and only a published plan is a route: a draft is visible through
 the admin-only plan endpoints and nowhere else, is never in the inventory, and
 never reaches a target. Publishing and unpublishing are the admin's deliberate
-acts; the next synchronisation mirrors either into every target on the terms
-the [sync lifecycle](sync-lifecycle.md) states, deletion gates included.
+acts, and each is pushed at once: a replace or delete asks for that one plan to
+be written to, or removed from, every connected target, whether or not the
+scheduled synchronisation is switched on, and touches no other route. The
+[sync lifecycle](sync-lifecycle.md) states the push's terms, deletion gates
+included; the next synchronisation mirrors the same state, so the two agree.
 
 ## Constraints and non-goals
 
@@ -970,10 +973,16 @@ browser origin described above, and answer 403 without it.
   included, and `DELETE /v1/plans/{plan-id}` removes one; both carry the
   version last read as `If-Match`, and a stale version is refused with `412`,
   so one admin can neither overwrite nor delete what another has just changed.
-  The whole group is absent, answering `404`, when no routing engine is
+  A stored replace or delete starts `sync:plan` over that plan's id; a start
+  refused because other work holds the inventory is left to that task's own
+  schedule. `GET /v1/plans/{plan-id}/delivery` reports, per connected target,
+  whether it holds the plan's current revision, is owed a write or removal, or
+  failed the last push of this revision (with the failure category), or holds
+  no copy and is owed none; it is read from stored state and asks no target
+  anything. The whole group is absent, answering `404`, when no routing engine is
   configured, and a routing failure is `502` carrying a category and nothing
   of the engine's response. A plan carries no credential, no rider's data, and
-  no geometry beyond the one the engine returned for its waypoints. These six
+  no geometry beyond the one the engine returned for its waypoints. These seven
   operations and the planning flag are in
   [`api/openapi.yaml`](../../api/openapi.yaml), which is normative for their
   request and response shapes; this prose states the rules those shapes serve.

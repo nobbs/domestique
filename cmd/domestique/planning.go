@@ -17,6 +17,7 @@ import (
 	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
+	syncservice "github.com/nobbs/domestique/internal/sync"
 )
 
 // newLocalSource builds the plan service, which is also the sync source for
@@ -184,6 +185,41 @@ func httpapiPlans(service *plan.Service) httpapi.Plans {
 	}
 
 	return service
+}
+
+// planDeliveries adapts the sync service's report on one plan's copies to
+// what the HTTP boundary reads.
+type planDeliveries struct {
+	reconciler interface {
+		PlanDelivery(ctx context.Context, planID int64, revision string) ([]syncservice.Delivery, error)
+	}
+}
+
+func (d planDeliveries) PlanDelivery(ctx context.Context, planID int64, revision string) ([]httpapi.PlanDelivery, error) {
+	deliveries, err := d.reconciler.PlanDelivery(ctx, planID, revision)
+	if err != nil {
+		return nil, fmt.Errorf("reporting plan delivery: %w", err)
+	}
+	views := make([]httpapi.PlanDelivery, len(deliveries))
+	for index, delivery := range deliveries {
+		views[index] = httpapi.PlanDelivery{
+			DeliveredAt: delivery.DeliveredAt,
+			TargetID:    delivery.TargetID,
+			State:       string(delivery.State),
+			Failure:     string(delivery.Failure),
+		}
+	}
+
+	return views, nil
+}
+
+// httpapiPlanDeliveries is nil without a planner, as httpapiPlans is.
+func httpapiPlanDeliveries(service *plan.Service, reconciler *syncservice.Service) httpapi.PlanDeliveries {
+	if service == nil {
+		return nil
+	}
+
+	return planDeliveries{reconciler: reconciler}
 }
 
 // planStore adapts *sqlite.Store to plan.Store, converting between

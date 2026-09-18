@@ -495,6 +495,32 @@ type PlanSummary struct {
 	UpdatedAt      time.Time   `json:"updatedAt"`
 }
 
+type PlanDelivery struct {
+	Targets []PlanTargetDelivery `json:"targets"`
+}
+
+type PlanTargetDelivery_State string
+
+const (
+	PlanTargetDelivery_StateCurrent PlanTargetDelivery_State = "current"
+	PlanTargetDelivery_StatePending PlanTargetDelivery_State = "pending"
+	PlanTargetDelivery_StateFailed  PlanTargetDelivery_State = "failed"
+	PlanTargetDelivery_StateAbsent  PlanTargetDelivery_State = "absent"
+)
+
+type PlanTargetDelivery struct {
+	ID string `json:"id"`
+	// Own True when this target belongs to the calling admin.
+	Own bool `json:"own"`
+	// OwnerNickname The owning subject's display nickname, when its sign-in's ID token carried one. A label only, never a key.
+	OwnerNickname *string                  `json:"ownerNickname,omitempty"`
+	State         PlanTargetDelivery_State `json:"state"`
+	// Failure Why the last push failed, as the stable category a sync run reports. Present only when state is failed.
+	Failure *string `json:"failure,omitempty"`
+	// DeliveredAt When this service last wrote the copy the target holds. Absent when that happened before the service last started, or in a full synchronisation rather than a push.
+	DeliveredAt *time.Time `json:"deliveredAt,omitempty"`
+}
+
 type PlanList struct {
 	Plans []PlanSummary `json:"plans"`
 }

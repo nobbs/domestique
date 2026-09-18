@@ -1057,6 +1057,9 @@ func (e *fakeEncoder) Encode(_ context.Context, _ route.Route) ([]byte, error) {
 }
 
 type fakeState struct {
+	stagesErr           error
+	upsertErr           error
+	deleteStageErr      error
 	trustedErr          error
 	trustedCountErr     error
 	storeErr            error
@@ -1179,6 +1182,9 @@ func (s *fakeState) ForEachTargetStage(
 	targetID string,
 	visit func(provider route.Provider, routeID int64, stageOrder int, sourceRevision, contentHash string, wahooRouteID int64) error,
 ) error {
+	if s.stagesErr != nil {
+		return s.stagesErr
+	}
 	keys := make([]route.Key, 0, len(s.mappings[targetID]))
 	for key := range s.mappings[targetID] {
 		keys = append(keys, key)
@@ -1212,6 +1218,9 @@ func (s *fakeState) UpsertTargetStage(
 	sourceRevision, contentHash string,
 	wahooRouteID int64,
 ) error {
+	if s.upsertErr != nil {
+		return s.upsertErr
+	}
 	s.mappings[targetID][route.NewKey(provider, routeID, stageOrder)] = targetStage{
 		sourceRevision: sourceRevision,
 		contentHash:    contentHash,
@@ -1222,12 +1231,16 @@ func (s *fakeState) UpsertTargetStage(
 }
 
 func (s *fakeState) DeleteTargetStage(_ context.Context, targetID string, provider route.Provider, routeID int64, stageOrder int) error {
+	if s.deleteStageErr != nil {
+		return s.deleteStageErr
+	}
 	delete(s.mappings[targetID], route.NewKey(provider, routeID, stageOrder))
 
 	return nil
 }
 
 type fakeTarget struct {
+	createErr          error
 	routes             map[string]map[string]int64
 	rejectRefreshToken map[string]bool
 	listErr            error
@@ -1302,6 +1315,9 @@ func (t *fakeTarget) DeleteOwnedRoutes(ctx context.Context, accessToken string) 
 }
 
 func (t *fakeTarget) CreateRoute(_ context.Context, accessToken string, stage *route.Route, _ []byte) (routeID int64, err error) {
+	if t.createErr != nil {
+		return 0, t.createErr
+	}
 	t.nextRouteID++
 	t.ensureAccess(accessToken)[stage.Key().ExternalID()] = t.nextRouteID
 

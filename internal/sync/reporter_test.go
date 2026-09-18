@@ -41,6 +41,20 @@ func TestReporterReconcilesOneTargetAlone(t *testing.T) {
 	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
 }
 
+// A push that wrote something is history like any target run; one that found
+// every target current did nothing worth a line.
+func TestReporterRecordsOnlyAPushThatDidSomething(t *testing.T) {
+	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, Created: 1}}
+	state := &fakeRunState{}
+	reporter := newReporter(t, runner, state)
+
+	reporter.PushPlans(t.Context(), 1)
+	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
+	reporter.PushPlans(t.Context(), 0)
+
+	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
+}
+
 // A clear runs through the same recording and notification path as any other
 // target work, so a cleared account appears in history as the deletion it was
 // rather than as an unexplained drop in what that account holds.
@@ -255,6 +269,10 @@ func (r *reportingRunner) RunTarget(_ context.Context, targetID string) Result {
 	return r.targets
 }
 
+func (r *reportingRunner) RunPlans(context.Context, int64) Result {
+	return r.targets
+}
+
 func (r *reportingRunner) ClearTarget(_ context.Context, targetID string) Result {
 	r.clearedIDs = append(r.clearedIDs, targetID)
 
@@ -295,6 +313,10 @@ func (r *blockingReportingRunner) RunTargets(context.Context) Result {
 
 func (r *blockingReportingRunner) RunTarget(context.Context, string) Result {
 	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
+}
+
+func (r *blockingReportingRunner) RunPlans(context.Context, int64) Result {
+	return Result{}
 }
 
 func (r *blockingReportingRunner) ClearTarget(context.Context, string) Result {

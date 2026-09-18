@@ -57,6 +57,8 @@ type Service struct {
 	predictor                Predictor
 	allowEmptySourceDeletion func() bool
 	targetIDs                func() []string
+	now                      func() time.Time
+	attempts                 planAttempts
 }
 
 // New creates a synchronizer with explicit consumer-owned dependencies. All are
@@ -91,6 +93,7 @@ func New(
 		predictor:                predictor,
 		targetIDs:                options.TargetIDs,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
+		now:                      time.Now,
 	}, nil
 }
 
@@ -330,16 +333,9 @@ func (s *Service) ClearTarget(ctx context.Context, targetID string) Result {
 // clearTarget removes the remote routes first and the local record second, so an
 // interrupted clear is safe to repeat rather than stranding unowned routes.
 func (s *Service) clearTarget(ctx context.Context, targetID string) (int, FailureCategory) {
-	refreshToken, refreshErr := s.state.RefreshToken(ctx, targetID)
-	if refreshErr != nil {
-		return 0, FailureState
-	}
-	accessToken, replacementRefreshToken, refreshErr := s.target.RefreshAccessToken(ctx, refreshToken)
-	if refreshErr != nil {
-		return 0, s.handleTargetError(ctx, targetID, refreshErr)
-	}
-	if replaceErr := s.state.ReplaceRefreshToken(ctx, targetID, replacementRefreshToken); replaceErr != nil {
-		return 0, FailureState
+	accessToken, failure := s.accessToken(ctx, targetID)
+	if failure != FailureNone {
+		return 0, failure
 	}
 
 	mappings, mappingsErr := s.targetStages(ctx, targetID)
@@ -468,16 +464,9 @@ func (s *Service) reconcileTarget(
 	desired map[route.Key]route.Route,
 	ordered []route.Route,
 ) (counts, FailureCategory) {
-	refreshToken, refreshErr := s.state.RefreshToken(ctx, targetID)
-	if refreshErr != nil {
-		return counts{}, FailureState
-	}
-	accessToken, replacementRefreshToken, refreshErr := s.target.RefreshAccessToken(ctx, refreshToken)
-	if refreshErr != nil {
-		return counts{}, s.handleTargetError(ctx, targetID, refreshErr)
-	}
-	if replaceErr := s.state.ReplaceRefreshToken(ctx, targetID, replacementRefreshToken); replaceErr != nil {
-		return counts{}, FailureState
+	accessToken, failure := s.accessToken(ctx, targetID)
+	if failure != FailureNone {
+		return counts{}, failure
 	}
 
 	mappings, mappingsErr := s.targetStages(ctx, targetID)
@@ -498,73 +487,112 @@ func (s *Service) reconcileTarget(
 
 	var result counts
 	for index := range ordered {
-		stage := &ordered[index]
-		key := stage.Key()
-		recorded, tracked := mappings[key]
-		wahooRouteID, found := owned[key.ExternalID()]
-		if !found {
-			fitData, encodeErr := s.encoder.Encode(ctx, *stage)
-			if encodeErr != nil {
-				return result, FailureCourse
-			}
-			createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, stage, fitData)
-			if createErr != nil {
-				return result, s.handleTargetError(ctx, targetID, createErr)
-			}
-			if storeErr := s.storeTargetStage(ctx, targetID, stage, createdRouteID); storeErr != nil {
-				return result, FailureState
-			}
-			result.created++
-
-			continue
+		if failure := s.applyStage(ctx, targetID, accessToken, &ordered[index], mappings, owned, &result); failure != FailureNone {
+			return result, failure
 		}
-		if !tracked {
-			if storeErr := s.storeTargetStage(ctx, targetID, stage, wahooRouteID); storeErr != nil {
-				return result, FailureState
-			}
-
-			continue
-		}
-		if recorded.sourceRevision == stage.Revision() && recorded.contentHash == encodedContentHash(stage) {
-			if recorded.wahooRouteID != wahooRouteID {
-				if storeErr := s.storeTargetStage(ctx, targetID, stage, wahooRouteID); storeErr != nil {
-					return result, FailureState
-				}
-			}
-
-			continue
-		}
-
-		fitData, encodeErr := s.encoder.Encode(ctx, *stage)
-		if encodeErr != nil {
-			return result, FailureCourse
-		}
-		updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, stage, fitData)
-		if updateErr != nil {
-			return result, s.handleTargetError(ctx, targetID, updateErr)
-		}
-		if storeErr := s.storeTargetStage(ctx, targetID, stage, updatedRouteID); storeErr != nil {
-			return result, FailureState
-		}
-		result.updated++
 	}
-
 	for _, key := range deletions {
-		// Ownership is still established by external ID before anything is
-		// removed; the listing above is where that answer now comes from.
-		wahooRouteID, found := owned[key.ExternalID()]
-		if found {
-			if err := s.target.DeleteRoute(ctx, wahooRouteID, accessToken); err != nil {
-				return result, s.handleTargetError(ctx, targetID, err)
-			}
-			result.deleted++
-		}
-		if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.SourceRouteID(), key.StageOrder()); err != nil {
-			return result, FailureState
+		if failure := s.removeStage(ctx, targetID, accessToken, key, owned, &result); failure != FailureNone {
+			return result, failure
 		}
 	}
 
 	return result, FailureNone
+}
+
+// applyStage brings one desired stage onto one target: created where the
+// target owns no copy, adopted where it owns an untracked one, rewritten where
+// the recorded copy is stale.
+func (s *Service) applyStage(
+	ctx context.Context, targetID, accessToken string, stage *route.Route,
+	mappings map[route.Key]targetStage, owned map[string]int64, result *counts,
+) FailureCategory {
+	key := stage.Key()
+	recorded, tracked := mappings[key]
+	wahooRouteID, found := owned[key.ExternalID()]
+	if !found {
+		fitData, encodeErr := s.encoder.Encode(ctx, *stage)
+		if encodeErr != nil {
+			return FailureCourse
+		}
+		createdRouteID, createErr := s.target.CreateRoute(ctx, accessToken, stage, fitData)
+		if createErr != nil {
+			return s.handleTargetError(ctx, targetID, createErr)
+		}
+		if storeErr := s.storeTargetStage(ctx, targetID, stage, createdRouteID); storeErr != nil {
+			return FailureState
+		}
+		result.created++
+
+		return FailureNone
+	}
+	if !tracked {
+		if storeErr := s.storeTargetStage(ctx, targetID, stage, wahooRouteID); storeErr != nil {
+			return FailureState
+		}
+
+		return FailureNone
+	}
+	if recorded.sourceRevision == stage.Revision() && recorded.contentHash == encodedContentHash(stage) {
+		if recorded.wahooRouteID != wahooRouteID {
+			if storeErr := s.storeTargetStage(ctx, targetID, stage, wahooRouteID); storeErr != nil {
+				return FailureState
+			}
+		}
+
+		return FailureNone
+	}
+
+	fitData, encodeErr := s.encoder.Encode(ctx, *stage)
+	if encodeErr != nil {
+		return FailureCourse
+	}
+	updatedRouteID, updateErr := s.target.UpdateRoute(ctx, wahooRouteID, accessToken, stage, fitData)
+	if updateErr != nil {
+		return s.handleTargetError(ctx, targetID, updateErr)
+	}
+	if storeErr := s.storeTargetStage(ctx, targetID, stage, updatedRouteID); storeErr != nil {
+		return FailureState
+	}
+	result.updated++
+
+	return FailureNone
+}
+
+// removeStage deletes one recorded stage the inventory no longer holds.
+// Ownership is still established by external ID, from the listing, first.
+func (s *Service) removeStage(
+	ctx context.Context, targetID, accessToken string, key route.Key, owned map[string]int64, result *counts,
+) FailureCategory {
+	if wahooRouteID, found := owned[key.ExternalID()]; found {
+		if err := s.target.DeleteRoute(ctx, wahooRouteID, accessToken); err != nil {
+			return s.handleTargetError(ctx, targetID, err)
+		}
+		result.deleted++
+	}
+	if err := s.state.DeleteTargetStage(ctx, targetID, key.Provider(), key.SourceRouteID(), key.StageOrder()); err != nil {
+		return FailureState
+	}
+
+	return FailureNone
+}
+
+// accessToken exchanges one target's stored refresh token, keeping the
+// replacement Wahoo rotates in before anything else is asked of it.
+func (s *Service) accessToken(ctx context.Context, targetID string) (string, FailureCategory) {
+	refreshToken, err := s.state.RefreshToken(ctx, targetID)
+	if err != nil {
+		return "", FailureState
+	}
+	accessToken, replacementRefreshToken, err := s.target.RefreshAccessToken(ctx, refreshToken)
+	if err != nil {
+		return "", s.handleTargetError(ctx, targetID, err)
+	}
+	if err := s.state.ReplaceRefreshToken(ctx, targetID, replacementRefreshToken); err != nil {
+		return "", FailureState
+	}
+
+	return accessToken, FailureNone
 }
 
 // refusalCategory reads the destination's own name for a refusal through an

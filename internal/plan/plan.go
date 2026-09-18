@@ -95,6 +95,12 @@ type Plan struct {
 	Published      bool
 }
 
+// Revision is the source revision a published plan is synchronised under:
+// the instant of its last replace.
+func (p *Plan) Revision() string {
+	return p.UpdatedAt.UTC().Format(revisionLayout)
+}
+
 // Router routes an ordered set of waypoints over a bike-preferring road
 // network for one profile, returning the snapped line with an elevation per
 // point.
@@ -448,9 +454,8 @@ func (s *Service) Inventory(ctx context.Context) ([]route.Route, error) {
 	routes := make([]route.Route, 0, len(plans))
 	for index := range plans {
 		plan := &plans[index]
-		revision := plan.UpdatedAt.UTC().Format(revisionLayout)
 		built, err := route.NewRoute(
-			route.ProviderLocal, plan.ID, 1, revision, plan.Name, "",
+			route.ProviderLocal, plan.ID, 1, plan.Revision(), plan.Name, "",
 			plan.Geometry, contentHash(plan.ID, plan.Name, plan.Geometry),
 		)
 		if err != nil {

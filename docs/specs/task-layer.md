@@ -115,8 +115,10 @@ These chains are registered:
 ~~~text
 sync:source       stored an inventory     ->  sync:target
 sync:source       stored an inventory     ->  surface:annotate
+sync:plan         wrote a plan            ->  surface:annotate
 surface:index     installed a new map     ->  surface:annotate
 sync:source       stored an inventory     ->  ridemodel:predict
+sync:plan         wrote a plan            ->  ridemodel:predict
 ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
@@ -274,6 +276,7 @@ is checked rather than inferred.
 | `sync:source` | source provider, or none for every one | `inventory` exclusive | every hour |
 | `sync:target` | target slot, or none for every one | `inventory` exclusive | every six hours |
 | `sync:clear` | target slot | `inventory` exclusive | none |
+| `sync:plan` | plan id, or none for every plan | `inventory` exclusive | every fifteen minutes, and only when a routing engine is configured |
 | `surface:annotate` | none | `inventory` exclusive | none |
 | `ridemodel:predict` | none | `inventory` exclusive | none |
 | `surface:index` | none | `surface-index` exclusive | the configured rebuild interval |
@@ -285,6 +288,17 @@ is checked rather than inferred.
 | `activity:analyse` | target slot, or none for every one | `activities` exclusive | every hour, and only when a token is configured |
 | `activity:reanalyse` | target slot and workout id | `activities` exclusive | none, and only when a token is configured |
 | `planning:segments` | none | `segments` exclusive | every week, and only when a routing engine is configured |
+
+`sync:plan` pushes one plan, or every plan for none, onto the targets stale on
+it ([pushing a plan](sync-lifecycle.md#pushing-a-plan)). A plan's replace or
+delete starts it over that plan, and nothing waits for the scheduled halves:
+the push is the admin's own act, so it runs with either half switched off. Its
+schedule is the retry, not the timely path — a start refused because another
+task held the inventory is not queued, and the next sweep pushes whatever a
+target is still stale on. A sweep that finds every target current contacts no
+target and is recorded as unchanged. Without a routing engine nothing starts
+it and nothing schedules it; it is still registered because the enrichment
+passes follow it.
 
 `zwift:poll` reads the same rows from a rider's own Zwift account, under the
 same exclusivity: it stores the indoor rides that account recorded and removes

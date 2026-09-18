@@ -1151,6 +1151,35 @@ paths:
           $ref: '#/components/responses/PreconditionFailed'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/plans/{planId}/delivery:
+    get:
+      tags:
+        - browser-api
+      operationId: getPlanDelivery
+      description: >-
+        Where each connected rider's Wahoo account stands with one plan: the
+        current revision held, a write or removal owed, the last push failed,
+        or no copy and none owed. Read from stored state; no rider's account
+        is asked.
+      parameters:
+        - $ref: '#/components/parameters/PlanId'
+      responses:
+        "200":
+          description: One entry per connected target.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanDelivery'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/settings:
     get:
       tags:
@@ -3285,6 +3314,53 @@ components:
         updatedAt:
           type: string
           format: date-time
+    PlanDelivery:
+      type: object
+      additionalProperties: false
+      required:
+        - targets
+      properties:
+        targets:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanTargetDelivery'
+    PlanTargetDelivery:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - own
+        - state
+      properties:
+        id:
+          type: string
+        own:
+          type: boolean
+          description: True when this target belongs to the calling admin.
+        ownerNickname:
+          type: string
+          description: >-
+            The owning subject's display nickname, when its sign-in's ID token
+            carried one. A label only, never a key.
+        state:
+          type: string
+          enum:
+            - current
+            - pending
+            - failed
+            - absent
+        failure:
+          type: string
+          description: >-
+            Why the last push failed, as the stable category a sync run
+            reports. Present only when state is failed.
+        deliveredAt:
+          type: string
+          format: date-time
+          description: >-
+            When this service last wrote the copy the target holds. Absent
+            when that happened before the service last started, or in a full
+            synchronisation rather than a push.
     PlanList:
       type: object
       additionalProperties: false
