@@ -18,12 +18,7 @@ export interface PanelHeadingProps {
 export function PanelHeading({ icon, title, subtitle, aside }: PanelHeadingProps) {
   return (
     <div className="flex min-h-9 items-center gap-3">
-      <span
-        aria-hidden="true"
-        className="grid size-9 shrink-0 place-items-center rounded-md bg-[radial-gradient(circle_at_50%_35%,#6e6e6e,#3d3d3d_85%)] text-[var(--panel)]"
-      >
-        {icon}
-      </span>
+      <PanelMark>{icon}</PanelMark>
       <h2 className="min-w-0 font-semibold text-base leading-tight">
         {title}
         {subtitle ? (
@@ -32,5 +27,17 @@ export function PanelHeading({ icon, title, subtitle, aside }: PanelHeadingProps
       </h2>
       {aside ? <div className="ml-auto shrink-0">{aside}</div> : null}
     </div>
+  );
+}
+
+/** The dark square a heading or a headline figure carries its glyph in. */
+export function PanelMark({ children }: { children: ReactNode }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-9 shrink-0 place-items-center rounded-md bg-[radial-gradient(circle_at_50%_35%,#6e6e6e,#3d3d3d_85%)] text-[var(--panel)]"
+    >
+      {children}
+    </span>
   );
 }

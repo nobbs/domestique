@@ -7,12 +7,14 @@
  * so they are the only two offered.
  */
 
+import { IconCalendarStats } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
 import { PageShell } from "../../components/Layout";
+import { PanelHeading } from "../../components/PanelHeading";
+import { Segmented } from "../../components/Segmented";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatAscent, formatCount, formatDistance, formatDuration } from "../../lib/format";
 import {
@@ -70,56 +72,47 @@ export function VolumePage() {
         ) : (
           <>
             <Totals totals={totals} />
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-semibold text-lg">{heading}</h2>
-              <ToggleGroup
-                aria-label="Period"
-                variant="outline"
-                spacing={0}
-                value={[granularity]}
-                onValueChange={(next) => {
-                  // Pressing the pressed one empties the group; the page is
-                  // always by week or by month, so that leaves it as it was.
-                  const chosen = next[0];
-                  if (chosen === "week" || chosen === "month") {
-                    setGranularity(chosen);
-                  }
-                }}
-              >
-                {GRANULARITIES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
+            <section className="flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
+              <PanelHeading
+                icon={<IconCalendarStats size={18} stroke={1.8} />}
+                title={heading}
+                aside={
+                  <Segmented
+                    label="Period"
+                    items={GRANULARITIES.map(({ value, label }) => ({ key: value, label }))}
+                    value={granularity}
+                    onChange={setGranularity}
+                  />
+                }
+              />
+              <ul className="flex flex-col gap-2">
+                {buckets.map((bucket) => (
+                  <li
+                    key={bucket.start.toISOString()}
+                    className="grid grid-cols-[5.5rem_1fr] items-center gap-3"
+                  >
+                    <span className="text-[var(--ink-2)] text-sm">{bucket.label}</span>
+                    <div className="flex flex-col gap-1">
+                      <div
+                        aria-hidden="true"
+                        className="h-2 min-w-px rounded-full bg-[var(--accent)]"
+                        style={{ width: `${(bucket.distanceMetres / widest) * 100}%` }}
+                      />
+                      <span className="text-[var(--ink-2)] text-xs">
+                        {bucket.count === 0
+                          ? "No rides"
+                          : [
+                              formatDistance(bucket.distanceMetres),
+                              formatDuration(bucket.movingSeconds),
+                              formatAscent(bucket.ascentMetres),
+                              formatCount(bucket.count, "ride"),
+                            ].join(" · ")}
+                      </span>
+                    </div>
+                  </li>
                 ))}
-              </ToggleGroup>
-            </div>
-            <ul className="flex flex-col gap-2">
-              {buckets.map((bucket) => (
-                <li
-                  key={bucket.start.toISOString()}
-                  className="grid grid-cols-[5.5rem_1fr] items-center gap-3"
-                >
-                  <span className="text-[var(--ink-2)] text-sm">{bucket.label}</span>
-                  <div className="flex flex-col gap-1">
-                    <div
-                      aria-hidden="true"
-                      className="h-2 min-w-px rounded-full bg-[var(--accent)]"
-                      style={{ width: `${(bucket.distanceMetres / widest) * 100}%` }}
-                    />
-                    <span className="text-[var(--ink-2)] text-xs">
-                      {bucket.count === 0
-                        ? "No rides"
-                        : [
-                            formatDistance(bucket.distanceMetres),
-                            formatDuration(bucket.movingSeconds),
-                            formatAscent(bucket.ascentMetres),
-                            formatCount(bucket.count, "ride"),
-                          ].join(" · ")}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+              </ul>
+            </section>
           </>
         )}
       </div>

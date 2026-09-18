@@ -16,6 +16,7 @@ import {
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Position } from "../../api/types";
+import { SegmentedTrack } from "../../components/Segmented";
 import { StartTimePicker } from "../../components/StartTimePicker";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import type { Climb } from "../../lib/climbs";
@@ -392,9 +393,9 @@ function ForecastStop({
   );
 }
 
-/* A segment of the rail's pill: raised white when it is the stop being read. */
+/* A segment of the rail: quiet until it is the stop being read. */
 const RAIL_TAB =
-  "flex w-14 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] data-[active]:bg-[var(--panel)] data-[active]:font-semibold data-[active]:text-[var(--ink)] data-[active]:shadow-[var(--shadow)]";
+  "relative z-10 flex w-14 flex-col items-center gap-0.5 rounded-[9px] px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] transition-colors duration-200 hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] data-[active]:font-semibold data-[active]:text-[var(--ink)]";
 
 /* The hide control stands alone under the pill, so it keeps a plain hover instead. */
 const RAIL_HIDE =
@@ -526,22 +527,24 @@ export function RouteDock({
         className="flex gap-3"
       >
         <div className="flex shrink-0 flex-col border-r border-[var(--rule)] pr-2">
-          <Tabs.List className="flex flex-col gap-0.5 rounded-lg bg-[var(--muted)] p-[3px]">
-            <Tabs.Tab value="profile" className={RAIL_TAB}>
-              <IconMountain size={15} stroke={2} aria-hidden="true" />
-              Profile
-            </Tabs.Tab>
-            <Tabs.Tab value="forecast" className={RAIL_TAB}>
-              <IconCloud size={15} stroke={2} aria-hidden="true" />
-              Forecast
-            </Tabs.Tab>
-            {rides.length === 0 ? null : (
-              <Tabs.Tab value="rides" className={RAIL_TAB}>
-                <IconBike size={15} stroke={2} aria-hidden="true" />
-                Rides
+          <SegmentedTrack active={shownStop} orientation="vertical">
+            <Tabs.List className="contents">
+              <Tabs.Tab value="profile" data-segment="profile" className={RAIL_TAB}>
+                <IconMountain size={15} stroke={2} aria-hidden="true" />
+                Profile
               </Tabs.Tab>
-            )}
-          </Tabs.List>
+              <Tabs.Tab value="forecast" data-segment="forecast" className={RAIL_TAB}>
+                <IconCloud size={15} stroke={2} aria-hidden="true" />
+                Forecast
+              </Tabs.Tab>
+              {rides.length === 0 ? null : (
+                <Tabs.Tab value="rides" data-segment="rides" className={RAIL_TAB}>
+                  <IconBike size={15} stroke={2} aria-hidden="true" />
+                  Rides
+                </Tabs.Tab>
+              )}
+            </Tabs.List>
+          </SegmentedTrack>
           <button
             type="button"
             aria-expanded

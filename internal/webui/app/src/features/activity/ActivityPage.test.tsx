@@ -586,13 +586,13 @@ describe("one ride's page", () => {
     show();
 
     const box = screen.getByTestId("activity-map").parentElement;
-    expect(box).toHaveClass("h-80");
+    expect(box).toHaveClass("h-[28rem]");
 
     await user.click(screen.getByRole("button", { name: "Expand map" }));
     expect(box).toHaveClass("h-[75vh]");
 
     await user.click(screen.getByRole("button", { name: "Collapse map" }));
-    expect(box).toHaveClass("h-80");
+    expect(box).toHaveClass("h-[28rem]");
   });
 
   it("collapses the enlarged map on Escape", async () => {
@@ -604,7 +604,7 @@ describe("one ride's page", () => {
 
     await user.keyboard("{Escape}");
 
-    expect(screen.getByTestId("activity-map").parentElement).toHaveClass("h-80");
+    expect(screen.getByTestId("activity-map").parentElement).toHaveClass("h-[28rem]");
     expect(screen.getByRole("button", { name: "Expand map" })).toBeInTheDocument();
   });
 });

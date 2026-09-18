@@ -156,75 +156,83 @@ export function ActivityPage() {
 
   return (
     <PageShell>
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
         <div className="grid gap-4 rounded-2xl bg-[var(--panel)] p-5 shadow-[var(--shadow)]">
           <RideHeader ride={ride} />
           <RideFigures ride={ride} />
         </div>
-        {id === null ? (
-          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
-        ) : track.isPending ? (
-          <Skeleton className="h-80 w-full" role="status" aria-label="Loading the recorded track" />
-        ) : !drawable || !track.data?.bbox ? (
-          <p className="text-[var(--ink-2)] text-sm">{absenceMessage(track.data?.state)}</p>
-        ) : (
-          <div
-            className={
-              mapExpanded
-                ? "h-[75vh] overflow-hidden rounded-2xl border border-[var(--rule)] shadow-[var(--shadow)]"
-                : "h-80 overflow-hidden rounded-2xl border border-[var(--rule)] shadow-[var(--shadow)]"
-            }
-          >
-            <ActivityMap
-              coordinates={coordinates}
-              bounds={track.data.bbox}
-              world={track.data.world}
-              windowBounds={windowBounds}
-              profile={profile}
-              activeProfile={shownProfile}
-              activeMetres={activeMetres}
-              onActiveChange={setActiveMetres}
-              zoomWindow={shownWindow}
-              onZoomChange={onZoomChange}
-              expanded={mapExpanded}
-              onExpandedChange={setMapExpanded}
-            />
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="flex min-w-0 flex-col gap-4">
+            {id === null ? (
+              <p className="text-[var(--ink-2)] text-sm">{absenceMessage(undefined)}</p>
+            ) : track.isPending ? (
+              <Skeleton
+                className="h-80 w-full"
+                role="status"
+                aria-label="Loading the recorded track"
+              />
+            ) : !drawable || !track.data?.bbox ? (
+              <p className="text-[var(--ink-2)] text-sm">{absenceMessage(track.data?.state)}</p>
+            ) : (
+              <div
+                className={
+                  mapExpanded
+                    ? "h-[75vh] overflow-hidden rounded-2xl border border-[var(--rule)] shadow-[var(--shadow)]"
+                    : "h-[28rem] overflow-hidden rounded-2xl border border-[var(--rule)] shadow-[var(--shadow)]"
+                }
+              >
+                <ActivityMap
+                  coordinates={coordinates}
+                  bounds={track.data.bbox}
+                  world={track.data.world}
+                  windowBounds={windowBounds}
+                  profile={profile}
+                  activeProfile={shownProfile}
+                  activeMetres={activeMetres}
+                  onActiveChange={setActiveMetres}
+                  zoomWindow={shownWindow}
+                  onZoomChange={onZoomChange}
+                  expanded={mapExpanded}
+                  onExpandedChange={setMapExpanded}
+                />
+              </div>
+            )}
+            {drawable && profile ? (
+              <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
+                <PanelHeading icon={<IconMountain size={18} stroke={1.8} />} title="Profile" />
+                <ElevationProfile
+                  profile={shownProfile}
+                  title={title}
+                  series={drawn}
+                  activeMetres={activeMetres}
+                  onActiveChange={setActiveMetres}
+                  zoomWindow={shownWindow}
+                  onZoomChange={onZoomChange}
+                  size="tall"
+                />
+                <RideConditions steps={weather} starts={starts} totalMetres={stripMetres} />
+                <SeriesChips
+                  states={states}
+                  drawn={drawn}
+                  activeIndex={activeIndex}
+                  onToggle={toggle}
+                />
+              </div>
+            ) : weather && weather.length > 0 && ride ? (
+              <div className="rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
+                <RideConditions
+                  steps={weather}
+                  starts={starts}
+                  totalMetres={stripMetres}
+                  inset={false}
+                />
+              </div>
+            ) : null}
+            {id !== null ? <RideClimbs climbs={routeClimbs.data?.climbs} activityId={id} /> : null}
+            <RideAnalysis ride={ride} />
           </div>
-        )}
-        {drawable && profile ? (
-          <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]">
-            <PanelHeading icon={<IconMountain size={18} stroke={1.8} />} title="Profile" />
-            <ElevationProfile
-              profile={shownProfile}
-              title={title}
-              series={drawn}
-              activeMetres={activeMetres}
-              onActiveChange={setActiveMetres}
-              zoomWindow={shownWindow}
-              onZoomChange={onZoomChange}
-              size="tall"
-            />
-            <RideConditions steps={weather} starts={starts} totalMetres={stripMetres} />
-            <SeriesChips
-              states={states}
-              drawn={drawn}
-              activeIndex={activeIndex}
-              onToggle={toggle}
-            />
-          </div>
-        ) : weather && weather.length > 0 && ride ? (
-          <div className="rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
-            <RideConditions
-              steps={weather}
-              starts={starts}
-              totalMetres={stripMetres}
-              inset={false}
-            />
-          </div>
-        ) : null}
-        <TrainingLoad ride={ride} />
-        <RideAnalysis ride={ride} />
-        {id !== null ? <RideClimbs climbs={routeClimbs.data?.climbs} activityId={id} /> : null}
+          <TrainingLoad ride={ride} />
+        </div>
       </div>
     </PageShell>
   );
