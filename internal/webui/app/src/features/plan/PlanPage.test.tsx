@@ -18,6 +18,9 @@ const markerDragHandlers = vi.hoisted(
   () => new Map<string, (event: { lngLat: { lng: number; lat: number } }) => void>(),
 );
 // Answers every waypoint unmoved unless a test says otherwise.
+const searchPicks = vi.hoisted(() => ({
+  value: [] as Array<{ name: string; longitude: number; latitude: number }>,
+}));
 const snap = vi.hoisted(() =>
   vi.fn(async (at: { longitude: number; latitude: number }) => ({
     data: { ...at, snapped: false },
@@ -33,6 +36,15 @@ vi.mock("../../api/generated", async (importOriginal) => ({
   usePreviewPlanRoute: () => ({ mutate: preview }),
   useReplacePlan: () => ({ isPending: false, mutateAsync: replace }),
   snapPlace: snap,
+  // Rows ask for their names once a geocoder is configured; none is known here.
+  getReversePlaceQueryOptions: (
+    params: unknown,
+    options: { query: { select: (response: unknown) => string } },
+  ) => ({
+    queryKey: ["place", params],
+    queryFn: async () => ({ data: {} }),
+    select: options.query.select,
+  }),
 }));
 vi.mock("../../api/queries", () => ({
   webUIConfigQuery: () => ({ queryKey: ["config"], queryFn: vi.fn() }),
@@ -170,6 +182,14 @@ vi.mock("../routes/RouteOverlay", () => ({
 vi.mock("../routes/ElevationProfile", () => ({
   ElevationProfile: () => <div>elevation profile</div>,
 }));
+// Covered on its own in PlaceSearch.test.tsx; here it only hands over what was picked.
+vi.mock("./PlaceSearch", () => ({
+  PlaceSearch: ({ onAdd }: { onAdd: (places: typeof searchPicks.value) => void }) => (
+    <button type="button" onClick={() => onAdd(searchPicks.value)}>
+      Search places
+    </button>
+  ),
+}));
 // Covered on its own in PlanDelivery.test.tsx; this suite only needs to know
 // whether the header renders it, not the delivery query behind it.
 vi.mock("./PlanDelivery", () => ({
@@ -179,7 +199,10 @@ vi.mock("./PlanDelivery", () => ({
 
 const { PlanPage } = await import("./PlanPage");
 
-function renderPage(path: string | { pathname: string; state: unknown } = "/plan") {
+function renderPage(
+  path: string | { pathname: string; state: unknown } = "/plan",
+  config: { placeNames?: boolean } = {},
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -191,6 +214,7 @@ function renderPage(path: string | { pathname: string; state: unknown } = "/plan
     timezone: "Europe/Berlin",
     identity: { display: "admin@example.test", admin: true },
     planning: true,
+    ...config,
   });
 
   return render(
@@ -1041,6 +1065,39 @@ describe("PlanPage", () => {
       }),
       expect.anything(),
     );
+  });
+
+  it("offers a place search only where a geocoder is configured", () => {
+    renderPage();
+    expect(screen.queryByRole("button", { name: "Search places" })).toBeNull();
+  });
+
+  it("adds searched places along the route, each settled onto the road, as one step", async () => {
+    renderPage("/plan", { placeNames: true });
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    mapPoint.value = { longitude: 8, latitude: 49 };
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8, latitude: 49.3 };
+    fireEvent.click(map);
+    snap.mockClear();
+
+    searchPicks.value = [
+      { name: "Late", longitude: 8.01, latitude: 49.25 },
+      { name: "Early", longitude: 8.01, latitude: 49.05 },
+    ];
+    fireEvent.click(screen.getByRole("button", { name: "Search places" }));
+    await act(async () => {});
+
+    const rows = waypointRows();
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toContain("49.0500, 8.0100");
+    expect(rows[2]).toContain("49.2500, 8.0100");
+    expect(rows[3]).toContain("49.3000, 8.0000");
+    expect(snap).toHaveBeenCalledTimes(2);
+    expect(snap).toHaveBeenCalledWith({ longitude: 8.01, latitude: 49.05 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(waypointRows()).toHaveLength(2);
   });
 
   it("previews, commits, and cancels full-row waypoint reordering from its grip affordance", async () => {

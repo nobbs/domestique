@@ -421,4 +421,91 @@ describe("plannerReducer", () => {
     expect(plannerReducer(edited, { type: "reset" })).toBe(initialPlannerState);
     expect(initialPlannerState.cues).toBe(false);
   });
+
+  describe("insertMany", () => {
+    // A route running due north, with places beside it at known distances along.
+    const start = { longitude: 8, latitude: 49 };
+    const finish = { longitude: 8, latitude: 49.3 };
+    const early = { longitude: 8.01, latitude: 49.05 };
+    const middle = { longitude: 7.99, latitude: 49.15 };
+    const late = { longitude: 8.01, latitude: 49.25 };
+    const beyond = { longitude: 8, latitude: 49.4 };
+    const route = reduce({ type: "append", waypoint: start }, { type: "append", waypoint: finish });
+    const positions = (state: typeof route) =>
+      state.waypoints.map(({ longitude, latitude }) => ({ longitude, latitude }));
+
+    it("orders places along the route whatever order they were chosen in", () => {
+      const chosen = [late, beyond, early, middle];
+      const reversed = [...chosen].reverse();
+
+      const placed = plannerReducer(route, { type: "insertMany", waypoints: chosen });
+
+      expect(positions(placed)).toEqual([start, early, middle, late, finish, beyond]);
+      expect(positions(plannerReducer(route, { type: "insertMany", waypoints: reversed }))).toEqual(
+        positions(placed),
+      );
+    });
+
+    it("places each onto the leg it is nearest, as the route stood", () => {
+      const bent = reduce(
+        { type: "append", waypoint: start },
+        { type: "append", waypoint: { longitude: 8.3, latitude: 49 } },
+        { type: "append", waypoint: { longitude: 8.3, latitude: 49.3 } },
+      );
+      const northLeg = { longitude: 8.31, latitude: 49.2 };
+      const eastLeg = { longitude: 8.1, latitude: 48.99 };
+
+      const placed = plannerReducer(bent, { type: "insertMany", waypoints: [northLeg, eastLeg] });
+
+      expect(positions(placed)).toEqual([
+        start,
+        eastLeg,
+        { longitude: 8.3, latitude: 49 },
+        northLeg,
+        { longitude: 8.3, latitude: 49.3 },
+      ]);
+    });
+
+    it("follows the chosen order where there is no route yet, and is one step to undo", () => {
+      const placed = reduce({ type: "insertMany", waypoints: [late, early, middle] });
+
+      expect(positions(placed)).toEqual([late, early, middle]);
+      expect(placed.waypoints.map((waypoint) => waypoint.id)).toEqual([0, 1, 2]);
+      expect(placed.nextWaypointID).toBe(3);
+      expect(plannerReducer(placed, { type: "undo" }).waypoints).toEqual([]);
+    });
+
+    it("gives every new waypoint its own id and keeps the old ones", () => {
+      const placed = plannerReducer(route, { type: "insertMany", waypoints: [late, early] });
+
+      expect(placed.waypoints.map((waypoint) => waypoint.id)).toEqual([0, 3, 2, 1]);
+    });
+
+    it("adds no more than the waypoint cap leaves room for", () => {
+      const many = Array.from({ length: 60 }, (_, index) => ({
+        longitude: 8,
+        latitude: 49 + index / 1000,
+      }));
+
+      const placed = reduce({ type: "insertMany", waypoints: many });
+
+      expect(placed.waypoints).toHaveLength(50);
+      expect(plannerReducer(placed, { type: "insertMany", waypoints: [early] })).toBe(placed);
+      expect(plannerReducer(route, { type: "insertMany", waypoints: [] })).toBe(route);
+    });
+
+    it("orders places beside a leg that starts and ends in one place", () => {
+      const loop = reduce({ type: "append", waypoint: start }, { type: "append", waypoint: start });
+
+      const placed = plannerReducer(loop, { type: "insertMany", waypoints: [early, late] });
+
+      expect(positions(placed)).toEqual([start, early, late, start]);
+    });
+
+    it("unwraps a longitude from a copy of the world", () => {
+      const placed = reduce({ type: "insertMany", waypoints: [{ longitude: 368, latitude: 49 }] });
+
+      expect(placed.waypoints[0]?.longitude).toBe(8);
+    });
+  });
 });

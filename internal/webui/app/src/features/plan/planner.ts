@@ -123,6 +123,7 @@ export type PlannerAction =
   | { type: "setCues"; cues: boolean }
   | { type: "append"; waypoint: PlanWaypoint }
   | { type: "insert"; index: number; waypoint: PlanWaypoint }
+  | { type: "insertMany"; waypoints: PlanWaypoint[] }
   | { type: "move"; index: number; waypoint: PlanWaypoint }
   | { type: "snap"; id: number; from: PlanWaypoint; waypoint: PlanWaypoint }
   | { type: "delete"; index: number }
@@ -187,6 +188,82 @@ function apply(state: PlannerState, next: PlannerSnapshot): PlannerState {
   };
 }
 
+/** Where a point falls against a route: the leg it is nearest, and how far along it. */
+interface LegPosition {
+  /** The index the point would be inserted at: the end of its leg, or past the finish. */
+  index: number;
+  /** The point's projection onto that leg, unclamped: under 0 is before it, over 1 past it. */
+  along: number;
+}
+
+function legPosition(
+  waypoints: ReadonlyArray<{ longitude: number; latitude: number }>,
+  waypoint: { longitude: number; latitude: number },
+): LegPosition {
+  let nearest: LegPosition = { index: 1, along: 0 };
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < waypoints.length - 1; index++) {
+    const start = waypoints[index];
+    const end = waypoints[index + 1];
+    if (!start || !end) {
+      continue;
+    }
+    const longitudeScale = Math.max(
+      0.01,
+      Math.cos(((start.latitude + end.latitude + waypoint.latitude) / 3) * (Math.PI / 180)),
+    );
+    const endX = (end.longitude - start.longitude) * longitudeScale;
+    const endY = end.latitude - start.latitude;
+    const pointX = (waypoint.longitude - start.longitude) * longitudeScale;
+    const pointY = waypoint.latitude - start.latitude;
+    const lengthSquared = endX * endX + endY * endY;
+    const projection = lengthSquared === 0 ? 0 : (pointX * endX + pointY * endY) / lengthSquared;
+    const fraction = Math.max(0, Math.min(1, projection));
+    const distance = (pointX - endX * fraction) ** 2 + (pointY - endY * fraction) ** 2;
+
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      const pastFinish = index === waypoints.length - 2 && projection >= 1;
+      nearest = { index: pastFinish ? waypoints.length : index + 1, along: projection };
+    }
+  }
+
+  return nearest;
+}
+
+/** Where one new waypoint joins a route of two or more: into its nearest leg, or past the finish. */
+export function insertionIndex(
+  waypoints: ReadonlyArray<{ longitude: number; latitude: number }>,
+  waypoint: { longitude: number; latitude: number },
+): number {
+  return legPosition(waypoints, waypoint).index;
+}
+
+/**
+ * Several new waypoints at once, each onto its nearest leg of the route as it
+ * stood and in order along it, so the result is the same whatever order they
+ * were chosen in. Without a route to order along, they follow in that order.
+ */
+export function insertAll<T extends { longitude: number; latitude: number }>(
+  waypoints: readonly T[],
+  added: readonly T[],
+): T[] {
+  if (waypoints.length < 2) {
+    return [...waypoints, ...added];
+  }
+  const placed = added
+    .map((waypoint) => ({ waypoint, ...legPosition(waypoints, waypoint) }))
+    .sort((a, b) => a.index - b.index || a.along - b.along);
+  const result = [...waypoints];
+  // Back to front, so every index still names its slot in the route as it stood.
+  for (const { waypoint, index } of placed.reverse()) {
+    result.splice(index, 0, waypoint);
+  }
+
+  return result;
+}
+
 export const initialPlannerState: PlannerState = {
   name: "",
   profile: "trekking",
@@ -238,6 +315,21 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
           ...state.waypoints.slice(index),
         ],
         nextWaypointID: state.nextWaypointID + 1,
+      });
+    }
+    case "insertMany": {
+      const room = 50 - state.waypoints.length;
+      if (room <= 0 || action.waypoints.length === 0) {
+        return state;
+      }
+      const added = action.waypoints
+        .slice(0, room)
+        .map((waypoint, offset) => ({ ...unwrapped(waypoint), id: state.nextWaypointID + offset }));
+
+      return apply(state, {
+        ...snapshot(state),
+        waypoints: insertAll(state.waypoints, added),
+        nextWaypointID: state.nextWaypointID + added.length,
       });
     }
     case "move": {
