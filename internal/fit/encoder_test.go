@@ -46,6 +46,22 @@ func TestEncoderEncodeIsDeterministic(t *testing.T) {
 	assert.Equal(t, first, second, "Encode() produced different bytes for the same stage")
 }
 
+func TestEncoderEncodeGivesEachRouteItsOwnFileID(t *testing.T) {
+	serials := map[uint32]route.Provider{}
+	for _, provider := range []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot, route.ProviderLocal} {
+		stage, err := route.NewRoute(provider, 100, 1, "2026-08-17T07:00:00", "Ride", "",
+			[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.5, Latitude: 49.1}}, "hash")
+		require.NoError(t, err)
+		encoded, err := New().Encode(t.Context(), stage)
+		require.NoError(t, err)
+
+		fileID := decodeCourse(t, encoded).FileId
+		assert.Equal(t, typedef.ManufacturerDevelopment, fileID.Manufacturer)
+		assert.NotContains(t, serials, fileID.SerialNumber, "%s shares a serial number", provider)
+		serials[fileID.SerialNumber] = provider
+	}
+}
+
 func TestEncoderEncodeRespectsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

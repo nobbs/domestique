@@ -805,6 +805,8 @@ func assertRouteForm(t *testing.T, request *http.Request, externalID string, exp
 		strings.HasPrefix(request.Form.Get("route[file]"), "data:application/vnd.fit;base64,"),
 		"route file is not a FIT data URI")
 	assert.Equal(t, "Morning route", request.Form.Get("route[name]"), "route name")
+	assert.Equal(t, strings.ReplaceAll(externalID, ":", "-")+".fit", request.Form.Get("route[filename]"),
+		"each route uploads under its own filename")
 	distance := request.Form.Get("route[distance]")
 	assert.NotEmpty(t, distance, "route distance")
 	assert.NotEqual(t, "0", distance, "route distance must be a positive value")

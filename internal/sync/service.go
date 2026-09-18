@@ -24,7 +24,7 @@ const maxDeletionsPerTarget = 5
 // staleness bound and the digest window are all sized against an hour.
 const Interval = time.Hour
 
-const encoderContentVersion = "fit-v4-elevation-profile"
+const encoderContentVersion = "fit-v5-course-identity"
 
 // Options configures safety rules for a synchronizer. It contains no secrets
 // and is intentionally independent of the configuration packages.

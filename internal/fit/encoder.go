@@ -4,6 +4,8 @@ package fit
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
@@ -49,6 +51,8 @@ func (e *Encoder) EncodeWithCues(ctx context.Context, stage route.Route, cues []
 	createdAt := courseTimestamp()
 	course := filedef.NewCourse()
 	course.FileId.SetType(typedef.FileCourse).
+		SetManufacturer(typedef.ManufacturerDevelopment).
+		SetSerialNumber(courseSerial(stage.Key())).
 		SetProductName("domestique").
 		SetTimeCreated(createdAt)
 	course.Course = mesgdef.NewCourse(nil).
@@ -154,6 +158,14 @@ func cuePoint(cue route.Cue) (typedef.CoursePoint, string, bool) {
 	default:
 		return typedef.CoursePointGeneric, "", false
 	}
+}
+
+// courseSerial tells one route's file_id from another's: a head unit that
+// identifies courses by file_id keeps only one of several identical ones.
+func courseSerial(key route.Key) uint32 {
+	sum := sha256.Sum256([]byte(key.ExternalID()))
+
+	return binary.BigEndian.Uint32(sum[:4])
 }
 
 func courseTimestamp() time.Time {
