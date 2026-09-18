@@ -852,7 +852,7 @@ export function PlannerSidebar({
               disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
               onClick={() => onSave(true)}
             >
-              Publish — syncs on next run
+              Publish — sends to Wahoo
             </Button>
           ) : null}
         </div>

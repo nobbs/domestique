@@ -826,7 +826,7 @@ describe("PlanPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Publish — syncs on next run" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish — sends to Wahoo" }));
     await act(async () => {});
 
     expect(replace.mock.calls[0]?.[0]).toMatchObject({ headers: { "If-Match": "2" } });
