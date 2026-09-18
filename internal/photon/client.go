@@ -1,7 +1,7 @@
-// Package photon asks a Photon geocoder what a coordinate is called and
-// returns one short label, or nothing where the place has no name worth
-// showing. It holds the answers it has been given so a coordinate asked for
-// twice costs one request.
+// Package photon asks a Photon geocoder what a coordinate is called, returning
+// one short label or nothing where the place has no name worth showing, and
+// which places answer to a name. It holds the names it has been given so a
+// coordinate asked for twice costs one request; searches are not held.
 package photon
 
 import (
@@ -24,8 +24,8 @@ const (
 	// defaultMinInterval paces requests to the public instance, whose terms are
 	// fair use alone. A self-hosted instance can set it to zero.
 	defaultMinInterval = 200 * time.Millisecond
-	// maximumBodyBytes bounds a reverse answer: one feature with a handful of
-	// string properties, so this is already generous.
+	// maximumBodyBytes bounds an answer: at most a search's few features, each a
+	// handful of string properties, so this is already generous.
 	maximumBodyBytes = 1 << 20
 	// cacheLimit bounds what one process remembers; a plan holds at most fifty
 	// waypoints, so this is many plans' worth of short strings.
@@ -185,56 +185,68 @@ func (c *Client) remember(key, name string) {
 	c.names[key] = name
 }
 
-func (c *Client) lookup(ctx context.Context, latitude, longitude float64) (name string, err error) {
+func (c *Client) lookup(ctx context.Context, latitude, longitude float64) (string, error) {
+	body, status, err := c.get(ctx, "/reverse", url.Values{
+		"lat":   {strconv.FormatFloat(latitude, 'f', -1, 64)},
+		"lon":   {strconv.FormatFloat(longitude, 'f', -1, 64)},
+		"limit": {"1"},
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return parseReverse(body, status)
+}
+
+// get asks the geocoder one paced, bounded question and answers the body of a
+// 200; every other outcome is an *Error carrying nothing of the response.
+func (c *Client) get(ctx context.Context, path string, query url.Values) (body []byte, status int, err error) {
 	if waitErr := c.pace(ctx); waitErr != nil {
-		return "", waitErr
+		return nil, 0, waitErr
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
 	endpoint := *c.baseURL
-	endpoint.Path = "/reverse"
-	endpoint.RawQuery = url.Values{
-		"lat":   {strconv.FormatFloat(latitude, 'f', -1, 64)},
-		"lon":   {strconv.FormatFloat(longitude, 'f', -1, 64)},
-		"limit": {"1"},
-	}.Encode()
+	endpoint.Path = path
+	endpoint.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
 	if err != nil {
-		return "", fmt.Errorf("photon: creating request: %w", err)
+		return nil, 0, fmt.Errorf("photon: creating request: %w", err)
 	}
 	request.Header.Set("Accept", "application/json")
 
 	response, err := c.client.Do(request)
 	if err != nil {
-		return "", &Error{Category: FailureUnreachable}
+		return nil, 0, &Error{Category: FailureUnreachable}
 	}
 	defer func() {
 		err = errors.Join(err, response.Body.Close())
 	}()
 
+	status = response.StatusCode
 	// Classified before the body is read: only a 200 is worth parsing, every
 	// other status is closed unread.
 	switch {
-	case response.StatusCode >= http.StatusInternalServerError:
-		return "", &Error{Category: FailureGeocoder, Status: response.StatusCode}
-	case response.StatusCode >= http.StatusBadRequest:
-		return "", &Error{Category: FailureRefused, Status: response.StatusCode}
-	case response.StatusCode != http.StatusOK:
-		return "", &Error{Category: FailureResponse, Status: response.StatusCode}
+	case status >= http.StatusInternalServerError:
+		return nil, status, &Error{Category: FailureGeocoder, Status: status}
+	case status >= http.StatusBadRequest:
+		return nil, status, &Error{Category: FailureRefused, Status: status}
+	case status != http.StatusOK:
+		return nil, status, &Error{Category: FailureResponse, Status: status}
 	}
 
 	body, readErr := io.ReadAll(io.LimitReader(response.Body, maximumBodyBytes+1))
 	if readErr != nil {
-		return "", &Error{Category: FailureUnreachable, Status: response.StatusCode}
+		return nil, status, &Error{Category: FailureUnreachable, Status: status}
 	}
 	if len(body) > maximumBodyBytes {
-		return "", &Error{Category: FailureResponse, Status: response.StatusCode}
+		return nil, status, &Error{Category: FailureResponse, Status: status}
 	}
 
-	return parseReverse(body, response.StatusCode)
+	return body, status, nil
 }
 
 // pace holds the caller until the minimum interval since the last request has
@@ -299,19 +311,24 @@ func parseReverse(body []byte, status int) (string, error) {
 	return label(&decoded.Features[0].Properties), nil
 }
 
-// label is the one short name for a place: the address where there is one, the
-// feature's own name where it has one, and the enclosing place otherwise.
+// label is the one short name for a place: what it is, within the enclosing
+// place where that says more.
 func label(from *properties) string {
-	place := firstOf(from.City, from.District, from.County, from.State)
+	return join(what(from), firstOf(from.City, from.District, from.County, from.State))
+}
+
+// what names a place by the address where there is one, its own name where it
+// has one, and the enclosing place otherwise.
+func what(from *properties) string {
 	switch {
 	case from.Street != "" && from.HouseNumber != "":
-		return join(from.Street+" "+from.HouseNumber, place)
+		return from.Street + " " + from.HouseNumber
 	case from.Name != "":
-		return join(from.Name, place)
+		return from.Name
 	case from.Street != "":
-		return join(from.Street, place)
+		return from.Street
 	default:
-		return place
+		return firstOf(from.City, from.District, from.County, from.State)
 	}
 }
 

@@ -44,3 +44,17 @@ func TestAcceptancePublicInstanceAnswersOpenWater(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+func TestAcceptancePublicInstanceFindsALandmarkByName(t *testing.T) {
+	client, err := photon.New(&photon.Options{BaseURL: "https://photon.komoot.io"})
+	require.NoError(t, err)
+
+	places, err := client.Search(t.Context(), "Brandenburger Tor", &photon.Near{Latitude: 52.5, Longitude: 13.4})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, places, "the geocoder finds a landmark it holds")
+	assert.Equal(t, "Brandenburger Tor", places[0].Name)
+	assert.Contains(t, places[0].Context, "Berlin")
+	assert.InDelta(t, 52.516, places[0].Latitude, 0.01)
+	assert.InDelta(t, 13.378, places[0].Longitude, 0.01)
+}
