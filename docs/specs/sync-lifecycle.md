@@ -421,16 +421,20 @@ applies to the removals a push would make.
 
 Each push records, in memory only, what it last attempted for each target and
 plan, so the planner can say which rider holds the current revision, is still
-owed it, or failed it and why. A restart forgets those attempts; a plan whose
-push failed before it then reads as owed until the next push.
+owed it, or failed it and why. A push that failed before it reached any target
+— the local read or the stored inventory unreadable — reads as that failure for
+every target still owed the plan, until a later push gets through. A restart
+forgets those attempts; a plan whose push failed before it then reads as owed
+until the next push.
 
 A push is `sync:plan`, over one plan or over every plan. It is started by the
 plan's own replace or delete, runs whether or not the scheduled halves are
 switched on, and takes the inventory exclusively like every other run, so it
 never overlaps one. A push refused because other work holds the inventory is
 not queued; the task's own schedule retries every plan a target is still stale
-on. It is recorded as a target run whenever it contacted a target, and not at
-all when it found every target current.
+on. It is recorded in the task history and not as a synchronisation run: a
+push says nothing about the library, so it never stands in for the last full
+run of either half that the status page reports.
 
 ### Clearing a target
 

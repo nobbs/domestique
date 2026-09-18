@@ -88,12 +88,13 @@ func (r *Reporter) ReconcileTarget(ctx context.Context, targetID string) Result 
 	})
 }
 
-// PushPlans pushes plans alone, on the same recording terms as a target phase.
-// A push that found every target current is not recorded.
+// PushPlans pushes plans alone. It is not recorded as a sync run: a push is no
+// claim about the library, and must not stand in for the last full one.
 func (r *Reporter) PushPlans(ctx context.Context, planID int64) Result {
-	return r.runPhasesWith(ctx, false, true, nil, func(ctx context.Context) Result {
-		return r.runner.RunPlans(ctx, planID)
-	})
+	defer r.phase.Store(nil)
+	r.enter(PhaseTargets)
+
+	return r.runner.RunPlans(ctx, planID)
 }
 
 // ClearTarget deletes every route this service owns from one target and forgets

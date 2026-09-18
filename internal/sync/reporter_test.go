@@ -41,18 +41,19 @@ func TestReporterReconcilesOneTargetAlone(t *testing.T) {
 	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
 }
 
-// A push that wrote something is history like any target run; one that found
-// every target current did nothing worth a line.
-func TestReporterRecordsOnlyAPushThatDidSomething(t *testing.T) {
+// A push is no claim about the library, so it never stands in for the last
+// full run a status page reads.
+func TestReporterRecordsNoPush(t *testing.T) {
 	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, Created: 1}}
 	state := &fakeRunState{}
 	reporter := newReporter(t, runner, state)
 
-	reporter.PushPlans(t.Context(), 1)
-	runner.targets = Result{Phase: PhaseTargets, Outcome: OutcomeSkipped}
-	reporter.PushPlans(t.Context(), 0)
+	result := reporter.PushPlans(t.Context(), 1)
 
-	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
+	assert.Equal(t, 1, result.Created, "the runner's result is returned")
+	assert.Empty(t, state.phases, "recorded phases")
+	_, running := reporter.Running()
+	assert.False(t, running, "a phase left in flight")
 }
 
 // A clear runs through the same recording and notification path as any other

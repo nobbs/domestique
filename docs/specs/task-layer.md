@@ -115,10 +115,10 @@ These chains are registered:
 ~~~text
 sync:source       stored an inventory     ->  sync:target
 sync:source       stored an inventory     ->  surface:annotate
-sync:plan         wrote a plan            ->  surface:annotate
+sync:plan         changed stored plans    ->  surface:annotate
 surface:index     installed a new map     ->  surface:annotate
 sync:source       stored an inventory     ->  ridemodel:predict
-sync:plan         wrote a plan            ->  ridemodel:predict
+sync:plan         changed stored plans    ->  ridemodel:predict
 ridemodel:calibrate  fitted a pair        ->  ridemodel:predict
 activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
@@ -295,8 +295,10 @@ delete starts it over that plan, and nothing waits for the scheduled halves:
 the push is the admin's own act, so it runs with either half switched off. Its
 schedule is the retry, not the timely path — a start refused because another
 task held the inventory is not queued, and the next sweep pushes whatever a
-target is still stale on. A sweep that finds every target current contacts no
-target and is recorded as unchanged. Without a routing engine nothing starts
+target is still stale on. A sweep that changed no stored plan and found every
+target current contacts no target and is recorded as unchanged; a push that
+changed the stored plans asks for their enrichment even when it reached no
+target. Without a routing engine nothing starts
 it and nothing schedules it; it is still registered because the enrichment
 passes follow it.
 

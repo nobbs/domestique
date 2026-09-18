@@ -53,7 +53,32 @@ type attemptKey struct {
 // after a restart a failed push reads as pending until the sweep asks again.
 type planAttempts struct {
 	byKey map[attemptKey]planAttempt
+	// runs holds each push's own outcome by the plan it named, zero for every
+	// plan, so a push that failed before reaching any target still reads failed.
+	runs  map[int64]planAttempt
 	mutex gosync.Mutex
+}
+
+func (a *planAttempts) recordRun(planID int64, attempt planAttempt) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	if a.runs == nil {
+		a.runs = make(map[int64]planAttempt)
+	}
+	a.runs[planID] = attempt
+}
+
+// lastRun is the newer of the last push naming this plan and the last sweep.
+func (a *planAttempts) lastRun(planID int64) (planAttempt, bool) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	named, namedFound := a.runs[planID]
+	sweep, sweepFound := a.runs[0]
+	if !sweepFound || (namedFound && named.at.After(sweep.at)) {
+		return named, namedFound
+	}
+
+	return sweep, true
 }
 
 func (a *planAttempts) record(targetID string, planID int64, attempt planAttempt) {
@@ -76,32 +101,51 @@ func (a *planAttempts) last(targetID string, planID int64) (planAttempt, bool) {
 // RunPlans pushes plans alone: it reads the local source into the stored
 // inventory, then writes or removes only the plans each target is stale on,
 // contacting no target that is current. A planID of zero is every plan. The
-// rest of the library is left to the full runs.
+// rest of the library is left to the full runs. SourceStored reports whether
+// the stored plans changed.
 func (s *Service) RunPlans(ctx context.Context, planID int64) Result {
+	result, unreached := s.runPlans(ctx, planID)
+	s.attempts.recordRun(planID, planAttempt{at: s.now().UTC(), failure: unreached})
+
+	return result
+}
+
+// runPlans also reports the failure that stopped it before any plan's own
+// attempt was recorded, which is the only failure no target's row carries.
+func (s *Service) runPlans(ctx context.Context, planID int64) (Result, FailureCategory) {
 	source, configured, err := s.sourceFor(route.ProviderLocal)
 	if err != nil {
-		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: FailureState}
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}, FailureState
 	}
 	if !configured {
-		return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}
+		return Result{Phase: PhaseTargets, Outcome: OutcomeNotReady}, FailureNone
+	}
+	before, err := s.state.TrustedInventory(ctx)
+	if err != nil {
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}, FailureState
 	}
 	if outcome, failure, _ := s.runOneSource(ctx, source, route.ProviderLocal); failure != FailureNone {
-		return Result{Phase: PhaseSource, Outcome: outcome, Failure: failure}
+		return Result{Phase: PhaseTargets, Outcome: outcome, Failure: failure}, failure
 	}
 	stored, err := s.state.TrustedInventory(ctx)
 	if err != nil {
-		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}, FailureState
 	}
 	desired, _, err := normalizeInventory(stored)
 	if err != nil {
-		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
+		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}, FailureState
 	}
 
-	result := Result{Phase: PhaseTargets}
+	result := Result{Phase: PhaseTargets, SourceStored: !slices.Equal(localShare(before), localShare(stored))}
+	unreached := FailureNone
 	for _, targetID := range s.targetIDs() {
-		applied, failure, contacted := s.pushPlans(ctx, targetID, desired, planID)
-		if !contacted {
+		push := s.pushPlans(ctx, targetID, desired, planID)
+		if !push.contacted {
 			continue
+		}
+		applied, failure := push.applied, push.failure
+		if !push.attempted && unreached == FailureNone {
+			unreached = failure
 		}
 		result.Created += applied.created
 		result.Updated += applied.updated
@@ -126,35 +170,58 @@ func (s *Service) RunPlans(ctx context.Context, planID int64) Result {
 		result.Outcome = OutcomeSucceeded
 	}
 
-	return result
+	return result, unreached
 }
 
-// pushPlans brings one target's plans in line with the stored inventory,
-// reporting whether the target was stale at all and so was contacted.
+// localShare is the plans' part of a stored inventory, as what a change to
+// them would alter, in key order.
+func localShare(stages []route.Route) []string {
+	var share []string
+	for index := range stages {
+		stage := &stages[index]
+		if stage.Key().Provider() == route.ProviderLocal {
+			share = append(share, stage.Key().ExternalID()+"\x00"+stage.Revision()+"\x00"+stage.ContentHash())
+		}
+	}
+	slices.Sort(share)
+
+	return share
+}
+
+// planPush is one target's share of a push. Contacted is whether the target
+// was stale at all; attempted, whether its plans' own attempts were recorded.
+type planPush struct {
+	failure   FailureCategory
+	applied   counts
+	contacted bool
+	attempted bool
+}
+
+// pushPlans brings one target's plans in line with the stored inventory.
 func (s *Service) pushPlans(
 	ctx context.Context, targetID string, desired map[route.Key]route.Route, planID int64,
-) (counts, FailureCategory, bool) {
+) planPush {
 	authorization, err := s.state.TargetAuthorization(ctx, targetID)
 	if err != nil {
-		return counts{}, FailureState, true
+		return planPush{failure: FailureState, contacted: true}
 	}
 	// Reconnecting is the rider's to do; asking Wahoo again changes nothing.
 	if authorization != authorizedState {
-		return counts{}, FailureNone, false
+		return planPush{}
 	}
 	mappings, err := s.targetStages(ctx, targetID)
 	if err != nil {
-		return counts{}, FailureState, true
+		return planPush{failure: FailureState, contacted: true}
 	}
 	writes, removals := stalePlans(mappings, desired, planID)
 	if len(writes) == 0 && len(removals) == 0 {
-		return counts{}, FailureNone, false
+		return planPush{}
 	}
 
-	var result counts
-	failure := s.writePlans(ctx, targetID, writes, removals, mappings, &result)
+	push := planPush{contacted: true, attempted: true}
+	push.failure = s.writePlans(ctx, targetID, writes, removals, mappings, &push.applied)
 
-	return result, failure, true
+	return push
 }
 
 // writePlans applies the stale plans and records each one's attempt. Once a
@@ -253,7 +320,13 @@ func (s *Service) PlanDelivery(ctx context.Context, planID int64, revision strin
 		}
 		recorded, tracked := mappings[key]
 		attempt, attempted := s.attempts.last(targetID, planID)
-		deliveries = append(deliveries, delivery(targetID, authorization, revision, recorded, tracked, attempt, attempted))
+		result := delivery(targetID, authorization, revision, recorded, tracked, attempt, attempted)
+		// A push that failed before reaching this target leaves it owed, not
+		// sending: nothing will send it until the next push.
+		if run, ran := s.attempts.lastRun(planID); result.State == DeliveryPending && ran && run.failure != FailureNone {
+			result.State, result.Failure = DeliveryFailed, run.failure
+		}
+		deliveries = append(deliveries, result)
 	}
 
 	return deliveries, nil

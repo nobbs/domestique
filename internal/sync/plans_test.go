@@ -353,3 +353,39 @@ func TestPlanDeliveryFailsWhenStateIsUnreadable(t *testing.T) {
 		})
 	}
 }
+
+// A push that fails before it reaches any rider reports every rider still
+// owed the plan as failed, not as sending, until a push gets through.
+func TestPlanDeliveryReportsAPushThatReachedNoOne(t *testing.T) {
+	pushed := planStage(t, 1, "r1")
+	local := &fakeSource{provider: route.ProviderLocal, err: errors.New("down")}
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	service := newPlanService(t, state, target, local)
+
+	require.Equal(t, OutcomeFailed, service.RunPlans(t.Context(), 1).Outcome, "failed RunPlans()")
+	failed, err := service.PlanDelivery(t.Context(), 1, pushed.Revision())
+	require.NoError(t, err, "PlanDelivery() after the failure")
+	assert.Equal(t, Delivery{TargetID: "a", State: DeliveryFailed, Failure: FailureSource}, failed[0], "delivery")
+
+	local.err, local.stages = nil, []route.Route{pushed}
+	require.Equal(t, OutcomeSucceeded, service.RunPlans(t.Context(), 0).Outcome, "sweep")
+	recovered, err := service.PlanDelivery(t.Context(), 1, pushed.Revision())
+	require.NoError(t, err, "PlanDelivery() after the sweep")
+	assert.Equal(t, DeliveryCurrent, recovered[0].State, "state once a sweep got through")
+}
+
+// Enrichment follows a change to the stored plans, reaching a rider or not.
+func TestRunPlansReportsWhetherTheStoredPlansChanged(t *testing.T) {
+	local := &fakeSource{provider: route.ProviderLocal, stages: []route.Route{planStage(t, 1, "r1")}}
+	state := newFakeState("a")
+	state.authorizations["a"] = "needs_reauthorization"
+	service := newPlanService(t, state, newFakeTarget(), local)
+
+	first := service.RunPlans(t.Context(), 1)
+	second := service.RunPlans(t.Context(), 1)
+
+	assert.Equal(t, OutcomeSkipped, first.Outcome, "no rider reachable")
+	assert.True(t, first.SourceStored, "first push stored a new plan")
+	assert.False(t, second.SourceStored, "second push changed nothing")
+}

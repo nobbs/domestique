@@ -138,7 +138,7 @@ func TestThePlanSweepRunsEveryFifteenMinutes(t *testing.T) {
 func TestPlanPushNamesItsPlanOrEveryPlan(t *testing.T) {
 	t.Parallel()
 
-	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded, Updated: 1}}
+	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSucceeded, SourceStored: true}}
 	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets, true), taskSyncPlan)
 
 	named := definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncPlan, Argument: "42"})
@@ -146,7 +146,19 @@ func TestPlanPushNamesItsPlanOrEveryPlan(t *testing.T) {
 
 	assert.Equal(t, []int64{42, 0}, synchronizer.pushed, "plans pushed")
 	assert.Equal(t, task.Succeeded, named.Outcome, "outcome")
-	assert.True(t, every.Advances, "a push that wrote a plan asks for enrichment")
+	assert.True(t, every.Advances, "a push that changed the stored plans asks for enrichment")
+}
+
+// A plan that changed but reached no rider still wants classifying.
+func TestAPlanPushThatReachedNoOneStillAsksForEnrichment(t *testing.T) {
+	t.Parallel()
+
+	synchronizer := &fakeSynchronizer{result: syncservice.Result{Outcome: syncservice.OutcomeSkipped, SourceStored: true}}
+	definition := definitionNamed(t, inventoryTasks(synchronizer, liveSettings(t), allEnabled, twoTargets, true), taskSyncPlan)
+
+	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncPlan})
+
+	assert.Equal(t, task.Result{Outcome: task.Succeeded, Advances: true}, result, "result")
 }
 
 // A sweep with nothing to push is not news, and asks for no enrichment.

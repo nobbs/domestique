@@ -391,8 +391,8 @@ func inventoryTasks(
 }
 
 // pushPlans pushes the plan the argument names, or every plan for none. A push
-// that found every target current is unchanged; one that wrote a plan asks for
-// the enrichment a changed inventory wants.
+// that changed no stored plan and contacted no target is unchanged; one that
+// changed the stored plans asks for enrichment even when it failed.
 func pushPlans(ctx context.Context, reporter synchronizer, argument string) task.Result {
 	var planID int64
 	if argument != "" {
@@ -404,10 +404,14 @@ func pushPlans(ctx context.Context, reporter synchronizer, argument string) task
 	}
 	result := reporter.PushPlans(ctx, planID)
 	if result.Outcome == syncservice.OutcomeSkipped {
-		return task.Result{Outcome: task.Unchanged}
+		if !result.SourceStored {
+			return task.Result{Outcome: task.Unchanged}
+		}
+
+		return task.Result{Outcome: task.Succeeded, Advances: true}
 	}
 	converted := syncResult(&result)
-	converted.Advances = result.Created+result.Updated > 0
+	converted.Advances = result.SourceStored
 
 	return converted
 }
