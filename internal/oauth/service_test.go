@@ -202,6 +202,7 @@ type fakeStateStore struct {
 	expiresAt        time.Time
 	refreshTokenErr  error
 	disconnected     string
+	replaced         string
 	authorizeErr     error
 	authorizedTarget string
 	authorizedUser   string
@@ -279,6 +280,18 @@ func (s *fakeStateStore) RefreshToken(context.Context, string) (string, error) {
 	return s.refreshToken, s.refreshTokenErr
 }
 
+func (s *fakeStateStore) ReplaceRefreshToken(_ context.Context, _, refreshToken string) error {
+	s.replaced = refreshToken
+
+	return nil
+}
+
+func (s *fakeStateStore) IsRefreshTokenUnavailable(err error) bool {
+	return errors.Is(err, errNoToken)
+}
+
+var errNoToken = errors.New("unavailable")
+
 func (s *fakeStateStore) DisconnectTarget(_ context.Context, targetID string) error {
 	s.disconnected = targetID
 
@@ -308,15 +321,20 @@ func TestServiceDisconnectWithdrawsTheGrantBeforeForgetting(t *testing.T) {
 		wahoo            fakeWahoo
 		wantErr          error
 		wantDeauthorized string
+		wantReplaced     string
 		wantForgotten    bool
 	}{
 		"withdrawn, then forgotten": {
 			store: fakeStateStore{refreshToken: "refresh"}, wahoo: fakeWahoo{accessToken: "access"},
-			wantDeauthorized: "access", wantForgotten: true,
+			wantDeauthorized: "access", wantReplaced: "rotated", wantForgotten: true,
 		},
 		"no token to withdraw": {
-			store:         fakeStateStore{refreshTokenErr: errors.New("unavailable")},
+			store:         fakeStateStore{refreshTokenErr: errNoToken},
 			wantForgotten: true,
+		},
+		"a token the store cannot read keeps the connection": {
+			store:   fakeStateStore{refreshTokenErr: errors.New("decrypt")},
+			wantErr: ErrDisconnectFailed,
 		},
 		"a grant Wahoo already refuses": {
 			store: fakeStateStore{refreshToken: "refresh"}, wahoo: fakeWahoo{refreshErr: errWahooUnauthorized},
@@ -325,7 +343,7 @@ func TestServiceDisconnectWithdrawsTheGrantBeforeForgetting(t *testing.T) {
 		"Wahoo unreachable keeps the connection": {
 			store:   fakeStateStore{refreshToken: "refresh"},
 			wahoo:   fakeWahoo{accessToken: "access", deauthErr: errors.New("timeout")},
-			wantErr: ErrDisconnectFailed, wantDeauthorized: "access",
+			wantErr: ErrDisconnectFailed, wantDeauthorized: "access", wantReplaced: "rotated",
 		},
 	}
 	for name, tc := range cases {
@@ -336,6 +354,7 @@ func TestServiceDisconnectWithdrawsTheGrantBeforeForgetting(t *testing.T) {
 			err = service.Disconnect(t.Context(), "rider-a")
 			require.ErrorIs(t, err, tc.wantErr)
 			assert.Equal(t, tc.wantDeauthorized, tc.wahoo.deauthorized, "deauthorized with")
+			assert.Equal(t, tc.wantReplaced, tc.store.replaced, "kept the rotated token")
 			assert.Equal(t, tc.wantForgotten, tc.store.disconnected == "rider-a", "forgotten")
 		})
 	}

@@ -106,6 +106,12 @@ func (s *Store) RefreshToken(ctx context.Context, targetID string) (string, erro
 	return string(decryptedToken), nil
 }
 
+// IsRefreshTokenUnavailable reports a RefreshToken error meaning the target holds
+// no token, or is not configured, rather than one the store failed to read.
+func (s *Store) IsRefreshTokenUnavailable(err error) bool {
+	return errors.Is(err, ErrRefreshTokenUnavailable) || errors.Is(err, ErrTargetNotFound)
+}
+
 // ReplaceRefreshToken atomically stores the refresh token returned by a
 // successful Wahoo refresh. The replacement happens before another API request
 // can use the prior token. A target whose token was cleared meanwhile reports

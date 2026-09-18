@@ -55,6 +55,7 @@ func TestStoreBindsTokenToTarget(t *testing.T) {
 
 	_, err = store.RefreshToken(t.Context(), "rider-b")
 	require.ErrorIs(t, err, ErrStateUnreadable, "RefreshToken()")
+	assert.False(t, store.IsRefreshTokenUnavailable(err), "an unreadable token is not a missing one")
 }
 
 func TestStoreRejectsDifferentEncryptionKey(t *testing.T) {
@@ -114,6 +115,7 @@ func TestStoreDisconnectsTarget(t *testing.T) {
 	assert.Equal(t, AuthorizationNotAuthorized, target.AuthorizationState, "Target().AuthorizationState")
 	_, err = store.RefreshToken(t.Context(), "rider-a")
 	require.ErrorIs(t, err, ErrRefreshTokenUnavailable, "RefreshToken()")
+	assert.True(t, store.IsRefreshTokenUnavailable(err), "IsRefreshTokenUnavailable()")
 	// A refresh that was already under way must not bring the token back.
 	require.ErrorIs(t, store.ReplaceRefreshToken(t.Context(), "rider-a", "late-token"), ErrTargetNotFound)
 	// The account is free to be connected again, here or on another slot.
