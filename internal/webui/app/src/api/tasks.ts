@@ -18,6 +18,8 @@ export const TASKS = {
   activityRecord: "activity:record",
   /** Asking once more about one ride. Started by the ride page's admin control alone. */
   activityReanalyse: "activity:reanalyse",
+  /** Pushing one plan to, or removing it from, every connected rider's Wahoo account. */
+  syncPlan: "sync:plan",
 } as const;
 
 /** SYNC_PHASE_TASKS is which task does each half of a synchronization. */

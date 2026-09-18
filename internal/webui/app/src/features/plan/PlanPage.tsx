@@ -32,6 +32,7 @@ import {
 import { Layer, Marker, ScaleControl, Source } from "react-map-gl/maplibre";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
+  getGetPlanDeliveryQueryKey,
   getGetPlanQueryKey,
   getListPlansQueryKey,
   snapPlace,
@@ -89,6 +90,7 @@ import { resolvesDark, useThemeChoice } from "../../lib/theme";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { GroundRibbon } from "../routes/GroundRibbon";
 import { RouteOverlay } from "../routes/RouteOverlay";
+import { PlanDeliveryTrigger } from "./PlanDelivery";
 import { usePlaceName } from "./placeName";
 import {
   initialPlannerState,
@@ -500,6 +502,7 @@ export function PlannerSidebar({
             <ButtonLink variant="ghost" to="/plan">
               New
             </ButtonLink>
+            <PlanDeliveryTrigger planId={planId} published={published} />
           </div>
         }
       >
@@ -681,7 +684,7 @@ export function PlannerSidebar({
             disabled={saving || state.name.trim() === "" || state.waypoints.length < 2}
             onClick={() => onSave(false)}
           >
-            Unpublish — removes on next sync
+            Unpublish — removes from Wahoo
           </Button>
         ) : null}
         {saveError ? (
@@ -1036,6 +1039,7 @@ export function PlanPage() {
       setPreview(previewFrom(response.data));
       queryClient.setQueryData(getGetPlanQueryKey(planId), response);
       queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetPlanDeliveryQueryKey(planId) });
     } catch (error) {
       setSaveError(errorMessage(error));
     }
