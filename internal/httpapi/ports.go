@@ -38,6 +38,22 @@ type Plans interface {
 	List(ctx context.Context) ([]plan.Plan, error)
 }
 
+// PlanDeliveries reports where each target stands with one plan, against the
+// revision it should hold: empty for a plan it should hold no copy of.
+type PlanDeliveries interface {
+	PlanDelivery(ctx context.Context, planID int64, revision string) ([]PlanDelivery, error)
+}
+
+// PlanDelivery is one target's standing with one plan. State and Failure are
+// the stable words the contract's PlanTargetDelivery carries.
+type PlanDelivery struct {
+	// DeliveredAt is zero when unknown.
+	DeliveredAt time.Time
+	TargetID    string
+	State       string
+	Failure     string
+}
+
 // Places names a coordinate, for a planner that would otherwise show a route
 // as pairs of numbers. Satisfied structurally by a geocoding adapter. An empty
 // name with no error means the geocoder knows of no place there.

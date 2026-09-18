@@ -162,8 +162,16 @@ waypoint is never itself a point of the geometry.
 fastbike, or gravel. Stored with the plan, so re-routing it keeps the choice.
 
 **draft / published** — a plan's two states. Publishing is what makes it a
-route and puts it in the inventory the next synchronisation reads; unpublishing
-takes it out again, on the same terms as deleting it.
+route and puts it in the inventory; unpublishing takes it out again, on the
+same terms as deleting it. Either is pushed at once.
+
+**plan push** — writing one plan, and no other route, to every connected target
+the moment it is published or re-saved, or removing it when it is unpublished
+or deleted: the `sync:plan` task. Not a plan's `pushing` windows, which are
+where the rider walks.
+
+**delivery** — one target's standing with one plan: `current`, `pending`,
+`failed` or `absent`, as the planner reports it.
 
 ## Synchronisation
 

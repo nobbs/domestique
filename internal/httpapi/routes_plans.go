@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -121,6 +122,7 @@ func (h *Handler) ReplacePlan(writer http.ResponseWriter, request *http.Request)
 	if h.planFailed(writer, err) {
 		return
 	}
+	h.pushPlan(id)
 	h.writeJSON(writer, http.StatusOK, h.planOf(request.Context(), &replaced))
 }
 
@@ -142,7 +144,91 @@ func (h *Handler) DeletePlan(writer http.ResponseWriter, request *http.Request) 
 	if err := h.plans.Delete(request.Context(), id, version); h.planFailed(writer, err) {
 		return
 	}
+	h.pushPlan(id)
 	writer.WriteHeader(http.StatusNoContent)
+}
+
+// pushPlan asks for the plan's copies to follow what was just stored. A draft
+// that was never published has none, so the push finds nothing to do. A
+// refused start is left to the push's own schedule.
+func (h *Handler) pushPlan(id int64) {
+	started := h.tasks.Run(TaskSyncPlan, strconv.FormatInt(id, 10))
+	slog.Info("plan push requested", "started", started)
+}
+
+// GetPlanDelivery reports each connected rider's copy of one plan, read from
+// stored state alone.
+func (h *Handler) GetPlanDelivery(writer http.ResponseWriter, request *http.Request) {
+	id, ok := planID(request)
+	if !ok {
+		h.notFound(writer)
+
+		return
+	}
+	found, exists, err := h.plans.Get(request.Context(), id)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if !exists {
+		h.notFound(writer)
+
+		return
+	}
+	revision := ""
+	if found.Published {
+		revision = found.Revision()
+	}
+	deliveries, err := h.planDeliveries.PlanDelivery(request.Context(), id, revision)
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	owners, nicknames, err := h.targetOwners(request.Context())
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	subject := identityOf(request.Context()).Subject
+	targets := make([]openapi.PlanTargetDelivery, len(deliveries))
+	for index, delivery := range deliveries {
+		owner := owners[delivery.TargetID]
+		targets[index] = openapi.PlanTargetDelivery{
+			ID:            delivery.TargetID,
+			Own:           owner != "" && owner == subject,
+			OwnerNickname: optionalString(nicknames[owner]),
+			State:         openapi.PlanTargetDelivery_State(delivery.State),
+			Failure:       optionalString(delivery.Failure),
+		}
+		if !delivery.DeliveredAt.IsZero() {
+			deliveredAt := delivery.DeliveredAt.UTC()
+			targets[index].DeliveredAt = &deliveredAt
+		}
+	}
+	h.writeJSON(writer, http.StatusOK, openapi.PlanDelivery{Targets: targets})
+}
+
+// targetOwners maps each target to its owning subject, and each subject to
+// the nickname its latest sign-in carried.
+func (h *Handler) targetOwners(ctx context.Context) (owners, nicknames map[string]string, err error) {
+	owners = make(map[string]string)
+	err = h.state.ForEachTarget(ctx, func(id, _, ownerSubject string) error {
+		owners[id] = ownerSubject
+
+		return nil
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing targets: %w", err)
+	}
+	nicknames, err = h.state.LatestSessionNicknames(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading nicknames: %w", err)
+	}
+
+	return owners, nicknames, nil
 }
 
 // planID reads the path's planId. A value the contract validator did not

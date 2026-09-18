@@ -24,6 +24,7 @@ const (
 	taskSyncSource         = httpapi.TaskSyncSource
 	taskSyncTarget         = httpapi.TaskSyncTarget
 	taskSyncClear          = httpapi.TaskSyncClear
+	taskSyncPlan           = httpapi.TaskSyncPlan
 	taskSurfaceAnnotate    = "surface:annotate"
 	taskSurfaceIndex       = httpapi.TaskSurfaceIndex
 	taskRideModelPredict   = httpapi.TaskRideModelPredict
@@ -63,6 +64,11 @@ const (
 	enrichmentBackoffBase = 5 * time.Minute
 	backoffCap            = 6 * time.Hour
 )
+
+// planSweepInterval is how often plans are pushed unasked. A save asks at once;
+// this catches a push refused because the inventory was busy, and costs no
+// Wahoo request while every target is current.
+const planSweepInterval = 15 * time.Minute
 
 // targetBackstopInterval is how often targets are reconciled unasked; a
 // successful source read already asks for them at once, so this only catches a
@@ -145,6 +151,9 @@ const (
 	detailActivityArgument task.Detail = "argument"
 )
 
+// detailPlanArgument marks a push whose argument named no plan.
+const detailPlanArgument task.Detail = "argument"
+
 // synchronizer is the sync work the task layer starts; indexBuilder is the
 // surface index rebuild. Both live here so definitions can be read without a
 // reporter or builder behind them.
@@ -153,6 +162,7 @@ type synchronizer interface {
 	RunSourceProvider(ctx context.Context, provider route.Provider) syncservice.Result
 	ReconcileTarget(ctx context.Context, targetID string) syncservice.Result
 	ClearTarget(ctx context.Context, targetID string) syncservice.Result
+	PushPlans(ctx context.Context, planID int64) syncservice.Result
 	Annotate(ctx context.Context) (failed int, err error)
 	Predict(ctx context.Context) (failed int, err error)
 }
@@ -255,10 +265,16 @@ func syncAlerts(stale bool) *task.Notify {
 // status page reads best.
 func inventoryTasks(
 	reporter synchronizer, settings *runtimeconfig.Current, enabled func(string) func() bool,
-	targetIDs func() []string,
+	targetIDs func() []string, planning bool,
 ) []task.Definition {
 	inventory := func(string) []task.Resource {
 		return []task.Resource{{Name: resourceInventory, Exclusive: true}}
+	}
+	// Registered either way, because enrichment follows it; without a planner
+	// nothing asks for it and nothing schedules it.
+	var planSweep task.Schedule
+	if planning {
+		planSweep = task.Every(func() time.Duration { return planSweepInterval })
 	}
 
 	return []task.Definition{
@@ -326,9 +342,21 @@ func inventoryTasks(
 			}),
 		},
 		{
+			Name:         taskSyncPlan,
+			Resources:    inventory,
+			Notify:       syncAlerts(false),
+			Schedule:     planSweep,
+			InitialDelay: func() time.Duration { return planSweepInterval },
+			Enabled:      enabled(taskSyncPlan),
+			Backoff:      task.Backoff{Base: targetBackoffBase, Cap: backoffCap},
+			Run: task.RunnerFunc(func(ctx context.Context, invocation task.Invocation) task.Result {
+				return pushPlans(ctx, reporter, invocation.Argument)
+			}),
+		},
+		{
 			Name:      taskSurfaceAnnotate,
 			Resources: inventory,
-			Follows:   []string{taskSyncSource, taskSurfaceIndex},
+			Follows:   []string{taskSyncSource, taskSyncPlan, taskSurfaceIndex},
 			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				failed, err := reporter.Annotate(ctx)
@@ -345,7 +373,7 @@ func inventoryTasks(
 		{
 			Name:      taskRideModelPredict,
 			Resources: inventory,
-			Follows:   []string{taskSyncSource, taskRideModelCalibrate},
+			Follows:   []string{taskSyncSource, taskSyncPlan, taskRideModelCalibrate},
 			Backoff:   task.Backoff{Base: enrichmentBackoffBase, Cap: backoffCap},
 			Run: task.RunnerFunc(func(ctx context.Context, _ task.Invocation) task.Result {
 				failed, err := reporter.Predict(ctx)
@@ -360,6 +388,32 @@ func inventoryTasks(
 			}),
 		},
 	}
+}
+
+// pushPlans pushes the plan the argument names, or every plan for none. A push
+// that changed no stored plan and contacted no target is unchanged; one that
+// changed the stored plans asks for enrichment even when it failed.
+func pushPlans(ctx context.Context, reporter synchronizer, argument string) task.Result {
+	var planID int64
+	if argument != "" {
+		parsed, err := strconv.ParseInt(argument, 10, 64)
+		if err != nil || parsed <= 0 {
+			return task.Result{Outcome: task.Failed, Detail: detailPlanArgument}
+		}
+		planID = parsed
+	}
+	result := reporter.PushPlans(ctx, planID)
+	if result.Outcome == syncservice.OutcomeSkipped {
+		if !result.SourceStored {
+			return task.Result{Outcome: task.Unchanged}
+		}
+
+		return task.Result{Outcome: task.Succeeded, Advances: true}
+	}
+	converted := syncResult(&result)
+	converted.Advances = result.SourceStored
+
+	return converted
 }
 
 // activityPollTask reads each target's recorded activities into the store. It

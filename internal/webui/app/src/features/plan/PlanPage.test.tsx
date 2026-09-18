@@ -137,6 +137,12 @@ vi.mock("../routes/RouteOverlay", () => ({
 vi.mock("../routes/ElevationProfile", () => ({
   ElevationProfile: () => <div>elevation profile</div>,
 }));
+// Covered on its own in PlanDelivery.test.tsx; this suite only needs to know
+// whether the header renders it, not the delivery query behind it.
+vi.mock("./PlanDelivery", () => ({
+  PlanDeliveryTrigger: ({ planId }: { planId: number | null }) =>
+    planId === null ? null : <span data-testid="plan-delivery-trigger" />,
+}));
 
 const { PlanPage } = await import("./PlanPage");
 
@@ -204,6 +210,42 @@ describe("edgeSpeed", () => {
 });
 
 describe("PlanPage", () => {
+  it("shows the delivery trigger only once a plan is saved", async () => {
+    vi.useRealTimers();
+    renderPage();
+    expect(screen.queryByTestId("plan-delivery-trigger")).toBeNull();
+
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          published: false,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+          ],
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [8, 49],
+              [8.1, 49.1],
+            ],
+          },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    expect(screen.getByTestId("plan-delivery-trigger")).toBeInTheDocument();
+  });
+
   it("renders the planner with a mocked map and labels drafts", async () => {
     vi.useRealTimers();
     renderPage();

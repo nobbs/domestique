@@ -41,6 +41,21 @@ func TestReporterReconcilesOneTargetAlone(t *testing.T) {
 	assert.Equal(t, []string{"targets"}, state.phases, "recorded phases")
 }
 
+// A push is no claim about the library, so it never stands in for the last
+// full run a status page reads.
+func TestReporterRecordsNoPush(t *testing.T) {
+	runner := &reportingRunner{targets: Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded, Created: 1}}
+	state := &fakeRunState{}
+	reporter := newReporter(t, runner, state)
+
+	result := reporter.PushPlans(t.Context(), 1)
+
+	assert.Equal(t, 1, result.Created, "the runner's result is returned")
+	assert.Empty(t, state.phases, "recorded phases")
+	_, running := reporter.Running()
+	assert.False(t, running, "a phase left in flight")
+}
+
 // A clear runs through the same recording and notification path as any other
 // target work, so a cleared account appears in history as the deletion it was
 // rather than as an unexplained drop in what that account holds.
@@ -255,6 +270,10 @@ func (r *reportingRunner) RunTarget(_ context.Context, targetID string) Result {
 	return r.targets
 }
 
+func (r *reportingRunner) RunPlans(context.Context, int64) Result {
+	return r.targets
+}
+
 func (r *reportingRunner) ClearTarget(_ context.Context, targetID string) Result {
 	r.clearedIDs = append(r.clearedIDs, targetID)
 
@@ -295,6 +314,10 @@ func (r *blockingReportingRunner) RunTargets(context.Context) Result {
 
 func (r *blockingReportingRunner) RunTarget(context.Context, string) Result {
 	return Result{Phase: PhaseTargets, Outcome: OutcomeSucceeded}
+}
+
+func (r *blockingReportingRunner) RunPlans(context.Context, int64) Result {
+	return Result{}
 }
 
 func (r *blockingReportingRunner) ClearTarget(context.Context, string) Result {

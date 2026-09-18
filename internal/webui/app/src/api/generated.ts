@@ -921,6 +921,33 @@ export interface Plan {
   updatedAt: string;
 }
 
+export type PlanTargetDeliveryState =
+  (typeof PlanTargetDeliveryState)[keyof typeof PlanTargetDeliveryState];
+
+export const PlanTargetDeliveryState = {
+  current: "current",
+  pending: "pending",
+  failed: "failed",
+  absent: "absent",
+} as const;
+
+export interface PlanTargetDelivery {
+  id: string;
+  /** True when this target belongs to the calling admin. */
+  own: boolean;
+  /** The owning subject's display nickname, when its sign-in's ID token carried one. A label only, never a key. */
+  ownerNickname?: string;
+  state: PlanTargetDeliveryState;
+  /** Why the last push failed, as the stable category a sync run reports. Present only when state is failed. */
+  failure?: string;
+  /** When this service last wrote the copy the target holds. Absent when that happened before the service last started, or in a full synchronisation rather than a push. */
+  deliveredAt?: string;
+}
+
+export interface PlanDelivery {
+  targets: PlanTargetDelivery[];
+}
+
 /**
  * Whether each credential is stored. This is the whole of what any observable surface is told about one: never the value, only that there is one to replace.
  */
@@ -7140,6 +7167,206 @@ export const useDeletePlan = <
 > => {
   return useMutation(getDeletePlanMutationOptions(options), queryClient);
 };
+
+export type getPlanDeliveryResponse200 = {
+  data: PlanDelivery;
+  status: 200;
+};
+
+export type getPlanDeliveryResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type getPlanDeliveryResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type getPlanDeliveryResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type getPlanDeliveryResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type getPlanDeliveryResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type getPlanDeliveryResponseSuccess = getPlanDeliveryResponse200 & {
+  headers: Headers;
+};
+export type getPlanDeliveryResponseError = (
+  | getPlanDeliveryResponse400
+  | getPlanDeliveryResponse401
+  | getPlanDeliveryResponse403
+  | getPlanDeliveryResponse404
+  | getPlanDeliveryResponse503
+) & {
+  headers: Headers;
+};
+
+export const getGetPlanDeliveryUrl = (planId: number) => {
+  return `/v1/plans/${encodeURIComponent(String(planId))}/delivery`;
+};
+
+/**
+ * Where each connected rider's Wahoo account stands with one plan: the current revision held, a write or removal owed, the last push failed, or no copy and none owed. Read from stored state; no rider's account is asked.
+ */
+export const getPlanDelivery = async (
+  planId: number,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<getPlanDeliveryResponseSuccess> => {
+  return domestiqueRequest<getPlanDeliveryResponseSuccess>(getGetPlanDeliveryUrl(planId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetPlanDeliveryQueryKey = (planId: number) => {
+  return [`/v1/plans/${planId}/delivery`] as const;
+};
+
+export const getGetPlanDeliveryQueryOptions = <
+  TData = Awaited<ReturnType<typeof getPlanDelivery>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlanDelivery>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetPlanDeliveryQueryKey(planId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlanDelivery>>> = ({ signal }) =>
+    getPlanDelivery(planId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: planId !== null && planId !== undefined,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getPlanDelivery>>, TError, TData> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+};
+
+export type GetPlanDeliveryQueryResult = NonNullable<Awaited<ReturnType<typeof getPlanDelivery>>>;
+export type GetPlanDeliveryQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useGetPlanDelivery<
+  TData = Awaited<ReturnType<typeof getPlanDelivery>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlanDelivery>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPlanDelivery>>,
+          TError,
+          Awaited<ReturnType<typeof getPlanDelivery>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetPlanDelivery<
+  TData = Awaited<ReturnType<typeof getPlanDelivery>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlanDelivery>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPlanDelivery>>,
+          TError,
+          Awaited<ReturnType<typeof getPlanDelivery>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetPlanDelivery<
+  TData = Awaited<ReturnType<typeof getPlanDelivery>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlanDelivery>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useGetPlanDelivery<
+  TData = Awaited<ReturnType<typeof getPlanDelivery>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  planId: number,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getPlanDelivery>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetPlanDeliveryQueryOptions(planId, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
 
 export type getSettingsResponse200 = {
   data: Settings;

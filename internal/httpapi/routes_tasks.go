@@ -21,6 +21,10 @@ const (
 	TaskSyncClear  = "sync:clear"
 )
 
+// TaskSyncPlan is the registered name of the task that pushes plans alone. A
+// plan's replace and delete start it over the plan's id.
+const TaskSyncPlan = "sync:plan"
+
 // TaskActivityPoll is the registered name of the task that reads a rider's
 // recorded activities. Like TaskSyncTarget it names one rider's own target, and
 // RunTask checks its argument the same way.

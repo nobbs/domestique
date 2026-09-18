@@ -42,6 +42,9 @@ type Runner interface {
 	RunTarget(ctx context.Context, targetID string) Result
 	// RunSourceProvider reads exactly one configured source library.
 	RunSourceProvider(ctx context.Context, provider route.Provider) Result
+	// RunPlans pushes plans alone onto every target stale on them; a planID
+	// of zero is every plan.
+	RunPlans(ctx context.Context, planID int64) Result
 	// ClearTarget deletes every owned route from exactly one configured
 	// target and forgets its stage mappings. Only an operator asks for it.
 	ClearTarget(ctx context.Context, targetID string) Result
@@ -83,6 +86,15 @@ func (r *Reporter) ReconcileTarget(ctx context.Context, targetID string) Result 
 	return r.runPhasesWith(ctx, false, true, nil, func(ctx context.Context) Result {
 		return r.runner.RunTarget(ctx, targetID)
 	})
+}
+
+// PushPlans pushes plans alone. It is not recorded as a sync run: a push is no
+// claim about the library, and must not stand in for the last full one.
+func (r *Reporter) PushPlans(ctx context.Context, planID int64) Result {
+	defer r.phase.Store(nil)
+	r.enter(PhaseTargets)
+
+	return r.runner.RunPlans(ctx, planID)
 }
 
 // ClearTarget deletes every route this service owns from one target and forgets

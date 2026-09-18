@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -720,5 +721,170 @@ func TestReplacePlanRejectsAnUnparseablePlanId(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	handler.ReplacePlan(response, request)
+	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+}
+
+type fakePlanDeliveries struct {
+	err        error
+	revision   string
+	deliveries []PlanDelivery
+	asked      bool
+}
+
+func (d *fakePlanDeliveries) PlanDelivery(_ context.Context, _ int64, revision string) ([]PlanDelivery, error) {
+	d.asked, d.revision = true, revision
+
+	return d.deliveries, d.err
+}
+
+func deliveryHandler(
+	t *testing.T, sessions Sessions, plans Plans, deliveries PlanDeliveries, state *fakeState, tasks *fakeTasks,
+) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			schemaCache:      testSchemaCache,
+			Alerts:           &fakeAlerts{},
+			Tasks:            tasks,
+			Settings:         settingsWith(testBasemaps()),
+			Sessions:         sessions,
+			BrowserOriginURL: testBrowserOriginURL,
+			Plans:            plans,
+			PlanDeliveries:   deliveries,
+		},
+		&fakeOAuth{}, state, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler
+}
+
+// A stored replace or delete asks for that one plan to be pushed; a refused
+// one asks for nothing.
+func TestPlanWritesAskForTheirPlansPush(t *testing.T) {
+	tests := map[string]struct{ method, body string }{
+		"replace": {http.MethodPut, validPlanWriteBody},
+		"delete":  {http.MethodDelete, ""},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			tasks := &fakeTasks{}
+			fake := &fakePlans{stored: plan.Plan{ID: 7, Version: 3}, hasStored: true}
+			handler := deliveryHandler(t, newFakeSessions(), fake, nil, &fakeState{}, tasks)
+
+			stale := httptest.NewRecorder()
+			handler.ServeHTTP(stale, planRequest(test.method, plansPath+"/7", test.body, "2"))
+			require.Equal(t, http.StatusPreconditionFailed, stale.Code, stale.Body.String())
+			assert.Empty(t, tasks.asked, "tasks asked for after a refused write")
+
+			stored := httptest.NewRecorder()
+			handler.ServeHTTP(stored, planRequest(test.method, plansPath+"/7", test.body, "3"))
+			require.Less(t, stored.Code, http.StatusMultipleChoices, stored.Body.String())
+			assert.Equal(t, []startedTask{{name: TaskSyncPlan, argument: "7"}}, tasks.asked, "tasks asked for")
+		})
+	}
+}
+
+// A push the task layer refuses still leaves the write answered: the sweep
+// picks the plan up.
+func TestAPlanWriteSucceedsWhenItsPushIsRefused(t *testing.T) {
+	tasks := &fakeTasks{refuse: true}
+	fake := &fakePlans{stored: plan.Plan{ID: 7, Version: 3}, hasStored: true}
+	handler := deliveryHandler(t, newFakeSessions(), fake, nil, &fakeState{}, tasks)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPut, plansPath+"/7", validPlanWriteBody, "3"))
+
+	assert.Equal(t, http.StatusOK, response.Code, response.Body.String())
+}
+
+func TestGetPlanDeliveryNamesEachRiderAndTheirState(t *testing.T) {
+	updatedAt := time.Date(2026, 9, 18, 10, 0, 0, 0, time.UTC)
+	deliveredAt := time.Date(2026, 9, 18, 10, 1, 0, 0, time.FixedZone("CEST", 2*60*60))
+	fake := &fakePlans{stored: plan.Plan{ID: 7, Version: 3, Published: true, UpdatedAt: updatedAt}, hasStored: true}
+	deliveries := &fakePlanDeliveries{deliveries: []PlanDelivery{
+		{TargetID: "rider-a", State: "current", DeliveredAt: deliveredAt},
+		{TargetID: "rider-b", State: "failed", Failure: "authorization"},
+		{TargetID: "rider-c", State: "pending"},
+	}}
+	state := &fakeState{
+		targets: []fakeTarget{
+			{id: "rider-a", authorization: "authorized", owner: testSubject},
+			{id: "rider-b", authorization: "needs_reauthorization", owner: "github|2"},
+			{id: "rider-c", authorization: "authorized", owner: "github|3"},
+		},
+		nicknames: map[string]string{testSubject: "Alex", "github|2": "Marta"},
+	}
+	handler := deliveryHandler(t, newFakeSessions(), fake, deliveries, state, &fakeTasks{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodGet, plansPath+"/7/delivery", "", ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var body openapi.PlanDelivery
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, fake.stored.Revision(), deliveries.revision, "revision asked about")
+	delivered := deliveredAt.UTC()
+	assert.Equal(t, []openapi.PlanTargetDelivery{
+		{ID: "rider-a", Own: true, OwnerNickname: new("Alex"), State: "current", DeliveredAt: &delivered},
+		{ID: "rider-b", OwnerNickname: new("Marta"), State: "failed", Failure: new("authorization")},
+		{ID: "rider-c", State: "pending"},
+	}, body.Targets, "targets")
+}
+
+// A draft is owed nowhere, so every rider is asked about against no revision.
+func TestGetPlanDeliveryAsksAboutADraftAgainstNoRevision(t *testing.T) {
+	fake := &fakePlans{stored: plan.Plan{ID: 7, Version: 1, UpdatedAt: time.Now()}, hasStored: true}
+	deliveries := &fakePlanDeliveries{}
+	handler := deliveryHandler(t, newFakeSessions(), fake, deliveries, &fakeState{}, &fakeTasks{})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodGet, plansPath+"/7/delivery", "", ""))
+
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	assert.True(t, deliveries.asked, "deliveries asked")
+	assert.Empty(t, deliveries.revision, "revision asked about")
+}
+
+func TestGetPlanDeliveryRefusals(t *testing.T) {
+	stored := plan.Plan{ID: 7, Version: 1}
+	tests := map[string]struct {
+		sessions   Sessions
+		plans      *fakePlans
+		deliveries PlanDeliveries
+		state      *fakeState
+		want       int
+	}{
+		"non-admin":          {nonAdminSessions("rider-a"), &fakePlans{stored: stored, hasStored: true}, &fakePlanDeliveries{}, &fakeState{}, http.StatusForbidden},
+		"unknown plan":       {newFakeSessions(), &fakePlans{}, &fakePlanDeliveries{}, &fakeState{}, http.StatusNotFound},
+		"no delivery port":   {newFakeSessions(), &fakePlans{stored: stored, hasStored: true}, nil, &fakeState{}, http.StatusNotFound},
+		"plan unreadable":    {newFakeSessions(), &fakePlans{getErr: errors.New("down")}, &fakePlanDeliveries{}, &fakeState{}, http.StatusServiceUnavailable},
+		"state unreadable":   {newFakeSessions(), &fakePlans{stored: stored, hasStored: true}, &fakePlanDeliveries{err: errors.New("down")}, &fakeState{}, http.StatusServiceUnavailable},
+		"targets unreadable": {newFakeSessions(), &fakePlans{stored: stored, hasStored: true}, &fakePlanDeliveries{}, &fakeState{targetErr: errors.New("down")}, http.StatusServiceUnavailable},
+		"nicknames unreadable": {
+			newFakeSessions(), &fakePlans{stored: stored, hasStored: true}, &fakePlanDeliveries{},
+			&fakeState{nicknamesErr: errors.New("down")}, http.StatusServiceUnavailable,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			handler := deliveryHandler(t, test.sessions, test.plans, test.deliveries, test.state, &fakeTasks{})
+
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, planRequest(http.MethodGet, plansPath+"/7/delivery", "", ""))
+
+			assert.Equal(t, test.want, response.Code, response.Body.String())
+		})
+	}
+}
+
+func TestGetPlanDeliveryRejectsAnUnparseablePlanId(t *testing.T) {
+	handler := deliveryHandler(t, newFakeSessions(), &fakePlans{}, &fakePlanDeliveries{}, &fakeState{}, &fakeTasks{})
+	request := directPlanRequest(http.MethodGet, plansPath+"/x/delivery", "")
+	request.SetPathValue("planId", "x")
+
+	response := httptest.NewRecorder()
+	handler.GetPlanDelivery(response, request)
+
 	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
 }

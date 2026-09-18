@@ -398,6 +398,44 @@ fails. Per-target route mappings change only after their corresponding remote
 operation succeeds. This permits a later run to complete only the lagging
 target without replaying destructive work.
 
+### Pushing a plan
+
+Publishing, re-saving, unpublishing or deleting a plan pushes that plan alone.
+A push first reads the local source into its share of the trusted inventory,
+exactly as a read scoped to it would, so the next full reconciliation works
+from the same state and neither undoes the push nor repeats it. It then
+reconciles only the plans each target is stale on — a plan in the inventory the
+target's mappings do not record at its current revision, or a recorded plan the
+inventory no longer holds — and nothing else: no other source's route and no
+other plan is written, updated or deleted, however stale.
+
+A target that is current on every plan it is asked about is not contacted at
+all, so a push that finds nothing to do costs no request against the shared
+quota. A target that needs reauthorisation is passed over rather than asked,
+and reported as waiting on that. Every other rule of a target reconciliation
+holds unchanged: ownership is read from one listing before anything is
+created, an owned copy with the plan's external ID is adopted rather than
+duplicated, only routes carrying an external ID this service issued are
+removed, removals come after the writes, and the per-run deletion maximum
+applies to the removals a push would make.
+
+Each push records, in memory only, what it last attempted for each target and
+plan, so the planner can say which rider holds the current revision, is still
+owed it, or failed it and why. A push that failed before it reached any target
+— the local read or the stored inventory unreadable — reads as that failure for
+every target still owed the plan, until a later push gets through. A restart
+forgets those attempts; a plan whose push failed before it then reads as owed
+until the next push.
+
+A push is `sync:plan`, over one plan or over every plan. It is started by the
+plan's own replace or delete, runs whether or not the scheduled halves are
+switched on, and takes the inventory exclusively like every other run, so it
+never overlaps one. A push refused because other work holds the inventory is
+not queued; the task's own schedule retries every plan a target is still stale
+on. It is recorded in the task history and not as a synchronisation run: a
+push says nothing about the library, so it never stands in for the last full
+run of either half that the status page reports.
+
 ### Clearing a target
 
 An operator, or the target's own owner, may clear one target: delete every
@@ -877,6 +915,13 @@ The implementation test suite must cover at least:
 - the local source emptying out, by unpublishing or deleting its last plan,
   deleting that route without the acknowledgement and still within the per-run
   maximum;
+- a plan push writing, updating or removing only the named plan while the
+  library and every other plan are just as stale, contacting no target already
+  current, adopting an owned copy rather than creating a second, holding the
+  per-run deletion maximum, and passing over a target that needs
+  reauthorisation;
+- a pushed plan surviving a later full reconciliation with the source read
+  switched off;
 - manual Wahoo route preservation;
 - state loss adopting matching desired external IDs without deleting unknown
   routes;

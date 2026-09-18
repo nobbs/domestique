@@ -228,7 +228,7 @@ func run(ctx context.Context) error {
 		store, notifier, alerts,
 		func() bool { return runtimeSettings.Values().Notifications.Enabled },
 		append(append(
-			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs),
+			inventoryTasks(reporter, runtimeSettings, switches.enabledFor, destination.targetIDs, planService != nil),
 			indexTask,
 			activityPollTask(activityPoller, switches.enabledFor, destination.targetIDs),
 			activityRecordTask(activityPoller),
@@ -311,6 +311,7 @@ func run(ctx context.Context) error {
 			RideModelValidationFunc: rideModel.validationView,
 			RideModelStatusFunc:     rideModel.statusView,
 			Plans:                   httpapiPlans(planService),
+			PlanDeliveries:          httpapiPlanDeliveries(planService, reconciler),
 			Places:                  placeNamer,
 			SurfaceClassifier:       newSurfaceClassifier(surfaceIndex),
 			Snapper:                 httpapiSnapper(planService, surfaceIndex),
