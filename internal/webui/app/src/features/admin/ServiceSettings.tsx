@@ -535,7 +535,10 @@ function SourceSettingsSection({
       }
     >
       <FormGroup>
-        <FormRow label="Sync to catalogue">
+        <FormRow
+          label="Sync to catalogue"
+          hint="Off removes the library's routes from the catalogue at the next library sync, and from every rider's Wahoo account five per run."
+        >
           <Switch
             checked={values.read}
             aria-label={`Sync ${label} to catalogue`}

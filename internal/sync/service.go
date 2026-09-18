@@ -43,9 +43,13 @@ type Options struct {
 	// provider with no configuration is reported unconfigured, not an error.
 	SourceFor func(provider route.Provider) (source Source, configured bool, err error)
 
-	// Withheld lists the libraries whose stages are kept off every target while
-	// they are still read, asked once as a target run starts. Nil withholds nothing.
+	// Withheld lists the libraries whose stages are kept off every target, asked
+	// once as a target run starts. Nil withholds nothing.
 	Withheld func() []route.Provider
+
+	// Unread lists the libraries no longer read, whose stored share a full source
+	// read removes. Nil removes nothing.
+	Unread func() []route.Provider
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -62,6 +66,7 @@ type Service struct {
 	allowEmptySourceDeletion func() bool
 	targetIDs                func() []string
 	withheld                 func() []route.Provider
+	unread                   func() []route.Provider
 	now                      func() time.Time
 	attempts                 planAttempts
 }
@@ -99,6 +104,7 @@ func New(
 		targetIDs:                options.TargetIDs,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
 		withheld:                 options.Withheld,
+		unread:                   options.Unread,
 		now:                      time.Now,
 	}, nil
 }
@@ -108,6 +114,9 @@ func New(
 // a failed one keeps its last-known stages, and the empty-source gate is
 // evaluated per source against that source's own prior count.
 func (s *Service) RunSource(ctx context.Context) Result {
+	if failure := s.dropUnread(ctx); failure != FailureNone {
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: failure}
+	}
 	sources, err := s.sources()
 	if err != nil || len(sources) == 0 {
 		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
@@ -145,6 +154,28 @@ func (s *Service) RunSource(ctx context.Context) Result {
 	}
 
 	return result
+}
+
+// dropUnread removes the stored share of every library no longer read. It is
+// deliberate rather than an empty listing, so the empty-source gate does not apply.
+func (s *Service) dropUnread(ctx context.Context) FailureCategory {
+	if s.unread == nil {
+		return FailureNone
+	}
+	for _, provider := range s.unread() {
+		stored, err := s.state.TrustedInventoryCount(ctx, provider)
+		if err != nil {
+			return FailureState
+		}
+		if stored == 0 {
+			continue
+		}
+		if err := s.state.StoreTrustedInventory(ctx, provider, nil); err != nil {
+			return FailureState
+		}
+	}
+
+	return FailureNone
 }
 
 // RunSourceProvider reads exactly one configured source library, leaving every

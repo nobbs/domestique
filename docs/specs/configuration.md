@@ -375,8 +375,9 @@ Each entry also carries `sync_to_wahoo`, on by default. Off keeps the library
 read, stored and shown, but out of what the target half reconciles, so the
 routes already written from it are drained from each target, at most five per
 run ([sync-lifecycle.md](sync-lifecycle.md#deletion-gates)). A library that is
-not read at all has no entry and so no switch: its last stored share is still
-synced.
+not read at all has no entry and so no switch: the next read of every source
+removes its routes from the catalogue, and they drain from the targets the same
+way.
 
 ### Wahoo
 

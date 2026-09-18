@@ -255,6 +255,57 @@ func TestServiceStillBlocksALargeShrinkBesideAWithheldLibrary(t *testing.T) {
 	assert.Empty(t, target.deletedRouteIDs)
 }
 
+func TestServiceRemovesALibraryNoLongerReadFromTheCatalogue(t *testing.T) {
+	read := testProviderStage(t, route.ProviderVeloPlanner, 1, 1, "current", "current-hash")
+	unread := testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{read, unread}
+	options := syncOptions(false, []Source{&fakeSource{stages: []route.Route{read}}}, "a")
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
+	require.Len(t, state.trusted, 1, "stored inventory")
+	assert.Equal(t, read.Key(), state.trusted[0].Key(), "only the library still read is kept")
+}
+
+// Turning every library off leaves nothing to read, and still empties the catalogue.
+func TestServiceRemovesTheLastLibraryNoLongerRead(t *testing.T) {
+	state := newFakeState("a")
+	state.trusted = []route.Route{testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")}
+	options := syncOptions(false, nil, "a")
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, OutcomeNotReady, service.RunSource(t.Context()).Outcome)
+	assert.Empty(t, state.trusted, "stored inventory")
+	assert.Equal(t, 1, state.storeInventoryCalls, "a library with nothing stored is not rewritten")
+}
+
+func TestServiceFailsTheReadWhenAnUnreadLibraryCannotBeRemoved(t *testing.T) {
+	for name, broken := range map[string]func(*fakeState){
+		"counting": func(state *fakeState) { state.trustedCountErr = errors.New("disk gone") },
+		"storing":  func(state *fakeState) { state.storeErr = errors.New("disk full") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := newFakeState("a")
+			state.trusted = []route.Route{testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")}
+			broken(state)
+			options := syncOptions(false, nil, "a")
+			options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+			service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+			require.NoError(t, err, "New()")
+
+			result := service.RunSource(t.Context())
+			assert.Equal(t, OutcomeFailed, result.Outcome)
+			assert.Equal(t, FailureState, result.Failure)
+		})
+	}
+}
+
 // The two halves are independent: a library refresh must keep working while a
 // target waits to be reauthorised, because the refresh touches no target.
 func TestServiceReadsTheSourceWhileATargetNeedsReauthorization(t *testing.T) {
