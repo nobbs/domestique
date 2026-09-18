@@ -251,6 +251,18 @@ func TestClientDeauthorizeWithdrawsTheGrant(t *testing.T) {
 	assert.Equal(t, "Bearer access-token", authorization)
 }
 
+func TestClientDeauthorizeReadsARefusedTokenAsAGrantAlreadyGone(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	err := client.Deauthorize(t.Context(), "access-token")
+	require.ErrorIs(t, err, ErrUnauthorized)
+	assert.True(t, client.IsUnauthorized(err))
+}
+
 func TestClientDeleteOwnedRoutesRemovesOnlyWhatItIssued(t *testing.T) {
 	// Duplicates are the state a clear exists to get out of, so unlike the
 	// reconciliation listing this must see both and remove both — while a

@@ -1300,7 +1300,7 @@ across runs and polls; a new one is requested only once the held one is spent or
 none is held. This is a correctness requirement rather than an optimisation.
 Wahoo caps how many unrevoked access tokens may exist for one application and
 one user, and offers no way to revoke a single token — only a deauthorization
-that revokes every token the application holds. A token minted per run and per
+that revokes every token the application holds for that user. A token minted per run and per
 poll therefore fills that cap, at which point Wahoo issues no further token for
 that account and the target can neither refresh nor be reauthorized until the
 rider revokes the application's access. A reply that states no expiry is not
