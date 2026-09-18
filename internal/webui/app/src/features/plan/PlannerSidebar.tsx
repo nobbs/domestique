@@ -170,12 +170,14 @@ function PlansMenu({
   saved,
   published,
   deleting,
+  deleteError,
   onDelete,
 }: {
   name: string;
   saved: boolean;
   published: boolean;
   deleting: boolean;
+  deleteError: string | null;
   onDelete: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -217,10 +219,15 @@ function PlansMenu({
             <AlertDialogTitle>Delete “{name}”?</AlertDialogTitle>
             <AlertDialogDescription>
               {published
-                ? "It is removed from every rider's Wahoo straight away. This cannot be undone."
+                ? "It is removed from every rider's Wahoo. This cannot be undone."
                 : "It is a draft, so nothing is on Wahoo. This cannot be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {deleteError ? (
+            <p role="alert" className="text-[var(--alert)] text-sm">
+              Could not delete plan: {deleteError}
+            </p>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Keep it</AlertDialogCancel>
             <AlertDialogAction variant="destructive" disabled={deleting} onClick={onDelete}>
@@ -403,6 +410,7 @@ export interface PlannerSidebarProps {
   changed: boolean;
   saving: boolean;
   deleting?: boolean;
+  deleteError?: string | null;
   saveError: string | null;
   /** How many turn instructions the routing engine gave the loaded/saved plan's line. */
   turnCount?: number;
@@ -425,6 +433,7 @@ export function PlannerSidebar({
   changed,
   saving,
   deleting = false,
+  deleteError = null,
   saveError,
   turnCount,
   focusId = null,
@@ -539,6 +548,7 @@ export function PlannerSidebar({
             saved={planId !== null}
             published={published}
             deleting={deleting}
+            deleteError={deleteError}
             onDelete={onDelete}
           />
           <label className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-[var(--rule)] bg-[var(--base)] px-2.5 py-1.5 focus-within:border-[var(--accent)] hover:border-[color-mix(in_oklab,var(--ink-2)_40%,var(--rule))]">

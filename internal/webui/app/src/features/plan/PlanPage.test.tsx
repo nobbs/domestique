@@ -1322,14 +1322,24 @@ describe("PlanPage", () => {
         },
       },
     };
-    remove.mockResolvedValue({ status: 204 });
+    remove
+      .mockRejectedValueOnce(new Error("Plan changed since it was read"))
+      .mockResolvedValue({ status: 204 });
     renderPage("/plan/4");
     await act(async () => {});
 
     await userEvent.click(screen.getByRole("button", { name: "Plans" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Delete this plan…" }));
-    expect(await screen.findByText(/removed from every rider's Wahoo/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Delete plan" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(
+      "It is removed from every rider's Wahoo. This cannot be undone.",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete plan" }));
+    // A refused delete says why where the reader is looking: in the dialog, still open.
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Could not delete plan: Plan changed since it was read",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete plan" }));
 
     expect(remove).toHaveBeenCalledWith({ planId: 4, headers: { "If-Match": "2" } });
     expect(await screen.findByDisplayValue("")).toBeInTheDocument();
@@ -1352,6 +1362,45 @@ describe("PlanPage", () => {
       data: expect.objectContaining({ name: "Fresh", published: true }),
       headers: { "If-Match": "1" },
     });
+  });
+
+  it("says so on the saved draft when publishing a new plan fails", async () => {
+    create.mockResolvedValue({ data: { id: 7, version: 1 } });
+    replace.mockRejectedValue(new Error("Routing unavailable"));
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 7,
+          name: "Fresh",
+          profile: "trekking",
+          cues: false,
+          published: false,
+          version: 1,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8, latitude: 49 },
+          ],
+          geometry: { type: "LineString", coordinates: [] },
+          distanceMetres: 0,
+          ascentMetres: 0,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Fresh" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await act(async () => {});
+
+    expect(screen.getByDisplayValue("Fresh")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Saved as a draft, but publishing failed: Routing unavailable",
+    );
   });
 
   it("draws a pressed waypoint and its legs straight before the click lands, and drops it on a pan", () => {

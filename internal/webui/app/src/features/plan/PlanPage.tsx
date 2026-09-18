@@ -635,6 +635,12 @@ export function PlanPage() {
   const planId = value && /^\d+$/.test(value) ? Number(value) : null;
   const location = useLocation();
   const copySeed = planId === null && isPlannerSeed(location.state) ? location.state : null;
+  // A new plan whose publishing failed arrives here with the reason, since the remount clears errors.
+  const handedError =
+    planId !== null &&
+    typeof (location.state as { publishError?: unknown } | null)?.publishError === "string"
+      ? (location.state as { publishError: string }).publishError
+      : null;
   const config = useQuery(webUIConfigQuery());
   const plan = useGetPlan(planId ?? 0, { query: { enabled: planId !== null } });
   const create = useCreatePlan();
@@ -646,6 +652,7 @@ export function PlanPage() {
   const [preview, setPreview] = useState<PlanRoutePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [dockOpen, setDockOpen] = useState(true);
   const [avoidArmed, setAvoidArmed] = useState(false);
@@ -711,13 +718,13 @@ export function PlanPage() {
       }
     }
     setPreviewError(null);
-    setSaveError(null);
+    setSaveError(handedError);
     setActiveMetres(null);
     setFocusId(null);
     setHiddenRun(null);
     setRoutedFor(null);
     setMorphing(false);
-  }, [copySeed, planId]);
+  }, [copySeed, planId, handedError]);
 
   useEffect(() => {
     if (!loadedPlan) {
@@ -843,6 +850,7 @@ export function PlanPage() {
         const response = await create.mutateAsync({ data });
         queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
         // A create always stores a draft; publishing it is the replace that follows.
+        let publishError: string | null = null;
         if (published) {
           await replace
             .mutateAsync({
@@ -853,9 +861,14 @@ export function PlanPage() {
             .then((replaced) =>
               queryClient.setQueryData(getGetPlanQueryKey(response.data.id), replaced),
             )
-            .catch(() => {});
+            .catch((error: unknown) => {
+              publishError = `Saved as a draft, but publishing failed: ${errorMessage(error)}`;
+            });
         }
-        navigate(`/plan/${response.data.id}`, { replace: true });
+        navigate(`/plan/${response.data.id}`, {
+          replace: true,
+          ...(publishError === null ? {} : { state: { publishError } }),
+        });
         return;
       }
       if (!loadedPlan) {
@@ -900,13 +913,13 @@ export function PlanPage() {
     if (planId === null || !loadedPlan) {
       return;
     }
-    setSaveError(null);
+    setDeleteError(null);
     try {
       await remove.mutateAsync({ planId, headers: { "If-Match": String(loadedPlan.version) } });
       queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
       navigate("/plan", { replace: true });
     } catch (error) {
-      setSaveError(errorMessage(error));
+      setDeleteError(errorMessage(error));
     }
   };
 
@@ -1192,6 +1205,7 @@ export function PlanPage() {
         changed={changed}
         saving={saving}
         deleting={remove.isPending}
+        deleteError={deleteError}
         saveError={saveError}
         focusId={focusId}
         routedFor={routedFor}
