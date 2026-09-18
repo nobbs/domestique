@@ -439,7 +439,8 @@ function PlanFigures({ preview }: { preview: PlanRoutePreview | null }) {
 function PlannerHistoryControls({
   state,
   dispatch,
-}: Pick<PlannerSidebarProps, "state" | "dispatch">) {
+  children,
+}: Pick<PlannerSidebarProps, "state" | "dispatch"> & { children?: ReactNode }) {
   return (
     <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-2">
       <ButtonGroup
@@ -472,6 +473,7 @@ function PlannerHistoryControls({
         title="Reverse"
         onClick={() => dispatch({ type: "reverse" })}
       />
+      {children}
     </div>
   );
 }
@@ -939,8 +941,7 @@ export function PlanPage() {
                 furniture={
                   <>
                     <ScaleControl position="bottom-left" unit="metric" />
-                    <PlannerHistoryControls state={state} dispatch={dispatch} />
-                    <MapControls>
+                    <PlannerHistoryControls state={state} dispatch={dispatch}>
                       <Button
                         variant="panel"
                         icon={<IconBan stroke={1.8} />}
@@ -954,6 +955,8 @@ export function PlanPage() {
                         }
                         onClick={() => setAvoidArmed((armed) => !armed)}
                       />
+                    </PlannerHistoryControls>
+                    <MapControls>
                       <BasemapPicker
                         basemaps={config.data?.basemaps ?? []}
                         selectedName={basemap.name}
