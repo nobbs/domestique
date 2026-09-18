@@ -25,7 +25,8 @@ func (h *Handler) ReversePlace(writer http.ResponseWriter, request *http.Request
 	}
 	name, err := h.places.Reverse(request.Context(), latitude, longitude)
 	if err != nil {
-		// The geocoder's own error, and the coordinate, stay in the log.
+		// The geocoder's own error stays in the log; the coordinate, being
+		// geometry, is logged nowhere.
 		slog.Error("naming a coordinate failed", "error", err)
 		h.error(writer, http.StatusBadGateway, codeGeocodingFailed, "the geocoder could not name this coordinate")
 
