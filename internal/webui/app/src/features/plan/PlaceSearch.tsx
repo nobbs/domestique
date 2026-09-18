@@ -160,7 +160,7 @@ export function PlaceSearch({ onAdd }: PlaceSearchProps) {
   const isMarked = (place: PlaceMatch) => marked.some((entry) => keyOf(entry) === keyOf(place));
   const toggle = (place: PlaceMatch) => {
     setMarked((current) =>
-      isMarked(place)
+      current.some((entry) => keyOf(entry) === keyOf(place))
         ? current.filter((entry) => keyOf(entry) !== keyOf(place))
         : [...current, place],
     );
