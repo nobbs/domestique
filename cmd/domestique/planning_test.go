@@ -332,7 +332,7 @@ func TestBrouterRouterCarriesTheWaysAndTurnsOfTheLine(t *testing.T) {
 		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
 			`"properties":{"messages":[["Longitude","Latitude","Distance","WayTags"],` +
 			`["8680000","50110000","40","highway=footway"]],"voicehints":[[1,13,3,40,0]]},` +
-			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.69,50.115],[8.70,50.12]]}}]}`))
 		assert.NoError(t, writeErr)
 	}))
 	defer server.Close()
