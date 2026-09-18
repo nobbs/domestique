@@ -10,10 +10,12 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { webUIConfigQuery } from "./api/queries";
+import { statusQuery, webUIConfigQuery } from "./api/queries";
 import type { WebUIConfig } from "./api/types";
+import { IDLE_STATUS } from "./test/status";
 
 // The pages behind these routes are a WebGL map and a query client; neither is
 // what is under test. Standing both in reduces each route to the address it
@@ -60,6 +62,8 @@ function open(path: string, admin?: boolean, planning = false): void {
   if (admin !== undefined) {
     client.setQueryData(webUIConfigQuery().queryKey, config(admin, planning));
   }
+  // The notice keeps the menu bar, which asks after sync; nothing here is about that.
+  client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
 
   render(
     <QueryClientProvider client={client}>
@@ -79,10 +83,13 @@ function address(): string {
  * A `localStorage` for jsdom, which has none — see `basemap.test.ts` for why
  * a `Map` behind the two methods the hook uses is enough.
  */
-function stubStorage(theme?: string): void {
+function stubStorage(theme?: string, viewAsRider = false): void {
   const entries = new Map<string, string>();
   if (theme !== undefined) {
     entries.set("domestique.theme", theme);
+  }
+  if (viewAsRider) {
+    entries.set("domestique.viewAsRider", "true");
   }
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => entries.get(key) ?? null,
@@ -161,6 +168,63 @@ describe("the client routes", () => {
 
     expect(address()).toBe("/");
     expect(screen.queryByText("the planner")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The rider view is read once per module load, so these mount their own copy
+   * of the app after the choice is stored — as `identity.test.tsx` does.
+   */
+  async function openAsPreviewingAdmin(path: string, planning = false) {
+    stubStorage(undefined, true);
+    vi.resetModules();
+    const { App: Fresh } = await import("./App");
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+    client.setQueryData(webUIConfigQuery().queryKey, config(true, planning));
+    client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[path]}>
+          <Address />
+          <Fresh />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it.each(["/admin", "/plan"])(
+    "tells an admin previewing the rider view why %s is not shown, and gives it back",
+    async (path) => {
+      await openAsPreviewingAdmin(path, true);
+
+      expect(address()).toBe(path);
+      expect(screen.getByText("Hidden while you view as a rider")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Leave rider view" }));
+
+      expect(
+        screen.getByText(path === "/admin" ? "the admin page" : "the planner"),
+      ).toBeInTheDocument();
+    },
+  );
+
+  // An admin whose service names no routing engine is told that, rather than
+  // being bounced as a reader with no business here would be.
+  it("says the planner is switched off where no engine is configured", () => {
+    stubStorage();
+    open("/plan", true, false);
+
+    expect(address()).toBe("/plan");
+    expect(screen.getByText("The planner is switched off")).toBeInTheDocument();
+  });
+
+  it("explains nothing to a non-admin, who is sent away instead", () => {
+    open("/plan", false, true);
+
+    expect(address()).toBe("/");
+    expect(screen.queryByText(/rider view/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/planner is switched off/)).not.toBeInTheDocument();
   });
 
   // Deciding before the caller's own identity has arrived would bounce an

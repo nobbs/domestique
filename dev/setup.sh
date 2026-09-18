@@ -106,6 +106,12 @@ client_secret_file = "${DEV_SECRETS}/auth0_client_secret"
 [state]
 database_path = "${DEV_DIR}/state.db"
 encryption_key_file = "${DEV_SECRETS}/state_encryption_key"
+
+# The planner, over the BRouter project's public instance, as the demo uses.
+# A preview or a save sends the waypoints and the profile name there and
+# nothing else; without a network the planner reports a routing failure.
+[planning]
+brouter_url = "https://brouter.de"
 EOF
 
 # The gate admits a browser session and nothing else, so development needs one
