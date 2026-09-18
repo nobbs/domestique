@@ -3,6 +3,8 @@
  * grounds: a route's division into classes, at a size that fits under a name.
  */
 
+import { formatShare } from "../../lib/mix";
+
 export interface ThinBarSegment {
   key: string;
   label: string;
@@ -23,13 +25,13 @@ export function ThinBar({
   return (
     <span
       role="img"
-      aria-label={`${label}: ${segments.map((segment) => `${segment.label} ${Math.round(segment.share * 100)}%`).join(", ")}`}
+      aria-label={`${label}: ${segments.map((segment) => `${segment.label} ${formatShare(segment.share)}`).join(", ")}`}
       className="flex h-1.5 w-full gap-0.5 overflow-hidden rounded-full"
     >
       {segments.map((segment) => (
         <span
           key={segment.key}
-          title={`${segment.label} ${Math.round(segment.share * 100)}%`}
+          title={`${segment.label} ${formatShare(segment.share)}`}
           style={{ flexGrow: segment.share, flexBasis: 0, background: segment.colour }}
         />
       ))}
