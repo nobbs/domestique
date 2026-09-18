@@ -77,11 +77,14 @@ import {
   insertionIndex,
   isPlannerSeed,
   MAX_PLAN_WAYPOINTS,
+  nextTraceStep,
   type PlannerAvoid,
   type PlannerSeed,
   type PlannerState,
   type PlannerWaypoint,
   plannerReducer,
+  startTrace,
+  type TraceProgress,
   unwrapped,
 } from "./planner";
 import { provisionalLegs, RouteTransition, routedLegs } from "./RouteTransition";
@@ -650,6 +653,9 @@ export function PlanPage() {
   const loaded = useRef<string | null>(null);
   const initialViewport = useRef<PlannerFraming | null>(null);
   const hydrating = useRef(planId !== null);
+  // A copy still being traced along its library route, advanced once per preview.
+  const trace = useRef<TraceProgress | null>(null);
+  const [tracing, setTracing] = useState(false);
   const request = useRef(0);
   const queryPlan = plan.data?.data;
   const loadedPlan =
@@ -673,13 +679,17 @@ export function PlanPage() {
     request.current += 1;
     setSavedPlan(null);
     dispatch({ type: "reset" });
+    trace.current = null;
     if (planId === null) {
       setPreview(null);
       if (copySeed) {
-        initialViewport.current = framing(null, copySeed);
-        dispatch({ type: "load", plan: copySeed });
+        const { trace: seedTrace, ...seed } = copySeed;
+        initialViewport.current = framing(null, seed);
+        dispatch({ type: "load", plan: seed });
+        trace.current = seedTrace ? startTrace(seedTrace) : null;
       }
     }
+    setTracing(trace.current !== null);
     setPreviewError(null);
     setSaveError(handedError);
     setActiveMetres(null);
@@ -757,6 +767,42 @@ export function PlanPage() {
   }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid]);
 
   const line = useMemo(() => positions(preview), [preview]);
+
+  useEffect(() => {
+    const progress = trace.current;
+    if (!progress || (!previewError && (!preview || routedFor !== state.waypoints))) {
+      return;
+    }
+    // A waypoint the admin moved ends the trace: the route no longer says where it goes.
+    const onRoute =
+      state.waypoints.length === progress.indices.length &&
+      state.waypoints.every((waypoint, at) => {
+        const vertex = progress.route[progress.indices[at] ?? -1];
+        return vertex?.[0] === waypoint.longitude && vertex?.[1] === waypoint.latitude;
+      });
+    const legs =
+      onRoute && !previewError
+        ? routedLegs(
+            line,
+            preview?.waypointProgress?.map((at) => at.distanceMetres),
+          )
+        : null;
+    const next = legs ? nextTraceStep(progress, legs) : null;
+    trace.current = next;
+    setTracing(next !== null);
+    if (!next) {
+      return;
+    }
+    const ids = new Map(progress.indices.map((index, at) => [index, state.waypoints[at]?.id]));
+    dispatch({
+      type: "trace",
+      waypoints: next.indices.map((index) => {
+        const [longitude, latitude] = next.route[index] ?? [0, 0];
+        const id = ids.get(index);
+        return id === undefined ? { longitude, latitude } : { longitude, latitude, id };
+      }),
+    });
+  }, [line, preview, previewError, routedFor, state.waypoints]);
   const previewRef = useRef(preview);
   previewRef.current = preview;
   const shownWaypoints = useMemo(
@@ -1147,6 +1193,14 @@ export function PlanPage() {
                 })}
               </MapWidget>
             </CartographyProvider>
+          ) : null}
+          {tracing ? (
+            <p
+              role="status"
+              className="-translate-x-1/2 absolute top-3 left-1/2 z-30 rounded-full bg-[var(--panel)] px-3 py-1 text-sm shadow-[var(--shadow)]"
+            >
+              Tracing the copied route with {state.waypoints.length} waypoints…
+            </p>
           ) : null}
           {previewError ? (
             <Alert

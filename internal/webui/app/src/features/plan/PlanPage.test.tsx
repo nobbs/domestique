@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { haversineMetres } from "../../lib/profile";
 
 const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
@@ -323,6 +324,102 @@ describe("PlanPage", () => {
     expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-position", "bottom-left");
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-unit", "metric");
+  });
+
+  it("traces a copied route round by round, keeping only the ones routing needs", async () => {
+    // A router that knows no roads: every leg is the straight line between its waypoints.
+    preview.mockImplementation(
+      (
+        variables: { data: { waypoints: { longitude: number; latitude: number }[] } },
+        callbacks: { onSuccess: (value: unknown) => void },
+      ) => {
+        const coordinates = variables.data.waypoints.map(({ longitude, latitude }) => [
+          longitude,
+          latitude,
+        ]);
+        let distance = 0;
+        const waypointProgress = coordinates.map((position, index) => {
+          const previous = coordinates[index - 1];
+          distance += previous
+            ? haversineMetres(previous as [number, number], position as [number, number])
+            : 0;
+          return { distanceMetres: distance };
+        });
+        callbacks.onSuccess({
+          data: {
+            geometry: { type: "LineString", coordinates },
+            distanceMetres: distance,
+            ascentMetres: 0,
+            waypointProgress,
+          },
+        });
+      },
+    );
+    const route = [
+      ...Array.from({ length: 40 }, (_, index) => [8 + index / 1000, 49]),
+      ...Array.from({ length: 41 }, (_, index) => [8.04, 49 + index / 1000]),
+    ];
+    renderPage({
+      pathname: "/plan",
+      state: {
+        name: "Corner",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8, latitude: 49 },
+          { longitude: 8.04, latitude: 49.04 },
+        ],
+        trace: { route, indices: [0, 80] },
+      },
+    });
+    await act(async () => {});
+    expect(screen.getByText("Tracing the copied route with 2 waypoints…")).toHaveAttribute(
+      "role",
+      "status",
+    );
+
+    for (let round = 0; round < 6 && screen.queryByText(/Tracing the copied route/); round++) {
+      act(() => vi.advanceTimersByTime(300));
+    }
+
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
+    expect(waypointRows()[1]).toContain("49.0000, 8.0400");
+    expect(preview).toHaveBeenCalledTimes(4);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("stops tracing a copied route when the routing engine refuses, keeping its waypoints", async () => {
+    preview.mockImplementation(
+      (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
+        callbacks.onError(new Error("unavailable")),
+    );
+    renderPage({
+      pathname: "/plan",
+      state: {
+        name: "Corner",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8, latitude: 49 },
+          { longitude: 8.04, latitude: 49.04 },
+        ],
+        trace: {
+          route: [
+            [8, 49],
+            [8.04, 49],
+            [8.04, 49.04],
+          ],
+          indices: [0, 2],
+        },
+      },
+    });
+    await act(async () => {});
+    expect(screen.getByText("Tracing the copied route with 2 waypoints…")).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
+    expect(screen.getByText("Preview unavailable")).toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(2);
   });
 
   it("initializes a new draft from a copied route seed without saving it", async () => {
