@@ -329,20 +329,24 @@ test("the bar names the session the gate admitted", async ({ offlinePage: page }
   await expect(session).toContainText("rider@example.test");
 });
 
-test("the menu bar says what sync is doing and is the way to it", async ({ offlinePage: page }) => {
+test("the session says what sync is doing and leads to the account", async ({
+  offlinePage: page,
+}) => {
   await openLibrary(page);
 
   await expect(page.getByText("domestique")).toBeVisible();
-  const sync = page.getByRole("link", { name: /^Sync/ });
-  await expect(sync).toHaveAttribute("href", "/sync");
-  // The word is the destination and the dot beside it is the state. The demo has
-  // one connected slot and one that never onboarded, so the dot is painted and
-  // the link's name says why.
-  await expect(sync).toHaveAttribute("data-tone", "alert");
-  await expect(sync).toHaveAccessibleName("Sync \u00b7 A target is not connected");
+  // The demo has one connected slot and one that never onboarded, so the dot
+  // on the session is painted and the menu item's name says why.
+  const session = page.getByRole("button", { name: /^Signed in as/ });
+  await expect(session).toHaveAttribute("data-tone", "alert");
 
-  await sync.click();
+  await session.click();
+  const account = page.getByRole("menuitem", {
+    name: "Account \u00b7 Sync \u00b7 A target is not connected",
+  });
+  await expect(account).toHaveAttribute("href", "/account");
+  await account.click();
 
-  await expect(page).toHaveURL(/\/sync$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Sync" })).toBeVisible();
+  await expect(page).toHaveURL(/\/account\/sync$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
 });

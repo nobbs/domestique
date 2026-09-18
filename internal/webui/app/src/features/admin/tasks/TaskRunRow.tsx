@@ -1,7 +1,7 @@
 /** One recorded task attempt: when it finished, what started it, and how it ended. */
 
 import type { TaskRun } from "../../../api/types";
-import { Badge } from "../../../components/ui/badge";
+import { InsetRow } from "../../../components/InsetList";
 import { formatTimestamp } from "../../../lib/format";
 import { outcomeLabel, taskDetailLabel } from "../../../lib/taskLabels";
 
@@ -33,40 +33,24 @@ function tone(outcome: string): Tone {
   return "hold";
 }
 
-const TONE_CLASSES: Record<Tone, string> = {
-  good: "border-[var(--good)] bg-[var(--base)] text-[var(--ink)]",
-  hold: "border-[var(--hold)] bg-[var(--base)] text-[var(--ink)]",
-  alert: "border-[var(--alert)] bg-[var(--base)] text-[var(--ink)]",
-};
-
 export function TaskRunRow({ run }: { run: TaskRun }) {
   const detail = taskDetailLabel(run.detail);
 
   return (
-    <li
-      className="grid gap-1 rounded-lg border border-[var(--rule)] p-3 text-sm sm:grid-cols-[1fr_auto]"
+    <InsetRow
       data-outcome={run.outcome}
-    >
-      <span className="text-[var(--ink-2)]">{formatTimestamp(run.finishedAt)}</span>
-      <span className="font-medium">
-        {run.task}
-        {run.argument ? ` · ${run.argument}` : ""}
-      </span>
-      <span className="text-[var(--ink-2)]">
-        {triggerLabel(run.trigger)}
-        {detail ? ` · ${detail}` : ""}
-      </span>
-      <span className="flex flex-wrap items-center gap-2 sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:self-center">
-        <Badge className={TONE_CLASSES[tone(run.outcome)]} variant="secondary">
-          {outcomeLabel(run.outcome)}
-        </Badge>
-        {run.reference === "" ? null : (
+      tone={tone(run.outcome)}
+      toneLabel={outcomeLabel(run.outcome)}
+      title={`${run.task}${run.argument ? ` · ${run.argument}` : ""}`}
+      detail={[formatTimestamp(run.finishedAt), triggerLabel(run.trigger), detail]}
+      actions={
+        run.reference === "" ? null : (
           <span className="text-xs text-[var(--ink-2)]">
             <span className="sr-only">Run reference </span>
             {run.reference}
           </span>
-        )}
-      </span>
-    </li>
+        )
+      }
+    />
   );
 }

@@ -8,7 +8,7 @@ import { useState } from "react";
 import { expect } from "storybook/test";
 import { webUIConfigQuery } from "../../api/queries";
 import type { WebUIConfig } from "../../api/types";
-import { basemapAttributionQuery } from "../../lib/attribution";
+import { basemapAttributionQuery, type Credit } from "../../lib/attribution";
 import { DataSources } from "./DataSources";
 
 const BASEMAPS: WebUIConfig["basemaps"] = [
@@ -16,9 +16,9 @@ const BASEMAPS: WebUIConfig["basemaps"] = [
   { name: "Satellite", styleUrl: "https://imagery.example.test/aerial", darkCartography: true },
 ];
 
-const CREDITS: Record<string, string[]> = {
-  "https://tiles.example.test/bright": ["© Example Cartography"],
-  "https://imagery.example.test/aerial": ["© Example Imagery"],
+const CREDITS: Record<string, Credit[]> = {
+  "https://tiles.example.test/bright": [{ text: "© Example Cartography" }],
+  "https://imagery.example.test/aerial": [{ text: "© Example Imagery" }],
 };
 
 function Seeded({ basemaps }: { basemaps: WebUIConfig["basemaps"] }): ReactNode {
@@ -65,7 +65,7 @@ export const Default: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByText(/© Example Cartography/)).toBeVisible();
     await expect(canvas.getByText(/© Example Imagery/)).toBeVisible();
-    await expect(canvas.getByText(/Surface data/)).toBeVisible();
+    await expect(canvas.getByText("ODbL")).toBeVisible();
     await expect(canvas.getByText(/Open-Meteo/)).toBeVisible();
   },
 };
@@ -75,6 +75,6 @@ export const OneBasemap: Story = {
   play: async ({ canvas }) => {
     await expect(canvas.getByText(/© Example Cartography/)).toBeVisible();
     await expect(canvas.queryByText(/© Example Imagery/)).not.toBeInTheDocument();
-    await expect(canvas.getByText(/Surface data/)).toBeVisible();
+    await expect(canvas.getByText("ODbL")).toBeVisible();
   },
 };

@@ -86,7 +86,8 @@ describe("SyncHistory", () => {
     expect(screen.getByText("1 created · 2 updated")).toBeInTheDocument();
     expect(screen.getByText("Read from VeloPlanner")).toBeInTheDocument();
     expect(screen.getByText("12 routes")).toBeInTheDocument();
-    expect(screen.getAllByText("Succeeded")).toHaveLength(2);
+    // The outcome is the status mark's name, said in words for whoever cannot see its colour.
+    expect(screen.getAllByRole("img", { name: "Succeeded" })).toHaveLength(2);
     // The reference is what a Pushover message carries, so it must be here to
     // be matched against; nothing else on the row identifies the run.
     expect(screen.getByText("aaaaaaaaaaaa")).toBeInTheDocument();
@@ -129,8 +130,8 @@ describe("SyncHistory", () => {
       ],
     });
 
-    expect(screen.getByText("Held by a safety gate")).toBeInTheDocument();
-    expect(screen.getByText("Did not finish")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Held by a safety gate" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Did not finish" })).toBeInTheDocument();
     expect(screen.queryByText(/deletion_limit/)).not.toBeInTheDocument();
     expect(screen.queryByText(/destination/)).not.toBeInTheDocument();
   });

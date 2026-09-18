@@ -353,7 +353,14 @@ export const riderProfile: RiderProfile = {
   zwift: { emailSet: false, passwordSet: false },
 };
 
-export function StoryProviders({ children }: { children: ReactNode }) {
+export function StoryProviders({
+  children,
+  path,
+}: {
+  children: ReactNode;
+  /** The address the story opens at; the router's default when absent. */
+  path?: string;
+}) {
   const [client] = useState(() => {
     const next = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -396,7 +403,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <MemoryRouter {...(path ? { initialEntries: [path] } : {})}>{children}</MemoryRouter>
     </QueryClientProvider>
   );
 }

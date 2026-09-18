@@ -11,7 +11,7 @@ import type { Page } from "@playwright/test";
 import { BASEMAP_ATTRIBUTION_TEXT } from "./basemap";
 import {
   expect,
-  followDestination,
+  followAccount,
   installOfflineBasemap,
   mapRegion,
   openLibrary,
@@ -135,7 +135,7 @@ test.describe("the theme override", () => {
     await chooseDarkTheme(page);
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
-    await followDestination(page, "Settings");
+    await followAccount(page);
 
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
     // And the bar on that page agrees about which scheme is in force, rather
@@ -197,9 +197,10 @@ test.describe("on a narrow viewport", () => {
 
   // The tile credit is read out of a style document the page fetched, which is
   // why this is asked in a real browser rather than in jsdom.
-  test("the settings page credits every data source", async ({ offlinePage: page }) => {
+  test("the account's data sources credit every source", async ({ offlinePage: page }) => {
     await openLibrary(page);
-    await followDestination(page, "Settings");
+    await followAccount(page);
+    await page.getByRole("tab", { name: "Data sources" }).click();
 
     const credit = page.getByText(BASEMAP_ATTRIBUTION_TEXT);
     await expect(credit).toHaveText(BASEMAP_ATTRIBUTION_TEXT);
@@ -241,7 +242,8 @@ test.describe("on a narrow viewport", () => {
 test.describe("text selection", () => {
   test("a double click on the page's own text selects nothing", async ({ offlinePage: page }) => {
     await openLibrary(page);
-    await followDestination(page, "Settings");
+    await followAccount(page);
+    await page.getByRole("tab", { name: "Data sources" }).click();
 
     // A run of ordinary prose, well away from the map — which has had its own
     // selection turned off since long before the document did.

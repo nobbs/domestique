@@ -96,8 +96,8 @@ const CONFIG: WebUIConfig = {
   identity: { display: "rider@example.test", admin: false },
 };
 
-/** The three destinations, and the way to the sync page among them. */
-export const LinksToSync: Story = {
+/** The destinations, and the session at the far end, which holds the account page and sync's state. */
+export const Destinations: Story = {
   decorators: withStatus({
     ready: true,
     converged: true,
@@ -114,14 +114,8 @@ export const LinksToSync: Story = {
     },
   }),
   play: async ({ canvas }) => {
-    const link = canvas.getByRole("link", { name: /^Sync/ });
-    await expect(link).toHaveAttribute("href", "/sync");
-    await expect(link).toHaveAccessibleName(/^Sync/);
+    await expect(canvas.queryByRole("link", { name: /^Account/ })).toBeNull();
     await expect(canvas.getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "/");
-    await expect(canvas.getByRole("link", { name: "Settings" })).toHaveAttribute(
-      "href",
-      "/settings",
-    );
     await expect(canvas.getByText("domestique")).toBeInTheDocument();
     // The whole bar, end to end: the mark, the three destinations, and the
     // session at the far end of them.
@@ -153,8 +147,8 @@ export const UnauthorizedTarget: Story = {
     },
   }),
   play: async ({ canvas }) => {
-    const link = canvas.getByRole("link", { name: "Sync · A target is not connected" });
-    await expect(link).toHaveAttribute("data-tone", "alert");
+    const session = canvas.getByRole("button", { name: /^Signed in as/ });
+    await expect(session).toHaveAttribute("data-tone", "alert");
   },
 };
 
@@ -165,9 +159,8 @@ export const UnauthorizedTarget: Story = {
 export const StatusNotYetKnown: Story = {
   decorators: withStatus(),
   play: async ({ canvas }) => {
-    const link = canvas.getByRole("link", { name: "Sync" });
-    await expect(link).not.toHaveAttribute("data-tone");
-    await expect(link).not.toHaveAttribute("title");
+    const session = canvas.getByRole("button", { name: /^Signed in as/ });
+    await expect(session).not.toHaveAttribute("data-tone");
   },
 };
 
@@ -205,17 +198,14 @@ export const NarrowRow: Story = {
   ],
   play: async ({ canvas }) => {
     const more = canvas.getByRole("button", { name: "More" });
-    // The sync state came with it: a fold must not take away the one thing the
-    // bar says without being asked.
-    await expect(more).toHaveAttribute("title", "Sync · A target is not connected");
 
     await userEvent.click(more);
 
     // Through a portal into `document.body`, outside this story's canvas root.
     const menu = await screen.findByRole("menu", {}, { timeout: 10_000 });
-    await expect(within(menu).getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
+    await expect(within(menu).getByRole("menuitem", { name: "Activities" })).toHaveAttribute(
       "href",
-      "/settings",
+      "/activities",
     );
   },
 };

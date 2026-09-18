@@ -18,6 +18,7 @@ import { useState } from "react";
 import { useRunTaskArgument } from "../../api/generated";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
+import { InsetList } from "../../components/InsetList";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatCount, formatTimestamp } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
@@ -107,7 +108,7 @@ export function TargetConvergenceCard() {
 
   return (
     <>
-      <ul className="grid gap-3">
+      <InsetList>
         {data.targets.map((target) => (
           <TargetRow
             key={target.id}
@@ -129,7 +130,7 @@ export function TargetConvergenceCard() {
             }}
           />
         ))}
-      </ul>
+      </InsetList>
       <p className="text-sm text-[var(--ink-2)]">
         This is what the targets hold, not what a head unit has downloaded.
       </p>

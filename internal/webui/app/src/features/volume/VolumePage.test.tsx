@@ -197,7 +197,10 @@ describe("the volume page", () => {
     show([]);
 
     expect(screen.getByText(/No rides have been recorded yet/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "settings" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: "your account" })).toHaveAttribute(
+      "href",
+      "/account/accounts",
+    );
   });
 
   it("says so when the service does not answer", async () => {

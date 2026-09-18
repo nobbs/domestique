@@ -6,9 +6,10 @@
  * order, and only the server can tell which is theirs: it marks that one `own`.
  */
 
+import { IconBike } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel } from "@/components/PanelHeading";
 import { useRunTaskArgument } from "../../api/generated";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
@@ -27,14 +28,9 @@ function ownTarget(targets: TargetStatus[], admin: boolean): TargetStatus | unde
 
 function CardShell({ children }: { children: ReactNode }) {
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Wahoo account
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3">{children}</CardContent>
-    </Card>
+    <Panel icon={<IconBike size={18} stroke={1.8} />} title="Wahoo account">
+      <div className="grid gap-3">{children}</div>
+    </Panel>
   );
 }
 

@@ -105,8 +105,8 @@ func (h *Handler) GetWorkerAsset(writer http.ResponseWriter, request *http.Reque
 	h.assets.Static(writer, request)
 }
 
-// GetIndex serves the application document at the root. It and the four
-// methods below are separate operations because each is a page a reader can be
+// GetIndex serves the application document at the root. It and the methods
+// below are separate operations because each is a page a reader can be
 // linked straight to; they serve the same document because the routing that
 // follows is the application's own.
 func (h *Handler) GetIndex(writer http.ResponseWriter, request *http.Request) {
@@ -123,25 +123,16 @@ func (h *Handler) GetCataloguePage(writer http.ResponseWriter, request *http.Req
 	h.index(writer, request)
 }
 
-// GetSettingsPage serves the application document for the settings view.
-func (h *Handler) GetSettingsPage(writer http.ResponseWriter, request *http.Request) {
-	h.index(writer, request)
-}
-
-// GetTasksPage serves the application document for the task history view.
-func (h *Handler) GetTasksPage(writer http.ResponseWriter, request *http.Request) {
+// GetAccountPage serves the application document for a rider's account view,
+// its sync status and settings, at /account or one of its tabs.
+func (h *Handler) GetAccountPage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)
 }
 
 // GetAdminPage serves the application document for the service administration
-// view. A non-admin is answered not found: a document is not an API operation.
+// view, at /admin or one of its tabs. A non-admin is answered not found: a
+// document is not an API operation.
 func (h *Handler) GetAdminPage(writer http.ResponseWriter, request *http.Request) {
-	h.adminPage(writer, request)
-}
-
-// GetAdminTasksPage serves the application document for the task
-// administration view.
-func (h *Handler) GetAdminTasksPage(writer http.ResponseWriter, request *http.Request) {
 	h.adminPage(writer, request)
 }
 
@@ -156,11 +147,6 @@ func (h *Handler) adminPage(writer http.ResponseWriter, request *http.Request) {
 
 		return
 	}
-	h.index(writer, request)
-}
-
-// GetSyncPage serves the application document for the synchronization view.
-func (h *Handler) GetSyncPage(writer http.ResponseWriter, request *http.Request) {
 	h.index(writer, request)
 }
 

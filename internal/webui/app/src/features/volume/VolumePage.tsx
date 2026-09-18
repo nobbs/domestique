@@ -176,8 +176,8 @@ export function VolumePage() {
         ) : recorded.length === 0 ? (
           <p className="text-[var(--ink-2)] text-sm">
             No rides have been recorded yet. Once a Wahoo account is connected on{" "}
-            <Link className="underline" to="/settings">
-              settings
+            <Link className="underline" to="/account/accounts">
+              your account
             </Link>
             , the rides it records appear here.
           </p>

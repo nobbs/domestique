@@ -10,6 +10,7 @@ import { useEffect, useRef } from "react";
 import { useSearchParams } from "react-router";
 import { taskRunsQueryKey, tasksQuery, useTaskRuns } from "../../../api/queries";
 import { Button } from "../../../components/Button";
+import { InsetList } from "../../../components/InsetList";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { Spinner } from "../../../components/ui/spinner";
 import { TaskRunRow } from "./TaskRunRow";
@@ -109,11 +110,11 @@ export function TaskRunFeed() {
       {runs.length === 0 ? (
         <p className="text-sm text-[var(--ink-2)]">Nothing has run yet.</p>
       ) : (
-        <ul className="grid gap-2">
+        <InsetList>
           {runs.map((run) => (
             <TaskRunRow key={runKey(run)} run={run} />
           ))}
-        </ul>
+        </InsetList>
       )}
       {hasNextPage ? (
         <Button

@@ -10,9 +10,10 @@
  * typed it in and saved it as their own.
  */
 
+import { IconUser } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useId, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel } from "@/components/PanelHeading";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -124,14 +125,9 @@ function submission(profile: RiderParameters, draft: RiderDraft) {
 
 function CardShell({ children }: { children: React.ReactNode }) {
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Rider profile
-        </CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <Panel icon={<IconUser size={18} stroke={1.8} />} title="Rider profile">
+      <div className="grid gap-3">{children}</div>
+    </Panel>
   );
 }
 

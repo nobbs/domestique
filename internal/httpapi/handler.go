@@ -394,14 +394,13 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /routes/{provider}/{routeId}/{stage}", h.GetRoutePage)
 	h.mux.HandleFunc("GET /routes/{routeId}/{stage}", h.RedirectLegacyRoutePage)
 	h.mux.HandleFunc("GET /catalogue", h.GetCataloguePage)
-	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
 	h.mux.HandleFunc("GET /volume", h.GetVolumePage)
 	h.mux.HandleFunc("GET /activities", h.GetActivitiesPage)
 	h.mux.HandleFunc("GET /activities/{activityId}", h.GetActivityPage)
-	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
-	h.mux.HandleFunc("GET /settings/tasks", h.GetTasksPage)
+	h.mux.HandleFunc("GET /account", h.GetAccountPage)
+	h.mux.HandleFunc("GET /account/{section}", h.GetAccountPage)
 	h.mux.HandleFunc("GET /admin", h.GetAdminPage)
-	h.mux.HandleFunc("GET /admin/tasks", h.GetAdminTasksPage)
+	h.mux.HandleFunc("GET /admin/{section}", h.GetAdminPage)
 	// Browser routes are explicit application navigation, not OpenAPI operations.
 	// Separate because ServeMux has no pattern for the unmatched-path fallback.
 	h.mux.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) {

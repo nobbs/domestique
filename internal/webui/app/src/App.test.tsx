@@ -21,17 +21,11 @@ import type { WebUIConfig } from "./api/types";
 vi.mock("./features/routes/AtlasPage", () => ({
   AtlasPage: () => <p>the library</p>,
 }));
-vi.mock("./features/sync/SyncPage", () => ({
-  SyncPage: () => <p>the sync page</p>,
-}));
-vi.mock("./features/settings/SettingsPage", () => ({
-  SettingsPage: () => <p>the settings page</p>,
+vi.mock("./features/account/AccountPage", () => ({
+  AccountPage: () => <p>the account page</p>,
 }));
 vi.mock("./features/admin/AdminPage", () => ({
   AdminPage: () => <p>the admin page</p>,
-}));
-vi.mock("./features/admin/tasks/TasksPage", () => ({
-  TasksPage: () => <p>the tasks page</p>,
 }));
 vi.mock("./features/plan/PlanPage", () => ({
   PlanPage: () => <p>the planner</p>,
@@ -125,38 +119,34 @@ describe("the client routes", () => {
     expect(address()).toBe("/");
   });
 
-  it("keeps sync a page of its own", () => {
-    open("/sync");
+  it("serves the account page and each of its tabs", () => {
+    open("/account/profile");
 
-    expect(address()).toBe("/sync");
-    expect(screen.getByText("the sync page")).toBeInTheDocument();
+    expect(address()).toBe("/account/profile");
+    expect(screen.getByText("the account page")).toBeInTheDocument();
   });
 
-  it("keeps settings as a deep-linkable client page", () => {
-    open("/settings");
+  // Sync and Settings were merged into Account; their paths were removed, not redirected.
+  it.each(["/sync", "/settings", "/settings/tasks"])(
+    "sends the removed %s to the library",
+    (path) => {
+      open(path, true);
 
-    expect(address()).toBe("/settings");
-    expect(screen.getByText("the settings page")).toBeInTheDocument();
-  });
+      expect(address()).toBe("/");
+    },
+  );
 
-  it("renders the admin page for an admin", () => {
-    open("/admin", true);
-
-    expect(address()).toBe("/admin");
-    expect(screen.getByText("the admin page")).toBeInTheDocument();
-  });
-
-  it("sends a non-admin from /admin back to their own settings", () => {
-    open("/admin", false);
-
-    expect(address()).toBe("/settings");
-  });
-
-  it("renders the admin tasks page for an admin", () => {
+  it("renders the admin page and its tabs for an admin", () => {
     open("/admin/tasks", true);
 
     expect(address()).toBe("/admin/tasks");
-    expect(screen.getByText("the tasks page")).toBeInTheDocument();
+    expect(screen.getByText("the admin page")).toBeInTheDocument();
+  });
+
+  it.each(["/admin", "/admin/tasks"])("sends a non-admin from %s to their account", (path) => {
+    open(path, false);
+
+    expect(address()).toBe("/account");
   });
 
   it("mounts the planner only for an admin where routing is configured", () => {
@@ -173,12 +163,6 @@ describe("the client routes", () => {
     expect(screen.queryByText("the planner")).not.toBeInTheDocument();
   });
 
-  it("sends a non-admin from /admin/tasks back to their own settings", () => {
-    open("/admin/tasks", false);
-
-    expect(address()).toBe("/settings");
-  });
-
   // Deciding before the caller's own identity has arrived would bounce an
   // admin on first paint; nothing is rendered until it settles.
   it("renders nothing at /admin while identity is still loading", () => {
@@ -190,13 +174,7 @@ describe("the client routes", () => {
 
     expect(address()).toBe("/admin");
     expect(screen.queryByText("the admin page")).not.toBeInTheDocument();
-    expect(screen.queryByText("the settings page")).not.toBeInTheDocument();
-  });
-
-  it("redirects the old tasks path to the admin one", () => {
-    open("/settings/tasks", true);
-
-    expect(address()).toBe("/admin/tasks");
+    expect(screen.queryByText("the account page")).not.toBeInTheDocument();
   });
 });
 

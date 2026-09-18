@@ -142,8 +142,8 @@ export function FitnessPage() {
         ) : !today ? (
           <p className="text-[var(--ink-2)] text-sm">
             Nothing has been worked out yet. Training load needs the numbers on{" "}
-            <Link className="underline" to="/settings">
-              settings
+            <Link className="underline" to="/account/profile">
+              your rider profile
             </Link>
             , and a ride recorded with a heart-rate strap or a power meter.
           </p>

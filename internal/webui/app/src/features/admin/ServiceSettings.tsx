@@ -15,6 +15,18 @@
  * there after another card is saved, and is never written by it.
  */
 
+import {
+  IconAlertTriangle,
+  IconBell,
+  IconClockHour4,
+  IconDatabase,
+  IconMap,
+  IconPlugConnected,
+  IconRefresh,
+  IconRoad,
+  IconSettings,
+  IconWorld,
+} from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,7 +39,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Field,
@@ -63,6 +74,7 @@ import {
 } from "../../api/types";
 import { Button } from "../../components/Button";
 import { BasemapStrip } from "../../components/map/BasemapPreview";
+import { Panel } from "../../components/PanelHeading";
 import { formatCount } from "../../lib/format";
 import { providerLabel } from "../../lib/provider";
 import { RegionPicker } from "../settings/regions/RegionPicker";
@@ -201,6 +213,7 @@ function saving(reset: () => void, invalidate: () => Promise<unknown>) {
  */
 function Section({
   title,
+  icon,
   description,
   save,
   onSave,
@@ -208,6 +221,7 @@ function Section({
   children,
 }: {
   title: string;
+  icon: ReactNode;
   description?: ReactNode;
   save: SaveState;
   onSave: () => void;
@@ -215,108 +229,124 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={3}>
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form
-          className="grid gap-6"
-          onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            onSave();
-          }}
-        >
-          {description ? <FieldDescription>{description}</FieldDescription> : null}
-          <FieldGroup>{children}</FieldGroup>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="default"
-              aria-label={`Save ${title}`}
-              disabled={save.isPending}
-              onClick={onSave}
-            >
-              {save.isPending ? <Spinner aria-label="Saving" /> : null}
-              Save
-            </Button>
-            {/*
-             * Announced rather than waited for, as elsewhere: the reader has
-             * just pressed something, and the service's own words are what says
-             * which value it refused.
-             */}
-            {save.isError ? (
-              <p className="text-sm text-[var(--alert)]" role="alert">
-                {save.error instanceof Error && save.error.message
-                  ? save.error.message
-                  : "Those settings were not saved."}
-              </p>
-            ) : null}
-            {save.isSuccess && !edited ? (
-              <p className="text-sm text-[var(--ink-2)]" aria-live="polite">
-                Saved. It is in force from the next run or the next request.
-              </p>
-            ) : null}
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+    <Panel icon={icon} title={title} level={3}>
+      <form
+        className="grid gap-6"
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault();
+          onSave();
+        }}
+      >
+        {description ? <FieldDescription>{description}</FieldDescription> : null}
+        <FieldGroup>{children}</FieldGroup>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="default"
+            aria-label={`Save ${title}`}
+            disabled={save.isPending}
+            onClick={onSave}
+          >
+            {save.isPending ? <Spinner aria-label="Saving" /> : null}
+            Save
+          </Button>
+          {/*
+           * Announced rather than waited for, as elsewhere: the reader has
+           * just pressed something, and the service's own words are what says
+           * which value it refused.
+           */}
+          {save.isError ? (
+            <p className="text-sm text-[var(--alert)]" role="alert">
+              {save.error instanceof Error && save.error.message
+                ? save.error.message
+                : "Those settings were not saved."}
+            </p>
+          ) : null}
+          {save.isSuccess && !edited ? (
+            <p className="text-sm text-[var(--ink-2)]" aria-live="polite">
+              Saved. It is in force from the next run or the next request.
+            </p>
+          ) : null}
+        </div>
+      </form>
+    </Panel>
   );
 }
 
 /** The card chrome for the two states before there are any settings to show. */
 function SettingsCard({ children }: { children: ReactNode }) {
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={3}>
-          Service settings
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-8">{children}</CardContent>
-    </Card>
+    <Panel icon={<IconSettings size={18} stroke={1.8} />} title="Service settings" level={3}>
+      <div className="grid gap-8">{children}</div>
+    </Panel>
   );
 }
 
-export function ServiceSettings() {
+/** The areas Admin splits the service settings into, one tab each. */
+export type SettingsGroup = "service" | "integrations" | "alerting" | "map";
+
+/** The service settings of one group, or every group with the missing list above them. */
+export function ServiceSettings({ group }: { group?: SettingsGroup }) {
   const { data, isPending, isError } = useQuery(settingsQuery());
 
+  const Wrap = group ? SettingsCard : Sections;
   if (isPending) {
     return (
-      <Sections>
-        <SettingsCard>
-          <Skeleton className="h-64 w-full" role="status" aria-label="Loading service settings" />
-        </SettingsCard>
-      </Sections>
+      <Wrap>
+        <Skeleton className="h-64 w-full" role="status" aria-label="Loading service settings" />
+      </Wrap>
     );
   }
   if (isError) {
     return (
-      <Sections>
-        <SettingsCard>
-          <p className="text-sm text-[var(--alert)]" role="alert">
-            The service did not say what it is set to.
-          </p>
-        </SettingsCard>
-      </Sections>
+      <Wrap>
+        <p className="text-sm text-[var(--alert)]" role="alert">
+          The service did not say what it is set to.
+        </p>
+      </Wrap>
     );
+  }
+
+  const groups: Record<SettingsGroup, ReactNode> = {
+    service: (
+      <>
+        <Timezone settings={data} />
+        <Sync settings={data} />
+        <RideModel settings={data} />
+      </>
+    ),
+    integrations: (
+      <>
+        <WahooApplication settings={data} />
+        {SOURCE_PROVIDERS.map((provider) => (
+          <SourceSettingsSection key={provider} provider={provider} settings={data} />
+        ))}
+      </>
+    ),
+    alerting: (
+      <>
+        <Notifications settings={data} />
+        <Alerts settings={data} />
+      </>
+    ),
+    map: (
+      <>
+        <Basemaps settings={data} />
+        <SurfaceClassification settings={data} />
+      </>
+    ),
+  };
+
+  if (group) {
+    return <div className="grid gap-6">{groups[group]}</div>;
   }
 
   return (
     <Sections>
       <Missing missing={data.missing} />
-      <Timezone settings={data} />
-      <WahooApplication settings={data} />
-      {SOURCE_PROVIDERS.map((provider) => (
-        <SourceSettingsSection key={provider} provider={provider} settings={data} />
-      ))}
-      <Notifications settings={data} />
-      <Alerts settings={data} />
-      <Basemaps settings={data} />
-      <SurfaceClassification settings={data} />
-      <RideModel settings={data} />
-      <Sync settings={data} />
+      {groups.service}
+      {groups.integrations}
+      {groups.alerting}
+      {groups.map}
     </Sections>
   );
 }
@@ -338,7 +368,7 @@ function Sections({ children }: { children: ReactNode }) {
  * Until this is empty the schedule runs and does nothing, which is a state an
  * operator should read here rather than infer from a run that did.
  */
-function Missing({ missing }: { missing: string[] }) {
+export function Missing({ missing }: { missing: string[] }) {
   const id = useId();
 
   if (missing.length === 0) {
@@ -377,6 +407,7 @@ function WahooApplication({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Wahoo application"
+      icon={<IconPlugConnected size={18} stroke={1.8} />}
       description="The registered application this service writes routes with."
       save={save}
       edited={draft !== null}
@@ -471,6 +502,7 @@ function SourceSettingsSection({
   return (
     <Section
       title={label}
+      icon={<IconDatabase size={18} stroke={1.8} />}
       description="A source is read with an account of its own, and the address is both what is read and what a route is linked back to."
       save={save}
       edited={draft !== null}
@@ -543,6 +575,7 @@ function Notifications({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Notifications"
+      icon={<IconBell size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() =>
@@ -611,6 +644,7 @@ function Timezone({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Timezone"
+      icon={<IconWorld size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: { timezone: value } })}
@@ -655,6 +689,7 @@ function Alerts({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Alerts"
+      icon={<IconAlertTriangle size={18} stroke={1.8} />}
       description="What the service announces when it goes wrong, one switch per reason. Turning the whole channel off above silences every one of these regardless."
       save={save}
       edited={Object.keys(draft).length > 0}
@@ -767,6 +802,7 @@ function Basemaps({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Basemaps"
+      icon={<IconMap size={18} stroke={1.8} />}
       description="The cartography this page offers. An entry with a dark style switches between the two with the system colour scheme; an entry whose own ground is dark whatever the scheme is — imagery — says so instead, and the two cannot both be set. A preview shows a style as last saved."
       save={save}
       edited={draft !== null}
@@ -908,6 +944,7 @@ function SurfaceClassification({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Surface classification"
+      icon={<IconRoad size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: values })}
@@ -954,13 +991,8 @@ function RideModel({ settings }: { settings: Settings }) {
       : "Built-in default, in force until the first calibration succeeds.";
 
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={3}>
-          Ride model
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-2">
+    <Panel icon={<IconClockHour4 size={18} stroke={1.8} />} title="Ride model" level={3}>
+      <div className="grid gap-2">
         <dl className="grid gap-1 text-sm">
           <div className="flex justify-between gap-4">
             <dt className="text-[var(--ink-2)]">Seconds per kilometre</dt>
@@ -972,8 +1004,8 @@ function RideModel({ settings }: { settings: Settings }) {
           </div>
         </dl>
         <FieldDescription>{provenance}</FieldDescription>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }
 
@@ -990,6 +1022,7 @@ function Sync({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Sync"
+      icon={<IconRefresh size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: values })}

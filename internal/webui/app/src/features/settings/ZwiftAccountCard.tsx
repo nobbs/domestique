@@ -7,9 +7,10 @@
  * never a value already stored.
  */
 
+import { IconDeviceGamepad2 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useId, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Panel } from "@/components/PanelHeading";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
@@ -20,14 +21,9 @@ import { Skeleton } from "../../components/ui/skeleton";
 
 function CardShell({ children }: { children: React.ReactNode }) {
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={2}>
-          Zwift account
-        </CardTitle>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+    <Panel icon={<IconDeviceGamepad2 size={18} stroke={1.8} />} title="Zwift account">
+      <div className="grid gap-3">{children}</div>
+    </Panel>
   );
 }
 

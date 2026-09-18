@@ -145,7 +145,10 @@ describe("the activity list", () => {
   it("says where a Wahoo account is connected when nothing has been recorded", () => {
     show([]);
 
-    expect(screen.getByRole("link", { name: "settings" })).toHaveAttribute("href", "/settings");
+    expect(screen.getByRole("link", { name: "your account" })).toHaveAttribute(
+      "href",
+      "/account/accounts",
+    );
   });
 
   it("badges a Zwift ride on the list and no other", () => {

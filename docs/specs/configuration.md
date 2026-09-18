@@ -159,7 +159,7 @@ application dependency.
   reported at `error`, a slow one at `warn`, and a refused one at `debug`,
   which the default level does not admit. Each carries its method, status,
   `duration_ms` in milliseconds and the path cut to its first segment, or its
-  first two under `/v1`, `/auth`, `/oauth`, `/settings` and `/admin`; never a
+  first two under `/v1`, `/auth`, `/oauth`, `/account` and `/admin`; never a
   route ID, query string or subject. Like every other field it may be set as
   `DOMESTIQUE_LOG__LEVEL`, which is the intended way to raise it for one
   restart.

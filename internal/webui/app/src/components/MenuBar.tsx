@@ -21,7 +21,8 @@
  * the right end, with the gap between them doing the separating: where a reader
  * can go and which session they are in are two different questions, and a row
  * that answers both in one run of items invites the second to be read as a
- * third destination.
+ * third destination. The account page, and what sync is doing, sit with the
+ * session.
  */
 
 import { IconChevronDown } from "@tabler/icons-react";
@@ -34,9 +35,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { statusQuery, webUIConfigQuery } from "../api/queries";
+import { webUIConfigQuery } from "../api/queries";
 import { useEffectiveAdmin } from "../lib/identity";
-import { type StateTone, syncState } from "../lib/syncState";
 import { useFittingCount } from "../lib/useFittingCount";
 import { Wordmark } from "./brand/Wordmark";
 import { ThemeToggle } from "./ThemeToggle";
@@ -64,13 +64,9 @@ const REST_DESTINATIONS: readonly Destination[] = [
   { to: "/volume", label: "Volume", end: false },
   { to: "/fitness", label: "Fitness", end: false },
   { to: "/activities", label: "Activities", end: false },
-  { to: "/sync", label: "Sync", end: false },
-  { to: "/settings", label: "Settings", end: false },
 ];
 
 const ADMIN_DESTINATION: Destination = { to: "/admin", label: "Admin", end: false };
-
-const SYNC = "/sync";
 
 /** The rule `NavLink` paints itself by, asked here so the measurement can mirror it. */
 function isCurrent({ to, end }: Destination, pathname: string): boolean {
@@ -82,12 +78,7 @@ function holdsCurrent(destinations: readonly Destination[], pathname: string): b
   return destinations.some((destination) => isCurrent(destination, pathname));
 }
 
-/*
- * Two channels, kept apart on purpose. Which page you are on is `aria-current`,
- * which paints the link's own text; what sync is doing is a dot
- * beside the word, which paints nothing else. A reader who met both as a colour
- * on the same word could not tell "you are here" from "something needs you".
- */
+/** Which page you are on is `aria-current`, which paints the link's own text. */
 const LINK_CLASS =
   "relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] aria-[current=page]:font-semibold aria-[current=page]:text-[var(--ink)]";
 
@@ -99,17 +90,7 @@ const LINK_CLASS =
 const TRIGGER_CLASS =
   "relative inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-sm text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] data-holds-current:font-semibold data-holds-current:text-[var(--ink)] data-popup-open:bg-[var(--base)] data-popup-open:text-[var(--ink)]";
 
-const DOT_CLASS =
-  "size-1.5 shrink-0 rounded-full bg-[var(--ink-2)] data-[tone=alert]:bg-[var(--alert)] data-[tone=good]:bg-[var(--good)] data-[tone=hold]:bg-[var(--hold)]";
-
-function Dot({ tone }: { tone: StateTone }) {
-  return tone ? <span aria-hidden="true" className={DOT_CLASS} data-tone={tone} /> : null;
-}
-
 export function MenuBar() {
-  const { data } = useQuery(statusQuery());
-  const state = data ? syncState(data) : null;
-  const described = state ? `Sync · ${state.label}` : undefined;
   const { data: config } = useQuery(webUIConfigQuery());
   const effectiveAdmin = useEffectiveAdmin();
   const destinations = [
@@ -122,7 +103,6 @@ export function MenuBar() {
   const { frameRef, measureRef, visible } = useFittingCount(destinations.length);
   const shown = destinations.slice(0, visible);
   const folded = destinations.slice(visible);
-  const syncFolded = folded.some(({ to }) => to === SYNC);
 
   return (
     <header className="sticky top-0 z-40 flex h-[calc(3rem+env(safe-area-inset-top))] shrink-0 items-center gap-3 border-[var(--rule)] border-b bg-[var(--panel)] px-3 pt-[env(safe-area-inset-top)] sm:h-[calc(3.5rem+env(safe-area-inset-top))] sm:gap-6 sm:px-4">
@@ -155,39 +135,19 @@ export function MenuBar() {
               key={destination.to}
             >
               {destination.label}
-              {destination.to === SYNC ? <Dot tone={state?.tone} /> : null}
             </span>
           ))}
-          {/* Measured carrying the dot and the current-page weight whether or
-              not the real one will: both depend on which names end up folded,
-              and a measurement that moved with its own answer would never
-              settle. Wearing them always is the safe direction — it reserves
-              the widest this control can be. */}
+          {/* Measured carrying the current-page weight whether or not the real
+              one will: it depends on which names end up folded, and a
+              measurement that moved with its own answer would never settle. */}
           <span className={TRIGGER_CLASS} data-holds-current="true">
             More
-            <Dot tone={state?.tone} />
             <IconChevronDown aria-hidden="true" size={14} stroke={1.6} />
           </span>
         </div>
         {shown.map(({ to, label, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={LINK_CLASS}
-            /*
-             * The state is spelled out for anyone the dot says nothing to, and
-             * the name still begins with the word on screen so that saying
-             * "Sync" to a voice control reaches this link. A state that has not
-             * arrived leaves the name alone: a status request failing is not the
-             * reader's problem until they ask about sync.
-             */
-            aria-label={to === SYNC ? described : undefined}
-            title={to === SYNC ? described : undefined}
-            data-tone={to === SYNC ? state?.tone : undefined}
-          >
+          <NavLink key={to} to={to} end={end} className={LINK_CLASS}>
             {label}
-            {to === SYNC && state?.tone ? <Dot tone={state.tone} /> : null}
           </NavLink>
         ))}
         {folded.length > 0 ? (
@@ -197,13 +157,8 @@ export function MenuBar() {
               // Not `aria-current`: the reader's page is in here, but this
               // control is not it.
               data-holds-current={holdsCurrent(folded, pathname) || undefined}
-              title={syncFolded ? described : undefined}
             >
               More
-              {/* A fold must not swallow the one thing the bar says without
-                  being asked: where sync has something to report and its name is
-                  inside the menu, the dot moves to the control holding it. */}
-              {syncFolded ? <Dot tone={state?.tone} /> : null}
               <IconChevronDown aria-hidden="true" size={14} stroke={1.6} />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-auto min-w-36">
@@ -213,12 +168,9 @@ export function MenuBar() {
                   key={to}
                   // An anchor underneath, so middle-click and copy-link still
                   // mean what they mean everywhere else in the row.
-                  render={
-                    <NavLink to={to} end={end} aria-label={to === SYNC ? described : undefined} />
-                  }
+                  render={<NavLink to={to} end={end} />}
                 >
                   {label}
-                  {to === SYNC && state?.tone ? <Dot tone={state.tone} /> : null}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

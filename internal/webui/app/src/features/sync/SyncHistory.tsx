@@ -17,6 +17,7 @@ import { useEffect, useRef } from "react";
 import { statusQuery, syncRunsQueryKey, useSyncRuns, webUIConfigQuery } from "../../api/queries";
 import type { SyncRun } from "../../api/types";
 import { Button } from "../../components/Button";
+import { InsetList } from "../../components/InsetList";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { phaseLabels } from "../../lib/syncLabels";
@@ -66,11 +67,11 @@ export function SyncHistory() {
 
   return (
     <>
-      <ul className="grid gap-2">
+      <InsetList>
         {runs.map((run) => (
           <SyncRunRow key={runKey(run)} run={run} label={labels[run.phase]} />
         ))}
-      </ul>
+      </InsetList>
       {hasNextPage ? (
         <Button
           variant="outline"

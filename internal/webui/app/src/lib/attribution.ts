@@ -5,20 +5,55 @@
 
 import { queryOptions } from "@tanstack/react-query";
 
+/** One credit as it is shown: its words, and where they lead when the provider says. */
+export interface Credit {
+  text: string;
+  href?: string;
+}
+
+const OSM: Credit = {
+  text: "© OpenStreetMap contributors",
+  href: "https://www.openstreetmap.org/copyright",
+};
+
 /** The surface classification is a derived OpenStreetMap database under the ODbL. */
-export const SURFACE_ATTRIBUTION = "Surface data © OpenStreetMap contributors (ODbL)";
+export const SURFACE_CREDITS: Credit[] = [
+  OSM,
+  { text: "ODbL", href: "https://opendatacommons.org/licenses/odbl/" },
+];
 
 /** Open-Meteo's forecasts are CC BY 4.0. */
-export const WEATHER_ATTRIBUTION = "Weather data by Open-Meteo.com";
+export const WEATHER_CREDITS: Credit[] = [
+  { text: "Open-Meteo.com", href: "https://open-meteo.com/" },
+  { text: "CC BY 4.0", href: "https://creativecommons.org/licenses/by/4.0/" },
+];
+
+/** The planner's engine, its gravel profile's source, and the ground both route over. */
+export const ROUTING_CREDITS: Credit[] = [
+  { text: "BRouter", href: "https://brouter.de/brouter/" },
+  { text: "Bikerouter", href: "https://bikerouter.de/" },
+  OSM,
+];
+
+const clean = (value: string | null) => (value ?? "").replace(/\s+/g, " ").trim();
 
 /**
- * Reduces an attribution string to plain text. Parsed rather than matched so
- * `&copy;` decodes; only the text is read back, so no markup reaches the page.
+ * Reads an attribution string as credits: one per link, or its whole text when
+ * it links nothing. Only text and an http(s) href are read back, never markup.
  */
-export function stripMarkup(value: string): string {
-  const parsed = new DOMParser().parseFromString(value, "text/html");
+export function parseCredits(value: string): Credit[] {
+  const body = new DOMParser().parseFromString(value, "text/html").body;
+  const links = [...body.querySelectorAll("a")].flatMap((anchor) => {
+    const text = clean(anchor.textContent);
+    const href = anchor.getAttribute("href") ?? "";
+    if (text === "") {
+      return [];
+    }
+    return /^https?:\/\//.test(href) ? [{ text, href }] : [{ text }];
+  });
+  const text = clean(body.textContent);
 
-  return (parsed.body.textContent ?? "").replace(/\s+/g, " ").trim();
+  return links.length > 0 ? links : text === "" ? [] : [{ text }];
 }
 
 /**
@@ -47,22 +82,34 @@ function resolveAgainstStyle(styleUrl: string, url: string): string {
   }
 }
 
-function attributionOf(value: unknown): string {
+function attributionOf(value: unknown): Credit[] {
   const attribution = (value as { attribution?: unknown } | null)?.attribution;
 
-  return typeof attribution === "string" ? stripMarkup(attribution) : "";
+  return typeof attribution === "string" ? parseCredits(attribution) : [];
+}
+
+/** Drops repeats: credits leading to one place count once, under the first words given. */
+export function uniqueCredits(credits: Credit[]): Credit[] {
+  const seen = new Map<string, Credit>();
+  for (const credit of credits) {
+    const key = credit.href ?? credit.text;
+    if (!seen.has(key)) {
+      seen.set(key, credit);
+    }
+  }
+  return [...seen.values()];
 }
 
 /** Reads every credit one style document's sources declare. */
-export async function fetchAttribution(styleUrl: string): Promise<string[]> {
+export async function fetchAttribution(styleUrl: string): Promise<Credit[]> {
   const style = await readJSON(styleUrl);
   const sources = (style as { sources?: Record<string, unknown> } | null)?.sources ?? {};
 
-  const credits = new Set<string>();
+  const credits: Credit[] = [];
   for (const source of Object.values(sources)) {
     const direct = attributionOf(source);
-    if (direct !== "") {
-      credits.add(direct);
+    if (direct.length > 0) {
+      credits.push(...direct);
 
       continue;
     }
@@ -70,14 +117,11 @@ export async function fetchAttribution(styleUrl: string): Promise<string[]> {
     // attribution inline, which is how the default provider publishes it.
     const tileJSONURL = (source as { url?: unknown } | null)?.url;
     if (typeof tileJSONURL === "string") {
-      const indirect = attributionOf(await readJSON(resolveAgainstStyle(styleUrl, tileJSONURL)));
-      if (indirect !== "") {
-        credits.add(indirect);
-      }
+      credits.push(...attributionOf(await readJSON(resolveAgainstStyle(styleUrl, tileJSONURL))));
     }
   }
 
-  return [...credits];
+  return uniqueCredits(credits);
 }
 
 /**
@@ -92,7 +136,7 @@ export function basemapAttributionQuery(styleUrl: string, styleUrlDark?: string 
       const styles = styleUrlDark === undefined ? [styleUrl] : [styleUrl, styleUrlDark];
       const credits = await Promise.all(styles.map(fetchAttribution));
 
-      return [...new Set(credits.flat())];
+      return uniqueCredits(credits.flat());
     },
     staleTime: Number.POSITIVE_INFINITY,
   });

@@ -34,12 +34,6 @@ function renderBar(admin: boolean, status: Status = IDLE_STATUS, planning?: bool
   );
 }
 
-/** A run that finished with everything in place, which is the one green state. */
-const SYNCED_STATUS: Status = {
-  ...IDLE_STATUS,
-  sync: { ...IDLE_STATUS.sync, lastCompletedAt: "2026-02-01T09:00:00Z" },
-};
-
 const ITEM_WIDTH = 90;
 const ITEM_GAP = 4;
 
@@ -136,28 +130,13 @@ describe("a row too narrow for every name", () => {
     renderBar(false);
 
     expect(screen.getByRole("link", { name: "Atlas" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Activities" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "More" }));
 
-    expect(await screen.findByRole("menuitem", { name: "Settings" })).toHaveAttribute(
+    expect(await screen.findByRole("menuitem", { name: "Activities" })).toHaveAttribute(
       "href",
-      "/settings",
-    );
-  });
-
-  /*
-   * The dot is the one thing the bar says without being asked, and a fold that
-   * hid it would take a signal away exactly where there is least room to go
-   * looking for it.
-   */
-  it("moves the sync state onto the control holding the sync link", () => {
-    layOutRow(2 * (ITEM_WIDTH + ITEM_GAP));
-    renderBar(false, SYNCED_STATUS);
-
-    expect(screen.getByRole("button", { name: "More" })).toHaveAttribute(
-      "title",
-      expect.stringContaining("Sync · In sync"),
+      "/activities",
     );
   });
 
@@ -181,7 +160,7 @@ describe("a row too narrow for every name", () => {
     layOutRow(20 * (ITEM_WIDTH + ITEM_GAP));
     renderBar(true);
 
-    expect(screen.getByRole("link", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Activities" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Admin" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "More" })).not.toBeInTheDocument();
   });

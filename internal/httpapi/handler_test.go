@@ -202,11 +202,10 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/",
 		"/routes/veloplanner/1/1",
 		"/catalogue",
-		"/settings",
-		"/settings/tasks",
+		"/account",
+		"/account/profile",
 		"/admin",
 		"/admin/tasks",
-		"/sync",
 		"/volume",
 		"/activities",
 		"/activities/1",
@@ -317,12 +316,11 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/routes/veloplanner/1/1",
 		"/routes/1/1",
 		"/catalogue",
-		"/sync",
 		"/volume",
 		"/activities",
 		"/activities/1",
-		"/settings",
-		"/settings/tasks",
+		"/account",
+		"/account/sync",
 		"/admin",
 		"/admin/tasks",
 	}
@@ -1132,7 +1130,7 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
 	for _, path := range []string{
-		"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/settings/tasks", "/sync", "/volume",
+		"/", "/routes/veloplanner/12/1", "/catalogue", "/account", "/account/sync", "/volume",
 		"/activities", "/activities/1",
 	} {
 		t.Run(path, func(t *testing.T) {
@@ -1226,7 +1224,7 @@ func TestReprocessRefusesANonAdminSession(t *testing.T) {
 // The admin documents are not served to a rider at all: not found rather than
 // forbidden, since a document is not one of the contract's operations.
 func TestAdminDocumentsAnswerNotFoundToANonAdmin(t *testing.T) {
-	for _, path := range []string{"/admin", "/admin/tasks"} {
+	for _, path := range []string{"/admin", "/admin/tasks", "/admin/service"} {
 		t.Run(path, func(t *testing.T) {
 			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, nil)
 
@@ -1239,7 +1237,7 @@ func TestAdminDocumentsAnswerNotFoundToANonAdmin(t *testing.T) {
 }
 
 func TestAdminDocumentsAreServedToAnAdmin(t *testing.T) {
-	for _, path := range []string{"/admin", "/admin/tasks"} {
+	for _, path := range []string{"/admin", "/admin/tasks", "/admin/service"} {
 		t.Run(path, func(t *testing.T) {
 			handler := newTestHandler(t)
 
@@ -1254,6 +1252,19 @@ func TestAdminDocumentsAreServedToAnAdmin(t *testing.T) {
 
 // A stage URL from before a second provider existed still resolves, redirected
 // to the same stage under veloplanner, preserving suffix and method.
+// The pages Account replaced are gone, not redirected.
+func TestRemovedSyncAndSettingsDocumentsAnswerNotFound(t *testing.T) {
+	handler := newTestHandler(t)
+	for _, path := range []string{"/sync", "/settings", "/settings/tasks"} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
+
+			assert.Equal(t, http.StatusNotFound, response.Code)
+		})
+	}
+}
+
 func TestHandlerRedirectsLegacyStagePaths(t *testing.T) {
 	trigger := &fakeSync{accepted: true}
 	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)

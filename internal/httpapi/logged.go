@@ -49,7 +49,7 @@ func pathClass(path string) string {
 	segments := strings.SplitN(strings.TrimPrefix(path, "/"), "/", 3)
 	keep := 1
 	switch segments[0] {
-	case "v1", "auth", "oauth", "settings", "admin":
+	case "v1", "auth", "oauth", "account", "admin":
 		keep = 2
 	}
 	if len(segments) > keep {

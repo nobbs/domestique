@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { webUIConfigQuery } from "../api/queries";
-import type { WebUIConfig } from "../api/types";
+import { statusQuery, webUIConfigQuery } from "../api/queries";
+import type { Status, TargetStatus, WebUIConfig } from "../api/types";
+import { IDLE_STATUS } from "../test/status";
 import { initialsOf, UserPill } from "./UserPill";
 
 function config(admin: boolean): WebUIConfig {
@@ -15,15 +17,18 @@ function config(admin: boolean): WebUIConfig {
   };
 }
 
-function renderPill(admin: boolean) {
+function renderPill(admin: boolean, status: Status = IDLE_STATUS) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config(admin));
+  client.setQueryData(statusQuery().queryKey, status);
 
   return render(
     <QueryClientProvider client={client}>
-      <UserPill />
+      <MemoryRouter>
+        <UserPill />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -41,6 +46,39 @@ function stubStorage(): void {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("the account link", () => {
+  it("is in the session menu", async () => {
+    renderPill(false);
+
+    await userEvent.click(screen.getByRole("button", { name: /Signed in as/ }));
+
+    expect(await screen.findByRole("menuitem", { name: /^Account/ })).toHaveAttribute(
+      "href",
+      "/account",
+    );
+  });
+
+  // Sync's state moved with its page: the dot rides on the session, and the
+  // item's name says what it meant.
+  it("carries what sync is doing onto the avatar and the item", async () => {
+    const unconnected: TargetStatus = {
+      id: "rider-a",
+      authorisation: "not_authorized",
+      convergence: "unauthorized",
+      routes: { current: 0, pending: 4 },
+    };
+    renderPill(false, { ...IDLE_STATUS, targets: [unconnected] });
+
+    const trigger = screen.getByRole("button", { name: /Signed in as/ });
+    expect(trigger).toHaveAttribute("data-tone", "alert");
+    await userEvent.click(trigger);
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Account · Sync · A target is not connected" }),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("the view-as-rider switch", () => {

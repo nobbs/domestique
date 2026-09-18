@@ -1005,14 +1005,16 @@ The browser UI is served from the same origin and the same listener: an
 application entry document and immutable hashed static assets. `/auth/login`
 is the one unauthenticated browser entry route, and serves that same entry
 document: the sign-in form is the application's, and this service renders no
-HTML of its own. `/`, `/catalogue`, `/sync`, and `/settings` require a
-session, and `/admin` and `/admin/tasks` require an admin session: any other
-session is answered not found rather than `403`, since a document is not one
-of the contract's operations. The catalogue reads the same inventory listing `/` does and asks the
+HTML of its own. `/`, `/catalogue`, `/volume`, `/activities` and
+`/account` with any tab under it (`/account/{section}`) require a session, and
+`/admin` with any tab under it (`/admin/{section}`, tasks among them) requires
+an admin session: any other session is answered not found rather than `403`,
+since a document is not one of the contract's operations. The former `/sync`,
+`/settings` and `/settings/tasks` documents are gone and answer not found. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
-ordering, searching and narrowing it offers all happen in the browser. Settings
-holds this rider's own Wahoo connection and lists the data sources this service
-credits, while the service's runtime settings are read and written over the
+ordering, searching and narrowing it offers all happen in the browser. Account
+holds this rider's sync status and history, their own Wahoo and Zwift
+connections and rider profile, and lists the data sources this service credits, while the service's runtime settings are read and written over the
 endpoints above and are the same for every browser. The colour scheme is
 neither: it is a control in the bar on every page, this browser's alone, and
 kept in its local storage. None of this alters the route or moving-time
