@@ -295,10 +295,7 @@ func TestValidateRejectsOutOfRangeInput(t *testing.T) {
 	t.Parallel()
 	valid := testWaypoints()
 	tooFew := []Waypoint{{Longitude: 8.4, Latitude: 49.0}}
-	tooMany := make([]Waypoint, 51)
-	for index := range tooMany {
-		tooMany[index] = Waypoint{Longitude: 8.4, Latitude: 49.0}
-	}
+	tooMany := line(maxWaypoints + 1)
 
 	straightStart := []Waypoint{{Longitude: 8.4, Latitude: 49.0, Straight: true}, {Longitude: 8.5, Latitude: 49.1}}
 	area := func(radius float64) []Avoid { return []Avoid{{Longitude: 8.45, Latitude: 49.05, RadiusMetres: radius}} }
@@ -335,6 +332,26 @@ func TestValidateRejectsOutOfRangeInput(t *testing.T) {
 			assert.Error(t, err, name)
 		})
 	}
+}
+
+// line is a plausible drawn line of count waypoints.
+func line(count int) []Waypoint {
+	waypoints := make([]Waypoint, count)
+	for index := range waypoints {
+		waypoints[index] = Waypoint{Longitude: 8.4 + float64(index)/1000, Latitude: 49.0}
+	}
+
+	return waypoints
+}
+
+func TestValidateAcceptsWaypointsUpToTheCap(t *testing.T) {
+	t.Parallel()
+	for _, count := range []int{minWaypoints, maxWaypoints - 1, maxWaypoints} {
+		_, err := validate("Plan", Gravel, line(count), nil)
+		require.NoError(t, err, "%d waypoints", count)
+	}
+	_, err := validate("Plan", Gravel, line(maxWaypoints+1), nil)
+	assert.ErrorIs(t, err, ErrInvalid, "%d waypoints", maxWaypoints+1)
 }
 
 func TestRandomIDReturnsPositiveValuesBelowTwoToThe53(t *testing.T) {

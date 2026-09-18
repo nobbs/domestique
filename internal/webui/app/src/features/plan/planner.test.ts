@@ -3,6 +3,7 @@ import type { Position } from "../../api/types";
 import {
   initialPlannerState,
   isPlannerSeed,
+  MAX_PLAN_WAYPOINTS,
   plannerReducer,
   plannerSeedFrom,
   samplePlanWaypoints,
@@ -12,20 +13,47 @@ const first = { longitude: 8, latitude: 49 };
 const second = { longitude: 8.1, latitude: 49.1 };
 const third = { longitude: 8.2, latitude: 49.2 };
 
+function seedOf(waypoints: number) {
+  return {
+    name: "Alpine loop",
+    profile: "trekking",
+    waypoints: Array.from({ length: waypoints }, (_, index) => ({
+      longitude: 8 + index / 1000,
+      latitude: 49,
+    })),
+  };
+}
+
 function reduce(...actions: Parameters<typeof plannerReducer>[1][]) {
   return actions.reduce(plannerReducer, initialPlannerState);
 }
 
 describe("plannerReducer", () => {
   it("samples a valid source line deterministically within the waypoint cap", () => {
-    const coordinates: Position[] = Array.from({ length: 52 }, (_, index) => [8 + index / 100, 49]);
+    const coordinates: Position[] = Array.from({ length: MAX_PLAN_WAYPOINTS + 2 }, (_, index) => [
+      8 + index / 1000,
+      49,
+    ]);
     coordinates.splice(1, 0, [Number.NaN, 49]);
 
     const sampled = samplePlanWaypoints(coordinates);
 
-    expect(sampled).toHaveLength(50);
+    expect(sampled).toHaveLength(MAX_PLAN_WAYPOINTS);
     expect(sampled[0]).toEqual({ longitude: 8, latitude: 49 });
-    expect(sampled.at(-1)).toEqual({ longitude: 8.51, latitude: 49 });
+    expect(sampled.at(-1)).toEqual({ longitude: 8.201, latitude: 49 });
+  });
+
+  it("stops accepting waypoints at the cap", () => {
+    const filled = Array.from({ length: MAX_PLAN_WAYPOINTS }, () => ({
+      type: "append" as const,
+      waypoint: first,
+    })).reduce(plannerReducer, initialPlannerState);
+
+    expect(filled.waypoints).toHaveLength(MAX_PLAN_WAYPOINTS);
+    expect(plannerReducer(filled, { type: "append", waypoint: second })).toBe(filled);
+    expect(plannerReducer(filled, { type: "insert", index: 0, waypoint: second })).toBe(filled);
+    expect(isPlannerSeed(seedOf(MAX_PLAN_WAYPOINTS))).toBe(true);
+    expect(isPlannerSeed(seedOf(MAX_PLAN_WAYPOINTS + 1))).toBe(false);
   });
 
   it("cuts a copied title to a name the planner accepts", () => {
@@ -482,14 +510,14 @@ describe("plannerReducer", () => {
     });
 
     it("adds no more than the waypoint cap leaves room for", () => {
-      const many = Array.from({ length: 60 }, (_, index) => ({
+      const many = Array.from({ length: MAX_PLAN_WAYPOINTS + 10 }, (_, index) => ({
         longitude: 8,
         latitude: 49 + index / 1000,
       }));
 
       const placed = reduce({ type: "insertMany", waypoints: many });
 
-      expect(placed.waypoints).toHaveLength(50);
+      expect(placed.waypoints).toHaveLength(MAX_PLAN_WAYPOINTS);
       expect(plannerReducer(placed, { type: "insertMany", waypoints: [early] })).toBe(placed);
       expect(plannerReducer(route, { type: "insertMany", waypoints: [] })).toBe(route);
     });

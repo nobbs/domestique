@@ -834,7 +834,7 @@ export interface PlanRouteRequest {
   profile: PlanProfile;
   /**
    * @minItems 2
-   * @maxItems 50
+   * @maxItems 200
    */
   waypoints: PlanWaypoint[];
   avoid?: PlanAvoidList;
@@ -944,7 +944,7 @@ export interface PlanWrite {
   profile: PlanProfile;
   /**
    * @minItems 2
-   * @maxItems 50
+   * @maxItems 200
    */
   waypoints: PlanWaypoint[];
   /** Whether the plan should be published. A create ignores this field and always stores a draft; a replace stores exactly what is sent. */

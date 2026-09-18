@@ -76,6 +76,7 @@ import {
   initialPlannerState,
   insertionIndex,
   isPlannerSeed,
+  MAX_PLAN_WAYPOINTS,
   type PlannerAvoid,
   type PlannerSeed,
   type PlannerState,
@@ -873,7 +874,7 @@ export function PlanPage() {
   const addPlaces = (places: Array<{ longitude: number; latitude: number }>) => {
     const points = places.map(({ longitude, latitude }) => ({ longitude, latitude }));
     dispatch({ type: "insertMany", waypoints: points });
-    points.slice(0, 50 - state.waypoints.length).forEach((point, offset) => {
+    points.slice(0, MAX_PLAN_WAYPOINTS - state.waypoints.length).forEach((point, offset) => {
       settleOnRoad(state.nextWaypointID + offset, point);
     });
     setFocusId(state.nextWaypointID);
@@ -951,11 +952,13 @@ export function PlanPage() {
                     </MapControls>
                   </>
                 }
-                cursor={state.waypoints.length === 50 && !avoidArmed ? "" : "crosshair"}
+                cursor={
+                  state.waypoints.length === MAX_PLAN_WAYPOINTS && !avoidArmed ? "" : "crosshair"
+                }
                 onMouseDown={(event) => {
                   if (
                     avoidArmed ||
-                    state.waypoints.length >= 50 ||
+                    state.waypoints.length >= MAX_PLAN_WAYPOINTS ||
                     event.originalEvent.button !== 0 ||
                     (event.originalEvent.target instanceof Element &&
                       event.originalEvent.target.closest(".maplibregl-marker") !== null)

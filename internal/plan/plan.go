@@ -44,8 +44,10 @@ func ParseProfile(value string) (Profile, error) {
 }
 
 const (
-	minWaypoints  = 2
-	maxWaypoints  = 50
+	minWaypoints = 2
+	// maxWaypoints must match the contract's maxItems and fit httpapi's
+	// maximumPlanBytes; the routing engine itself accepts far more.
+	maxWaypoints  = 200
 	maxNameLength = 120
 	// maxAvoid bounds how many areas one plan may route around.
 	maxAvoid = 20

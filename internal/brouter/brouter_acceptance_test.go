@@ -16,6 +16,7 @@ package brouter_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/stretchr/testify/assert"
@@ -69,4 +70,34 @@ func TestAcceptancePublicInstanceHonoursStraightLegsAndAvoidedAreas(t *testing.T
 	assert.Len(t, straight.Points, 2, "a straight leg is the two waypoints alone")
 	assert.Greater(t, len(routed.Points), 2, "a routed leg follows the ways")
 	assert.NotEqual(t, routed.Points, avoided.Points, "an avoided area moves the line")
+}
+
+// A plan at the planner's 200-waypoint cap goes out as one GET: the public
+// instance must accept that URL and route it within the default timeout.
+func TestAcceptancePublicInstanceRoutesAPlanAtTheWaypointCap(t *testing.T) {
+	client, err := brouter.New(&brouter.Options{BaseURL: "https://brouter.de"})
+	require.NoError(t, err)
+
+	// Drawn from a routed line so every waypoint sits on the connected network;
+	// the nudge gives each coordinate its longest decimal form.
+	routed, err := client.Route(t.Context(), []brouter.Waypoint{
+		{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.67, Latitude: 50.58},
+	}, "trekking", nil)
+	require.NoError(t, err)
+	line := routed.Points
+	require.GreaterOrEqual(t, len(line), 200)
+	waypoints := make([]brouter.Waypoint, 200)
+	for index := range waypoints {
+		point := line[index*(len(line)-1)/(len(waypoints)-1)]
+		waypoints[index] = brouter.Waypoint{
+			Longitude: point.Longitude + 1.234567890123e-9,
+			Latitude:  point.Latitude + 1.234567890123e-9,
+		}
+	}
+
+	started := time.Now()
+	answer, err := client.Route(t.Context(), waypoints, "trekking", nil)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(answer.Points), 2)
+	t.Logf("routed %d waypoints into %d points in %s", len(waypoints), len(answer.Points), time.Since(started))
 }

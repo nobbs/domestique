@@ -39,9 +39,9 @@ const maximumRequestBytes = 1 << 10
 // list carries two URLs per entry.
 const maximumSettingsBytes = 16 << 10
 
-// maximumPlanBytes bounds a plan body: up to 50 waypoints, each a longitude
-// and a latitude, plus a name and a profile.
-const maximumPlanBytes = 8 << 10
+// maximumPlanBytes bounds a plan body: up to 200 waypoints and 20 avoided
+// areas at full float64 precision, plus a name and a profile.
+const maximumPlanBytes = 24 << 10
 
 // maximumWebhookBytes bounds an inbound provider notification. A workout summary
 // is small, and the three fields this service reads of one are smaller.
@@ -523,7 +523,7 @@ func (h *Handler) bounded(next http.Handler) http.Handler {
 	})
 }
 
-// plansPath is the prefix of every plan address, whose bodies carry up to 50
+// plansPath is the prefix of every plan address, whose bodies carry up to 200
 // waypoints and so outgrow every other request this service reads.
 const plansPath = "/v1/plans"
 

@@ -44,6 +44,9 @@ export interface PlannerSeed {
   waypoints: PlanWaypoint[];
 }
 
+/** The service refuses a plan with more waypoints than this. */
+export const MAX_PLAN_WAYPOINTS = 200;
+
 /** Keeps a source line within the planner API's waypoint cap without losing its ends. */
 export function samplePlanWaypoints(coordinates: Position[]): PlanWaypoint[] {
   const valid = coordinates.flatMap(([longitude, latitude]) =>
@@ -63,7 +66,7 @@ export function samplePlanWaypoints(coordinates: Position[]): PlanWaypoint[] {
   if (!first) {
     return [];
   }
-  const count = Math.min(valid.length, 50);
+  const count = Math.min(valid.length, MAX_PLAN_WAYPOINTS);
 
   return Array.from(
     { length: count },
@@ -102,7 +105,7 @@ export function isPlannerSeed(value: unknown): value is PlannerSeed {
     PLAN_PROFILES.includes(candidate.profile as PlanProfile) &&
     Array.isArray(candidate.waypoints) &&
     candidate.waypoints.length >= 2 &&
-    candidate.waypoints.length <= 50 &&
+    candidate.waypoints.length <= MAX_PLAN_WAYPOINTS &&
     candidate.waypoints.every(
       (waypoint) =>
         waypoint !== null &&
@@ -291,7 +294,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         ? state
         : apply(state, { ...snapshot(state), cues: action.cues });
     case "append":
-      return state.waypoints.length === 50
+      return state.waypoints.length === MAX_PLAN_WAYPOINTS
         ? state
         : apply(state, {
             ...snapshot(state),
@@ -302,7 +305,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
             nextWaypointID: state.nextWaypointID + 1,
           });
     case "insert": {
-      if (state.waypoints.length === 50) {
+      if (state.waypoints.length === MAX_PLAN_WAYPOINTS) {
         return state;
       }
       const index = Math.max(0, Math.min(action.index, state.waypoints.length));
@@ -318,7 +321,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       });
     }
     case "insertMany": {
-      const room = 50 - state.waypoints.length;
+      const room = MAX_PLAN_WAYPOINTS - state.waypoints.length;
       if (room <= 0 || action.waypoints.length === 0) {
         return state;
       }
