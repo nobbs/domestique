@@ -51,11 +51,13 @@ function fold(value: string): string {
  * without the reader reproducing the em dash between them.
  */
 export function matchesQuery(route: Route, query: string): boolean {
+  return matchesText(haystack(route), query);
+}
+
+/** The same test over any name: every word of the query, accents folded, in any order. */
+export function matchesText(name: string, query: string): boolean {
   const words = fold(query).split(/\s+/).filter(Boolean);
-  if (words.length === 0) {
-    return true;
-  }
-  const text = fold(haystack(route));
+  const text = fold(name);
 
   return words.every((word) => text.includes(word));
 }

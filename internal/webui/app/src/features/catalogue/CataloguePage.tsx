@@ -62,7 +62,7 @@ import {
   formatTimestamp,
 } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
-import { matchingRoutes } from "../../lib/library";
+import { matchesText, matchingRoutes } from "../../lib/library";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
 import { gradientBand, gradientShares } from "../../lib/profile";
@@ -71,7 +71,7 @@ import { useSeenRoutes } from "../../lib/seenRoutes";
 import { summariseSurface } from "../../lib/surface";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
 import { CatalogueFilters } from "./CatalogueFilters";
-import { DraftList, EditPlanButton, useDrafts } from "./Drafts";
+import { DraftList, EditPlanButton, planEditLink, useDrafts } from "./Drafts";
 import type { ThinBarSegment } from "./ThinBar";
 import { ThinBar } from "./ThinBar";
 
@@ -329,7 +329,7 @@ function CatalogueCard({
     <li className="group relative">
       <Link
         to={atlasLink(route)}
-        className="flex items-start gap-3 rounded-lg border border-[var(--rule)] p-3 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+        className={`${planner && planEditLink(route) !== null ? "pr-12 " : ""}flex items-start gap-3 rounded-lg border border-[var(--rule)] p-3 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]`}
       >
         <span className="mt-0.5 block size-10 shrink-0">
           <RouteGlyph
@@ -559,9 +559,7 @@ export function CataloguePage() {
   );
 
   const hasQuery = view.query.trim() !== "";
-  const shownDrafts = drafted.drafts.filter(({ plan }) =>
-    plan.name.toLocaleLowerCase().includes(view.query.trim().toLocaleLowerCase()),
-  );
+  const shownDrafts = drafted.drafts.filter(({ plan }) => matchesText(plan.name, view.query));
   const filtersActive = hasActiveFilters(view.filters);
   const sortedLabel = SORT_COLUMNS.find((entry) => entry.column === view.sort)?.label ?? "Route";
   const narrowed = shown.length !== library.length;
@@ -621,8 +619,9 @@ export function CataloguePage() {
                     <Alert variant="destructive">
                       <AlertTitle>Could not load the drafts.</AlertTitle>
                     </Alert>
-                  ) : null}
-                  <DraftList drafts={shownDrafts} narrow={narrow} />
+                  ) : drafted.isPending ? null : (
+                    <DraftList drafts={shownDrafts} narrow={narrow} />
+                  )}
                 </>
               ) : (
                 <>

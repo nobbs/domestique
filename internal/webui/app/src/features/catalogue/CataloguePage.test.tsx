@@ -7,13 +7,14 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getGetPlanQueryKey, getListPlansQueryKey } from "../../api/generated";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Route as LibraryRoute, RouteGeometry, Status, WebUIConfig } from "../../api/types";
+import { useViewAsRider } from "../../lib/identity";
 import { stubPendingFetch } from "../../test/network";
 import { IDLE_STATUS } from "../../test/status";
 import { CataloguePage } from "./CataloguePage";
@@ -127,7 +128,14 @@ function show(
     geometry = true,
     nothingToDivide = false,
     planner = false,
-  }: { geometry?: boolean; nothingToDivide?: boolean; planner?: boolean } = {},
+    plans = "seeded",
+  }: {
+    geometry?: boolean;
+    nothingToDivide?: boolean;
+    planner?: boolean;
+    /** The plan listing and each plan's line in the cache, the listing alone, or neither. */
+    plans?: "seeded" | "listed" | "none";
+  } = {},
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -140,8 +148,10 @@ function show(
       ? { ...CONFIG, planning: true, identity: { display: "admin@example.test", admin: true } }
       : CONFIG,
   );
-  if (planner) {
+  if (planner && plans !== "none") {
     client.setQueryData(getListPlansQueryKey(), { data: { plans: PLANS } });
+  }
+  if (planner && plans === "seeded") {
     for (const plan of PLANS) {
       client.setQueryData(getGetPlanQueryKey(plan.id), {
         data: {
@@ -579,8 +589,34 @@ describe("CataloguePage", () => {
     // The published plan is in the library, not among the drafts.
     expect(within(drafts).queryByText("Weekday loop")).toBeNull();
 
+    // The library's own matching: every word, in any order.
+    await userEvent.type(screen.getByRole("searchbox"), "gravel satur");
+    expect(within(drafts).getByRole("link", { name: /Saturday gravel/ })).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole("searchbox"));
     await userEvent.type(screen.getByRole("searchbox"), "nothing like it");
     expect(within(drafts).getByText(/No drafts/)).toBeInTheDocument();
+  });
+
+  it("asks for no draft while an admin views the page as a rider, though the listing is cached", async () => {
+    const { result } = renderHook(() => useViewAsRider());
+    act(() => result.current[1](true));
+    // Each plan's line is left unseeded: a request for one would fail the suite's fetch guard.
+    const page = show(LIBRARY, "/catalogue", { planner: true, plans: "listed" });
+    try {
+      expect(screen.queryByRole("group", { name: "Shelf" })).toBeNull();
+    } finally {
+      page.unmount();
+      act(() => result.current[1](false));
+    }
+  });
+
+  it("says nothing about drafts until the listing has answered", async () => {
+    stubPendingFetch();
+    show(LIBRARY, "/catalogue", { planner: true, plans: "none" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Drafts · 0" }));
+
+    expect(screen.queryByText(/No drafts/)).toBeNull();
   });
 });
 
