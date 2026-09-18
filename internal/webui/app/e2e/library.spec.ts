@@ -44,9 +44,7 @@ test("the entry page is the library, drawn", async ({ offlinePage: page }) => {
   await expect(page.getByText("domestique")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Signed in as/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
-  await expect(await openSearch(page)).toHaveAttribute(
-    "placeholder",
+  await expect(page.getByRole("button", { name: "Search the route library" })).toContainText(
     `Search ${DEMO_TITLES.length} routes`,
   );
   // Nothing is listed until something is asked: the results column is what a

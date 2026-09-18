@@ -71,8 +71,9 @@ test("a notification about a recorded run lands on that run", async ({ offlinePa
   await expect(notice).not.toContainText("no longer kept");
 });
 
-test("the foot of the page names the running build", async ({ offlinePage: page }) => {
+test("the account's data sources name the running build", async ({ offlinePage: page }) => {
   await openSync(page);
+  await page.getByRole("tab", { name: "Data sources" }).click();
 
   const build = page.getByRole("link", { name: "a development build" });
   await expect(build).toBeVisible();

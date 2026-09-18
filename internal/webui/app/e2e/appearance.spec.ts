@@ -27,9 +27,9 @@ import {
 const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
 
 /** `--base` in the light palette, from the custom properties in index.css. */
-const LIGHT_SURFACE = "rgb(243, 245, 246)";
+const LIGHT_SURFACE = "rgb(244, 243, 240)";
 /** The dark one, which the same file switches to at the media query. */
-const DARK_SURFACE = "rgb(16, 19, 22)";
+const DARK_SURFACE = "rgb(28, 27, 25)";
 
 function backgroundOfBody(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -208,8 +208,8 @@ test.describe("on a narrow viewport", () => {
     // markup, which is the rule the credit is read out of the document under.
     await expect(credit.locator("a")).toHaveCount(0);
 
-    await expect(page.getByText(/Surface data © OpenStreetMap contributors/)).toBeVisible();
-    await expect(page.getByText(/Weather data by Open-Meteo/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "ODbL" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open-Meteo.com" })).toBeVisible();
   });
 
   test("the map itself carries no credit", async ({ offlinePage: page }) => {
@@ -247,7 +247,7 @@ test.describe("text selection", () => {
 
     // A run of ordinary prose, well away from the map — which has had its own
     // selection turned off since long before the document did.
-    await page.getByText(/Weather data by Open-Meteo/).dblclick();
+    await page.getByText("Forecasts wind and rain along a ride").dblclick();
 
     expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
   });

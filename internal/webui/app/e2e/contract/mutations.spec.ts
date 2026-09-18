@@ -19,7 +19,7 @@ const STALE_AFTER = "Call the library stale after (hours)";
 /** The admin page's service tab, once the service has answered what it is set to. */
 async function openSettings(page: Page): Promise<void> {
   await page.goto("/admin/service");
-  await expect(page.getByRole("heading", { level: 2, name: "Sync" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "Sync" })).toBeVisible();
 }
 
 test("changing the schedule is stored and read back", async ({ bundlePage: page, apiCalls }) => {
