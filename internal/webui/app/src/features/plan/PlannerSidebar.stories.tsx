@@ -40,8 +40,9 @@ export const DraftList: Story = {
       name: "Saturday gravel",
       waypoints: [
         { id: 0, longitude: 8, latitude: 49 },
-        { id: 1, longitude: 8.1, latitude: 49.1 },
+        { id: 1, longitude: 8.1, latitude: 49.1, straight: true },
       ],
+      avoid: [{ id: 0, longitude: 8.05, latitude: 49.05, radiusMetres: 250 }],
     },
     plans: [
       {

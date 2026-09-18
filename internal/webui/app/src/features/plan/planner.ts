@@ -1,3 +1,4 @@
+import type { PlanAvoid } from "../../api/generated";
 import {
   PLAN_PROFILES,
   type Plan,
@@ -12,6 +13,8 @@ export interface PlannerState {
   cues: boolean;
   waypoints: PlannerWaypoint[];
   nextWaypointID: number;
+  avoid: PlannerAvoid[];
+  nextAvoidID: number;
   past: PlannerSnapshot[];
   future: PlannerSnapshot[];
 }
@@ -22,9 +25,15 @@ interface PlannerSnapshot {
   cues: boolean;
   waypoints: PlannerWaypoint[];
   nextWaypointID: number;
+  avoid: PlannerAvoid[];
+  nextAvoidID: number;
 }
 
 export interface PlannerWaypoint extends PlanWaypoint {
+  id: number;
+}
+
+export interface PlannerAvoid extends PlanAvoid {
   id: number;
 }
 
@@ -120,10 +129,18 @@ export type PlannerAction =
   | { type: "reverse" }
   | { type: "reorder"; index: number; direction: "up" | "down" }
   | { type: "reorder"; order: number[] }
+  | { type: "setStraight"; id: number; straight: boolean }
+  | { type: "addAvoid"; longitude: number; latitude: number }
+  | { type: "moveAvoid"; id: number; longitude: number; latitude: number }
+  | { type: "setAvoidRadius"; id: number; radiusMetres: number }
+  | { type: "deleteAvoid"; id: number }
   | { type: "undo" }
   | { type: "redo" }
   | { type: "reset" }
-  | { type: "load"; plan: Pick<Plan, "name" | "profile" | "waypoints"> & { cues?: boolean } };
+  | {
+      type: "load";
+      plan: Pick<Plan, "name" | "profile" | "waypoints"> & { cues?: boolean; avoid?: PlanAvoid[] };
+    };
 
 /**
  * The same place, read within one turn of the globe. A click or a marker drag
@@ -139,18 +156,35 @@ export function unwrapped(waypoint: PlanWaypoint): PlanWaypoint {
   return { ...waypoint, longitude };
 }
 
+/** The first waypoint can never be straight; every waypoint mutation runs through here. */
+function normaliseWaypoints(waypoints: PlannerWaypoint[]): PlannerWaypoint[] {
+  const first = waypoints[0];
+  if (!first?.straight) {
+    return waypoints;
+  }
+  const { straight: _straight, ...rest } = first;
+  return [rest as PlannerWaypoint, ...waypoints.slice(1)];
+}
+
 function snapshot({
   name,
   profile,
   cues,
   waypoints,
   nextWaypointID,
+  avoid,
+  nextAvoidID,
 }: PlannerState): PlannerSnapshot {
-  return { name, profile, cues, waypoints, nextWaypointID };
+  return { name, profile, cues, waypoints, nextWaypointID, avoid, nextAvoidID };
 }
 
 function apply(state: PlannerState, next: PlannerSnapshot): PlannerState {
-  return { ...next, past: [...state.past, snapshot(state)], future: [] };
+  return {
+    ...next,
+    waypoints: normaliseWaypoints(next.waypoints),
+    past: [...state.past, snapshot(state)],
+    future: [],
+  };
 }
 
 export const initialPlannerState: PlannerState = {
@@ -159,6 +193,8 @@ export const initialPlannerState: PlannerState = {
   cues: false,
   waypoints: [],
   nextWaypointID: 0,
+  avoid: [],
+  nextAvoidID: 0,
   past: [],
   future: [],
 };
@@ -213,7 +249,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       if (!current) {
         return state;
       }
-      waypoints[action.index] = { ...unwrapped(action.waypoint), id: current.id };
+      waypoints[action.index] = { ...current, ...unwrapped(action.waypoint), id: current.id };
 
       return apply(state, { ...snapshot(state), waypoints });
     }
@@ -231,7 +267,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         return state;
       }
       const waypoints = [...state.waypoints];
-      waypoints[at] = { ...unwrapped(action.waypoint), id: action.id };
+      waypoints[at] = { ...waypoints[at], ...unwrapped(action.waypoint), id: action.id };
 
       return { ...state, waypoints };
     }
@@ -277,6 +313,62 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
 
       return apply(state, { ...snapshot(state), waypoints });
     }
+    case "setStraight": {
+      const index = state.waypoints.findIndex((waypoint) => waypoint.id === action.id);
+      const current = state.waypoints[index];
+      if (index <= 0 || !current || (current.straight ?? false) === action.straight) {
+        return state;
+      }
+      const waypoints = [...state.waypoints];
+      waypoints[index] = { ...current, straight: action.straight };
+
+      return apply(state, { ...snapshot(state), waypoints });
+    }
+    case "addAvoid":
+      return state.avoid.length === 20
+        ? state
+        : apply(state, {
+            ...snapshot(state),
+            avoid: [
+              ...state.avoid,
+              {
+                id: state.nextAvoidID,
+                longitude: action.longitude,
+                latitude: action.latitude,
+                radiusMetres: 250,
+              },
+            ],
+            nextAvoidID: state.nextAvoidID + 1,
+          });
+    case "moveAvoid": {
+      const index = state.avoid.findIndex((area) => area.id === action.id);
+      const current = state.avoid[index];
+      if (!current) {
+        return state;
+      }
+      const avoid = [...state.avoid];
+      avoid[index] = { ...current, longitude: action.longitude, latitude: action.latitude };
+
+      return apply(state, { ...snapshot(state), avoid });
+    }
+    case "setAvoidRadius": {
+      const index = state.avoid.findIndex((area) => area.id === action.id);
+      const current = state.avoid[index];
+      if (!current || current.radiusMetres === action.radiusMetres) {
+        return state;
+      }
+      const avoid = [...state.avoid];
+      avoid[index] = { ...current, radiusMetres: action.radiusMetres };
+
+      return apply(state, { ...snapshot(state), avoid });
+    }
+    case "deleteAvoid":
+      return state.avoid.some((area) => area.id === action.id)
+        ? apply(state, {
+            ...snapshot(state),
+            avoid: state.avoid.filter((area) => area.id !== action.id),
+          })
+        : state;
     case "undo": {
       const previous = state.past.at(-1);
       if (!previous) {
@@ -299,15 +391,22 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
     }
     case "reset":
       return initialPlannerState;
-    case "load":
+    case "load": {
+      const avoid = (action.plan.avoid ?? []).map((area, id) => ({ ...area, id }));
+
       return {
         ...action.plan,
         // A copy seeded from a library route carries no switch of its own.
         cues: action.plan.cues ?? false,
-        waypoints: action.plan.waypoints.map((waypoint, id) => ({ ...waypoint, id })),
+        waypoints: normaliseWaypoints(
+          action.plan.waypoints.map((waypoint, id) => ({ ...waypoint, id })),
+        ),
         nextWaypointID: action.plan.waypoints.length,
+        avoid,
+        nextAvoidID: avoid.length,
         past: [],
         future: [],
       };
+    }
   }
 }

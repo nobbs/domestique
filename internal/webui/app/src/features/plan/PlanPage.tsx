@@ -5,6 +5,7 @@ import {
   IconArrowForwardUp,
   IconArrowsExchange,
   IconArrowUpRight,
+  IconBan,
   IconBike,
   IconChevronDown,
   IconClock,
@@ -12,6 +13,7 @@ import {
   IconFlagCheck,
   IconGripVertical,
   IconLayoutBottombarCollapse,
+  IconLine,
   IconMountain,
   IconPlayerPlay,
   IconRoad,
@@ -88,6 +90,7 @@ import {
 import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
 import { type SurfaceSummary, summariseSurface } from "../../lib/surface";
 import { resolvesDark, useThemeChoice } from "../../lib/theme";
+import { useEscapeKey } from "../../lib/useEscapeKey";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { GroundRibbon } from "../routes/GroundRibbon";
 import { RouteOverlay } from "../routes/RouteOverlay";
@@ -96,6 +99,7 @@ import { usePlaceName } from "./placeName";
 import {
   initialPlannerState,
   isPlannerSeed,
+  type PlannerAvoid,
   type PlannerSeed,
   type PlannerState,
   plannerReducer,
@@ -170,7 +174,85 @@ function errorMessage(error: unknown): string {
 }
 
 function planWaypoints(waypoints: PlannerState["waypoints"]) {
-  return waypoints.map(({ longitude, latitude }) => ({ longitude, latitude }));
+  return waypoints.map(({ longitude, latitude, straight }) =>
+    straight ? { longitude, latitude, straight } : { longitude, latitude },
+  );
+}
+
+function planAvoid(avoid: PlannerState["avoid"]) {
+  return avoid.map(({ longitude, latitude, radiusMetres }) => ({
+    longitude,
+    latitude,
+    radiusMetres,
+  }));
+}
+
+const EARTH_METRES_PER_DEGREE = 111_320;
+const AVOID_CIRCLE_VERTICES = 64;
+
+/** A polygon approximating a circle of `radiusMetres`, for a fill the router's own math never draws. */
+function avoidCirclePolygon(area: PlannerAvoid): Position[] {
+  const latitudeDelta = area.radiusMetres / EARTH_METRES_PER_DEGREE;
+  const longitudeDelta =
+    area.radiusMetres / (EARTH_METRES_PER_DEGREE * Math.cos((area.latitude * Math.PI) / 180));
+
+  return Array.from({ length: AVOID_CIRCLE_VERTICES + 1 }, (_, index) => {
+    const angle = (index / AVOID_CIRCLE_VERTICES) * 2 * Math.PI;
+
+    return [
+      area.longitude + longitudeDelta * Math.cos(angle),
+      area.latitude + latitudeDelta * Math.sin(angle),
+    ] as Position;
+  });
+}
+
+/** MapLibre paint properties take literal colours, not CSS custom properties. */
+function useAlertColour(): string {
+  return useMemo(() => {
+    if (typeof document === "undefined") {
+      return "#c0392b";
+    }
+    const value = getComputedStyle(document.documentElement).getPropertyValue("--alert").trim();
+
+    return value || "#c0392b";
+  }, []);
+}
+
+const AVOID_RADII = [100, 250, 500, 1000, 2000] as const;
+
+/** The circles a plan keeps its route out of, filled and outlined in the alert tone. */
+function AvoidAreasLayer({ areas }: { areas: PlannerAvoid[] }) {
+  const colour = useAlertColour();
+  const data = useMemo(
+    () => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry: {
+        type: "MultiPolygon" as const,
+        coordinates: areas.map((area) => [avoidCirclePolygon(area)]),
+      },
+    }),
+    [areas],
+  );
+
+  if (areas.length === 0) {
+    return null;
+  }
+
+  return (
+    <Source id="plan-avoid" type="geojson" data={data}>
+      <Layer
+        id="plan-avoid-fill"
+        type="fill"
+        paint={{ "fill-color": colour, "fill-opacity": 0.18 }}
+      />
+      <Layer
+        id="plan-avoid-outline"
+        type="line"
+        paint={{ "line-color": colour, "line-width": 2 }}
+      />
+    </Source>
+  );
 }
 
 function waypointPositions(waypoints: Array<{ longitude: number; latitude: number }>): Position[] {
@@ -635,6 +717,7 @@ export function PlannerSidebar({
                     <WaypointName latitude={waypoint.latitude} longitude={waypoint.longitude} />
                     <span className="truncate text-[var(--ink-2)] text-xs tabular-nums">
                       {stopLabel(index, state.waypoints.length)}
+                      {waypoint.straight ? " · Straight" : ""}
                       {progressLabel(preview, stateIndex)}
                     </span>
                   </span>
@@ -666,6 +749,27 @@ export function PlannerSidebar({
                     className="shrink-0 cursor-grab text-[var(--ink-2)]"
                   />
                 </div>
+                {index === 0 ? null : (
+                  <Button
+                    variant="ghost"
+                    icon={<IconLine size={15} />}
+                    aria-pressed={Boolean(waypoint.straight)}
+                    className={waypoint.straight ? "text-[var(--accent)]" : undefined}
+                    aria-label={
+                      waypoint.straight
+                        ? `Route to ${waypointLabel(index, state.waypoints.length)} normally`
+                        : `Straight line to ${waypointLabel(index, state.waypoints.length)}`
+                    }
+                    title={waypoint.straight ? "Straight line to here" : "Route normally"}
+                    onClick={() =>
+                      dispatch({
+                        type: "setStraight",
+                        id: waypoint.id,
+                        straight: !waypoint.straight,
+                      })
+                    }
+                  />
+                )}
                 <Button
                   variant="ghost"
                   icon={<IconTrash size={15} />}
@@ -676,6 +780,62 @@ export function PlannerSidebar({
             );
           })}
         </ol>
+        <h3 className="-mb-2 flex items-center gap-2 font-semibold text-sm">
+          Avoided areas
+          {state.avoid.length === 0 ? null : (
+            <span className="flex-1 font-normal text-[var(--ink-2)] text-xs">
+              {state.avoid.length === 1 ? "1 area" : `${state.avoid.length} areas`}
+            </span>
+          )}
+        </h3>
+        {state.avoid.length === 0 ? (
+          <p className="text-[var(--ink-2)] text-xs">
+            Use "Avoid an area" on the map to keep the route out of a place.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {state.avoid.map((area) => (
+              <li
+                key={area.id}
+                className="flex items-center gap-2 rounded-lg bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)] px-3 py-2 text-sm"
+              >
+                <IconBan
+                  aria-hidden="true"
+                  size={14}
+                  stroke={1.8}
+                  className="shrink-0 text-[var(--alert)]"
+                />
+                <span className="min-w-0 flex-1 truncate text-[var(--ink-2)] text-xs tabular-nums">
+                  {coordinatesOf(area.latitude, area.longitude)}
+                </span>
+                <select
+                  aria-label="Avoided area radius"
+                  className="h-8 rounded-lg border border-[var(--rule)] bg-transparent px-2 text-sm"
+                  value={area.radiusMetres}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "setAvoidRadius",
+                      id: area.id,
+                      radiusMetres: Number(event.target.value),
+                    })
+                  }
+                >
+                  {AVOID_RADII.map((metres) => (
+                    <option key={metres} value={metres}>
+                      {metres} m
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  variant="ghost"
+                  icon={<IconTrash size={15} />}
+                  aria-label="Delete avoided area"
+                  onClick={() => dispatch({ type: "deleteAvoid", id: area.id })}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
       </Panel>
       <div className="grid shrink-0 gap-2">
         <div className="flex flex-wrap gap-2">
@@ -926,6 +1086,8 @@ export function PlanPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [activeMetres, setActiveMetres] = useState<number | null>(null);
   const [dockOpen, setDockOpen] = useState(true);
+  const [avoidArmed, setAvoidArmed] = useState(false);
+  useEscapeKey(avoidArmed, () => setAvoidArmed(false));
   // Below the breakpoint the strip lives in the Drawer, so it never resizes the map.
   const narrow = useNarrowViewport();
   const [savedPlan, setSavedPlan] = useState<Plan | null>(null);
@@ -1001,7 +1163,13 @@ export function PlanPage() {
     const current = ++request.current;
     const timeout = window.setTimeout(() => {
       previewRoute(
-        { data: { profile: state.profile, waypoints: planWaypoints(state.waypoints) } },
+        {
+          data: {
+            profile: state.profile,
+            waypoints: planWaypoints(state.waypoints),
+            ...(state.avoid.length === 0 ? {} : { avoid: planAvoid(state.avoid) }),
+          },
+        },
         {
           onSuccess: (response) => {
             if (request.current === current) {
@@ -1019,7 +1187,7 @@ export function PlanPage() {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints]);
+  }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid]);
 
   const line = useMemo(() => positions(preview), [preview]);
   const framed = initialViewport.current?.planId === planId ? initialViewport.current.bounds : null;
@@ -1035,6 +1203,7 @@ export function PlanPage() {
       cues: state.cues,
       waypoints: planWaypoints(state.waypoints),
       published,
+      ...(state.avoid.length === 0 ? {} : { avoid: planAvoid(state.avoid) }),
     };
     setSaveError(null);
     try {
@@ -1115,6 +1284,19 @@ export function PlanPage() {
                     <ScaleControl position="bottom-left" unit="metric" />
                     <PlannerHistoryControls state={state} dispatch={dispatch} />
                     <MapControls>
+                      <Button
+                        variant="panel"
+                        icon={<IconBan stroke={1.8} />}
+                        active={avoidArmed}
+                        aria-pressed={avoidArmed}
+                        aria-label={avoidArmed ? "Cancel avoiding an area" : "Avoid an area"}
+                        title={
+                          avoidArmed
+                            ? "Click the map to place it, or Esc to cancel"
+                            : "Avoid an area"
+                        }
+                        onClick={() => setAvoidArmed((armed) => !armed)}
+                      />
                       <BasemapPicker
                         basemaps={config.data?.basemaps ?? []}
                         selectedName={basemap.name}
@@ -1125,22 +1307,31 @@ export function PlanPage() {
                     </MapControls>
                   </>
                 }
-                cursor={state.waypoints.length === 50 ? "" : "crosshair"}
+                cursor={state.waypoints.length === 50 && !avoidArmed ? "" : "crosshair"}
                 onClick={(event) => {
-                  const waypoint = unwrapped({
+                  const point = unwrapped({
                     longitude: event.lngLat.lng,
                     latitude: event.lngLat.lat,
                   });
+                  if (avoidArmed) {
+                    dispatch({
+                      type: "addAvoid",
+                      longitude: point.longitude,
+                      latitude: point.latitude,
+                    });
+                    setAvoidArmed(false);
+                    return;
+                  }
                   if (event.originalEvent.altKey || state.waypoints.length < 2) {
-                    dispatch({ type: "append", waypoint });
+                    dispatch({ type: "append", waypoint: point });
                   } else {
                     dispatch({
                       type: "insert",
-                      index: insertionIndex(state.waypoints, waypoint),
-                      waypoint,
+                      index: insertionIndex(state.waypoints, point),
+                      waypoint: point,
                     });
                   }
-                  settleOnRoad(state.nextWaypointID, waypoint);
+                  settleOnRoad(state.nextWaypointID, point);
                 }}
               >
                 <MapViewport
@@ -1168,6 +1359,7 @@ export function PlanPage() {
                 {line.length > 1 && preview?.pushing ? (
                   <PushingLine line={line} pushing={preview.pushing} />
                 ) : null}
+                <AvoidAreasLayer areas={state.avoid} />
                 {state.waypoints.map((waypoint, index) => (
                   <Marker
                     key={waypoint.id}
@@ -1180,7 +1372,9 @@ export function PlanPage() {
                         latitude: event.lngLat.lat,
                       });
                       dispatch({ type: "move", index, waypoint: moved });
-                      settleOnRoad(waypoint.id, moved);
+                      if (!waypoint.straight) {
+                        settleOnRoad(waypoint.id, moved);
+                      }
                     }}
                   >
                     <span
@@ -1190,6 +1384,32 @@ export function PlanPage() {
                     >
                       <WaypointMarker index={index} count={state.waypoints.length} />
                     </span>
+                  </Marker>
+                ))}
+                {state.avoid.map((area) => (
+                  <Marker
+                    key={area.id}
+                    longitude={area.longitude}
+                    latitude={area.latitude}
+                    draggable
+                    onDragEnd={(event) => {
+                      const moved = unwrapped({
+                        longitude: event.lngLat.lng,
+                        latitude: event.lngLat.lat,
+                      });
+                      dispatch({
+                        type: "moveAvoid",
+                        id: area.id,
+                        longitude: moved.longitude,
+                        latitude: moved.latitude,
+                      });
+                    }}
+                  >
+                    <span
+                      role="img"
+                      aria-label="Avoided area centre"
+                      className="grid size-4 place-items-center rounded-full bg-[var(--alert)] shadow"
+                    />
                   </Marker>
                 ))}
               </MapWidget>

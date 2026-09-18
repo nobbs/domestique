@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +11,11 @@ const openedPlan = vi.hoisted(() => ({ value: {} }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
 const narrowViewport = vi.hoisted(() => ({ value: false }));
 const routeOverlay = vi.hoisted(() => vi.fn());
+// Keyed by "longitude,latitude" as last rendered, so a test can drive a
+// marker's drag without a real pointer gesture on a mocked map.
+const markerDragHandlers = vi.hoisted(
+  () => new Map<string, (event: { lngLat: { lng: number; lat: number } }) => void>(),
+);
 // Answers every waypoint unmoved unless a test says otherwise.
 const snap = vi.hoisted(() =>
   vi.fn(async (at: { longitude: number; latitude: number }) => ({
@@ -109,7 +114,22 @@ vi.mock("../../components/map/MapViewport", () => ({
   ),
 }));
 vi.mock("react-map-gl/maplibre", () => ({
-  Marker: ({ children }: { children: React.ReactNode }) => children,
+  Marker: ({
+    children,
+    longitude,
+    latitude,
+    onDragEnd,
+  }: {
+    children: React.ReactNode;
+    longitude: number;
+    latitude: number;
+    onDragEnd?: (event: { lngLat: { lng: number; lat: number } }) => void;
+  }) => {
+    if (onDragEnd) {
+      markerDragHandlers.set(`${longitude},${latitude}`, onDragEnd);
+    }
+    return children;
+  },
   Source: ({ id, data, children }: { id: string; data: unknown; children: React.ReactNode }) => (
     <div data-testid={id} data-geometry={JSON.stringify(data)}>
       {children}
@@ -180,13 +200,14 @@ beforeEach(() => {
   routeOverlay.mockReset();
   openedPlan.value = {};
   mapPoint.value = { longitude: 8, latitude: 49 };
+  markerDragHandlers.clear();
 });
 
 afterEach(() => vi.useRealTimers());
 
 /** The waypoint rows as they read, newest markup: one line per stop. */
 function waypointRows(): string[] {
-  return screen
+  return within(screen.getByRole("list", { name: "Waypoints" }))
     .getAllByRole("listitem")
     .map((row) => row.textContent?.replace(/\s+/g, " ").trim() ?? "");
 }
@@ -1065,5 +1086,113 @@ describe("PlanPage", () => {
       }),
       expect.anything(),
     );
+  });
+
+  it("arms avoid mode from the map control and adds an area instead of a waypoint", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.2, latitude: 49.2 };
+    fireEvent.click(map);
+    expect(waypointRows()).toHaveLength(2);
+
+    mapPoint.value = { longitude: 8.5, latitude: 49.5 };
+    fireEvent.click(screen.getByRole("button", { name: "Avoid an area" }));
+    fireEvent.click(map);
+
+    expect(waypointRows()).toHaveLength(2);
+    expect(screen.getByText("1 area")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Avoid an area" })).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          avoid: [{ longitude: 8.5, latitude: 49.5, radiusMetres: 250 }],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("disarms avoid mode on Escape without adding an area", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Avoid an area" }));
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+
+    expect(screen.queryByRole("button", { name: "Delete avoided area" })).toBeNull();
+    expect(waypointRows()).toHaveLength(1);
+  });
+
+  it("sends a waypoint's straight flag and skips settling a straight waypoint dragged along the map", async () => {
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          cues: false,
+          published: false,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1, straight: true },
+          ],
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [8, 49],
+              [8.1, 49.1],
+            ],
+          },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(
+      screen.getByRole("button", { name: "Route to Finish waypoint normally" }),
+    ).toBeInTheDocument();
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1, straight: true },
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
+
+    snap.mockClear();
+    act(() => markerDragHandlers.get("8.1,49.1")?.({ lngLat: { lng: 8.1005, lat: 49.1005 } }));
+    expect(snap).not.toHaveBeenCalled();
+    expect(waypointRows()[1]).toContain("49.1005, 8.1005");
+  });
+
+  it("toggles a waypoint's straight leg from its row, never offering it on the first waypoint", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.1, latitude: 49.1 };
+    fireEvent.click(map);
+
+    expect(screen.queryByRole("button", { name: /Straight line to Start waypoint/ })).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Straight line to Finish waypoint" });
+    fireEvent.click(toggle);
+    expect(
+      screen.getByRole("button", { name: "Route to Finish waypoint normally" }),
+    ).toBeInTheDocument();
+    expect(waypointRows()[1]).toContain("Straight");
   });
 });
