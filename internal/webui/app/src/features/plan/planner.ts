@@ -278,10 +278,19 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
             waypoints: state.waypoints.filter((_, index) => index !== action.index),
           })
         : state;
-    case "reverse":
-      return state.waypoints.length < 2
-        ? state
-        : apply(state, { ...snapshot(state), waypoints: [...state.waypoints].reverse() });
+    case "reverse": {
+      if (state.waypoints.length < 2) {
+        return state;
+      }
+      // A straight flag marks the leg arriving at its waypoint, so each moves one along.
+      const reversed = [...state.waypoints].reverse();
+      const waypoints = reversed.map((waypoint, index) => {
+        const { straight: _straight, ...rest } = waypoint;
+        return reversed[index - 1]?.straight ? { ...rest, straight: true } : rest;
+      });
+
+      return apply(state, { ...snapshot(state), waypoints });
+    }
     case "reorder": {
       if ("order" in action) {
         if (

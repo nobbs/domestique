@@ -310,8 +310,13 @@ describe("plannerReducer", () => {
       straight: true,
     });
 
-    // reverse: the straight last waypoint becomes first.
+    // reverse: the straight leg second→third stays that stretch, now arriving at second.
     const reversed = plannerReducer(withStraight, { type: "reverse" });
+    expect(reversed.waypoints.map((waypoint) => Boolean(waypoint.straight))).toEqual([
+      false,
+      true,
+      false,
+    ]);
     expect(reversed.waypoints[0]?.straight).toBeUndefined();
 
     // delete: removing the first waypoint promotes a straight one.
