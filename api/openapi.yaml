@@ -3207,6 +3207,12 @@ components:
           description: >-
             Whether the plan should be published. A create ignores this field
             and always stores a draft; a replace stores exactly what is sent.
+        cues:
+          type: boolean
+          default: false
+          description: >-
+            Whether the plan's course carries the routing engine's turn
+            instructions as cue points to a rider's device. Absent is off.
     Plan:
       type: object
       additionalProperties: false
@@ -3215,6 +3221,7 @@ components:
         - name
         - profile
         - published
+        - cues
         - version
         - waypoints
         - geometry
@@ -3232,6 +3239,16 @@ components:
           $ref: '#/components/schemas/PlanProfile'
         published:
           type: boolean
+        cues:
+          type: boolean
+          description: >-
+            Whether the plan's course carries turn instructions as cue points.
+        turnCount:
+          type: integer
+          minimum: 0
+          description: >-
+            How many turn instructions the routing engine gave for the line,
+            whether or not the course carries them.
         version:
           type: integer
           format: int64

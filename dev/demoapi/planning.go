@@ -103,7 +103,12 @@ func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, pro
 		ways[index] = plan.RoutedWay{EndMetres: way.EndMetres, Tags: way.Tags}
 	}
 
-	return plan.Routed{Points: answer.Points, Ways: ways}, nil
+	turns := make([]plan.RoutedTurn, len(answer.Turns))
+	for index, turn := range answer.Turns {
+		turns[index] = plan.RoutedTurn{Turn: turn.Turn, Index: turn.Index, Exit: turn.Exit}
+	}
+
+	return plan.Routed{Points: answer.Points, Ways: ways, Turns: turns}, nil
 }
 
 // planStore adapts the SQLite plan records to the plan service used by the

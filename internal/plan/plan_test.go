@@ -18,6 +18,7 @@ type fakeRouter struct {
 	err      error
 	geometry []route.Point
 	ways     []RoutedWay
+	turns    []RoutedTurn
 	calls    int
 }
 
@@ -27,7 +28,7 @@ func (r *fakeRouter) Route(_ context.Context, _ []Waypoint, _ Profile) (Routed, 
 		return Routed{}, r.err
 	}
 
-	return Routed{Points: r.geometry, Ways: r.ways}, nil
+	return Routed{Points: r.geometry, Ways: r.ways, Turns: r.turns}, nil
 }
 
 // fakeStore is an in-memory Store recording every call, for asserting a
@@ -180,7 +181,7 @@ func TestRouteAndCreateProduceIdenticalMeasurement(t *testing.T) {
 	previewed, err := service.Route(t.Context(), testWaypoints(), Gravel)
 	require.NoError(t, err, "Route()")
 
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	assert.Equal(t, previewed.Geometry, created.Geometry, "geometry")
@@ -194,7 +195,7 @@ func TestCreateStoresNothingWhenTheRouterFails(t *testing.T) {
 	store := newFakeStore()
 	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
 
-	_, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	_, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.Error(t, err, "Create()")
 	assert.Zero(t, store.inserts, "InsertPlan() must not be called")
 }
@@ -205,11 +206,11 @@ func TestReplaceWithStaleVersionStoresNothing(t *testing.T) {
 	store := newFakeStore()
 	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
 
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 	callsBeforeReplace := router.calls
 
-	_, err = service.Replace(t.Context(), created.ID, created.Version+1, "Renamed", Gravel, testWaypoints(), true)
+	_, err = service.Replace(t.Context(), created.ID, created.Version+1, "Renamed", Gravel, testWaypoints(), true, false)
 	require.ErrorIs(t, err, ErrVersionMismatch, "Replace()")
 	assert.Equal(t, "Sunday loop", store.plans[created.ID].Name, "the stored plan must be unchanged")
 	assert.Equal(t, callsBeforeReplace, router.calls, "Replace() must not route a stale version")
@@ -220,7 +221,7 @@ func TestReplaceOfAnUnknownPlanReturnsNotFound(t *testing.T) {
 	router := &fakeRouter{geometry: testGeometry()}
 	service := NewService(newFakeStore(), router, testPace{}, fixedNow, sequentialID())
 
-	_, err := service.Replace(t.Context(), 999, 1, "Renamed", Gravel, testWaypoints(), true)
+	_, err := service.Replace(t.Context(), 999, 1, "Renamed", Gravel, testWaypoints(), true, false)
 	require.ErrorIs(t, err, ErrNotFound, "Replace()")
 }
 
@@ -230,7 +231,7 @@ func TestDeleteWithStaleVersionStoresNothing(t *testing.T) {
 	store := newFakeStore()
 	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
 
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	err = service.Delete(t.Context(), created.ID, created.Version+1)
@@ -254,11 +255,11 @@ func TestInventoryReturnsOnlyPublishedPlansOrderedByID(t *testing.T) {
 	store := newFakeStore()
 	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
 
-	draft, err := service.Create(t.Context(), "Draft", Gravel, testWaypoints())
+	draft, err := service.Create(t.Context(), "Draft", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create() draft")
-	published, err := service.Create(t.Context(), "Published", Gravel, testWaypoints())
+	published, err := service.Create(t.Context(), "Published", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create() published")
-	_, err = service.Replace(t.Context(), published.ID, published.Version, "Published", Gravel, testWaypoints(), true)
+	_, err = service.Replace(t.Context(), published.ID, published.Version, "Published", Gravel, testWaypoints(), true, false)
 	require.NoError(t, err, "Replace() to publish")
 
 	routes, err := service.Inventory(t.Context())
@@ -357,7 +358,7 @@ func TestCreateWrapsAStoreInsertError(t *testing.T) {
 	store.insertErr = errors.New("disk full")
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
 
-	_, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	_, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.Error(t, err, "Create()")
 }
 
@@ -366,7 +367,7 @@ func TestCreateWrapsAnIDGenerationError(t *testing.T) {
 	failingID := func() (int64, error) { return 0, errors.New("entropy unavailable") }
 	service := NewService(newFakeStore(), &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, failingID)
 
-	_, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	_, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.Error(t, err, "Create()")
 }
 
@@ -375,7 +376,7 @@ func TestCreateRejectsInvalidInputBeforeRouting(t *testing.T) {
 	router := &fakeRouter{geometry: testGeometry()}
 	service := NewService(newFakeStore(), router, testPace{}, fixedNow, sequentialID())
 
-	_, err := service.Create(t.Context(), "", Gravel, testWaypoints())
+	_, err := service.Create(t.Context(), "", Gravel, testWaypoints(), false)
 	require.Error(t, err, "Create()")
 	assert.Zero(t, router.calls, "Create() must not route invalid input")
 }
@@ -384,7 +385,7 @@ func TestReplaceRejectsInvalidInputBeforeReadingTheStore(t *testing.T) {
 	t.Parallel()
 	service := NewService(newFakeStore(), &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
 
-	_, err := service.Replace(t.Context(), 1, 1, "", Gravel, testWaypoints(), false)
+	_, err := service.Replace(t.Context(), 1, 1, "", Gravel, testWaypoints(), false, false)
 	require.Error(t, err, "Replace()")
 }
 
@@ -394,7 +395,7 @@ func TestReplaceWrapsAStoreGetError(t *testing.T) {
 	store.getErr = errors.New("read failed")
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
 
-	_, err := service.Replace(t.Context(), 1, 1, "Renamed", Gravel, testWaypoints(), false)
+	_, err := service.Replace(t.Context(), 1, 1, "Renamed", Gravel, testWaypoints(), false, false)
 	require.Error(t, err, "Replace()")
 }
 
@@ -402,11 +403,11 @@ func TestReplaceWrapsAStoreReplaceError(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	store.replaceErr = errors.New("write failed")
-	_, err = service.Replace(t.Context(), created.ID, created.Version, "Renamed", Gravel, testWaypoints(), false)
+	_, err = service.Replace(t.Context(), created.ID, created.Version, "Renamed", Gravel, testWaypoints(), false, false)
 	require.Error(t, err, "Replace()")
 }
 
@@ -424,12 +425,12 @@ func TestReplaceWrapsARouterFailureAfterTheVersionCheck(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	failingRouter := &fakeRouter{err: errors.New("engine unreachable")}
 	service = NewService(store, failingRouter, testPace{}, fixedNow, sequentialID())
-	_, err = service.Replace(t.Context(), created.ID, created.Version, "Renamed", Gravel, testWaypoints(), false)
+	_, err = service.Replace(t.Context(), created.ID, created.Version, "Renamed", Gravel, testWaypoints(), false, false)
 	require.Error(t, err, "Replace()")
 }
 
@@ -437,11 +438,11 @@ func TestReplaceReportsVersionMismatchWhenTheStoreLosesARace(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	store.raceReplace = true
-	_, err = service.Replace(t.Context(), created.ID, created.Version, "Renamed", Gravel, testWaypoints(), false)
+	_, err = service.Replace(t.Context(), created.ID, created.Version, "Renamed", Gravel, testWaypoints(), false, false)
 	require.ErrorIs(t, err, ErrVersionMismatch, "Replace()")
 }
 
@@ -449,7 +450,7 @@ func TestDeleteSucceeds(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	require.NoError(t, service.Delete(t.Context(), created.ID, created.Version), "Delete()")
@@ -461,7 +462,7 @@ func TestDeleteReportsVersionMismatchWhenTheStoreLosesARace(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	store.raceDelete = true
@@ -473,7 +474,7 @@ func TestDeleteWrapsAStoreDeleteError(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	store.deleteErr = errors.New("write failed")
@@ -485,7 +486,7 @@ func TestGetReturnsAPlanOrReportsNotFound(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Sunday loop", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	got, found, err := service.Get(t.Context(), created.ID)
@@ -512,7 +513,7 @@ func TestListReturnsEveryPlan(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore()
 	service := NewService(store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID())
-	_, err := service.Create(t.Context(), "Draft", Gravel, testWaypoints())
+	_, err := service.Create(t.Context(), "Draft", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
 
 	plans, err := service.List(t.Context())
@@ -549,9 +550,9 @@ func TestInventoryCarriesElevationIntoTheContentHash(t *testing.T) {
 	}}
 	store := newFakeStore()
 	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
-	created, err := service.Create(t.Context(), "Elevated", Gravel, testWaypoints())
+	created, err := service.Create(t.Context(), "Elevated", Gravel, testWaypoints(), false)
 	require.NoError(t, err, "Create()")
-	_, err = service.Replace(t.Context(), created.ID, created.Version, "Elevated", Gravel, testWaypoints(), true)
+	_, err = service.Replace(t.Context(), created.ID, created.Version, "Elevated", Gravel, testWaypoints(), true, false)
 	require.NoError(t, err, "Replace() to publish")
 
 	routes, err := service.Inventory(t.Context())
@@ -619,7 +620,7 @@ func TestGetPredictsAStoredPlanOnRead(t *testing.T) {
 	service := NewService(
 		store, &fakeRouter{geometry: testGeometry()}, testPace{}, fixedNow, sequentialID(),
 	)
-	created, err := service.Create(t.Context(), "Stored", Trekking, testWaypoints())
+	created, err := service.Create(t.Context(), "Stored", Trekking, testWaypoints(), false)
 	require.NoError(t, err)
 
 	read, found, err := service.Get(t.Context(), created.ID)
@@ -660,7 +661,7 @@ func TestCreateStoresWhereTheRiderWalks(t *testing.T) {
 	}
 	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
 
-	created, err := service.Create(t.Context(), "Walked", Trekking, testWaypoints())
+	created, err := service.Create(t.Context(), "Walked", Trekking, testWaypoints(), false)
 
 	require.NoError(t, err)
 	require.Len(t, created.Pushing, 1)
@@ -668,4 +669,52 @@ func TestCreateStoresWhereTheRiderWalks(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, created.Pushing, stored.Pushing)
+}
+
+// A plan keeps the engine's turns with its line and remembers whether its
+// course should carry them.
+func TestCreateStoresTheTurnsAndWhetherTheCourseCarriesThem(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore()
+	router := &fakeRouter{
+		geometry: testGeometry(),
+		turns:    []RoutedTurn{{Turn: route.TurnLeft, Index: 1}},
+	}
+	service := NewService(store, router, testPace{}, fixedNow, sequentialID())
+
+	created, err := service.Create(t.Context(), "Cued", Trekking, testWaypoints(), true)
+
+	require.NoError(t, err)
+	stored, found, err := service.Get(t.Context(), created.ID)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.True(t, stored.Cues, "cues switched on")
+	require.Len(t, stored.Turns, 1)
+	assert.Equal(t, route.TurnLeft, stored.Turns[0].Turn, "turn")
+	assert.Positive(t, stored.Turns[0].Metres, "turn placed along the line")
+}
+
+func TestCuesOfScalesTheEnginesDistanceOntoThePlansLength(t *testing.T) {
+	t.Parallel()
+	points := []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.01, Latitude: 49}, {Longitude: 8.02, Latitude: 49}}
+	turns := []RoutedTurn{
+		{Turn: route.TurnRoundabout, Index: 1, Exit: 2},
+		{Turn: route.TurnRight, Index: 2},
+		{Turn: route.TurnLeft, Index: 7},
+	}
+
+	cues := cuesOf(points, turns, 1000)
+
+	require.Len(t, cues, 2, "a turn off the line is left out")
+	assert.Equal(t, route.Cue{Turn: route.TurnRoundabout, Metres: 500, Exit: 2}, roundedCue(cues[0]), "halfway")
+	assert.InDelta(t, 1000, cues[1].Metres, 1e-6, "at the end")
+	assert.Nil(t, cuesOf(points, nil, 1000), "no turns")
+	assert.Nil(t, cuesOf(points[:1], turns, 1000), "no line")
+	assert.Nil(t, cuesOf([]route.Point{points[0], points[0]}, turns, 1000), "a line of no length")
+}
+
+func roundedCue(cue route.Cue) route.Cue {
+	cue.Metres = math.Round(cue.Metres)
+
+	return cue
 }

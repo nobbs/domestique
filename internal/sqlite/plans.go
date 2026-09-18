@@ -22,13 +22,16 @@ type PlanRecord struct {
 	Profile   string
 	Waypoints [][2]float64
 	// Pushing is [start, end] pairs in metres where a rider walks.
-	Pushing        [][2]float64
-	Geometry       []route.Point
+	Pushing  [][2]float64
+	Geometry []route.Point
+	// Turns are the routing engine's turn instructions along Geometry.
+	Turns          []route.Cue
 	DistanceMetres float64
 	AscentMetres   float64
 	ID             int64
 	Version        int64
 	Published      bool
+	Cues           bool
 }
 
 // InsertPlan stores a newly created plan.
@@ -45,10 +48,14 @@ func (s *Store) InsertPlan(ctx context.Context, record *PlanRecord) error {
 	if err != nil {
 		return err
 	}
+	turns, err := encodeTurns(record.Turns)
+	if err != nil {
+		return err
+	}
 	if err := s.queries.InsertPlan(ctx, sqlcgen.InsertPlanParams{
 		ID: record.ID, Name: record.Name, Profile: record.Profile, Waypoints: string(waypoints),
 		Coordinates: coordinates, DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres,
-		Pushing:   string(pushing),
+		Pushing: string(pushing), Turns: string(turns), Cues: boolToInt(record.Cues),
 		Published: boolToInt(record.Published), Version: record.Version,
 		CreatedAtUnixNano: record.CreatedAt.UnixNano(), UpdatedAtUnixNano: record.UpdatedAt.UnixNano(),
 	}); err != nil {
@@ -111,9 +118,14 @@ func (s *Store) ReplacePlan(ctx context.Context, record *PlanRecord, expectedVer
 	if err != nil {
 		return false, err
 	}
+	turns, err := encodeTurns(record.Turns)
+	if err != nil {
+		return false, err
+	}
 	updated, err := s.queries.UpdatePlan(ctx, sqlcgen.UpdatePlanParams{
 		Name: record.Name, Profile: record.Profile, Waypoints: string(waypoints), Coordinates: coordinates,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Pushing: string(pushing),
+		Turns: string(turns), Cues: boolToInt(record.Cues),
 		Published: boolToInt(record.Published), Version: record.Version,
 		UpdatedAtUnixNano: record.UpdatedAt.UnixNano(),
 		ID:                record.ID, Version_2: expectedVersion,
@@ -165,15 +177,56 @@ func planRecordFromRow(row *sqlcgen.Plan) (PlanRecord, error) {
 	if len(pushing) == 0 {
 		pushing = nil
 	}
+	turns, err := decodeTurns(row.Turns)
+	if err != nil {
+		return PlanRecord{}, err
+	}
 
 	return PlanRecord{
 		ID: row.ID, Name: row.Name, Profile: row.Profile, Waypoints: waypoints, Geometry: geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: turns, Cues: row.Cues != 0,
 		DistanceMetres: row.DistanceMetres, AscentMetres: row.AscentMetres,
 		Published: row.Published != 0, Version: row.Version,
 		CreatedAt: time.Unix(0, row.CreatedAtUnixNano).UTC(),
 		UpdatedAt: time.Unix(0, row.UpdatedAtUnixNano).UTC(),
 	}, nil
+}
+
+// storedTurn is one turn as the turns column holds it.
+type storedTurn struct {
+	Turn   route.Turn `json:"turn"`
+	Metres float64    `json:"metres"`
+	Exit   int        `json:"exit,omitempty"`
+}
+
+// encodeTurns renders a plan's turns as JSON, an empty list rather than null.
+func encodeTurns(turns []route.Cue) ([]byte, error) {
+	stored := make([]storedTurn, len(turns))
+	for index, turn := range turns {
+		stored[index] = storedTurn{Turn: turn.Turn, Metres: turn.Metres, Exit: turn.Exit}
+	}
+	encoded, err := json.Marshal(stored)
+	if err != nil {
+		return nil, fmt.Errorf("encoding plan turns: %w", err)
+	}
+
+	return encoded, nil
+}
+
+func decodeTurns(raw string) ([]route.Cue, error) {
+	var stored []storedTurn
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return nil, fmt.Errorf("decoding plan turns: %w", err)
+	}
+	if len(stored) == 0 {
+		return nil, nil
+	}
+	turns := make([]route.Cue, len(stored))
+	for index, turn := range stored {
+		turns[index] = route.Cue{Turn: turn.Turn, Metres: turn.Metres, Exit: turn.Exit}
+	}
+
+	return turns, nil
 }
 
 func boolToInt(value bool) int64 {

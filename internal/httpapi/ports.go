@@ -23,12 +23,12 @@ type Plans interface {
 	// Route previews waypoints against the routing engine, storing nothing.
 	Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) (plan.Measured, error)
 	// Create routes and stores a new draft plan.
-	Create(ctx context.Context, name string, profile plan.Profile, waypoints []plan.Waypoint) (plan.Plan, error)
+	Create(ctx context.Context, name string, profile plan.Profile, waypoints []plan.Waypoint, cues bool) (plan.Plan, error)
 	// Replace overwrites an existing plan whole, refusing a stale
 	// expectedVersion with plan.ErrVersionMismatch.
 	Replace(
 		ctx context.Context, id, expectedVersion int64, name string, profile plan.Profile,
-		waypoints []plan.Waypoint, published bool,
+		waypoints []plan.Waypoint, published, cues bool,
 	) (plan.Plan, error)
 	// Delete removes a plan whose expectedVersion still matches what is stored.
 	Delete(ctx context.Context, id, expectedVersion int64) error

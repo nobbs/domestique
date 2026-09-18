@@ -897,6 +897,8 @@ export interface PlanWrite {
   waypoints: PlanWaypoint[];
   /** Whether the plan should be published. A create ignores this field and always stores a draft; a replace stores exactly what is sent. */
   published: boolean;
+  /** Whether the plan's course carries the routing engine's turn instructions as cue points to a rider's device. Absent is off. */
+  cues?: boolean;
 }
 
 export interface Plan {
@@ -904,6 +906,13 @@ export interface Plan {
   name: string;
   profile: PlanProfile;
   published: boolean;
+  /** Whether the plan's course carries turn instructions as cue points. */
+  cues: boolean;
+  /**
+   * How many turn instructions the routing engine gave for the line, whether or not the course carries them.
+   * @minimum 0
+   */
+  turnCount?: number;
   version: number;
   waypoints: PlanWaypoint[];
   geometry: GeoJSONLineString;

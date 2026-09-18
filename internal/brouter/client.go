@@ -133,6 +133,18 @@ type Answer struct {
 	// Ways are the line's stretches in order, as the engine reports them. Empty
 	// where its answer carries no such table, which costs the route nothing.
 	Ways []Way
+	// Turns are the engine's turn instructions along the line, in order. Empty
+	// where it gave none it could be read for.
+	Turns []Turn
+}
+
+// Turn is one of the engine's turn instructions: the vertex of Points it sits
+// on, and what it asks for there.
+type Turn struct {
+	Turn  route.Turn
+	Index int
+	// Exit is the roundabout exit to take; zero for any other turn.
+	Exit int
 }
 
 // Way is one stretch of an answer: where along the line it ends, by the
@@ -160,6 +172,8 @@ func (c *Client) Route(
 		"profile":        {profile},
 		"alternativeidx": {"0"},
 		"format":         {"geojson"},
+		// Any mode above one adds the voicehints table the turns are read from.
+		"timode": {"3"},
 	}.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
@@ -200,7 +214,7 @@ func (c *Client) Route(
 		return Answer{}, parseErr
 	}
 
-	return Answer{Points: points, Ways: parseWays(body)}, nil
+	return Answer{Points: points, Ways: parseWays(body), Turns: parseTurns(body, len(points))}, nil
 }
 
 // lonlats formats waypoints as BRouter's pipe-separated lon,lat list.
@@ -261,6 +275,74 @@ func parseGeometry(body []byte, status int) ([]route.Point, error) {
 	}
 
 	return points, nil
+}
+
+// engineTurn maps one of the engine's voice-hint commands to a turn. Leaving
+// the route, beeline stretches and the end point name no turn.
+func engineTurn(command int) (route.Turn, bool) {
+	switch command {
+	case 1:
+		return route.TurnStraight, true
+	case 2:
+		return route.TurnLeft, true
+	case 3:
+		return route.TurnSlightLeft, true
+	case 4:
+		return route.TurnSharpLeft, true
+	case 5:
+		return route.TurnRight, true
+	case 6:
+		return route.TurnSlightRight, true
+	case 7:
+		return route.TurnSharpRight, true
+	case 8, 17:
+		return route.TurnKeepLeft, true
+	case 9, 18:
+		return route.TurnKeepRight, true
+	case 10, 11, 15:
+		return route.TurnUTurn, true
+	case 13, 14:
+		return route.TurnRoundabout, true
+	default:
+		return "", false
+	}
+}
+
+// turnsAnswer reads the voicehints table: one row per instruction, holding
+// the vertex index, the command and the roundabout exit, then fields unused.
+type turnsAnswer struct {
+	Features []struct {
+		Properties struct {
+			VoiceHints [][]float64 `json:"voicehints"`
+		} `json:"properties"`
+	} `json:"features"`
+}
+
+// parseTurns reads the engine's turn instructions. A row it cannot read, or
+// one naming a vertex outside the line, is left out rather than failing a
+// route whose line is sound.
+func parseTurns(body []byte, points int) []Turn {
+	var decoded turnsAnswer
+	if json.Unmarshal(body, &decoded) != nil || len(decoded.Features) == 0 {
+		return nil
+	}
+	var turns []Turn
+	for _, row := range decoded.Features[0].Properties.VoiceHints {
+		if len(row) < 3 {
+			continue
+		}
+		index, command, exit := int(row[0]), int(row[1]), int(row[2])
+		turn, known := engineTurn(command)
+		if !known || index < 0 || index >= points || float64(index) != row[0] {
+			continue
+		}
+		if turn != route.TurnRoundabout || exit < 0 {
+			exit = 0
+		}
+		turns = append(turns, Turn{Turn: turn, Index: index, Exit: exit})
+	}
+
+	return turns
 }
 
 // messagesAnswer is the other part of the answer this adapter reads: the table

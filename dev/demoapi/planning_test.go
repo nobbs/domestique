@@ -67,11 +67,11 @@ func TestSeedAddsPublishedPlansToTheDemoInventory(t *testing.T) {
 	)
 	created, err := planService.Create(
 		t.Context(), "Demo plan", plan.Gravel,
-		[]plan.Waypoint{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.5, Latitude: 49.1}},
+		[]plan.Waypoint{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.5, Latitude: 49.1}}, false,
 	)
 	require.NoError(t, err)
 	_, err = planService.Replace(
-		t.Context(), created.ID, created.Version, created.Name, created.Profile, created.Waypoints, true,
+		t.Context(), created.ID, created.Version, created.Name, created.Profile, created.Waypoints, true, false,
 	)
 	require.NoError(t, err)
 

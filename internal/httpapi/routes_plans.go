@@ -66,7 +66,9 @@ func (h *Handler) CreatePlan(writer http.ResponseWriter, request *http.Request) 
 	if !ok {
 		return
 	}
-	created, err := h.plans.Create(request.Context(), body.Name, plan.Profile(body.Profile), waypointsOf(body.Waypoints))
+	created, err := h.plans.Create(
+		request.Context(), body.Name, plan.Profile(body.Profile), waypointsOf(body.Waypoints), cuesOf(body.Cues),
+	)
 	if h.planFailed(writer, err) {
 		return
 	}
@@ -118,6 +120,7 @@ func (h *Handler) ReplacePlan(writer http.ResponseWriter, request *http.Request)
 	}
 	replaced, err := h.plans.Replace(
 		request.Context(), id, version, body.Name, plan.Profile(body.Profile), waypointsOf(body.Waypoints), body.Published,
+		cuesOf(body.Cues),
 	)
 	if h.planFailed(writer, err) {
 		return
@@ -231,6 +234,11 @@ func (h *Handler) targetOwners(ctx context.Context) (owners, nicknames map[strin
 	return owners, nicknames, nil
 }
 
+// cuesOf reads the optional cues switch, off when absent.
+func cuesOf(cues *bool) bool {
+	return cues != nil && *cues
+}
+
 // planID reads the path's planId. A value the contract validator did not
 // already refuse but this cannot parse is answered not found, the same as an
 // address naming a plan that was never stored.
@@ -321,7 +329,8 @@ func (h *Handler) planOf(ctx context.Context, p *plan.Plan) openapi.Plan {
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres,
 		DescentMetres: &p.DescentMetres,
 		MovingSeconds: optionalSeconds(p.MovingSeconds), WaypointProgress: progressOf(p.Progress),
-		Pushing:   windowsOf(p.Pushing),
+		Pushing: windowsOf(p.Pushing),
+		Cues:    p.Cues, TurnCount: new(len(p.Turns)),
 		Surface:   h.planSurface(ctx, p.Geometry),
 		CreatedAt: wireTime(p.CreatedAt), UpdatedAt: wireTime(p.UpdatedAt),
 	}

@@ -2,7 +2,8 @@
 
 `internal/fit/wahoo_sandbox_test.go` is the opt-in acceptance harness for the
 FIT encoder. It is excluded from normal tests and CI. It creates a synthetic
-two-point route in a **Wahoo sandbox** account, retrieves it, verifies the
+two-point route, carrying two turn cues as course points, in a **Wahoo
+sandbox** account, retrieves it, verifies the
 remote route ID, external ID, and FIT file URL, then deletes the temporary
 route during test cleanup.
 

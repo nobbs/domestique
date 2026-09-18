@@ -41,7 +41,11 @@ func TestWahooSandboxAcceptance(t *testing.T) {
 	require.NoError(t, err, "sandbox base url")
 
 	stage := sandboxStage(t)
-	encoded, err := fitadapter.New().Encode(t.Context(), stage)
+	// Course points ride along, so the check covers a plan's cues as well.
+	encoded, err := fitadapter.New().EncodeWithCues(t.Context(), stage, []route.Cue{
+		{Turn: route.TurnLeft, Metres: 0},
+		{Turn: route.TurnRoundabout, Metres: 130, Exit: 2},
+	})
 	require.NoError(t, err)
 	externalID, err := sandboxExternalID()
 	require.NoError(t, err, "creating external id")

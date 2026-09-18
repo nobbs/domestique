@@ -56,14 +56,16 @@ func (p *fakePlans) Route(context.Context, []plan.Waypoint, plan.Profile) (plan.
 	return p.measured, p.routeErr
 }
 
-func (p *fakePlans) Create(_ context.Context, name string, profile plan.Profile, waypoints []plan.Waypoint) (plan.Plan, error) {
+func (p *fakePlans) Create(
+	_ context.Context, name string, profile plan.Profile, waypoints []plan.Waypoint, cues bool,
+) (plan.Plan, error) {
 	if p.createErr != nil {
 		return plan.Plan{}, p.createErr
 	}
 	p.stored = plan.Plan{
 		ID: 7, Name: name, Profile: profile, Waypoints: waypoints,
 		Geometry: p.measured.Geometry, DistanceMetres: p.measured.DistanceMetres, AscentMetres: p.measured.AscentMetres,
-		Published: false, Version: 1,
+		Published: false, Cues: cues, Version: 1,
 	}
 	p.hasStored = true
 
@@ -71,7 +73,8 @@ func (p *fakePlans) Create(_ context.Context, name string, profile plan.Profile,
 }
 
 func (p *fakePlans) Replace(
-	_ context.Context, id, expectedVersion int64, name string, profile plan.Profile, waypoints []plan.Waypoint, published bool,
+	_ context.Context, id, expectedVersion int64, name string, profile plan.Profile, waypoints []plan.Waypoint,
+	published, cues bool,
 ) (plan.Plan, error) {
 	if !p.hasStored || p.stored.ID != id {
 		return plan.Plan{}, plan.ErrNotFound
@@ -82,7 +85,7 @@ func (p *fakePlans) Replace(
 	p.stored = plan.Plan{
 		ID: id, Name: name, Profile: profile, Waypoints: waypoints,
 		Geometry: p.measured.Geometry, DistanceMetres: p.measured.DistanceMetres, AscentMetres: p.measured.AscentMetres,
-		Published: published, Version: expectedVersion + 1,
+		Published: published, Cues: cues, Version: expectedVersion + 1,
 	}
 
 	return p.stored, nil
@@ -887,4 +890,26 @@ func TestGetPlanDeliveryRejectsAnUnparseablePlanId(t *testing.T) {
 	handler.GetPlanDelivery(response, request)
 
 	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+}
+
+// The cue switch travels to the service on both writes, absent reads as off,
+// and a plan says whether it carries cues and how many turns it has.
+func TestPlanWritesCarryTheCueSwitch(t *testing.T) {
+	fake := &fakePlans{}
+	handler := plansHandler(t, newFakeSessions(), fake)
+	cuedBody := strings.Replace(validPlanWriteBody, `"published":false`, `"published":false,"cues":true`, 1)
+
+	created := httptest.NewRecorder()
+	handler.ServeHTTP(created, planRequest(http.MethodPost, plansPath, cuedBody, ""))
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	var body openapi.Plan
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &body))
+	assert.True(t, body.Cues, "cues after create")
+	require.NotNil(t, body.TurnCount, "turn count")
+	assert.Zero(t, *body.TurnCount, "turn count")
+
+	replaced := httptest.NewRecorder()
+	handler.ServeHTTP(replaced, planRequest(http.MethodPut, plansPath+"/7", validPlanWriteBody, "1"))
+	require.Equal(t, http.StatusOK, replaced.Code, replaced.Body.String())
+	assert.False(t, fake.stored.Cues, "an absent switch is off")
 }

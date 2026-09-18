@@ -8,6 +8,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/photon"
@@ -138,7 +139,12 @@ func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, pro
 		ways[index] = plan.RoutedWay{EndMetres: way.EndMetres, Tags: way.Tags}
 	}
 
-	return plan.Routed{Points: answer.Points, Ways: ways}, nil
+	turns := make([]plan.RoutedTurn, len(answer.Turns))
+	for index, turn := range answer.Turns {
+		turns[index] = plan.RoutedTurn{Turn: turn.Turn, Index: turn.Index, Exit: turn.Exit}
+	}
+
+	return plan.Routed{Points: answer.Points, Ways: ways, Turns: turns}, nil
 }
 
 // wireLocalSource registers the plan service on cache when [planning] is
@@ -185,6 +191,44 @@ func httpapiPlans(service *plan.Service) httpapi.Plans {
 	}
 
 	return service
+}
+
+// planGetter is the one question the course encoder asks of the planner.
+type planGetter interface {
+	Get(ctx context.Context, id int64) (plan.Plan, bool, error)
+}
+
+// cueEncoder encodes courses, adding a plan's turn instructions when the plan
+// asks for them and the stage is the revision they were measured against.
+type cueEncoder struct {
+	fit   *fit.Encoder
+	plans planGetter
+}
+
+// courseEncoder is the plain encoder without a planner, and one reading each
+// plan's cues with it.
+func courseEncoder(service *plan.Service) cueEncoder {
+	if service == nil {
+		return cueEncoder{fit: fit.New()}
+	}
+
+	return cueEncoder{fit: fit.New(), plans: service}
+}
+
+//nolint:gocritic // This method conforms to the sync package's value contract.
+func (e cueEncoder) Encode(ctx context.Context, stage route.Route) ([]byte, error) {
+	if e.plans == nil || stage.Key().Provider() != route.ProviderLocal {
+		return e.fit.Encode(ctx, stage) //nolint:wrapcheck // the encoder already names what failed
+	}
+	stored, found, err := e.plans.Get(ctx, stage.Key().SourceRouteID())
+	if err != nil {
+		return nil, fmt.Errorf("reading the plan's cues: %w", err)
+	}
+	if !found || !stored.Cues || stored.Revision() != stage.Revision() {
+		return e.fit.Encode(ctx, stage) //nolint:wrapcheck // the encoder already names what failed
+	}
+
+	return e.fit.EncodeWithCues(ctx, stage, stored.Turns) //nolint:wrapcheck // the encoder already names what failed
 }
 
 // planDeliveries adapts the sync service's report on one plan's copies to
@@ -303,7 +347,7 @@ func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 
 	return sqlite.PlanRecord{
 		ID: p.ID, Name: p.Name, Profile: string(p.Profile), Waypoints: waypoints, Geometry: p.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: p.Turns, Cues: p.Cues,
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, Published: p.Published,
 		Version: p.Version, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
@@ -327,7 +371,7 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 
 	return plan.Plan{
 		ID: record.ID, Name: record.Name, Profile: profile, Waypoints: waypoints, Geometry: record.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: record.Turns, Cues: record.Cues,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Published: record.Published,
 		Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}, nil

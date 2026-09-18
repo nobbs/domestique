@@ -459,13 +459,20 @@ type PlanWrite struct {
 	Waypoints []PlanWaypoint `json:"waypoints"`
 	// Published Whether the plan should be published. A create ignores this field and always stores a draft; a replace stores exactly what is sent.
 	Published bool `json:"published"`
+	// Cues Whether the plan's course carries the routing engine's turn instructions as cue points to a rider's device. Absent is off.
+	// Cues default value is defined in the OpenAPI schema.
+	Cues *bool `json:"cues,omitempty"`
 }
 
 type Plan struct {
-	ID             int64             `json:"id"`
-	Name           string            `json:"name"`
-	Profile        PlanProfile       `json:"profile"`
-	Published      bool              `json:"published"`
+	ID        int64       `json:"id"`
+	Name      string      `json:"name"`
+	Profile   PlanProfile `json:"profile"`
+	Published bool        `json:"published"`
+	// Cues Whether the plan's course carries turn instructions as cue points.
+	Cues bool `json:"cues"`
+	// TurnCount How many turn instructions the routing engine gave for the line, whether or not the course carries them.
+	TurnCount      *int              `json:"turnCount,omitempty"`
 	Version        int64             `json:"version"`
 	Waypoints      []PlanWaypoint    `json:"waypoints"`
 	Geometry       GeoJSONLineString `json:"geometry"`

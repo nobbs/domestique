@@ -85,7 +85,10 @@ type Plan struct {
 	Progress []Progress
 	// Pushing is measured when the plan is routed and stored with it: only the
 	// engine's answer says which ways a rider walks.
-	Pushing        []Window
+	Pushing []Window
+	// Turns are the engine's turn instructions, stored with the line they
+	// were measured against; Cues is whether a course carries them.
+	Turns          []route.Cue
 	DistanceMetres float64
 	AscentMetres   float64
 	DescentMetres  float64
@@ -93,6 +96,7 @@ type Plan struct {
 	ID             int64
 	Version        int64
 	Published      bool
+	Cues           bool
 }
 
 // Revision is the source revision a published plan is synchronised under:
@@ -143,7 +147,9 @@ type Measured struct {
 	Progress []Progress
 	// Pushing is where the line runs along a way bicycles are refused and a
 	// rider walks.
-	Pushing        []Window
+	Pushing []Window
+	// Turns are the engine's turn instructions along the line.
+	Turns          []route.Cue
 	DistanceMetres float64
 	AscentMetres   float64
 	DescentMetres  float64
@@ -220,6 +226,7 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 		Geometry:       geometry,
 		Progress:       progressAt(waypoints, geometry, cumulative),
 		Pushing:        pushingOf(routed.Ways, normalized.DistanceMetres()),
+		Turns:          cuesOf(routed.Points, routed.Turns, normalized.DistanceMetres()),
 		DistanceMetres: normalized.DistanceMetres(),
 		AscentMetres:   normalized.ElevationGainMetres(),
 		DescentMetres:  normalized.ElevationLossMetres(),
@@ -292,7 +299,9 @@ func nearestIndex(geometry []route.Point, from int, waypoint Waypoint) int {
 }
 
 // Create validates, routes, and stores a new draft plan.
-func (s *Service) Create(ctx context.Context, name string, profile Profile, waypoints []Waypoint) (Plan, error) {
+func (s *Service) Create(
+	ctx context.Context, name string, profile Profile, waypoints []Waypoint, cues bool,
+) (Plan, error) {
 	trimmedName, err := validate(name, profile, waypoints)
 	if err != nil {
 		return Plan{}, err
@@ -309,7 +318,7 @@ func (s *Service) Create(ctx context.Context, name string, profile Profile, wayp
 	created := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
-		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing,
+		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing, Turns: measured.Turns, Cues: cues,
 		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: false, Version: 1, CreatedAt: now, UpdatedAt: now,
 	}
@@ -325,7 +334,8 @@ func (s *Service) Create(ctx context.Context, name string, profile Profile, wayp
 // currently stored version, or nothing is stored and ErrVersionMismatch is
 // returned; a missing plan returns ErrNotFound.
 func (s *Service) Replace(
-	ctx context.Context, id, expectedVersion int64, name string, profile Profile, waypoints []Waypoint, published bool,
+	ctx context.Context, id, expectedVersion int64, name string, profile Profile, waypoints []Waypoint,
+	published, cues bool,
 ) (Plan, error) {
 	trimmedName, err := validate(name, profile, waypoints)
 	if err != nil {
@@ -348,7 +358,7 @@ func (s *Service) Replace(
 	replaced := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
-		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing,
+		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing, Turns: measured.Turns, Cues: cues,
 		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: published, Version: expectedVersion + 1, CreatedAt: existing.CreatedAt, UpdatedAt: s.now().UTC(),
 	}

@@ -173,6 +173,11 @@ where the rider walks.
 **delivery** — one target's standing with one plan: `current`, `pending`,
 `failed` or `absent`, as the planner reports it.
 
+**cue** — one turn instruction on a rider's device: what to do and how far
+along the route. A plan's cues are the routing engine's, carried as FIT course
+points only when the plan's cue switch is on; every other route's cues are the
+device's own.
+
 ## Synchronisation
 
 **sync** — the process, spelled this way everywhere: the nav label, the route,

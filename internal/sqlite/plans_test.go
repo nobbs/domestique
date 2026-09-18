@@ -194,3 +194,40 @@ func TestStoreDeletePlanRejectsStaleVersion(t *testing.T) {
 	require.NoError(t, err, "GetPlan()")
 	assert.True(t, found, "GetPlan() found")
 }
+
+func TestStoreKeepsAPlansTurnsAndWhetherItsCourseCarriesThem(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	record := testPlanRecord(42, "Cued", false, 1)
+	record.Turns = []route.Cue{{Turn: route.TurnLeft, Metres: 120.5}, {Turn: route.TurnRoundabout, Metres: 900, Exit: 3}}
+	record.Cues = true
+	require.NoError(t, store.InsertPlan(t.Context(), record), "InsertPlan()")
+
+	inserted, _, err := store.GetPlan(t.Context(), 42)
+	require.NoError(t, err, "GetPlan()")
+	assert.Equal(t, record.Turns, inserted.Turns, "turns after insert")
+	assert.True(t, inserted.Cues, "cues after insert")
+
+	replaced := *record
+	replaced.Version, replaced.Turns, replaced.Cues = 2, nil, false
+	ok, err := store.ReplacePlan(t.Context(), &replaced, 1)
+	require.NoError(t, err, "ReplacePlan()")
+	require.True(t, ok, "ReplacePlan()")
+
+	got, _, err := store.GetPlan(t.Context(), 42)
+	require.NoError(t, err, "GetPlan()")
+	assert.Nil(t, got.Turns, "turns after replace")
+	assert.False(t, got.Cues, "cues after replace")
+}
+
+func TestStoreReportsUndecodablePlanTurns(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.InsertPlan(t.Context(), testPlanRecord(1, "Plan", false, 1)), "InsertPlan()")
+	_, err := store.database.ExecContext(t.Context(), `UPDATE plans SET turns = 'not json' WHERE id = 1`)
+	require.NoError(t, err, "corrupting the turns")
+
+	_, _, err = store.GetPlan(t.Context(), 1)
+
+	assert.ErrorContains(t, err, "turns", "GetPlan()")
+}
