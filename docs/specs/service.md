@@ -25,7 +25,7 @@ small Linux cloud VM. It has no CLI.
 The service serves a browser UI that is read-only over every route it mirrors
 and lets an admin, and no one else, draw plans. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
-protected Wahoo OAuth onboarding flow, the manual triggers over synchronisation
+protected Wahoo OAuth onboarding and disconnect flow, the manual triggers over synchronisation
 and surface enrichment, the runtime settings the UI reads and writes back, and
 the plans an admin composes in the browser, which are the one kind of route
 this service itself owns.
@@ -377,6 +377,12 @@ operations the sections below name:
   other targets exist.
 - `GET /oauth/wahoo/callback` validates a one-time, expiring OAuth state and
   stores the resulting refresh token.
+- `DELETE /v1/settings/rider/connections/wahoo` disconnects the caller's own
+  target: it asks Wahoo to withdraw the application's grant on that account,
+  then forgets the Wahoo user and refresh token, leaving the target as it was
+  before its first authorisation. A grant Wahoo already refuses is only
+  forgotten; one Wahoo cannot be asked to withdraw stays connected and is
+  answered `502`. Routes already written to the account stay there.
 
 - `POST /webhooks/wahoo` receives Wahoo's workout notifications. It is the one
   inbound request answered outside the identity gate besides sign-in and the

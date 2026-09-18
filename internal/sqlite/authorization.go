@@ -108,7 +108,8 @@ func (s *Store) RefreshToken(ctx context.Context, targetID string) (string, erro
 
 // ReplaceRefreshToken atomically stores the refresh token returned by a
 // successful Wahoo refresh. The replacement happens before another API request
-// can use the prior token.
+// can use the prior token. A target whose token was cleared meanwhile reports
+// ErrTargetNotFound rather than being authorized again.
 func (s *Store) ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error {
 	if strings.TrimSpace(targetID) == "" || refreshToken == "" {
 		return errors.New("target ID and refresh token are required")
@@ -149,6 +150,26 @@ func (s *Store) MarkNeedsReauthorization(ctx context.Context, targetID string) e
 	updated, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("checking reauthorization update: %w", err)
+	}
+	if updated == 0 {
+		return ErrTargetNotFound
+	}
+
+	return nil
+}
+
+// DisconnectTarget forgets a target's Wahoo account and refresh token, leaving the
+// slot as it was before its first authorization.
+func (s *Store) DisconnectTarget(ctx context.Context, targetID string) error {
+	result, err := s.queries.ClearTargetAuthorization(ctx, sqlcgen.ClearTargetAuthorizationParams{
+		AuthorizationState: string(AuthorizationNotAuthorized), UpdatedAtUnix: time.Now().Unix(), Slot: targetID,
+	})
+	if err != nil {
+		return fmt.Errorf("disconnecting target: %w", err)
+	}
+	updated, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking disconnected target: %w", err)
 	}
 	if updated == 0 {
 		return ErrTargetNotFound

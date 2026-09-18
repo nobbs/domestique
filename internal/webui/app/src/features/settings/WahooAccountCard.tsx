@@ -8,13 +8,15 @@
 
 import { IconBike } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { Panel } from "@/components/PanelHeading";
-import { useRunTaskArgument } from "../../api/generated";
+import { useDisconnectWahoo } from "../../api/generated";
 import { statusQuery, webUIConfigQuery } from "../../api/queries";
-import { TASKS } from "../../api/tasks";
 import type { TargetStatus } from "../../api/types";
+import { Button } from "../../components/Button";
+import { InsetList } from "../../components/InsetList";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { ConnectPrompt } from "../sync/TargetConvergenceCard";
 import { TargetRow } from "../sync/TargetRow";
 
@@ -42,21 +44,9 @@ export function WahooAccountCard() {
     isPending: configIsPending,
     isError: configIsError,
   } = useQuery(webUIConfigQuery());
-  const [confirming, setConfirming] = useState(false);
-  const [confirmation, setConfirmation] = useState("");
-  const reconcile = useRunTaskArgument({
+  const disconnect = useDisconnectWahoo({
     mutation: {
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
-    },
-  });
-  const clear = useRunTaskArgument({
-    mutation: {
-      onSuccess: () => {
-        setConfirming(false);
-        setConfirmation("");
-
-        return queryClient.invalidateQueries({ queryKey: statusQuery().queryKey });
-      },
+      onSettled: () => queryClient.invalidateQueries({ queryKey: statusQuery().queryKey }),
     },
   });
 
@@ -88,26 +78,27 @@ export function WahooAccountCard() {
 
   return (
     <CardShell>
-      <ul className="grid gap-3">
+      <InsetList>
         <TargetRow
           target={target}
-          reconciling={reconcile.isPending}
-          onReconcile={() => reconcile.mutate({ name: TASKS.syncTarget, argument: target.id })}
-          clear={{
-            open: confirming,
-            onOpenChange: (open) => {
-              setConfirming(open);
-              if (!open) {
-                setConfirmation("");
-              }
-            },
-            confirmation,
-            onConfirmationChange: setConfirmation,
-            pending: clear.isPending,
-            onConfirm: () => clear.mutate({ name: TASKS.syncClear, argument: target.id }),
-          }}
+          actions={
+            <Button
+              variant="outline"
+              aria-label="Disconnect Wahoo account"
+              disabled={disconnect.isPending}
+              onClick={() => disconnect.mutate()}
+            >
+              {disconnect.isPending ? <Spinner aria-label="Disconnecting" /> : null}
+              Disconnect
+            </Button>
+          }
         />
-      </ul>
+      </InsetList>
+      {disconnect.isError ? (
+        <p className="text-sm text-[var(--alert)]" role="alert">
+          Your Wahoo account was not disconnected.
+        </p>
+      ) : null}
     </CardShell>
   );
 }

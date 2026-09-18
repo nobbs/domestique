@@ -366,6 +366,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/rider", h.SetRiderProfile)
 	h.mux.HandleFunc("PUT /v1/settings/rider/credentials/zwift", h.SetRiderZwiftCredentials)
 	h.mux.HandleFunc("DELETE /v1/settings/rider/credentials/zwift", h.DeleteRiderZwiftCredentials)
+	h.mux.HandleFunc("DELETE /v1/settings/rider/connections/wahoo", h.DisconnectWahoo)
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
 	h.mux.HandleFunc("GET /v1/zwift/worlds/{worldId}/map", h.GetZwiftWorldMap)

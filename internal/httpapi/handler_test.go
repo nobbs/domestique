@@ -2267,7 +2267,9 @@ func withBrowserOrigin(request *http.Request) {
 
 type fakeOAuth struct {
 	completeErr, startErr error
+	disconnectErr         error
 	location, targetID    string
+	disconnected          []string
 	completeCalls         int
 }
 
@@ -2281,6 +2283,12 @@ func (o *fakeOAuth) Complete(context.Context, string, string, string) error {
 	o.completeCalls++
 
 	return o.completeErr
+}
+
+func (o *fakeOAuth) Disconnect(_ context.Context, targetID string) error {
+	o.disconnected = append(o.disconnected, targetID)
+
+	return o.disconnectErr
 }
 
 type fakeSync struct {

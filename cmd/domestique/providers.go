@@ -230,6 +230,15 @@ func (p *wahooProvider) AuthenticatedUser(ctx context.Context, accessToken strin
 	return client.AuthenticatedUser(ctx, accessToken) //nolint:wrapcheck // forwarding to the client this holds
 }
 
+func (p *wahooProvider) Deauthorize(ctx context.Context, accessToken string) error {
+	client, err := p.current()
+	if err != nil {
+		return err
+	}
+
+	return client.Deauthorize(ctx, accessToken) //nolint:wrapcheck // forwarding to the client this holds
+}
+
 func (p *wahooProvider) RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error) {
 	client, err := p.current()
 	if err != nil {

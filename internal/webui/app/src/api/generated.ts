@@ -8414,6 +8414,117 @@ export const useDeleteRiderZwiftCredentials = <
   return useMutation(getDeleteRiderZwiftCredentialsMutationOptions(options), queryClient);
 };
 
+export type disconnectWahooResponse204 = {
+  data: NoContentResponse;
+  status: 204;
+};
+
+export type disconnectWahooResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type disconnectWahooResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type disconnectWahooResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type disconnectWahooResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type disconnectWahooResponseSuccess = disconnectWahooResponse204 & {
+  headers: Headers;
+};
+export type disconnectWahooResponseError = (
+  | disconnectWahooResponse401
+  | disconnectWahooResponse403
+  | disconnectWahooResponse404
+  | disconnectWahooResponse502
+) & {
+  headers: Headers;
+};
+
+export const getDisconnectWahooUrl = () => {
+  return `/v1/settings/rider/connections/wahoo`;
+};
+
+/**
+ * Withdraws this application's authorization on the caller's own Wahoo account, then forgets the account and its refresh token, over their own target alone. A grant Wahoo already refuses is only forgotten; one Wahoo cannot be asked to withdraw stays connected. Routes already written to the account are left there.
+ */
+export const disconnectWahoo = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<disconnectWahooResponseSuccess> => {
+  return domestiqueRequest<disconnectWahooResponseSuccess>(getDisconnectWahooUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDisconnectWahooMutationKey = () => ["disconnectWahoo"] as const;
+
+export const getDisconnectWahooMutationOptions = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ProviderUnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof disconnectWahoo>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<Awaited<ReturnType<typeof disconnectWahoo>>, TError, void, TContext> => {
+  const mutationKey = getDisconnectWahooMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectWahoo>>, void> = () => {
+    return disconnectWahoo(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DisconnectWahooMutationResult = NonNullable<
+  Awaited<ReturnType<typeof disconnectWahoo>>
+>;
+
+export type DisconnectWahooMutationError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ProviderUnavailableResponse
+>;
+
+export const useDisconnectWahoo = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ProviderUnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof disconnectWahoo>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof disconnectWahoo>>, TError, void, TContext> => {
+  return useMutation(getDisconnectWahooMutationOptions(options), queryClient);
+};
+
 export type getWebUIConfigResponse200 = {
   data: WebUIConfig;
   status: 200;

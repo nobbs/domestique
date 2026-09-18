@@ -1416,6 +1416,31 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/rider/connections/wahoo:
+    delete:
+      tags:
+        - browser-api
+      operationId: disconnectWahoo
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Withdraws this application's authorization on the caller's own Wahoo
+        account, then forgets the account and its refresh token, over their own
+        target alone. A grant Wahoo already refuses is only forgotten; one Wahoo
+        cannot be asked to withdraw stays connected. Routes already written to
+        the account are left there.
+      responses:
+        "204":
+          $ref: '#/components/responses/NoContent'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
   /v1/webui/config:
     get:
       tags:

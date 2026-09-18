@@ -215,6 +215,21 @@ func (c *Client) AuthenticatedUser(ctx context.Context, accessToken string) (str
 	return strconv.FormatInt(response.ID, 10), nil
 }
 
+// Deauthorize withdraws the application's grant on the account the access token
+// belongs to, revoking every token Wahoo issued this application for that user.
+func (c *Client) Deauthorize(ctx context.Context, accessToken string) error {
+	if accessToken == "" {
+		return errors.New("wahoo: access token is required")
+	}
+
+	request, err := c.newRequest(ctx, http.MethodDelete, c.endpoint(c.apiBaseURL, "/v1/permissions"), http.NoBody, accessToken)
+	if err != nil {
+		return err
+	}
+
+	return c.doJSON(request, nil)
+}
+
 func parseCallbackURL(value string) (*url.URL, error) {
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil ||

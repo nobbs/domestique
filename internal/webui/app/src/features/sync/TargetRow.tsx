@@ -1,4 +1,5 @@
 import { IconRefresh } from "@tabler/icons-react";
+import type { ReactNode } from "react";
 import type { TargetStatus } from "../../api/types";
 import { Button } from "../../components/Button";
 import { InsetRow, RowNote, type RowTone } from "../../components/InsetList";
@@ -68,14 +69,16 @@ function targetGuidance(target: TargetStatus) {
 
 export interface TargetRowProps {
   target: TargetStatus;
-  reconciling: boolean;
-  onReconcile: () => void;
+  /** Replaces reconcile and clear, for a page that offers something else. */
+  actions?: ReactNode;
+  reconciling?: boolean;
+  onReconcile?: () => void;
   /**
    * The delete-confirmation dialog's state, held by the caller rather than in
    * this row: only one target's confirmation may be open at a time, which a
    * row cannot promise on its own.
    */
-  clear: {
+  clear?: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     confirmation: string;
@@ -85,8 +88,8 @@ export interface TargetRowProps {
   };
 }
 
-/** One target: what it holds, and the two ways to act on it. */
-export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRowProps) {
+/** One target: what it holds, and the ways to act on it. */
+export function TargetRow({ target, actions, reconciling, onReconcile, clear }: TargetRowProps) {
   const guidance = targetGuidance(target);
   const authorisation = authorisationGuidance(target.authorisation);
   const failure = lastRunSummary(target);
@@ -148,7 +151,9 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
               {authorisation.action} {target.id}
             </a>
           </div>
-        ) : !authorisation ? (
+        ) : authorisation ? null : actions !== undefined ? (
+          actions
+        ) : (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             {/*
              * While a deletion is being confirmed it is the only thing this
@@ -171,7 +176,7 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
              * for is the target's own name — the one confirmation a stray
              * click cannot supply.
              */}
-            {effectiveAdmin ? (
+            {effectiveAdmin && clear ? (
               <AlertDialog open={clear.open} onOpenChange={clear.onOpenChange}>
                 <AlertDialogTrigger
                   className="text-sm text-[var(--alert)] underline-offset-4 hover:underline disabled:opacity-50"
@@ -220,7 +225,7 @@ export function TargetRow({ target, reconciling, onReconcile, clear }: TargetRow
               </AlertDialog>
             ) : null}
           </div>
-        ) : null
+        )
       }
       note={note}
     />

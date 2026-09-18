@@ -270,6 +270,7 @@ func TestWahooProviderRefusesEveryCallUntilItsApplicationIsConfigured(t *testing
 		"AuthorizationURL":          func() error { _, err := provider.AuthorizationURL("state"); return err },
 		"ExchangeAuthorizationCode": func() error { _, _, err := provider.ExchangeAuthorizationCode(t.Context(), "code"); return err },
 		"AuthenticatedUser":         func() error { _, err := provider.AuthenticatedUser(t.Context(), "token"); return err },
+		"Deauthorize":               func() error { return provider.Deauthorize(t.Context(), "token") },
 		"RefreshAccessToken":        func() error { _, _, err := provider.RefreshAccessToken(t.Context(), "token"); return err },
 		"ListOwnedRoutes":           func() error { _, err := provider.ListOwnedRoutes(t.Context(), "token"); return err },
 		"DeleteOwnedRoutes":         func() error { _, err := provider.DeleteOwnedRoutes(t.Context(), "token"); return err },

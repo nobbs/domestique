@@ -13,13 +13,19 @@ WHERE slot = ?;
 SELECT refresh_token FROM targets WHERE slot = ?;
 
 -- name: UpdateRefreshToken :execresult
+-- A cleared token stays cleared: a refresh finishing after a disconnect must not restore it.
 UPDATE targets
 SET refresh_token = ?, authorization_state = ?, updated_at_unix = ?
-WHERE slot = ?;
+WHERE slot = ? AND refresh_token IS NOT NULL;
 
 -- name: MarkTargetNeedsReauthorization :execresult
 UPDATE targets
 SET refresh_token = NULL, authorization_state = ?, updated_at_unix = ?
+WHERE slot = ?;
+
+-- name: ClearTargetAuthorization :execresult
+UPDATE targets
+SET wahoo_user_id = NULL, refresh_token = NULL, authorization_state = ?, updated_at_unix = ?
 WHERE slot = ?;
 
 -- name: TargetExists :one

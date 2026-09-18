@@ -62,6 +62,7 @@ type SurfaceClassifier interface {
 type OAuth interface {
 	Start(ctx context.Context, callerLogin, targetID string) (string, error)
 	Complete(ctx context.Context, callerLogin, state, code string) error
+	Disconnect(ctx context.Context, targetID string) error
 }
 
 // SyncPhase names the half of a synchronization a manual trigger asks for, or

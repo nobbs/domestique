@@ -131,3 +131,28 @@ func refusalReason(errorCode string) string {
 func (h *Handler) authorizationFailed(writer http.ResponseWriter) {
 	h.error(writer, http.StatusBadRequest, "authorization_failed", "wahoo authorization could not be completed")
 }
+
+// DisconnectWahoo withdraws the caller's own Wahoo authorization and forgets the
+// account, over their own target alone, an admin's included.
+func (h *Handler) DisconnectWahoo(writer http.ResponseWriter, request *http.Request) {
+	own, err := h.ownTargetIDs(request.Context())
+	if err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	if len(own) == 0 {
+		h.notFound(writer)
+
+		return
+	}
+	for _, targetID := range own {
+		// One answer for every refusal: the service already logged which step it was.
+		if err := h.oauth.Disconnect(request.Context(), targetID); err != nil {
+			h.error(writer, http.StatusBadGateway, "provider_unavailable", "the wahoo account was not disconnected")
+
+			return
+		}
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}

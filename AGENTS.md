@@ -9,7 +9,8 @@ admin draws in its own planner, to each signed-in
 rider's own self-service Wahoo account as device-ready FIT courses, plus a
 read-only browser UI (library map, per-route pages, settings). Single-tenant,
 CGO-free, `linux/amd64` Docker workload on a Tailnet host; no CLI.
-State-changing HTTP is limited to sign-in and sign-out, Wahoo OAuth onboarding,
+State-changing HTTP is limited to sign-in and sign-out, Wahoo OAuth onboarding
+and disconnect,
 the Wahoo webhook receiver, manual run triggers, `PUT /v1/settings/*`, and the
 admin-only `/v1/plans` writes over the one provider this service owns.
 

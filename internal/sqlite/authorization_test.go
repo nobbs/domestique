@@ -101,6 +101,26 @@ func TestStoreReplacesRefreshToken(t *testing.T) {
 	assert.Equal(t, "new-refresh-token", got, "RefreshToken()")
 }
 
+func TestStoreDisconnectsTarget(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-b"), "EnsureTargetOwner()")
+	require.NoError(t, store.AuthorizeTarget(t.Context(), "rider-a", "wahoo-user", "refresh-token"), "AuthorizeTarget()")
+	require.NoError(t, store.DisconnectTarget(t.Context(), "rider-a"), "DisconnectTarget()")
+
+	target, err := store.Target(t.Context(), "rider-a")
+	require.NoError(t, err, "Target()")
+	assert.Equal(t, AuthorizationNotAuthorized, target.AuthorizationState, "Target().AuthorizationState")
+	_, err = store.RefreshToken(t.Context(), "rider-a")
+	require.ErrorIs(t, err, ErrRefreshTokenUnavailable, "RefreshToken()")
+	// A refresh that was already under way must not bring the token back.
+	require.ErrorIs(t, store.ReplaceRefreshToken(t.Context(), "rider-a", "late-token"), ErrTargetNotFound)
+	// The account is free to be connected again, here or on another slot.
+	require.NoError(t, store.AuthorizeTarget(t.Context(), "rider-b", "wahoo-user", "refresh-token"), "AuthorizeTarget()")
+	require.ErrorIs(t, store.DisconnectTarget(t.Context(), "nobody"), ErrTargetNotFound)
+}
+
 func TestStoreConsumesCallerBoundOAuthAuthorization(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))

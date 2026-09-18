@@ -413,3 +413,35 @@ func TestSetRiderZwiftCredentialsRefusesAFieldThisSectionHasNot(t *testing.T) {
 		`{"apiKey": "x"}`))
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
+
+const wahooConnectionPath = "/v1/settings/rider/connections/wahoo"
+
+// Only the caller's own target is disconnected, whoever else is connected.
+func TestDisconnectWahooForgetsOnlyTheCallersOwnTarget(t *testing.T) {
+	oauthService := &fakeOAuth{}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), oauthService, riderState(), nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodDelete, wahooConnectionPath))
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	assert.Equal(t, []string{"rider-a"}, oauthService.disconnected)
+}
+
+func TestDisconnectWahooReportsAGrantWahooKept(t *testing.T) {
+	oauthService := &fakeOAuth{disconnectErr: errors.New("wahoo kept the grant")}
+	handler := handlerFor(t, nonAdminSessions("rider-a"), oauthService, riderState(), nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodDelete, wahooConnectionPath))
+	assert.Equal(t, http.StatusBadGateway, response.Code, response.Body.String())
+}
+
+func TestDisconnectWahooWithoutATargetIsNotFound(t *testing.T) {
+	oauthService := &fakeOAuth{}
+	handler := handlerFor(t, nonAdminSessions("rider-c"), oauthService, riderState(), nil)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodDelete, wahooConnectionPath))
+	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+	assert.Empty(t, oauthService.disconnected)
+}
