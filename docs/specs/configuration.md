@@ -186,10 +186,10 @@ application dependency.
   addresses answer `404`. It is a
   file field for the same reason `brouter_url` is, and it carries the same
   cost: the public instance has no terms beyond fair use, and each coordinate
-  and search asked about leaves the host. Answers are held in memory, keyed to about
-  eleven metres, until the cache holds 4096 of them, at which point it is
-  emptied rather than aged out one entry at a time; a failed lookup is never
-  cached, so it is retried on the next ask.
+  and search asked about leaves the host. Waypoint names are held in memory,
+  keyed to about eleven metres, until the cache holds 4096 of them, at which
+  point it is emptied rather than aged out one entry at a time; a failed lookup
+  is never cached, so it is retried on the next ask. Searches are never held.
 - `planning.segments` is optional and names the BRouter routing segments the
   service keeps current for that engine. Each entry is one of BRouter's 5°×5°
   tiles, named for its south-west corner: `E` or `W` and a longitude from 0 to

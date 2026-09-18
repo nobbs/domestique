@@ -109,6 +109,9 @@ func parseSearch(body []byte, status int) ([]Place, error) {
 		if name == "" {
 			continue
 		}
+		if len(places) == SearchLimit {
+			break
+		}
 		places = append(places, Place{
 			Name:      name,
 			Context:   within(&feature.Properties, name),
@@ -139,6 +142,17 @@ func within(from *searchProperties, name string) string {
 	return strings.Join(parts, ", ")
 }
 
+// isSettlement reports whether an OSM place value names a town or part of one,
+// rather than a square, an island or a country.
+func isSettlement(value string) bool {
+	switch value {
+	case "city", "town", "village", "hamlet", "suburb", "borough", "quarter", "neighbourhood":
+		return true
+	default:
+		return false
+	}
+}
+
 func kindOf(from *searchProperties) Kind {
 	switch {
 	case from.OSMKey == "railway" && (from.OSMValue == "station" || from.OSMValue == "halt"),
@@ -147,7 +161,8 @@ func kindOf(from *searchProperties) Kind {
 	case from.OSMKey == "natural" &&
 		(from.OSMValue == "peak" || from.OSMValue == "hill" || from.OSMValue == "volcano" || from.OSMValue == "saddle"):
 		return KindPeak
-	case from.OSMKey == "place" || from.Type == "city" || from.Type == "district" || from.Type == "locality":
+	case from.OSMKey == "place" && isSettlement(from.OSMValue),
+		from.Type == "city" || from.Type == "district" || from.Type == "locality":
 		return KindSettlement
 	case from.Name == "" && (from.Type == "house" || from.Type == "street"):
 		return KindAddress

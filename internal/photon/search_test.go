@@ -170,3 +170,42 @@ func TestSearchCategorisesAFailedRequest(t *testing.T) {
 	require.ErrorAs(t, err, &failure)
 	assert.Equal(t, photon.FailureGeocoder, failure.Category)
 }
+
+func TestSearchAnswersNoMoreThanItsLimit(t *testing.T) {
+	t.Parallel()
+	client, _ := serving(t, func(writer http.ResponseWriter, _ *http.Request) {
+		features := make([]string, photon.SearchLimit+3)
+		for index := range features {
+			features[index] = feature("8", "49", `"name":"Turmberg"`)
+		}
+		write(t, writer, collection(features...))
+	})
+
+	places, err := client.Search(t.Context(), "Turmberg", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, places, photon.SearchLimit, "a geocoder that ignores the limit is held to it")
+}
+
+func TestSearchCallsOnlyTownsSettlements(t *testing.T) {
+	t.Parallel()
+	for properties, expected := range map[string]photon.Kind{
+		`"osm_key":"place","osm_value":"village","type":"city","name":"Wolfartsweier"`: photon.KindSettlement,
+		`"osm_key":"place","osm_value":"suburb","type":"district","name":"Durlach"`:    photon.KindSettlement,
+		`"osm_key":"place","osm_value":"square","type":"house","name":"Marktplatz"`:    photon.KindPlace,
+		`"osm_key":"place","osm_value":"island","type":"house","name":"Mainau"`:        photon.KindPlace,
+	} {
+		t.Run(string(expected)+" "+properties, func(t *testing.T) {
+			t.Parallel()
+			client, _ := serving(t, func(writer http.ResponseWriter, _ *http.Request) {
+				write(t, writer, collection(feature("8", "49", properties)))
+			})
+
+			places, err := client.Search(t.Context(), "somewhere", nil)
+
+			require.NoError(t, err)
+			require.Len(t, places, 1)
+			assert.Equal(t, expected, places[0].Kind)
+		})
+	}
+}
