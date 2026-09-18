@@ -88,13 +88,21 @@ type brouterRouter struct{ client *brouter.Client }
 
 var _ plan.Router = brouterRouter{}
 
-func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) (plan.Routed, error) {
+func (r brouterRouter) Route(
+	ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile, avoid []plan.Avoid,
+) (plan.Routed, error) {
 	converted := make([]brouter.Waypoint, len(waypoints))
 	for index, waypoint := range waypoints {
-		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+		converted[index] = brouter.Waypoint{
+			Longitude: waypoint.Longitude, Latitude: waypoint.Latitude, Straight: waypoint.Straight,
+		}
+	}
+	nogos := make([]brouter.Nogo, len(avoid))
+	for index, area := range avoid {
+		nogos[index] = brouter.Nogo{Longitude: area.Longitude, Latitude: area.Latitude, RadiusMetres: area.RadiusMetres}
 	}
 
-	answer, err := r.client.Route(ctx, converted, string(profile))
+	answer, err := r.client.Route(ctx, converted, string(profile), nogos)
 	if err != nil {
 		return plan.Routed{}, fmt.Errorf("routing waypoints: %w", err)
 	}

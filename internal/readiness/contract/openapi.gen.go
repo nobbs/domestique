@@ -411,7 +411,20 @@ type SnappedPlace struct {
 type PlanWaypoint struct {
 	Longitude float64 `json:"longitude"`
 	Latitude  float64 `json:"latitude"`
+	// Straight Whether the leg arriving at this waypoint is a straight line rather than routed along ways. Refused on the first waypoint.
+	// Straight default value is defined in the OpenAPI schema.
+	Straight *bool `json:"straight,omitempty"`
 }
+
+// PlanAvoid A circle the route keeps out of.
+type PlanAvoid struct {
+	Longitude    float64 `json:"longitude"`
+	Latitude     float64 `json:"latitude"`
+	RadiusMetres float64 `json:"radiusMetres"`
+}
+
+// PlanAvoidList Circles the route keeps out of. The routing engine ignores one that holds a waypoint, since the route has to reach it.
+type PlanAvoidList []PlanAvoid
 
 // PlanWindow A stretch of a plan, in metres from its start.
 type PlanWindow struct {
@@ -437,6 +450,7 @@ const (
 type PlanRouteRequest struct {
 	Profile   PlanProfile    `json:"profile"`
 	Waypoints []PlanWaypoint `json:"waypoints"`
+	Avoid     *PlanAvoidList `json:"avoid,omitempty"`
 }
 
 type PlanRoutePreview struct {
@@ -461,7 +475,8 @@ type PlanWrite struct {
 	Published bool `json:"published"`
 	// Cues Whether the plan's course carries the routing engine's turn instructions as cue points to a rider's device. Absent is off.
 	// Cues default value is defined in the OpenAPI schema.
-	Cues *bool `json:"cues,omitempty"`
+	Cues  *bool          `json:"cues,omitempty"`
+	Avoid *PlanAvoidList `json:"avoid,omitempty"`
 }
 
 type Plan struct {
@@ -470,7 +485,8 @@ type Plan struct {
 	Profile   PlanProfile `json:"profile"`
 	Published bool        `json:"published"`
 	// Cues Whether the plan's course carries turn instructions as cue points.
-	Cues bool `json:"cues"`
+	Cues  bool           `json:"cues"`
+	Avoid *PlanAvoidList `json:"avoid,omitempty"`
 	// TurnCount How many turn instructions the routing engine gave for the line, whether or not the course carries them.
 	TurnCount      *int              `json:"turnCount,omitempty"`
 	Version        int64             `json:"version"`

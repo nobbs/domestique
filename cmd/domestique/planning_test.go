@@ -151,9 +151,10 @@ func TestHTTPAPIPlansAvoidsATypedNilInterface(t *testing.T) {
 // brouterRouter converts plan types to the adapter's own before asking the
 // engine, and the points it returns travel back unchanged.
 func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
-	var gotProfile string
+	var gotProfile, gotStraight, gotNogos string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotProfile = r.URL.Query().Get("profile")
+		gotStraight, gotNogos = r.URL.Query().Get("straight"), r.URL.Query().Get("nogos")
 		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
 			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
 		assert.NoError(t, writeErr)
@@ -165,9 +166,12 @@ func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
 	router := brouterRouter{client: client}
 
 	routed, err := router.Route(
-		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12, Straight: true}},
+		plan.Gravel, []plan.Avoid{{Longitude: 8.69, Latitude: 50.115, RadiusMetres: 250}})
 	require.NoError(t, err)
 	assert.Equal(t, "gravel", gotProfile, "profile")
+	assert.Equal(t, "0", gotStraight, "straight")
+	assert.Equal(t, "8.69,50.115,250", gotNogos, "nogos")
 	require.Len(t, routed.Points, 2, "points")
 }
 
@@ -184,7 +188,7 @@ func TestBrouterRouterWrapsARoutingFailure(t *testing.T) {
 	router := brouterRouter{client: client}
 
 	_, routeErr := router.Route(
-		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel, nil)
 	require.Error(t, routeErr)
 	var brouterErr *brouter.Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -233,7 +237,8 @@ func TestPlanStoreRoundTripsAPlan(t *testing.T) {
 	elevation := 42.5
 	original := plan.Plan{
 		ID: 7, Name: "Round Trip", Profile: plan.Gravel,
-		Waypoints: []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}},
+		Waypoints: []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12, Straight: true}},
+		Avoid:     []plan.Avoid{{Longitude: 8.69, Latitude: 50.115, RadiusMetres: 250}},
 		Geometry: []route.Point{
 			{Longitude: 8.68, Latitude: 50.11, Elevation: &elevation},
 			{Longitude: 8.70, Latitude: 50.12},
@@ -253,6 +258,7 @@ func TestPlanStoreRoundTripsAPlan(t *testing.T) {
 	assert.Equal(t, original.Waypoints, read.Waypoints, "Waypoints")
 	assert.Equal(t, original.Published, read.Published, "Published")
 	assert.Equal(t, original.Pushing, read.Pushing, "Pushing")
+	assert.Equal(t, original.Avoid, read.Avoid, "Avoid")
 	require.Len(t, read.Geometry, 2, "Geometry")
 	require.NotNil(t, read.Geometry[0].Elevation, "Geometry[0].Elevation")
 	assert.InDelta(t, elevation, *read.Geometry[0].Elevation, 0, "Geometry[0].Elevation")
@@ -334,7 +340,7 @@ func TestBrouterRouterCarriesTheWaysAndTurnsOfTheLine(t *testing.T) {
 	require.NoError(t, err)
 
 	routed, err := brouterRouter{client: client}.Route(
-		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []plan.RoutedWay{{EndMetres: 40, Tags: map[string]string{"highway": "footway"}}}, routed.Ways)
 	assert.Equal(t, []plan.RoutedTurn{{Turn: route.TurnRoundabout, Index: 1, Exit: 3}}, routed.Turns)

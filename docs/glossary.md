@@ -158,6 +158,12 @@ route under the `local` provider; a draft is not a route at all (see
 admin placed it. The routing engine decides the line between two of them; a
 waypoint is never itself a point of the geometry.
 
+**straight leg** — a leg of a plan the routing engine draws as a straight line
+between two waypoints instead of routing it along ways, marked on the waypoint
+it arrives at.
+
+**avoided area** — a circle on a plan the routing engine keeps its route out of.
+
 **profile** — the routing engine's costing a plan is routed with: trekking,
 fastbike, or gravel. Stored with the plan, so re-routing it keeps the choice.
 

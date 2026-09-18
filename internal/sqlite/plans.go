@@ -25,7 +25,11 @@ type PlanRecord struct {
 	Pushing  [][2]float64
 	Geometry []route.Point
 	// Turns are the routing engine's turn instructions along Geometry.
-	Turns          []route.Cue
+	Turns []route.Cue
+	// Straight are the indices of the waypoints reached by a straight leg.
+	Straight []int
+	// Avoid are circles as [longitude, latitude, radius in metres].
+	Avoid          [][3]float64
 	DistanceMetres float64
 	AscentMetres   float64
 	ID             int64
@@ -52,10 +56,15 @@ func (s *Store) InsertPlan(ctx context.Context, record *PlanRecord) error {
 	if err != nil {
 		return err
 	}
+	straight, avoid, err := encodeRoutingOptions(record)
+	if err != nil {
+		return err
+	}
 	if err := s.queries.InsertPlan(ctx, sqlcgen.InsertPlanParams{
 		ID: record.ID, Name: record.Name, Profile: record.Profile, Waypoints: string(waypoints),
 		Coordinates: coordinates, DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres,
 		Pushing: string(pushing), Turns: string(turns), Cues: boolToInt(record.Cues),
+		Straight: string(straight), Avoid: string(avoid),
 		Published: boolToInt(record.Published), Version: record.Version,
 		CreatedAtUnixNano: record.CreatedAt.UnixNano(), UpdatedAtUnixNano: record.UpdatedAt.UnixNano(),
 	}); err != nil {
@@ -122,10 +131,14 @@ func (s *Store) ReplacePlan(ctx context.Context, record *PlanRecord, expectedVer
 	if err != nil {
 		return false, err
 	}
+	straight, avoid, err := encodeRoutingOptions(record)
+	if err != nil {
+		return false, err
+	}
 	updated, err := s.queries.UpdatePlan(ctx, sqlcgen.UpdatePlanParams{
 		Name: record.Name, Profile: record.Profile, Waypoints: string(waypoints), Coordinates: coordinates,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Pushing: string(pushing),
-		Turns: string(turns), Cues: boolToInt(record.Cues),
+		Turns: string(turns), Cues: boolToInt(record.Cues), Straight: string(straight), Avoid: string(avoid),
 		Published: boolToInt(record.Published), Version: record.Version,
 		UpdatedAtUnixNano: record.UpdatedAt.UnixNano(),
 		ID:                record.ID, Version_2: expectedVersion,
@@ -181,15 +194,49 @@ func planRecordFromRow(row *sqlcgen.Plan) (PlanRecord, error) {
 	if err != nil {
 		return PlanRecord{}, err
 	}
+	var straight []int
+	if err := json.Unmarshal([]byte(row.Straight), &straight); err != nil {
+		return PlanRecord{}, fmt.Errorf("decoding plan straight legs: %w", err)
+	}
+	var avoid [][3]float64
+	if err := json.Unmarshal([]byte(row.Avoid), &avoid); err != nil {
+		return PlanRecord{}, fmt.Errorf("decoding plan avoided areas: %w", err)
+	}
+	if len(straight) == 0 {
+		straight = nil
+	}
+	if len(avoid) == 0 {
+		avoid = nil
+	}
 
 	return PlanRecord{
 		ID: row.ID, Name: row.Name, Profile: row.Profile, Waypoints: waypoints, Geometry: geometry,
-		Pushing: pushing, Turns: turns, Cues: row.Cues != 0,
+		Pushing: pushing, Turns: turns, Cues: row.Cues != 0, Straight: straight, Avoid: avoid,
 		DistanceMetres: row.DistanceMetres, AscentMetres: row.AscentMetres,
 		Published: row.Published != 0, Version: row.Version,
 		CreatedAt: time.Unix(0, row.CreatedAtUnixNano).UTC(),
 		UpdatedAt: time.Unix(0, row.UpdatedAtUnixNano).UTC(),
 	}, nil
+}
+
+// encodeRoutingOptions renders a plan's straight legs and avoided areas as
+// JSON, empty lists rather than null.
+func encodeRoutingOptions(record *PlanRecord) (straight, avoid []byte, err error) {
+	legs, areas := record.Straight, record.Avoid
+	if legs == nil {
+		legs = []int{}
+	}
+	if areas == nil {
+		areas = [][3]float64{}
+	}
+	if straight, err = json.Marshal(legs); err != nil {
+		return nil, nil, fmt.Errorf("encoding plan straight legs: %w", err)
+	}
+	if avoid, err = json.Marshal(areas); err != nil {
+		return nil, nil, fmt.Errorf("encoding plan avoided areas: %w", err)
+	}
+
+	return straight, avoid, nil
 }
 
 // storedTurn is one turn as the turns column holds it.

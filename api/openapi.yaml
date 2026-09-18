@@ -3088,6 +3088,40 @@ components:
         latitude:
           type: number
           format: double
+        straight:
+          type: boolean
+          default: false
+          description: >-
+            Whether the leg arriving at this waypoint is a straight line rather
+            than routed along ways. Refused on the first waypoint.
+    PlanAvoid:
+      type: object
+      additionalProperties: false
+      description: A circle the route keeps out of.
+      required:
+        - longitude
+        - latitude
+        - radiusMetres
+      properties:
+        longitude:
+          type: number
+          format: double
+        latitude:
+          type: number
+          format: double
+        radiusMetres:
+          type: number
+          format: double
+          minimum: 10
+          maximum: 5000
+    PlanAvoidList:
+      type: array
+      maxItems: 20
+      description: >-
+        Circles the route keeps out of. The routing engine ignores one that
+        holds a waypoint, since the route has to reach it.
+      items:
+        $ref: '#/components/schemas/PlanAvoid'
     PlanWindow:
       type: object
       additionalProperties: false
@@ -3140,6 +3174,8 @@ components:
           maxItems: 50
           items:
             $ref: '#/components/schemas/PlanWaypoint'
+        avoid:
+          $ref: '#/components/schemas/PlanAvoidList'
     PlanRoutePreview:
       type: object
       additionalProperties: false
@@ -3213,6 +3249,8 @@ components:
           description: >-
             Whether the plan's course carries the routing engine's turn
             instructions as cue points to a rider's device. Absent is off.
+        avoid:
+          $ref: '#/components/schemas/PlanAvoidList'
     Plan:
       type: object
       additionalProperties: false
@@ -3243,6 +3281,8 @@ components:
           type: boolean
           description: >-
             Whether the plan's course carries turn instructions as cue points.
+        avoid:
+          $ref: '#/components/schemas/PlanAvoidList'
         turnCount:
           type: integer
           minimum: 0

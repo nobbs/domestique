@@ -231,3 +231,49 @@ func TestStoreReportsUndecodablePlanTurns(t *testing.T) {
 
 	assert.ErrorContains(t, err, "turns", "GetPlan()")
 }
+
+func TestStoreKeepsAPlansStraightLegsAndAvoidedAreas(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	record := testPlanRecord(42, "Around town", false, 1)
+	record.Straight = []int{1}
+	record.Avoid = [][3]float64{{8.45, 49.05, 250}}
+	require.NoError(t, store.InsertPlan(t.Context(), record), "InsertPlan()")
+
+	inserted, _, err := store.GetPlan(t.Context(), 42)
+	require.NoError(t, err, "GetPlan()")
+	assert.Equal(t, record.Straight, inserted.Straight, "straight legs after insert")
+	assert.Equal(t, record.Avoid, inserted.Avoid, "avoided areas after insert")
+
+	replaced := *record
+	replaced.Version, replaced.Straight, replaced.Avoid = 2, nil, nil
+	ok, err := store.ReplacePlan(t.Context(), &replaced, 1)
+	require.NoError(t, err, "ReplacePlan()")
+	require.True(t, ok, "ReplacePlan()")
+
+	got, _, err := store.GetPlan(t.Context(), 42)
+	require.NoError(t, err, "GetPlan()")
+	assert.Nil(t, got.Straight, "straight legs after replace")
+	assert.Nil(t, got.Avoid, "avoided areas after replace")
+}
+
+func TestStoreReportsUndecodableRoutingOptions(t *testing.T) {
+	t.Parallel()
+	corruptions := map[string]string{
+		`UPDATE plans SET straight = 'not json' WHERE id = 1`: "straight legs",
+		`UPDATE plans SET avoid = 'not json' WHERE id = 1`:    "avoided areas",
+	}
+	for corruption, want := range corruptions {
+		t.Run(want, func(t *testing.T) {
+			t.Parallel()
+			store := openTestStore(t, testKey(1))
+			require.NoError(t, store.InsertPlan(t.Context(), testPlanRecord(1, "Plan", false, 1)), "InsertPlan()")
+			_, err := store.database.ExecContext(t.Context(), corruption)
+			require.NoError(t, err, "corrupting the column")
+
+			_, _, err = store.GetPlan(t.Context(), 1)
+
+			assert.ErrorContains(t, err, want, "GetPlan()")
+		})
+	}
+}

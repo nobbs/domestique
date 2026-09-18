@@ -19,7 +19,7 @@ import (
 
 type testRouter struct{}
 
-func (testRouter) Route(context.Context, []plan.Waypoint, plan.Profile) (plan.Routed, error) {
+func (testRouter) Route(context.Context, []plan.Waypoint, plan.Profile, []plan.Avoid) (plan.Routed, error) {
 	return plan.Routed{Points: []route.Point{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.5, Latitude: 49.1}}}, nil
 }
 
@@ -48,7 +48,7 @@ func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
 	})
 	require.NoError(t, err)
 	routed, err := (brouterRouter{client: client}).Route(
-		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel,
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel, nil,
 	)
 	require.NoError(t, err)
 	assert.Len(t, routed.Points, 2)
@@ -67,11 +67,11 @@ func TestSeedAddsPublishedPlansToTheDemoInventory(t *testing.T) {
 	)
 	created, err := planService.Create(
 		t.Context(), "Demo plan", plan.Gravel,
-		[]plan.Waypoint{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.5, Latitude: 49.1}}, false,
+		[]plan.Waypoint{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.5, Latitude: 49.1}}, nil, false,
 	)
 	require.NoError(t, err)
 	_, err = planService.Replace(
-		t.Context(), created.ID, created.Version, created.Name, created.Profile, created.Waypoints, true, false,
+		t.Context(), created.ID, created.Version, created.Name, created.Profile, created.Waypoints, nil, true, false,
 	)
 	require.NoError(t, err)
 

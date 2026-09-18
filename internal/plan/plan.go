@@ -47,6 +47,12 @@ const (
 	minWaypoints  = 2
 	maxWaypoints  = 50
 	maxNameLength = 120
+	// maxAvoid bounds how many areas one plan may route around.
+	maxAvoid = 20
+	// minAvoidRadiusMetres and maxAvoidRadiusMetres bound an area's size: a few
+	// metres is one junction, a few kilometres is a town.
+	minAvoidRadiusMetres = 10.0
+	maxAvoidRadiusMetres = 5000.0
 )
 
 // ErrVersionMismatch reports a replace or delete whose expected version no
@@ -69,6 +75,16 @@ var ErrInvalid = errors.New("plan: invalid")
 type Waypoint struct {
 	Longitude float64
 	Latitude  float64
+	// Straight is whether the leg arriving here is a straight line rather
+	// than routed; never true for the first waypoint.
+	Straight bool
+}
+
+// Avoid is a circle a plan's route keeps out of.
+type Avoid struct {
+	Longitude    float64
+	Latitude     float64
+	RadiusMetres float64
 }
 
 // Plan is an admin-composed route, from its waypoints to its routed geometry,
@@ -79,7 +95,9 @@ type Plan struct {
 	Name      string
 	Profile   Profile
 	Waypoints []Waypoint
-	Geometry  []route.Point
+	// Avoid are the areas the route is kept out of, re-applied on every route.
+	Avoid    []Avoid
+	Geometry []route.Point
 	// Progress and MovingSeconds are predicted on read, never stored: the
 	// coefficients they are predicted with are replaced by a calibration.
 	Progress []Progress
@@ -109,7 +127,7 @@ func (p *Plan) Revision() string {
 // network for one profile, returning the snapped line with an elevation per
 // point.
 type Router interface {
-	Route(ctx context.Context, waypoints []Waypoint, profile Profile) (Routed, error)
+	Route(ctx context.Context, waypoints []Waypoint, profile Profile, avoid []Avoid) (Routed, error)
 }
 
 // Pace predicts a routed line's moving time, as this service predicts a
@@ -202,11 +220,11 @@ const previewRevision = "preview"
 
 // Route is the one measuring path: it asks the router for the snapped line,
 // then normalizes and measures it exactly as a stored stage is.
-func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profile) (Measured, error) {
-	if err := validateRouting(profile, waypoints); err != nil {
+func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profile, avoid []Avoid) (Measured, error) {
+	if err := validateRouting(profile, waypoints, avoid); err != nil {
 		return Measured{}, err
 	}
-	routed, err := s.router.Route(ctx, waypoints, profile)
+	routed, err := s.router.Route(ctx, waypoints, profile, avoid)
 	if err != nil {
 		return Measured{}, fmt.Errorf("plan: routing waypoints: %w: %w", ErrRouting, err)
 	}
@@ -300,13 +318,13 @@ func nearestIndex(geometry []route.Point, from int, waypoint Waypoint) int {
 
 // Create validates, routes, and stores a new draft plan.
 func (s *Service) Create(
-	ctx context.Context, name string, profile Profile, waypoints []Waypoint, cues bool,
+	ctx context.Context, name string, profile Profile, waypoints []Waypoint, avoid []Avoid, cues bool,
 ) (Plan, error) {
-	trimmedName, err := validate(name, profile, waypoints)
+	trimmedName, err := validate(name, profile, waypoints, avoid)
 	if err != nil {
 		return Plan{}, err
 	}
-	measured, err := s.Route(ctx, waypoints, profile)
+	measured, err := s.Route(ctx, waypoints, profile, avoid)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -316,7 +334,7 @@ func (s *Service) Create(
 	}
 	now := s.now().UTC()
 	created := Plan{
-		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
+		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints), Avoid: slices.Clone(avoid),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
 		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing, Turns: measured.Turns, Cues: cues,
 		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
@@ -335,9 +353,9 @@ func (s *Service) Create(
 // returned; a missing plan returns ErrNotFound.
 func (s *Service) Replace(
 	ctx context.Context, id, expectedVersion int64, name string, profile Profile, waypoints []Waypoint,
-	published, cues bool,
+	avoid []Avoid, published, cues bool,
 ) (Plan, error) {
-	trimmedName, err := validate(name, profile, waypoints)
+	trimmedName, err := validate(name, profile, waypoints, avoid)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -351,12 +369,12 @@ func (s *Service) Replace(
 	if existing.Version != expectedVersion {
 		return Plan{}, ErrVersionMismatch
 	}
-	measured, err := s.Route(ctx, waypoints, profile)
+	measured, err := s.Route(ctx, waypoints, profile, avoid)
 	if err != nil {
 		return Plan{}, err
 	}
 	replaced := Plan{
-		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
+		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints), Avoid: slices.Clone(avoid),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
 		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing, Turns: measured.Turns, Cues: cues,
 		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
@@ -477,7 +495,7 @@ func (s *Service) Inventory(ctx context.Context) ([]route.Route, error) {
 	return routes, nil
 }
 
-func validate(name string, profile Profile, waypoints []Waypoint) (string, error) {
+func validate(name string, profile Profile, waypoints []Waypoint, avoid []Avoid) (string, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
 		return "", fmt.Errorf("%w: name is required", ErrInvalid)
@@ -485,7 +503,7 @@ func validate(name string, profile Profile, waypoints []Waypoint) (string, error
 	if utf8.RuneCountInString(trimmed) > maxNameLength {
 		return "", fmt.Errorf("%w: name exceeds %d characters", ErrInvalid, maxNameLength)
 	}
-	if err := validateRouting(profile, waypoints); err != nil {
+	if err := validateRouting(profile, waypoints, avoid); err != nil {
 		return "", err
 	}
 
@@ -494,7 +512,7 @@ func validate(name string, profile Profile, waypoints []Waypoint) (string, error
 
 // validateRouting is the part of validation a preview shares with a save: what
 // may be sent to the router at all.
-func validateRouting(profile Profile, waypoints []Waypoint) error {
+func validateRouting(profile Profile, waypoints []Waypoint, avoid []Avoid) error {
 	if _, err := ParseProfile(string(profile)); err != nil {
 		return err
 	}
@@ -507,6 +525,26 @@ func validateRouting(profile Profile, waypoints []Waypoint) error {
 		}
 		if !inRange(waypoint.Latitude, 90) {
 			return fmt.Errorf("%w: waypoint %d latitude is out of range", ErrInvalid, index)
+		}
+	}
+	if waypoints[0].Straight {
+		return fmt.Errorf("%w: the first waypoint has no leg to draw straight", ErrInvalid)
+	}
+
+	return validateAvoid(avoid)
+}
+
+func validateAvoid(avoid []Avoid) error {
+	if len(avoid) > maxAvoid {
+		return fmt.Errorf("%w: at most %d areas may be avoided", ErrInvalid, maxAvoid)
+	}
+	for index, area := range avoid {
+		if !inRange(area.Longitude, 180) || !inRange(area.Latitude, 90) {
+			return fmt.Errorf("%w: avoided area %d is out of range", ErrInvalid, index)
+		}
+		if !(area.RadiusMetres >= minAvoidRadiusMetres && area.RadiusMetres <= maxAvoidRadiusMetres) {
+			return fmt.Errorf("%w: avoided area %d radius must be between %.0f and %.0f metres",
+				ErrInvalid, index, minAvoidRadiusMetres, maxAvoidRadiusMetres)
 		}
 	}
 

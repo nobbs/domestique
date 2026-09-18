@@ -113,6 +113,43 @@ func TestMigration063DownKeepsEveryPlan(t *testing.T) {
 	require.NoError(t, migration.Migrate(63), "must be able to re-migrate up after rolling back")
 }
 
+func TestMigration064DownKeepsEveryPlan(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "plan-avoid-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(64))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO plans (id, name, profile, waypoints, coordinates, distance_metres, ascent_metres,
+			published, version, created_at_unix_nano, updated_at_unix_nano, pushing, turns, cues, straight, avoid)
+		VALUES (123456789, 'Sunday loop', 'gravel', '[[8.4,49.0],[8.5,49.1]]', x'5b5d',
+			1000, 50, 1, 3, 1700000000000000000, 1700000000000000001, '[]',
+			'[{"turn":"left","metres":10}]', 1, '[1]', '[[8.45,49.05,250]]')`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(63))
+
+	var turns string
+	var cues int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT turns, cues FROM plans WHERE id = 123456789`).Scan(&turns, &cues))
+	assert.JSONEq(t, `[{"turn":"left","metres":10}]`, turns, "the turns survive the rollback")
+	assert.Equal(t, 1, cues, "the cue switch survives the rollback")
+	var gone int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM pragma_table_info('plans') WHERE name IN ('straight', 'avoid')`).Scan(&gone))
+	assert.Zero(t, gone, "the new columns must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(64), "must be able to re-migrate up after rolling back")
+}
+
 // No down migration in this repo is otherwise exercised by anything: the
 // compatibility harness only ever migrates forward. 029's down is the one
 // that rebuilds a table rather than dropping it outright, so it is the one

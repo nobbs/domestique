@@ -71,6 +71,17 @@ type Options struct {
 type Waypoint struct {
 	Longitude float64
 	Latitude  float64
+	// Straight draws the leg arriving here as a straight line instead of
+	// routing it. Ignored on the first waypoint.
+	Straight bool
+}
+
+// Nogo is a circle the route keeps out of. The engine drops one that holds a
+// waypoint, since the route must reach it.
+type Nogo struct {
+	Longitude    float64
+	Latitude     float64
+	RadiusMetres float64
 }
 
 // Client asks one BRouter instance to route waypoints. The host is fixed at
@@ -156,7 +167,7 @@ type Way struct {
 
 // Route asks the engine for the snapped line over waypoints for profile.
 func (c *Client) Route(
-	ctx context.Context, waypoints []Waypoint, profile string,
+	ctx context.Context, waypoints []Waypoint, profile string, nogos []Nogo,
 ) (answer Answer, err error) {
 	if len(waypoints) < 2 {
 		return Answer{}, &Error{Category: FailureRefused}
@@ -167,14 +178,21 @@ func (c *Client) Route(
 
 	endpoint := *c.baseURL
 	endpoint.Path = "/brouter"
-	endpoint.RawQuery = url.Values{
+	query := url.Values{
 		"lonlats":        {lonlats(waypoints)},
 		"profile":        {profile},
 		"alternativeidx": {"0"},
 		"format":         {"geojson"},
 		// Any mode above one adds the voicehints table the turns are read from.
 		"timode": {"3"},
-	}.Encode()
+	}
+	if straight := straightLegs(waypoints); straight != "" {
+		query.Set("straight", straight)
+	}
+	if len(nogos) > 0 {
+		query.Set("nogos", nogoList(nogos))
+	}
+	endpoint.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
 	if err != nil {
@@ -225,6 +243,32 @@ func lonlats(waypoints []Waypoint) string {
 	for index, waypoint := range waypoints {
 		parts[index] = strconv.FormatFloat(waypoint.Longitude, 'f', -1, 64) + "," +
 			strconv.FormatFloat(waypoint.Latitude, 'f', -1, 64)
+	}
+
+	return strings.Join(parts, "|")
+}
+
+// straightLegs names the legs to draw straight. The engine's index is the
+// waypoint a leg leaves, so a waypoint reached in a straight line names the
+// one before it.
+func straightLegs(waypoints []Waypoint) string {
+	var legs []string
+	for index := 1; index < len(waypoints); index++ {
+		if waypoints[index].Straight {
+			legs = append(legs, strconv.Itoa(index-1))
+		}
+	}
+
+	return strings.Join(legs, ",")
+}
+
+// nogoList formats circles as the engine's pipe-separated lon,lat,radius list.
+func nogoList(nogos []Nogo) string {
+	parts := make([]string, len(nogos))
+	for index, nogo := range nogos {
+		parts[index] = strconv.FormatFloat(nogo.Longitude, 'f', -1, 64) + "," +
+			strconv.FormatFloat(nogo.Latitude, 'f', -1, 64) + "," +
+			strconv.FormatFloat(math.Round(nogo.RadiusMetres), 'f', 0, 64)
 	}
 
 	return strings.Join(parts, "|")

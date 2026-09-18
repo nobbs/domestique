@@ -256,6 +256,8 @@ type Plan struct {
 	Pushing           string
 	Turns             string
 	Cues              int64
+	Straight          string
+	Avoid             string
 }
 
 type RidemodelCoefficient struct {

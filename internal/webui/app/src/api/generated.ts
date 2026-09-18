@@ -807,7 +807,28 @@ export const PlanProfile = {
 export interface PlanWaypoint {
   longitude: number;
   latitude: number;
+  /** Whether the leg arriving at this waypoint is a straight line rather than routed along ways. Refused on the first waypoint. */
+  straight?: boolean;
 }
+
+/**
+ * A circle the route keeps out of.
+ */
+export interface PlanAvoid {
+  longitude: number;
+  latitude: number;
+  /**
+   * @minimum 10
+   * @maximum 5000
+   */
+  radiusMetres: number;
+}
+
+/**
+ * Circles the route keeps out of. The routing engine ignores one that holds a waypoint, since the route has to reach it.
+ * @maxItems 20
+ */
+export type PlanAvoidList = PlanAvoid[];
 
 export interface PlanRouteRequest {
   profile: PlanProfile;
@@ -816,6 +837,7 @@ export interface PlanRouteRequest {
    * @maxItems 50
    */
   waypoints: PlanWaypoint[];
+  avoid?: PlanAvoidList;
 }
 
 /**
@@ -899,6 +921,7 @@ export interface PlanWrite {
   published: boolean;
   /** Whether the plan's course carries the routing engine's turn instructions as cue points to a rider's device. Absent is off. */
   cues?: boolean;
+  avoid?: PlanAvoidList;
 }
 
 export interface Plan {
@@ -908,6 +931,7 @@ export interface Plan {
   published: boolean;
   /** Whether the plan's course carries turn instructions as cue points. */
   cues: boolean;
+  avoid?: PlanAvoidList;
   /**
    * How many turn instructions the routing engine gave for the line, whether or not the course carries them.
    * @minimum 0

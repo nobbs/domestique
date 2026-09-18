@@ -27,7 +27,9 @@ func (h *Handler) PreviewPlanRoute(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	measured, err := h.plans.Route(request.Context(), waypointsOf(body.Waypoints), plan.Profile(body.Profile))
+	measured, err := h.plans.Route(
+		request.Context(), waypointsOf(body.Waypoints), plan.Profile(body.Profile), avoidOf(body.Avoid),
+	)
 	if h.planFailed(writer, err) {
 		return
 	}
@@ -67,7 +69,8 @@ func (h *Handler) CreatePlan(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	created, err := h.plans.Create(
-		request.Context(), body.Name, plan.Profile(body.Profile), waypointsOf(body.Waypoints), cuesOf(body.Cues),
+		request.Context(), body.Name, plan.Profile(body.Profile), waypointsOf(body.Waypoints), avoidOf(body.Avoid),
+		switchOf(body.Cues),
 	)
 	if h.planFailed(writer, err) {
 		return
@@ -119,8 +122,8 @@ func (h *Handler) ReplacePlan(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	replaced, err := h.plans.Replace(
-		request.Context(), id, version, body.Name, plan.Profile(body.Profile), waypointsOf(body.Waypoints), body.Published,
-		cuesOf(body.Cues),
+		request.Context(), id, version, body.Name, plan.Profile(body.Profile), waypointsOf(body.Waypoints),
+		avoidOf(body.Avoid), body.Published, switchOf(body.Cues),
 	)
 	if h.planFailed(writer, err) {
 		return
@@ -234,9 +237,9 @@ func (h *Handler) targetOwners(ctx context.Context) (owners, nicknames map[strin
 	return owners, nicknames, nil
 }
 
-// cuesOf reads the optional cues switch, off when absent.
-func cuesOf(cues *bool) bool {
-	return cues != nil && *cues
+// switchOf reads an optional switch, off when absent.
+func switchOf(value *bool) bool {
+	return value != nil && *value
 }
 
 // planID reads the path's planId. A value the contract validator did not
@@ -288,10 +291,40 @@ func (h *Handler) planFailed(writer http.ResponseWriter, err error) bool {
 func waypointsOf(waypoints []openapi.PlanWaypoint) []plan.Waypoint {
 	converted := make([]plan.Waypoint, len(waypoints))
 	for index, waypoint := range waypoints {
-		converted[index] = plan.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+		converted[index] = plan.Waypoint{
+			Longitude: waypoint.Longitude, Latitude: waypoint.Latitude, Straight: switchOf(waypoint.Straight),
+		}
 	}
 
 	return converted
+}
+
+// avoidOf reads the optional list of avoided areas.
+func avoidOf(avoid *openapi.PlanAvoidList) []plan.Avoid {
+	if avoid == nil || len(*avoid) == 0 {
+		return nil
+	}
+	converted := make([]plan.Avoid, len(*avoid))
+	for index, area := range *avoid {
+		converted[index] = plan.Avoid{Longitude: area.Longitude, Latitude: area.Latitude, RadiusMetres: area.RadiusMetres}
+	}
+
+	return converted
+}
+
+// openapiAvoidOf writes a plan's avoided areas, absent when there are none.
+func openapiAvoidOf(avoid []plan.Avoid) *openapi.PlanAvoidList {
+	if len(avoid) == 0 {
+		return nil
+	}
+	converted := make(openapi.PlanAvoidList, len(avoid))
+	for index, area := range avoid {
+		converted[index] = openapi.PlanAvoid{
+			Longitude: area.Longitude, Latitude: area.Latitude, RadiusMetres: area.RadiusMetres,
+		}
+	}
+
+	return &converted
 }
 
 // openapiWaypointsOf is waypointsOf's inverse, for serving a stored plan back.
@@ -299,6 +332,9 @@ func openapiWaypointsOf(waypoints []plan.Waypoint) []openapi.PlanWaypoint {
 	converted := make([]openapi.PlanWaypoint, len(waypoints))
 	for index, waypoint := range waypoints {
 		converted[index] = openapi.PlanWaypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+		if waypoint.Straight {
+			converted[index].Straight = new(true)
+		}
 	}
 
 	return converted
@@ -330,7 +366,7 @@ func (h *Handler) planOf(ctx context.Context, p *plan.Plan) openapi.Plan {
 		DescentMetres: &p.DescentMetres,
 		MovingSeconds: optionalSeconds(p.MovingSeconds), WaypointProgress: progressOf(p.Progress),
 		Pushing: windowsOf(p.Pushing),
-		Cues:    p.Cues, TurnCount: new(len(p.Turns)),
+		Cues:    p.Cues, TurnCount: new(len(p.Turns)), Avoid: openapiAvoidOf(p.Avoid),
 		Surface:   h.planSurface(ctx, p.Geometry),
 		CreatedAt: wireTime(p.CreatedAt), UpdatedAt: wireTime(p.UpdatedAt),
 	}

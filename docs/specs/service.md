@@ -971,7 +971,13 @@ browser origin described above, and answer 403 without it.
   serve. `POST /v1/plans` creates a draft, routing the waypoints server-side
   first. Both carry `cues`, whether the plan's course carries the routing
   engine's turn instructions as cue points, off when absent; a plan read says
-  whether it does and how many turns the engine gave for the line.
+  whether it does and how many turns the engine gave for the line. A waypoint
+  may be marked `straight`, making the leg that arrives at it a straight line
+  the engine draws rather than routes (never the first waypoint's), and a plan
+  may carry up to 20 `avoid` circles of 10 m to 5 km the engine keeps the route
+  out of, ignoring one that holds a waypoint. Both are stored with the plan,
+  sent again on every route of it, a preview's included, and returned on a
+  plan read.
   `PUT /v1/plans/{plan-id}` replaces one plan whole, published state and cue
   switch included, and `DELETE /v1/plans/{plan-id}` removes one; both carry the
   version last read as `If-Match`, and a stale version is refused with `412`,
@@ -1320,9 +1326,10 @@ project's public instance, on the terms
 [configuration.md](configuration.md#static-fields) states — which answers with
 the snapped line and an elevation per point; both are then treated exactly as
 a VeloPlanner stage's are, normalised and measured by this service and encoded
-by its own encoder. The engine is asked only with the waypoints and the
-profile; no plan name, rider, or stored route leaves the service for it, and
-with a public instance those waypoints are the whole of what leaves the host.
+by its own encoder. The engine is asked only with the waypoints, which legs
+between them to draw straight, the circles to avoid, and the profile; no plan
+name, rider, or stored route leaves the service for it, and with a public
+instance those are the whole of what leaves the host.
 
 ## Wahoo synchronisation
 
