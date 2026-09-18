@@ -221,6 +221,7 @@ describe("PlanPage", () => {
           id: 4,
           name: "Stored loop",
           profile: "trekking",
+          cues: false,
           published: false,
           version: 2,
           waypoints: [
@@ -673,6 +674,7 @@ describe("PlanPage", () => {
           id: 4,
           name: "Stored loop",
           profile: "trekking",
+          cues: false,
           published: false,
           version: 2,
           waypoints: [
@@ -771,6 +773,7 @@ describe("PlanPage", () => {
       id: 4,
       name: "Stored loop",
       profile: "trekking" as const,
+      cues: false,
       published: false,
       version: 2,
       waypoints: [
@@ -807,6 +810,52 @@ describe("PlanPage", () => {
 
     expect(replace.mock.calls[0]?.[0]).toMatchObject({ headers: { "If-Match": "2" } });
     expect(replace.mock.calls[1]?.[0]).toMatchObject({ headers: { "If-Match": "3" } });
+  });
+
+  it("shows the turn cues switch with the loaded plan's turn count and sends it on save", async () => {
+    const storedPlan = {
+      id: 4,
+      name: "Stored loop",
+      profile: "trekking" as const,
+      cues: false,
+      published: false,
+      version: 2,
+      waypoints: [
+        { longitude: 8, latitude: 49 },
+        { longitude: 8.1, latitude: 49.1 },
+      ],
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [
+          [8, 49],
+          [8.1, 49.1],
+        ],
+      },
+      distanceMetres: 10_000,
+      ascentMetres: 100,
+      turnCount: 12,
+      createdAt: "2026-09-15T09:00:00Z",
+      updatedAt: "2026-09-15T09:00:00Z",
+    };
+    openedPlan.value = { data: { data: storedPlan } };
+    replace.mockResolvedValueOnce({ data: { ...storedPlan, version: 3, cues: true } });
+    renderPage("/plan/4");
+    await act(async () => {});
+
+    const toggle = screen.getByRole("switch");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText(/12 turns/)).toBeInTheDocument();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await act(async () => {});
+
+    expect(replace.mock.calls[0]?.[0]).toMatchObject({
+      data: expect.objectContaining({ cues: true }),
+    });
   });
 
   it("does not reroute after changing only the plan name", () => {
@@ -934,6 +983,7 @@ describe("PlanPage", () => {
           id: 4,
           name: "Stored loop",
           profile: "trekking",
+          cues: false,
           published: false,
           version: 2,
           waypoints: [

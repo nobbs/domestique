@@ -69,5 +69,6 @@ export const DraftList: Story = {
     ],
     planId: 4,
     saveError: null,
+    turnCount: 12,
   },
 };

@@ -73,9 +73,10 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
+import { Switch } from "../../components/ui/switch";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
-import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
+import { formatAscent, formatCount, formatDistance, formatDuration } from "../../lib/format";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { groundSegments, steepnessEntries, surfaceEntries } from "../../lib/mix";
 import {
@@ -392,6 +393,8 @@ export interface PlannerSidebarProps {
   published: boolean;
   saving: boolean;
   saveError: string | null;
+  /** How many turn instructions the routing engine gave the loaded/saved plan's line. */
+  turnCount?: number;
   onSave: (published: boolean) => void;
   dispatch: Dispatch<Parameters<typeof plannerReducer>[1]>;
 }
@@ -405,6 +408,7 @@ export function PlannerSidebar({
   published,
   saving,
   saveError,
+  turnCount,
   onSave,
   dispatch,
 }: PlannerSidebarProps) {
@@ -512,6 +516,20 @@ export function PlannerSidebar({
           value={state.profile}
           onChange={(profile) => dispatch({ type: "setProfile", profile })}
         />
+        <label className="flex items-start gap-2.5 text-sm">
+          <Switch
+            className="mt-0.5"
+            checked={state.cues}
+            onCheckedChange={(cues) => dispatch({ type: "setCues", cues })}
+          />
+          <span className="flex flex-col">
+            Turn cues on Wahoo
+            <span className="text-[var(--ink-2)] text-xs">
+              Adds turn instructions to the course on riders' devices.
+              {turnCount === undefined ? "" : ` ${formatCount(turnCount, "turn")}.`}
+            </span>
+          </span>
+        </label>
         <h3 className="-mb-2 flex items-center gap-2 font-semibold text-sm">
           Waypoints
           <span className="flex-1 font-normal text-[var(--ink-2)] text-xs">
@@ -1014,6 +1032,7 @@ export function PlanPage() {
     const data = {
       name: state.name.trim(),
       profile: state.profile,
+      cues: state.cues,
       waypoints: planWaypoints(state.waypoints),
       published,
     };
@@ -1207,6 +1226,7 @@ export function PlanPage() {
         published={loadedPlan?.published ?? false}
         saving={saving}
         saveError={saveError}
+        {...(loadedPlan?.turnCount === undefined ? {} : { turnCount: loadedPlan.turnCount })}
         onSave={(published) => void save(published)}
         dispatch={dispatch}
       />

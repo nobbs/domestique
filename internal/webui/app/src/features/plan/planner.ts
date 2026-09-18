@@ -9,6 +9,7 @@ import {
 export interface PlannerState {
   name: string;
   profile: PlanProfile;
+  cues: boolean;
   waypoints: PlannerWaypoint[];
   nextWaypointID: number;
   past: PlannerSnapshot[];
@@ -18,6 +19,7 @@ export interface PlannerState {
 interface PlannerSnapshot {
   name: string;
   profile: PlanProfile;
+  cues: boolean;
   waypoints: PlannerWaypoint[];
   nextWaypointID: number;
 }
@@ -109,6 +111,7 @@ export function isPlannerSeed(value: unknown): value is PlannerSeed {
 export type PlannerAction =
   | { type: "setName"; name: string }
   | { type: "setProfile"; profile: PlanProfile }
+  | { type: "setCues"; cues: boolean }
   | { type: "append"; waypoint: PlanWaypoint }
   | { type: "insert"; index: number; waypoint: PlanWaypoint }
   | { type: "move"; index: number; waypoint: PlanWaypoint }
@@ -120,7 +123,7 @@ export type PlannerAction =
   | { type: "undo" }
   | { type: "redo" }
   | { type: "reset" }
-  | { type: "load"; plan: Pick<Plan, "name" | "profile" | "waypoints"> };
+  | { type: "load"; plan: Pick<Plan, "name" | "profile" | "waypoints"> & { cues?: boolean } };
 
 /**
  * The same place, read within one turn of the globe. A click or a marker drag
@@ -136,8 +139,14 @@ export function unwrapped(waypoint: PlanWaypoint): PlanWaypoint {
   return { ...waypoint, longitude };
 }
 
-function snapshot({ name, profile, waypoints, nextWaypointID }: PlannerState): PlannerSnapshot {
-  return { name, profile, waypoints, nextWaypointID };
+function snapshot({
+  name,
+  profile,
+  cues,
+  waypoints,
+  nextWaypointID,
+}: PlannerState): PlannerSnapshot {
+  return { name, profile, cues, waypoints, nextWaypointID };
 }
 
 function apply(state: PlannerState, next: PlannerSnapshot): PlannerState {
@@ -147,6 +156,7 @@ function apply(state: PlannerState, next: PlannerSnapshot): PlannerState {
 export const initialPlannerState: PlannerState = {
   name: "",
   profile: "trekking",
+  cues: false,
   waypoints: [],
   nextWaypointID: 0,
   past: [],
@@ -163,6 +173,10 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       return action.profile === state.profile
         ? state
         : apply(state, { ...snapshot(state), profile: action.profile });
+    case "setCues":
+      return action.cues === state.cues
+        ? state
+        : apply(state, { ...snapshot(state), cues: action.cues });
     case "append":
       return state.waypoints.length === 50
         ? state
@@ -288,6 +302,8 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
     case "load":
       return {
         ...action.plan,
+        // A copy seeded from a library route carries no switch of its own.
+        cues: action.plan.cues ?? false,
         waypoints: action.plan.waypoints.map((waypoint, id) => ({ ...waypoint, id })),
         nextWaypointID: action.plan.waypoints.length,
         past: [],

@@ -80,6 +80,17 @@ describe("plannerReducer", () => {
     expect(state.future).toEqual([]);
   });
 
+  it("sets, undoes, and redoes turn cues, but not when unchanged", () => {
+    const unset = plannerReducer(initialPlannerState, { type: "setCues", cues: false });
+    expect(unset).toBe(initialPlannerState);
+
+    const set = plannerReducer(initialPlannerState, { type: "setCues", cues: true });
+    expect(set.cues).toBe(true);
+    const undone = plannerReducer(set, { type: "undo" });
+    expect(undone.cues).toBe(false);
+    expect(plannerReducer(undone, { type: "redo" }).cues).toBe(true);
+  });
+
   it("reverses and reorders waypoints", () => {
     const state = reduce(
       { type: "append", waypoint: first },
@@ -148,12 +159,13 @@ describe("plannerReducer", () => {
     const edited = reduce({ type: "append", waypoint: first });
     const loaded = plannerReducer(edited, {
       type: "load",
-      plan: { name: "Stored route", profile: "fastbike", waypoints: [first, second] },
+      plan: { name: "Stored route", profile: "fastbike", cues: true, waypoints: [first, second] },
     });
 
     expect(loaded).toMatchObject({
       name: "Stored route",
       profile: "fastbike",
+      cues: true,
       waypoints: [first, second],
     });
     expect(loaded.past).toEqual([]);
@@ -248,8 +260,10 @@ describe("plannerReducer", () => {
     const edited = reduce(
       { type: "setName", name: "Stored route" },
       { type: "append", waypoint: first },
+      { type: "setCues", cues: true },
     );
 
     expect(plannerReducer(edited, { type: "reset" })).toBe(initialPlannerState);
+    expect(initialPlannerState.cues).toBe(false);
   });
 });
