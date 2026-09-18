@@ -13,6 +13,7 @@ function ride(metrics: ActivityMetrics | undefined, totals?: Partial<Activity>):
     ascentMetres: 420,
     typeId: 0,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     ...(metrics ? { metrics } : {}),
     ...totals,
@@ -45,8 +46,9 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Heart rate")).toBeInTheDocument();
     expect(screen.getByText("142")).toBeInTheDocument();
-    expect(screen.getByText("Max heart rate")).toBeInTheDocument();
-    expect(screen.getByText("178")).toBeInTheDocument();
+    // The peak reads in its own column, on the same row as the average.
+    expect(screen.getByText("max 178")).toBeInTheDocument();
+    expect(screen.queryByText("Max heart rate")).not.toBeInTheDocument();
     expect(screen.getByText("Cadence")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
     // "Power" also names the group heading, so the figure is found by its tag.
@@ -54,7 +56,18 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("196")).toBeInTheDocument();
   });
 
-  it("groups a power-meter ride's figures under Sensors, Power, Load and Physiology", () => {
+  it("keeps a max column for a group with peaks, and none for a group without", () => {
+    show({ averageHeartRateBpm: 142, maxHeartRateBpm: 178, trimp: 42 });
+
+    const [sensors, load] = screen.getAllByRole("table") as [HTMLElement, HTMLElement];
+    expect(within(sensors).getByRole("row", { name: /Heart rate/ }).children).toHaveLength(3);
+    expect(within(sensors).getByRole("row", { name: /Heart rate/ })).toHaveTextContent(
+      "142bpmmax 178",
+    );
+    expect(within(load).getByRole("row", { name: /TRIMP/ }).children).toHaveLength(2);
+  });
+
+  it("lays a power-meter ride's figures out in rows without headings", () => {
     show({
       averageHeartRateBpm: 142.4,
       averageCadenceRpm: 81.6,
@@ -65,11 +78,12 @@ describe("TrainingLoad", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Sensors" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Power" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Load" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Physiology" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Power" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Load" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Physiology" })).not.toBeInTheDocument();
     expect(screen.getByText("Power", { selector: "span" })).toBeInTheDocument();
     expect(screen.getByText("Normalized power")).toBeInTheDocument();
+    expect(screen.getByText("Decoupling")).toBeInTheDocument();
   });
 
   it("renders only the Sensors heading for a bare ride with speed alone", () => {
@@ -84,14 +98,15 @@ describe("TrainingLoad", () => {
   it("shows the ride's maximum speed beside its average", () => {
     show({ maxSpeedKmh: 54.2 });
 
-    expect(screen.getByText("Max speed")).toBeInTheDocument();
-    expect(screen.getByText("54.2")).toBeInTheDocument();
+    expect(screen.getByText("Speed")).toBeInTheDocument();
+    expect(screen.getByText("max 54.2")).toBeInTheDocument();
+    expect(screen.queryByText("Max speed")).not.toBeInTheDocument();
   });
 
   it("shows no maximum speed for a ride with no speed series", () => {
     show({ averageHeartRateBpm: 142.4 });
 
-    expect(screen.queryByText("Max speed")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^max/)).not.toBeInTheDocument();
   });
 
   // Distance over moving time, so it is there for a ride whose recorded file
@@ -111,7 +126,7 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Estimated power")).toBeInTheDocument();
     expect(screen.getByText("187")).toBeInTheDocument();
-    expect(screen.getByText("watts, from the track")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Worked out from the track" })).toBeInTheDocument();
     expect(screen.queryByText("Power", { selector: "span" })).not.toBeInTheDocument();
   });
 
@@ -119,7 +134,7 @@ describe("TrainingLoad", () => {
     show({ estimatedPowerWatts: 187.4, estimatedPedallingShare: 0.87 });
 
     expect(
-      screen.getByText("watts while pedalling, 87% of its estimated samples"),
+      screen.getByRole("button", { name: "While pedalling, 87% of its estimated samples" }),
     ).toBeInTheDocument();
   });
 
@@ -136,7 +151,9 @@ describe("TrainingLoad", () => {
   it("says each zone's share of the time the ride held any zone", () => {
     show({ zoneSeconds: [60, 120, 0, 240, 120] });
 
-    const shares = screen.getAllByRole("row").map((row) => row.lastElementChild?.textContent);
+    const shares = within(screen.getByRole("region", { name: "Heart rate" }))
+      .getAllByRole("row")
+      .map((row) => row.lastElementChild?.textContent);
     expect(shares).toEqual(["11%", "22%", "0%", "44%", "22%"]);
   });
 
@@ -239,12 +256,18 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Decoupling")).toBeInTheDocument();
     expect(screen.getByText("4.2")).toBeInTheDocument();
-    expect(screen.getByText("% of ratio lost over the second half")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Share of the power-to-heart-rate ratio lost over the second half",
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Heat drift")).toBeInTheDocument();
     expect(screen.getByText("142")).toBeInTheDocument();
     // The pair, not the beats alone: a heart rate without its temperature is
     // not a reading of riding warm.
-    expect(screen.getByText("bpm in the endurance band at 29 °C")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Held in the endurance band at 29 °C" }),
+    ).toBeInTheDocument();
   });
 
   it("shows neither where the ride carries neither", () => {
@@ -297,7 +320,9 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("612")).toBeInTheDocument();
     expect(screen.getByText("Threshold power")).toBeInTheDocument();
     expect(screen.getByText("260")).toBeInTheDocument();
-    expect(screen.getByText("watts set on the device")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set on the device" })).toBeInTheDocument();
+    // The context sits behind the info mark, not beside the value.
+    expect(screen.queryByText("Set on the device")).not.toBeInTheDocument();
   });
 
   it("leaves out the device figures a ride did not carry", () => {

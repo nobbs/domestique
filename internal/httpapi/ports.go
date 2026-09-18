@@ -38,6 +38,20 @@ type Plans interface {
 	List(ctx context.Context) ([]plan.Plan, error)
 }
 
+// Places names a coordinate, for a planner that would otherwise show a route
+// as pairs of numbers. Satisfied structurally by a geocoding adapter. An empty
+// name with no error means the geocoder knows of no place there.
+type Places interface {
+	Reverse(ctx context.Context, latitude, longitude float64) (string, error)
+}
+
+// Snapper moves a planned waypoint onto the nearest way the local map holds.
+// moved is false, with the coordinate as given, where no way is close enough or
+// no map is built.
+type Snapper interface {
+	Snap(ctx context.Context, latitude, longitude float64) (snapLatitude, snapLongitude float64, moved bool, err error)
+}
+
 // SurfaceClassification is the current local map's reading of one routed
 // geometry. A nil result means that no classification is available.
 type SurfaceClassification struct {
@@ -62,6 +76,7 @@ type SurfaceClassifier interface {
 type OAuth interface {
 	Start(ctx context.Context, callerLogin, targetID string) (string, error)
 	Complete(ctx context.Context, callerLogin, state, code string) error
+	Disconnect(ctx context.Context, targetID string) error
 }
 
 // SyncPhase names the half of a synchronization a manual trigger asks for, or

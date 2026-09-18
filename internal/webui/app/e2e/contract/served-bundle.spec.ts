@@ -41,17 +41,17 @@ test("the service serves a bundle the browser can boot", async ({ bundlePage: pa
 test("the library is drawn from the routes view", async ({ bundlePage: page, apiCalls }) => {
   await openLibrary(page);
 
-  // The listing is counted where the page states its size rather than in a
-  // column of cards: the entry page draws the library on the map, and nothing is
-  // listed until something is asked.
-  await expect(await openSearch(page)).toHaveAttribute("placeholder", "Search 7 routes");
+  // The listing is counted where the page states its size: the entry page draws
+  // the library on the map, and the search pill says how much of it there is.
+  await expect(page.getByRole("button", { name: "Search the route library" })).toContainText(
+    "Search 7 routes",
+  );
   await (await openSearch(page)).fill("kaiserstuhl");
-  await page.getByRole("button", { name: /Synthetic Kaiserstuhl Loop/ }).click();
-  // Distances come from `distanceMetres`, so a card with a figure on it proves
+  // Distances come from `distanceMetres`, so a result with a figure on it proves
   // the generated route model matched the real response.
-  await expect(
-    page.getByRole("heading", { name: "Synthetic Kaiserstuhl Loop" }).locator(".."),
-  ).toContainText("km");
+  await expect(page.getByRole("option", { name: /Synthetic Kaiserstuhl Loop/ })).toContainText(
+    "km",
+  );
   expect(callsTo(apiCalls, "GET", "/v1/routes").map((call) => call.status)).toContain(200);
   expect(callsTo(apiCalls, "GET", "/v1/webui/config").map((call) => call.status)).toContain(200);
 });

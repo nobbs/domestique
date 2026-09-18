@@ -15,6 +15,7 @@ function ride(metrics: ActivityMetrics): Activity {
     ascentMetres: 640,
     typeId: 0,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     metrics: {
       averageHeartRateBpm: 141,

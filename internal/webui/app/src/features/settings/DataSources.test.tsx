@@ -3,23 +3,33 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { webUIConfigQuery } from "../../api/queries";
 import type { WebUIConfig } from "../../api/types";
-import { basemapAttributionQuery } from "../../lib/attribution";
+import {
+  basemapAttributionQuery,
+  type Credit,
+  parseCredits,
+  uniqueCredits,
+} from "../../lib/attribution";
 import { DataSources } from "./DataSources";
 
-function config(basemaps: WebUIConfig["basemaps"]): WebUIConfig {
+function config(basemaps: WebUIConfig["basemaps"], planning = false): WebUIConfig {
   return {
     basemaps,
+    planning,
     sourceBaseUrls: {},
     timezone: "Europe/Berlin",
     identity: { display: "rider@example.test" },
   } as WebUIConfig;
 }
 
-function show(basemaps: WebUIConfig["basemaps"], credits: Record<string, string[]> = {}) {
+function show(
+  basemaps: WebUIConfig["basemaps"],
+  credits: Record<string, Credit[]> = {},
+  planning = false,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
-  client.setQueryData(webUIConfigQuery().queryKey, config(basemaps));
+  client.setQueryData(webUIConfigQuery().queryKey, config(basemaps, planning));
   for (const basemap of basemaps) {
     client.setQueryData(
       basemapAttributionQuery(basemap.styleUrl, basemap.styleUrlDark).queryKey,
@@ -49,15 +59,18 @@ describe("DataSources", () => {
     show([]);
 
     await waitFor(() => {
-      expect(screen.getByText(/Surface data © OpenStreetMap contributors/)).toBeInTheDocument();
+      expect(screen.getByText("Classifies what each stretch is paved with")).toBeInTheDocument();
     });
-    expect(screen.getByText(/Weather data by Open-Meteo/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open-Meteo.com" })).toHaveAttribute(
+      "href",
+      "https://open-meteo.com/",
+    );
   });
 
   it("credits every configured basemap's provider", async () => {
     show([STREETS, SATELLITE], {
-      [STREETS.styleUrl]: ["© Demo Cartography"],
-      [SATELLITE.styleUrl]: ["© Demo Imagery"],
+      [STREETS.styleUrl]: [{ text: "© Demo Cartography" }],
+      [SATELLITE.styleUrl]: [{ text: "© Demo Imagery" }],
     });
 
     await waitFor(() => {
@@ -68,8 +81,8 @@ describe("DataSources", () => {
 
   it("says one provider's credit once, however many basemaps carry it", async () => {
     show([STREETS, SATELLITE], {
-      [STREETS.styleUrl]: ["© One Provider"],
-      [SATELLITE.styleUrl]: ["© One Provider"],
+      [STREETS.styleUrl]: [{ text: "© One Provider" }],
+      [SATELLITE.styleUrl]: [{ text: "© One Provider" }],
     });
 
     await waitFor(() => {
@@ -79,7 +92,7 @@ describe("DataSources", () => {
 
   it("leaves out a basemap whose style declares nothing", async () => {
     show([STREETS, SATELLITE], {
-      [STREETS.styleUrl]: ["© Demo Cartography"],
+      [STREETS.styleUrl]: [{ text: "© Demo Cartography" }],
       [SATELLITE.styleUrl]: [],
     });
 
@@ -91,12 +104,54 @@ describe("DataSources", () => {
   // This card is the only place any credit is shown, so a provider that cannot
   // be read must not take the others with it.
   it("keeps the rest when one basemap's credit could not be read", async () => {
-    show([STREETS, SATELLITE], { [SATELLITE.styleUrl]: ["© Demo Imagery"] });
+    show([STREETS, SATELLITE], { [SATELLITE.styleUrl]: [{ text: "© Demo Imagery" }] });
 
     await waitFor(() => {
       expect(screen.getByText(/© Demo Imagery/)).toBeInTheDocument();
     });
-    expect(screen.getByText(/Surface data/)).toBeInTheDocument();
+    expect(screen.getByText("ODbL")).toBeInTheDocument();
     expect(screen.getByText(/Open-Meteo/)).toBeInTheDocument();
+  });
+
+  it("credits the routing engine only where the planner exists", async () => {
+    show([], {}, true);
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "BRouter" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: "Bikerouter" })).toBeInTheDocument();
+  });
+
+  it("leaves routing out without the planner", async () => {
+    show([]);
+
+    await waitFor(() => {
+      expect(screen.getByText("ODbL")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("BRouter")).not.toBeInTheDocument();
+  });
+});
+
+describe("parseCredits", () => {
+  it("counts credits leading to one place once", () => {
+    const osm = "https://www.openstreetmap.org/copyright";
+    expect(
+      uniqueCredits([
+        { text: "OpenStreetMap", href: osm },
+        { text: "© OpenStreetMap contributors", href: osm },
+      ]),
+    ).toEqual([{ text: "OpenStreetMap", href: osm }]);
+  });
+
+  it("reads one credit per link, keeping only web links", () => {
+    expect(
+      parseCredits(
+        '<a href="https://openfreemap.org">OpenFreeMap</a> <a href="javascript:alert(1)">&copy; Evil</a> Data from x',
+      ),
+    ).toEqual([{ text: "OpenFreeMap", href: "https://openfreemap.org" }, { text: "© Evil" }]);
+  });
+
+  it("keeps a credit that links nothing as its text", () => {
+    expect(parseCredits("&copy;  Plain  Tiles")).toEqual([{ text: "© Plain Tiles" }]);
   });
 });

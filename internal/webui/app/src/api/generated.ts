@@ -398,6 +398,8 @@ export interface Activity {
   caloriesKcal?: number;
   typeId: number;
   locationId: number;
+  /** Whether the ride was ridden over no ground, as its workout type says: a trainer or virtual ride, whichever upstream recorded it. */
+  indoor: boolean;
   /** Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift. */
   provider: ActivityProvider;
   /** The ride's name as Zwift lists it, from its own single-activity response: a structured workout's name, or a free ride's route. Absent for every other provider. */
@@ -816,6 +818,22 @@ export interface PlanRouteRequest {
   waypoints: PlanWaypoint[];
 }
 
+/**
+ * How far into a plan one waypoint is, read along the routed line rather than between waypoints. movingSeconds is absent where the line carries no prediction.
+ */
+export interface PlanProgress {
+  distanceMetres: number;
+  movingSeconds?: number;
+}
+
+/**
+ * A stretch of a plan, in metres from its start.
+ */
+export interface PlanWindow {
+  startMetres: number;
+  endMetres: number;
+}
+
 export interface SurfaceClassification {
   ranges: SurfaceRange[];
   matchedMetres: number;
@@ -825,7 +843,28 @@ export interface PlanRoutePreview {
   geometry: GeoJSONLineString;
   distanceMetres: number;
   ascentMetres: number;
+  descentMetres?: number;
+  /** The whole line's predicted moving time, from the same model a stage's is predicted with. Absent where the line cannot be predicted, which incomplete elevation makes it. */
+  movingSeconds?: number;
+  /** One entry per waypoint, in the order they were routed. */
+  waypointProgress?: PlanProgress[];
+  /** Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none. */
+  pushing?: PlanWindow[];
   surface?: SurfaceClassification;
+}
+
+/**
+ * One short label for a coordinate. The name is absent where the geocoder knows of no place there, which open country legitimately is.
+ */
+export interface Place {
+  name?: string;
+}
+
+export interface SnappedPlace {
+  latitude: number;
+  longitude: number;
+  /** Whether the coordinate was moved onto a way. */
+  snapped: boolean;
 }
 
 export interface PlanSummary {
@@ -870,6 +909,13 @@ export interface Plan {
   geometry: GeoJSONLineString;
   distanceMetres: number;
   ascentMetres: number;
+  descentMetres?: number;
+  /** Predicted on read with the coefficients in force, never stored: a calibration replaces them and the plan's own time follows. */
+  movingSeconds?: number;
+  /** One entry per waypoint, in the order they were routed. */
+  waypointProgress?: PlanProgress[];
+  /** Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none. */
+  pushing?: PlanWindow[];
   surface?: SurfaceClassification;
   createdAt: string;
   updatedAt: string;
@@ -1191,6 +1237,8 @@ export interface WebUIConfig {
   identity: BrowserIdentity;
   /** Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off. */
   planning?: boolean;
+  /** Whether a geocoder is configured, so the planner asks what a waypoint is called only where the answer exists. Absent means off, and waypoints read as coordinates. */
+  placeNames?: boolean;
 }
 
 export interface WeatherPoint {
@@ -1395,6 +1443,32 @@ export type GetRouteActivitiesParams = {
    * The target to read. Omitted means the caller's own. A target the caller does not own is answered not found rather than forbidden, so the surface never confirms which targets exist.
    */
   target?: string;
+};
+
+export type ReversePlaceParams = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+};
+
+export type SnapPlaceParams = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
 };
 
 export type ReplacePlanHeaders = {
@@ -5779,6 +5853,434 @@ export const usePreviewPlanRoute = <
   return useMutation(getPreviewPlanRouteMutationOptions(options), queryClient);
 };
 
+export type reversePlaceResponse200 = {
+  data: Place;
+  status: 200;
+};
+
+export type reversePlaceResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type reversePlaceResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type reversePlaceResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type reversePlaceResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type reversePlaceResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type reversePlaceResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type reversePlaceResponseSuccess = reversePlaceResponse200 & {
+  headers: Headers;
+};
+export type reversePlaceResponseError = (
+  | reversePlaceResponse400
+  | reversePlaceResponse401
+  | reversePlaceResponse403
+  | reversePlaceResponse404
+  | reversePlaceResponse502
+  | reversePlaceResponse503
+) & {
+  headers: Headers;
+};
+
+export const getReversePlaceUrl = (params: ReversePlaceParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/places/reverse?${stringifiedParams}`
+    : `/v1/places/reverse`;
+};
+
+/**
+ * What the place at a coordinate is called, for naming a plan's waypoints where a pair of coordinates says nothing. Answers an absent name where the geocoder knows of no place there, which is an answer and not a failure. Registered only where a geocoder is configured; absent, the address is not served at all.
+ */
+export const reversePlace = async (
+  params: ReversePlaceParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<reversePlaceResponseSuccess> => {
+  return domestiqueRequest<reversePlaceResponseSuccess>(getReversePlaceUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getReversePlaceQueryKey = (params?: ReversePlaceParams) => {
+  return [`/v1/places/reverse`, ...(params ? [params] : [])] as const;
+};
+
+export const getReversePlaceQueryOptions = <
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getReversePlaceQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof reversePlace>>> = ({ signal }) =>
+    reversePlace(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof reversePlace>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ReversePlaceQueryResult = NonNullable<Awaited<ReturnType<typeof reversePlace>>>;
+export type ReversePlaceQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | ProviderUnavailableResponse
+  | UnavailableResponse
+>;
+
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof reversePlace>>,
+          TError,
+          Awaited<ReturnType<typeof reversePlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof reversePlace>>,
+          TError,
+          Awaited<ReturnType<typeof reversePlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useReversePlace<
+  TData = Awaited<ReturnType<typeof reversePlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: ReversePlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof reversePlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getReversePlaceQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type snapPlaceResponse200 = {
+  data: SnappedPlace;
+  status: 200;
+};
+
+export type snapPlaceResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type snapPlaceResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type snapPlaceResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type snapPlaceResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type snapPlaceResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type snapPlaceResponseSuccess = snapPlaceResponse200 & {
+  headers: Headers;
+};
+export type snapPlaceResponseError = (
+  | snapPlaceResponse400
+  | snapPlaceResponse401
+  | snapPlaceResponse403
+  | snapPlaceResponse404
+  | snapPlaceResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSnapPlaceUrl = (params: SnapPlaceParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/places/snap?${stringifiedParams}` : `/v1/places/snap`;
+};
+
+/**
+ * The point of the nearest way a planned waypoint lies beside, so a pin dropped a little off a road lands on it. Answers the coordinate it was given, unmoved, where no way lies close enough or no surface map has been built; that is an answer and not a failure.
+ */
+export const snapPlace = async (
+  params: SnapPlaceParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<snapPlaceResponseSuccess> => {
+  return domestiqueRequest<snapPlaceResponseSuccess>(getSnapPlaceUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSnapPlaceQueryKey = (params?: SnapPlaceParams) => {
+  return [`/v1/places/snap`, ...(params ? [params] : [])] as const;
+};
+
+export const getSnapPlaceQueryOptions = <
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getSnapPlaceQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof snapPlace>>> = ({ signal }) =>
+    snapPlace(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof snapPlace>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type SnapPlaceQueryResult = NonNullable<Awaited<ReturnType<typeof snapPlace>>>;
+export type SnapPlaceQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof snapPlace>>,
+          TError,
+          Awaited<ReturnType<typeof snapPlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof snapPlace>>,
+          TError,
+          Awaited<ReturnType<typeof snapPlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getSnapPlaceQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
 export type listPlansResponse200 = {
   data: PlanList;
   status: 200;
@@ -8410,6 +8912,117 @@ export const useDeleteRiderZwiftCredentials = <
   TContext
 > => {
   return useMutation(getDeleteRiderZwiftCredentialsMutationOptions(options), queryClient);
+};
+
+export type disconnectWahooResponse204 = {
+  data: NoContentResponse;
+  status: 204;
+};
+
+export type disconnectWahooResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type disconnectWahooResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type disconnectWahooResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type disconnectWahooResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type disconnectWahooResponseSuccess = disconnectWahooResponse204 & {
+  headers: Headers;
+};
+export type disconnectWahooResponseError = (
+  | disconnectWahooResponse401
+  | disconnectWahooResponse403
+  | disconnectWahooResponse404
+  | disconnectWahooResponse502
+) & {
+  headers: Headers;
+};
+
+export const getDisconnectWahooUrl = () => {
+  return `/v1/settings/rider/connections/wahoo`;
+};
+
+/**
+ * Withdraws this application's authorization on the caller's own Wahoo account, then forgets the account and its refresh token, over their own target alone. A grant Wahoo already refuses is only forgotten; one Wahoo cannot be asked to withdraw stays connected. Routes already written to the account are left there.
+ */
+export const disconnectWahoo = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<disconnectWahooResponseSuccess> => {
+  return domestiqueRequest<disconnectWahooResponseSuccess>(getDisconnectWahooUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDisconnectWahooMutationKey = () => ["disconnectWahoo"] as const;
+
+export const getDisconnectWahooMutationOptions = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ProviderUnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof disconnectWahoo>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<Awaited<ReturnType<typeof disconnectWahoo>>, TError, void, TContext> => {
+  const mutationKey = getDisconnectWahooMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectWahoo>>, void> = () => {
+    return disconnectWahoo(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DisconnectWahooMutationResult = NonNullable<
+  Awaited<ReturnType<typeof disconnectWahoo>>
+>;
+
+export type DisconnectWahooMutationError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ProviderUnavailableResponse
+>;
+
+export const useDisconnectWahoo = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | NotFoundResponse | ProviderUnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof disconnectWahoo>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof disconnectWahoo>>, TError, void, TContext> => {
+  return useMutation(getDisconnectWahooMutationOptions(options), queryClient);
 };
 
 export type getWebUIConfigResponse200 = {

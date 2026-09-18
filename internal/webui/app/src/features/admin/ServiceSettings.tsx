@@ -15,8 +15,29 @@
  * there after another card is saved, and is never written by it.
  */
 
+import {
+  IconAlertTriangle,
+  IconBell,
+  IconClockHour4,
+  IconDatabase,
+  IconMap,
+  IconPlugConnected,
+  IconRefresh,
+  IconRoad,
+  IconSettings,
+  IconWorld,
+} from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import {
+  FormFooter,
+  FormGroup,
+  FormRow,
+  InfoDot,
+  RowInput,
+  SecretInput,
+  UnitInput,
+} from "@/components/InsetForm";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -27,19 +48,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-  FieldTitle,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { FieldDescription } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -63,6 +73,7 @@ import {
 } from "../../api/types";
 import { Button } from "../../components/Button";
 import { BasemapStrip } from "../../components/map/BasemapPreview";
+import { Panel } from "../../components/PanelHeading";
 import { formatCount } from "../../lib/format";
 import { providerLabel } from "../../lib/provider";
 import { RegionPicker } from "../settings/regions/RegionPicker";
@@ -128,29 +139,27 @@ function replacement<Field extends string>(
 function SecretField({
   id,
   label,
+  srLabel,
   isSet,
   value,
   onChange,
 }: {
   id: string;
   label: string;
+  srLabel?: string;
   isSet: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
+    <FormRow label={label} srLabel={srLabel} htmlFor={id}>
+      <SecretInput
         id={id}
-        type="password"
-        autoComplete="off"
+        isSet={isSet}
         value={value}
-        placeholder={isSet ? "Stored — type to replace" : "Not set"}
         onChange={(event) => onChange(event.target.value)}
       />
-      <FieldDescription>{isSet ? "Stored." : "Not set."}</FieldDescription>
-    </Field>
+    </FormRow>
   );
 }
 
@@ -201,6 +210,7 @@ function saving(reset: () => void, invalidate: () => Promise<unknown>) {
  */
 function Section({
   title,
+  icon,
   description,
   save,
   onSave,
@@ -208,6 +218,7 @@ function Section({
   children,
 }: {
   title: string;
+  icon: ReactNode;
   description?: ReactNode;
   save: SaveState;
   onSave: () => void;
@@ -215,108 +226,136 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={3}>
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form
-          className="grid gap-6"
-          onSubmit={(event: FormEvent) => {
-            event.preventDefault();
-            onSave();
-          }}
-        >
-          {description ? <FieldDescription>{description}</FieldDescription> : null}
-          <FieldGroup>{children}</FieldGroup>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              variant="default"
-              aria-label={`Save ${title}`}
-              disabled={save.isPending}
-              onClick={onSave}
-            >
-              {save.isPending ? <Spinner aria-label="Saving" /> : null}
-              Save
-            </Button>
-            {/*
-             * Announced rather than waited for, as elsewhere: the reader has
-             * just pressed something, and the service's own words are what says
-             * which value it refused.
-             */}
-            {save.isError ? (
-              <p className="text-sm text-[var(--alert)]" role="alert">
-                {save.error instanceof Error && save.error.message
-                  ? save.error.message
-                  : "Those settings were not saved."}
-              </p>
-            ) : null}
-            {save.isSuccess && !edited ? (
-              <p className="text-sm text-[var(--ink-2)]" aria-live="polite">
-                Saved. It is in force from the next run or the next request.
-              </p>
-            ) : null}
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+    <Panel
+      icon={icon}
+      title={title}
+      level={3}
+      {...(description
+        ? {
+            aside: (
+              <InfoDot label={title} framed>
+                {description}
+              </InfoDot>
+            ),
+          }
+        : {})}
+    >
+      <form
+        className="grid gap-6"
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault();
+          onSave();
+        }}
+      >
+        {children}
+        <FormFooter>
+          {/*
+           * Announced rather than waited for, as elsewhere: the reader has
+           * just pressed something, and the service's own words are what says
+           * which value it refused.
+           */}
+          {save.isError ? (
+            <p className="text-sm text-[var(--alert)]" role="alert">
+              {save.error instanceof Error && save.error.message
+                ? save.error.message
+                : "Those settings were not saved."}
+            </p>
+          ) : null}
+          {save.isSuccess && !edited ? (
+            <p className="text-sm text-[var(--ink-2)]" aria-live="polite">
+              Saved. It is in force from the next run or the next request.
+            </p>
+          ) : null}
+          <Button
+            variant="default"
+            aria-label={`Save ${title}`}
+            disabled={save.isPending}
+            onClick={onSave}
+          >
+            {save.isPending ? <Spinner aria-label="Saving" /> : null}
+            Save
+          </Button>
+        </FormFooter>
+      </form>
+    </Panel>
   );
 }
 
 /** The card chrome for the two states before there are any settings to show. */
 function SettingsCard({ children }: { children: ReactNode }) {
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={3}>
-          Service settings
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-8">{children}</CardContent>
-    </Card>
+    <Panel icon={<IconSettings size={18} stroke={1.8} />} title="Service settings" level={3}>
+      <div className="grid gap-8">{children}</div>
+    </Panel>
   );
 }
 
-export function ServiceSettings() {
+/** The areas Admin splits the service settings into, one tab each. */
+export type SettingsGroup = "service" | "integrations" | "alerting" | "map";
+
+/** The service settings of one group, or every group with the missing list above them. */
+export function ServiceSettings({ group }: { group?: SettingsGroup }) {
   const { data, isPending, isError } = useQuery(settingsQuery());
 
+  const Wrap = group ? SettingsCard : Sections;
   if (isPending) {
     return (
-      <Sections>
-        <SettingsCard>
-          <Skeleton className="h-64 w-full" role="status" aria-label="Loading service settings" />
-        </SettingsCard>
-      </Sections>
+      <Wrap>
+        <Skeleton className="h-64 w-full" role="status" aria-label="Loading service settings" />
+      </Wrap>
     );
   }
   if (isError) {
     return (
-      <Sections>
-        <SettingsCard>
-          <p className="text-sm text-[var(--alert)]" role="alert">
-            The service did not say what it is set to.
-          </p>
-        </SettingsCard>
-      </Sections>
+      <Wrap>
+        <p className="text-sm text-[var(--alert)]" role="alert">
+          The service did not say what it is set to.
+        </p>
+      </Wrap>
     );
+  }
+
+  const groups: Record<SettingsGroup, ReactNode> = {
+    service: (
+      <>
+        <Timezone settings={data} />
+        <Sync settings={data} />
+        <RideModel settings={data} />
+      </>
+    ),
+    integrations: (
+      <>
+        <WahooApplication settings={data} />
+        {SOURCE_PROVIDERS.map((provider) => (
+          <SourceSettingsSection key={provider} provider={provider} settings={data} />
+        ))}
+      </>
+    ),
+    alerting: (
+      <>
+        <Notifications settings={data} />
+        <Alerts settings={data} />
+      </>
+    ),
+    map: (
+      <>
+        <Basemaps settings={data} />
+        <SurfaceClassification settings={data} />
+      </>
+    ),
+  };
+
+  if (group) {
+    return <div className="grid gap-6">{groups[group]}</div>;
   }
 
   return (
     <Sections>
       <Missing missing={data.missing} />
-      <Timezone settings={data} />
-      <WahooApplication settings={data} />
-      {SOURCE_PROVIDERS.map((provider) => (
-        <SourceSettingsSection key={provider} provider={provider} settings={data} />
-      ))}
-      <Notifications settings={data} />
-      <Alerts settings={data} />
-      <Basemaps settings={data} />
-      <SurfaceClassification settings={data} />
-      <RideModel settings={data} />
-      <Sync settings={data} />
+      {groups.service}
+      {groups.integrations}
+      {groups.alerting}
+      {groups.map}
     </Sections>
   );
 }
@@ -338,7 +377,7 @@ function Sections({ children }: { children: ReactNode }) {
  * Until this is empty the schedule runs and does nothing, which is a state an
  * operator should read here rather than infer from a run that did.
  */
-function Missing({ missing }: { missing: string[] }) {
+export function Missing({ missing }: { missing: string[] }) {
   const id = useId();
 
   if (missing.length === 0) {
@@ -377,6 +416,7 @@ function WahooApplication({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Wahoo application"
+      icon={<IconPlugConnected size={18} stroke={1.8} />}
       description="The registered application this service writes routes with."
       save={save}
       edited={draft !== null}
@@ -392,46 +432,47 @@ function WahooApplication({ settings }: { settings: Settings }) {
         })
       }
     >
-      <Field>
-        <FieldLabel htmlFor={`${id}-api`}>API address</FieldLabel>
-        <Input
-          id={`${id}-api`}
-          type="url"
-          value={values.apiBaseUrl}
-          onChange={(event) => edit({ apiBaseUrl: event.target.value })}
+      <FormGroup title="Endpoints">
+        <FormRow label="API address" htmlFor={`${id}-api`}>
+          <RowInput
+            id={`${id}-api`}
+            type="url"
+            value={values.apiBaseUrl}
+            onChange={(event) => edit({ apiBaseUrl: event.target.value })}
+          />
+        </FormRow>
+        <FormRow label="Authorization address" htmlFor={`${id}-oauth`}>
+          <RowInput
+            id={`${id}-oauth`}
+            type="url"
+            value={values.oauthBaseUrl}
+            onChange={(event) => edit({ oauthBaseUrl: event.target.value })}
+          />
+        </FormRow>
+      </FormGroup>
+      <FormGroup title="Credentials">
+        <FormRow label="Client ID" htmlFor={`${id}-client`}>
+          <RowInput
+            id={`${id}-client`}
+            value={values.clientId}
+            onChange={(event) => edit({ clientId: event.target.value })}
+          />
+        </FormRow>
+        <SecretField
+          id={`${id}-secret`}
+          label="Client secret"
+          isSet={settings.secretsSet["wahoo.client_secret"] ?? false}
+          value={secret}
+          onChange={setSecret}
         />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-oauth`}>Authorization address</FieldLabel>
-        <Input
-          id={`${id}-oauth`}
-          type="url"
-          value={values.oauthBaseUrl}
-          onChange={(event) => edit({ oauthBaseUrl: event.target.value })}
+        <SecretField
+          id={`${id}-webhook`}
+          label="Webhook token"
+          isSet={settings.secretsSet["wahoo.webhook_token"] ?? false}
+          value={webhookToken}
+          onChange={setWebhookToken}
         />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-client`}>Client ID</FieldLabel>
-        <Input
-          id={`${id}-client`}
-          value={values.clientId}
-          onChange={(event) => edit({ clientId: event.target.value })}
-        />
-      </Field>
-      <SecretField
-        id={`${id}-secret`}
-        label="Client secret"
-        isSet={settings.secretsSet["wahoo.client_secret"] ?? false}
-        value={secret}
-        onChange={setSecret}
-      />
-      <SecretField
-        id={`${id}-webhook`}
-        label="Webhook token"
-        isSet={settings.secretsSet["wahoo.webhook_token"] ?? false}
-        value={webhookToken}
-        onChange={setWebhookToken}
-      />
+      </FormGroup>
     </Section>
   );
 }
@@ -471,6 +512,7 @@ function SourceSettingsSection({
   return (
     <Section
       title={label}
+      icon={<IconDatabase size={18} stroke={1.8} />}
       description="A source is read with an account of its own, and the address is both what is read and what a route is linked back to."
       save={save}
       edited={draft !== null}
@@ -486,39 +528,39 @@ function SourceSettingsSection({
         })
       }
     >
-      <Field orientation="horizontal">
-        <FieldContent>
-          <FieldTitle>Read this library</FieldTitle>
-        </FieldContent>
-        <Switch
-          checked={values.read}
-          aria-label={`Read ${label}`}
-          onCheckedChange={(read) => setDraft({ ...values, read })}
+      <FormGroup>
+        <FormRow label="Read this library">
+          <Switch
+            checked={values.read}
+            aria-label={`Read ${label}`}
+            onCheckedChange={(read) => setDraft({ ...values, read })}
+          />
+        </FormRow>
+        <FormRow label="Address" htmlFor={`${id}-url`}>
+          <RowInput
+            id={`${id}-url`}
+            type="url"
+            value={values.baseUrl}
+            onChange={(event) => setDraft({ ...values, baseUrl: event.target.value })}
+          />
+        </FormRow>
+        <SecretField
+          id={`${id}-email`}
+          label="Email"
+          srLabel={`(${label})`}
+          isSet={settings.secretsSet[`${provider}.email`] ?? false}
+          value={email}
+          onChange={setEmail}
         />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-url`}>Address</FieldLabel>
-        <Input
-          id={`${id}-url`}
-          type="url"
-          value={values.baseUrl}
-          onChange={(event) => setDraft({ ...values, baseUrl: event.target.value })}
+        <SecretField
+          id={`${id}-password`}
+          label="Password"
+          srLabel={`(${label})`}
+          isSet={settings.secretsSet[`${provider}.password`] ?? false}
+          value={password}
+          onChange={setPassword}
         />
-      </Field>
-      <SecretField
-        id={`${id}-email`}
-        label={`${label} email`}
-        isSet={settings.secretsSet[`${provider}.email`] ?? false}
-        value={email}
-        onChange={setEmail}
-      />
-      <SecretField
-        id={`${id}-password`}
-        label={`${label} password`}
-        isSet={settings.secretsSet[`${provider}.password`] ?? false}
-        value={password}
-        onChange={setPassword}
-      />
+      </FormGroup>
     </Section>
   );
 }
@@ -543,6 +585,7 @@ function Notifications({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Notifications"
+      icon={<IconBell size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() =>
@@ -555,46 +598,44 @@ function Notifications({ settings }: { settings: Settings }) {
         })
       }
     >
-      <Field orientation="horizontal">
-        <FieldContent>
-          <FieldTitle>Send notifications</FieldTitle>
-          <FieldDescription>
-            Off silences the whole channel, not only the routine ones: while it is off a failed run
-            and a stale library go unsent as surely as a success does.
-          </FieldDescription>
-        </FieldContent>
-        <Switch
-          checked={values.enabled}
-          aria-label="Send notifications"
-          onCheckedChange={(enabled) => edit({ enabled })}
+      <FormGroup>
+        <FormRow
+          label="Send notifications"
+          hint="Off silences the whole channel, not only the routine ones: while it is off a failed run and a stale library go unsent as surely as a success does."
+        >
+          <Switch
+            checked={values.enabled}
+            aria-label="Send notifications"
+            onCheckedChange={(enabled) => edit({ enabled })}
+          />
+        </FormRow>
+        <FormRow
+          label="Pushover address"
+          htmlFor={`${id}-pushover`}
+          hint="The origin the application token and user key are sent to."
+        >
+          <RowInput
+            id={`${id}-pushover`}
+            type="url"
+            value={values.pushoverBaseUrl}
+            onChange={(event) => edit({ pushoverBaseUrl: event.target.value })}
+          />
+        </FormRow>
+        <SecretField
+          id={`${id}-token`}
+          label="Pushover application token"
+          isSet={settings.secretsSet["notifications.pushover.application_token"] ?? false}
+          value={token}
+          onChange={setToken}
         />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-pushover`}>Pushover address</FieldLabel>
-        <Input
-          id={`${id}-pushover`}
-          type="url"
-          value={values.pushoverBaseUrl}
-          onChange={(event) => edit({ pushoverBaseUrl: event.target.value })}
+        <SecretField
+          id={`${id}-user`}
+          label="Pushover user key"
+          isSet={settings.secretsSet["notifications.pushover.user_key"] ?? false}
+          value={userKey}
+          onChange={setUserKey}
         />
-        <FieldDescription>
-          The origin the application token and user key are sent to.
-        </FieldDescription>
-      </Field>
-      <SecretField
-        id={`${id}-token`}
-        label="Pushover application token"
-        isSet={settings.secretsSet["notifications.pushover.application_token"] ?? false}
-        value={token}
-        onChange={setToken}
-      />
-      <SecretField
-        id={`${id}-user`}
-        label="Pushover user key"
-        isSet={settings.secretsSet["notifications.pushover.user_key"] ?? false}
-        value={userKey}
-        onChange={setUserKey}
-      />
+      </FormGroup>
     </Section>
   );
 }
@@ -611,22 +652,24 @@ function Timezone({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Timezone"
+      icon={<IconWorld size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: { timezone: value } })}
     >
-      <Field>
-        <FieldLabel htmlFor={`${id}-timezone`}>IANA zone</FieldLabel>
-        <Input
-          id={`${id}-timezone`}
-          value={value}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        <FieldDescription>
-          What a scheduled time of day means, and what hour a forecast describes. A zone this
-          service cannot load is refused.
-        </FieldDescription>
-      </Field>
+      <FormGroup>
+        <FormRow
+          label="IANA zone"
+          htmlFor={`${id}-timezone`}
+          hint="What a scheduled time of day means, and what hour a forecast describes. A zone this service cannot load is refused."
+        >
+          <RowInput
+            id={`${id}-timezone`}
+            value={value}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </FormRow>
+      </FormGroup>
     </Section>
   );
 }
@@ -655,6 +698,7 @@ function Alerts({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Alerts"
+      icon={<IconAlertTriangle size={18} stroke={1.8} />}
       description="What the service announces when it goes wrong, one switch per reason. Turning the whole channel off above silences every one of these regardless."
       save={save}
       edited={Object.keys(draft).length > 0}
@@ -676,34 +720,28 @@ function Alerts({ settings }: { settings: Settings }) {
         <FieldDescription>This build announces nothing.</FieldDescription>
       ) : (
         tasks.map((taskName) => (
-          <FieldSet key={taskName}>
-            <FieldLegend>{taskName}</FieldLegend>
-            <FieldGroup>
-              {settings.alerts
-                .filter((alert) => alert.task === taskName)
-                .map((alert) => (
-                  <Field key={alertKey(alert)} orientation="horizontal">
-                    <FieldContent>
-                      <FieldTitle>{alertLabel(alert)}</FieldTitle>
-                    </FieldContent>
-                    <Switch
-                      checked={draft[alertKey(alert)] ?? alert.enabled}
-                      aria-label={`${taskName} ${alertLabel(alert)}`}
-                      onCheckedChange={(enabled) =>
-                        setDraft((pending) => {
-                          // A switch put back where it started isn't a decision worth sending.
-                          const { [alertKey(alert)]: _, ...rest } = pending;
+          <FormGroup key={taskName} title={taskName}>
+            {settings.alerts
+              .filter((alert) => alert.task === taskName)
+              .map((alert) => (
+                <FormRow key={alertKey(alert)} label={alertLabel(alert)}>
+                  <Switch
+                    checked={draft[alertKey(alert)] ?? alert.enabled}
+                    aria-label={`${taskName} ${alertLabel(alert)}`}
+                    onCheckedChange={(enabled) =>
+                      setDraft((pending) => {
+                        // A switch put back where it started isn't a decision worth sending.
+                        const { [alertKey(alert)]: _, ...rest } = pending;
 
-                          return enabled === alert.enabled
-                            ? rest
-                            : { ...rest, [alertKey(alert)]: enabled };
-                        })
-                      }
-                    />
-                  </Field>
-                ))}
-            </FieldGroup>
-          </FieldSet>
+                        return enabled === alert.enabled
+                          ? rest
+                          : { ...rest, [alertKey(alert)]: enabled };
+                      })
+                    }
+                  />
+                </FormRow>
+              ))}
+          </FormGroup>
         ))
       )}
     </Section>
@@ -767,6 +805,7 @@ function Basemaps({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Basemaps"
+      icon={<IconMap size={18} stroke={1.8} />}
       description="The cartography this page offers. An entry with a dark style switches between the two with the system colour scheme; an entry whose own ground is dark whatever the scheme is — imagery — says so instead, and the two cannot both be set. A preview shows a style as last saved."
       save={save}
       edited={draft !== null}
@@ -815,51 +854,47 @@ function Basemaps({ settings }: { settings: Settings }) {
               </div>
             ) : null}
             <CollapsibleContent className="grid gap-3">
-              <Field>
-                <FieldLabel htmlFor={`${id}-name-${key}`}>Name</FieldLabel>
-                <Input
-                  id={`${id}-name-${key}`}
-                  value={basemap.name}
-                  onChange={(event) =>
-                    replaceBasemap(index, { ...basemap, name: event.target.value })
-                  }
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor={`${id}-style-${key}`}>Style URL</FieldLabel>
-                <Input
-                  id={`${id}-style-${key}`}
-                  type="url"
-                  value={basemap.styleUrl}
-                  onChange={(event) =>
-                    replaceBasemap(index, { ...basemap, styleUrl: event.target.value })
-                  }
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor={`${id}-dark-${key}`}>Dark style URL (optional)</FieldLabel>
-                <Input
-                  id={`${id}-dark-${key}`}
-                  type="url"
-                  value={basemap.styleUrlDark ?? ""}
-                  onChange={(event) =>
-                    replaceBasemap(index, withDarkStyle(basemap, event.target.value))
-                  }
-                />
-              </Field>
-              <Field orientation="horizontal">
-                <FieldContent>
-                  <FieldTitle>This style is dark cartography</FieldTitle>
-                </FieldContent>
-                <Switch
-                  checked={basemap.darkCartography ?? false}
-                  disabled={Boolean(basemap.styleUrlDark)}
-                  aria-label={`This style is dark cartography: basemap ${index + 1}`}
-                  onCheckedChange={(darkCartography) =>
-                    replaceBasemap(index, { ...basemap, darkCartography })
-                  }
-                />
-              </Field>
+              <FormGroup>
+                <FormRow label="Name" htmlFor={`${id}-name-${key}`}>
+                  <RowInput
+                    id={`${id}-name-${key}`}
+                    value={basemap.name}
+                    onChange={(event) =>
+                      replaceBasemap(index, { ...basemap, name: event.target.value })
+                    }
+                  />
+                </FormRow>
+                <FormRow label="Style URL" htmlFor={`${id}-style-${key}`}>
+                  <RowInput
+                    id={`${id}-style-${key}`}
+                    type="url"
+                    value={basemap.styleUrl}
+                    onChange={(event) =>
+                      replaceBasemap(index, { ...basemap, styleUrl: event.target.value })
+                    }
+                  />
+                </FormRow>
+                <FormRow label="Dark style URL (optional)" htmlFor={`${id}-dark-${key}`}>
+                  <RowInput
+                    id={`${id}-dark-${key}`}
+                    type="url"
+                    value={basemap.styleUrlDark ?? ""}
+                    onChange={(event) =>
+                      replaceBasemap(index, withDarkStyle(basemap, event.target.value))
+                    }
+                  />
+                </FormRow>
+                <FormRow label="This style is dark cartography">
+                  <Switch
+                    checked={basemap.darkCartography ?? false}
+                    disabled={Boolean(basemap.styleUrlDark)}
+                    aria-label={`This style is dark cartography: basemap ${index + 1}`}
+                    onCheckedChange={(darkCartography) =>
+                      replaceBasemap(index, { ...basemap, darkCartography })
+                    }
+                  />
+                </FormRow>
+              </FormGroup>
               <div>
                 <Button
                   variant="destructive"
@@ -908,11 +943,13 @@ function SurfaceClassification({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Surface classification"
+      icon={<IconRoad size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: values })}
     >
-      <Field>
+      {/* RegionPicker owns its own label, chips and search field, not a single control a row can hold. */}
+      <div className="grid gap-2">
         <RegionPicker
           value={values.regions}
           onChange={(regions) => setDraft({ ...values, regions })}
@@ -921,24 +958,27 @@ function SurfaceClassification({ settings }: { settings: Settings }) {
           Choosing no region switches classification off. Naming one does not build the index: the
           next rebuild on the schedule below does, and routes are classified on the pass after that.
         </FieldDescription>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-rebuild`}>Rebuild the index every (hours)</FieldLabel>
-        <Input
-          id={`${id}-rebuild`}
-          type="number"
-          min={1}
-          step="any"
-          value={inHours(values.rebuildIntervalSeconds)}
-          onChange={(event) =>
-            setDraft({ ...values, rebuildIntervalSeconds: fromHours(Number(event.target.value)) })
-          }
-        />
-        <FieldDescription>
-          Required whether or not a region is named: the schedule runs either way, and with no
-          region it builds nothing.
-        </FieldDescription>
-      </Field>
+      </div>
+      <FormGroup>
+        <FormRow
+          label="Rebuild the index every"
+          srLabel="(hours)"
+          htmlFor={`${id}-rebuild`}
+          hint="Required whether or not a region is named: the schedule runs either way, and with no region it builds nothing."
+        >
+          <UnitInput
+            id={`${id}-rebuild`}
+            unit="hours"
+            type="number"
+            min={1}
+            step="any"
+            value={inHours(values.rebuildIntervalSeconds)}
+            onChange={(event) =>
+              setDraft({ ...values, rebuildIntervalSeconds: fromHours(Number(event.target.value)) })
+            }
+          />
+        </FormRow>
+      </FormGroup>
     </Section>
   );
 }
@@ -954,13 +994,8 @@ function RideModel({ settings }: { settings: Settings }) {
       : "Built-in default, in force until the first calibration succeeds.";
 
   return (
-    <Card className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]">
-      <CardHeader>
-        <CardTitle role="heading" aria-level={3}>
-          Ride model
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-2">
+    <Panel icon={<IconClockHour4 size={18} stroke={1.8} />} title="Ride model" level={3}>
+      <div className="grid gap-2">
         <dl className="grid gap-1 text-sm">
           <div className="flex justify-between gap-4">
             <dt className="text-[var(--ink-2)]">Seconds per kilometre</dt>
@@ -972,8 +1007,8 @@ function RideModel({ settings }: { settings: Settings }) {
           </div>
         </dl>
         <FieldDescription>{provenance}</FieldDescription>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }
 
@@ -990,58 +1025,62 @@ function Sync({ settings }: { settings: Settings }) {
   return (
     <Section
       title="Sync"
+      icon={<IconRefresh size={18} stroke={1.8} />}
       save={save}
       edited={draft !== null}
       onSave={() => save.mutate({ data: values })}
     >
-      <Field orientation="horizontal">
-        <FieldContent>
-          <FieldTitle>Let an empty library delete a target's routes</FieldTitle>
-          <FieldDescription>
-            A read that finds nothing at the source is otherwise treated as a fault and the write is
-            held. This stays on until you turn it off again — it does not reset after one run.
-          </FieldDescription>
-        </FieldContent>
-        <Switch
-          checked={values.allowEmptySourceDeletion}
-          aria-label="Let an empty library delete a target's routes"
-          onCheckedChange={(next) =>
-            next ? setConfirmingDeletion(true) : edit({ allowEmptySourceDeletion: false })
-          }
-        />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-stale`}>Call the library stale after (hours)</FieldLabel>
-        <Input
-          id={`${id}-stale`}
-          type="number"
-          min={1}
-          step="any"
-          value={inHours(values.staleAfterSeconds)}
-          onChange={(event) => edit({ staleAfterSeconds: fromHours(Number(event.target.value)) })}
-        />
-        <FieldDescription>
-          How long the last successful read may stand before the status page reports the inventory
-          as stale, and says so.
-        </FieldDescription>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor={`${id}-initial-delay`}>Wait before the first run (minutes)</FieldLabel>
-        <Input
-          id={`${id}-initial-delay`}
-          type="number"
-          min={1}
-          step="any"
-          value={inMinutes(values.initialDelaySeconds)}
-          onChange={(event) =>
-            edit({ initialDelaySeconds: fromMinutes(Number(event.target.value)) })
-          }
-        />
-        <FieldDescription>
-          Read by the start it delays, so this one takes effect on the next restart rather than the
-          next run.
-        </FieldDescription>
-      </Field>
+      <FormGroup title="Timing">
+        <FormRow
+          label="Call the library stale after"
+          srLabel="(hours)"
+          htmlFor={`${id}-stale`}
+          hint="How long the last successful read may stand before the status page reports the inventory as stale, and says so."
+        >
+          <UnitInput
+            id={`${id}-stale`}
+            unit="hours"
+            type="number"
+            min={1}
+            step="any"
+            value={inHours(values.staleAfterSeconds)}
+            onChange={(event) => edit({ staleAfterSeconds: fromHours(Number(event.target.value)) })}
+          />
+        </FormRow>
+        <FormRow
+          label="Wait before the first run"
+          srLabel="(minutes)"
+          htmlFor={`${id}-initial-delay`}
+          hint="Read by the start it delays, so this one takes effect on the next restart rather than the next run."
+        >
+          <UnitInput
+            id={`${id}-initial-delay`}
+            unit="minutes"
+            type="number"
+            min={1}
+            step="any"
+            value={inMinutes(values.initialDelaySeconds)}
+            onChange={(event) =>
+              edit({ initialDelaySeconds: fromMinutes(Number(event.target.value)) })
+            }
+          />
+        </FormRow>
+      </FormGroup>
+      <FormGroup title="Safety">
+        <FormRow
+          label="Let an empty library delete a target's routes"
+          tone="alert"
+          hint="A read that finds nothing at the source is otherwise treated as a fault and the write is held. This stays on until you turn it off again — it does not reset after one run."
+        >
+          <Switch
+            checked={values.allowEmptySourceDeletion}
+            aria-label="Let an empty library delete a target's routes"
+            onCheckedChange={(next) =>
+              next ? setConfirmingDeletion(true) : edit({ allowEmptySourceDeletion: false })
+            }
+          />
+        </FormRow>
+      </FormGroup>
 
       {/*
        * The one switch on this page that asks first. It is the one that lets a

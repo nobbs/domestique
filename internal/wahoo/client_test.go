@@ -237,6 +237,32 @@ func TestClientRefusesAListingWithADuplicateExternalID(t *testing.T) {
 	require.ErrorContains(t, err, "duplicate external id")
 }
 
+func TestClientDeauthorizeWithdrawsTheGrant(t *testing.T) {
+	var method, path, authorization string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		method, path, authorization = request.Method, request.URL.Path, request.Header.Get("Authorization")
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	require.NoError(t, newTestClient(t, server).Deauthorize(t.Context(), "access-token"))
+	assert.Equal(t, http.MethodDelete, method)
+	assert.Equal(t, "/v1/permissions", path)
+	assert.Equal(t, "Bearer access-token", authorization)
+}
+
+func TestClientDeauthorizeReadsARefusedTokenAsAGrantAlreadyGone(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+	err := client.Deauthorize(t.Context(), "access-token")
+	require.ErrorIs(t, err, ErrUnauthorized)
+	assert.True(t, client.IsUnauthorized(err))
+}
+
 func TestClientDeleteOwnedRoutesRemovesOnlyWhatItIssued(t *testing.T) {
 	// Duplicates are the state a clear exists to get out of, so unlike the
 	// reconciliation listing this must see both and remove both — while a

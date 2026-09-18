@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { HistogramChart } from "./HistogramChart";
+import { HistogramChart, histogramBoxes } from "./HistogramChart";
 
 const BARS = [
   { value: 10, colour: "grey", group: 0 },
@@ -8,8 +8,8 @@ const BARS = [
   { value: 20, colour: "green", group: 1 },
 ];
 
-function bar(container: HTMLElement, index: number): SVGRectElement | null {
-  return container.querySelector(`rect[data-bar="${index}"]`);
+function bar(container: HTMLElement, index: number): SVGPathElement | null {
+  return container.querySelector(`path[data-bar="${index}"]`);
 }
 
 /** The transparent column over one bar, which is what the pointer lands on. */
@@ -20,10 +20,11 @@ function column(container: HTMLElement, index: number): Element {
 describe("HistogramChart", () => {
   it("draws each bar as tall as its value against the tallest", () => {
     const { container } = render(<HistogramChart label="Spread" bars={BARS} />);
+    const boxes = histogramBoxes(BARS, 300);
 
     expect(screen.getByRole("img", { name: "Spread" })).toBeInTheDocument();
-    expect(bar(container, 1)?.getAttribute("height")).toBe("100");
-    expect(bar(container, 0)?.getAttribute("height")).toBe("25");
+    expect(boxes[1]?.y).toBe(0);
+    expect(boxes[0]?.height).toBe((boxes[1]?.height ?? 0) / 4);
     expect(bar(container, 2)?.getAttribute("fill")).toBe("green");
   });
 
@@ -60,7 +61,17 @@ describe("HistogramChart", () => {
   });
 
   it("draws a wider bar across more of the axis, as tall as what it holds per unit", () => {
-    const { container } = render(
+    const boxes = histogramBoxes([{ value: 10 }, { value: 40, span: 4 }], 500);
+
+    // One unit of five is a hundred pixels, less a pixel of ground either side of each bar.
+    expect(boxes[0]).toMatchObject({ x: 1, width: 98 });
+    expect(boxes[1]).toMatchObject({ x: 101, width: 398 });
+    // Forty over four units is ten per unit, the same as the one-unit bar beside it.
+    expect(boxes[1]?.height).toBe(boxes[0]?.height);
+  });
+
+  it("puts a marker's label where its edge falls", () => {
+    render(
       <HistogramChart
         label="Spread"
         bars={[
@@ -71,12 +82,6 @@ describe("HistogramChart", () => {
       />,
     );
 
-    expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 50 100");
-    expect(bar(container, 1)?.getAttribute("x")).toBe("11");
-    expect(bar(container, 1)?.getAttribute("width")).toBe("38");
-    // Forty over four units is ten per unit, the same as the one-unit bar beside it.
-    expect(bar(container, 1)?.getAttribute("height")).toBe("100");
-    expect(bar(container, 0)?.getAttribute("height")).toBe("100");
     expect(screen.getByText("edge")).toHaveStyle({ left: "20%" });
   });
 

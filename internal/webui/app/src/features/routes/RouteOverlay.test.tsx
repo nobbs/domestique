@@ -240,13 +240,13 @@ describe("the route drawn over the library", () => {
   it("cases the line in the panel's own colour, so it reads as lifted off the ground", () => {
     const view = show();
 
-    expect(view.layer("route-casing")?.paint["line-color"]).toBe("#fcfdff");
+    expect(view.layer("route-casing")?.paint["line-color"]).toBe("#ffffff");
   });
 
   it("takes the dark casing when the cartography under it is dark", () => {
     const view = show({ darkBasemap: true });
 
-    expect(view.layer("route-casing")?.paint["line-color"]).toBe("#24282c");
+    expect(view.layer("route-casing")?.paint["line-color"]).toBe("#262522");
   });
 
   it("draws an unclassified route as one line", () => {

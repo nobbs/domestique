@@ -8,7 +8,7 @@
  * projected weeks stay legible beside a year that was ridden.
  */
 
-import { type KeyboardEvent, type PointerEvent, type ReactNode, useId, useState } from "react";
+import { type KeyboardEvent, type PointerEvent, type ReactNode, useState } from "react";
 import { useElementWidth } from "../../lib/useElementWidth";
 
 /** The room reserved down the left for the value ticks. */
@@ -25,7 +25,12 @@ export interface FramePanel {
   ticks?: number[];
   format?: (value: number) => string;
   title?: string;
-  draw: (x: (index: number) => number, y: (value: number) => number) => ReactNode;
+  /** `active` is the pointed day, for a bar chart to lift its bar and set the rest back. */
+  draw: (
+    x: (index: number) => number,
+    y: (value: number) => number,
+    active: number | null,
+  ) => ReactNode;
 }
 
 export interface TimeFrameProps {
@@ -39,6 +44,10 @@ export interface TimeFrameProps {
   todayIndex?: number;
   /** Width share the days after `todayIndex` take, whatever their count; linear when absent. */
   futureShare?: number;
+  /** A bar chart: the pointed bar is lifted by its own draw, so no crosshair is ruled over it. */
+  bars?: boolean;
+  /** Heads the readout; the pointed day's date when absent. */
+  heading?: (index: number) => ReactNode;
 }
 
 /** Round ticks covering [low, high], about `count` of them. */
@@ -125,6 +134,21 @@ export function frameScale(count: number, todayIndex?: number, futureShare?: num
   };
 }
 
+/** The box every chart's readout floats in: the page's primary ink, its text the primary's foreground. */
+const READOUT_BOX =
+  "pointer-events-none absolute top-0 z-10 min-w-40 rounded-lg bg-[var(--primary)] px-3 py-2 text-[var(--primary-foreground)] text-xs shadow-lg";
+
+/** An SVG path for a bar whose top corners are rounded by `radius` and whose foot stays square. */
+export function topRoundedBar(x: number, y: number, width: number, height: number, radius = 4) {
+  const r = Math.max(0, Math.min(radius, width / 2, height));
+  return `M${x},${y + height}V${y + r}A${r},${r} 0 0 1 ${x + r},${y}H${x + width - r}A${r},${r} 0 0 1 ${x + width},${y + r}V${y + height}Z`;
+}
+
+/** A bar's opacity while `active` is pointed: set back unless it is the pointed one. */
+export function barOpacity(active: number | null, index: number): number {
+  return active === null || active === index ? 1 : 0.2;
+}
+
 export function TimeFrame({
   dates,
   panels,
@@ -133,11 +157,12 @@ export function TimeFrame({
   snap,
   todayIndex,
   futureShare,
+  bars = false,
+  heading,
 }: TimeFrameProps) {
   const { ref, width: measured } = useElementWidth<HTMLDivElement>();
   const width = Math.max(measured, MIN_WIDTH);
   const [active, setActive] = useState<number | null>(null);
-  const titleId = useId();
   const plotWidth = width - FRAME_LEFT - RIGHT;
   const scale = frameScale(dates.length, todayIndex, futureShare);
   const x = (index: number) => FRAME_LEFT + scale.at(index) * plotWidth;
@@ -153,9 +178,16 @@ export function TimeFrame({
         )
       : Math.min(Math.max(Math.round(index), 0), lastIndex);
 
+  // A bar spans its day to the next stop, so the one pointed at is the last that starts at or before the pointer.
+  const under = (index: number) =>
+    stops.length > 0
+      ? (stops.findLast((stop) => stop <= index) ?? stops[0] ?? 0)
+      : Math.min(Math.max(Math.floor(index), 0), lastIndex);
+
   const onPointer = (event: PointerEvent<SVGRectElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
-    setActive(nearest(scale.index((event.clientX - box.left) / (box.width || 1))));
+    const index = scale.index((event.clientX - box.left) / (box.width || 1));
+    setActive(bars ? under(index) : nearest(index));
   };
   const onKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const step = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
@@ -190,8 +222,8 @@ export function TimeFrame({
       onKeyDown={onKey}
       onBlur={() => setActive(null)}
     >
-      <svg width={width} height={height} role="img" aria-labelledby={titleId} className="block">
-        <title id={titleId}>{label}</title>
+      {/* Named by aria-label, not <title>: a browser shows a <title> as its own tooltip over the readout. */}
+      <svg width={width} height={height} role="img" aria-label={label} className="block">
         {panels.map((panel, panelIndex) => {
           const offset = offsets[panelIndex] ?? 0;
           const [low, high] = panel.domain;
@@ -232,7 +264,7 @@ export function TimeFrame({
                   {panel.title}
                 </text>
               ) : null}
-              {panel.draw(x, y)}
+              {panel.draw(x, y, active)}
             </g>
           );
         })}
@@ -266,7 +298,7 @@ export function TimeFrame({
             </text>
           </g>
         ) : null}
-        {active !== null ? (
+        {active !== null && !bars ? (
           <line
             x1={x(active)}
             x2={x(active)}
@@ -283,6 +315,7 @@ export function TimeFrame({
           width={plotWidth}
           height={floor}
           fill="transparent"
+          className={bars ? "cursor-pointer" : undefined}
           onPointerMove={onPointer}
           onPointerLeave={() => setActive(null)}
         />
@@ -290,12 +323,14 @@ export function TimeFrame({
       {active !== null ? (
         <div
           role="status"
-          className="pointer-events-none absolute top-0 z-10 min-w-40 rounded-md bg-[var(--panel)] px-2.5 py-2 text-xs shadow-md ring-1 ring-black/10"
+          className={READOUT_BOX}
           style={
             x(active) > width / 2 ? { right: width - x(active) + 10 } : { left: x(active) + 10 }
           }
         >
-          <div className="mb-1 font-medium">{formatCalendarDay(dates[active] ?? "")}</div>
+          <div className="mb-1 font-medium">
+            {heading ? heading(active) : formatCalendarDay(dates[active] ?? "")}
+          </div>
           {readout(active)}
         </div>
       ) : null}
@@ -324,14 +359,15 @@ export function ReadoutRow({
             x2={12}
             y1={2}
             y2={2}
-            stroke={colour}
+            // Ink on the ink box would vanish; the box's own text colour is the same series inverted.
+            stroke={colour === "var(--ink)" ? "currentColor" : colour}
             strokeWidth={2}
             strokeDasharray={dashed ? "3 2" : undefined}
           />
         ) : null}
       </svg>
       <span className="font-semibold tabular-nums">{value}</span>
-      <span className="text-[var(--ink-2)]">{label}</span>
+      <span className="opacity-70">{label}</span>
     </div>
   );
 }

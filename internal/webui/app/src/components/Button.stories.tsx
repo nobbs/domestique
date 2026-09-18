@@ -126,7 +126,7 @@ export const Link: Story = {
         Open route
       </ButtonLink>
       <Button variant="default">Run now</Button>
-      <ButtonLink to="/sync" icon={<IconRefresh stroke={2} />}>
+      <ButtonLink to="/account/sync" icon={<IconRefresh stroke={2} />}>
         Sync
       </ButtonLink>
     </div>

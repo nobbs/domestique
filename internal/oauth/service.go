@@ -19,6 +19,9 @@ var (
 	ErrInvalidAuthorization = errors.New("oauth authorization was rejected")
 	// ErrAuthorizationFailed is safe to show when Wahoo authorization cannot finish.
 	ErrAuthorizationFailed = errors.New("oauth authorization could not be completed")
+	// ErrDisconnectFailed reports a grant Wahoo could not be asked to withdraw; the
+	// target keeps its connection so the disconnect can be tried again.
+	ErrDisconnectFailed = errors.New("wahoo did not withdraw the authorization")
 )
 
 // StateStore persists the one-time state and the completed target authorization.
@@ -26,6 +29,12 @@ type StateStore interface {
 	BeginAuthorization(ctx context.Context, targetID, callerLogin string, stateDigest []byte, expiresAt time.Time) error
 	ConsumeAuthorization(ctx context.Context, callerLogin string, stateDigest []byte) (string, error)
 	AuthorizeTarget(ctx context.Context, targetID, wahooUserID, refreshToken string) error
+	RefreshToken(ctx context.Context, targetID string) (string, error)
+	ReplaceRefreshToken(ctx context.Context, targetID, refreshToken string) error
+	DisconnectTarget(ctx context.Context, targetID string) error
+	// IsRefreshTokenUnavailable reports a RefreshToken error that means the target
+	// holds no token, as against one the store failed to read.
+	IsRefreshTokenUnavailable(err error) bool
 }
 
 // Wahoo performs the OAuth protocol and learns the authenticated Wahoo user.
@@ -33,6 +42,9 @@ type Wahoo interface {
 	AuthorizationURL(state string) (string, error)
 	ExchangeAuthorizationCode(ctx context.Context, code string) (accessToken, refreshToken string, err error)
 	AuthenticatedUser(ctx context.Context, accessToken string) (string, error)
+	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error)
+	Deauthorize(ctx context.Context, accessToken string) error
+	IsUnauthorized(err error) bool
 }
 
 // Service coordinates protected Wahoo authorization for configured target slots.
@@ -127,6 +139,51 @@ func (s *Service) Complete(ctx context.Context, callerLogin, state, code string)
 		slog.Warn("wahoo authorization refused", "reason", "target_not_bound", "error", err)
 
 		return ErrAuthorizationFailed
+	}
+
+	return nil
+}
+
+// Disconnect withdraws the application's grant at Wahoo, then forgets the account
+// and its token. A target holding no token, or one Wahoo already refuses, has
+// nothing left to withdraw and is only forgotten.
+func (s *Service) Disconnect(ctx context.Context, targetID string) error {
+	refreshToken, err := s.stateStore.RefreshToken(ctx, targetID)
+	switch {
+	case err == nil:
+		if withdrawErr := s.withdraw(ctx, targetID, refreshToken); withdrawErr != nil {
+			return withdrawErr
+		}
+	case !s.stateStore.IsRefreshTokenUnavailable(err):
+		slog.Warn("wahoo disconnect refused", "reason", "token_unreadable", "error", err)
+
+		return ErrDisconnectFailed
+	}
+	if err := s.stateStore.DisconnectTarget(ctx, targetID); err != nil {
+		slog.Warn("wahoo disconnect refused", "reason", "target_not_cleared", "error", err)
+
+		return fmt.Errorf("forgetting the wahoo account: %w", err)
+	}
+
+	return nil
+}
+
+// withdraw asks Wahoo to revoke the grant, keeping the token a refresh rotates
+// so a failed withdrawal leaves the target connected on a token Wahoo honours.
+func (s *Service) withdraw(ctx context.Context, targetID, refreshToken string) error {
+	accessToken, replacement, err := s.wahoo.RefreshAccessToken(ctx, refreshToken)
+	if err == nil {
+		if replaceErr := s.stateStore.ReplaceRefreshToken(ctx, targetID, replacement); replaceErr != nil {
+			slog.Warn("wahoo disconnect refused", "reason", "token_not_replaced", "error", replaceErr)
+
+			return ErrDisconnectFailed
+		}
+		err = s.wahoo.Deauthorize(ctx, accessToken)
+	}
+	if err != nil && !s.wahoo.IsUnauthorized(err) {
+		slog.Warn("wahoo disconnect refused", "reason", "deauthorization_failed", "wahoo", refusalCategory(err))
+
+		return ErrDisconnectFailed
 	}
 
 	return nil

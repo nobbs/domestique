@@ -823,15 +823,23 @@ The OAuth start, callback, the protected `POST /v1/tasks` triggers, the protecte
 `PUT /v1/tasks/{name}/schedule` switch, the protected
 `POST /v1/providers/{provider}/sourceRoutes/{source-route-id}/routes/{stage-order}/reprocess`
 request, the protected `PUT /v1/settings/*` section writes, a rider's own
-`DELETE /v1/settings/rider/credentials/zwift`, and the admin-only `/v1/plans`
+`DELETE /v1/settings/rider/credentials/zwift` and
+`DELETE /v1/settings/rider/connections/wahoo`, and the admin-only `/v1/plans`
 operations — the preview `POST`, create, replace and delete — are the only
 state-changing endpoints. A settings write changes what the service
 does next and nothing it has stored about a route; it reaches the runtime
 settings [the configuration specification](configuration.md#runtime-settings)
 defines and no other configuration. A plan write changes a route this service
-owns and no other. There is no HTTP or CLI endpoint for deleting an upstream
-route, for static configuration or secret mutation, or for Wahoo target
-removal.
+owns and no other. The rider's own Wahoo disconnect forgets one target's
+authorisation — it asks Wahoo to withdraw the application's grant, storing the
+rotated refresh token first, then forgets the target's Wahoo user and refresh
+token — and never removes the target slot or the routes already written to
+it; a grant Wahoo already refuses, or a target with no token, is only
+forgotten, and a withdrawal that fails, or a token the store cannot read,
+is answered `502` and leaves the connection as it was. There is no HTTP or CLI
+endpoint for deleting an upstream route, for static configuration or secret
+mutation, or for removing a Wahoo target: disconnecting one forgets its
+authorisation, not the slot itself.
 
 Every one of them except the OAuth start and callback is refused with 403 unless
 its `Origin` header equals the browser UI's origin. Identity is settled first, so

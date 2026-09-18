@@ -2,7 +2,7 @@
  * The run a notification was sent about, at the top of the page.
  *
  * A Pushover message carries one opaque reference and lands here as
- * `/sync?run=…`. The operator arrives having been told something needs them,
+ * `/account/sync?run=…`. The operator arrives having been told something needs them,
  * possibly hours later, and the card they land on names the run they were told
  * about rather than making them match a reference against the history below.
  *
@@ -202,7 +202,7 @@ export function RunNotice({ reference }: { reference: string | null }) {
          */}
         <Link
           className="text-sm text-[var(--ink-2)] underline-offset-4 hover:text-[var(--ink)] hover:underline"
-          to="/sync"
+          to="/account/sync"
         >
           Dismiss
         </Link>

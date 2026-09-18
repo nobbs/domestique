@@ -123,6 +123,8 @@ type Activity struct {
 	CaloriesKcal *float64 `json:"caloriesKcal,omitempty"`
 	TypeID       int      `json:"typeId"`
 	LocationID   int      `json:"locationId"`
+	// Indoor Whether the ride was ridden over no ground, as its workout type says: a trainer or virtual ride, whichever upstream recorded it.
+	Indoor bool `json:"indoor"`
 	// Provider Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
 	Provider Activity_Provider `json:"provider"`
 	// WorkoutName The ride's name as Zwift lists it, from its own single-activity response: a structured workout's name, or a free ride's route. Absent for every other provider.
@@ -394,9 +396,33 @@ type RouteList struct {
 	Routes []Route `json:"routes"`
 }
 
+// Place One short label for a coordinate. The name is absent where the geocoder knows of no place there, which open country legitimately is.
+type Place struct {
+	Name *string `json:"name,omitempty"`
+}
+
+type SnappedPlace struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	// Snapped Whether the coordinate was moved onto a way.
+	Snapped bool `json:"snapped"`
+}
+
 type PlanWaypoint struct {
 	Longitude float64 `json:"longitude"`
 	Latitude  float64 `json:"latitude"`
+}
+
+// PlanWindow A stretch of a plan, in metres from its start.
+type PlanWindow struct {
+	StartMetres float64 `json:"startMetres"`
+	EndMetres   float64 `json:"endMetres"`
+}
+
+// PlanProgress How far into a plan one waypoint is, read along the routed line rather than between waypoints. movingSeconds is absent where the line carries no prediction.
+type PlanProgress struct {
+	DistanceMetres float64  `json:"distanceMetres"`
+	MovingSeconds  *float64 `json:"movingSeconds,omitempty"`
 }
 
 // PlanProfile The routing engine profile a plan is drawn against.
@@ -414,10 +440,17 @@ type PlanRouteRequest struct {
 }
 
 type PlanRoutePreview struct {
-	Geometry       GeoJSONLineString      `json:"geometry"`
-	DistanceMetres float64                `json:"distanceMetres"`
-	AscentMetres   float64                `json:"ascentMetres"`
-	Surface        *SurfaceClassification `json:"surface,omitempty"`
+	Geometry       GeoJSONLineString `json:"geometry"`
+	DistanceMetres float64           `json:"distanceMetres"`
+	AscentMetres   float64           `json:"ascentMetres"`
+	DescentMetres  *float64          `json:"descentMetres,omitempty"`
+	// MovingSeconds The whole line's predicted moving time, from the same model a stage's is predicted with. Absent where the line cannot be predicted, which incomplete elevation makes it.
+	MovingSeconds *float64 `json:"movingSeconds,omitempty"`
+	// WaypointProgress One entry per waypoint, in the order they were routed.
+	WaypointProgress []PlanProgress `json:"waypointProgress,omitempty"`
+	// Pushing Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none.
+	Pushing []PlanWindow           `json:"pushing,omitempty"`
+	Surface *SurfaceClassification `json:"surface,omitempty"`
 }
 
 type PlanWrite struct {
@@ -429,18 +462,25 @@ type PlanWrite struct {
 }
 
 type Plan struct {
-	ID             int64                  `json:"id"`
-	Name           string                 `json:"name"`
-	Profile        PlanProfile            `json:"profile"`
-	Published      bool                   `json:"published"`
-	Version        int64                  `json:"version"`
-	Waypoints      []PlanWaypoint         `json:"waypoints"`
-	Geometry       GeoJSONLineString      `json:"geometry"`
-	DistanceMetres float64                `json:"distanceMetres"`
-	AscentMetres   float64                `json:"ascentMetres"`
-	Surface        *SurfaceClassification `json:"surface,omitempty"`
-	CreatedAt      time.Time              `json:"createdAt"`
-	UpdatedAt      time.Time              `json:"updatedAt"`
+	ID             int64             `json:"id"`
+	Name           string            `json:"name"`
+	Profile        PlanProfile       `json:"profile"`
+	Published      bool              `json:"published"`
+	Version        int64             `json:"version"`
+	Waypoints      []PlanWaypoint    `json:"waypoints"`
+	Geometry       GeoJSONLineString `json:"geometry"`
+	DistanceMetres float64           `json:"distanceMetres"`
+	AscentMetres   float64           `json:"ascentMetres"`
+	DescentMetres  *float64          `json:"descentMetres,omitempty"`
+	// MovingSeconds Predicted on read with the coefficients in force, never stored: a calibration replaces them and the plan's own time follows.
+	MovingSeconds *float64 `json:"movingSeconds,omitempty"`
+	// WaypointProgress One entry per waypoint, in the order they were routed.
+	WaypointProgress []PlanProgress `json:"waypointProgress,omitempty"`
+	// Pushing Where the line runs along a way bicycles are refused and a rider walks, as the routing engine priced it. Absent where it runs along none.
+	Pushing   []PlanWindow           `json:"pushing,omitempty"`
+	Surface   *SurfaceClassification `json:"surface,omitempty"`
+	CreatedAt time.Time              `json:"createdAt"`
+	UpdatedAt time.Time              `json:"updatedAt"`
 }
 
 type PlanSummary struct {
@@ -882,6 +922,8 @@ type WebUIConfig struct {
 	Identity BrowserIdentity `json:"identity"`
 	// Planning Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off.
 	Planning *bool `json:"planning,omitempty"`
+	// PlaceNames Whether a geocoder is configured, so the planner asks what a waypoint is called only where the answer exists. Absent means off, and waypoints read as coordinates.
+	PlaceNames *bool `json:"placeNames,omitempty"`
 }
 
 // BrowserIdentity Who the gate let through. It names the reader rather than identifying them: it is how a session can be seen to be the one intended.

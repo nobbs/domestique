@@ -126,7 +126,7 @@ func (c *Client) ExchangeAuthorizationCode(ctx context.Context, code string) (ac
 // Reuse is a correctness requirement, not an optimisation. Wahoo caps how many
 // unrevoked access tokens may exist for one application and user, and offers no
 // way to revoke a single token — only a deauthorization that revokes every token
-// the application holds for everyone. A token minted per run and per poll
+// the application holds for that user. A token minted per run and per poll
 // therefore fills that cap and locks the account out of authorizing at all.
 func (c *Client) RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, newRefreshToken string, err error) {
 	if refreshToken == "" {
@@ -213,6 +213,28 @@ func (c *Client) AuthenticatedUser(ctx context.Context, accessToken string) (str
 	}
 
 	return strconv.FormatInt(response.ID, 10), nil
+}
+
+// Deauthorize withdraws the application's grant on the account the access token
+// belongs to, revoking every token Wahoo issued this application for that user.
+func (c *Client) Deauthorize(ctx context.Context, accessToken string) error {
+	if accessToken == "" {
+		return errors.New("wahoo: access token is required")
+	}
+
+	request, err := c.newRequest(ctx, http.MethodDelete, c.endpoint(c.apiBaseURL, "/v1/permissions"), http.NoBody, accessToken)
+	if err != nil {
+		return err
+	}
+
+	err = c.doJSON(request, nil)
+	// A grant already withdrawn takes its access tokens with it, so the endpoint
+	// refusing one has nothing left to withdraw.
+	if status, ok := errors.AsType[*statusError](err); ok && status.status == http.StatusUnauthorized {
+		return fmt.Errorf("wahoo: grant already withdrawn: %w", ErrUnauthorized)
+	}
+
+	return err
 }
 
 func parseCallbackURL(value string) (*url.URL, error) {

@@ -13,6 +13,7 @@ function ride(overrides: Partial<Activity> = {}): Activity {
     ascentMetres: 640,
     typeId: 0,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     metrics: { powerTss: 91.4, intensityFactor: 0.74 },
     ...overrides,

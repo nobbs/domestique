@@ -172,7 +172,7 @@ describe("RunNotice", () => {
     ]);
 
     expect(screen.getByRole("button", { name: "Run the write again" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Dismiss" })).toHaveAttribute("href", "/sync");
+    expect(screen.getByRole("link", { name: "Dismiss" })).toHaveAttribute("href", "/account/sync");
   });
 
   it("asks the service to run the half the notice is about", async () => {

@@ -8,16 +8,25 @@
  * converts to the other; the toggle picks the one being read.
  */
 
+import {
+  IconActivityHeartbeat,
+  IconBolt,
+  IconCalendarWeek,
+  IconChartBar,
+  IconHeartRateMonitor,
+  IconTrendingUp,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { activitiesQuery, fitnessQuery, webUIConfigQuery } from "../../api/queries";
 import { formatCalendarDay } from "../../components/chart/TimeFrame";
+import { FigureStrip, StripFigure } from "../../components/FigureStrip";
 import { PageShell } from "../../components/Layout";
+import { Segmented } from "../../components/Segmented";
 import { Skeleton } from "../../components/ui/skeleton";
 import { DecouplingPanel, DecouplingSummary, decouplingRides } from "./DecouplingPanel";
-import { FitnessSection, FitnessStat } from "./FitnessSection";
+import { FitnessSection } from "./FitnessSection";
 import {
   bandOf,
   FORM_BANDS,
@@ -50,16 +59,15 @@ const browserZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /** How many days of rest bring form into the fresh band, as the note under form says it. */
 function restNote(today: Reading, restForm: readonly number[]): string {
-  const fresh = bandOf(FORM_BANDS, today.formPercent);
   if (today.formPercent >= 5) {
-    return `${fresh.name} · ${fresh.advice}`;
+    return bandOf(FORM_BANDS, today.formPercent).advice;
   }
   const days = restForm.findIndex((percent) => percent >= 5);
   if (days < 0) {
-    return `${fresh.name} · not fresh within three weeks of rest`;
+    return "not fresh within three weeks of rest";
   }
 
-  return `${fresh.name} · fresh after ${days + 1} ${days === 0 ? "day" : "days"} of rest`;
+  return `fresh after ${days + 1} ${days === 0 ? "day" : "days"} of rest`;
 }
 
 export function FitnessPage() {
@@ -96,57 +104,25 @@ export function FitnessPage() {
 
   return (
     <PageShell>
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-5">
         <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="font-semibold text-2xl tracking-tight">Fitness</h1>
-            {today ? (
-              <p className="text-[var(--ink-2)] text-sm">
-                As of {formatCalendarDay(today.date)}, on the {scaleInfo?.name} scale
-              </p>
-            ) : null}
-          </div>
+          <h1 className="font-semibold text-2xl tracking-tight">Fitness</h1>
           {readings.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
-              <ToggleGroup
-                aria-label="Range"
-                variant="outline"
+              <Segmented
+                label="Range"
                 size="sm"
-                spacing={0}
-                value={[range]}
-                onValueChange={(next) => {
-                  // Pressing the pressed one empties the group; the page always reads one range.
-                  const chosen = RANGES.find(({ value }) => value === next[0]);
-                  if (chosen) {
-                    setRange(chosen.value);
-                  }
-                }}
-              >
-                {RANGES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <ToggleGroup
-                aria-label="Scale"
-                variant="outline"
+                items={RANGES.map(({ value, label }) => ({ key: value, label }))}
+                value={range}
+                onChange={setRange}
+              />
+              <Segmented
+                label="Scale"
                 size="sm"
-                spacing={0}
-                value={[scale]}
-                onValueChange={(next) => {
-                  const chosen = SCALES.find(({ value }) => value === next[0]);
-                  if (chosen) {
-                    setScale(chosen.value);
-                  }
-                }}
-              >
-                {SCALES.map(({ value, label }) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {label}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
+                items={SCALES.map(({ value, label }) => ({ key: value, label }))}
+                value={scale}
+                onChange={setScale}
+              />
             </div>
           ) : null}
         </header>
@@ -159,8 +135,8 @@ export function FitnessPage() {
         ) : !today ? (
           <p className="text-[var(--ink-2)] text-sm">
             Nothing has been worked out yet. Training load needs the numbers on{" "}
-            <Link className="underline" to="/settings">
-              settings
+            <Link className="underline" to="/account/profile">
+              your rider profile
             </Link>
             , and a ride recorded with a heart-rate strap or a power meter.
           </p>
@@ -172,46 +148,57 @@ export function FitnessPage() {
               outlook={outlook}
               unit={scaleInfo?.unit ?? ""}
             />
-            <FitnessSection title="Fitness, form and load">
-              <SeasonChart
-                readings={readings}
-                outlook={outlook}
-                scaleName={scaleInfo?.name ?? ""}
-              />
-            </FitnessSection>
-            {data.powerCurve && data.powerCurve.length > 0 ? (
-              <FitnessSection title="Power duration">
-                <PowerDuration
-                  current={data.powerCurve}
-                  previous={data.powerCurvePrevious}
-                  previousName={`the ${selected?.label ?? "range"} before`}
-                />
-                <p className="text-[var(--ink-2)] text-xs">
-                  The best each duration reached, from measured power alone. A duration no ride was
-                  long enough for carries no point.
-                </p>
-              </FitnessSection>
-            ) : null}
-            <div className="grid gap-5 md:grid-cols-2 [&>*]:min-w-0">
-              {activities.isError ? (
-                // An outage must not read as a season with nothing in it.
-                <p className="text-sm text-[var(--alert)]" role="alert">
-                  The service did not say what has been ridden, so the season's decoupling is not
-                  drawn.
-                </p>
-              ) : rides.some((ride) => ride.date >= (dates[0] ?? "")) ? (
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
+              <div className="flex min-w-0 flex-col gap-5">
                 <FitnessSection
-                  title="Decoupling"
-                  aside={<DecouplingSummary rides={rides} dates={dates} />}
+                  icon={<IconTrendingUp size={18} stroke={1.8} />}
+                  title="Fitness, form and load"
                 >
-                  <DecouplingPanel rides={rides} dates={dates} />
+                  <SeasonChart
+                    readings={readings}
+                    outlook={outlook}
+                    scaleName={scaleInfo?.name ?? ""}
+                  />
                 </FitnessSection>
-              ) : null}
-              {data.weeks.length > 0 ? (
-                <FitnessSection title="Time in zone">
-                  <ZonePanel weeks={data.weeks} dates={dates} />
-                </FitnessSection>
-              ) : null}
+                {data.powerCurve && data.powerCurve.length > 0 ? (
+                  <FitnessSection icon={<IconBolt size={18} stroke={1.8} />} title="Power duration">
+                    <PowerDuration
+                      current={data.powerCurve}
+                      previous={data.powerCurvePrevious}
+                      previousName={`the ${selected?.label ?? "range"} before`}
+                    />
+                    <p className="text-[var(--ink-2)] text-xs">
+                      The best each duration reached, from measured power alone. A duration no ride
+                      was long enough for carries no point.
+                    </p>
+                  </FitnessSection>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 flex-col gap-5">
+                {data.weeks.length > 0 ? (
+                  <FitnessSection
+                    icon={<IconChartBar size={18} stroke={1.8} />}
+                    title="Time in zone"
+                  >
+                    <ZonePanel weeks={data.weeks} dates={dates} />
+                  </FitnessSection>
+                ) : null}
+                {activities.isError ? (
+                  // An outage must not read as a season with nothing in it.
+                  <p className="text-sm text-[var(--alert)]" role="alert">
+                    The service did not say what has been ridden, so the season's decoupling is not
+                    drawn.
+                  </p>
+                ) : rides.some((ride) => ride.date >= (dates[0] ?? "")) ? (
+                  <FitnessSection
+                    icon={<IconHeartRateMonitor size={18} stroke={1.8} />}
+                    title="Decoupling"
+                    aside={<DecouplingSummary rides={rides} dates={dates} />}
+                  >
+                    <DecouplingPanel rides={rides} dates={dates} />
+                  </FitnessSection>
+                ) : null}
+              </div>
             </div>
           </>
         )}
@@ -238,29 +225,35 @@ function Headline({
   const restForm = rest?.days.map((one) => formPercent(one.form, one.fitness)) ?? [];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <FitnessStat
+    <FigureStrip>
+      <StripFigure
+        icon={<IconTrendingUp size={18} stroke={1.8} />}
         label="Fitness"
         value={today.fitness.toFixed(0)}
-        note={`${signed(today.fitness - start.fitness)} since ${formatCalendarDay(start.date)} · peak ${peak.fitness.toFixed(0)}`}
+        chip={signed(today.fitness - start.fitness)}
+        tone={today.fitness > start.fitness ? "var(--good)" : "var(--ink-2)"}
+        note={`since ${formatCalendarDay(start.date)} · peak ${peak.fitness.toFixed(0)}`}
       />
       {outlook ? <Ramp ramp={outlook.rampPerWeek} fitness={today.fitness} /> : null}
       {outlook ? (
-        <FitnessStat
+        <StripFigure
+          icon={<IconCalendarWeek size={18} stroke={1.8} />}
           label="Next 7 days, to keep building"
           value={`${Math.round(outlook.weekLoadLow)}–${Math.round(outlook.weekLoadHigh)}`}
           unit={unit}
           note={`raises fitness 3–8% · last 4 weeks averaged ${Math.round(outlook.habitualDailyLoad * 7)} a week`}
         />
       ) : null}
-      <FitnessStat
+      <StripFigure
+        icon={<IconHeartRateMonitor size={18} stroke={1.8} />}
         label="Form"
         value={`${signed(today.formPercent)}%`}
         unit="of fitness"
+        chip={formBand.name}
         tone={formBand.colour}
-        note={outlook ? restNote(today, restForm) : `${formBand.name} · ${formBand.advice}`}
+        note={outlook ? restNote(today, restForm) : formBand.advice}
       />
-    </div>
+    </FigureStrip>
   );
 }
 
@@ -270,12 +263,14 @@ function Ramp({ ramp, fitness }: { ramp: number; fitness: number }) {
   const band = bandOf(RAMP_BANDS, percent);
 
   return (
-    <FitnessStat
+    <StripFigure
+      icon={<IconActivityHeartbeat size={18} stroke={1.8} />}
       label="Ramp rate"
       value={signed(ramp, 1)}
       unit="a week"
+      chip={band.name}
       tone={band.colour}
-      note={`${band.name} · ${signed(percent)}% of fitness`}
+      note={`${signed(percent)}% of fitness`}
     />
   );
 }

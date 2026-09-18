@@ -32,6 +32,29 @@ func TestStoreInsertsAndReadsBackAPlan(t *testing.T) {
 	assert.Equal(t, *record, got, "GetPlan()")
 }
 
+func TestStoreKeepsWhereAPlanIsWalked(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testKey(1))
+	record := testPlanRecord(42, "Old town", false, 1)
+	record.Pushing = [][2]float64{{120, 180}, {900, 950.5}}
+	require.NoError(t, store.InsertPlan(t.Context(), record), "InsertPlan()")
+
+	inserted, _, err := store.GetPlan(t.Context(), 42)
+	require.NoError(t, err, "GetPlan()")
+	assert.Equal(t, record.Pushing, inserted.Pushing, "after insert")
+
+	replaced := *record
+	replaced.Version = 2
+	replaced.Pushing = [][2]float64{{10, 20}}
+	ok, err := store.ReplacePlan(t.Context(), &replaced, 1)
+	require.NoError(t, err, "ReplacePlan()")
+	require.True(t, ok, "ReplacePlan()")
+
+	got, _, err := store.GetPlan(t.Context(), 42)
+	require.NoError(t, err, "GetPlan()")
+	assert.Equal(t, replaced.Pushing, got.Pushing, "after replace")
+}
+
 func TestStoreGetPlanReportsNotFound(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testKey(1))

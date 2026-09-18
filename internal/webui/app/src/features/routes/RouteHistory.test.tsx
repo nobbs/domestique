@@ -27,6 +27,7 @@ function ride(id: number, startedAt: string, overrides: Partial<Activity> = {}):
     ascentMetres: 600,
     typeId: 40,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     routeMatch: match(),
     ...overrides,

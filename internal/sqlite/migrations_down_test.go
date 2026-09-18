@@ -41,6 +41,42 @@ func TestMigration061DownDropsPlans(t *testing.T) {
 	require.NoError(t, migration.Migrate(61), "must be able to re-migrate up after rolling back")
 }
 
+func TestMigration062DownKeepsEveryPlan(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "plan-pushing-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(62))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO plans (id, name, profile, waypoints, coordinates, distance_metres, ascent_metres,
+			published, version, created_at_unix_nano, updated_at_unix_nano, pushing)
+		VALUES (123456789, 'Sunday loop', 'gravel', '[[8.4,49.0],[8.5,49.1]]', x'5b5d',
+			1000, 50, 1, 3, 1700000000000000000, 1700000000000000001, '[[100,200]]')`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(61))
+
+	var name string
+	var version int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT name, version FROM plans WHERE id = 123456789`).Scan(&name, &version))
+	assert.Equal(t, "Sunday loop", name)
+	assert.Equal(t, 3, version)
+	var pushingColumns int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM pragma_table_info('plans') WHERE name = 'pushing'`).Scan(&pushingColumns))
+	assert.Zero(t, pushingColumns, "the pushing column must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(62), "must be able to re-migrate up after rolling back")
+}
+
 // No down migration in this repo is otherwise exercised by anything: the
 // compatibility harness only ever migrates forward. 029's down is the one
 // that rebuilds a table rather than dropping it outright, so it is the one

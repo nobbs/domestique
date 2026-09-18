@@ -54,6 +54,7 @@ private to this service.
 │   ├── komoot/                     Komoot HTTP source adapter
 │   ├── plan/                       plans, their routing on save, the local source
 │   ├── brouter/                    BRouter routing-engine HTTP adapter
+│   ├── photon/                     Photon reverse-geocoding HTTP adapter
 │   ├── openmeteo/                  weather forecast HTTP adapter
 │   ├── fit/                        FIT encoding adapter
 │   ├── wahoo/                      Wahoo OAuth and route HTTP adapter
@@ -114,6 +115,7 @@ owns a distinct responsibility in this tree.
 | komoot | login, listing, detail decoding, route conversion | SQLite and Wahoo concerns |
 | plan | plan validation, routing a plan's waypoints on preview and save through the same measuring path, the local source over published plans | SQL, HTTP routing, the engine's wire format |
 | brouter | one routing request to the configured engine and its GeoJSON answer as points | what a plan is, SQLite, Wahoo |
+| photon | the reverse-geocoding HTTP adapter: naming one coordinate and decoding the reply, and its own bounded in-memory cache of past answers | which coordinates are worth asking about, or what the UI draws |
 | fit | deterministic FIT bytes for one valid route | VeloPlanner or Komoot requests, OAuth, HTTP |
 | wahoo | authorisation URL, exchange, refresh, user lookup, FIT route and activity reads, rate headers | route-source parsing, SQLite queries, Pushover |
 | sqlite | migrations, encrypted token storage, snapshots and commits | Wahoo, VeloPlanner, or Komoot HTTP |

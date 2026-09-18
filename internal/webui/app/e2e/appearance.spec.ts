@@ -11,7 +11,7 @@ import type { Page } from "@playwright/test";
 import { BASEMAP_ATTRIBUTION_TEXT } from "./basemap";
 import {
   expect,
-  followDestination,
+  followAccount,
   installOfflineBasemap,
   mapRegion,
   openLibrary,
@@ -27,9 +27,9 @@ import {
 const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
 
 /** `--base` in the light palette, from the custom properties in index.css. */
-const LIGHT_SURFACE = "rgb(243, 245, 246)";
+const LIGHT_SURFACE = "rgb(244, 243, 240)";
 /** The dark one, which the same file switches to at the media query. */
-const DARK_SURFACE = "rgb(16, 19, 22)";
+const DARK_SURFACE = "rgb(28, 27, 25)";
 
 function backgroundOfBody(page: Page): Promise<string> {
   return page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -135,7 +135,7 @@ test.describe("the theme override", () => {
     await chooseDarkTheme(page);
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
-    await followDestination(page, "Settings");
+    await followAccount(page);
 
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
     // And the bar on that page agrees about which scheme is in force, rather
@@ -197,9 +197,10 @@ test.describe("on a narrow viewport", () => {
 
   // The tile credit is read out of a style document the page fetched, which is
   // why this is asked in a real browser rather than in jsdom.
-  test("the settings page credits every data source", async ({ offlinePage: page }) => {
+  test("the account's data sources credit every source", async ({ offlinePage: page }) => {
     await openLibrary(page);
-    await followDestination(page, "Settings");
+    await followAccount(page);
+    await page.getByRole("tab", { name: "Data sources" }).click();
 
     const credit = page.getByText(BASEMAP_ATTRIBUTION_TEXT);
     await expect(credit).toHaveText(BASEMAP_ATTRIBUTION_TEXT);
@@ -207,8 +208,8 @@ test.describe("on a narrow viewport", () => {
     // markup, which is the rule the credit is read out of the document under.
     await expect(credit.locator("a")).toHaveCount(0);
 
-    await expect(page.getByText(/Surface data © OpenStreetMap contributors/)).toBeVisible();
-    await expect(page.getByText(/Weather data by Open-Meteo/)).toBeVisible();
+    await expect(page.getByRole("link", { name: "ODbL" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open-Meteo.com" })).toBeVisible();
   });
 
   test("the map itself carries no credit", async ({ offlinePage: page }) => {
@@ -241,11 +242,12 @@ test.describe("on a narrow viewport", () => {
 test.describe("text selection", () => {
   test("a double click on the page's own text selects nothing", async ({ offlinePage: page }) => {
     await openLibrary(page);
-    await followDestination(page, "Settings");
+    await followAccount(page);
+    await page.getByRole("tab", { name: "Data sources" }).click();
 
     // A run of ordinary prose, well away from the map — which has had its own
     // selection turned off since long before the document did.
-    await page.getByText(/Weather data by Open-Meteo/).dblclick();
+    await page.getByText("Forecasts wind and rain along a ride").dblclick();
 
     expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
   });

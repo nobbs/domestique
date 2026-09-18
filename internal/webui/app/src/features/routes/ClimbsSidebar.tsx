@@ -88,7 +88,7 @@ export function ClimbsToggle({
       aria-expanded={open}
       aria-label={`${open ? "Hide" : "Show"} ${count}`}
       onClick={() => onOpenChange(!open)}
-      className="flex items-center gap-1 rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+      className="flex items-center gap-1 rounded-[9px] bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] aria-expanded:bg-[var(--panel)] aria-expanded:text-[var(--ink)] aria-expanded:shadow-[var(--shadow)]"
     >
       <IconStairs size={13} stroke={2} aria-hidden="true" />
       {count}

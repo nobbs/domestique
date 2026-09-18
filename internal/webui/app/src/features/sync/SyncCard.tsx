@@ -1,28 +1,23 @@
+import { IconRefresh } from "@tabler/icons-react";
 import type { ReactNode } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Panel } from "../../components/PanelHeading";
 
-/** One card: a heading and whatever answers it. */
+/** One card: a marked heading and whatever answers it. */
 export function SyncCard({
   id,
   heading,
+  icon = <IconRefresh size={18} stroke={1.8} />,
   children,
 }: {
   id: string;
   heading: string;
+  /** The glyph in the heading's mark; sync's own when absent. */
+  icon?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <Card
-      className="border-[var(--rule)] bg-[var(--panel)] shadow-[var(--shadow)]"
-      role="region"
-      aria-labelledby={`${id}-heading`}
-    >
-      <CardHeader className="pb-3">
-        <CardTitle id={`${id}-heading`} role="heading" aria-level={2}>
-          {heading}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-4">{children}</CardContent>
-    </Card>
+    <Panel id={`${id}-heading`} icon={icon} title={heading}>
+      <div className="grid gap-4">{children}</div>
+    </Panel>
   );
 }

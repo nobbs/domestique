@@ -8,6 +8,7 @@ import (
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
@@ -62,7 +63,22 @@ func newDemoPlanService(store *sqlite.Store) (*plan.Service, error) {
 		return nil, fmt.Errorf("creating demo BRouter client: %w", err)
 	}
 
-	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), nil
+	return plan.NewService(
+		planStore{store: store}, brouterRouter{client: client}, demoPace{}, time.Now, plan.RandomID,
+	), nil
+}
+
+// demoPace predicts the demo's plans with the built-in coefficient pair: the
+// demo calibrates nothing, so there is no stored pair to read.
+type demoPace struct{}
+
+func (demoPace) Predict(points []route.Point) (movingSeconds float64, cumulative []float64, ok bool) {
+	result, ok := ridemodel.Predict(points, ridemodel.Default())
+	if !ok {
+		return 0, nil, false
+	}
+
+	return result.MovingSeconds, result.CumulativeSeconds, true
 }
 
 // brouterRouter adapts *brouter.Client to plan.Router: the brouter package
@@ -72,18 +88,22 @@ type brouterRouter struct{ client *brouter.Client }
 
 var _ plan.Router = brouterRouter{}
 
-func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) ([]route.Point, error) {
+func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) (plan.Routed, error) {
 	converted := make([]brouter.Waypoint, len(waypoints))
 	for index, waypoint := range waypoints {
 		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
 	}
 
-	points, err := r.client.Route(ctx, converted, string(profile))
+	answer, err := r.client.Route(ctx, converted, string(profile))
 	if err != nil {
-		return nil, fmt.Errorf("routing waypoints: %w", err)
+		return plan.Routed{}, fmt.Errorf("routing waypoints: %w", err)
+	}
+	ways := make([]plan.RoutedWay, len(answer.Ways))
+	for index, way := range answer.Ways {
+		ways[index] = plan.RoutedWay{EndMetres: way.EndMetres, Tags: way.Tags}
 	}
 
-	return points, nil
+	return plan.Routed{Points: answer.Points, Ways: ways}, nil
 }
 
 // planStore adapts the SQLite plan records to the plan service used by the
@@ -159,8 +179,14 @@ func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 		waypoints[index] = [2]float64{waypoint.Longitude, waypoint.Latitude}
 	}
 
+	pushing := make([][2]float64, len(p.Pushing))
+	for index, window := range p.Pushing {
+		pushing[index] = [2]float64{window.StartMetres, window.EndMetres}
+	}
+
 	return sqlite.PlanRecord{
 		ID: p.ID, Name: p.Name, Profile: string(p.Profile), Waypoints: waypoints, Geometry: p.Geometry,
+		Pushing:        pushing,
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, Published: p.Published,
 		Version: p.Version, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
@@ -176,8 +202,14 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 		waypoints[index] = plan.Waypoint{Longitude: coordinate[0], Latitude: coordinate[1]}
 	}
 
+	pushing := make([]plan.Window, len(record.Pushing))
+	for index, pair := range record.Pushing {
+		pushing[index] = plan.Window{StartMetres: pair[0], EndMetres: pair[1]}
+	}
+
 	return plan.Plan{
 		ID: record.ID, Name: record.Name, Profile: profile, Waypoints: waypoints, Geometry: record.Geometry,
+		Pushing:        pushing,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Published: record.Published,
 		Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}, nil

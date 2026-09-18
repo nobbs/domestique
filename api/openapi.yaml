@@ -906,6 +906,97 @@ paths:
           $ref: '#/components/responses/ProviderUnavailable'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/places/reverse:
+    get:
+      tags:
+        - browser-api
+      operationId: reversePlace
+      description: >-
+        What the place at a coordinate is called, for naming a plan's waypoints
+        where a pair of coordinates says nothing. Answers an absent name where
+        the geocoder knows of no place there, which is an answer and not a
+        failure. Registered only where a geocoder is configured; absent, the
+        address is not served at all.
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        "200":
+          description: What the coordinate is called, if anything.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Place'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+  /v1/places/snap:
+    get:
+      tags:
+        - browser-api
+      operationId: snapPlace
+      description: >-
+        The point of the nearest way a planned waypoint lies beside, so a pin
+        dropped a little off a road lands on it. Answers the coordinate it was
+        given, unmoved, where no way lies close enough or no surface map has
+        been built; that is an answer and not a failure.
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        "200":
+          description: Where the waypoint belongs, and whether that moved it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnappedPlace'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/plans:
     get:
       tags:
@@ -1416,6 +1507,31 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/rider/connections/wahoo:
+    delete:
+      tags:
+        - browser-api
+      operationId: disconnectWahoo
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Withdraws this application's authorization on the caller's own Wahoo
+        account, then forgets the account and its refresh token, over their own
+        target alone. A grant Wahoo already refuses is only forgotten; one Wahoo
+        cannot be asked to withdraw stays connected. Routes already written to
+        the account are left there.
+      responses:
+        "204":
+          $ref: '#/components/responses/NoContent'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/ProviderUnavailable'
   /v1/webui/config:
     get:
       tags:
@@ -2060,6 +2176,7 @@ components:
         - ascentMetres
         - typeId
         - locationId
+        - indoor
         - provider
       properties:
         id:
@@ -2095,6 +2212,11 @@ components:
           type: integer
         locationId:
           type: integer
+        indoor:
+          type: boolean
+          description: >-
+            Whether the ride was ridden over no ground, as its workout type
+            says: a trainer or virtual ride, whichever upstream recorded it.
         provider:
           type: string
           enum:
@@ -2898,6 +3020,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Route'
+    Place:
+      type: object
+      additionalProperties: false
+      description: >-
+        One short label for a coordinate. The name is absent where the geocoder
+        knows of no place there, which open country legitimately is.
+      properties:
+        name:
+          type: string
+    SnappedPlace:
+      type: object
+      additionalProperties: false
+      required:
+        - latitude
+        - longitude
+        - snapped
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        snapped:
+          type: boolean
+          description: Whether the coordinate was moved onto a way.
     PlanWaypoint:
       type: object
       additionalProperties: false
@@ -2909,6 +3057,36 @@ components:
           type: number
           format: double
         latitude:
+          type: number
+          format: double
+    PlanWindow:
+      type: object
+      additionalProperties: false
+      description: A stretch of a plan, in metres from its start.
+      required:
+        - startMetres
+        - endMetres
+      properties:
+        startMetres:
+          type: number
+          format: double
+        endMetres:
+          type: number
+          format: double
+    PlanProgress:
+      type: object
+      additionalProperties: false
+      description: >-
+        How far into a plan one waypoint is, read along the routed line rather
+        than between waypoints. movingSeconds is absent where the line carries
+        no prediction.
+      required:
+        - distanceMetres
+      properties:
+        distanceMetres:
+          type: number
+          format: double
+        movingSeconds:
           type: number
           format: double
     PlanProfile:
@@ -2949,6 +3127,29 @@ components:
         ascentMetres:
           type: number
           format: double
+        descentMetres:
+          type: number
+          format: double
+        movingSeconds:
+          type: number
+          format: double
+          description: >-
+            The whole line's predicted moving time, from the same model a
+            stage's is predicted with. Absent where the line cannot be
+            predicted, which incomplete elevation makes it.
+        waypointProgress:
+          type: array
+          description: One entry per waypoint, in the order they were routed.
+          items:
+            $ref: '#/components/schemas/PlanProgress'
+        pushing:
+          type: array
+          description: >-
+            Where the line runs along a way bicycles are refused and a rider
+            walks, as the routing engine priced it. Absent where it runs along
+            none.
+          items:
+            $ref: '#/components/schemas/PlanWindow'
         surface:
           $ref: '#/components/schemas/SurfaceClassification'
     PlanWrite:
@@ -3017,6 +3218,28 @@ components:
         ascentMetres:
           type: number
           format: double
+        descentMetres:
+          type: number
+          format: double
+        movingSeconds:
+          type: number
+          format: double
+          description: >-
+            Predicted on read with the coefficients in force, never stored:
+            a calibration replaces them and the plan's own time follows.
+        waypointProgress:
+          type: array
+          description: One entry per waypoint, in the order they were routed.
+          items:
+            $ref: '#/components/schemas/PlanProgress'
+        pushing:
+          type: array
+          description: >-
+            Where the line runs along a way bicycles are refused and a rider
+            walks, as the routing engine priced it. Absent where it runs along
+            none.
+          items:
+            $ref: '#/components/schemas/PlanWindow'
         surface:
           $ref: '#/components/schemas/SurfaceClassification'
         createdAt:
@@ -3968,6 +4191,12 @@ components:
           description: >-
             Whether a routing engine is configured, so the page offers the
             planner only where it will answer. Absent means off.
+        placeNames:
+          type: boolean
+          description: >-
+            Whether a geocoder is configured, so the planner asks what a
+            waypoint is called only where the answer exists. Absent means off,
+            and waypoints read as coordinates.
     BrowserIdentity:
       type: object
       additionalProperties: false

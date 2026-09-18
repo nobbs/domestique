@@ -1,6 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { formatCalendarDay, frameScale, niceTicks, ReadoutRow, TimeFrame } from "./TimeFrame";
+import {
+  barOpacity,
+  formatCalendarDay,
+  frameScale,
+  niceTicks,
+  ReadoutRow,
+  TimeFrame,
+} from "./TimeFrame";
 
 const DATES = ["2026-09-12", "2026-09-13", "2026-09-14", "2026-09-15", "2026-09-16"];
 
@@ -96,6 +103,48 @@ describe("TimeFrame", () => {
     fireEvent.keyDown(figure, { key: "ArrowRight" });
     fireEvent.keyDown(figure, { key: "ArrowRight" });
     expect(screen.getByRole("status")).toHaveTextContent("#3");
+  });
+
+  it("lifts the pointed bar and rules no crosshair over a bar chart", () => {
+    const { container } = frame({
+      bars: true,
+      panels: [
+        {
+          height: 50,
+          domain: [0, 10],
+          draw: (x, y, active) =>
+            DATES.map((date, index) => (
+              <rect
+                key={date}
+                data-bar={index}
+                x={x(index)}
+                y={y(5)}
+                width={4}
+                height={y(0) - y(5)}
+                opacity={barOpacity(active, index)}
+              />
+            )),
+        },
+      ],
+    });
+
+    fireEvent.keyDown(screen.getByRole("img").parentElement as HTMLElement, { key: "ArrowLeft" });
+
+    expect(container.querySelector('rect[data-bar="3"]')).toHaveAttribute("opacity", "1");
+    expect(container.querySelector('rect[data-bar="2"]')).toHaveAttribute("opacity", "0.2");
+    expect(container.querySelector("line[opacity]")).toBeNull();
+  });
+
+  it("points a bar chart at the bar under the pointer, not the nearest day", () => {
+    frame({ bars: true, snap: [0, 2, 4] });
+    const target = screen.getByRole("img").querySelector("rect[fill='transparent']") as Element;
+    const box = target.getBoundingClientRect;
+    target.getBoundingClientRect = () => ({ ...box.call(target), left: 0, width: 100 });
+
+    // Three quarters of the way from day 0 to day 2: nearer day 2, but still over day 0's bar.
+    fireEvent.pointerMove(target, { clientX: 37.5 });
+
+    expect(screen.getByRole("status")).toHaveTextContent("#0");
   });
 
   it("drops the readout when focus leaves", () => {

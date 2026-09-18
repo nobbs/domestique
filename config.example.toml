@@ -64,8 +64,12 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 # this host, or the project's public instance https://brouter.de at the cost
 # of sending each plan's waypoints there. Tiles are only for a sidecar.
 # Leaving the section out switches the planner off: no local source.
+# photon_url names the geocoder waypoints are named after; leaving it out
+# leaves them as coordinates. The public instance costs no deployment and
+# sends each waypoint's coordinates to komoot.
 # [planning]
 # brouter_url = "http://brouter:17777"
+# photon_url = "https://photon.komoot.io"
 # segments = ["E5_N45", "E10_N45", "E5_N50", "E10_N50"]
 
 # How much the service says on stderr, as JSON lines: debug, info, warn or

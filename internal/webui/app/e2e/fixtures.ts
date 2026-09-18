@@ -286,7 +286,7 @@ export async function openWorkspace(page: Page): Promise<void> {
   }
 }
 
-/** Opens the library search and returns the field it puts under the control. */
+/** Opens the library's command search and returns the dialog's own search field. */
 export async function openSearch(page: Page): Promise<Locator> {
   const field = page.getByRole("searchbox", { name: "Search the route library" });
   await openWorkspace(page);
@@ -341,10 +341,16 @@ export async function followDestination(page: Page, name: string | RegExp): Prom
   await page.getByRole("menuitem", { name }).click();
 }
 
-/** The sync page, once the service has answered what it is doing. */
+/** Account, reached the way a reader does: through the session menu at the bar's end. */
+export async function followAccount(page: Page): Promise<void> {
+  await page.getByRole("button", { name: /^Signed in as/ }).click();
+  await page.getByRole("menuitem", { name: /^Account/ }).click();
+}
+
+/** Account's sync tab, once the service has answered what it is doing. */
 export async function openSync(page: Page): Promise<void> {
-  await page.goto("/sync");
-  await expect(page.getByRole("heading", { level: 1, name: "Sync" })).toBeVisible();
+  await page.goto("/account/sync");
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Now" })).toBeVisible();
 }
 

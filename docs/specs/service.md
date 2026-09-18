@@ -25,7 +25,7 @@ small Linux cloud VM. It has no CLI.
 The service serves a browser UI that is read-only over every route it mirrors
 and lets an admin, and no one else, draw plans. Its HTTP surface is
 read-only JSON for status, route data, and route geometry, except for the
-protected Wahoo OAuth onboarding flow, the manual triggers over synchronisation
+protected Wahoo OAuth onboarding and disconnect flow, the manual triggers over synchronisation
 and surface enrichment, the runtime settings the UI reads and writes back, and
 the plans an admin composes in the browser, which are the one kind of route
 this service itself owns.
@@ -377,6 +377,12 @@ operations the sections below name:
   other targets exist.
 - `GET /oauth/wahoo/callback` validates a one-time, expiring OAuth state and
   stores the resulting refresh token.
+- `DELETE /v1/settings/rider/connections/wahoo` disconnects the caller's own
+  target: it asks Wahoo to withdraw the application's grant on that account,
+  then forgets the Wahoo user and refresh token, leaving the target as it was
+  before its first authorisation. A grant Wahoo already refuses is only
+  forgotten; one Wahoo cannot be asked to withdraw stays connected and is
+  answered `502`. Routes already written to the account stay there.
 
 - `POST /webhooks/wahoo` receives Wahoo's workout notifications. It is the one
   inbound request answered outside the identity gate besides sign-in and the
@@ -494,7 +500,8 @@ The read-only JSON surface is small:
   It is omitted, never zero, for a route nothing has predicted yet.
 - `GET /v1/activities` returns one target's recorded activities, newest first:
   each one's workout id, start time, distance, moving and elapsed time, ascent,
-  Wahoo's workout type and location ids, and which upstream — `wahoo` or
+  Wahoo's workout type and location ids, whether that type makes it an
+  [indoor ride](#recorded-activities) ridden over no ground, and which upstream — `wahoo` or
   `zwift` — this service read it from, never the verbatim summary document. A
   Zwift ride also carries the name Zwift lists it under — a structured
   workout's name, or a free ride's route — with Zwift's stable hash of it and
@@ -845,6 +852,21 @@ The read-only JSON surface is small:
   least a kilometre and a minute of moving. It is measured over the caller's own
   targets alone and never pooled across riders, and it is absent below five such
   rides, which leaves a new rider the seeded figures.
+- `GET /v1/places/reverse` and `GET /v1/places/snap` (both admin-only) serve
+  the planner's own two lookups, each over a required `latitude` and
+  `longitude` query pair bounded to ±90 and ±180. Reverse names the place at a
+  coordinate from the configured Photon geocoder, answering a `Place` with an
+  absent name where Photon knows of nowhere there, which open country
+  legitimately is; it is registered only where `planning.photon_url` is
+  configured, otherwise `404`, and a lookup Photon refuses or cannot answer is
+  `502` carrying a category and nothing of its response. Snap moves a planned
+  waypoint onto the point of the nearest way the local surface map holds,
+  within 50 m — twice the surface matcher's own radius, because a click on a
+  map is coarser than a GPS fix — answering the coordinate unmoved where
+  nothing is that close or the map has not been built, which is an answer and
+  not a failure; it is registered alongside the plan endpoints whatever the
+  surface map's own state, and a failure reading the map is `503`. Both are
+  `400` on a coordinate that is missing or out of range.
 - `GET /v1/weather` returns an hourly forecast for up to 48 repeated `point`
   values, so the page can show a ride's weather without reaching Open-Meteo
   itself. Each `point` is `latitude,longitude,time`: decimal-degree latitude
@@ -922,6 +944,23 @@ browser origin described above, and answer 403 without it.
   The surface is omitted when the index or classification is unavailable;
   classification failure never blocks routing or saving, and no classification
   is persisted with the plan.
+  Every response that carries a plan's geometry also carries its
+  `descentMetres` beside `ascentMetres`; `movingSeconds`, the whole line's
+  predicted moving time from the same forward model a stage's is predicted
+  with, absent where the geometry cannot be predicted; and one
+  `waypointProgress` entry per waypoint, in routed order, giving how far into
+  the line it falls and the moving time predicted to reach it, both read along
+  the routed line rather than between waypoints. `movingSeconds` and
+  `waypointProgress` are predicted afresh on every read and never stored, so a
+  calibration change is reflected the next time a plan is read; `descentMetres`
+  is measured the same way, from the stored geometry. A response also carries
+  `pushing`: the windows of the line, in metres from its start, where the
+  routing engine's own access rules refuse a way to bicycles and price it for
+  feet alone, scaled from the engine's own length onto the plan's normalised
+  one, and absent where the line runs along no such way. Unlike descent and
+  the predictions, `pushing` is measured only when a plan is routed — preview,
+  create, and replace — and is then stored with the plan, because only the
+  engine's own answer at routing time says which ways it ran along.
   `GET /v1/plans` lists every plan with its summary and whether it is
   published, and carries no geometry; `GET /v1/plans/{plan-id}` returns one
   plan's waypoints, profile, name, published state, version, and its stored
@@ -1004,14 +1043,17 @@ The browser UI is served from the same origin and the same listener: an
 application entry document and immutable hashed static assets. `/auth/login`
 is the one unauthenticated browser entry route, and serves that same entry
 document: the sign-in form is the application's, and this service renders no
-HTML of its own. `/`, `/catalogue`, `/sync`, and `/settings` require a
-session, and `/admin` and `/admin/tasks` require an admin session: any other
-session is answered not found rather than `403`, since a document is not one
-of the contract's operations. The catalogue reads the same inventory listing `/` does and asks the
+HTML of its own. `/`, `/catalogue`, `/activities` (its rides at
+`/activities/rides`, one ride at `/activities/{id}`) and
+`/account` with any tab under it (`/account/{section}`) require a session, and
+`/admin` with any tab under it (`/admin/{section}`, tasks among them) requires
+an admin session: any other session is answered not found rather than `403`,
+since a document is not one of the contract's operations. The former `/sync`,
+`/settings`, `/settings/tasks` and `/volume` documents are gone and answer not found. The catalogue reads the same inventory listing `/` does and asks the
 service for nothing of its own: it is the library as a sortable table, and the
-ordering, searching and narrowing it offers all happen in the browser. Settings
-holds this rider's own Wahoo connection and lists the data sources this service
-credits, while the service's runtime settings are read and written over the
+ordering, searching and narrowing it offers all happen in the browser. Account
+holds this rider's sync status and history, their own Wahoo and Zwift
+connections and rider profile, and lists the data sources this service credits, while the service's runtime settings are read and written over the
 endpoints above and are the same for every browser. The colour scheme is
 neither: it is a control in the bar on every page, this browser's alone, and
 kept in its local storage. None of this alters the route or moving-time
@@ -1290,7 +1332,7 @@ across runs and polls; a new one is requested only once the held one is spent or
 none is held. This is a correctness requirement rather than an optimisation.
 Wahoo caps how many unrevoked access tokens may exist for one application and
 one user, and offers no way to revoke a single token — only a deauthorization
-that revokes every token the application holds. A token minted per run and per
+that revokes every token the application holds for that user. A token minted per run and per
 poll therefore fills that cap, at which point Wahoo issues no further token for
 that account and the target can neither refresh nor be reauthorized until the
 rider revokes the application's access. A reply that states no expiry is not

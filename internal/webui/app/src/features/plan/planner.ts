@@ -112,6 +112,7 @@ export type PlannerAction =
   | { type: "append"; waypoint: PlanWaypoint }
   | { type: "insert"; index: number; waypoint: PlanWaypoint }
   | { type: "move"; index: number; waypoint: PlanWaypoint }
+  | { type: "snap"; id: number; from: PlanWaypoint; waypoint: PlanWaypoint }
   | { type: "delete"; index: number }
   | { type: "reverse" }
   | { type: "reorder"; index: number; direction: "up" | "down" }
@@ -120,6 +121,20 @@ export type PlannerAction =
   | { type: "redo" }
   | { type: "reset" }
   | { type: "load"; plan: Pick<Plan, "name" | "profile" | "waypoints"> };
+
+/**
+ * The same place, read within one turn of the globe. A click or a marker drag
+ * on a wrapped copy of the world answers a longitude beyond ±180, which the
+ * service refuses as out of range.
+ */
+export function unwrapped(waypoint: PlanWaypoint): PlanWaypoint {
+  if (waypoint.longitude >= -180 && waypoint.longitude <= 180) {
+    return waypoint;
+  }
+  const longitude = ((((waypoint.longitude + 180) % 360) + 360) % 360) - 180;
+
+  return { ...waypoint, longitude };
+}
 
 function snapshot({ name, profile, waypoints, nextWaypointID }: PlannerState): PlannerSnapshot {
   return { name, profile, waypoints, nextWaypointID };
@@ -153,7 +168,10 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         ? state
         : apply(state, {
             ...snapshot(state),
-            waypoints: [...state.waypoints, { ...action.waypoint, id: state.nextWaypointID }],
+            waypoints: [
+              ...state.waypoints,
+              { ...unwrapped(action.waypoint), id: state.nextWaypointID },
+            ],
             nextWaypointID: state.nextWaypointID + 1,
           });
     case "insert": {
@@ -166,7 +184,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         ...snapshot(state),
         waypoints: [
           ...state.waypoints.slice(0, index),
-          { ...action.waypoint, id: state.nextWaypointID },
+          { ...unwrapped(action.waypoint), id: state.nextWaypointID },
           ...state.waypoints.slice(index),
         ],
         nextWaypointID: state.nextWaypointID + 1,
@@ -181,9 +199,27 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       if (!current) {
         return state;
       }
-      waypoints[action.index] = { ...action.waypoint, id: current.id };
+      waypoints[action.index] = { ...unwrapped(action.waypoint), id: current.id };
 
       return apply(state, { ...snapshot(state), waypoints });
+    }
+    case "snap": {
+      // Settles a waypoint just placed onto the road beside it. It belongs to the
+      // placing, so it rewrites the present rather than adding a step to undo.
+      // A reply for a waypoint moved, or an id reused, since it was asked is stale.
+      const at = state.waypoints.findIndex(
+        (waypoint) =>
+          waypoint.id === action.id &&
+          waypoint.longitude === action.from.longitude &&
+          waypoint.latitude === action.from.latitude,
+      );
+      if (at < 0) {
+        return state;
+      }
+      const waypoints = [...state.waypoints];
+      waypoints[at] = { ...unwrapped(action.waypoint), id: action.id };
+
+      return { ...state, waypoints };
     }
     case "delete":
       return state.waypoints[action.index]

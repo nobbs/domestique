@@ -10,6 +10,22 @@ import (
 	"database/sql"
 )
 
+const clearTargetAuthorization = `-- name: ClearTargetAuthorization :execresult
+UPDATE targets
+SET wahoo_user_id = NULL, refresh_token = NULL, authorization_state = ?, updated_at_unix = ?
+WHERE slot = ?
+`
+
+type ClearTargetAuthorizationParams struct {
+	AuthorizationState string
+	UpdatedAtUnix      int64
+	Slot               string
+}
+
+func (q *Queries) ClearTargetAuthorization(ctx context.Context, arg ClearTargetAuthorizationParams) (sql.Result, error) {
+	return q.db.ExecContext(ctx, clearTargetAuthorization, arg.AuthorizationState, arg.UpdatedAtUnix, arg.Slot)
+}
+
 const consumeOAuthTransaction = `-- name: ConsumeOAuthTransaction :execresult
 UPDATE oauth_transactions
 SET used_at_unix = ?
@@ -191,7 +207,7 @@ func (q *Queries) TargetExists(ctx context.Context, slot string) (bool, error) {
 const updateRefreshToken = `-- name: UpdateRefreshToken :execresult
 UPDATE targets
 SET refresh_token = ?, authorization_state = ?, updated_at_unix = ?
-WHERE slot = ?
+WHERE slot = ? AND refresh_token IS NOT NULL
 `
 
 type UpdateRefreshTokenParams struct {
@@ -201,6 +217,7 @@ type UpdateRefreshTokenParams struct {
 	Slot               string
 }
 
+// A cleared token stays cleared: a refresh finishing after a disconnect must not restore it.
 func (q *Queries) UpdateRefreshToken(ctx context.Context, arg UpdateRefreshTokenParams) (sql.Result, error) {
 	return q.db.ExecContext(ctx, updateRefreshToken,
 		arg.RefreshToken,

@@ -300,7 +300,7 @@ describe("LibraryMap", () => {
   it("draws the library in one ink", () => {
     show({ pickedKey: null });
 
-    expect(layer("library-line").paint["line-color"]).toBe("#1c2126");
+    expect(layer("library-line").paint["line-color"]).toBe("#1a1a1a");
     expect(layer("library-line").paint["line-opacity"]).toBe(0.68);
   });
 
@@ -387,7 +387,7 @@ describe("LibraryMap", () => {
   it("takes its ink from the basemap that is actually loaded", () => {
     show({ darkBasemap: true, pickedKey: null });
 
-    expect(layer("library-line").paint["line-color"]).toBe("#eef0f3");
+    expect(layer("library-line").paint["line-color"]).toBe("#f1efea");
   });
 
   // A route whose geometry has one point is a point, and a line layer given one

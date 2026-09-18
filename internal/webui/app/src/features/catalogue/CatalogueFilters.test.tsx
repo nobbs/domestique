@@ -35,9 +35,6 @@ function renderFilters(overrides: Partial<React.ComponentProps<typeof CatalogueF
     library: LIBRARY,
     filters: EMPTY_FILTERS,
     onFiltersChange: () => {},
-    narrow: false,
-    expanded: false,
-    onExpandedChange: () => {},
     ...overrides,
   };
 
@@ -45,13 +42,13 @@ function renderFilters(overrides: Partial<React.ComponentProps<typeof CatalogueF
 }
 
 describe("CatalogueFilters", () => {
-  it("stands in view rather than behind a toggle above the breakpoint", () => {
+  it("shows one slider per measure, in a card of its own", () => {
     renderFilters();
 
+    expect(screen.getByRole("heading", { name: "Filters" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Distance min" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Show the library filters/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Ascent min" })).toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Duration min" })).toBeInTheDocument();
   });
 
   it("stores a distance bound in metres", () => {
@@ -80,38 +77,20 @@ describe("CatalogueFilters", () => {
     });
   });
 
-  it("clears every filter in one action", async () => {
+  it("clears every filter in one action, disabled until one is set", async () => {
     const user = userEvent.setup();
     const onFiltersChange = vi.fn();
+
+    renderFilters();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeDisabled();
+
     const filters: LibraryFilters = { ...EMPTY_FILTERS, ascentMetres: { min: 20, max: null } };
     renderFilters({ filters, onFiltersChange });
+    const clear = screen.getAllByRole("button", { name: "Clear" })[1] as HTMLElement;
+    expect(clear).toBeEnabled();
 
-    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    await user.click(clear);
 
     expect(onFiltersChange).toHaveBeenCalledWith(EMPTY_FILTERS);
-  });
-
-  it("folds behind a toggle below the breakpoint, open on request", async () => {
-    const user = userEvent.setup();
-    const onExpandedChange = vi.fn();
-    renderFilters({ narrow: true, onExpandedChange });
-
-    expect(screen.getByRole("button", { name: "Show the library filters" })).toBeInTheDocument();
-    expect(screen.queryByRole("slider", { name: "Distance min" })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Show the library filters" }));
-
-    expect(onExpandedChange.mock.calls[0]?.[0]).toBe(true);
-  });
-
-  it("says filters are active on the toggle without opening it", () => {
-    renderFilters({
-      narrow: true,
-      filters: { ...EMPTY_FILTERS, ascentMetres: { min: 20, max: null } },
-    });
-
-    expect(
-      screen.getByRole("button", { name: "Show the library filters — filters are active" }),
-    ).toBeInTheDocument();
   });
 });

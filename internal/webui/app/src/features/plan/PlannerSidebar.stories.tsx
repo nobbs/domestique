@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { MemoryRouter } from "react-router";
+import { StoryProviders } from "../../storybook/fixtures";
 import { PlannerSidebar } from "./PlanPage";
 import { initialPlannerState } from "./planner";
 
@@ -8,11 +8,11 @@ const meta = {
   component: PlannerSidebar,
   decorators: [
     (Story) => (
-      <MemoryRouter>
+      <StoryProviders>
         <div className="max-w-sm p-4">
           <Story />
         </div>
-      </MemoryRouter>
+      </StoryProviders>
     ),
   ],
   args: {

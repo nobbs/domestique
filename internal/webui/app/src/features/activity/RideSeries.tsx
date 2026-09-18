@@ -222,7 +222,17 @@ export function SeriesChips({ states, drawn, activeIndex, onToggle }: SeriesChip
             // series turned out absent must not read as one never pressed,
             // since pressing it again is what puts it away.
             aria-pressed={state !== "off"}
-            className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-[var(--rule)] aria-pressed:bg-[var(--ground)] aria-pressed:ring-[var(--ink-2)]"
+            className="flex items-center gap-1.5 rounded-full bg-[var(--muted)] px-2.5 py-1 text-[var(--ink-2)] text-xs hover:text-[var(--ink)] aria-pressed:font-medium"
+            // Pressed, the chip is washed in its series' own colour, the way
+            // the sensor tiles are; off, it sits on the muted ground.
+            style={
+              state !== "off"
+                ? {
+                    color: SERIES_COLOURS[series.key],
+                    background: `color-mix(in oklab, ${SERIES_COLOURS[series.key]} 12%, transparent)`,
+                  }
+                : undefined
+            }
           >
             {/*
              * Filled while the series is drawn, hollow while it is not: the

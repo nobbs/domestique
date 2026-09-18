@@ -279,10 +279,71 @@ func TestPreviewPlanRouteReturnsGeometryDistanceAndAscent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	assert.InDelta(t, 1200, body.DistanceMetres, 0)
 	assert.InDelta(t, 42, body.AscentMetres, 0)
+	require.NotNil(t, body.DescentMetres, "a line that only climbs still has a descent: none")
+	assert.InDelta(t, 0, *body.DescentMetres, 0)
 	require.Len(t, body.Geometry.Coordinates, 2)
 	assert.Len(t, body.Geometry.Coordinates[0], 2, "the first point carries no elevation")
 	require.Len(t, body.Geometry.Coordinates[1], 3, "the second point carries its elevation")
 	assert.InDelta(t, elevationMetres, body.Geometry.Coordinates[1][2], 0)
+}
+
+func TestPreviewPlanRouteCarriesThePredictedTimePerWaypoint(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry:       []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+		DistanceMetres: 1200, AscentMetres: 42, MovingSeconds: 300,
+		Progress: []plan.Progress{
+			{DistanceMetres: 0},
+			{DistanceMetres: 1200, MovingSeconds: 300},
+		},
+	}})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var body openapi.PlanRoutePreview
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	require.NotNil(t, body.MovingSeconds)
+	assert.InDelta(t, 300, *body.MovingSeconds, 0)
+	require.Len(t, body.WaypointProgress, 2)
+	assert.Nil(t, body.WaypointProgress[0].MovingSeconds, "the start has taken no time")
+	require.NotNil(t, body.WaypointProgress[1].MovingSeconds)
+	assert.InDelta(t, 300, *body.WaypointProgress[1].MovingSeconds, 0)
+	assert.InDelta(t, 1200, body.WaypointProgress[1].DistanceMetres, 0)
+}
+
+func TestPreviewPlanRouteCarriesWhereTheRiderWalks(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry:       []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+		DistanceMetres: 1200, AscentMetres: 42,
+		Pushing: []plan.Window{{StartMetres: 300, EndMetres: 420}},
+	}})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var body openapi.PlanRoutePreview
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, []openapi.PlanWindow{{StartMetres: 300, EndMetres: 420}}, body.Pushing)
+}
+
+func TestPreviewPlanRouteOmitsATimeItCannotPredict(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{measured: plan.Measured{
+		Geometry:       []route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8.1, Latitude: 49.1}},
+		DistanceMetres: 1200, AscentMetres: 42,
+		Progress: []plan.Progress{{DistanceMetres: 0}, {DistanceMetres: 1200}},
+	}})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, validPlanRouteBody, ""))
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+
+	var body openapi.PlanRoutePreview
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	assert.Nil(t, body.MovingSeconds)
+	require.Len(t, body.WaypointProgress, 2, "a waypoint still knows its distance")
+	assert.Nil(t, body.WaypointProgress[1].MovingSeconds)
 }
 
 func TestPlanResponsesCarryCurrentSurfaceClassification(t *testing.T) {

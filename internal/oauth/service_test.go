@@ -200,6 +200,9 @@ func TestServiceHidesUpstreamFailure(t *testing.T) {
 
 type fakeStateStore struct {
 	expiresAt        time.Time
+	refreshTokenErr  error
+	disconnected     string
+	replaced         string
 	authorizeErr     error
 	authorizedTarget string
 	authorizedUser   string
@@ -249,6 +252,9 @@ func (s *fakeStateStore) AuthorizeTarget(_ context.Context, targetID, wahooUserI
 
 type fakeWahoo struct {
 	exchangeErr  error
+	refreshErr   error
+	deauthErr    error
+	deauthorized string
 	accessToken  string
 	refreshToken string
 	userID       string
@@ -268,4 +274,88 @@ func (w *fakeWahoo) ExchangeAuthorizationCode(_ context.Context, _ string) (acce
 
 func (w *fakeWahoo) AuthenticatedUser(_ context.Context, _ string) (string, error) {
 	return w.userID, nil
+}
+
+func (s *fakeStateStore) RefreshToken(context.Context, string) (string, error) {
+	return s.refreshToken, s.refreshTokenErr
+}
+
+func (s *fakeStateStore) ReplaceRefreshToken(_ context.Context, _, refreshToken string) error {
+	s.replaced = refreshToken
+
+	return nil
+}
+
+func (s *fakeStateStore) IsRefreshTokenUnavailable(err error) bool {
+	return errors.Is(err, errNoToken)
+}
+
+var errNoToken = errors.New("unavailable")
+
+func (s *fakeStateStore) DisconnectTarget(_ context.Context, targetID string) error {
+	s.disconnected = targetID
+
+	return nil
+}
+
+func (w *fakeWahoo) RefreshAccessToken(context.Context, string) (accessToken, replacementRefreshToken string, err error) {
+	return w.accessToken, "rotated", w.refreshErr
+}
+
+func (w *fakeWahoo) Deauthorize(_ context.Context, accessToken string) error {
+	w.deauthorized = accessToken
+
+	return w.deauthErr
+}
+
+func (w *fakeWahoo) IsUnauthorized(err error) bool {
+	return errors.Is(err, errWahooUnauthorized)
+}
+
+var errWahooUnauthorized = errors.New("unauthorized")
+
+func TestServiceDisconnectWithdrawsTheGrantBeforeForgetting(t *testing.T) {
+	//nolint:govet // the two fakes read first because they are the case's input
+	cases := map[string]struct {
+		store            fakeStateStore
+		wahoo            fakeWahoo
+		wantErr          error
+		wantDeauthorized string
+		wantReplaced     string
+		wantForgotten    bool
+	}{
+		"withdrawn, then forgotten": {
+			store: fakeStateStore{refreshToken: "refresh"}, wahoo: fakeWahoo{accessToken: "access"},
+			wantDeauthorized: "access", wantReplaced: "rotated", wantForgotten: true,
+		},
+		"no token to withdraw": {
+			store:         fakeStateStore{refreshTokenErr: errNoToken},
+			wantForgotten: true,
+		},
+		"a token the store cannot read keeps the connection": {
+			store:   fakeStateStore{refreshTokenErr: errors.New("decrypt")},
+			wantErr: ErrDisconnectFailed,
+		},
+		"a grant Wahoo already refuses": {
+			store: fakeStateStore{refreshToken: "refresh"}, wahoo: fakeWahoo{refreshErr: errWahooUnauthorized},
+			wantForgotten: true,
+		},
+		"Wahoo unreachable keeps the connection": {
+			store:   fakeStateStore{refreshToken: "refresh"},
+			wahoo:   fakeWahoo{accessToken: "access", deauthErr: errors.New("timeout")},
+			wantErr: ErrDisconnectFailed, wantDeauthorized: "access", wantReplaced: "rotated",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			service, err := New(&tc.store, &tc.wahoo)
+			require.NoError(t, err)
+
+			err = service.Disconnect(t.Context(), "rider-a")
+			require.ErrorIs(t, err, tc.wantErr)
+			assert.Equal(t, tc.wantDeauthorized, tc.wahoo.deauthorized, "deauthorized with")
+			assert.Equal(t, tc.wantReplaced, tc.store.replaced, "kept the rotated token")
+			assert.Equal(t, tc.wantForgotten, tc.store.disconnected == "rider-a", "forgotten")
+		})
+	}
 }

@@ -13,6 +13,7 @@ function ride(metrics?: ActivityMetrics, totals?: Partial<Activity>): Activity {
     ascentMetres: 420,
     typeId: 0,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     ...(metrics ? { metrics } : {}),
     ...totals,
@@ -86,6 +87,16 @@ describe("RideFigures", () => {
 
     expect(screen.getByText("36.0 km")).toBeInTheDocument();
     expect(screen.queryByText(/Training/)).not.toBeInTheDocument();
+  });
+
+  it("grades the climbing and says nothing where the ride has no ascent figure", () => {
+    const { rerender } = render(<RideFigures ride={ride()} />);
+    expect(screen.getByText("Rolling")).toBeInTheDocument();
+    expect(screen.getByText("12 m per km")).toBeInTheDocument();
+
+    rerender(<RideFigures ride={ride(undefined, { ascentMetres: 0 })} />);
+    expect(screen.queryByText(/m per km/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Flat")).not.toBeInTheDocument();
   });
 
   it("shows nothing at all for a ride the page does not hold", () => {

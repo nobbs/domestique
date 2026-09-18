@@ -230,6 +230,15 @@ func (p *wahooProvider) AuthenticatedUser(ctx context.Context, accessToken strin
 	return client.AuthenticatedUser(ctx, accessToken) //nolint:wrapcheck // forwarding to the client this holds
 }
 
+func (p *wahooProvider) Deauthorize(ctx context.Context, accessToken string) error {
+	client, err := p.current()
+	if err != nil {
+		return err
+	}
+
+	return client.Deauthorize(ctx, accessToken) //nolint:wrapcheck // forwarding to the client this holds
+}
+
 func (p *wahooProvider) RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, replacementRefreshToken string, err error) {
 	client, err := p.current()
 	if err != nil {
@@ -662,6 +671,7 @@ type rideModelProvider struct {
 	// an unchanged pair is not stored and does not drop cached predictions.
 	fingerprintInForce string
 	status             httpapi.RideModelStatus
+	coefficients       ridemodel.Coefficients
 	mutex              sync.Mutex
 }
 
@@ -673,6 +683,7 @@ func newRideModelProvider(store *sqlite.Store) *rideModelProvider {
 	return &rideModelProvider{
 		store:              store,
 		fingerprintInForce: defaults.Fingerprint,
+		coefficients:       defaults,
 		status: httpapi.RideModelStatus{
 			SecondsPerKM: defaults.SecondsPerKM, SecondsPerAscentM: defaults.SecondsPerAscentM,
 		},
@@ -700,6 +711,7 @@ func (p *rideModelProvider) reload(ctx context.Context) error {
 		return fmt.Errorf("pruning stale ride model predictions: %w", err)
 	}
 	p.predictor = ridemodel.NewPredictor(p.store, coefficients)
+	p.coefficients = coefficients
 	p.validation = nil
 	if coefficients.HasValidation() {
 		p.validation = &httpapi.RideModelValidation{
@@ -719,6 +731,15 @@ func (p *rideModelProvider) reload(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// pair is the coefficients in force, for a caller predicting a line the stage
+// cache knows nothing about.
+func (p *rideModelProvider) pair() ridemodel.Coefficients {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	return p.coefficients
 }
 
 func (p *rideModelProvider) current() *ridemodel.Predictor {

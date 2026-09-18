@@ -61,7 +61,9 @@ type Settings struct {
 // planner is off: no local source.
 type Planning struct {
 	BRouterURL string
-	Segments   []string
+	// PhotonURL is optional: empty leaves a plan's waypoints unnamed.
+	PhotonURL string
+	Segments  []string
 
 	enabled bool
 }
@@ -166,6 +168,7 @@ type rawAnalysis struct {
 // section (nil) is distinguishable from one present but empty.
 type rawPlanning struct {
 	BRouterURL string   `koanf:"brouter_url"`
+	PhotonURL  string   `koanf:"photon_url"`
 	Segments   []string `koanf:"segments"`
 }
 
@@ -489,25 +492,33 @@ func buildPlanning(raw *rawPlanning) (Planning, error) {
 		return Planning{}, nil
 	}
 	brouterURL := strings.TrimSpace(raw.BRouterURL)
-	if err := validateBRouterURL(brouterURL); err != nil {
+	if brouterURL == "" {
+		return Planning{}, errors.New("planning.brouter_url is required")
+	}
+	if err := validateOrigin("planning.brouter_url", brouterURL); err != nil {
 		return Planning{}, err
+	}
+	photonURL := strings.TrimSpace(raw.PhotonURL)
+	if photonURL != "" {
+		if err := validateOrigin("planning.photon_url", photonURL); err != nil {
+			return Planning{}, err
+		}
 	}
 	segments, err := validateSegments(raw.Segments)
 	if err != nil {
 		return Planning{}, err
 	}
 
-	return Planning{BRouterURL: brouterURL, Segments: segments, enabled: true}, nil
+	return Planning{
+		BRouterURL: brouterURL, PhotonURL: photonURL, Segments: segments, enabled: true,
+	}, nil
 }
 
-// validateBRouterURL accepts an absolute http or https origin with no path,
+// validateOrigin accepts an absolute http or https origin with no path,
 // query or fragment. http is admitted for a sidecar on an internal network,
 // and is cleartext against any other host.
-func validateBRouterURL(value string) error {
-	invalid := errors.New("planning.brouter_url must be an absolute http or https origin without a path")
-	if value == "" {
-		return errors.New("planning.brouter_url is required")
-	}
+func validateOrigin(field, value string) error {
+	invalid := fmt.Errorf("%s must be an absolute http or https origin without a path", field)
 	parsed, err := url.ParseRequestURI(value)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
 		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" ||

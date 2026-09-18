@@ -202,12 +202,10 @@ func TestHandlerGatesEveryNonHealthRoute(t *testing.T) {
 		"/",
 		"/routes/veloplanner/1/1",
 		"/catalogue",
-		"/settings",
-		"/settings/tasks",
+		"/account",
+		"/account/profile",
 		"/admin",
 		"/admin/tasks",
-		"/sync",
-		"/volume",
 		"/activities",
 		"/activities/1",
 		"/unknown",
@@ -317,12 +315,10 @@ func TestBrowserUIRoutesAreRegistered(t *testing.T) {
 		"/routes/veloplanner/1/1",
 		"/routes/1/1",
 		"/catalogue",
-		"/sync",
-		"/volume",
 		"/activities",
 		"/activities/1",
-		"/settings",
-		"/settings/tasks",
+		"/account",
+		"/account/sync",
 		"/admin",
 		"/admin/tasks",
 	}
@@ -1132,8 +1128,8 @@ func TestHandlerSetsPolicyAndCacheHeaders(t *testing.T) {
 func TestHandlerServesTheApplicationDocumentForDeepLinks(t *testing.T) {
 	handler := newTestHandler(t)
 	for _, path := range []string{
-		"/", "/routes/veloplanner/12/1", "/catalogue", "/settings", "/settings/tasks", "/sync", "/volume",
-		"/activities", "/activities/1",
+		"/", "/routes/veloplanner/12/1", "/catalogue", "/account", "/account/sync",
+		"/activities", "/activities/rides", "/activities/1",
 	} {
 		t.Run(path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -1226,7 +1222,7 @@ func TestReprocessRefusesANonAdminSession(t *testing.T) {
 // The admin documents are not served to a rider at all: not found rather than
 // forbidden, since a document is not one of the contract's operations.
 func TestAdminDocumentsAnswerNotFoundToANonAdmin(t *testing.T) {
-	for _, path := range []string{"/admin", "/admin/tasks"} {
+	for _, path := range []string{"/admin", "/admin/tasks", "/admin/service"} {
 		t.Run(path, func(t *testing.T) {
 			handler := handlerFor(t, nonAdminSessions("rider-a"), &fakeOAuth{}, &fakeState{}, nil)
 
@@ -1239,7 +1235,7 @@ func TestAdminDocumentsAnswerNotFoundToANonAdmin(t *testing.T) {
 }
 
 func TestAdminDocumentsAreServedToAnAdmin(t *testing.T) {
-	for _, path := range []string{"/admin", "/admin/tasks"} {
+	for _, path := range []string{"/admin", "/admin/tasks", "/admin/service"} {
 		t.Run(path, func(t *testing.T) {
 			handler := newTestHandler(t)
 
@@ -1254,6 +1250,19 @@ func TestAdminDocumentsAreServedToAnAdmin(t *testing.T) {
 
 // A stage URL from before a second provider existed still resolves, redirected
 // to the same stage under veloplanner, preserving suffix and method.
+// The pages Account replaced are gone, not redirected.
+func TestRemovedSyncAndSettingsDocumentsAnswerNotFound(t *testing.T) {
+	handler := newTestHandler(t)
+	for _, path := range []string{"/sync", "/settings", "/settings/tasks", "/volume"} {
+		t.Run(path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, authenticatedRequest(http.MethodGet, path))
+
+			assert.Equal(t, http.StatusNotFound, response.Code)
+		})
+	}
+}
+
 func TestHandlerRedirectsLegacyStagePaths(t *testing.T) {
 	trigger := &fakeSync{accepted: true}
 	handler := newHandlerWithSync(t, &fakeOAuth{}, &fakeState{}, trigger)
@@ -2222,7 +2231,9 @@ func newHandlerWithSync(t *testing.T, oauthService OAuth, state State, syncRuns 
 			BrowserOriginURL: testBrowserOriginURL,
 			// So every contract operation, plan ones included, is registered for
 			// the suite's own document/route coverage tests.
-			Plans: &fakePlans{},
+			Plans:   &fakePlans{},
+			Places:  &fakePlaces{name: "Kaiserstraße 12, Karlsruhe"},
+			Snapper: &fakeSnapper{},
 		},
 		oauthService, state, syncRuns, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
 	)
@@ -2256,7 +2267,9 @@ func withBrowserOrigin(request *http.Request) {
 
 type fakeOAuth struct {
 	completeErr, startErr error
+	disconnectErr         error
 	location, targetID    string
+	disconnected          []string
 	completeCalls         int
 }
 
@@ -2270,6 +2283,12 @@ func (o *fakeOAuth) Complete(context.Context, string, string, string) error {
 	o.completeCalls++
 
 	return o.completeErr
+}
+
+func (o *fakeOAuth) Disconnect(_ context.Context, targetID string) error {
+	o.disconnected = append(o.disconnected, targetID)
+
+	return o.disconnectErr
 }
 
 type fakeSync struct {

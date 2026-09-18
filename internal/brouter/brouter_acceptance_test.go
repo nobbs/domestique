@@ -28,8 +28,10 @@ func TestAcceptancePublicInstanceRoutesEveryProfile(t *testing.T) {
 
 	waypoints := []brouter.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}
 	for _, profile := range []string{"trekking", "fastbike", "gravel"} {
-		points, err := client.Route(t.Context(), waypoints, profile)
+		answer, err := client.Route(t.Context(), waypoints, profile)
 		require.NoError(t, err, "profile %s", profile)
+		points := answer.Points
+		assert.NotEmpty(t, answer.Ways, "the ways under the line, profile %s", profile)
 		require.GreaterOrEqual(t, len(points), 2, "profile %s", profile)
 		assert.InDelta(t, waypoints[0].Longitude, points[0].Longitude, 0.01, "start longitude, profile %s", profile)
 		assert.InDelta(t, waypoints[0].Latitude, points[0].Latitude, 0.01, "start latitude, profile %s", profile)

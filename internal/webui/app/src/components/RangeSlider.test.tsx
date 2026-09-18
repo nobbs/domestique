@@ -52,9 +52,9 @@ describe("RangeSlider", () => {
     );
     const bars = container.querySelectorAll("[aria-hidden] > div");
     expect(bars).toHaveLength(24);
-    expect(bars[2]?.className).toContain("bg-[var(--rule)]");
+    expect(bars[2]).not.toHaveAttribute("data-inside");
     expect(bars[2]).toHaveStyle({ height: "50%" });
-    expect(bars[14]?.className).toContain("bg-[var(--accent)]");
+    expect(bars[14]).toHaveAttribute("data-inside", "true");
     expect(bars[14]).toHaveStyle({ height: "100%" });
   });
 

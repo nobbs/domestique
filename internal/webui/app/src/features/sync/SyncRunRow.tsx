@@ -1,5 +1,5 @@
 import type { SyncRun } from "../../api/types";
-import { Badge } from "../../components/ui/badge";
+import { InsetRow } from "../../components/InsetList";
 import { formatTimestamp } from "../../lib/format";
 import { GUIDANCE_LABELS, syncGuidance } from "../../lib/syncGuidance";
 
@@ -47,12 +47,6 @@ function runCounts(run: SyncRun): string {
   ].join(" · ");
 }
 
-const TONE_CLASSES: Record<ReturnType<typeof runTone>, string> = {
-  good: "border-[var(--good)] bg-[var(--base)] text-[var(--ink)]",
-  hold: "border-[var(--hold)] bg-[var(--base)] text-[var(--ink)]",
-  alert: "border-[var(--alert)] bg-[var(--base)] text-[var(--ink)]",
-};
-
 /**
  * One recorded run: when it finished, which half, what it moved, and how it
  * ended.
@@ -64,31 +58,27 @@ const TONE_CLASSES: Record<ReturnType<typeof runTone>, string> = {
  */
 export function SyncRunRow({ run, label }: { run: SyncRun; label: string }) {
   return (
-    <li
-      className="grid gap-1 rounded-lg border border-[var(--rule)] p-3 text-sm sm:grid-cols-[1fr_auto]"
+    <InsetRow
       data-phase={run.phase}
-    >
-      <span className="text-[var(--ink-2)]">{formatTimestamp(run.completedAt)}</span>
-      <span className="font-medium">{label}</span>
-      <span className="text-[var(--ink-2)]">{runCounts(run)}</span>
-      <span className="flex flex-wrap items-center gap-2 sm:row-span-2 sm:col-start-2 sm:row-start-1 sm:self-center">
-        <Badge className={TONE_CLASSES[runTone(run)]} variant="secondary">
-          {runResult(run)}
-        </Badge>
-        {/*
+      tone={runTone(run)}
+      toneLabel={runResult(run)}
+      title={label}
+      detail={[formatTimestamp(run.completedAt), runCounts(run)]}
+      actions={
+        /*
          * The reference is the only thing on the row that is not about what
          * happened. It is here so a notification can be traced to the run it
          * was sent for, and it is presented as the opaque string it is rather
          * than dressed up as an identifier. A run recorded before runs were
          * named has none to show.
-         */}
-        {run.reference === "" ? null : (
+         */
+        run.reference === "" ? null : (
           <span className="text-xs text-[var(--ink-2)]">
             <span className="sr-only">Run reference </span>
             {run.reference}
           </span>
-        )}
-      </span>
-    </li>
+        )
+      }
+    />
   );
 }

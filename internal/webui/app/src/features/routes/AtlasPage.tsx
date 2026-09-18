@@ -25,11 +25,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
   activitiesQuery,
-  riderProfileQuery,
   routeClimbsQuery,
   routeGeometryQuery,
   routesQuery,
-  statusQuery,
   webUIConfigQuery,
 } from "../../api/queries";
 import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
@@ -40,7 +38,6 @@ import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/ba
 import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
-import { formatReadTime } from "../../lib/format";
 import { matchingRoutes } from "../../lib/library";
 import { useOverlayInsets } from "../../lib/overlayInsets";
 import { coordinateRange, rangeBounds } from "../../lib/profile";
@@ -52,12 +49,11 @@ import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { type PlannerSeed, plannerSeedFrom } from "../plan/planner";
+import { CommandSearch, type RouteShape } from "./CommandSearch";
 import { LibraryMap, type MapLine } from "./LibraryMap";
 import { RouteDock } from "./RouteDock";
 import { RouteOverlay } from "./RouteOverlay";
 import { RoutePanel } from "./RoutePanel";
-import type { RouteShape } from "./SearchPanel";
-import { SearchPanel } from "./SearchPanel";
 import { useOpenRoute } from "./useOpenRoute";
 
 /** The smallest box every drawn route fits inside, or null for no geometry yet. */
@@ -138,7 +134,6 @@ function loadFailure(what: string, error: unknown) {
 export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const routes = useQuery(routesQuery());
   const config = useQuery(webUIConfigQuery());
-  const status = useQuery(statusQuery());
   const prefersDark = usePrefersDarkScheme();
   // The scheme actually in force: the system's own, unless the reader has
   // overridden it. This is what the map's own dark/light decision has to
@@ -161,8 +156,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
 
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [pickedKey, setPickedKey] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   /*
    * The open route lives in the address rather than in state, so one is still a
@@ -206,7 +201,10 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
         const key = routeKey(route);
         const coordinates: Position[] = geometry.coordinates;
         lines.push({ key, coordinates });
-        shapes.set(key, { coordinates });
+        shapes.set(
+          key,
+          geometry.surface ? { coordinates, surface: geometry.surface } : { coordinates },
+        );
         boxes.set(key, geometry.bbox);
         const surface = geometry.surface;
         // The distinct kinds a filter checks against, not a share of the
@@ -287,9 +285,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     ),
     enabled: shownRoute !== null,
   });
-  // The rider's own stopping habit, which the panel's door-to-door window uses
-  // in place of the seeded corpus. Asked for on the same terms as the rides.
-  const riderProfile = useQuery({ ...riderProfileQuery(), enabled: shownRoute !== null });
   const openRides = useMemo(
     () => (shownRoute ? riddenOn(activities.data ?? [], shownRoute) : []),
     [activities.data, shownRoute],
@@ -368,13 +363,10 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
    *
    * The map is the library, so a line on it is the route itself rather than a
    * picture of one: pointing at where a ride goes is the most direct way there
-   * is of asking about it, and it takes no column at all.
-   *
-   * The same two steps the column has, in the same order: the first click shows
-   * the route's card, the second opens it. The lines cross and the reader is
-   * panning across them, so a map where one click swapped the whole panel would
-   * be a minefield — the card is what says which route was hit before anything
-   * is committed to.
+   * is of asking about it. It opens the command panel with that route active,
+   * the same as ⌘K would, rather than jumping straight to the route — the
+   * lines cross and the reader is panning across them, so a map where one
+   * click swapped the whole page would be a minefield.
    *
    * An opened route keeps the map to itself: its hit target is gone once the
    * overlay is up, and a pick before that is still not a way out of the route.
@@ -384,11 +376,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
       if (openKey !== null) {
         return;
       }
-      if (key === pickedKey) {
-        open(key);
-
-        return;
-      }
+      setSearchOpen(true);
       // The search is one way to a route and the map is another, so a route
       // picked off the map is the answer to whatever was typed: a card that
       // stayed hidden behind a query it does not match would be a selection the
@@ -398,7 +386,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
       }
       setPickedKey(key);
     },
-    [open, openKey, pickedKey, shown],
+    [openKey, shown],
   );
 
   const close = useCallback(() => {
@@ -446,8 +434,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const bounds = windowBounds ?? focusBox ?? locationBox ?? libraryBounds;
 
   const basemap = config.data ? basemapFor(config.data, resolvedDark, basemapChoice) : null;
-  const readAt = status.data?.sync.phases.source?.lastCompletedAt;
-
   return (
     <Layout
       map={
@@ -585,33 +571,31 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
           copySeed={copySeed}
-          stopping={riderProfile.data?.suggestions.stopping}
         />
-      ) : library.length > 0 ? (
-        <SearchPanel
-          shown={shown}
+      ) : null}
+      {library.length > 0 ? (
+        <CommandSearch
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          routeOpen={shownRoute !== null}
           library={library}
+          shown={shown}
           query={query}
           onQueryChange={(next) => {
             setQuery(next);
-            // A search that no longer holds the open route would leave the card
-            // expanded off the bottom of a column it is not in.
+            // A search that no longer holds the picked route would leave the
+            // map highlighting one the panel no longer lists.
             setPickedKey(null);
           }}
           filters={filters}
           onFiltersChange={(next) => {
             setFilters(next);
-            // Same reasoning as a changed search: a filter that no longer holds
-            // the open route must not leave its card expanded regardless.
+            // Same reasoning as a changed search.
             setPickedKey(null);
           }}
-          filtersExpanded={filtersExpanded}
-          onFiltersExpandedChange={setFiltersExpanded}
-          pickedKey={pickedKey}
-          onSelect={setPickedKey}
+          activeKey={focusKey}
           onOpen={open}
           shapes={drawn.shapes}
-          readAt={readAt ? formatReadTime(readAt) : null}
           changeOf={changeOf}
         />
       ) : null}

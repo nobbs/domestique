@@ -16,6 +16,7 @@ import {
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { Position } from "../../api/types";
+import { SegmentedTrack } from "../../components/Segmented";
 import { StartTimePicker } from "../../components/StartTimePicker";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import type { Climb } from "../../lib/climbs";
@@ -84,7 +85,7 @@ function Panel({
           aria-live="polite"
           className="text-xs text-[var(--ink-2)] tabular-nums"
         >
-          <span className="text-sm font-semibold text-[var(--ink)]">{lead}</span>
+          <span className="font-semibold text-[var(--ink)] text-base">{lead}</span>
           {rest === undefined ? null : ` · ${rest}`}
         </output>
         <div className="flex items-center gap-3">
@@ -95,7 +96,7 @@ function Panel({
                 openOnHover
                 delay={150}
                 aria-label="More about this"
-                className="rounded-full p-0.5 text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[popup-open]:text-[var(--ink)]"
+                className="grid size-7 place-items-center rounded-[9px] bg-[var(--muted)] text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[popup-open]:bg-[var(--rule)] data-[popup-open]:text-[var(--ink)]"
               >
                 <IconInfoCircle size={16} stroke={1.8} aria-hidden="true" />
               </PopoverTrigger>
@@ -268,7 +269,7 @@ function ProfileStop({
                   type="button"
                   aria-keyshortcuts="Escape"
                   onClick={() => onZoomChange(null)}
-                  className="rounded-full border border-[var(--rule)] px-2 py-0.5 text-[11px] text-[var(--ink-2)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+                  className="rounded-[9px] bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
                 >
                   Whole route
                 </button>
@@ -392,8 +393,13 @@ function ForecastStop({
   );
 }
 
+/* A segment of the rail: quiet until it is the stop being read. */
 const RAIL_TAB =
-  "flex w-14 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[active]:bg-[var(--base)] data-[active]:font-semibold data-[active]:text-[var(--ink)]";
+  "relative z-10 flex w-14 flex-col items-center gap-0.5 rounded-[9px] px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] transition-colors duration-200 hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] data-[active]:font-semibold data-[active]:text-[var(--ink)]";
+
+/* The hide control stands alone under the pill, so it keeps a plain hover instead. */
+const RAIL_HIDE =
+  "flex w-14 flex-col items-center gap-0.5 rounded-md px-1 py-1.5 text-[10px] leading-none text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
 
 /** A stop on the rail, open or folded — matches the `Tabs.Tab` values below. */
 type Stop = "profile" | "forecast" | "rides";
@@ -409,7 +415,7 @@ function RidesStop({ rides }: Pick<RouteDockProps, "rides">) {
 }
 
 const FOLDED_CONTROL =
-  "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]";
+  "flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs text-[var(--ink-2)] hover:bg-[var(--base)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]";
 
 export function RouteDock({
   title,
@@ -445,53 +451,66 @@ export function RouteDock({
   const shownStop = rides.length === 0 && stop === "rides" ? "profile" : stop;
 
   if (!open) {
+    const stops: Array<{
+      label: string;
+      name: string;
+      icon: ReactNode;
+      stop: Stop;
+      count: string | null;
+    }> = [
+      {
+        label: "Profile",
+        name: "Show the profile",
+        icon: <IconMountain size={15} stroke={2} aria-hidden="true" />,
+        stop: "profile",
+        count: climbs.length === 0 ? null : String(climbs.length),
+      },
+      {
+        label: "Forecast",
+        name: "Show the forecast",
+        icon: <IconCloud size={15} stroke={2} aria-hidden="true" />,
+        stop: "forecast",
+        count: back === undefined ? null : formatClock(back),
+      },
+      ...(rides.length === 0
+        ? []
+        : [
+            {
+              label: "Rides",
+              name: "Show the ride history",
+              icon: <IconBike size={15} stroke={2} aria-hidden="true" />,
+              stop: "rides" as const,
+              count: String(rides.length),
+            },
+          ]),
+    ];
+
     return (
       <div
         role="group"
         aria-label="Route detail, folded"
-        className="flex h-9 w-fit items-center gap-1 rounded-xl bg-[var(--panel)] px-2 shadow-[var(--shadow)] ring-1 ring-black/5"
+        className="flex w-fit items-center gap-0.5 rounded-xl bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]"
       >
-        <button
-          type="button"
-          aria-label="Show the profile"
-          onClick={() => {
-            setStop("profile");
-            onOpenChange(true);
-          }}
-          className={FOLDED_CONTROL}
-        >
-          <IconMountain size={15} stroke={2} aria-hidden="true" />
-          Profile
-        </button>
-        <button
-          type="button"
-          aria-label="Show the forecast"
-          onClick={() => {
-            setStop("forecast");
-            onOpenChange(true);
-          }}
-          className={FOLDED_CONTROL}
-        >
-          <IconCloud size={15} stroke={2} aria-hidden="true" />
-          Forecast
-        </button>
-        {rides.length === 0 ? null : (
+        {stops.map((entry) => (
           <button
+            key={entry.stop}
             type="button"
-            aria-label="Show the ride history"
+            aria-label={entry.count === null ? entry.name : `${entry.name}, ${entry.count}`}
             onClick={() => {
-              setStop("rides");
+              setStop(entry.stop);
               onOpenChange(true);
             }}
             className={FOLDED_CONTROL}
           >
-            <IconBike size={15} stroke={2} aria-hidden="true" />
-            Rides
+            {entry.icon}
+            {entry.label}
+            {entry.count === null ? null : (
+              <span className="rounded-[9px] bg-[var(--rule)] px-1.5 py-px text-[10px] text-[var(--ink)] tabular-nums">
+                {entry.count}
+              </span>
+            )}
           </button>
-        )}
-        {back === undefined ? null : (
-          <span className="px-1 text-[10px] text-[var(--ink-2)]">back {formatClock(back)}</span>
-        )}
+        ))}
       </div>
     );
   }
@@ -499,7 +518,7 @@ export function RouteDock({
   return (
     <section
       aria-label="Route detail"
-      className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] ring-1 ring-black/5"
+      className="relative w-full rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
     >
       <Tabs.Root
         value={shownStop}
@@ -508,28 +527,30 @@ export function RouteDock({
         className="flex gap-3"
       >
         <div className="flex shrink-0 flex-col border-r border-[var(--rule)] pr-2">
-          <Tabs.List className="flex flex-col gap-0.5">
-            <Tabs.Tab value="profile" className={RAIL_TAB}>
-              <IconMountain size={15} stroke={2} aria-hidden="true" />
-              Profile
-            </Tabs.Tab>
-            <Tabs.Tab value="forecast" className={RAIL_TAB}>
-              <IconCloud size={15} stroke={2} aria-hidden="true" />
-              Forecast
-            </Tabs.Tab>
-            {rides.length === 0 ? null : (
-              <Tabs.Tab value="rides" className={RAIL_TAB}>
-                <IconBike size={15} stroke={2} aria-hidden="true" />
-                Rides
+          <SegmentedTrack active={shownStop} orientation="vertical">
+            <Tabs.List className="contents">
+              <Tabs.Tab value="profile" data-segment="profile" className={RAIL_TAB}>
+                <IconMountain size={15} stroke={2} aria-hidden="true" />
+                Profile
               </Tabs.Tab>
-            )}
-          </Tabs.List>
+              <Tabs.Tab value="forecast" data-segment="forecast" className={RAIL_TAB}>
+                <IconCloud size={15} stroke={2} aria-hidden="true" />
+                Forecast
+              </Tabs.Tab>
+              {rides.length === 0 ? null : (
+                <Tabs.Tab value="rides" data-segment="rides" className={RAIL_TAB}>
+                  <IconBike size={15} stroke={2} aria-hidden="true" />
+                  Rides
+                </Tabs.Tab>
+              )}
+            </Tabs.List>
+          </SegmentedTrack>
           <button
             type="button"
             aria-expanded
             aria-label="Hide the route detail"
             onClick={() => onOpenChange(false)}
-            className={`${RAIL_TAB} mt-auto`}
+            className={`${RAIL_HIDE} mt-auto`}
           >
             <IconLayoutBottombarCollapse size={15} stroke={2} aria-hidden="true" />
             Hide

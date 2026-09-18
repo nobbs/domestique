@@ -160,6 +160,90 @@ describe("plannerReducer", () => {
     expect(loaded.future).toEqual([]);
   });
 
+  it("reads a waypoint placed on a wrapped copy of the world within one globe", () => {
+    // A click east of the antimeridian on the next copy of the map: 211.2 is
+    // the same meridian as -148.8, and the service refuses anything past 180.
+    const wrapped = reduce(
+      { type: "append", waypoint: { longitude: 211.2, latitude: 11.4 } },
+      { type: "append", waypoint: { longitude: -400, latitude: 20 } },
+    );
+
+    expect(wrapped.waypoints[0]).toMatchObject({ longitude: -148.8, latitude: 11.4 });
+    expect(wrapped.waypoints[1]).toMatchObject({ longitude: -40, latitude: 20 });
+  });
+
+  it("unwraps a waypoint dragged onto another copy of the world", () => {
+    const dragged = reduce(
+      { type: "append", waypoint: first },
+      { type: "move", index: 0, waypoint: { longitude: 368, latitude: 49 } },
+    );
+
+    expect(dragged.waypoints[0]).toMatchObject({ longitude: 8, latitude: 49 });
+  });
+
+  it("leaves a waypoint already within the globe alone", () => {
+    const placed = reduce({ type: "insert", index: 0, waypoint: { longitude: 180, latitude: 0 } });
+
+    expect(placed.waypoints[0]).toMatchObject({ longitude: 180, latitude: 0 });
+  });
+
+  it("settles a placed waypoint onto its road without a step of its own to undo", () => {
+    const placed = reduce(
+      { type: "append", waypoint: first },
+      { type: "append", waypoint: second },
+    );
+    const snapped = plannerReducer(placed, {
+      type: "snap",
+      id: 1,
+      from: second,
+      waypoint: { longitude: 8.1003, latitude: 49.1002 },
+    });
+
+    expect(snapped.waypoints[1]).toMatchObject({ id: 1, longitude: 8.1003, latitude: 49.1002 });
+    expect(snapped.past).toBe(placed.past);
+    // One undo takes back the placing and the snap together.
+    expect(plannerReducer(snapped, { type: "undo" }).waypoints).toHaveLength(1);
+  });
+
+  it("ignores a snap for a waypoint that is already gone", () => {
+    const placed = reduce({ type: "append", waypoint: first });
+    const deleted = plannerReducer(placed, { type: "delete", index: 0 });
+
+    expect(plannerReducer(deleted, { type: "snap", id: 0, from: first, waypoint: second })).toBe(
+      deleted,
+    );
+  });
+
+  it("ignores a snap for a waypoint moved since it was asked", () => {
+    const placed = reduce({ type: "append", waypoint: first });
+    const moved = plannerReducer(placed, { type: "move", index: 0, waypoint: second });
+
+    expect(
+      plannerReducer(moved, {
+        type: "snap",
+        id: 0,
+        from: first,
+        waypoint: { longitude: 8.0001, latitude: 49.0001 },
+      }),
+    ).toBe(moved);
+  });
+
+  it("ignores a snap whose waypoint id now names another place", () => {
+    const placed = reduce({ type: "append", waypoint: first });
+    const undone = plannerReducer(placed, { type: "undo" });
+    const replaced = plannerReducer(undone, { type: "append", waypoint: second });
+
+    expect(replaced.waypoints[0]?.id).toBe(0);
+    expect(
+      plannerReducer(replaced, {
+        type: "snap",
+        id: 0,
+        from: first,
+        waypoint: { longitude: 8.0001, latitude: 49.0001 },
+      }),
+    ).toBe(replaced);
+  });
+
   it("resets an opened plan to a new draft", () => {
     const edited = reduce(
       { type: "setName", name: "Stored route" },

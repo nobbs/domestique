@@ -3,47 +3,86 @@ import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router";
 import { webUIConfigQuery } from "./api/queries";
+import { Button } from "./components/Button";
+import { Unavailable } from "./components/Unavailable";
+import { AccountPage } from "./features/account/AccountPage";
 import { ActivitiesPage } from "./features/activity/ActivitiesPage";
 import { ActivityPage } from "./features/activity/ActivityPage";
 import { AdminPage } from "./features/admin/AdminPage";
-import { TasksPage } from "./features/admin/tasks/TasksPage";
 import { SignInPage } from "./features/auth/SignInPage";
 import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { FitnessPage } from "./features/fitness/FitnessPage";
 import { PlanPage } from "./features/plan/PlanPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
-import { SettingsPage } from "./features/settings/SettingsPage";
-import { SyncPage } from "./features/sync/SyncPage";
-import { VolumePage } from "./features/volume/VolumePage";
-import { useEffectiveAdmin } from "./lib/identity";
+import { useEffectiveAdmin, useViewAsRider } from "./lib/identity";
 import { useThemeChoice } from "./lib/theme";
 
 /**
  * Guards an admin-only route. Nothing is rendered while identity is still
- * loading — deciding early would bounce an admin to `/settings` on first
+ * loading — deciding early would bounce an admin to `/account` on first
  * paint, before their own config has even arrived.
  */
 function AdminOnly({ children }: { children: ReactNode }) {
-  const { isPending } = useQuery(webUIConfigQuery());
+  const { data, isPending } = useQuery(webUIConfigQuery());
   const effectiveAdmin = useEffectiveAdmin();
+  const [viewAsRider, setViewAsRider] = useViewAsRider();
 
   if (isPending) {
     return null;
   }
+  if (effectiveAdmin) {
+    return children;
+  }
+  if (data?.identity.admin && viewAsRider) {
+    return <RiderPreview onLeave={() => setViewAsRider(false)} />;
+  }
 
-  return effectiveAdmin ? children : <Navigate to="/settings" replace />;
+  return <Navigate to="/account" replace />;
+}
+
+/**
+ * What an admin sees where their own preview has taken a page away, rather
+ * than the address changing under them with nothing to say why.
+ */
+function RiderPreview({ onLeave }: { onLeave: () => void }) {
+  return (
+    <Unavailable
+      title="Hidden while you view as a rider"
+      detail="This page belongs to an administrator, and the rider view is switched on for this browser. Leaving it brings the page straight back."
+      action={
+        <Button variant="default" onClick={onLeave}>
+          Leave rider view
+        </Button>
+      }
+    />
+  );
 }
 
 /** The planner exists only where an admin and a routing engine do. */
 function PlanningOnly({ children }: { children: ReactNode }) {
   const { data, isPending } = useQuery(webUIConfigQuery());
   const effectiveAdmin = useEffectiveAdmin();
+  const [viewAsRider, setViewAsRider] = useViewAsRider();
 
   if (isPending) {
     return null;
   }
+  if (data?.planning && effectiveAdmin) {
+    return children;
+  }
+  if (data?.identity.admin && viewAsRider) {
+    return <RiderPreview onLeave={() => setViewAsRider(false)} />;
+  }
+  if (data?.identity.admin) {
+    return (
+      <Unavailable
+        title="The planner is switched off"
+        detail="This service routes plans through a BRouter engine, and none is configured. Naming one as planning.brouter_url switches the planner on."
+      />
+    );
+  }
 
-  return data?.planning && effectiveAdmin ? children : <Navigate to="/" replace />;
+  return <Navigate to="/" replace />;
 }
 
 /**
@@ -121,12 +160,15 @@ export function App() {
       {/* The one page reached without a session. The service serves this same
           document there, so the sign-in form is the application's own. */}
       <Route path="auth/login" element={<SignInPage />} />
-      <Route path="sync" element={<SyncPage />} />
-      <Route path="volume" element={<VolumePage />} />
       <Route path="fitness" element={<FitnessPage />} />
-      <Route path="activities" element={<ActivitiesPage />} />
+      {/* One element for both views, so the range and ground chosen survive a switch. */}
+      <Route path="activities" element={<ActivitiesPage />}>
+        <Route index />
+        <Route path="rides" />
+      </Route>
       <Route path="activities/:activityId" element={<ActivityPage />} />
-      <Route path="settings" element={<SettingsPage />} />
+      <Route path="account" element={<AccountPage />} />
+      <Route path="account/:section" element={<AccountPage />} />
       <Route
         path="plan"
         element={
@@ -152,14 +194,13 @@ export function App() {
         }
       />
       <Route
-        path="admin/tasks"
+        path="admin/:section"
         element={
           <AdminOnly>
-            <TasksPage />
+            <AdminPage />
           </AdminOnly>
         }
       />
-      <Route path="settings/tasks" element={<Navigate to="/admin/tasks" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

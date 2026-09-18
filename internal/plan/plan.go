@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/nobbs/domestique/internal/elevation"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/route"
 )
 
@@ -73,14 +74,22 @@ type Waypoint struct {
 // Plan is an admin-composed route, from its waypoints to its routed geometry,
 // exactly as a Store persists it.
 type Plan struct {
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	Name           string
-	Profile        Profile
-	Waypoints      []Waypoint
-	Geometry       []route.Point
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Name      string
+	Profile   Profile
+	Waypoints []Waypoint
+	Geometry  []route.Point
+	// Progress and MovingSeconds are predicted on read, never stored: the
+	// coefficients they are predicted with are replaced by a calibration.
+	Progress []Progress
+	// Pushing is measured when the plan is routed and stored with it: only the
+	// engine's answer says which ways a rider walks.
+	Pushing        []Window
 	DistanceMetres float64
 	AscentMetres   float64
+	DescentMetres  float64
+	MovingSeconds  float64
 	ID             int64
 	Version        int64
 	Published      bool
@@ -90,7 +99,22 @@ type Plan struct {
 // network for one profile, returning the snapped line with an elevation per
 // point.
 type Router interface {
-	Route(ctx context.Context, waypoints []Waypoint, profile Profile) ([]route.Point, error)
+	Route(ctx context.Context, waypoints []Waypoint, profile Profile) (Routed, error)
+}
+
+// Pace predicts a routed line's moving time, as this service predicts a
+// stage's. A line whose elevation is incomplete has no prediction, which ok
+// reports; that is not a failure.
+type Pace interface {
+	Predict(points []route.Point) (movingSeconds float64, cumulativeSeconds []float64, ok bool)
+}
+
+// Progress is how far into a plan one waypoint is, measured along the routed
+// line rather than between waypoints. MovingSeconds is zero where the line
+// carries no prediction.
+type Progress struct {
+	DistanceMetres float64
+	MovingSeconds  float64
 }
 
 // Store owns plan persistence. ReplacePlan and DeletePlan report false,
@@ -108,9 +132,18 @@ type Store interface {
 // Measured is a plan's routed and measured geometry, produced by the one path
 // both a preview and a save use.
 type Measured struct {
-	Geometry       []route.Point
+	Geometry []route.Point
+	// Progress carries one entry per waypoint, in the order they were routed.
+	Progress []Progress
+	// Pushing is where the line runs along a way bicycles are refused and a
+	// rider walks.
+	Pushing        []Window
 	DistanceMetres float64
 	AscentMetres   float64
+	DescentMetres  float64
+	// MovingSeconds is the whole line's predicted time, zero where the model
+	// has no prediction for it.
+	MovingSeconds float64
 }
 
 // Service composes a Router and a Store into plan validation, routing,
@@ -118,14 +151,18 @@ type Measured struct {
 type Service struct {
 	store  Store
 	router Router
+	pace   Pace
 	now    func() time.Time
 	newID  func() (int64, error)
 }
 
 // NewService builds a Service. now and newID are clock and ID seams: a
-// caller running the service for real passes time.Now and RandomID.
-func NewService(store Store, router Router, now func() time.Time, newID func() (int64, error)) *Service {
-	return &Service{store: store, router: router, now: now, newID: newID}
+// caller running the service for real passes time.Now and RandomID. A nil
+// pace leaves every plan unpredicted.
+func NewService(
+	store Store, router Router, pace Pace, now func() time.Time, newID func() (int64, error),
+) *Service {
+	return &Service{store: store, router: router, pace: pace, now: now, newID: newID}
 }
 
 // maxID bounds a plan identifier below 2^53, the largest integer a browser's
@@ -157,11 +194,11 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 	if err := validateRouting(profile, waypoints); err != nil {
 		return Measured{}, err
 	}
-	points, err := s.router.Route(ctx, waypoints, profile)
+	routed, err := s.router.Route(ctx, waypoints, profile)
 	if err != nil {
 		return Measured{}, fmt.Errorf("plan: routing waypoints: %w: %w", ErrRouting, err)
 	}
-	built, err := route.NewRoute(route.ProviderLocal, 1, 1, previewRevision, "", "", points, previewRevision)
+	built, err := route.NewRoute(route.ProviderLocal, 1, 1, previewRevision, "", "", routed.Points, previewRevision)
 	if err != nil {
 		return Measured{}, fmt.Errorf("plan: building routed geometry: %w", err)
 	}
@@ -170,11 +207,82 @@ func (s *Service) Route(ctx context.Context, waypoints []Waypoint, profile Profi
 		return Measured{}, fmt.Errorf("plan: normalizing elevation: %w", err)
 	}
 
+	geometry := normalized.Geometry()
+	movingSeconds, cumulative := s.predict(geometry)
+
 	return Measured{
-		Geometry:       normalized.Geometry(),
+		Geometry:       geometry,
+		Progress:       progressAt(waypoints, geometry, cumulative),
+		Pushing:        pushingOf(routed.Ways, normalized.DistanceMetres()),
 		DistanceMetres: normalized.DistanceMetres(),
 		AscentMetres:   normalized.ElevationGainMetres(),
+		DescentMetres:  normalized.ElevationLossMetres(),
+		MovingSeconds:  movingSeconds,
 	}, nil
+}
+
+// predict asks the pace for a line's moving time, answering zero and no series
+// where none is configured or the line cannot be predicted.
+func (s *Service) predict(geometry []route.Point) (movingSeconds float64, cumulative []float64) {
+	if s.pace == nil {
+		return 0, nil
+	}
+	movingSeconds, cumulative, ok := s.pace.Predict(geometry)
+	if !ok {
+		return 0, nil
+	}
+
+	return movingSeconds, cumulative
+}
+
+// progressAt reads the line at each waypoint: the point of the routed line
+// nearest to it, and the distance and time the line has run by then. A routed
+// line passes through its waypoints in order, so each search starts where the
+// last one ended and a loop cannot match its own start twice.
+func progressAt(waypoints []Waypoint, geometry []route.Point, cumulative []float64) []Progress {
+	if len(geometry) < 2 {
+		return nil
+	}
+	distances := cumulativeMetres(geometry)
+	progress := make([]Progress, len(waypoints))
+	from := 0
+	for index, waypoint := range waypoints {
+		nearest := nearestIndex(geometry, from, waypoint)
+		from = nearest
+		progress[index] = Progress{DistanceMetres: distances[nearest]}
+		if nearest < len(cumulative) {
+			progress[index].MovingSeconds = cumulative[nearest]
+		}
+	}
+
+	return progress
+}
+
+func cumulativeMetres(geometry []route.Point) []float64 {
+	metres := make([]float64, len(geometry))
+	for index := 1; index < len(geometry); index++ {
+		metres[index] = metres[index-1] +
+			measure.HaversineMetres(geometry[index-1].Coordinate(), geometry[index].Coordinate())
+	}
+
+	return metres
+}
+
+// nearestIndex is the index of the point nearest waypoint at or after from,
+// compared over squared degrees with longitude scaled by the latitude, which
+// orders the same as distance without a trigonometric call per point.
+func nearestIndex(geometry []route.Point, from int, waypoint Waypoint) int {
+	scale := math.Cos(waypoint.Latitude * math.Pi / 180)
+	nearest, nearestDistance := from, math.Inf(1)
+	for index := from; index < len(geometry); index++ {
+		east := (geometry[index].Longitude - waypoint.Longitude) * scale
+		north := geometry[index].Latitude - waypoint.Latitude
+		if distance := east*east + north*north; distance < nearestDistance {
+			nearest, nearestDistance = index, distance
+		}
+	}
+
+	return nearest
 }
 
 // Create validates, routes, and stores a new draft plan.
@@ -195,6 +303,8 @@ func (s *Service) Create(ctx context.Context, name string, profile Profile, wayp
 	created := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
+		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing,
+		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: false, Version: 1, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.store.InsertPlan(ctx, &created); err != nil {
@@ -232,6 +342,8 @@ func (s *Service) Replace(
 	replaced := Plan{
 		ID: id, Name: trimmedName, Profile: profile, Waypoints: slices.Clone(waypoints),
 		Geometry: measured.Geometry, DistanceMetres: measured.DistanceMetres, AscentMetres: measured.AscentMetres,
+		DescentMetres: measured.DescentMetres, Pushing: measured.Pushing,
+		Progress: measured.Progress, MovingSeconds: measured.MovingSeconds,
 		Published: published, Version: expectedVersion + 1, CreatedAt: existing.CreatedAt, UpdatedAt: s.now().UTC(),
 	}
 	ok, err := s.store.ReplacePlan(ctx, &replaced, expectedVersion)
@@ -279,8 +391,34 @@ func (s *Service) Get(ctx context.Context, id int64) (result Plan, found bool, e
 	if !found {
 		return Plan{}, false, nil
 	}
+	result.MovingSeconds, result.Progress = s.progressOf(result.Waypoints, result.Geometry)
+	result.DescentMetres = descentOf(result.Geometry)
 
 	return result, true, nil
+}
+
+// descentOf measures a stored plan's descent, which no column holds: the
+// ascent beside it was measured when the plan was routed, and this is the same
+// sum over the same normalised altitudes.
+func descentOf(geometry []route.Point) float64 {
+	altitudes := make([]float64, 0, len(geometry))
+	for _, point := range geometry {
+		if point.Elevation == nil {
+			return 0
+		}
+		altitudes = append(altitudes, *point.Elevation)
+	}
+
+	return measure.DescentMetres(altitudes)
+}
+
+// progressOf predicts a stored plan's time on read, so a plan always reports
+// what the coefficients in force now say rather than what they said when it
+// was saved.
+func (s *Service) progressOf(waypoints []Waypoint, geometry []route.Point) (float64, []Progress) {
+	movingSeconds, cumulative := s.predict(geometry)
+
+	return movingSeconds, progressAt(waypoints, geometry, cumulative)
 }
 
 // List returns every plan, draft and published, ordered by id.

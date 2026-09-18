@@ -10,10 +10,12 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { webUIConfigQuery } from "./api/queries";
+import { statusQuery, webUIConfigQuery } from "./api/queries";
 import type { WebUIConfig } from "./api/types";
+import { IDLE_STATUS } from "./test/status";
 
 // The pages behind these routes are a WebGL map and a query client; neither is
 // what is under test. Standing both in reduces each route to the address it
@@ -21,17 +23,11 @@ import type { WebUIConfig } from "./api/types";
 vi.mock("./features/routes/AtlasPage", () => ({
   AtlasPage: () => <p>the library</p>,
 }));
-vi.mock("./features/sync/SyncPage", () => ({
-  SyncPage: () => <p>the sync page</p>,
-}));
-vi.mock("./features/settings/SettingsPage", () => ({
-  SettingsPage: () => <p>the settings page</p>,
+vi.mock("./features/account/AccountPage", () => ({
+  AccountPage: () => <p>the account page</p>,
 }));
 vi.mock("./features/admin/AdminPage", () => ({
   AdminPage: () => <p>the admin page</p>,
-}));
-vi.mock("./features/admin/tasks/TasksPage", () => ({
-  TasksPage: () => <p>the tasks page</p>,
 }));
 vi.mock("./features/plan/PlanPage", () => ({
   PlanPage: () => <p>the planner</p>,
@@ -66,6 +62,8 @@ function open(path: string, admin?: boolean, planning = false): void {
   if (admin !== undefined) {
     client.setQueryData(webUIConfigQuery().queryKey, config(admin, planning));
   }
+  // The notice keeps the menu bar, which asks after sync; nothing here is about that.
+  client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
 
   render(
     <QueryClientProvider client={client}>
@@ -85,10 +83,13 @@ function address(): string {
  * A `localStorage` for jsdom, which has none — see `basemap.test.ts` for why
  * a `Map` behind the two methods the hook uses is enough.
  */
-function stubStorage(theme?: string): void {
+function stubStorage(theme?: string, viewAsRider = false): void {
   const entries = new Map<string, string>();
   if (theme !== undefined) {
     entries.set("domestique.theme", theme);
+  }
+  if (viewAsRider) {
+    entries.set("domestique.viewAsRider", "true");
   }
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => entries.get(key) ?? null,
@@ -125,38 +126,34 @@ describe("the client routes", () => {
     expect(address()).toBe("/");
   });
 
-  it("keeps sync a page of its own", () => {
-    open("/sync");
+  it("serves the account page and each of its tabs", () => {
+    open("/account/profile");
 
-    expect(address()).toBe("/sync");
-    expect(screen.getByText("the sync page")).toBeInTheDocument();
+    expect(address()).toBe("/account/profile");
+    expect(screen.getByText("the account page")).toBeInTheDocument();
   });
 
-  it("keeps settings as a deep-linkable client page", () => {
-    open("/settings");
+  // Sync and Settings were merged into Account; their paths were removed, not redirected.
+  it.each(["/sync", "/settings", "/settings/tasks"])(
+    "sends the removed %s to the library",
+    (path) => {
+      open(path, true);
 
-    expect(address()).toBe("/settings");
-    expect(screen.getByText("the settings page")).toBeInTheDocument();
-  });
+      expect(address()).toBe("/");
+    },
+  );
 
-  it("renders the admin page for an admin", () => {
-    open("/admin", true);
-
-    expect(address()).toBe("/admin");
-    expect(screen.getByText("the admin page")).toBeInTheDocument();
-  });
-
-  it("sends a non-admin from /admin back to their own settings", () => {
-    open("/admin", false);
-
-    expect(address()).toBe("/settings");
-  });
-
-  it("renders the admin tasks page for an admin", () => {
+  it("renders the admin page and its tabs for an admin", () => {
     open("/admin/tasks", true);
 
     expect(address()).toBe("/admin/tasks");
-    expect(screen.getByText("the tasks page")).toBeInTheDocument();
+    expect(screen.getByText("the admin page")).toBeInTheDocument();
+  });
+
+  it.each(["/admin", "/admin/tasks"])("sends a non-admin from %s to their account", (path) => {
+    open(path, false);
+
+    expect(address()).toBe("/account");
   });
 
   it("mounts the planner only for an admin where routing is configured", () => {
@@ -173,10 +170,61 @@ describe("the client routes", () => {
     expect(screen.queryByText("the planner")).not.toBeInTheDocument();
   });
 
-  it("sends a non-admin from /admin/tasks back to their own settings", () => {
-    open("/admin/tasks", false);
+  /**
+   * The rider view is read once per module load, so these mount their own copy
+   * of the app after the choice is stored — as `identity.test.tsx` does.
+   */
+  async function openAsPreviewingAdmin(path: string, planning = false) {
+    stubStorage(undefined, true);
+    vi.resetModules();
+    const { App: Fresh } = await import("./App");
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
+    });
+    client.setQueryData(webUIConfigQuery().queryKey, config(true, planning));
+    client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[path]}>
+          <Address />
+          <Fresh />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
 
-    expect(address()).toBe("/settings");
+  it.each(["/admin", "/plan"])(
+    "tells an admin previewing the rider view why %s is not shown, and gives it back",
+    async (path) => {
+      await openAsPreviewingAdmin(path, true);
+
+      expect(address()).toBe(path);
+      expect(screen.getByText("Hidden while you view as a rider")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Leave rider view" }));
+
+      expect(
+        screen.getByText(path === "/admin" ? "the admin page" : "the planner"),
+      ).toBeInTheDocument();
+    },
+  );
+
+  // An admin whose service names no routing engine is told that, rather than
+  // being bounced as a reader with no business here would be.
+  it("says the planner is switched off where no engine is configured", () => {
+    stubStorage();
+    open("/plan", true, false);
+
+    expect(address()).toBe("/plan");
+    expect(screen.getByText("The planner is switched off")).toBeInTheDocument();
+  });
+
+  it("explains nothing to a non-admin, who is sent away instead", () => {
+    open("/plan", false, true);
+
+    expect(address()).toBe("/");
+    expect(screen.queryByText(/rider view/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/planner is switched off/)).not.toBeInTheDocument();
   });
 
   // Deciding before the caller's own identity has arrived would bounce an
@@ -190,13 +238,7 @@ describe("the client routes", () => {
 
     expect(address()).toBe("/admin");
     expect(screen.queryByText("the admin page")).not.toBeInTheDocument();
-    expect(screen.queryByText("the settings page")).not.toBeInTheDocument();
-  });
-
-  it("redirects the old tasks path to the admin one", () => {
-    open("/settings/tasks", true);
-
-    expect(address()).toBe("/admin/tasks");
+    expect(screen.queryByText("the account page")).not.toBeInTheDocument();
   });
 });
 

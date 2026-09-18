@@ -9,7 +9,8 @@ admin draws in its own planner, to each signed-in
 rider's own self-service Wahoo account as device-ready FIT courses, plus a
 read-only browser UI (library map, per-route pages, settings). Single-tenant,
 CGO-free, `linux/amd64` Docker workload on a Tailnet host; no CLI.
-State-changing HTTP is limited to sign-in and sign-out, Wahoo OAuth onboarding,
+State-changing HTTP is limited to sign-in and sign-out, Wahoo OAuth onboarding
+and disconnect,
 the Wahoo webhook receiver, manual run triggers, `PUT /v1/settings/*`, and the
 admin-only `/v1/plans` writes over the one provider this service owns.
 
@@ -174,7 +175,7 @@ statements live in the linked specs.
 ## Testing
 
 - Tests live beside the package, using deterministic in-memory fakes or
-  `httptest`. **No normal test contacts any network service.** Five
+  `httptest`. **No normal test contacts any network service.** Six
   acceptance checks are invoked separately, behind build tags, never with
   production secrets in CI: the Wahoo sandbox check
   ([wahoo_sandbox_test.go](internal/fit/wahoo_sandbox_test.go), `-tags
@@ -183,6 +184,9 @@ statements live in the linked specs.
   `-tags openmeteo_acceptance`, no credentials needed), the BRouter check
   ([brouter_acceptance_test.go](internal/brouter/brouter_acceptance_test.go),
   `-tags brouter_acceptance`, no credentials, against the project's public
+  instance), the Photon check
+  ([photon_acceptance_test.go](internal/photon/photon_acceptance_test.go),
+  `-tags photon_acceptance`, no credentials, against komoot's public
   instance), the Claude check
   ([claude_acceptance_test.go](internal/claude/claude_acceptance_test.go),
   `-tags claude_acceptance`, needs `DOMESTIQUE_CLAUDE_TOKEN`), and the Zwift check

@@ -20,6 +20,7 @@ import { SYNC_PHASE_TASKS, TASKS } from "../../api/tasks";
 import type { Status, SyncActive, SyncPhase } from "../../api/types";
 import { SYNC_PHASES } from "../../api/types";
 import { Button } from "../../components/Button";
+import { InsetList } from "../../components/InsetList";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { formatCadence, formatTimestamp } from "../../lib/format";
@@ -209,7 +210,7 @@ export function SyncControls() {
             : "That retry could not be started."}
         </p>
       ) : null}
-      <ul className="grid gap-3">
+      <InsetList>
         {SYNC_PHASES.map((phase) => {
           const run = phase === "source" ? sourceRun : targetsRun;
 
@@ -230,7 +231,7 @@ export function SyncControls() {
             />
           );
         })}
-      </ul>
+      </InsetList>
       {/*
        * Announced rather than waited for: the operator has just pressed
        * something and nothing happened, which is the case a polite live region

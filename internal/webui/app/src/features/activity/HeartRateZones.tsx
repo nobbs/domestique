@@ -7,6 +7,7 @@
  * zone anywhere — a ring segment, a row, a bar — lights that zone in the rest.
  */
 
+import { IconHeart } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { activityHeartRateDistributionQuery } from "../../api/queries";
@@ -15,6 +16,7 @@ import type { ActivityHeartRateDistribution } from "../../api/types";
 import { DonutChart } from "../../components/chart/DonutChart";
 import { HistogramChart } from "../../components/chart/HistogramChart";
 import { type LegendRow, LegendTable } from "../../components/chart/LegendTable";
+import { PanelHeading } from "../../components/PanelHeading";
 import { SwitchableView, type View } from "../../components/SwitchableView";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatCoverage, formatDuration, formatShare } from "../../lib/format";
@@ -108,7 +110,7 @@ export function HeartRateZones({
               active={active}
               onActive={setActive}
             >
-              <span className="font-semibold text-lg tabular-nums">
+              <span className="font-semibold text-2xl leading-tight tabular-nums">
                 {formatDuration(active === null ? total : zoneSeconds[active])}
               </span>
               <span className="text-[var(--ink-2)] text-xs">
@@ -154,7 +156,7 @@ export function HeartRateZones({
   return (
     <SwitchableView
       label="Heart-rate view"
-      heading={<h2 className="font-medium text-sm">Heart rate</h2>}
+      heading={<PanelHeading icon={<IconHeart size={18} stroke={1.8} />} title="Heart rate" />}
       views={views}
       // A row that was pointed at when its view went away never saw the pointer leave.
       onValueChange={() => setActive(null)}
@@ -258,7 +260,7 @@ function DistributionChart({
           {bucket.fromBpm === bucket.toBpm ? bucket.fromBpm : `${bucket.fromBpm}–${bucket.toBpm}`}{" "}
           bpm
         </span>
-        <span className="text-[var(--ink-2)]">
+        <span className="opacity-70">
           {formatDuration(bucket.seconds)} · {formatShare(bucket.seconds, total)}
         </span>
       </>

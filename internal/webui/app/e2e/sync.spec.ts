@@ -9,7 +9,7 @@
  * the map.
  */
 
-import { expect, followDestination, openLibrary, openSync, test } from "./fixtures";
+import { expect, followAccount, followDestination, openLibrary, openSync, test } from "./fixtures";
 
 /** A reference no recorded run can have, standing in for a pruned one. */
 const PRUNED = "000000000000";
@@ -38,7 +38,7 @@ test("the way back is the map itself", async ({ offlinePage: page }) => {
 });
 
 test("a notification about a run that is gone says so", async ({ offlinePage: page }) => {
-  await page.goto(`/sync?run=${PRUNED}`);
+  await page.goto(`/account/sync?run=${PRUNED}`);
 
   // The notice is the first card, above the three: an operator who followed a
   // notification is told what became of the run it named before they are told
@@ -47,7 +47,7 @@ test("a notification about a run that is gone says so", async ({ offlinePage: pa
   await expect(notice).toBeVisible();
   await expect(notice).toContainText("That run is no longer kept");
   await expect(notice).toContainText(PRUNED);
-  await expect(page.getByRole("heading", { level: 1, name: "Sync" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
 });
 
 test("a notification about a recorded run lands on that run", async ({ offlinePage: page }) => {
@@ -63,7 +63,7 @@ test("a notification about a recorded run lands on that run", async ({ offlinePa
     .trim();
   expect(reference).not.toBe("");
 
-  await page.goto(`/sync?run=${reference.trim()}`);
+  await page.goto(`/account/sync?run=${reference.trim()}`);
 
   const notice = page.getByRole("alert").filter({ hasText: reference.trim() });
   await expect(notice).toBeVisible();
@@ -71,8 +71,9 @@ test("a notification about a recorded run lands on that run", async ({ offlinePa
   await expect(notice).not.toContainText("no longer kept");
 });
 
-test("the foot of the page names the running build", async ({ offlinePage: page }) => {
+test("the account's data sources name the running build", async ({ offlinePage: page }) => {
   await openSync(page);
+  await page.getByRole("tab", { name: "Data sources" }).click();
 
   const build = page.getByRole("link", { name: "a development build" });
   await expect(build).toBeVisible();
@@ -83,11 +84,11 @@ test("the foot of the page names the running build", async ({ offlinePage: page 
   await expect(build).toHaveAttribute("target", "_blank");
 });
 
-test("the menu bar is the only way in that a reader needs", async ({ offlinePage: page }) => {
+test("the session menu is the way in that a reader needs", async ({ offlinePage: page }) => {
   await openLibrary(page);
 
-  await followDestination(page, /^Sync/);
+  await followAccount(page);
 
-  await expect(page).toHaveURL(/\/sync$/);
+  await expect(page).toHaveURL(/\/account\/sync$/);
   await expect(page.getByRole("region", { name: "Now" })).toBeVisible();
 });

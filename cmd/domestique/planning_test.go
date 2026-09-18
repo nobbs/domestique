@@ -16,7 +16,9 @@ import (
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/route"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
@@ -37,7 +39,7 @@ func (s planningSurfaceSource) Generation() string { return s.generation }
 func TestNewLocalSourceIsNilWithoutPlanning(t *testing.T) {
 	t.Parallel()
 
-	source, configured, err := newLocalSource(&config.Settings{}, testStore(t, t.TempDir()))
+	source, configured, err := newLocalSource(&config.Settings{}, testStore(t, t.TempDir()), nil)
 	require.NoError(t, err)
 	assert.False(t, configured, "newLocalSource() without [planning]")
 	assert.Nil(t, source, "newLocalSource() without [planning]")
@@ -60,7 +62,7 @@ func TestSurfaceClassifierOmitsMissingMapAndKeepsUnknownClassification(t *testin
 func TestNewLocalSourceBuildsThePlanServiceWhenConfigured(t *testing.T) {
 	settings := testPlanningSettings(t)
 
-	source, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	source, configured, err := newLocalSource(settings, testStore(t, t.TempDir()), nil)
 	require.NoError(t, err)
 	require.True(t, configured, "newLocalSource() with [planning] configured")
 	require.NotNil(t, source, "newLocalSource() with [planning] configured")
@@ -73,7 +75,7 @@ func TestNewLocalSourceForwardsABRouterConstructionFailure(t *testing.T) {
 	settings := testPlanningSettings(t)
 	settings.Planning.BRouterURL = "not a url"
 
-	_, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	_, configured, err := newLocalSource(settings, testStore(t, t.TempDir()), nil)
 	require.Error(t, err)
 	assert.False(t, configured, "newLocalSource() on a construction failure")
 }
@@ -82,7 +84,7 @@ func TestWireLocalSourceLeavesTheCacheEmptyWithoutPlanning(t *testing.T) {
 	t.Parallel()
 
 	cache := newSourceCache()
-	service, wired, err := wireLocalSource(&config.Settings{}, testStore(t, t.TempDir()), cache)
+	service, wired, err := wireLocalSource(&config.Settings{}, testStore(t, t.TempDir()), cache, nil)
 	require.NoError(t, err)
 	assert.False(t, wired, "wireLocalSource() without [planning]")
 	assert.Nil(t, service, "wireLocalSource() without [planning]")
@@ -95,7 +97,7 @@ func TestWireLocalSourceLeavesTheCacheEmptyWithoutPlanning(t *testing.T) {
 func TestWireLocalSourceRegistersThePlanServiceWhenConfigured(t *testing.T) {
 	settings := testPlanningSettings(t)
 	cache := newSourceCache()
-	service, wired, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	service, wired, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache, nil)
 	require.NoError(t, err)
 	require.True(t, wired, "wireLocalSource() with [planning] configured")
 	require.NotNil(t, service, "wireLocalSource() with [planning] configured")
@@ -113,7 +115,7 @@ func TestWireLocalSourceWarnsAboutUnusedSegments(t *testing.T) {
 	settings.Planning.Segments = []string{"E5_N45"}
 	cache := newSourceCache()
 
-	_, _, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	_, _, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache, nil)
 	require.NoError(t, err)
 }
 
@@ -124,7 +126,7 @@ func TestWireLocalSourceForwardsAConstructionFailure(t *testing.T) {
 	settings.Planning.BRouterURL = "not a url"
 	cache := newSourceCache()
 
-	service, configured, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache)
+	service, configured, err := wireLocalSource(settings, testStore(t, t.TempDir()), cache, nil)
 	require.Error(t, err)
 	assert.False(t, configured, "wireLocalSource() on a construction failure")
 	assert.Nil(t, service, "wireLocalSource() on a construction failure")
@@ -137,7 +139,7 @@ func TestHTTPAPIPlansAvoidsATypedNilInterface(t *testing.T) {
 	assert.Nil(t, httpapiPlans(unconfigured), "httpapiPlans(nil)")
 
 	settings := testPlanningSettings(t)
-	service, configured, err := newLocalSource(settings, testStore(t, t.TempDir()))
+	service, configured, err := newLocalSource(settings, testStore(t, t.TempDir()), nil)
 	require.NoError(t, err)
 	require.True(t, configured)
 	assert.NotNil(t, httpapiPlans(service), "httpapiPlans(configured)")
@@ -159,11 +161,11 @@ func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
 	require.NoError(t, err)
 	router := brouterRouter{client: client}
 
-	points, err := router.Route(
+	routed, err := router.Route(
 		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
 	require.NoError(t, err)
 	assert.Equal(t, "gravel", gotProfile, "profile")
-	require.Len(t, points, 2, "points")
+	require.Len(t, routed.Points, 2, "points")
 }
 
 // A routing failure is wrapped rather than passed through bare, but the
@@ -233,6 +235,7 @@ func TestPlanStoreRoundTripsAPlan(t *testing.T) {
 			{Longitude: 8.68, Latitude: 50.11, Elevation: &elevation},
 			{Longitude: 8.70, Latitude: 50.12},
 		},
+		Pushing:        []plan.Window{{StartMetres: 100, EndMetres: 250}},
 		DistanceMetres: 1234.5, AscentMetres: 56.7, Published: true, Version: 1,
 		CreatedAt: time.Now().UTC().Truncate(time.Second), UpdatedAt: time.Now().UTC().Truncate(time.Second),
 	}
@@ -246,6 +249,7 @@ func TestPlanStoreRoundTripsAPlan(t *testing.T) {
 	assert.Equal(t, original.Profile, read.Profile, "Profile")
 	assert.Equal(t, original.Waypoints, read.Waypoints, "Waypoints")
 	assert.Equal(t, original.Published, read.Published, "Published")
+	assert.Equal(t, original.Pushing, read.Pushing, "Pushing")
 	require.Len(t, read.Geometry, 2, "Geometry")
 	require.NotNil(t, read.Geometry[0].Elevation, "Geometry[0].Elevation")
 	assert.InDelta(t, elevation, *read.Geometry[0].Elevation, 0, "Geometry[0].Elevation")
@@ -312,4 +316,94 @@ func TestPlanStoreForwardsUnderlyingStoreFailures(t *testing.T) {
 	require.Error(t, err, "ReplacePlan()")
 	_, err = store.DeletePlan(t.Context(), 1, 1)
 	require.Error(t, err, "DeletePlan()")
+}
+
+func TestBrouterRouterCarriesTheWaysUnderTheLine(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"properties":{"messages":[["Longitude","Latitude","Distance","WayTags"],` +
+			`["8680000","50110000","40","highway=footway"]]},` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+	client, err := brouter.New(&brouter.Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	routed, err := brouterRouter{client: client}.Route(
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+	require.NoError(t, err)
+	assert.Equal(t, []plan.RoutedWay{{EndMetres: 40, Tags: map[string]string{"highway": "footway"}}}, routed.Ways)
+}
+
+func TestModelPacePredictsWithThePairInForce(t *testing.T) {
+	t.Parallel()
+	pace := modelPace{model: &rideModelProvider{
+		coefficients: ridemodel.Coefficients{SecondsPerKM: 120, SecondsPerAscentM: 3},
+	}}
+	low, high := 100.0, 110.0
+
+	moving, cumulative, ok := pace.Predict([]route.Point{
+		{Longitude: 8, Latitude: 49, Elevation: &low},
+		{Longitude: 8, Latitude: 49.009, Elevation: &high},
+	})
+	require.True(t, ok)
+	require.Len(t, cumulative, 2)
+	assert.InDelta(t, cumulative[1], moving, 0)
+	assert.Greater(t, moving, 30.0, "a kilometre and ten metres of climbing take time")
+
+	_, _, ok = pace.Predict([]route.Point{{Longitude: 8, Latitude: 49}, {Longitude: 8, Latitude: 49.009}})
+	assert.False(t, ok, "a line without elevation cannot be predicted")
+}
+
+func TestNewPlaceNamerNeedsAPhotonURL(t *testing.T) {
+	settings := testPlanningSettings(t)
+
+	absent, err := newPlaceNamer(settings)
+	require.NoError(t, err)
+	assert.Nil(t, absent)
+
+	settings.Planning.PhotonURL = "https://photon.example.test"
+	namer, err := newPlaceNamer(settings)
+	require.NoError(t, err)
+	assert.NotNil(t, namer)
+
+	settings.Planning.PhotonURL = "photon.example.test/path"
+	_, err = newPlaceNamer(settings)
+	require.ErrorContains(t, err, "creating Photon client")
+}
+
+type snapSurfaceSource struct {
+	err  error
+	ways []surface.Way
+}
+
+func (s snapSurfaceSource) Ways(context.Context, []route.Point) ([]surface.Way, error) {
+	return s.ways, s.err
+}
+
+func (snapSurfaceSource) Generation() string { return "current" }
+
+func TestSurfaceSnapperMovesAWaypointOntoTheWayBesideIt(t *testing.T) {
+	t.Parallel()
+	way := surface.Way{ID: 1, Line: []measure.Coordinate{{Longitude: 8, Latitude: 49}, {Longitude: 8, Latitude: 49.001}}}
+
+	latitude, longitude, moved, err := surfaceSnapper{source: snapSurfaceSource{ways: []surface.Way{way}}}.
+		Snap(t.Context(), 49.0005, 8.0001)
+	require.NoError(t, err)
+	assert.True(t, moved)
+	assert.InDelta(t, 8, longitude, 1e-9)
+	assert.InDelta(t, 49.0005, latitude, 1e-6)
+
+	_, _, _, err = surfaceSnapper{source: snapSurfaceSource{err: assert.AnError}}.Snap(t.Context(), 49, 8)
+	require.ErrorIs(t, err, assert.AnError)
+}
+
+func TestHTTPAPISnapperSnapsOnlyForAPlanner(t *testing.T) {
+	assert.Nil(t, httpapiSnapper(nil, planningSurfaceSource{}))
+
+	service, configured, err := newLocalSource(testPlanningSettings(t), testStore(t, t.TempDir()), nil)
+	require.NoError(t, err)
+	require.True(t, configured)
+	assert.NotNil(t, httpapiSnapper(service, planningSurfaceSource{}))
 }

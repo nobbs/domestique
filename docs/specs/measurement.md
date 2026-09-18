@@ -722,6 +722,106 @@ test applies.
 **Status.** Unvalidated against another platform's curve. The per-ride bests are
 covered by unit tests over synthetic streams with known bests.
 
+## Nearest point on a line
+
+**Definition.** The point on any of a set of polylines closest to a query
+coordinate, and the distance to it in metres.
+
+**Formula.** In symbols, per segment (`start`, `end`) of each line, in a local
+planar frame centred on the query point:
+
+~~~text
+run  = end - start
+t    = clamp(-(start·run) / |run|², 0, 1)
+foot = start + t·run
+~~~
+
+the closest foot across every segment is the answer. The frame is the same
+equirectangular projection `measure.SnapIndex` uses: longitude scaled by
+cos(latitude) at the query point, both axes then converted to metres by
+`EarthRadiusMetres`.
+
+**Constants.** None beyond `EarthRadiusMetres` (see Spherical distance above).
+
+**Source.** Standard point-to-segment projection, clamped to the segment; no
+external source.
+
+**Applied by.** `internal/measure/nearest.go` `NearestPoint`, called once per
+`GET /v1/places/snap` request over the ways `surface.Snap`
+(`internal/surface/snap.go`) reads near the point. Unlike `SnapIndex`, it
+builds no grid and scans every segment it is given, which suits the handful of
+ways near one point rather than a whole route's own samples.
+
+**Status.** Unvalidated beyond unit tests over synthetic segments; no other
+platform's figure to compare against.
+
+## Walked stretches
+
+**Definition.** The stretches of a routed plan where BRouter's own access
+rules refuse a way to bicycles and price it for feet alone, scaled from the
+engine's own line length onto the plan's normalised one.
+
+**Formula.** In symbols:
+
+~~~text
+pushed(way)  = !bikeAccess(way.tags) && footAccess(way.tags)
+scale        = totalMetres / engineMetres
+window.start = way.startMetres * scale
+window.end   = way.endMetres * scale
+~~~
+
+adjacent pushed ways merge into one window.
+
+**Constants.** None; `bikeAccess`/`footAccess` read the way's own `bicycle`,
+`bicycle_road`, `vehicle`, `foot` and `access` tags.
+
+**Source.** BRouter's own `bikeaccess`/`footaccess` pricing: a stretch is
+pushed exactly when the engine priced it as refused to bicycles and allowed to
+feet. No external citation beyond BRouter's own profile rules.
+
+**Applied by.** `internal/plan/pushing.go` `pushingOf`, called once per route
+from `Service.Route` (`internal/plan/plan.go`) and stored with the plan on
+create and replace, since only the engine's own answer at routing time says
+which ways it ran along.
+
+**Status.** Unvalidated beyond unit tests over synthetic way tag sets.
+
+## Waypoint progress
+
+**Definition.** How far into a routed plan each waypoint falls, and the moving
+time predicted to reach it, both read along the routed line rather than
+between waypoints as placed.
+
+**Formula.** In symbols, for each waypoint in order, searching only from the
+last match onward:
+
+~~~text
+nearest        = index of the routed point nearest the waypoint, compared
+                 over squared degrees with longitude scaled by cos(latitude)
+distanceMetres = cumulative haversine distance to that point
+movingSeconds  = the forward model's cumulative seconds at that point
+~~~
+
+`movingSeconds` comes from `ridemodel.Predict`'s forward model, the same one a
+stage's moving time is predicted with, over the routed geometry's own steps:
+`movingSeconds[i] = movingSeconds[i-1] + secondsPerKM·(span/1000) +
+secondsPerAscentM·max(0, rise)`.
+
+**Constants.** The calibrated `SecondsPerKM`/`SecondsPerAscentM` pair in force
+at read time (see Ascent and descent above for how that pair is fitted).
+
+**Source.** No external source; searching forward-only from the last match
+assumes a routed line passes through its waypoints in the order they were
+placed.
+
+**Applied by.** `internal/plan/plan.go` `progressAt` for the index and
+distance, and `ridemodel.Predict` for the moving time, both recomputed every
+time a plan is routed or read — never stored — so a calibration change is
+reflected the next time a plan is read.
+
+**Status.** Unvalidated beyond unit tests over synthetic waypoints; the
+forward model's own accuracy is discussed under Ascent and descent above.
+
 ## References
 
 1. Sinnott, R. W. (1984) "Virtues of the Haversine", Sky and Telescope

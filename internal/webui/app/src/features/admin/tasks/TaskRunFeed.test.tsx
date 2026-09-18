@@ -34,7 +34,7 @@ function Address() {
   return <span data-testid="address">{`${location.pathname}${location.search}`}</span>;
 }
 
-function renderFeed(page: TaskRunPage, entry = "/settings/tasks", taskList: TaskList = tasks()) {
+function renderFeed(page: TaskRunPage, entry = "/admin/tasks", taskList: TaskList = tasks()) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
@@ -73,7 +73,7 @@ describe("TaskRunFeed", () => {
     expect(list.getByText(/sync:clear/)).toBeInTheDocument();
     expect(list.getByText("aaaaaaaaaaaa")).toBeInTheDocument();
     expect(list.getByText("bbbbbbbbbbbb")).toBeInTheDocument();
-    expect(list.getAllByText("Succeeded")).toHaveLength(2);
+    expect(list.getAllByRole("img", { name: "Succeeded" })).toHaveLength(2);
   });
 
   it("says nothing has run yet", () => {
@@ -108,7 +108,7 @@ describe("TaskRunFeed", () => {
   });
 
   it("reads the task filter from the address on load", () => {
-    renderFeed({ runs: [run()] }, "/settings/tasks?task=sync%3Asource");
+    renderFeed({ runs: [run()] }, "/admin/tasks?task=sync%3Asource");
 
     expect(screen.getByRole("combobox", { name: "Task" })).toHaveValue("sync:source");
   });

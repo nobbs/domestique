@@ -289,6 +289,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				AscentMetres:   recorded.AscentMetres,
 				TypeID:         recorded.TypeID,
 				LocationID:     recorded.LocationID,
+				Indoor:         slices.Contains(h.indoorTypes, recorded.TypeID),
 				Provider:       openapi.Activity_Provider(recorded.Provider),
 			}
 			if recorded.HasWorkout {

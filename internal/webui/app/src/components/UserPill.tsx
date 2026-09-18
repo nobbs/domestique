@@ -13,8 +13,9 @@
  * opening anything, and the menu spells it out for everyone else.
  */
 
-import { IconLogout } from "@tabler/icons-react";
+import { IconLogout, IconUserCircle } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import { NavLink } from "react-router";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -26,8 +27,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { webUIConfigQuery } from "../api/queries";
+import { statusQuery, webUIConfigQuery } from "../api/queries";
 import { useViewAsRider } from "../lib/identity";
+import { type StateTone, syncState } from "../lib/syncState";
 import { Button } from "./Button";
 
 /**
@@ -62,8 +64,20 @@ export function initialsOf(display: string): string {
     .toUpperCase();
 }
 
+const DOT_CLASS =
+  "size-1.5 shrink-0 rounded-full bg-[var(--ink-2)] data-[tone=alert]:bg-[var(--alert)] data-[tone=good]:bg-[var(--good)] data-[tone=hold]:bg-[var(--hold)]";
+
+/** What sync is doing, as a colour; paints nothing until there is something to say. */
+function Dot({ tone, className }: { tone: StateTone; className?: string }) {
+  return tone ? (
+    <span aria-hidden="true" className={`${DOT_CLASS} ${className ?? ""}`} data-tone={tone} />
+  ) : null;
+}
+
 export function UserPill() {
   const { data } = useQuery(webUIConfigQuery());
+  const { data: status } = useQuery(statusQuery());
+  const state = status ? syncState(status) : null;
   const identity = data?.identity;
   const [viewAsRider, setViewAsRider] = useViewAsRider();
 
@@ -84,13 +98,19 @@ export function UserPill() {
         // are said here rather than left to the two letters to imply.
         aria-label={`Signed in as ${identity.display}`}
         render={
-          <Button className="size-8 shrink-0 rounded-full p-0" variant="ghost">
+          <Button className="relative size-8 shrink-0 rounded-full p-0" variant="ghost">
             <Avatar>
               <AvatarFallback>{initialsOf(identity.display)}</AvatarFallback>
             </Avatar>
+            {/* Sync's state rides on the session, where its page now lives. */}
+            <Dot
+              tone={state?.tone}
+              className="absolute top-0 right-0 size-2 ring-2 ring-[var(--panel)]"
+            />
           </Button>
         }
-        title={identity.display}
+        title={state ? `${identity.display} · Sync · ${state.label}` : identity.display}
+        data-tone={state?.tone}
       />
       <DropdownMenuContent align="end" className="w-auto max-w-[min(20rem,calc(100dvw-1.5rem))]">
         {/* `GroupLabel` requires a `Group` ancestor, and `wrap-anywhere` keeps a
@@ -103,6 +123,20 @@ export function UserPill() {
             <div>{identity.display}</div>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          render={
+            <NavLink
+              to="/account"
+              aria-label={state ? `Account · Sync · ${state.label}` : undefined}
+            />
+          }
+          className="aria-[current=page]:font-semibold"
+        >
+          <IconUserCircle stroke={1.6} />
+          Account
+          <Dot tone={state?.tone} className="ml-auto" />
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {/* The raw flag, not `useEffectiveAdmin`: this is the one control that
             must keep showing even after it is switched on, or it could never

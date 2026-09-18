@@ -77,7 +77,8 @@ export function RangeSlider({
         </span>
       </div>
       <div className="px-2">
-        <div className="flex h-7 items-end gap-px" aria-hidden="true">
+        {/* The charts' histogram look: 4px tops, a hairline apart, what the range drops faded. */}
+        <div className="flex h-7 items-end gap-0.5" aria-hidden="true">
           {bins.map((count, index) => {
             const start = min + index * binWidth;
             const inside = start + binWidth > lo && start <= hi;
@@ -85,7 +86,8 @@ export function RangeSlider({
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: bins are positional
                 key={index}
-                className={inside ? "flex-1 bg-[var(--accent)]/60" : "flex-1 bg-[var(--rule)]"}
+                data-inside={inside || undefined}
+                className="flex-1 rounded-t-[4px] bg-[var(--ground-outdoor)] opacity-20 data-inside:opacity-100"
                 style={{ height: `${Math.max(count === 0 ? 0 : 6, (count / peak) * 100)}%` }}
               />
             );

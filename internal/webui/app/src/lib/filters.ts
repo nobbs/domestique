@@ -37,6 +37,12 @@ export function hasActiveFilters(filters: LibraryFilters): boolean {
   );
 }
 
+/** How many of the three measures carry a bound, for a toggle's count badge. */
+export function activeFilterCount(filters: LibraryFilters): number {
+  return [filters.distanceMetres, filters.ascentMetres, filters.movingSeconds].filter(isActive)
+    .length;
+}
+
 function inRange(value: number, range: NumericRange): boolean {
   // A crossed range, which only a hand-edited address can produce, reads as
   // the span between its two bounds rather than as nothing at all.

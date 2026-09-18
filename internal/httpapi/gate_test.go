@@ -295,6 +295,10 @@ func (o *loginRecordingOAuth) Complete(_ context.Context, login, _, _ string) er
 	return nil
 }
 
+func (o *loginRecordingOAuth) Disconnect(context.Context, string) error {
+	return nil
+}
+
 // The Wahoo OAuth state is bound to the caller's own subject: with more than
 // one allowed subject, a shared constant would let one operator complete
 // another's authorization.

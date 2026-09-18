@@ -331,6 +331,7 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
     ascentMetres: 280 + index * 120,
     typeId: 40,
     locationId: 0,
+    indoor: false,
     // The second ride is Zwift's, so a page listing every ride shows the badge.
     provider: index === 1 ? "zwift" : "wahoo",
   };
@@ -352,7 +353,14 @@ export const riderProfile: RiderProfile = {
   zwift: { emailSet: false, passwordSet: false },
 };
 
-export function StoryProviders({ children }: { children: ReactNode }) {
+export function StoryProviders({
+  children,
+  path,
+}: {
+  children: ReactNode;
+  /** The address the story opens at; the router's default when absent. */
+  path?: string;
+}) {
   const [client] = useState(() => {
     const next = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -395,7 +403,7 @@ export function StoryProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <MemoryRouter {...(path ? { initialEntries: [path] } : {})}>{children}</MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -481,6 +489,7 @@ export const riddenRides: Activity[] = [
     ascentMetres: 620,
     typeId: 40,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     routeMatch: { ...routeMatch, routeCoverage: 0.94, direction: "reverse" },
     weather: {
@@ -500,6 +509,7 @@ export const riddenRides: Activity[] = [
     ascentMetres: 620,
     typeId: 40,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     routeMatch,
     weather: {
@@ -519,6 +529,7 @@ export const riddenRides: Activity[] = [
     ascentMetres: 620,
     typeId: 40,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     routeMatch,
   },

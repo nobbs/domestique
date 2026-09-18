@@ -117,7 +117,7 @@ export const SendsOnlyTheCredentialThatWasTyped: Story = {
   ],
   play: async ({ canvas }) => {
     written.length = 0;
-    await userEvent.type(canvas.getByLabelText("Komoot password"), "opensesame");
+    await userEvent.type(canvas.getByLabelText("Password (Komoot)"), "opensesame");
 
     await userEvent.click(canvas.getByRole("button", { name: "Save Komoot" }));
 

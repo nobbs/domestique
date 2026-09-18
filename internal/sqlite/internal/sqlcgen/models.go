@@ -253,6 +253,7 @@ type Plan struct {
 	Version           int64
 	CreatedAtUnixNano int64
 	UpdatedAtUnixNano int64
+	Pushing           string
 }
 
 type RidemodelCoefficient struct {

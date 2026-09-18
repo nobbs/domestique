@@ -31,10 +31,14 @@ func (h *Handler) PreviewPlanRoute(writer http.ResponseWriter, request *http.Req
 		return
 	}
 	h.writeJSON(writer, http.StatusOK, openapi.PlanRoutePreview{
-		Geometry:       lineStringOf(measured.Geometry),
-		DistanceMetres: measured.DistanceMetres,
-		AscentMetres:   measured.AscentMetres,
-		Surface:        h.planSurface(request.Context(), measured.Geometry),
+		Geometry:         lineStringOf(measured.Geometry),
+		DistanceMetres:   measured.DistanceMetres,
+		AscentMetres:     measured.AscentMetres,
+		DescentMetres:    &measured.DescentMetres,
+		MovingSeconds:    optionalSeconds(measured.MovingSeconds),
+		WaypointProgress: progressOf(measured.Progress),
+		Pushing:          windowsOf(measured.Pushing),
+		Surface:          h.planSurface(request.Context(), measured.Geometry),
 	})
 }
 
@@ -229,9 +233,52 @@ func (h *Handler) planOf(ctx context.Context, p *plan.Plan) openapi.Plan {
 		ID: p.ID, Name: p.Name, Profile: openapi.PlanProfile(p.Profile), Published: p.Published, Version: p.Version,
 		Waypoints: openapiWaypointsOf(p.Waypoints), Geometry: lineStringOf(p.Geometry),
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres,
+		DescentMetres: &p.DescentMetres,
+		MovingSeconds: optionalSeconds(p.MovingSeconds), WaypointProgress: progressOf(p.Progress),
+		Pushing:   windowsOf(p.Pushing),
 		Surface:   h.planSurface(ctx, p.Geometry),
 		CreatedAt: wireTime(p.CreatedAt), UpdatedAt: wireTime(p.UpdatedAt),
 	}
+}
+
+// optionalSeconds omits an unpredicted time rather than reporting it as zero,
+// which is a plan of no length rather than one the model cannot read.
+func optionalSeconds(seconds float64) *float64 {
+	if seconds <= 0 {
+		return nil
+	}
+
+	return &seconds
+}
+
+// windowsOf renders stretches of a plan, absent where there are none.
+func windowsOf(windows []plan.Window) []openapi.PlanWindow {
+	if len(windows) == 0 {
+		return nil
+	}
+	views := make([]openapi.PlanWindow, len(windows))
+	for index, window := range windows {
+		views[index] = openapi.PlanWindow{StartMetres: window.StartMetres, EndMetres: window.EndMetres}
+	}
+
+	return views
+}
+
+// progressOf renders each waypoint's place along the line, leaving its time
+// absent where the line carries no prediction.
+func progressOf(progress []plan.Progress) []openapi.PlanProgress {
+	if len(progress) == 0 {
+		return nil
+	}
+	views := make([]openapi.PlanProgress, len(progress))
+	for index, at := range progress {
+		views[index] = openapi.PlanProgress{
+			DistanceMetres: at.DistanceMetres,
+			MovingSeconds:  optionalSeconds(at.MovingSeconds),
+		}
+	}
+
+	return views
 }
 
 func (h *Handler) planSurface(ctx context.Context, geometry []route.Point) *openapi.SurfaceClassification {

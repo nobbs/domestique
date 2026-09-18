@@ -4,12 +4,14 @@
  * An admin may ask again about any derived ride while analysis is on.
  */
 
+import { IconSparkles } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useReanalyseActivity } from "../../api/generated";
 import { tasksQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
 import type { Activity } from "../../api/types";
 import { Button } from "../../components/Button";
+import { PanelHeading } from "../../components/PanelHeading";
 import { formatTimestamp } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
 
@@ -28,11 +30,11 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
 
   return (
     <section
-      className="flex flex-col gap-2 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
+      className="flex flex-col gap-2 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
       aria-label="Analysis"
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-medium text-sm">Analysis</h2>
+        <PanelHeading icon={<IconSparkles size={18} stroke={1.8} />} title="Analysis" />
         {canAsk ? (
           <Button
             variant="outline"

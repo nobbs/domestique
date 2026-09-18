@@ -116,6 +116,15 @@ type Options struct {
 	// as unconfigured — the shape a build with no routing engine takes.
 	Plans Plans
 
+	// Snapper optionally moves a plan's waypoints onto the nearest way. Nil
+	// leaves the address unregistered, as a build with no planner has it.
+	Snapper Snapper
+
+	// Places optionally names a plan's waypoints. Nil leaves the address
+	// unregistered, answering 404, and reports place names as unconfigured:
+	// the shape a build with no geocoder takes.
+	Places Places
+
 	// SurfaceClassifier optionally classifies plan geometry against the current
 	// local map. A missing classifier leaves plan responses unclassified.
 	SurfaceClassifier SurfaceClassifier
@@ -208,6 +217,8 @@ type Handler struct {
 	alerts              Alerts
 	tasks               Tasks
 	plans               Plans
+	places              Places
+	snapper             Snapper
 	surface             SurfaceClassifier
 	webhookTokens       WebhookTokens
 	zwiftWorldMaps      ZwiftWorldMaps
@@ -286,6 +297,8 @@ func New(
 		rideModelStatus:     options.RideModelStatusFunc,
 		now:                 time.Now,
 		plans:               options.Plans,
+		places:              options.Places,
+		snapper:             options.Snapper,
 		surface:             options.SurfaceClassifier,
 
 		sessions: options.Sessions,
@@ -357,6 +370,12 @@ func (h *Handler) routes() {
 		h.mux.HandleFunc("GET /v1/plans/{planId}", h.adminOnly(h.GetPlan))
 		h.mux.HandleFunc("PUT /v1/plans/{planId}", h.adminOnly(h.ReplacePlan))
 		h.mux.HandleFunc("DELETE /v1/plans/{planId}", h.adminOnly(h.DeletePlan))
+		if h.places != nil {
+			h.mux.HandleFunc("GET /v1/places/reverse", h.adminOnly(h.ReversePlace))
+		}
+		if h.snapper != nil {
+			h.mux.HandleFunc("GET /v1/places/snap", h.adminOnly(h.SnapPlace))
+		}
 		h.mux.HandleFunc("GET /plan", h.GetPlanPage)
 		h.mux.HandleFunc("GET /plan/{planId}", h.GetPlanPage)
 	}
@@ -366,6 +385,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("PUT /v1/settings/rider", h.SetRiderProfile)
 	h.mux.HandleFunc("PUT /v1/settings/rider/credentials/zwift", h.SetRiderZwiftCredentials)
 	h.mux.HandleFunc("DELETE /v1/settings/rider/credentials/zwift", h.DeleteRiderZwiftCredentials)
+	h.mux.HandleFunc("DELETE /v1/settings/rider/connections/wahoo", h.DisconnectWahoo)
 	h.mux.HandleFunc("GET /v1/webui/config", h.GetWebUIConfig)
 	h.mux.HandleFunc("GET /v1/weather", h.GetWeather)
 	h.mux.HandleFunc("GET /v1/zwift/worlds/{worldId}/map", h.GetZwiftWorldMap)
@@ -394,14 +414,12 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /routes/{provider}/{routeId}/{stage}", h.GetRoutePage)
 	h.mux.HandleFunc("GET /routes/{routeId}/{stage}", h.RedirectLegacyRoutePage)
 	h.mux.HandleFunc("GET /catalogue", h.GetCataloguePage)
-	h.mux.HandleFunc("GET /sync", h.GetSyncPage)
-	h.mux.HandleFunc("GET /volume", h.GetVolumePage)
 	h.mux.HandleFunc("GET /activities", h.GetActivitiesPage)
 	h.mux.HandleFunc("GET /activities/{activityId}", h.GetActivityPage)
-	h.mux.HandleFunc("GET /settings", h.GetSettingsPage)
-	h.mux.HandleFunc("GET /settings/tasks", h.GetTasksPage)
+	h.mux.HandleFunc("GET /account", h.GetAccountPage)
+	h.mux.HandleFunc("GET /account/{section}", h.GetAccountPage)
 	h.mux.HandleFunc("GET /admin", h.GetAdminPage)
-	h.mux.HandleFunc("GET /admin/tasks", h.GetAdminTasksPage)
+	h.mux.HandleFunc("GET /admin/{section}", h.GetAdminPage)
 	// Browser routes are explicit application navigation, not OpenAPI operations.
 	// Separate because ServeMux has no pattern for the unmatched-path fallback.
 	h.mux.HandleFunc("/", func(writer http.ResponseWriter, _ *http.Request) {

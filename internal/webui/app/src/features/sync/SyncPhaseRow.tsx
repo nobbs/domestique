@@ -1,5 +1,7 @@
+import { IconPlayerPlay } from "@tabler/icons-react";
 import type { SyncPhase, SyncPhaseRun } from "../../api/types";
 import { Button } from "../../components/Button";
+import { InsetRow, RowNote, type RowTone } from "../../components/InsetList";
 import { Spinner } from "../../components/ui/spinner";
 import { Switch } from "../../components/ui/switch";
 import { formatTimestamp } from "../../lib/format";
@@ -69,48 +71,57 @@ export function SyncPhaseRow({
     ? syncGuidance(phase, lastRun.lastResult, lastRun.lastFailure)
     : undefined;
 
+  const tone: RowTone = !lastRun
+    ? "quiet"
+    : guidance
+      ? guidance.kind === "blocked"
+        ? "hold"
+        : "alert"
+      : "good";
+
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-[var(--rule)] p-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="flex min-w-0 flex-col gap-1 text-sm">
-        <span className="font-semibold">{label}</span>
-        <span className="text-[var(--ink-2)]">{runSummary(phase, lastRun)}</span>
-        {/*
+    <InsetRow
+      tone={tone}
+      toneLabel={!lastRun ? "Not run yet" : guidance ? guidance.headline : "Last run succeeded"}
+      title={label}
+      detail={runSummary(phase, lastRun)}
+      actions={
+        <>
+          {/* Both rows look alike, so the accessible name is what tells the two switches apart. */}
+          <span className="flex items-center gap-2 text-[var(--ink-2)] text-xs">
+            {cadence}
+            <Switch
+              checked={enabled}
+              disabled={scheduleDisabled}
+              onCheckedChange={onToggle}
+              aria-label={`${cadence}: ${label}`}
+            />
+          </span>
+          {onRun ? (
+            <Button
+              variant="outline"
+              disabled={running}
+              onClick={onRun}
+              aria-label={`Run now: ${label}`}
+              icon={running ? null : <IconPlayerPlay />}
+            >
+              {running ? <Spinner aria-label={`Running ${label}`} /> : null}
+            </Button>
+          ) : null}
+        </>
+      }
+      note={
+        /*
          * A gate that held is not an error the operator caused, so it is
          * stated rather than announced: the page is being read, not
          * interrupted, and the run it describes finished some time ago.
-         */}
-        {guidance ? (
-          <span
-            className={guidance.kind === "blocked" ? "text-[var(--hold)]" : "text-[var(--alert)]"}
-            data-kind={guidance.kind}
-          >
+         */
+        guidance ? (
+          <RowNote tone={tone} data-kind={guidance.kind}>
             <strong>{guidance.headline}</strong> {guidance.remediation}
-          </span>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-3">
-        {/* Both rows look alike, so the accessible name is what tells the two switches apart. */}
-        <div className="flex items-center gap-2 text-sm">
-          <Switch
-            checked={enabled}
-            disabled={scheduleDisabled}
-            onCheckedChange={onToggle}
-            aria-label={`${cadence}: ${label}`}
-          />
-          <span>{cadence}</span>
-        </div>
-        {onRun ? (
-          <Button
-            variant="outline"
-            disabled={running}
-            onClick={onRun}
-            aria-label={`Run now: ${label}`}
-          >
-            {running ? <Spinner aria-label={`Running ${label}`} /> : null}
-            Run now
-          </Button>
-        ) : null}
-      </div>
-    </li>
+          </RowNote>
+        ) : null
+      }
+    />
   );
 }

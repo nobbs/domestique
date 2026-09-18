@@ -53,7 +53,8 @@ describe("RideClimbs", () => {
     // formatGradient drops to no decimal at 10%, so the 11.4% max reads "11%".
     expect(screen.getByText("2.0 km · 6.2% avg · 11% max")).toBeInTheDocument();
     expect(screen.getByText("6:05")).toBeInTheDocument();
-    expect(screen.getByText("158 bpm · 268 W")).toBeInTheDocument();
+    expect(screen.getByText("158 bpm")).toBeInTheDocument();
+    expect(screen.getByText("268 W")).toBeInTheDocument();
   });
 
   it("marks an estimate rather than a measured reading, and never shows both", () => {
@@ -84,8 +85,9 @@ describe("RideClimbs", () => {
       />,
     );
 
-    expect(screen.getByText(/6:05 · #2 of 2/)).toBeInTheDocument();
-    expect(screen.getByText("best here 5:40")).toBeInTheDocument();
+    expect(screen.getByText("6:05")).toBeInTheDocument();
+    expect(screen.getByText("#2 of 2")).toBeInTheDocument();
+    expect(screen.getByText("5:40")).toBeInTheDocument();
   });
 
   // The rank and the target to beat must never come from a ride that had not
@@ -136,8 +138,9 @@ describe("RideClimbs", () => {
       />,
     );
 
-    expect(screen.getByText(/5:00 · #1 of 2/)).toBeInTheDocument();
-    expect(screen.queryByText(/best here/)).not.toBeInTheDocument();
+    expect(screen.getByText("5:00")).toBeInTheDocument();
+    expect(screen.getByText("#1 of 2")).toBeInTheDocument();
+    expect(screen.queryByText("5:40")).not.toBeInTheDocument();
   });
 
   it("shows one row per climb the ride rode, skipping a climb it never attempted", () => {

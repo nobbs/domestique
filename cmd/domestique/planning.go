@@ -9,9 +9,12 @@ import (
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/httpapi"
+	"github.com/nobbs/domestique/internal/measure"
+	"github.com/nobbs/domestique/internal/photon"
 	"github.com/nobbs/domestique/internal/route"
 
 	"github.com/nobbs/domestique/internal/plan"
+	"github.com/nobbs/domestique/internal/ridemodel"
 	"github.com/nobbs/domestique/internal/sqlite"
 	"github.com/nobbs/domestique/internal/surface"
 )
@@ -19,7 +22,9 @@ import (
 // newLocalSource builds the plan service, which is also the sync source for
 // [planning], when that section is configured. configured is false, with a
 // nil service and error, when it is absent.
-func newLocalSource(settings *config.Settings, store *sqlite.Store) (service *plan.Service, configured bool, err error) {
+func newLocalSource(
+	settings *config.Settings, store *sqlite.Store, pace plan.Pace,
+) (service *plan.Service, configured bool, err error) {
 	if !settings.Planning.Enabled() {
 		return nil, false, nil
 	}
@@ -28,7 +33,55 @@ func newLocalSource(settings *config.Settings, store *sqlite.Store) (service *pl
 		return nil, false, fmt.Errorf("creating BRouter client: %w", err)
 	}
 
-	return plan.NewService(planStore{store: store}, brouterRouter{client: client}, time.Now, plan.RandomID), true, nil
+	return plan.NewService(
+		planStore{store: store}, brouterRouter{client: client}, pace, time.Now, plan.RandomID,
+	), true, nil
+}
+
+// modelPace adapts the ride model to plan.Pace: the same forward model a
+// stage's moving time is predicted with, over whatever pair is in force now.
+type modelPace struct{ model *rideModelProvider }
+
+func (p modelPace) Predict(points []route.Point) (movingSeconds float64, cumulative []float64, ok bool) {
+	result, ok := ridemodel.Predict(points, p.model.pair())
+	if !ok {
+		return 0, nil, false
+	}
+
+	return result.MovingSeconds, result.CumulativeSeconds, true
+}
+
+// newPlaceNamer builds the geocoder the planner names waypoints with, when
+// planning.photon_url is set. A nil result is the shape a build without one
+// takes: waypoints read as coordinates.
+func newPlaceNamer(settings *config.Settings) (httpapi.Places, error) {
+	if !settings.Planning.Enabled() || settings.Planning.PhotonURL == "" {
+		return nil, nil //nolint:nilnil // an absent geocoder is a configuration, not a failure
+	}
+	client, err := photon.New(&photon.Options{BaseURL: settings.Planning.PhotonURL})
+	if err != nil {
+		return nil, fmt.Errorf("creating Photon client: %w", err)
+	}
+
+	return client, nil
+}
+
+// surfaceSnapper moves a planned waypoint onto the nearest way the surface map
+// holds: the same index a plan's ground is classified from.
+type surfaceSnapper struct{ source surface.Source }
+
+var _ httpapi.Snapper = surfaceSnapper{}
+
+func (s surfaceSnapper) Snap(
+	ctx context.Context, latitude, longitude float64,
+) (snapLatitude, snapLongitude float64, moved bool, err error) {
+	at := measure.Coordinate{Longitude: longitude, Latitude: latitude}
+	snapped, moved, err := surface.Snap(ctx, s.source, at, surface.WaypointRadiusMetres)
+	if err != nil {
+		return latitude, longitude, false, fmt.Errorf("snapping a waypoint: %w", err)
+	}
+
+	return snapped.Latitude, snapped.Longitude, moved, nil
 }
 
 type surfaceClassifier struct{ source surface.Source }
@@ -69,18 +122,22 @@ func (c surfaceClassifier) Classify(
 // that converts between them.
 type brouterRouter struct{ client *brouter.Client }
 
-func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) ([]route.Point, error) {
+func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) (plan.Routed, error) {
 	converted := make([]brouter.Waypoint, len(waypoints))
 	for index, waypoint := range waypoints {
 		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
 	}
 
-	points, err := r.client.Route(ctx, converted, string(profile))
+	answer, err := r.client.Route(ctx, converted, string(profile))
 	if err != nil {
-		return nil, fmt.Errorf("routing waypoints: %w", err)
+		return plan.Routed{}, fmt.Errorf("routing waypoints: %w", err)
+	}
+	ways := make([]plan.RoutedWay, len(answer.Ways))
+	for index, way := range answer.Ways {
+		ways[index] = plan.RoutedWay{EndMetres: way.EndMetres, Tags: way.Tags}
 	}
 
-	return points, nil
+	return plan.Routed{Points: answer.Points, Ways: ways}, nil
 }
 
 // wireLocalSource registers the plan service on cache when [planning] is
@@ -88,9 +145,9 @@ func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, pro
 // wire it into the HTTP surface's plan endpoints. configured is false, with
 // a nil service, when the section is absent.
 func wireLocalSource(
-	settings *config.Settings, store *sqlite.Store, cache *sourceCache,
+	settings *config.Settings, store *sqlite.Store, cache *sourceCache, pace plan.Pace,
 ) (service *plan.Service, configured bool, err error) {
-	service, configured, err = newLocalSource(settings, store)
+	service, configured, err = newLocalSource(settings, store, pace)
 	if err != nil {
 		return nil, false, err
 	}
@@ -111,6 +168,16 @@ func wireLocalSource(
 // httpapiPlans adapts a possibly-nil *plan.Service to httpapi.Plans, so the
 // composition root's Options literal never assigns a typed nil pointer to
 // that interface field — which Go would treat as non-nil.
+// httpapiSnapper offers snapping only where there is a planner to snap for; the
+// map may still be unbuilt, which the snapper answers by moving nothing.
+func httpapiSnapper(service *plan.Service, source surface.Source) httpapi.Snapper {
+	if service == nil {
+		return nil
+	}
+
+	return surfaceSnapper{source: source}
+}
+
 func httpapiPlans(service *plan.Service) httpapi.Plans {
 	if service == nil {
 		return nil
@@ -193,8 +260,14 @@ func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 		waypoints[index] = [2]float64{waypoint.Longitude, waypoint.Latitude}
 	}
 
+	pushing := make([][2]float64, len(p.Pushing))
+	for index, window := range p.Pushing {
+		pushing[index] = [2]float64{window.StartMetres, window.EndMetres}
+	}
+
 	return sqlite.PlanRecord{
 		ID: p.ID, Name: p.Name, Profile: string(p.Profile), Waypoints: waypoints, Geometry: p.Geometry,
+		Pushing:        pushing,
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, Published: p.Published,
 		Version: p.Version, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
@@ -211,8 +284,14 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 		waypoints[index] = plan.Waypoint{Longitude: coordinate[0], Latitude: coordinate[1]}
 	}
 
+	pushing := make([]plan.Window, len(record.Pushing))
+	for index, pair := range record.Pushing {
+		pushing[index] = plan.Window{StartMetres: pair[0], EndMetres: pair[1]}
+	}
+
 	return plan.Plan{
 		ID: record.ID, Name: record.Name, Profile: profile, Waypoints: waypoints, Geometry: record.Geometry,
+		Pushing:        pushing,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Published: record.Published,
 		Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}, nil

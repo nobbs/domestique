@@ -14,6 +14,7 @@ import {
   formatCalendarDay,
   ReadoutRow,
   TimeFrame,
+  topRoundedBar,
 } from "../../components/chart/TimeFrame";
 import {
   bandOf,
@@ -218,39 +219,42 @@ export function SeasonChart({ readings, outlook, scaleName }: Props) {
       title: "Weekly load",
       domain: [0, loadHigh],
       ticks: [0, Math.floor(loadHigh / 100) * 100].filter((tick, index) => index === 0 || tick > 0),
-      draw: (x, y) => (
-        <>
-          {[...weeks].map(([monday, load]) => {
-            const box = weekBox(x, monday);
-            return load > 0 ? (
+      draw: (x, y, active) => {
+        // The week under the crosshair is lifted; a projected day belongs to no week drawn.
+        const pointed = active !== null && active <= todayIndex ? dates[active] : undefined;
+        const pointedMonday = pointed ? mondayOf(pointed) : undefined;
+        return (
+          <>
+            {[...weeks].map(([monday, load]) => {
+              const box = weekBox(x, monday);
+              return load > 0 ? (
+                <path
+                  key={monday}
+                  d={topRoundedBar(box.left, y(load), box.width, y(0) - y(load))}
+                  fill="var(--ink-2)"
+                  opacity={
+                    pointedMonday === undefined ? 0.45 : pointedMonday === monday ? 0.8 : 0.2
+                  }
+                />
+              ) : null;
+            })}
+            {outlook && projected.length >= 7 ? (
+              // The range is for the seven days after the last one served, not the calendar week.
               <rect
-                key={monday}
-                x={box.left}
-                y={y(load)}
-                width={box.width}
-                height={y(0) - y(load)}
+                x={x(todayIndex) + 1}
+                y={y(outlook.weekLoadHigh)}
+                width={Math.max(x(todayIndex + 7) - x(todayIndex) - 2, 1)}
+                height={Math.max(y(outlook.weekLoadLow) - y(outlook.weekLoadHigh), 1)}
                 rx={2}
-                fill="var(--ink-2)"
-                opacity={0.45}
+                fill="var(--good)"
+                opacity={0.25}
+                stroke="var(--good)"
+                strokeDasharray="3 2"
               />
-            ) : null;
-          })}
-          {outlook && projected.length >= 7 ? (
-            // The range is for the seven days after the last one served, not the calendar week.
-            <rect
-              x={x(todayIndex) + 1}
-              y={y(outlook.weekLoadHigh)}
-              width={Math.max(x(todayIndex + 7) - x(todayIndex) - 2, 1)}
-              height={Math.max(y(outlook.weekLoadLow) - y(outlook.weekLoadHigh), 1)}
-              rx={2}
-              fill="var(--good)"
-              opacity={0.25}
-              stroke="var(--good)"
-              strokeDasharray="3 2"
-            />
-          ) : null}
-        </>
-      ),
+            ) : null}
+          </>
+        );
+      },
     },
   ];
 
@@ -281,7 +285,7 @@ export function SeasonChart({ readings, outlook, scaleName }: Props) {
     const ahead = index - todayIndex - 1;
     return (
       <>
-        <div className="mb-1 text-[var(--ink-2)]">Projected form</div>
+        <div className="mb-1 opacity-70">Projected form</div>
         {plans.map((plan, planIndex) => {
           const percent = futureForm[planIndex]?.[ahead];
           return percent === undefined ? null : (
