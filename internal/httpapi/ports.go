@@ -45,6 +45,13 @@ type Places interface {
 	Reverse(ctx context.Context, latitude, longitude float64) (string, error)
 }
 
+// Snapper moves a planned waypoint onto the nearest way the local map holds.
+// moved is false, with the coordinate as given, where no way is close enough or
+// no map is built.
+type Snapper interface {
+	Snap(ctx context.Context, latitude, longitude float64) (snapLatitude, snapLongitude float64, moved bool, err error)
+}
+
 // SurfaceClassification is the current local map's reading of one routed
 // geometry. A nil result means that no classification is available.
 type SurfaceClassification struct {

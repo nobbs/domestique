@@ -116,6 +116,10 @@ type Options struct {
 	// as unconfigured — the shape a build with no routing engine takes.
 	Plans Plans
 
+	// Snapper optionally moves a plan's waypoints onto the nearest way. Nil
+	// leaves the address unregistered, as a build with no planner has it.
+	Snapper Snapper
+
 	// Places optionally names a plan's waypoints. Nil leaves the address
 	// unregistered, answering 404, and reports place names as unconfigured:
 	// the shape a build with no geocoder takes.
@@ -214,6 +218,7 @@ type Handler struct {
 	tasks               Tasks
 	plans               Plans
 	places              Places
+	snapper             Snapper
 	surface             SurfaceClassifier
 	webhookTokens       WebhookTokens
 	zwiftWorldMaps      ZwiftWorldMaps
@@ -293,6 +298,7 @@ func New(
 		now:                 time.Now,
 		plans:               options.Plans,
 		places:              options.Places,
+		snapper:             options.Snapper,
 		surface:             options.SurfaceClassifier,
 
 		sessions: options.Sessions,
@@ -366,6 +372,9 @@ func (h *Handler) routes() {
 		h.mux.HandleFunc("DELETE /v1/plans/{planId}", h.adminOnly(h.DeletePlan))
 		if h.places != nil {
 			h.mux.HandleFunc("GET /v1/places/reverse", h.adminOnly(h.ReversePlace))
+		}
+		if h.snapper != nil {
+			h.mux.HandleFunc("GET /v1/places/snap", h.adminOnly(h.SnapPlace))
 		}
 		h.mux.HandleFunc("GET /plan", h.GetPlanPage)
 		h.mux.HandleFunc("GET /plan/{planId}", h.GetPlanPage)

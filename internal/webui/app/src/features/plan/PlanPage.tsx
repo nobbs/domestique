@@ -33,6 +33,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   getGetPlanQueryKey,
   getListPlansQueryKey,
+  snapPlace,
   useCreatePlan,
   useGetPlan,
   useListPlans,
@@ -47,6 +48,7 @@ import type {
   PlanRoutePreview,
   PlanSummary,
   Position,
+  SnappedPlace,
 } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
 import { InfoDot } from "../../components/InsetForm";
@@ -971,6 +973,22 @@ export function PlanPage() {
       setSaveError(errorMessage(error));
     }
   };
+  // A waypoint lands where it was put at once, then settles onto the road beside
+  // it when the service finds one; a failed lookup simply leaves it standing.
+  const settleOnRoad = (id: number, waypoint: { longitude: number; latitude: number }) => {
+    snapPlace(waypoint)
+      .then((response) => {
+        const place = response.data as SnappedPlace;
+        if (place.snapped) {
+          dispatch({
+            type: "snap",
+            id,
+            waypoint: { longitude: place.longitude, latitude: place.latitude },
+          });
+        }
+      })
+      .catch(() => {});
+  };
   const saving = create.isPending || replace.isPending;
 
   if (planId !== null && (plan.isPending || plan.isError || !loadedPlan)) {
@@ -1028,6 +1046,7 @@ export function PlanPage() {
                       waypoint,
                     });
                   }
+                  settleOnRoad(state.nextWaypointID, waypoint);
                 }}
               >
                 <MapViewport
@@ -1058,13 +1077,11 @@ export function PlanPage() {
                     longitude={waypoint.longitude}
                     latitude={waypoint.latitude}
                     draggable
-                    onDragEnd={(event) =>
-                      dispatch({
-                        type: "move",
-                        index,
-                        waypoint: { longitude: event.lngLat.lng, latitude: event.lngLat.lat },
-                      })
-                    }
+                    onDragEnd={(event) => {
+                      const moved = { longitude: event.lngLat.lng, latitude: event.lngLat.lat };
+                      dispatch({ type: "move", index, waypoint: moved });
+                      settleOnRoad(waypoint.id, moved);
+                    }}
                   >
                     <span
                       role="img"

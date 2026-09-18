@@ -9,6 +9,7 @@ import (
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/httpapi"
+	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/photon"
 	"github.com/nobbs/domestique/internal/route"
 
@@ -63,6 +64,24 @@ func newPlaceNamer(settings *config.Settings) (httpapi.Places, error) {
 	}
 
 	return client, nil
+}
+
+// surfaceSnapper moves a planned waypoint onto the nearest way the surface map
+// holds: the same index a plan's ground is classified from.
+type surfaceSnapper struct{ source surface.Source }
+
+var _ httpapi.Snapper = surfaceSnapper{}
+
+func (s surfaceSnapper) Snap(
+	ctx context.Context, latitude, longitude float64,
+) (snapLatitude, snapLongitude float64, moved bool, err error) {
+	at := measure.Coordinate{Longitude: longitude, Latitude: latitude}
+	snapped, moved, err := surface.Snap(ctx, s.source, at, surface.WaypointRadiusMetres)
+	if err != nil {
+		return latitude, longitude, false, fmt.Errorf("snapping a waypoint: %w", err)
+	}
+
+	return snapped.Latitude, snapped.Longitude, moved, nil
 }
 
 type surfaceClassifier struct{ source surface.Source }
@@ -145,6 +164,16 @@ func wireLocalSource(
 // httpapiPlans adapts a possibly-nil *plan.Service to httpapi.Plans, so the
 // composition root's Options literal never assigns a typed nil pointer to
 // that interface field — which Go would treat as non-nil.
+// httpapiSnapper offers snapping only where there is a planner to snap for; the
+// map may still be unbuilt, which the snapper answers by moving nothing.
+func httpapiSnapper(service *plan.Service, source surface.Source) httpapi.Snapper {
+	if service == nil {
+		return nil
+	}
+
+	return surfaceSnapper{source: source}
+}
+
 func httpapiPlans(service *plan.Service) httpapi.Plans {
 	if service == nil {
 		return nil

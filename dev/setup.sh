@@ -63,17 +63,30 @@ docker cp "${CONTAINER}:/var/lib/domestique/state.db" "${DEV_DIR}/state.db"
 docker cp "${CONTAINER}:/var/lib/domestique/state.db-wal" "${DEV_DIR}/state.db-wal" 2>/dev/null || true
 chmod 600 "${DEV_DIR}/state.db"
 
-# The snapshot carries the deployed settings, which name the real Wahoo API and
-# schedule a run a minute after start. Rewrite both before the service ever
-# reads this file.
+# The snapshot carries the deployed settings, which name the real Wahoo API,
+# schedule a run a minute after start, and rebuild the surface map from OSM
+# extracts once it is a week old. Rewrite all three before the service ever
+# reads this file: the map is copied below instead.
 sqlite3 "${DEV_DIR}/state.db" <<'SQL'
 UPDATE runtime_settings SET
   wahoo_api_base_url = 'https://127.0.0.1:9',
   wahoo_oauth_base_url = 'https://127.0.0.1:9',
   wahoo_client_id = 'development-placeholder',
-  sync_initial_delay_seconds = 31536000;
+  sync_initial_delay_seconds = 31536000,
+  surface_rebuild_interval_seconds = 31536000;
 DELETE FROM runtime_secret;
 SQL
+
+# The surface map the deployment last built, which classifies a route's ground
+# and settles a planned waypoint onto its road. The state names its generation;
+# without the matching file the service simply classifies nothing.
+generation="$(sqlite3 "${DEV_DIR}/state.db" "SELECT generation FROM surface_index WHERE id = 1;")"
+rm -f "${DEV_DIR}"/surface-*.sqlite
+if [[ -n "${generation}" ]]; then
+  docker cp "${CONTAINER}:/var/lib/domestique/surface-${generation}.sqlite" \
+    "${DEV_DIR}/surface-${generation}.sqlite" 2>/dev/null ||
+    echo "note: surface map ${generation} not found in ${CONTAINER}; ground stays unclassified"
+fi
 
 # A placeholder key: 32 zero bytes. It is deliberately not the deployed key, so
 # the stored Wahoo refresh tokens stay undecryptable in development.

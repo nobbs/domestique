@@ -29,6 +29,96 @@ func (p *fakePlaces) Reverse(_ context.Context, latitude, longitude float64) (st
 	return p.name, nil
 }
 
+type fakeSnapper struct {
+	err   error
+	moved bool
+	// to is where a moved waypoint lands.
+	to [2]float64
+}
+
+func (s *fakeSnapper) Snap(
+	_ context.Context, latitude, longitude float64,
+) (snapLatitude, snapLongitude float64, moved bool, err error) {
+	if s.err != nil {
+		return latitude, longitude, false, s.err
+	}
+	if !s.moved {
+		return latitude, longitude, false, nil
+	}
+
+	return s.to[0], s.to[1], true, nil
+}
+
+// snapHandler builds a handler over one session identity and Snapper port.
+func snapHandler(t *testing.T, sessions Sessions, snapper Snapper) *Handler {
+	t.Helper()
+	handler, err := New(
+		&Options{
+			schemaCache:      testSchemaCache,
+			Alerts:           &fakeAlerts{},
+			Tasks:            &fakeTasks{},
+			Settings:         settingsWith(testBasemaps()),
+			Sessions:         sessions,
+			BrowserOriginURL: testBrowserOriginURL,
+			Plans:            &fakePlans{},
+			Snapper:          snapper,
+		},
+		&fakeOAuth{}, &fakeState{}, &fakeSync{accepted: true}, &fakeAssets{}, &fakeWeather{}, &fakeWeatherGrid{},
+	)
+	require.NoError(t, err, "New()")
+
+	return handler
+}
+
+const snapPath = "/v1/places/snap?latitude=49.0094&longitude=8.4044"
+
+func TestSnapPlaceMovesTheWaypointOntoAWay(t *testing.T) {
+	handler := snapHandler(t, newFakeSessions(), &fakeSnapper{moved: true, to: [2]float64{49.0096, 8.4045}})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, authenticatedRequest(http.MethodGet, snapPath))
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.JSONEq(t, `{"latitude":49.0096,"longitude":8.4045,"snapped":true}`, recorder.Body.String())
+}
+
+func TestSnapPlaceAnswersAWaypointWithNoWayUnmoved(t *testing.T) {
+	handler := snapHandler(t, newFakeSessions(), &fakeSnapper{})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, authenticatedRequest(http.MethodGet, snapPath))
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	assert.JSONEq(t, `{"latitude":49.0094,"longitude":8.4044,"snapped":false}`, recorder.Body.String())
+}
+
+func TestSnapPlaceAnswersAnUnreadableMapAsUnavailable(t *testing.T) {
+	handler := snapHandler(t, newFakeSessions(), &fakeSnapper{err: errors.New("disk")})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, authenticatedRequest(http.MethodGet, snapPath))
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code, recorder.Body.String())
+}
+
+func TestSnapPlaceIsAdminOnly(t *testing.T) {
+	handler := snapHandler(t, nonAdminSessions("rider-a"), &fakeSnapper{})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, authenticatedRequest(http.MethodGet, snapPath))
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
+}
+
+func TestSnapPlaceIsUnregisteredWithNoPlanner(t *testing.T) {
+	handler := snapHandler(t, newFakeSessions(), nil)
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, authenticatedRequest(http.MethodGet, snapPath))
+
+	assert.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+}
+
 // placesHandler builds a handler over one session identity and Places port;
 // places nil is a build with no geocoder configured.
 func placesHandler(t *testing.T, sessions Sessions, places Places) *Handler {

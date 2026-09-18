@@ -313,6 +313,7 @@ func run(ctx context.Context) error {
 			Plans:                   httpapiPlans(planService),
 			Places:                  placeNamer,
 			SurfaceClassifier:       newSurfaceClassifier(surfaceIndex),
+			Snapper:                 httpapiSnapper(planService, surfaceIndex),
 		},
 		oauthService,
 		store,

@@ -187,6 +187,30 @@ describe("plannerReducer", () => {
     expect(placed.waypoints[0]).toMatchObject({ longitude: 180, latitude: 0 });
   });
 
+  it("settles a placed waypoint onto its road without a step of its own to undo", () => {
+    const placed = reduce(
+      { type: "append", waypoint: first },
+      { type: "append", waypoint: second },
+    );
+    const snapped = plannerReducer(placed, {
+      type: "snap",
+      id: 1,
+      waypoint: { longitude: 8.1003, latitude: 49.1002 },
+    });
+
+    expect(snapped.waypoints[1]).toMatchObject({ id: 1, longitude: 8.1003, latitude: 49.1002 });
+    expect(snapped.past).toBe(placed.past);
+    // One undo takes back the placing and the snap together.
+    expect(plannerReducer(snapped, { type: "undo" }).waypoints).toHaveLength(1);
+  });
+
+  it("ignores a snap for a waypoint that is already gone", () => {
+    const placed = reduce({ type: "append", waypoint: first });
+    const deleted = plannerReducer(placed, { type: "delete", index: 0 });
+
+    expect(plannerReducer(deleted, { type: "snap", id: 0, waypoint: second })).toBe(deleted);
+  });
+
   it("resets an opened plan to a new draft", () => {
     const edited = reduce(
       { type: "setName", name: "Stored route" },

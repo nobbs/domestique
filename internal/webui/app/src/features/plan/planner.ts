@@ -112,6 +112,7 @@ export type PlannerAction =
   | { type: "append"; waypoint: PlanWaypoint }
   | { type: "insert"; index: number; waypoint: PlanWaypoint }
   | { type: "move"; index: number; waypoint: PlanWaypoint }
+  | { type: "snap"; id: number; waypoint: PlanWaypoint }
   | { type: "delete"; index: number }
   | { type: "reverse" }
   | { type: "reorder"; index: number; direction: "up" | "down" }
@@ -201,6 +202,18 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       waypoints[action.index] = { ...unwrapped(action.waypoint), id: current.id };
 
       return apply(state, { ...snapshot(state), waypoints });
+    }
+    case "snap": {
+      // Settles a waypoint just placed onto the road beside it. It belongs to the
+      // placing, so it rewrites the present rather than adding a step to undo.
+      const at = state.waypoints.findIndex((waypoint) => waypoint.id === action.id);
+      if (at < 0) {
+        return state;
+      }
+      const waypoints = [...state.waypoints];
+      waypoints[at] = { ...unwrapped(action.waypoint), id: action.id };
+
+      return { ...state, waypoints };
     }
     case "delete":
       return state.waypoints[action.index]

@@ -38,6 +38,29 @@ func (h *Handler) ReversePlace(writer http.ResponseWriter, request *http.Request
 	h.writeJSON(writer, http.StatusOK, view)
 }
 
+// SnapPlace moves a planned waypoint onto the nearest way the local map holds,
+// answering the coordinate unmoved where there is none close enough.
+func (h *Handler) SnapPlace(writer http.ResponseWriter, request *http.Request) {
+	latitude, ok := coordinate(h, writer, request, "latitude", 90)
+	if !ok {
+		return
+	}
+	longitude, ok := coordinate(h, writer, request, "longitude", 180)
+	if !ok {
+		return
+	}
+	snapLatitude, snapLongitude, moved, err := h.snapper.Snap(request.Context(), latitude, longitude)
+	if err != nil {
+		slog.Error("snapping a waypoint failed", "error", err)
+		h.unavailable(writer)
+
+		return
+	}
+	h.writeJSON(writer, http.StatusOK, openapi.SnappedPlace{
+		Latitude: snapLatitude, Longitude: snapLongitude, Snapped: moved,
+	})
+}
+
 // coordinate reads one required query coordinate, bounded by limit in both
 // directions, answering the refusal itself where it is missing or out of range.
 func coordinate(

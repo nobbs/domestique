@@ -401,6 +401,13 @@ type Place struct {
 	Name *string `json:"name,omitempty"`
 }
 
+type SnappedPlace struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	// Snapped Whether the coordinate was moved onto a way.
+	Snapped bool `json:"snapped"`
+}
+
 type PlanWaypoint struct {
 	Longitude float64 `json:"longitude"`
 	Latitude  float64 `json:"latitude"`

@@ -11,6 +11,12 @@ const openedPlan = vi.hoisted(() => ({ value: {} }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
 const narrowViewport = vi.hoisted(() => ({ value: false }));
 const routeOverlay = vi.hoisted(() => vi.fn());
+// Answers every waypoint unmoved unless a test says otherwise.
+const snap = vi.hoisted(() =>
+  vi.fn(async (at: { longitude: number; latitude: number }) => ({
+    data: { ...at, snapped: false },
+  })),
+);
 
 vi.mock("../../api/generated", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/generated")>()),
@@ -22,6 +28,7 @@ vi.mock("../../api/generated", async (importOriginal) => ({
   }),
   usePreviewPlanRoute: () => ({ mutate: preview }),
   useReplacePlan: () => ({ isPending: false, mutateAsync: replace }),
+  snapPlace: snap,
 }));
 vi.mock("../../api/queries", () => ({
   webUIConfigQuery: () => ({ queryKey: ["config"], queryFn: vi.fn() }),
@@ -738,6 +745,21 @@ describe("PlanPage", () => {
       "2",
     );
     expect(screen.getByRole("img", { name: "Finish waypoint" })).toBeInTheDocument();
+  });
+
+  it("settles a clicked waypoint onto the road beside it, as one step to undo", async () => {
+    snap.mockImplementationOnce(async () => ({
+      data: { longitude: 8.0004, latitude: 49.0003, snapped: true },
+    }));
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    await act(async () => {});
+
+    expect(snap).toHaveBeenCalledWith({ longitude: 8, latitude: 49 });
+    expect(waypointRows()[0]).toContain("49.0003, 8.0004");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
   });
 
   it("inserts map clicks into the nearest leg and appends at the final endpoint, with Alt, or before two waypoints", () => {

@@ -850,6 +850,13 @@ export interface Place {
   name?: string;
 }
 
+export interface SnappedPlace {
+  latitude: number;
+  longitude: number;
+  /** Whether the coordinate was moved onto a way. */
+  snapped: boolean;
+}
+
 export interface PlanSummary {
   id: number;
   name: string;
@@ -1427,6 +1434,19 @@ export type GetRouteActivitiesParams = {
 };
 
 export type ReversePlaceParams = {
+  /**
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude: number;
+  /**
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude: number;
+};
+
+export type SnapPlaceParams = {
   /**
    * @minimum -90
    * @maximum 90
@@ -6034,6 +6054,213 @@ export function useReversePlace<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getReversePlaceQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type snapPlaceResponse200 = {
+  data: SnappedPlace;
+  status: 200;
+};
+
+export type snapPlaceResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type snapPlaceResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type snapPlaceResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type snapPlaceResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type snapPlaceResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type snapPlaceResponseSuccess = snapPlaceResponse200 & {
+  headers: Headers;
+};
+export type snapPlaceResponseError = (
+  | snapPlaceResponse400
+  | snapPlaceResponse401
+  | snapPlaceResponse403
+  | snapPlaceResponse404
+  | snapPlaceResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSnapPlaceUrl = (params: SnapPlaceParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/v1/places/snap?${stringifiedParams}` : `/v1/places/snap`;
+};
+
+/**
+ * The point of the nearest way a planned waypoint lies beside, so a pin dropped a little off a road lands on it. Answers the coordinate it was given, unmoved, where no way lies close enough or no surface map has been built; that is an answer and not a failure.
+ */
+export const snapPlace = async (
+  params: SnapPlaceParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<snapPlaceResponseSuccess> => {
+  return domestiqueRequest<snapPlaceResponseSuccess>(getSnapPlaceUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSnapPlaceQueryKey = (params?: SnapPlaceParams) => {
+  return [`/v1/places/snap`, ...(params ? [params] : [])] as const;
+};
+
+export const getSnapPlaceQueryOptions = <
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getSnapPlaceQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof snapPlace>>> = ({ signal }) =>
+    snapPlace(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof snapPlace>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type SnapPlaceQueryResult = NonNullable<Awaited<ReturnType<typeof snapPlace>>>;
+export type SnapPlaceQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | UnavailableResponse
+>;
+
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof snapPlace>>,
+          TError,
+          Awaited<ReturnType<typeof snapPlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof snapPlace>>,
+          TError,
+          Awaited<ReturnType<typeof snapPlace>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useSnapPlace<
+  TData = Awaited<ReturnType<typeof snapPlace>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SnapPlaceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof snapPlace>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getSnapPlaceQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

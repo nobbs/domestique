@@ -953,6 +953,50 @@ paths:
           $ref: '#/components/responses/ProviderUnavailable'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/places/snap:
+    get:
+      tags:
+        - browser-api
+      operationId: snapPlace
+      description: >-
+        The point of the nearest way a planned waypoint lies beside, so a pin
+        dropped a little off a road lands on it. Answers the coordinate it was
+        given, unmoved, where no way lies close enough or no surface map has
+        been built; that is an answer and not a failure.
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: longitude
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        "200":
+          description: Where the waypoint belongs, and whether that moved it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SnappedPlace'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/plans:
     get:
       tags:
@@ -2985,6 +3029,23 @@ components:
       properties:
         name:
           type: string
+    SnappedPlace:
+      type: object
+      additionalProperties: false
+      required:
+        - latitude
+        - longitude
+        - snapped
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        snapped:
+          type: boolean
+          description: Whether the coordinate was moved onto a way.
     PlanWaypoint:
       type: object
       additionalProperties: false
