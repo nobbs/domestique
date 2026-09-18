@@ -786,6 +786,34 @@ which ways it ran along.
 
 **Status.** Unvalidated beyond unit tests over synthetic way tag sets.
 
+## Turn cue placement
+
+**Definition.** Where along a routed plan each of the routing engine's turn
+instructions falls, and so which course record a device reaches it on.
+
+**Formula.** In symbols, for a turn on engine vertex `i`:
+
+~~~text
+engineAlong(i) = sum of haversine(p[k-1], p[k]) for k in 1..i over the engine's line
+scale          = totalMetres / engineAlong(last)
+cue.metres     = engineAlong(i) * scale
+record         = the course record whose cumulative distance is nearest cue.metres
+~~~
+
+**Constants.** None. The engine's continue, keep, turn, U-turn and roundabout
+commands are kept; leaving the route, beeline stretches and the end point are
+not cues.
+
+**Source.** BRouter's own voice hints (`timode`), one per vertex it judged a
+decision point. No external citation.
+
+**Applied by.** `internal/plan/cues.go` `cuesOf`, called once per route from
+`Service.Route` and stored with the plan; `internal/fit/encoder.go`
+`coursePoints` places each on its record when the plan's course carries cues.
+
+**Status.** Unvalidated beyond unit tests over synthetic lines; whether a
+device shows the cues it is given rather than its own is checked on a device.
+
 ## Waypoint progress
 
 **Definition.** How far into a routed plan each waypoint falls, and the moving

@@ -254,6 +254,10 @@ type Plan struct {
 	CreatedAtUnixNano int64
 	UpdatedAtUnixNano int64
 	Pushing           string
+	Turns             string
+	Cues              int64
+	Straight          string
+	Avoid             string
 }
 
 type RidemodelCoefficient struct {

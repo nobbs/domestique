@@ -28,7 +28,7 @@ func (q *Queries) DeletePlan(ctx context.Context, arg DeletePlanParams) (int64, 
 
 const getPlan = `-- name: GetPlan :one
 SELECT id, name, profile, waypoints, coordinates, distance_metres, ascent_metres,
-  published, version, created_at_unix_nano, updated_at_unix_nano, pushing
+  published, version, created_at_unix_nano, updated_at_unix_nano, pushing, turns, cues, straight, avoid
 FROM plans WHERE id = ?
 `
 
@@ -48,6 +48,10 @@ func (q *Queries) GetPlan(ctx context.Context, id int64) (Plan, error) {
 		&i.CreatedAtUnixNano,
 		&i.UpdatedAtUnixNano,
 		&i.Pushing,
+		&i.Turns,
+		&i.Cues,
+		&i.Straight,
+		&i.Avoid,
 	)
 	return i, err
 }
@@ -55,8 +59,8 @@ func (q *Queries) GetPlan(ctx context.Context, id int64) (Plan, error) {
 const insertPlan = `-- name: InsertPlan :exec
 INSERT INTO plans (
   id, name, profile, waypoints, coordinates, distance_metres, ascent_metres,
-  pushing, published, version, created_at_unix_nano, updated_at_unix_nano
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  pushing, turns, cues, straight, avoid, published, version, created_at_unix_nano, updated_at_unix_nano
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertPlanParams struct {
@@ -68,6 +72,10 @@ type InsertPlanParams struct {
 	DistanceMetres    float64
 	AscentMetres      float64
 	Pushing           string
+	Turns             string
+	Cues              int64
+	Straight          string
+	Avoid             string
 	Published         int64
 	Version           int64
 	CreatedAtUnixNano int64
@@ -84,6 +92,10 @@ func (q *Queries) InsertPlan(ctx context.Context, arg InsertPlanParams) error {
 		arg.DistanceMetres,
 		arg.AscentMetres,
 		arg.Pushing,
+		arg.Turns,
+		arg.Cues,
+		arg.Straight,
+		arg.Avoid,
 		arg.Published,
 		arg.Version,
 		arg.CreatedAtUnixNano,
@@ -94,7 +106,7 @@ func (q *Queries) InsertPlan(ctx context.Context, arg InsertPlanParams) error {
 
 const listPlans = `-- name: ListPlans :many
 SELECT id, name, profile, waypoints, coordinates, distance_metres, ascent_metres,
-  published, version, created_at_unix_nano, updated_at_unix_nano, pushing
+  published, version, created_at_unix_nano, updated_at_unix_nano, pushing, turns, cues, straight, avoid
 FROM plans ORDER BY id
 `
 
@@ -120,6 +132,10 @@ func (q *Queries) ListPlans(ctx context.Context) ([]Plan, error) {
 			&i.CreatedAtUnixNano,
 			&i.UpdatedAtUnixNano,
 			&i.Pushing,
+			&i.Turns,
+			&i.Cues,
+			&i.Straight,
+			&i.Avoid,
 		); err != nil {
 			return nil, err
 		}
@@ -136,7 +152,7 @@ func (q *Queries) ListPlans(ctx context.Context) ([]Plan, error) {
 
 const listPublishedPlans = `-- name: ListPublishedPlans :many
 SELECT id, name, profile, waypoints, coordinates, distance_metres, ascent_metres,
-  published, version, created_at_unix_nano, updated_at_unix_nano, pushing
+  published, version, created_at_unix_nano, updated_at_unix_nano, pushing, turns, cues, straight, avoid
 FROM plans WHERE published = 1 ORDER BY id
 `
 
@@ -162,6 +178,10 @@ func (q *Queries) ListPublishedPlans(ctx context.Context) ([]Plan, error) {
 			&i.CreatedAtUnixNano,
 			&i.UpdatedAtUnixNano,
 			&i.Pushing,
+			&i.Turns,
+			&i.Cues,
+			&i.Straight,
+			&i.Avoid,
 		); err != nil {
 			return nil, err
 		}
@@ -179,7 +199,7 @@ func (q *Queries) ListPublishedPlans(ctx context.Context) ([]Plan, error) {
 const updatePlan = `-- name: UpdatePlan :execrows
 UPDATE plans SET
   name = ?, profile = ?, waypoints = ?, coordinates = ?, distance_metres = ?,
-  ascent_metres = ?, pushing = ?, published = ?, version = ?, updated_at_unix_nano = ?
+  ascent_metres = ?, pushing = ?, turns = ?, cues = ?, straight = ?, avoid = ?, published = ?, version = ?, updated_at_unix_nano = ?
 WHERE id = ? AND version = ?
 `
 
@@ -191,6 +211,10 @@ type UpdatePlanParams struct {
 	DistanceMetres    float64
 	AscentMetres      float64
 	Pushing           string
+	Turns             string
+	Cues              int64
+	Straight          string
+	Avoid             string
 	Published         int64
 	Version           int64
 	UpdatedAtUnixNano int64
@@ -207,6 +231,10 @@ func (q *Queries) UpdatePlan(ctx context.Context, arg UpdatePlanParams) (int64, 
 		arg.DistanceMetres,
 		arg.AscentMetres,
 		arg.Pushing,
+		arg.Turns,
+		arg.Cues,
+		arg.Straight,
+		arg.Avoid,
 		arg.Published,
 		arg.Version,
 		arg.UpdatedAtUnixNano,

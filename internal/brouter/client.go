@@ -71,6 +71,17 @@ type Options struct {
 type Waypoint struct {
 	Longitude float64
 	Latitude  float64
+	// Straight draws the leg arriving here as a straight line instead of
+	// routing it. Ignored on the first waypoint.
+	Straight bool
+}
+
+// Nogo is a circle the route keeps out of. The engine drops one that holds a
+// waypoint, since the route must reach it.
+type Nogo struct {
+	Longitude    float64
+	Latitude     float64
+	RadiusMetres float64
 }
 
 // Client asks one BRouter instance to route waypoints. The host is fixed at
@@ -133,6 +144,18 @@ type Answer struct {
 	// Ways are the line's stretches in order, as the engine reports them. Empty
 	// where its answer carries no such table, which costs the route nothing.
 	Ways []Way
+	// Turns are the engine's turn instructions along the line, in order. Empty
+	// where it gave none it could be read for.
+	Turns []Turn
+}
+
+// Turn is one of the engine's turn instructions: the vertex of Points it sits
+// on, and what it asks for there.
+type Turn struct {
+	Turn  route.Turn
+	Index int
+	// Exit is the roundabout exit to take; zero for any other turn.
+	Exit int
 }
 
 // Way is one stretch of an answer: where along the line it ends, by the
@@ -144,7 +167,7 @@ type Way struct {
 
 // Route asks the engine for the snapped line over waypoints for profile.
 func (c *Client) Route(
-	ctx context.Context, waypoints []Waypoint, profile string,
+	ctx context.Context, waypoints []Waypoint, profile string, nogos []Nogo,
 ) (answer Answer, err error) {
 	if len(waypoints) < 2 {
 		return Answer{}, &Error{Category: FailureRefused}
@@ -155,12 +178,21 @@ func (c *Client) Route(
 
 	endpoint := *c.baseURL
 	endpoint.Path = "/brouter"
-	endpoint.RawQuery = url.Values{
+	query := url.Values{
 		"lonlats":        {lonlats(waypoints)},
 		"profile":        {profile},
 		"alternativeidx": {"0"},
 		"format":         {"geojson"},
-	}.Encode()
+		// Any mode above one adds the voicehints table the turns are read from.
+		"timode": {"3"},
+	}
+	if straight := straightLegs(waypoints); straight != "" {
+		query.Set("straight", straight)
+	}
+	if len(nogos) > 0 {
+		query.Set("nogos", nogoList(nogos))
+	}
+	endpoint.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), http.NoBody)
 	if err != nil {
@@ -200,7 +232,7 @@ func (c *Client) Route(
 		return Answer{}, parseErr
 	}
 
-	return Answer{Points: points, Ways: parseWays(body)}, nil
+	return Answer{Points: points, Ways: parseWays(body), Turns: parseTurns(body, len(points))}, nil
 }
 
 // lonlats formats waypoints as BRouter's pipe-separated lon,lat list.
@@ -211,6 +243,32 @@ func lonlats(waypoints []Waypoint) string {
 	for index, waypoint := range waypoints {
 		parts[index] = strconv.FormatFloat(waypoint.Longitude, 'f', -1, 64) + "," +
 			strconv.FormatFloat(waypoint.Latitude, 'f', -1, 64)
+	}
+
+	return strings.Join(parts, "|")
+}
+
+// straightLegs names the legs to draw straight. The engine's index is the
+// waypoint a leg leaves, so a waypoint reached in a straight line names the
+// one before it.
+func straightLegs(waypoints []Waypoint) string {
+	var legs []string
+	for index := 1; index < len(waypoints); index++ {
+		if waypoints[index].Straight {
+			legs = append(legs, strconv.Itoa(index-1))
+		}
+	}
+
+	return strings.Join(legs, ",")
+}
+
+// nogoList formats circles as the engine's pipe-separated lon,lat,radius list.
+func nogoList(nogos []Nogo) string {
+	parts := make([]string, len(nogos))
+	for index, nogo := range nogos {
+		parts[index] = strconv.FormatFloat(nogo.Longitude, 'f', -1, 64) + "," +
+			strconv.FormatFloat(nogo.Latitude, 'f', -1, 64) + "," +
+			strconv.FormatFloat(math.Round(nogo.RadiusMetres), 'f', 0, 64)
 	}
 
 	return strings.Join(parts, "|")
@@ -261,6 +319,74 @@ func parseGeometry(body []byte, status int) ([]route.Point, error) {
 	}
 
 	return points, nil
+}
+
+// engineTurn maps one of the engine's voice-hint commands to a turn. Leaving
+// the route, beeline stretches and the end point name no turn.
+func engineTurn(command int) (route.Turn, bool) {
+	switch command {
+	case 1:
+		return route.TurnStraight, true
+	case 2:
+		return route.TurnLeft, true
+	case 3:
+		return route.TurnSlightLeft, true
+	case 4:
+		return route.TurnSharpLeft, true
+	case 5:
+		return route.TurnRight, true
+	case 6:
+		return route.TurnSlightRight, true
+	case 7:
+		return route.TurnSharpRight, true
+	case 8, 17:
+		return route.TurnKeepLeft, true
+	case 9, 18:
+		return route.TurnKeepRight, true
+	case 10, 11, 15:
+		return route.TurnUTurn, true
+	case 13, 14:
+		return route.TurnRoundabout, true
+	default:
+		return "", false
+	}
+}
+
+// turnsAnswer reads the voicehints table: one row per instruction, holding
+// the vertex index, the command and the roundabout exit, then fields unused.
+type turnsAnswer struct {
+	Features []struct {
+		Properties struct {
+			VoiceHints [][]float64 `json:"voicehints"`
+		} `json:"properties"`
+	} `json:"features"`
+}
+
+// parseTurns reads the engine's turn instructions. A row it cannot read, or
+// one naming a vertex outside the line or its last one (the finish, never a
+// cue), is left out rather than failing a route whose line is sound.
+func parseTurns(body []byte, points int) []Turn {
+	var decoded turnsAnswer
+	if json.Unmarshal(body, &decoded) != nil || len(decoded.Features) == 0 {
+		return nil
+	}
+	var turns []Turn
+	for _, row := range decoded.Features[0].Properties.VoiceHints {
+		if len(row) < 3 {
+			continue
+		}
+		index, command, exit := int(row[0]), int(row[1]), int(row[2])
+		turn, known := engineTurn(command)
+		if !known || index < 0 || index >= points-1 || float64(index) != row[0] {
+			continue
+		}
+		if turn != route.TurnRoundabout || exit < 0 {
+			exit = 0
+		}
+		turns = append(turns, Turn{Turn: turn, Index: index, Exit: exit})
+	}
+
+	return turns
 }
 
 // messagesAnswer is the other part of the answer this adapter reads: the table

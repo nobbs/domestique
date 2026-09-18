@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/nobbs/domestique/internal/route"
 )
 
 func testWaypoints() []Waypoint {
@@ -35,7 +37,7 @@ func TestRouteSendsTheExpectedRequest(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, err = client.Route(context.Background(), testWaypoints(), "trekking")
+	_, err = client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, http.MethodGet, gotMethod, "method")
@@ -46,6 +48,7 @@ func TestRouteSendsTheExpectedRequest(t *testing.T) {
 	assert.Equal(t, "trekking", query.Get("profile"), "profile")
 	assert.Equal(t, "0", query.Get("alternativeidx"), "alternativeidx")
 	assert.Equal(t, "geojson", query.Get("format"), "format")
+	assert.Equal(t, "3", query.Get("timode"), "timode")
 }
 
 func TestRouteDecodesGeometryWithAndWithoutElevation(t *testing.T) {
@@ -60,7 +63,7 @@ func TestRouteDecodesGeometryWithAndWithoutElevation(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.NoError(t, err)
 	points := answer.Points
 	require.Len(t, points, 2)
@@ -126,7 +129,7 @@ func TestRouteMapsFailureCategories(t *testing.T) {
 			client, err := New(&Options{BaseURL: server.URL})
 			require.NoError(t, err)
 
-			_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+			_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 			require.Error(t, routeErr)
 			var brouterErr *Error
 			require.ErrorAs(t, routeErr, &brouterErr)
@@ -145,7 +148,7 @@ func TestRouteTimesOutAsUnreachable(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL, Timeout: 50 * time.Millisecond})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -169,7 +172,7 @@ func TestRouteDoesNotFollowARedirect(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -196,7 +199,7 @@ func TestRouteRejectsFewerThanTwoWaypoints(t *testing.T) {
 	client, err := New(&Options{BaseURL: "http://brouter:17777"})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), []Waypoint{{Longitude: 8.68, Latitude: 50.11}}, "trekking")
+	_, routeErr := client.Route(context.Background(), []Waypoint{{Longitude: 8.68, Latitude: 50.11}}, "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -213,7 +216,7 @@ func TestRouteRejectsAnOversizedResponse(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -229,7 +232,7 @@ func TestRouteRejectsAnUnexpectedSuccessStatus(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -246,7 +249,7 @@ func TestRouteRejectsAResponseWithNoLineStringFeature(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -264,7 +267,7 @@ func TestRouteRejectsACoordinateMissingLatitude(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -283,7 +286,7 @@ func TestRouteRejectsAnOutOfRangeCoordinate(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking")
+	_, routeErr := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 	require.Error(t, routeErr)
 	var brouterErr *Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -313,7 +316,7 @@ func TestRouteReadsTheWaysUnderTheLine(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 
 	require.NoError(t, err)
 	require.Len(t, answer.Ways, 2)
@@ -337,7 +340,7 @@ func TestRouteRefusesAWaysTableWithADistanceThatIsNotOne(t *testing.T) {
 			client, err := New(&Options{BaseURL: server.URL})
 			require.NoError(t, err)
 
-			answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
+			answer, err := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 
 			require.NoError(t, err)
 			assert.Empty(t, answer.Ways)
@@ -356,9 +359,116 @@ func TestRouteKeepsTheLineWhenTheWaysTableIsUnreadable(t *testing.T) {
 	client, err := New(&Options{BaseURL: server.URL})
 	require.NoError(t, err)
 
-	answer, err := client.Route(context.Background(), testWaypoints(), "trekking")
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking", nil)
 
 	require.NoError(t, err)
 	assert.Len(t, answer.Points, 2, "the line stands")
 	assert.Empty(t, answer.Ways, "a table without distances or tags says nothing")
+}
+
+func TestRouteReadsTheEnginesTurns(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"properties":{"voicehints":[[1,2,0,436.0,-102],[2,13,2,249.0,-210],[1,6,0,95,0],` +
+			`[2,16,0,10,0],[9,5,0,1,0],[1.5,5,0,1,0],[1],[2,9,4,1,0],[3,2,0,0,0]]},` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.69,50.115],[8.70,50.12],[8.71,50.125]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking", nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, []Turn{
+		{Turn: route.TurnLeft, Index: 1},
+		{Turn: route.TurnRoundabout, Index: 2, Exit: 2},
+		{Turn: route.TurnSlightRight, Index: 1},
+		{Turn: route.TurnKeepRight, Index: 2},
+	}, answer.Turns, "turns: beeline, an index off the line or at its finish, a fractional index and a short row are left out, and only a roundabout keeps its exit")
+}
+
+func TestRouteKeepsTheLineWhenTheTurnsAreUnreadable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"properties":{"voicehints":"none"},` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	answer, err := client.Route(context.Background(), testWaypoints(), "trekking", nil)
+
+	require.NoError(t, err)
+	assert.Len(t, answer.Points, 2, "the line stands")
+	assert.Empty(t, answer.Turns, "turns")
+}
+
+func TestEngineTurnNamesEveryCommandItKeeps(t *testing.T) {
+	want := map[int]route.Turn{
+		1: route.TurnStraight, 2: route.TurnLeft, 3: route.TurnSlightLeft, 4: route.TurnSharpLeft,
+		5: route.TurnRight, 6: route.TurnSlightRight, 7: route.TurnSharpRight, 8: route.TurnKeepLeft,
+		9: route.TurnKeepRight, 10: route.TurnUTurn, 11: route.TurnUTurn, 13: route.TurnRoundabout,
+		14: route.TurnRoundabout, 15: route.TurnUTurn, 17: route.TurnKeepLeft, 18: route.TurnKeepRight,
+	}
+	for command := 0; command <= 101; command++ {
+		turn, known := engineTurn(command)
+		expected, kept := want[command]
+		assert.Equalf(t, kept, known, "command %d kept", command)
+		assert.Equalf(t, expected, turn, "command %d turn", command)
+	}
+}
+
+func TestRouteAsksForStraightLegsAndAvoidedAreas(t *testing.T) {
+	var gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+	waypoints := []Waypoint{
+		{Longitude: 8.68, Latitude: 50.11, Straight: true},
+		{Longitude: 8.69, Latitude: 50.115, Straight: true},
+		{Longitude: 8.70, Latitude: 50.12},
+		{Longitude: 8.71, Latitude: 50.13, Straight: true},
+	}
+
+	_, err = client.Route(context.Background(), waypoints, "trekking", []Nogo{
+		{Longitude: 8.685, Latitude: 50.112, RadiusMetres: 250.4},
+		{Longitude: 8.7, Latitude: 50.1, RadiusMetres: 1000},
+	})
+
+	require.NoError(t, err)
+	query, parseErr := url.ParseQuery(gotQuery)
+	require.NoError(t, parseErr)
+	assert.Equal(t, "0,2", query.Get("straight"), "the legs leaving the waypoint before each straight one; the first's flag names no leg")
+	assert.Equal(t, "8.685,50.112,250|8.7,50.1,1000", query.Get("nogos"), "nogos")
+}
+
+func TestRouteAsksForNeitherWhenNoneAreSet(t *testing.T) {
+	var gotQuery string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
+		assert.NoError(t, writeErr)
+	}))
+	defer server.Close()
+	client, err := New(&Options{BaseURL: server.URL})
+	require.NoError(t, err)
+
+	_, err = client.Route(context.Background(), testWaypoints(), "trekking", nil)
+
+	require.NoError(t, err)
+	query, parseErr := url.ParseQuery(gotQuery)
+	require.NoError(t, parseErr)
+	assert.False(t, query.Has("straight"), "straight")
+	assert.False(t, query.Has("nogos"), "nogos")
 }

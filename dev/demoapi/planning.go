@@ -88,13 +88,21 @@ type brouterRouter struct{ client *brouter.Client }
 
 var _ plan.Router = brouterRouter{}
 
-func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) (plan.Routed, error) {
+func (r brouterRouter) Route(
+	ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile, avoid []plan.Avoid,
+) (plan.Routed, error) {
 	converted := make([]brouter.Waypoint, len(waypoints))
 	for index, waypoint := range waypoints {
-		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+		converted[index] = brouter.Waypoint{
+			Longitude: waypoint.Longitude, Latitude: waypoint.Latitude, Straight: waypoint.Straight,
+		}
+	}
+	nogos := make([]brouter.Nogo, len(avoid))
+	for index, area := range avoid {
+		nogos[index] = brouter.Nogo{Longitude: area.Longitude, Latitude: area.Latitude, RadiusMetres: area.RadiusMetres}
 	}
 
-	answer, err := r.client.Route(ctx, converted, string(profile))
+	answer, err := r.client.Route(ctx, converted, string(profile), nogos)
 	if err != nil {
 		return plan.Routed{}, fmt.Errorf("routing waypoints: %w", err)
 	}
@@ -103,7 +111,12 @@ func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, pro
 		ways[index] = plan.RoutedWay{EndMetres: way.EndMetres, Tags: way.Tags}
 	}
 
-	return plan.Routed{Points: answer.Points, Ways: ways}, nil
+	turns := make([]plan.RoutedTurn, len(answer.Turns))
+	for index, turn := range answer.Turns {
+		turns[index] = plan.RoutedTurn{Turn: turn.Turn, Index: turn.Index, Exit: turn.Exit}
+	}
+
+	return plan.Routed{Points: answer.Points, Ways: ways, Turns: turns}, nil
 }
 
 // planStore adapts the SQLite plan records to the plan service used by the
@@ -175,8 +188,16 @@ func (s planStore) DeletePlan(ctx context.Context, id, expectedVersion int64) (b
 
 func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 	waypoints := make([][2]float64, len(p.Waypoints))
+	var straight []int
 	for index, waypoint := range p.Waypoints {
 		waypoints[index] = [2]float64{waypoint.Longitude, waypoint.Latitude}
+		if waypoint.Straight {
+			straight = append(straight, index)
+		}
+	}
+	var avoid [][3]float64
+	for _, area := range p.Avoid {
+		avoid = append(avoid, [3]float64{area.Longitude, area.Latitude, area.RadiusMetres})
 	}
 
 	pushing := make([][2]float64, len(p.Pushing))
@@ -186,7 +207,7 @@ func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 
 	return sqlite.PlanRecord{
 		ID: p.ID, Name: p.Name, Profile: string(p.Profile), Waypoints: waypoints, Geometry: p.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: p.Turns, Cues: p.Cues, Straight: straight, Avoid: avoid,
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, Published: p.Published,
 		Version: p.Version, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
@@ -201,6 +222,15 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 	for index, coordinate := range record.Waypoints {
 		waypoints[index] = plan.Waypoint{Longitude: coordinate[0], Latitude: coordinate[1]}
 	}
+	for _, index := range record.Straight {
+		if index > 0 && index < len(waypoints) {
+			waypoints[index].Straight = true
+		}
+	}
+	var avoid []plan.Avoid
+	for _, area := range record.Avoid {
+		avoid = append(avoid, plan.Avoid{Longitude: area[0], Latitude: area[1], RadiusMetres: area[2]})
+	}
 
 	pushing := make([]plan.Window, len(record.Pushing))
 	for index, pair := range record.Pushing {
@@ -209,7 +239,7 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 
 	return plan.Plan{
 		ID: record.ID, Name: record.Name, Profile: profile, Waypoints: waypoints, Geometry: record.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: record.Turns, Cues: record.Cues, Avoid: avoid,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Published: record.Published,
 		Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}, nil

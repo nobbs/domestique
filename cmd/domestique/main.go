@@ -22,7 +22,6 @@ import (
 	"github.com/nobbs/domestique/internal/claude"
 	"github.com/nobbs/domestique/internal/config"
 	"github.com/nobbs/domestique/internal/elevation"
-	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/oauth"
 	"github.com/nobbs/domestique/internal/openmeteo"
@@ -179,7 +178,7 @@ func run(ctx context.Context) error {
 		AllowEmptySourceDeletion: func() bool {
 			return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
 		},
-	}, store, elevation.New(), fit.New(), destination, annotator, predictorFor(rideModel))
+	}, store, elevation.New(), courseEncoder(planService), destination, annotator, predictorFor(rideModel))
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)
 	}

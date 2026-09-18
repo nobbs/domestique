@@ -80,6 +80,17 @@ describe("plannerReducer", () => {
     expect(state.future).toEqual([]);
   });
 
+  it("sets, undoes, and redoes turn cues, but not when unchanged", () => {
+    const unset = plannerReducer(initialPlannerState, { type: "setCues", cues: false });
+    expect(unset).toBe(initialPlannerState);
+
+    const set = plannerReducer(initialPlannerState, { type: "setCues", cues: true });
+    expect(set.cues).toBe(true);
+    const undone = plannerReducer(set, { type: "undo" });
+    expect(undone.cues).toBe(false);
+    expect(plannerReducer(undone, { type: "redo" }).cues).toBe(true);
+  });
+
   it("reverses and reorders waypoints", () => {
     const state = reduce(
       { type: "append", waypoint: first },
@@ -148,12 +159,13 @@ describe("plannerReducer", () => {
     const edited = reduce({ type: "append", waypoint: first });
     const loaded = plannerReducer(edited, {
       type: "load",
-      plan: { name: "Stored route", profile: "fastbike", waypoints: [first, second] },
+      plan: { name: "Stored route", profile: "fastbike", cues: true, waypoints: [first, second] },
     });
 
     expect(loaded).toMatchObject({
       name: "Stored route",
       profile: "fastbike",
+      cues: true,
       waypoints: [first, second],
     });
     expect(loaded.past).toEqual([]);
@@ -244,12 +256,169 @@ describe("plannerReducer", () => {
     ).toBe(replaced);
   });
 
+  it("sets, undoes, and redoes straight legs, but never on the first waypoint", () => {
+    const state = reduce({ type: "append", waypoint: first }, { type: "append", waypoint: second });
+
+    const ignored = plannerReducer(state, {
+      type: "setStraight",
+      id: state.waypoints[0]?.id ?? -1,
+      straight: true,
+    });
+    expect(ignored).toBe(state);
+
+    const set = plannerReducer(state, {
+      type: "setStraight",
+      id: state.waypoints[1]?.id ?? -1,
+      straight: true,
+    });
+    expect(set.waypoints[1]).toMatchObject({ straight: true });
+    expect(
+      plannerReducer(set, { type: "setStraight", id: set.waypoints[1]?.id ?? -1, straight: true }),
+    ).toBe(set);
+
+    const undone = plannerReducer(set, { type: "undo" });
+    expect(undone.waypoints[1]?.straight).toBeUndefined();
+    expect(plannerReducer(undone, { type: "redo" }).waypoints[1]).toMatchObject({ straight: true });
+  });
+
+  it("preserves a straight flag across a move and a settling snap", () => {
+    const state = reduce({ type: "append", waypoint: first }, { type: "append", waypoint: second });
+    const straightID = state.waypoints[1]?.id ?? -1;
+    const set = plannerReducer(state, { type: "setStraight", id: straightID, straight: true });
+
+    const moved = plannerReducer(set, { type: "move", index: 1, waypoint: third });
+    expect(moved.waypoints[1]).toMatchObject({ straight: true, ...third });
+
+    const snapped = plannerReducer(moved, {
+      type: "snap",
+      id: straightID,
+      from: third,
+      waypoint: { longitude: 8.2001, latitude: 49.2001 },
+    });
+    expect(snapped.waypoints[1]).toMatchObject({ straight: true });
+  });
+
+  it("clears the straight flag whenever a waypoint becomes first", () => {
+    const straightSecond = reduce(
+      { type: "append", waypoint: first },
+      { type: "append", waypoint: second },
+      { type: "append", waypoint: third },
+    );
+    const withStraight = plannerReducer(straightSecond, {
+      type: "setStraight",
+      id: straightSecond.waypoints[2]?.id ?? -1,
+      straight: true,
+    });
+
+    // reverse: the straight leg second→third stays that stretch, now arriving at second.
+    const reversed = plannerReducer(withStraight, { type: "reverse" });
+    expect(reversed.waypoints.map((waypoint) => Boolean(waypoint.straight))).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect(reversed.waypoints[0]?.straight).toBeUndefined();
+
+    // delete: removing the first waypoint promotes a straight one.
+    const straightFirst = plannerReducer(withStraight, {
+      type: "setStraight",
+      id: withStraight.waypoints[1]?.id ?? -1,
+      straight: true,
+    });
+    const deleted = plannerReducer(straightFirst, { type: "delete", index: 0 });
+    expect(deleted.waypoints[0]?.straight).toBeUndefined();
+
+    // reorder: dragging a straight waypoint to the front.
+    const reordered = plannerReducer(withStraight, {
+      type: "reorder",
+      order: [withStraight.waypoints[2]?.id ?? -1, 0, 1],
+    });
+    expect(reordered.waypoints[0]?.straight).toBeUndefined();
+
+    // insert at 0: the previous first waypoint (never straight) simply shifts.
+    const inserted = plannerReducer(straightSecond, {
+      type: "insert",
+      index: 0,
+      waypoint: { longitude: 7.9, latitude: 48.9 },
+    });
+    expect(inserted.waypoints[0]?.straight).toBeUndefined();
+  });
+
+  it("reads a straight waypoint from a stored plan", () => {
+    const loaded = plannerReducer(initialPlannerState, {
+      type: "load",
+      plan: {
+        name: "Stored route",
+        profile: "trekking",
+        waypoints: [first, { ...second, straight: true }],
+      },
+    });
+
+    expect(loaded.waypoints[1]).toMatchObject({ straight: true });
+  });
+
+  it("adds, moves, resizes, and deletes avoided areas, up to a limit of 20, with undo", () => {
+    const withOne = plannerReducer(initialPlannerState, {
+      type: "addAvoid",
+      longitude: 8,
+      latitude: 49,
+    });
+    expect(withOne.avoid).toMatchObject([{ id: 0, longitude: 8, latitude: 49, radiusMetres: 250 }]);
+
+    const moved = plannerReducer(withOne, {
+      type: "moveAvoid",
+      id: 0,
+      longitude: 8.01,
+      latitude: 49.01,
+    });
+    expect(moved.avoid[0]).toMatchObject({ longitude: 8.01, latitude: 49.01 });
+
+    const resized = plannerReducer(moved, { type: "setAvoidRadius", id: 0, radiusMetres: 1000 });
+    expect(resized.avoid[0]).toMatchObject({ radiusMetres: 1000 });
+    expect(plannerReducer(resized, { type: "setAvoidRadius", id: 0, radiusMetres: 1000 })).toBe(
+      resized,
+    );
+
+    const undone = plannerReducer(resized, { type: "undo" });
+    expect(undone.avoid[0]).toMatchObject({ radiusMetres: 250 });
+
+    const deleted = plannerReducer(resized, { type: "deleteAvoid", id: 0 });
+    expect(deleted.avoid).toEqual([]);
+    expect(plannerReducer(deleted, { type: "deleteAvoid", id: 0 })).toBe(deleted);
+
+    let capped = initialPlannerState;
+    for (let index = 0; index < 20; index++) {
+      capped = plannerReducer(capped, { type: "addAvoid", longitude: 8, latitude: 49 });
+    }
+    expect(capped.avoid).toHaveLength(20);
+    expect(plannerReducer(capped, { type: "addAvoid", longitude: 8, latitude: 49 })).toBe(capped);
+  });
+
+  it("loads a stored plan's avoided areas and clears them on reset", () => {
+    const loaded = plannerReducer(initialPlannerState, {
+      type: "load",
+      plan: {
+        name: "Stored route",
+        profile: "trekking",
+        waypoints: [first, second],
+        avoid: [{ longitude: 8.05, latitude: 49.05, radiusMetres: 500 }],
+      },
+    });
+
+    expect(loaded.avoid).toMatchObject([
+      { id: 0, longitude: 8.05, latitude: 49.05, radiusMetres: 500 },
+    ]);
+    expect(plannerReducer(loaded, { type: "reset" }).avoid).toEqual([]);
+  });
+
   it("resets an opened plan to a new draft", () => {
     const edited = reduce(
       { type: "setName", name: "Stored route" },
       { type: "append", waypoint: first },
+      { type: "setCues", cues: true },
     );
 
     expect(plannerReducer(edited, { type: "reset" })).toBe(initialPlannerState);
+    expect(initialPlannerState.cues).toBe(false);
   });
 });

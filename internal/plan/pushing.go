@@ -10,6 +10,16 @@ type Routed struct {
 	// by the engine's own reckoning, with the tags of the way it runs on. Empty
 	// where the engine says nothing about them.
 	Ways []RoutedWay
+	// Turns are the engine's turn instructions, each on a vertex of Points.
+	Turns []RoutedTurn
+}
+
+// RoutedTurn is one of the engine's turn instructions: the vertex of the line
+// it sits on, and what it asks for there.
+type RoutedTurn struct {
+	Turn  route.Turn
+	Index int
+	Exit  int
 }
 
 // RoutedWay is one stretch of a routed line and the tags of the way under it.

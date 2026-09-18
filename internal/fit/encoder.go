@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	fitencoder "github.com/muktihari/fit/encoder"
@@ -33,6 +34,14 @@ func New() *Encoder {
 //
 //nolint:gocritic // This method conforms to the sync package's value contract.
 func (e *Encoder) Encode(ctx context.Context, stage route.Route) ([]byte, error) {
+	return e.EncodeWithCues(ctx, stage, nil)
+}
+
+// EncodeWithCues is Encode with turn instructions as course points, each on
+// the record nearest its distance along the route.
+//
+//nolint:gocritic // This method conforms to the sync package's value contract.
+func (e *Encoder) EncodeWithCues(ctx context.Context, stage route.Route, cues []route.Cue) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("fit: encoding cancelled: %w", err)
 	}
@@ -69,6 +78,7 @@ func (e *Encoder) Encode(ctx context.Context, stage route.Route) ([]byte, error)
 		}
 		course.Records = append(course.Records, record)
 	}
+	course.CoursePoints = coursePoints(course.Records, cues)
 
 	encoded := course.ToFIT(nil)
 	var buffer bytes.Buffer
@@ -77,6 +87,73 @@ func (e *Encoder) Encode(ctx context.Context, stage route.Route) ([]byte, error)
 	}
 
 	return buffer.Bytes(), nil
+}
+
+// coursePoints places each cue on the record nearest its distance, so a
+// device reaches it at the same moment as that point of the line.
+func coursePoints(records []*mesgdef.Record, cues []route.Cue) []*mesgdef.CoursePoint {
+	if len(records) == 0 {
+		return nil
+	}
+	points := make([]*mesgdef.CoursePoint, 0, len(cues))
+	for _, cue := range cues {
+		kind, name, known := cuePoint(cue)
+		if !known {
+			continue
+		}
+		index := sort.Search(len(records), func(index int) bool {
+			return records[index].DistanceScaled() >= cue.Metres
+		})
+		if index == len(records) || (index > 0 &&
+			cue.Metres-records[index-1].DistanceScaled() < records[index].DistanceScaled()-cue.Metres) {
+			index--
+		}
+		record := records[index]
+		points = append(points, mesgdef.NewCoursePoint(nil).
+			SetTimestamp(record.Timestamp).
+			SetPositionLat(record.PositionLat).
+			SetPositionLong(record.PositionLong).
+			SetDistance(record.Distance).
+			SetType(kind).
+			SetName(name))
+	}
+
+	return points
+}
+
+// cuePoint is the course point type a device draws a turn with, and the
+// short name it shows beside it.
+func cuePoint(cue route.Cue) (typedef.CoursePoint, string, bool) {
+	switch cue.Turn {
+	case route.TurnStraight:
+		return typedef.CoursePointStraight, "Straight on", true
+	case route.TurnLeft:
+		return typedef.CoursePointLeft, "Left", true
+	case route.TurnSlightLeft:
+		return typedef.CoursePointSlightLeft, "Slight left", true
+	case route.TurnSharpLeft:
+		return typedef.CoursePointSharpLeft, "Sharp left", true
+	case route.TurnRight:
+		return typedef.CoursePointRight, "Right", true
+	case route.TurnSlightRight:
+		return typedef.CoursePointSlightRight, "Slight right", true
+	case route.TurnSharpRight:
+		return typedef.CoursePointSharpRight, "Sharp right", true
+	case route.TurnKeepLeft:
+		return typedef.CoursePointLeftFork, "Keep left", true
+	case route.TurnKeepRight:
+		return typedef.CoursePointRightFork, "Keep right", true
+	case route.TurnUTurn:
+		return typedef.CoursePointUTurn, "U-turn", true
+	case route.TurnRoundabout:
+		if cue.Exit > 0 {
+			return typedef.CoursePointGeneric, fmt.Sprintf("Roundabout exit %d", cue.Exit), true
+		}
+
+		return typedef.CoursePointGeneric, "Roundabout", true
+	default:
+		return typedef.CoursePointGeneric, "", false
+	}
 }
 
 func courseTimestamp() time.Time {

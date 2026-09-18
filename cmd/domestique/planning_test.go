@@ -16,6 +16,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/plan"
@@ -150,9 +151,10 @@ func TestHTTPAPIPlansAvoidsATypedNilInterface(t *testing.T) {
 // brouterRouter converts plan types to the adapter's own before asking the
 // engine, and the points it returns travel back unchanged.
 func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
-	var gotProfile string
+	var gotProfile, gotStraight, gotNogos string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotProfile = r.URL.Query().Get("profile")
+		gotStraight, gotNogos = r.URL.Query().Get("straight"), r.URL.Query().Get("nogos")
 		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
 			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
 		assert.NoError(t, writeErr)
@@ -164,9 +166,12 @@ func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
 	router := brouterRouter{client: client}
 
 	routed, err := router.Route(
-		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12, Straight: true}},
+		plan.Gravel, []plan.Avoid{{Longitude: 8.69, Latitude: 50.115, RadiusMetres: 250}})
 	require.NoError(t, err)
 	assert.Equal(t, "gravel", gotProfile, "profile")
+	assert.Equal(t, "0", gotStraight, "straight")
+	assert.Equal(t, "8.69,50.115,250", gotNogos, "nogos")
 	require.Len(t, routed.Points, 2, "points")
 }
 
@@ -183,7 +188,7 @@ func TestBrouterRouterWrapsARoutingFailure(t *testing.T) {
 	router := brouterRouter{client: client}
 
 	_, routeErr := router.Route(
-		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel, nil)
 	require.Error(t, routeErr)
 	var brouterErr *brouter.Error
 	require.ErrorAs(t, routeErr, &brouterErr)
@@ -232,7 +237,8 @@ func TestPlanStoreRoundTripsAPlan(t *testing.T) {
 	elevation := 42.5
 	original := plan.Plan{
 		ID: 7, Name: "Round Trip", Profile: plan.Gravel,
-		Waypoints: []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}},
+		Waypoints: []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12, Straight: true}},
+		Avoid:     []plan.Avoid{{Longitude: 8.69, Latitude: 50.115, RadiusMetres: 250}},
 		Geometry: []route.Point{
 			{Longitude: 8.68, Latitude: 50.11, Elevation: &elevation},
 			{Longitude: 8.70, Latitude: 50.12},
@@ -252,6 +258,7 @@ func TestPlanStoreRoundTripsAPlan(t *testing.T) {
 	assert.Equal(t, original.Waypoints, read.Waypoints, "Waypoints")
 	assert.Equal(t, original.Published, read.Published, "Published")
 	assert.Equal(t, original.Pushing, read.Pushing, "Pushing")
+	assert.Equal(t, original.Avoid, read.Avoid, "Avoid")
 	require.Len(t, read.Geometry, 2, "Geometry")
 	require.NotNil(t, read.Geometry[0].Elevation, "Geometry[0].Elevation")
 	assert.InDelta(t, elevation, *read.Geometry[0].Elevation, 0, "Geometry[0].Elevation")
@@ -320,12 +327,12 @@ func TestPlanStoreForwardsUnderlyingStoreFailures(t *testing.T) {
 	require.Error(t, err, "DeletePlan()")
 }
 
-func TestBrouterRouterCarriesTheWaysUnderTheLine(t *testing.T) {
+func TestBrouterRouterCarriesTheWaysAndTurnsOfTheLine(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
 			`"properties":{"messages":[["Longitude","Latitude","Distance","WayTags"],` +
-			`["8680000","50110000","40","highway=footway"]]},` +
-			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.70,50.12]]}}]}`))
+			`["8680000","50110000","40","highway=footway"]],"voicehints":[[1,13,3,40,0]]},` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.69,50.115],[8.70,50.12]]}}]}`))
 		assert.NoError(t, writeErr)
 	}))
 	defer server.Close()
@@ -333,9 +340,10 @@ func TestBrouterRouterCarriesTheWaysUnderTheLine(t *testing.T) {
 	require.NoError(t, err)
 
 	routed, err := brouterRouter{client: client}.Route(
-		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel)
+		t.Context(), []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}, plan.Gravel, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []plan.RoutedWay{{EndMetres: 40, Tags: map[string]string{"highway": "footway"}}}, routed.Ways)
+	assert.Equal(t, []plan.RoutedTurn{{Turn: route.TurnRoundabout, Index: 1, Exit: 3}}, routed.Turns)
 }
 
 func TestModelPacePredictsWithThePairInForce(t *testing.T) {
@@ -446,4 +454,77 @@ func TestPlanDeliveriesForwardAFailure(t *testing.T) {
 func TestHTTPAPIPlanDeliveriesFollowThePlanner(t *testing.T) {
 	assert.Nil(t, httpapiPlanDeliveries(nil, nil), "without a planner")
 	assert.NotNil(t, httpapiPlanDeliveries(&plan.Service{}, nil), "with a planner")
+}
+
+type fakePlanGetter struct {
+	err   error
+	found plan.Plan
+	ok    bool
+}
+
+func (g *fakePlanGetter) Get(context.Context, int64) (plan.Plan, bool, error) {
+	return g.found, g.ok, g.err
+}
+
+func TestCueEncoderAddsAPlansCuesOnlyWhereItAsksForThem(t *testing.T) {
+	updatedAt := time.Date(2026, 9, 18, 10, 0, 0, 0, time.UTC)
+	cued := plan.Plan{ID: 7, Cues: true, UpdatedAt: updatedAt, Turns: []route.Cue{{Turn: route.TurnLeft, Metres: 10}}}
+	line := []route.Point{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.41, Latitude: 49.01}}
+	stageAt := func(provider route.Provider, revision string) route.Route {
+		stage, err := route.NewRoute(provider, 7, 1, revision, "Plan", "", line, "hash")
+		require.NoError(t, err, "NewRoute()")
+
+		return stage
+	}
+	current := stageAt(route.ProviderLocal, cued.Revision())
+	plain, err := fit.New().Encode(t.Context(), current)
+	require.NoError(t, err, "Encode()")
+	withCues, err := fit.New().EncodeWithCues(t.Context(), current, cued.Turns)
+	require.NoError(t, err, "EncodeWithCues()")
+	switchedOff := cued
+	switchedOff.Cues = false
+
+	tests := map[string]cueCase{
+		"cues switched on":      {withCues, cueEncoder{fit: fit.New(), plans: &fakePlanGetter{found: cued, ok: true}}, current},
+		"cues switched off":     {plain, cueEncoder{fit: fit.New(), plans: &fakePlanGetter{found: switchedOff, ok: true}}, current},
+		"an older revision":     {nil, cueEncoder{fit: fit.New(), plans: &fakePlanGetter{found: cued, ok: true}}, stageAt(route.ProviderLocal, "older")},
+		"a plan since deleted":  {plain, cueEncoder{fit: fit.New(), plans: &fakePlanGetter{}}, current},
+		"a library route":       {nil, cueEncoder{fit: fit.New(), plans: &fakePlanGetter{found: cued, ok: true}}, stageAt(route.ProviderVeloPlanner, cued.Revision())},
+		"no planner configured": {plain, courseEncoder(nil), current},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			encoded, err := test.encoder.Encode(t.Context(), test.stage)
+
+			require.NoError(t, err, "Encode()")
+			want := test.want
+			if want == nil {
+				want, err = fit.New().Encode(t.Context(), test.stage)
+				require.NoError(t, err, "plain Encode()")
+			}
+			assert.Equal(t, want, encoded, "course")
+		})
+	}
+}
+
+// cueCase is one course the cue encoder writes; a nil want is the plain course.
+type cueCase struct {
+	want    []byte
+	encoder cueEncoder
+	stage   route.Route
+}
+
+func TestCueEncoderFailsWhenThePlanCannotBeRead(t *testing.T) {
+	stage, err := route.NewRoute(route.ProviderLocal, 7, 1, "r1", "Plan", "",
+		[]route.Point{{Longitude: 8.4, Latitude: 49}, {Longitude: 8.41, Latitude: 49.01}}, "hash")
+	require.NoError(t, err, "NewRoute()")
+	encoder := cueEncoder{fit: fit.New(), plans: &fakePlanGetter{err: fmt.Errorf("down")}}
+
+	_, err = encoder.Encode(t.Context(), stage)
+
+	assert.Error(t, err, "Encode()")
+}
+
+func TestCourseEncoderReadsCuesWithAPlanner(t *testing.T) {
+	assert.NotNil(t, courseEncoder(&plan.Service{}).plans, "planner")
 }

@@ -158,6 +158,12 @@ route under the `local` provider; a draft is not a route at all (see
 admin placed it. The routing engine decides the line between two of them; a
 waypoint is never itself a point of the geometry.
 
+**straight leg** — a leg of a plan the routing engine draws as a straight line
+between two waypoints instead of routing it along ways, marked on the waypoint
+it arrives at.
+
+**avoided area** — a circle on a plan the routing engine keeps its route out of.
+
 **profile** — the routing engine's costing a plan is routed with: trekking,
 fastbike, or gravel. Stored with the plan, so re-routing it keeps the choice.
 
@@ -172,6 +178,11 @@ where the rider walks.
 
 **delivery** — one target's standing with one plan: `current`, `pending`,
 `failed` or `absent`, as the planner reports it.
+
+**cue** — one turn instruction on a rider's device: what to do and how far
+along the route. A plan's cues are the routing engine's, carried as FIT course
+points only when the plan's cue switch is on; every other route's cues are the
+device's own.
 
 ## Synchronisation
 

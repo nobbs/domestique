@@ -969,8 +969,17 @@ browser origin described above, and answer 403 without it.
   plan's waypoints, profile, name, published state, version, and its stored
   geometry, because a draft is in no inventory for the geometry endpoint to
   serve. `POST /v1/plans` creates a draft, routing the waypoints server-side
-  first. `PUT /v1/plans/{plan-id}` replaces one plan whole, published state
-  included, and `DELETE /v1/plans/{plan-id}` removes one; both carry the
+  first. Both carry `cues`, whether the plan's course carries the routing
+  engine's turn instructions as cue points, off when absent; a plan read says
+  whether it does and how many turns the engine gave for the line. A waypoint
+  may be marked `straight`, making the leg that arrives at it a straight line
+  the engine draws rather than routes (never the first waypoint's), and a plan
+  may carry up to 20 `avoid` circles of 10 m to 5 km the engine keeps the route
+  out of, ignoring one that holds a waypoint. Both are stored with the plan,
+  sent again on every route of it, a preview's included, and returned on a
+  plan read.
+  `PUT /v1/plans/{plan-id}` replaces one plan whole, published state and cue
+  switch included, and `DELETE /v1/plans/{plan-id}` removes one; both carry the
   version last read as `If-Match`, and a stale version is refused with `412`,
   so one admin can neither overwrite nor delete what another has just changed.
   A stored replace or delete starts `sync:plan` over that plan's id; a start
@@ -1251,7 +1260,11 @@ centred 100-metre moving median to remove isolated altitude spikes. It retains
 the original route geometry. The resulting profile is the single source for
 FIT elevations and Wahoo ascent/descent metadata. Each FIT record carries
 cumulative route distance in metres as well as coordinates and elevation, so
-Wahoo can derive an elevation profile and gradients. The FIT adapter uses
+Wahoo can derive an elevation profile and gradients. A plan whose cue switch
+is on also carries the routing engine's turn instructions as FIT course points,
+each on the record nearest its distance along the plan, typed as the turn and
+named in a few words ("Left", "Roundabout exit 2"); no other route carries
+course points, and a device builds its own cues for those. The FIT adapter uses
 [`github.com/muktihari/fit`](https://github.com/muktihari/fit), isolated behind
 the course encoder boundary and without vendoring Garmin SDK files or test data.
 The source code remains MIT-licensed; third-party notices remain with their
@@ -1281,7 +1294,9 @@ from the operator's own library with no undo.
 
 Both sources hand over geometry and metadata only. Neither source's FIT, GPX,
 surface classification, way types, or turn directions are consumed, even where
-the provider offers them. FIT is produced once, by this service's own encoder,
+the provider offers them. The routing engine behind the local provider is not a
+source in this sense: its turn instructions are kept with each plan, and reach
+a device only for a plan an admin switched cues on for. FIT is produced once, by this service's own encoder,
 for every source alike, and surface classification is computed once, against
 this service's own OpenStreetMap index, for every source alike. This rule is
 provider-agnostic and applies to any future source.
@@ -1311,9 +1326,10 @@ project's public instance, on the terms
 [configuration.md](configuration.md#static-fields) states — which answers with
 the snapped line and an elevation per point; both are then treated exactly as
 a VeloPlanner stage's are, normalised and measured by this service and encoded
-by its own encoder. The engine is asked only with the waypoints and the
-profile; no plan name, rider, or stored route leaves the service for it, and
-with a public instance those waypoints are the whole of what leaves the host.
+by its own encoder. The engine is asked only with the waypoints, which legs
+between them to draw straight, the circles to avoid, and the profile; no plan
+name, rider, or stored route leaves the service for it, and with a public
+instance those are the whole of what leaves the host.
 
 ## Wahoo synchronisation
 

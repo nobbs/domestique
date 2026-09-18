@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,10 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
 const replace = vi.hoisted(() => vi.fn());
+const remove = vi.hoisted(() => vi.fn());
 const openedPlan = vi.hoisted(() => ({ value: {} }));
 const mapPoint = vi.hoisted(() => ({ value: { longitude: 8, latitude: 49 } }));
 const narrowViewport = vi.hoisted(() => ({ value: false }));
 const routeOverlay = vi.hoisted(() => vi.fn());
+// Keyed by "longitude,latitude" as last rendered, so a test can drive a
+// marker's drag without a real pointer gesture on a mocked map.
+const markerDragHandlers = vi.hoisted(
+  () => new Map<string, (event: { lngLat: { lng: number; lat: number } }) => void>(),
+);
 // Answers every waypoint unmoved unless a test says otherwise.
 const snap = vi.hoisted(() =>
   vi.fn(async (at: { longitude: number; latitude: number }) => ({
@@ -23,9 +29,7 @@ vi.mock("../../api/generated", async (importOriginal) => ({
   getGetPlanQueryKey: (id: number) => ["plan", id],
   useCreatePlan: () => ({ isPending: false, mutateAsync: create }),
   useGetPlan: () => openedPlan.value,
-  useListPlans: () => ({
-    data: { data: { plans: [{ id: 4, name: "Draft loop", published: false }] } },
-  }),
+  useDeletePlan: () => ({ isPending: false, mutateAsync: remove }),
   usePreviewPlanRoute: () => ({ mutate: preview }),
   useReplacePlan: () => ({ isPending: false, mutateAsync: replace }),
   snapPlace: snap,
@@ -68,6 +72,8 @@ vi.mock("../../components/map/MapWidget", () => ({
     children,
     furniture,
     onClick,
+    onMouseDown,
+    onMoveStart,
   }: {
     children: React.ReactNode;
     furniture?: React.ReactNode;
@@ -75,11 +81,22 @@ vi.mock("../../components/map/MapWidget", () => ({
       lngLat: { lng: number; lat: number };
       originalEvent: { altKey: boolean };
     }) => void;
+    onMouseDown?: (event: {
+      lngLat: { lng: number; lat: number };
+      originalEvent: { altKey: boolean; button: number; target: EventTarget | null };
+    }) => void;
+    onMoveStart?: () => void;
   }) => (
     <>
       <button
         type="button"
         aria-label="Plan route map"
+        onMouseDown={(event) =>
+          onMouseDown?.({
+            lngLat: { lng: mapPoint.value.longitude, lat: mapPoint.value.latitude },
+            originalEvent: { altKey: event.altKey, button: event.button, target: event.target },
+          })
+        }
         onClick={(event) =>
           onClick?.({
             lngLat: { lng: mapPoint.value.longitude, lat: mapPoint.value.latitude },
@@ -89,6 +106,7 @@ vi.mock("../../components/map/MapWidget", () => ({
       >
         {children}
       </button>
+      <button type="button" aria-label="Pan map" onClick={() => onMoveStart?.()} />
       {furniture}
     </>
   ),
@@ -109,7 +127,22 @@ vi.mock("../../components/map/MapViewport", () => ({
   ),
 }));
 vi.mock("react-map-gl/maplibre", () => ({
-  Marker: ({ children }: { children: React.ReactNode }) => children,
+  Marker: ({
+    children,
+    longitude,
+    latitude,
+    onDragEnd,
+  }: {
+    children: React.ReactNode;
+    longitude: number;
+    latitude: number;
+    onDragEnd?: (event: { lngLat: { lng: number; lat: number } }) => void;
+  }) => {
+    if (onDragEnd) {
+      markerDragHandlers.set(`${longitude},${latitude}`, onDragEnd);
+    }
+    return children;
+  },
   Source: ({ id, data, children }: { id: string; data: unknown; children: React.ReactNode }) => (
     <div data-testid={id} data-geometry={JSON.stringify(data)}>
       {children}
@@ -177,16 +210,18 @@ beforeEach(() => {
   preview.mockReset();
   create.mockReset();
   replace.mockReset();
+  remove.mockReset();
   routeOverlay.mockReset();
   openedPlan.value = {};
   mapPoint.value = { longitude: 8, latitude: 49 };
+  markerDragHandlers.clear();
 });
 
 afterEach(() => vi.useRealTimers());
 
 /** The waypoint rows as they read, newest markup: one line per stop. */
 function waypointRows(): string[] {
-  return screen
+  return within(screen.getByRole("list", { name: "Waypoints" }))
     .getAllByRole("listitem")
     .map((row) => row.textContent?.replace(/\s+/g, " ").trim() ?? "");
 }
@@ -198,7 +233,7 @@ function firstWaypointCoordinates(): string {
 
 describe("edgeSpeed", () => {
   it("scrolls up near the top, down near the bottom, and not in between", async () => {
-    const { edgeSpeed } = await import("./PlanPage");
+    const { edgeSpeed } = await import("./PlannerSidebar");
 
     expect(edgeSpeed(100, 500, 300)).toBe(0);
     expect(edgeSpeed(100, 500, 110)).toBeLessThan(0);
@@ -221,6 +256,7 @@ describe("PlanPage", () => {
           id: 4,
           name: "Stored loop",
           profile: "trekking",
+          cues: false,
           published: false,
           version: 2,
           waypoints: [
@@ -252,9 +288,13 @@ describe("PlanPage", () => {
 
     expect(screen.getByRole("button", { name: "Plan route map" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Plans" }));
-    const item = await screen.findByText("Draft loop");
-    expect(item.closest("[role=menuitem]")).toHaveAttribute("href", "/plan/4");
-    expect(screen.getByText("Draft")).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "New plan" })).toHaveAttribute(
+      "href",
+      "/plan",
+    );
+    // An unsaved plan has nothing to delete.
+    expect(screen.queryByRole("menuitem", { name: /Delete this plan/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Draft" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("plan-map-controls")).toBeInTheDocument();
     expect(screen.getByTestId("plan-basemap-picker")).toBeInTheDocument();
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-position", "bottom-left");
@@ -414,6 +454,7 @@ describe("PlanPage", () => {
               geometry: { type: "LineString"; coordinates: number[][] };
               distanceMetres: number;
               ascentMetres: number;
+              waypointProgress: { distanceMetres: number }[];
             };
           }) => void;
           onError: (error: Error) => void;
@@ -433,6 +474,7 @@ describe("PlanPage", () => {
               },
               distanceMetres: 10_000,
               ascentMetres: 100,
+              waypointProgress: [{ distanceMetres: 0 }, { distanceMetres: 13_400 }],
             },
           });
         }
@@ -445,6 +487,8 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(299));
     expect(preview).not.toHaveBeenCalled();
     act(() => vi.advanceTimersByTime(1));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(preview).toHaveBeenCalledOnce();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
@@ -454,11 +498,16 @@ describe("PlanPage", () => {
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km");
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("100 m");
     failed = true;
-    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    mapPoint.value = { longitude: 8.2, latitude: 49.2 };
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }), { altKey: true });
     act(() => vi.advanceTimersByTime(300));
 
     expect(screen.getByText("Routing unavailable")).toBeInTheDocument();
-    expect(screen.getByTestId("route-line")).toHaveTextContent("2");
+    // The routed leg keeps its shape; the unroutable one stays a straight provisional line.
+    const drawn = JSON.parse(screen.getByTestId("plan-transition").dataset.geometry ?? "{}");
+    expect(
+      drawn.features.map((leg: { properties: { provisional: boolean } }) => leg.properties),
+    ).toEqual([{ provisional: false }, { provisional: true }]);
   });
 
   it("passes classified preview ranges to the route overlay", () => {
@@ -497,6 +546,8 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: ranges }));
   });
@@ -569,6 +620,8 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("72 m");
     const walked = JSON.parse(
@@ -648,6 +701,8 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
+    // The route shows once its legs have morphed out of their straight provisional lines.
+    act(() => vi.advanceTimersByTime(500));
 
     expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: undefined }));
   });
@@ -659,10 +714,10 @@ describe("PlanPage", () => {
     fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await act(async () => {});
-    expect(screen.getByText("Save unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Save unavailable");
   });
 
   it("starts a new draft after leaving an opened plan", async () => {
@@ -673,6 +728,7 @@ describe("PlanPage", () => {
           id: 4,
           name: "Stored loop",
           profile: "trekking",
+          cues: false,
           published: false,
           version: 2,
           waypoints: [
@@ -734,7 +790,9 @@ describe("PlanPage", () => {
       },
     });
     try {
-      fireEvent.click(screen.getByRole("link", { name: "New" }));
+      fireEvent.click(screen.getByRole("button", { name: "Plans" }));
+      await act(async () => {});
+      fireEvent.click(screen.getByRole("menuitem", { name: "New plan" }));
       await act(async () => {});
 
       expect(screen.getByDisplayValue("")).toBeInTheDocument();
@@ -771,6 +829,7 @@ describe("PlanPage", () => {
       id: 4,
       name: "Stored loop",
       profile: "trekking" as const,
+      cues: false,
       published: false,
       version: 2,
       waypoints: [
@@ -800,13 +859,68 @@ describe("PlanPage", () => {
     renderPage("/plan/4");
     await act(async () => {});
 
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Publish — syncs on next run" }));
+    // Publishing takes effect only on the save that follows it.
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    expect(replace).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await act(async () => {});
 
     expect(replace.mock.calls[0]?.[0]).toMatchObject({ headers: { "If-Match": "2" } });
-    expect(replace.mock.calls[1]?.[0]).toMatchObject({ headers: { "If-Match": "3" } });
+    expect(replace.mock.calls[1]?.[0]).toMatchObject({
+      headers: { "If-Match": "3" },
+      data: expect.objectContaining({ published: true }),
+    });
+  });
+
+  it("shows the turn cues switch with the loaded plan's turn count and sends it on save", async () => {
+    const storedPlan = {
+      id: 4,
+      name: "Stored loop",
+      profile: "trekking" as const,
+      cues: false,
+      published: false,
+      version: 2,
+      waypoints: [
+        { longitude: 8, latitude: 49 },
+        { longitude: 8.1, latitude: 49.1 },
+      ],
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [
+          [8, 49],
+          [8.1, 49.1],
+        ],
+      },
+      distanceMetres: 10_000,
+      ascentMetres: 100,
+      turnCount: 12,
+      createdAt: "2026-09-15T09:00:00Z",
+      updatedAt: "2026-09-15T09:00:00Z",
+    };
+    openedPlan.value = { data: { data: storedPlan } };
+    replace.mockResolvedValueOnce({ data: { ...storedPlan, version: 3, cues: true } });
+    renderPage("/plan/4");
+    await act(async () => {});
+
+    const toggle = screen.getByRole("button", { name: "Turn cues" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(toggle).toHaveTextContent("Turn cues · 12");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await act(async () => {});
+
+    expect(replace.mock.calls[0]?.[0]).toMatchObject({
+      data: expect.objectContaining({ cues: true }),
+    });
   });
 
   it("does not reroute after changing only the plan name", () => {
@@ -824,7 +938,9 @@ describe("PlanPage", () => {
 
   it("routes with the profile chosen from the route type control", () => {
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Gravel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Route type" }));
+    act(() => vi.advanceTimersByTime(0));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Gravel" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
@@ -934,6 +1050,7 @@ describe("PlanPage", () => {
           id: 4,
           name: "Stored loop",
           profile: "trekking",
+          cues: false,
           published: false,
           version: 2,
           waypoints: [
@@ -1015,5 +1132,307 @@ describe("PlanPage", () => {
       }),
       expect.anything(),
     );
+  });
+
+  it("arms avoid mode from the map control and adds an area instead of a waypoint", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.2, latitude: 49.2 };
+    fireEvent.click(map);
+    expect(waypointRows()).toHaveLength(2);
+
+    mapPoint.value = { longitude: 8.5, latitude: 49.5 };
+    fireEvent.click(screen.getByRole("button", { name: "Avoid an area" }));
+    fireEvent.click(map);
+
+    expect(waypointRows()).toHaveLength(2);
+    expect(screen.getByText("1 area")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Avoid an area" })).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          avoid: [{ longitude: 8.5, latitude: 49.5, radiusMetres: 250 }],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("disarms avoid mode on Escape without adding an area", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Avoid an area" }));
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+
+    expect(screen.queryByRole("button", { name: "Delete avoided area" })).toBeNull();
+    expect(waypointRows()).toHaveLength(1);
+  });
+
+  it("sends a waypoint's straight flag and skips settling a straight waypoint dragged along the map", async () => {
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          cues: false,
+          published: false,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1, straight: true },
+          ],
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [8, 49],
+              [8.1, 49.1],
+            ],
+          },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(
+      screen.getByRole("button", { name: "Route to Finish waypoint normally" }),
+    ).toBeInTheDocument();
+    expect(preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1, straight: true },
+          ],
+        }),
+      }),
+      expect.anything(),
+    );
+
+    snap.mockClear();
+    act(() => markerDragHandlers.get("8.1,49.1")?.({ lngLat: { lng: 8.1005, lat: 49.1005 } }));
+    expect(snap).not.toHaveBeenCalled();
+    expect(waypointRows()[1]).toContain("49.1005, 8.1005");
+  });
+
+  it("toggles a waypoint's straight leg from its row, never offering it on the first waypoint", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.1, latitude: 49.1 };
+    fireEvent.click(map);
+
+    expect(screen.queryByRole("button", { name: /Straight line to Start waypoint/ })).toBeNull();
+    const toggle = screen.getByRole("button", { name: "Straight line to Finish waypoint" });
+    fireEvent.click(toggle);
+    expect(
+      screen.getByRole("button", { name: "Route to Finish waypoint normally" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Route to Finish waypoint normally" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("folds a long plan to its ends and the waypoint in focus, lighting a folded run on hover", async () => {
+    const count = 10;
+    const stops = Array.from({ length: count }, (_, index) => ({
+      longitude: 8 + index * 0.01,
+      latitude: 49,
+    }));
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Long loop",
+          profile: "trekking",
+          cues: false,
+          published: false,
+          version: 2,
+          waypoints: stops,
+          geometry: {
+            type: "LineString",
+            coordinates: stops.map(({ longitude, latitude }) => [longitude, latitude]),
+          },
+          distanceMetres: 6_600,
+          ascentMetres: 10,
+          waypointProgress: stops.map((_, index) => ({ distanceMetres: index * 730 })),
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    const rowIDs = () =>
+      Array.from(screen.getByRole("list", { name: "Waypoints" }).querySelectorAll("li")).map(
+        (row) => row.getAttribute("data-waypoint-id") ?? "gap",
+      );
+    const litLine = () =>
+      JSON.parse(screen.getByTestId("plan-hidden-run").dataset.geometry ?? "{}").features[0]
+        ?.geometry.coordinates ?? [];
+
+    expect(rowIDs()).toEqual(["0", "gap", "9"]);
+    const run = screen.getByRole("button", { name: /8 more waypoints/ });
+    fireEvent.mouseEnter(run);
+    expect(litLine().length).toBeGreaterThan(1);
+    fireEvent.mouseLeave(run);
+    expect(litLine()).toEqual([]);
+
+    fireEvent.mouseEnter(screen.getByRole("img", { name: "Waypoint 5" }));
+    expect(rowIDs()).toEqual(["0", "gap", "3", "4", "5", "gap", "9"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /2 more waypoints/ }));
+    expect(rowIDs()).toEqual(["0", "1", "2", "3", "4", "5", "gap", "9"]);
+    // A new focus folds what was opened again.
+    fireEvent.mouseEnter(screen.getByRole("img", { name: "Waypoint 8" }));
+    expect(rowIDs()).toEqual(["0", "gap", "6", "7", "8", "9"]);
+  });
+
+  it("deletes a saved plan after confirming, then starts a new one", async () => {
+    vi.useRealTimers();
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          cues: false,
+          published: true,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+          ],
+          geometry: { type: "LineString", coordinates: [] },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    remove
+      .mockRejectedValueOnce(new Error("Plan changed since it was read"))
+      .mockResolvedValue({ status: 204 });
+    renderPage("/plan/4");
+    await act(async () => {});
+
+    await userEvent.click(screen.getByRole("button", { name: "Plans" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Delete this plan…" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent(
+      "It is removed from every rider's Wahoo. This cannot be undone.",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete plan" }));
+    // A refused delete says why where the reader is looking: in the dialog, still open.
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Could not delete plan: Plan changed since it was read",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete plan" }));
+
+    expect(remove).toHaveBeenCalledWith({ planId: 4, headers: { "If-Match": "2" } });
+    expect(await screen.findByDisplayValue("")).toBeInTheDocument();
+  });
+
+  it("publishes a new plan on its first save when Published is chosen", async () => {
+    create.mockResolvedValue({ data: { id: 7, version: 1 } });
+    replace.mockResolvedValue({ data: { id: 7, version: 2, published: true } });
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Fresh" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await act(async () => {});
+
+    expect(replace).toHaveBeenCalledWith({
+      planId: 7,
+      data: expect.objectContaining({ name: "Fresh", published: true }),
+      headers: { "If-Match": "1" },
+    });
+  });
+
+  it("says so on the saved draft when publishing a new plan fails", async () => {
+    create.mockResolvedValue({ data: { id: 7, version: 1 } });
+    replace.mockRejectedValue(new Error("Routing unavailable"));
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 7,
+          name: "Fresh",
+          profile: "trekking",
+          cues: false,
+          published: false,
+          version: 1,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8, latitude: 49 },
+          ],
+          geometry: { type: "LineString", coordinates: [] },
+          distanceMetres: 0,
+          ascentMetres: 0,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage();
+
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Fresh" } });
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    fireEvent.click(screen.getByRole("button", { name: "Published" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await act(async () => {});
+
+    expect(screen.getByDisplayValue("Fresh")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Saved as a draft, but publishing failed: Routing unavailable",
+    );
+  });
+
+  it("draws a pressed waypoint and its legs straight before the click lands, and drops it on a pan", () => {
+    renderPage();
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    const drawn = () =>
+      JSON.parse(screen.getByTestId("plan-transition").dataset.geometry ?? "{}").features.map(
+        (leg: { properties: { provisional: boolean } }) => leg.properties.provisional,
+      );
+    fireEvent.click(map);
+    mapPoint.value = { longitude: 8.1, latitude: 49.1 };
+    fireEvent.mouseDown(map);
+
+    expect(drawn()).toEqual([true]);
+    fireEvent.click(screen.getByRole("button", { name: "Pan map" }));
+    expect(drawn()).toEqual([]);
+
+    fireEvent.mouseDown(map);
+    fireEvent.click(map);
+    // Placed but not yet routed: still straight, and its row claims no distance.
+    expect(drawn()).toEqual([true]);
+    expect(waypointRows()[1]).not.toMatch(/km/);
+  });
+});
+
+describe("avoidRadiusTo", () => {
+  it("measures from the centre to the dragged edge and keeps to the service's bounds", async () => {
+    const { avoidRadiusTo } = await import("./PlanPage");
+    const centre = { longitude: 8, latitude: 0 };
+
+    expect(avoidRadiusTo(centre, { longitude: 8 + 1000 / 111_320, latitude: 0 })).toBe(1000);
+    expect(avoidRadiusTo(centre, centre)).toBe(10);
+    expect(avoidRadiusTo(centre, { longitude: 9, latitude: 0 })).toBe(5000);
   });
 });

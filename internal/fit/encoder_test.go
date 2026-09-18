@@ -108,3 +108,56 @@ func decodeCourse(t *testing.T, encoded []byte) *filedef.Course {
 
 	return file
 }
+
+// A cue lands on the record nearest its distance, with the type a device
+// draws and a name it can show; a turn the encoder does not know is left out.
+func TestEncoderEncodeWithCuesWritesCoursePoints(t *testing.T) {
+	stage := testStage(t)
+	plain := decodeCourse(t, mustEncode(t, &stage, nil))
+	require.GreaterOrEqual(t, len(plain.Records), 2, "records")
+	last := plain.Records[len(plain.Records)-1].DistanceScaled()
+
+	course := decodeCourse(t, mustEncode(t, &stage, []route.Cue{
+		{Turn: route.TurnLeft, Metres: 0.4},
+		{Turn: route.TurnRoundabout, Metres: last - 0.4, Exit: 2},
+		{Turn: route.TurnRoundabout, Metres: last + 500},
+		{Turn: "wheelie", Metres: 1},
+	}))
+
+	require.Len(t, course.CoursePoints, 3, "course points")
+	assert.Equal(t, typedef.CoursePointLeft, course.CoursePoints[0].Type, "first type")
+	assert.Equal(t, "Left", course.CoursePoints[0].Name, "first name")
+	assert.Equal(t, plain.Records[0].Timestamp, course.CoursePoints[0].Timestamp, "first sits on the first record")
+	assert.Equal(t, "Roundabout exit 2", course.CoursePoints[1].Name, "roundabout name")
+	assert.Equal(t, plain.Records[len(plain.Records)-1].Timestamp, course.CoursePoints[1].Timestamp,
+		"second sits on the last record")
+	assert.Equal(t, "Roundabout", course.CoursePoints[2].Name, "a cue past the end sits on the last record")
+	require.Len(t, course.Records, len(plain.Records), "records with cues")
+	for index, record := range course.Records {
+		assert.Equal(t, plain.Records[index].Timestamp, record.Timestamp, "record %d timestamp", index)
+		assert.Equal(t, plain.Records[index].Distance, record.Distance, "record %d distance", index)
+	}
+}
+
+func TestCuePointNamesEveryTurn(t *testing.T) {
+	for _, turn := range []route.Turn{
+		route.TurnStraight, route.TurnLeft, route.TurnSlightLeft, route.TurnSharpLeft, route.TurnRight,
+		route.TurnSlightRight, route.TurnSharpRight, route.TurnKeepLeft, route.TurnKeepRight, route.TurnUTurn,
+	} {
+		_, name, known := cuePoint(route.Cue{Turn: turn})
+		assert.Truef(t, known, "%s known", turn)
+		assert.NotEmptyf(t, name, "%s named", turn)
+	}
+}
+
+func mustEncode(t *testing.T, stage *route.Route, cues []route.Cue) []byte {
+	t.Helper()
+	encoded, err := New().EncodeWithCues(t.Context(), *stage, cues)
+	require.NoError(t, err, "EncodeWithCues()")
+
+	return encoded
+}
+
+func TestCoursePointsNeedARecord(t *testing.T) {
+	assert.Nil(t, coursePoints(nil, []route.Cue{{Turn: route.TurnLeft}}), "no records")
+}

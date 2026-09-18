@@ -99,6 +99,9 @@ export interface MapWidgetProps {
   onClick?: (event: MapLayerMouseEvent) => void;
   onMouseMove?: (event: MapLayerMouseEvent) => void;
   onMouseOut?: () => void;
+  onMouseDown?: (event: MapLayerMouseEvent) => void;
+  /** The camera starting to move, whether panned, zoomed or flown. */
+  onMoveStart?: () => void;
 }
 
 export function MapWidget({
@@ -111,6 +114,8 @@ export function MapWidget({
   onClick,
   onMouseMove,
   onMouseOut,
+  onMouseDown,
+  onMoveStart,
 }: MapWidgetProps) {
   const [loadedStyleUrl, setLoadedStyleUrl] = useState<MapStyle | null>(null);
   const MapComponent = useContext(MapImplementationContext) ?? RealMap;
@@ -133,6 +138,8 @@ export function MapWidget({
         {...(onClick ? { onClick } : {})}
         {...(onMouseMove ? { onMouseMove } : {})}
         {...(onMouseOut ? { onMouseOut } : {})}
+        {...(onMouseDown ? { onMouseDown } : {})}
+        {...(onMoveStart ? { onMoveStart } : {})}
       >
         {furniture}
         {loadedStyleUrl === styleUrl ? children : null}

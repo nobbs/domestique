@@ -8,6 +8,7 @@ import (
 
 	"github.com/nobbs/domestique/internal/brouter"
 	"github.com/nobbs/domestique/internal/config"
+	"github.com/nobbs/domestique/internal/fit"
 	"github.com/nobbs/domestique/internal/httpapi"
 	"github.com/nobbs/domestique/internal/measure"
 	"github.com/nobbs/domestique/internal/photon"
@@ -123,13 +124,21 @@ func (c surfaceClassifier) Classify(
 // that converts between them.
 type brouterRouter struct{ client *brouter.Client }
 
-func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile) (plan.Routed, error) {
+func (r brouterRouter) Route(
+	ctx context.Context, waypoints []plan.Waypoint, profile plan.Profile, avoid []plan.Avoid,
+) (plan.Routed, error) {
 	converted := make([]brouter.Waypoint, len(waypoints))
 	for index, waypoint := range waypoints {
-		converted[index] = brouter.Waypoint{Longitude: waypoint.Longitude, Latitude: waypoint.Latitude}
+		converted[index] = brouter.Waypoint{
+			Longitude: waypoint.Longitude, Latitude: waypoint.Latitude, Straight: waypoint.Straight,
+		}
+	}
+	nogos := make([]brouter.Nogo, len(avoid))
+	for index, area := range avoid {
+		nogos[index] = brouter.Nogo{Longitude: area.Longitude, Latitude: area.Latitude, RadiusMetres: area.RadiusMetres}
 	}
 
-	answer, err := r.client.Route(ctx, converted, string(profile))
+	answer, err := r.client.Route(ctx, converted, string(profile), nogos)
 	if err != nil {
 		return plan.Routed{}, fmt.Errorf("routing waypoints: %w", err)
 	}
@@ -138,7 +147,12 @@ func (r brouterRouter) Route(ctx context.Context, waypoints []plan.Waypoint, pro
 		ways[index] = plan.RoutedWay{EndMetres: way.EndMetres, Tags: way.Tags}
 	}
 
-	return plan.Routed{Points: answer.Points, Ways: ways}, nil
+	turns := make([]plan.RoutedTurn, len(answer.Turns))
+	for index, turn := range answer.Turns {
+		turns[index] = plan.RoutedTurn{Turn: turn.Turn, Index: turn.Index, Exit: turn.Exit}
+	}
+
+	return plan.Routed{Points: answer.Points, Ways: ways, Turns: turns}, nil
 }
 
 // wireLocalSource registers the plan service on cache when [planning] is
@@ -185,6 +199,44 @@ func httpapiPlans(service *plan.Service) httpapi.Plans {
 	}
 
 	return service
+}
+
+// planGetter is the one question the course encoder asks of the planner.
+type planGetter interface {
+	Get(ctx context.Context, id int64) (plan.Plan, bool, error)
+}
+
+// cueEncoder encodes courses, adding a plan's turn instructions when the plan
+// asks for them and the stage is the revision they were measured against.
+type cueEncoder struct {
+	fit   *fit.Encoder
+	plans planGetter
+}
+
+// courseEncoder is the plain encoder without a planner, and one reading each
+// plan's cues with it.
+func courseEncoder(service *plan.Service) cueEncoder {
+	if service == nil {
+		return cueEncoder{fit: fit.New()}
+	}
+
+	return cueEncoder{fit: fit.New(), plans: service}
+}
+
+//nolint:gocritic // This method conforms to the sync package's value contract.
+func (e cueEncoder) Encode(ctx context.Context, stage route.Route) ([]byte, error) {
+	if e.plans == nil || stage.Key().Provider() != route.ProviderLocal {
+		return e.fit.Encode(ctx, stage) //nolint:wrapcheck // the encoder already names what failed
+	}
+	stored, found, err := e.plans.Get(ctx, stage.Key().SourceRouteID())
+	if err != nil {
+		return nil, fmt.Errorf("reading the plan's cues: %w", err)
+	}
+	if !found || !stored.Cues || stored.Revision() != stage.Revision() {
+		return e.fit.Encode(ctx, stage) //nolint:wrapcheck // the encoder already names what failed
+	}
+
+	return e.fit.EncodeWithCues(ctx, stage, stored.Turns) //nolint:wrapcheck // the encoder already names what failed
 }
 
 // planDeliveries adapts the sync service's report on one plan's copies to
@@ -292,8 +344,16 @@ func (s planStore) DeletePlan(ctx context.Context, id, expectedVersion int64) (b
 // waypoints as [longitude, latitude] pairs.
 func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 	waypoints := make([][2]float64, len(p.Waypoints))
+	var straight []int
 	for index, waypoint := range p.Waypoints {
 		waypoints[index] = [2]float64{waypoint.Longitude, waypoint.Latitude}
+		if waypoint.Straight {
+			straight = append(straight, index)
+		}
+	}
+	var avoid [][3]float64
+	for _, area := range p.Avoid {
+		avoid = append(avoid, [3]float64{area.Longitude, area.Latitude, area.RadiusMetres})
 	}
 
 	pushing := make([][2]float64, len(p.Pushing))
@@ -303,7 +363,7 @@ func planRecordOf(p *plan.Plan) sqlite.PlanRecord {
 
 	return sqlite.PlanRecord{
 		ID: p.ID, Name: p.Name, Profile: string(p.Profile), Waypoints: waypoints, Geometry: p.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: p.Turns, Cues: p.Cues, Straight: straight, Avoid: avoid,
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres, Published: p.Published,
 		Version: p.Version, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
@@ -319,6 +379,15 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 	for index, coordinate := range record.Waypoints {
 		waypoints[index] = plan.Waypoint{Longitude: coordinate[0], Latitude: coordinate[1]}
 	}
+	for _, index := range record.Straight {
+		if index > 0 && index < len(waypoints) {
+			waypoints[index].Straight = true
+		}
+	}
+	var avoid []plan.Avoid
+	for _, area := range record.Avoid {
+		avoid = append(avoid, plan.Avoid{Longitude: area[0], Latitude: area[1], RadiusMetres: area[2]})
+	}
 
 	pushing := make([]plan.Window, len(record.Pushing))
 	for index, pair := range record.Pushing {
@@ -327,7 +396,7 @@ func planOf(record *sqlite.PlanRecord) (plan.Plan, error) {
 
 	return plan.Plan{
 		ID: record.ID, Name: record.Name, Profile: profile, Waypoints: waypoints, Geometry: record.Geometry,
-		Pushing:        pushing,
+		Pushing: pushing, Turns: record.Turns, Cues: record.Cues, Avoid: avoid,
 		DistanceMetres: record.DistanceMetres, AscentMetres: record.AscentMetres, Published: record.Published,
 		Version: record.Version, CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt,
 	}, nil

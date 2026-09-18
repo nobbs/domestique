@@ -52,18 +52,20 @@ func (f *fakeSurfaceClassifier) Classify(_ context.Context, points []route.Point
 	return f.classification, f.err
 }
 
-func (p *fakePlans) Route(context.Context, []plan.Waypoint, plan.Profile) (plan.Measured, error) {
+func (p *fakePlans) Route(context.Context, []plan.Waypoint, plan.Profile, []plan.Avoid) (plan.Measured, error) {
 	return p.measured, p.routeErr
 }
 
-func (p *fakePlans) Create(_ context.Context, name string, profile plan.Profile, waypoints []plan.Waypoint) (plan.Plan, error) {
+func (p *fakePlans) Create(
+	_ context.Context, name string, profile plan.Profile, waypoints []plan.Waypoint, avoid []plan.Avoid, cues bool,
+) (plan.Plan, error) {
 	if p.createErr != nil {
 		return plan.Plan{}, p.createErr
 	}
 	p.stored = plan.Plan{
 		ID: 7, Name: name, Profile: profile, Waypoints: waypoints,
 		Geometry: p.measured.Geometry, DistanceMetres: p.measured.DistanceMetres, AscentMetres: p.measured.AscentMetres,
-		Published: false, Version: 1,
+		Published: false, Cues: cues, Avoid: avoid, Version: 1,
 	}
 	p.hasStored = true
 
@@ -71,7 +73,8 @@ func (p *fakePlans) Create(_ context.Context, name string, profile plan.Profile,
 }
 
 func (p *fakePlans) Replace(
-	_ context.Context, id, expectedVersion int64, name string, profile plan.Profile, waypoints []plan.Waypoint, published bool,
+	_ context.Context, id, expectedVersion int64, name string, profile plan.Profile, waypoints []plan.Waypoint,
+	avoid []plan.Avoid, published, cues bool,
 ) (plan.Plan, error) {
 	if !p.hasStored || p.stored.ID != id {
 		return plan.Plan{}, plan.ErrNotFound
@@ -82,7 +85,7 @@ func (p *fakePlans) Replace(
 	p.stored = plan.Plan{
 		ID: id, Name: name, Profile: profile, Waypoints: waypoints,
 		Geometry: p.measured.Geometry, DistanceMetres: p.measured.DistanceMetres, AscentMetres: p.measured.AscentMetres,
-		Published: published, Version: expectedVersion + 1,
+		Published: published, Cues: cues, Avoid: avoid, Version: expectedVersion + 1,
 	}
 
 	return p.stored, nil
@@ -887,4 +890,60 @@ func TestGetPlanDeliveryRejectsAnUnparseablePlanId(t *testing.T) {
 	handler.GetPlanDelivery(response, request)
 
 	assert.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
+}
+
+// The cue switch travels to the service on both writes, absent reads as off,
+// and a plan says whether it carries cues and how many turns it has.
+func TestPlanWritesCarryTheCueSwitch(t *testing.T) {
+	fake := &fakePlans{}
+	handler := plansHandler(t, newFakeSessions(), fake)
+	cuedBody := strings.Replace(validPlanWriteBody, `"published":false`, `"published":false,"cues":true`, 1)
+
+	created := httptest.NewRecorder()
+	handler.ServeHTTP(created, planRequest(http.MethodPost, plansPath, cuedBody, ""))
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	var body openapi.Plan
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &body))
+	assert.True(t, body.Cues, "cues after create")
+	require.NotNil(t, body.TurnCount, "turn count")
+	assert.Zero(t, *body.TurnCount, "turn count")
+
+	replaced := httptest.NewRecorder()
+	handler.ServeHTTP(replaced, planRequest(http.MethodPut, plansPath+"/7", validPlanWriteBody, "1"))
+	require.Equal(t, http.StatusOK, replaced.Code, replaced.Body.String())
+	assert.False(t, fake.stored.Cues, "an absent switch is off")
+}
+
+// Straight legs and avoided areas reach the service on a write and come back
+// on the plan it stored.
+func TestPlanWritesCarryStraightLegsAndAvoidedAreas(t *testing.T) {
+	fake := &fakePlans{}
+	handler := plansHandler(t, newFakeSessions(), fake)
+	body := `{"name":"Around town","profile":"trekking","published":false,` +
+		`"waypoints":[{"longitude":8,"latitude":49},{"longitude":8.1,"latitude":49.1,"straight":true}],` +
+		`"avoid":[{"longitude":8.05,"latitude":49.05,"radiusMetres":250}]}`
+
+	created := httptest.NewRecorder()
+	handler.ServeHTTP(created, planRequest(http.MethodPost, plansPath, body, ""))
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+
+	assert.Equal(t, []plan.Avoid{{Longitude: 8.05, Latitude: 49.05, RadiusMetres: 250}}, fake.stored.Avoid, "stored areas")
+	var read openapi.Plan
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &read))
+	require.NotNil(t, read.Avoid, "areas on the plan")
+	assert.Len(t, *read.Avoid, 1, "areas on the plan")
+	assert.Nil(t, read.Waypoints[0].Straight, "a routed leg carries no flag")
+	require.NotNil(t, read.Waypoints[1].Straight, "straight leg")
+	assert.True(t, *read.Waypoints[1].Straight, "straight leg")
+}
+
+func TestPlanRoutePreviewRefusesAnAreaOutsideTheContract(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{})
+	body := `{"profile":"trekking","waypoints":[{"longitude":8,"latitude":49},{"longitude":8.1,"latitude":49.1}],` +
+		`"avoid":[{"longitude":8.05,"latitude":49.05,"radiusMetres":1}]}`
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, planRoutePath, body, ""))
+
+	assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
 }
