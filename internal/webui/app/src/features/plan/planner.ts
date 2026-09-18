@@ -112,7 +112,7 @@ export type PlannerAction =
   | { type: "append"; waypoint: PlanWaypoint }
   | { type: "insert"; index: number; waypoint: PlanWaypoint }
   | { type: "move"; index: number; waypoint: PlanWaypoint }
-  | { type: "snap"; id: number; waypoint: PlanWaypoint }
+  | { type: "snap"; id: number; from: PlanWaypoint; waypoint: PlanWaypoint }
   | { type: "delete"; index: number }
   | { type: "reverse" }
   | { type: "reorder"; index: number; direction: "up" | "down" }
@@ -127,7 +127,7 @@ export type PlannerAction =
  * on a wrapped copy of the world answers a longitude beyond ±180, which the
  * service refuses as out of range.
  */
-function unwrapped(waypoint: PlanWaypoint): PlanWaypoint {
+export function unwrapped(waypoint: PlanWaypoint): PlanWaypoint {
   if (waypoint.longitude >= -180 && waypoint.longitude <= 180) {
     return waypoint;
   }
@@ -206,7 +206,13 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
     case "snap": {
       // Settles a waypoint just placed onto the road beside it. It belongs to the
       // placing, so it rewrites the present rather than adding a step to undo.
-      const at = state.waypoints.findIndex((waypoint) => waypoint.id === action.id);
+      // A reply for a waypoint moved, or an id reused, since it was asked is stale.
+      const at = state.waypoints.findIndex(
+        (waypoint) =>
+          waypoint.id === action.id &&
+          waypoint.longitude === action.from.longitude &&
+          waypoint.latitude === action.from.latitude,
+      );
       if (at < 0) {
         return state;
       }

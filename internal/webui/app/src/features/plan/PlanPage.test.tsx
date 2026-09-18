@@ -835,6 +835,16 @@ describe("PlanPage", () => {
     expect(screen.queryAllByRole("listitem")).toHaveLength(0);
   });
 
+  it("asks to settle a click on a wrapped world at the longitude it stands for", async () => {
+    renderPage();
+
+    mapPoint.value = { longitude: 368, latitude: 49 };
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    await act(async () => {});
+
+    expect(snap).toHaveBeenCalledWith({ longitude: 8, latitude: 49 });
+  });
+
   it("inserts map clicks into the nearest leg and appends at the final endpoint, with Alt, or before two waypoints", () => {
     renderPage();
     const map = screen.getByRole("button", { name: "Plan route map" });

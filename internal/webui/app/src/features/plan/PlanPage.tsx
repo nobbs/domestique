@@ -96,6 +96,7 @@ import {
   type PlannerSeed,
   type PlannerState,
   plannerReducer,
+  unwrapped,
 } from "./planner";
 
 function positions(preview: PlanRoutePreview | null): Position[] {
@@ -1049,6 +1050,7 @@ export function PlanPage() {
           dispatch({
             type: "snap",
             id,
+            from: waypoint,
             waypoint: { longitude: place.longitude, latitude: place.latitude },
           });
         }
@@ -1102,7 +1104,10 @@ export function PlanPage() {
                 }
                 cursor={state.waypoints.length === 50 ? "" : "crosshair"}
                 onClick={(event) => {
-                  const waypoint = { longitude: event.lngLat.lng, latitude: event.lngLat.lat };
+                  const waypoint = unwrapped({
+                    longitude: event.lngLat.lng,
+                    latitude: event.lngLat.lat,
+                  });
                   if (event.originalEvent.altKey || state.waypoints.length < 2) {
                     dispatch({ type: "append", waypoint });
                   } else {
@@ -1147,7 +1152,10 @@ export function PlanPage() {
                     latitude={waypoint.latitude}
                     draggable
                     onDragEnd={(event) => {
-                      const moved = { longitude: event.lngLat.lng, latitude: event.lngLat.lat };
+                      const moved = unwrapped({
+                        longitude: event.lngLat.lng,
+                        latitude: event.lngLat.lat,
+                      });
                       dispatch({ type: "move", index, waypoint: moved });
                       settleOnRoad(waypoint.id, moved);
                     }}
