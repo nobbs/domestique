@@ -363,8 +363,8 @@ type turnsAnswer struct {
 }
 
 // parseTurns reads the engine's turn instructions. A row it cannot read, or
-// one naming a vertex outside the line, is left out rather than failing a
-// route whose line is sound.
+// one naming a vertex outside the line or its last one (the finish, never a
+// cue), is left out rather than failing a route whose line is sound.
 func parseTurns(body []byte, points int) []Turn {
 	var decoded turnsAnswer
 	if json.Unmarshal(body, &decoded) != nil || len(decoded.Features) == 0 {
@@ -377,7 +377,7 @@ func parseTurns(body []byte, points int) []Turn {
 		}
 		index, command, exit := int(row[0]), int(row[1]), int(row[2])
 		turn, known := engineTurn(command)
-		if !known || index < 0 || index >= points || float64(index) != row[0] {
+		if !known || index < 0 || index >= points-1 || float64(index) != row[0] {
 			continue
 		}
 		if turn != route.TurnRoundabout || exit < 0 {

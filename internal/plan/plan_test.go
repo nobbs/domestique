@@ -722,9 +722,8 @@ func TestCuesOfScalesTheEnginesDistanceOntoThePlansLength(t *testing.T) {
 
 	cues := cuesOf(points, turns, 1000)
 
-	require.Len(t, cues, 2, "a turn off the line is left out")
+	require.Len(t, cues, 1, "a turn at the finish or off the line is left out")
 	assert.Equal(t, route.Cue{Turn: route.TurnRoundabout, Metres: 500, Exit: 2}, roundedCue(cues[0]), "halfway")
-	assert.InDelta(t, 1000, cues[1].Metres, 1e-6, "at the end")
 	assert.Nil(t, cuesOf(points, nil, 1000), "no turns")
 	assert.Nil(t, cuesOf(points[:1], turns, 1000), "no line")
 	assert.Nil(t, cuesOf([]route.Point{points[0], points[0]}, turns, 1000), "a line of no length")

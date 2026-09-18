@@ -370,8 +370,8 @@ func TestRouteReadsTheEnginesTurns(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, writeErr := w.Write([]byte(`{"type":"FeatureCollection","features":[{"type":"Feature",` +
 			`"properties":{"voicehints":[[1,2,0,436.0,-102],[2,13,2,249.0,-210],[1,6,0,95,0],` +
-			`[2,16,0,10,0],[9,5,0,1,0],[1.5,5,0,1,0],[1],[2,9,4,1,0]]},` +
-			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.69,50.115],[8.70,50.12]]}}]}`))
+			`[2,16,0,10,0],[9,5,0,1,0],[1.5,5,0,1,0],[1],[2,9,4,1,0],[3,2,0,0,0]]},` +
+			`"geometry":{"type":"LineString","coordinates":[[8.68,50.11],[8.69,50.115],[8.70,50.12],[8.71,50.125]]}}]}`))
 		assert.NoError(t, writeErr)
 	}))
 	defer server.Close()
@@ -386,7 +386,7 @@ func TestRouteReadsTheEnginesTurns(t *testing.T) {
 		{Turn: route.TurnRoundabout, Index: 2, Exit: 2},
 		{Turn: route.TurnSlightRight, Index: 1},
 		{Turn: route.TurnKeepRight, Index: 2},
-	}, answer.Turns, "turns: beeline, an index off the line, a fractional index and a short row are left out, and only a roundabout keeps its exit")
+	}, answer.Turns, "turns: beeline, an index off the line or at its finish, a fractional index and a short row are left out, and only a roundabout keeps its exit")
 }
 
 func TestRouteKeepsTheLineWhenTheTurnsAreUnreadable(t *testing.T) {

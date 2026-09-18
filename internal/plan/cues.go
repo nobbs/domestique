@@ -23,7 +23,8 @@ func cuesOf(points []route.Point, turns []RoutedTurn, totalMetres float64) []rou
 	scale := totalMetres / engineMetres
 	cues := make([]route.Cue, 0, len(turns))
 	for _, turn := range turns {
-		if turn.Index < 0 || turn.Index >= len(points) {
+		// The last vertex is the finish, which the measurement contract never makes a cue.
+		if turn.Index < 0 || turn.Index >= len(points)-1 {
 			continue
 		}
 		cues = append(cues, route.Cue{Turn: turn.Turn, Metres: along[turn.Index] * scale, Exit: turn.Exit})
