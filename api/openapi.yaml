@@ -3877,7 +3877,8 @@ components:
           description: >-
             Whether a run writes this library's routes to riders' Wahoo
             accounts. Off keeps reading it and removes what was already
-            written, within the per-run deletion limit.
+            written, at most five routes per target per run. Ignored while
+            read is off.
         baseUrl:
           type: string
           description: >-

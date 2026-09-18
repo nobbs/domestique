@@ -733,13 +733,12 @@ func TestTheTimezoneDatabaseTravelsWithTheBinary(t *testing.T) {
 	}
 }
 
-func TestValuesWithheld(t *testing.T) {
+func TestValuesWithheldProviders(t *testing.T) {
 	values := Values{Sources: []Source{
 		{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.com"},
 		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de", Withheld: true},
 	}}
 
-	assert.False(t, values.Withheld(route.ProviderVeloPlanner))
-	assert.True(t, values.Withheld(route.ProviderKomoot))
-	assert.False(t, values.Withheld(route.ProviderLocal), "a library that is not configured is not withheld")
+	assert.Equal(t, []route.Provider{route.ProviderKomoot}, values.WithheldProviders())
+	assert.Empty(t, (&Values{}).WithheldProviders(), "a library that is not configured is not withheld")
 }

@@ -43,9 +43,9 @@ type Options struct {
 	// provider with no configuration is reported unconfigured, not an error.
 	SourceFor func(provider route.Provider) (source Source, configured bool, err error)
 
-	// Withheld reports a library whose stages are kept off every target while it
-	// is still read, asked as a run starts. Nil withholds nothing.
-	Withheld func(provider route.Provider) bool
+	// Withheld lists the libraries whose stages are kept off every target while
+	// they are still read, asked once as a target run starts. Nil withholds nothing.
+	Withheld func() []route.Provider
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -61,7 +61,7 @@ type Service struct {
 	predictor                Predictor
 	allowEmptySourceDeletion func() bool
 	targetIDs                func() []string
-	withheld                 func(route.Provider) bool
+	withheld                 func() []route.Provider
 	now                      func() time.Time
 	attempts                 planAttempts
 }
@@ -230,7 +230,8 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
-	desired, ordered, err := normalizeInventory(s.deliverable(stored))
+	withheld := s.withheldProviders()
+	desired, ordered, err := normalizeInventory(deliverable(stored, withheld))
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
@@ -241,7 +242,7 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 		Targets:      make([]TargetResult, 0, len(targetIDs)),
 	}
 	for _, targetID := range targetIDs {
-		applied, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
+		applied, failure := s.reconcileTarget(ctx, targetID, desired, ordered, withheld)
 		result.Created += applied.created
 		result.Updated += applied.updated
 		result.Deleted += applied.deleted
@@ -289,12 +290,13 @@ func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
-	desired, ordered, err := normalizeInventory(s.deliverable(stored))
+	withheld := s.withheldProviders()
+	desired, ordered, err := normalizeInventory(deliverable(stored, withheld))
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
 
-	targetCounts, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
+	targetCounts, failure := s.reconcileTarget(ctx, targetID, desired, ordered, withheld)
 
 	return Result{
 		Phase:        PhaseTargets,
@@ -365,15 +367,19 @@ func (s *Service) clearTarget(ctx context.Context, targetID string) (int, Failur
 	return deleted, FailureNone
 }
 
-// deliverable drops the stages of every withheld library, so reconciliation
-// removes whatever it had already written of them.
-func (s *Service) deliverable(stored []route.Route) []route.Route {
+func (s *Service) withheldProviders() []route.Provider {
 	if s.withheld == nil {
-		return stored
+		return nil
 	}
 
+	return s.withheld()
+}
+
+// deliverable drops the stages of every withheld library, so reconciliation
+// removes whatever it had already written of them.
+func deliverable(stored []route.Route, withheld []route.Provider) []route.Route {
 	return slices.DeleteFunc(stored, func(stage route.Route) bool {
-		return s.withheld(stage.Key().Provider())
+		return slices.Contains(withheld, stage.Key().Provider())
 	})
 }
 
@@ -481,6 +487,7 @@ func (s *Service) reconcileTarget(
 	targetID string,
 	desired map[route.Key]route.Route,
 	ordered []route.Route,
+	withheld []route.Provider,
 ) (counts, FailureCategory) {
 	accessToken, failure := s.accessToken(ctx, targetID)
 	if failure != FailureNone {
@@ -491,10 +498,13 @@ func (s *Service) reconcileTarget(
 	if mappingsErr != nil {
 		return counts{}, FailureState
 	}
-	deletions := missingStages(mappings, desired)
+	deletions, withdrawn := splitWithdrawn(missingStages(mappings, desired), withheld)
 	if len(deletions) > maxDeletionsPerTarget {
 		return counts{}, FailureDeletionLimit
 	}
+	// A withheld library drains within the limit instead of tripping it, so the
+	// rest of the library keeps syncing while its routes leave a few per run.
+	deletions = append(deletions, withdrawn[:min(len(withdrawn), maxDeletionsPerTarget-len(deletions))]...)
 
 	// One listing answers ownership for every stage below, so an unchanged library
 	// costs one request rather than one per stage against a shared quota.

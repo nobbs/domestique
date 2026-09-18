@@ -1164,7 +1164,7 @@ export interface WahooApplicationUpdate {
 export interface SourceUpdate {
   /** Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with. */
   read: boolean;
-  /** Whether a run writes this library's routes to riders' Wahoo accounts. Off keeps reading it and removes what was already written, within the per-run deletion limit. */
+  /** Whether a run writes this library's routes to riders' Wahoo accounts. Off keeps reading it and removes what was already written, at most five routes per target per run. Ignored while read is off. */
   syncToWahoo: boolean;
   /** The source's own web application, which is both the origin the service reads and the one a route is linked back to. */
   baseUrl: string;

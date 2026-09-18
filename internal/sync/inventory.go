@@ -2,6 +2,7 @@ package sync
 
 import (
 	"errors"
+	"slices"
 	"sort"
 
 	"github.com/nobbs/domestique/internal/route"
@@ -65,4 +66,18 @@ func missingStages(mappings map[route.Key]targetStage, desired map[route.Key]rou
 	})
 
 	return missing
+}
+
+// splitWithdrawn separates the missing stages of a withheld library from those
+// that left their library, keeping each in order.
+func splitWithdrawn(missing []route.Key, withheld []route.Provider) (removed, withdrawn []route.Key) {
+	for _, key := range missing {
+		if slices.Contains(withheld, key.Provider()) {
+			withdrawn = append(withdrawn, key)
+		} else {
+			removed = append(removed, key)
+		}
+	}
+
+	return removed, withdrawn
 }

@@ -62,12 +62,17 @@ type Source struct {
 	Withheld bool
 }
 
-// Withheld reports whether provider is a configured library kept off every
-// Wahoo target. A library that is not read is not withheld.
-func (v *Values) Withheld(provider route.Provider) bool {
-	return slices.ContainsFunc(v.Sources, func(source Source) bool {
-		return source.Provider == provider && source.Withheld
-	})
+// WithheldProviders lists the configured libraries kept off every Wahoo target.
+// A library that is not read is not withheld.
+func (v *Values) WithheldProviders() []route.Provider {
+	var withheld []route.Provider
+	for _, source := range v.Sources {
+		if source.Withheld {
+			withheld = append(withheld, source.Provider)
+		}
+	}
+
+	return withheld
 }
 
 // Sync holds the reconciliation settings a run reads when it starts.

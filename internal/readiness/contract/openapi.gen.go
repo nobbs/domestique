@@ -765,7 +765,7 @@ type WahooApplicationUpdate struct {
 type SourceUpdate struct {
 	// Read Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with.
 	Read bool `json:"read"`
-	// SyncToWahoo Whether a run writes this library's routes to riders' Wahoo accounts. Off keeps reading it and removes what was already written, within the per-run deletion limit.
+	// SyncToWahoo Whether a run writes this library's routes to riders' Wahoo accounts. Off keeps reading it and removes what was already written, at most five routes per target per run. Ignored while read is off.
 	SyncToWahoo bool `json:"syncToWahoo"`
 	// BaseURL The source's own web application, which is both the origin the service reads and the one a route is linked back to.
 	BaseURL string `json:"baseUrl"`

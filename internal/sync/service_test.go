@@ -182,7 +182,7 @@ func TestServiceKeepsAWithheldLibraryOffEveryTarget(t *testing.T) {
 	seedMapping(state, "a", &written, remoteID("a", 2))
 	target.seedRoute("a", &written, remoteID("a", 2))
 	options := syncOptions(false, nil, "a")
-	options.Withheld = func(provider route.Provider) bool { return provider == route.ProviderKomoot }
+	options.Withheld = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
 	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
 	require.NoError(t, err, "New()")
 
@@ -192,6 +192,67 @@ func TestServiceKeepsAWithheldLibraryOffEveryTarget(t *testing.T) {
 	assert.Equal(t, 1, result.Deleted, "what was already written of the withheld library is removed")
 	assert.Equal(t, []int64{remoteID("a", 2)}, target.deletedRouteIDs, "deleted routes")
 	assert.Len(t, state.trusted, 3, "a withheld library is still read and stored")
+}
+
+// A withheld library larger than the deletion limit must not block the rest of
+// the library: it leaves within the limit, run by run.
+func TestServiceDrainsAWithheldLibraryWithinTheDeletionLimit(t *testing.T) {
+	added := testProviderStage(t, route.ProviderVeloPlanner, 1, 1, "current", "current-hash")
+	gone := testProviderStage(t, route.ProviderVeloPlanner, 2, 1, "old", "old-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{added}
+	target := newFakeTarget()
+	seedMapping(state, "a", &gone, remoteID("a", 2))
+	target.seedRoute("a", &gone, remoteID("a", 2))
+	for routeID := int64(10); routeID < 17; routeID++ {
+		withheld := testProviderStage(t, route.ProviderKomoot, routeID, 1, "current", "current-hash")
+		state.trusted = append(state.trusted, withheld)
+		seedMapping(state, "a", &withheld, remoteID("a", routeID))
+		target.seedRoute("a", &withheld, remoteID("a", routeID))
+	}
+	options := syncOptions(false, nil, "a")
+	options.Withheld = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	require.NoError(t, err, "New()")
+
+	first := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, first.Outcome, "first run outcome")
+	assert.Equal(t, 1, first.Created, "the delivered library still syncs")
+	assert.Equal(t, maxDeletionsPerTarget, first.Deleted, "the removed route and four withheld ones")
+	assert.Contains(t, target.deletedRouteIDs, remoteID("a", 2), "a route that left its library goes first")
+	assert.Len(t, state.mappings["a"], 4, "three withheld routes wait for the next run")
+
+	second := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, second.Outcome, "second run outcome")
+	assert.Equal(t, map[route.Key]bool{added.Key(): true}, trackedKeys(state.mappings["a"]),
+		"the rest of the withheld library is gone")
+}
+
+func trackedKeys(mappings map[route.Key]targetStage) map[route.Key]bool {
+	keys := make(map[route.Key]bool, len(mappings))
+	for key := range mappings {
+		keys[key] = true
+	}
+
+	return keys
+}
+
+func TestServiceStillBlocksALargeShrinkBesideAWithheldLibrary(t *testing.T) {
+	state := newFakeState("a")
+	target := newFakeTarget()
+	for routeID := int64(1); routeID <= 6; routeID++ {
+		stale := testProviderStage(t, route.ProviderVeloPlanner, routeID, 1, "old", "old-hash")
+		seedMapping(state, "a", &stale, remoteID("a", routeID))
+		target.seedRoute("a", &stale, remoteID("a", routeID))
+	}
+	options := syncOptions(false, nil, "a")
+	options.Withheld = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeBlocked, result.Outcome)
+	assert.Empty(t, target.deletedRouteIDs)
 }
 
 // The two halves are independent: a library refresh must keep working while a

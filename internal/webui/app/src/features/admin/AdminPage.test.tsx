@@ -90,6 +90,17 @@ describe("AdminPage", () => {
     expect(JSON.parse(String(put?.[1]?.body))).toMatchObject({ read: true, syncToWahoo: false });
   });
 
+  it("offers Wahoo sync only while a library is synced to the catalogue", async () => {
+    renderPage("/admin/integrations");
+
+    const wahoo = screen.getByRole("switch", { name: "Sync Komoot to Wahoo" });
+    expect(wahoo).toHaveAttribute("aria-disabled", "true");
+
+    await userEvent.click(screen.getByRole("switch", { name: "Sync Komoot to catalogue" }));
+
+    expect(wahoo).not.toHaveAttribute("aria-disabled", "true");
+  });
+
   it("holds the background tasks at /admin/tasks", () => {
     renderPage("/admin/tasks");
 

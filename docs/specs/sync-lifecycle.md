@@ -487,6 +487,11 @@ A target deletion is permitted only when all conditions hold:
 - the target has completed all required creates and updates in the run; and
 - the deletion plan contains at most five routes for that target.
 
+The routes of a source whose `sync_to_wahoo` is off count apart from that
+plan: they never trip the limit, and each run removes as many of them as the
+limit leaves room for after the plan, so the source drains from the target over
+several runs while the rest of the library keeps syncing.
+
 A source inventory that was populated and becomes empty is blocked while the
 empty-source deletion gate is closed. The gate is closed by default. It is
 opened on the settings page, takes effect from the next run, does not bypass the

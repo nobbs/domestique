@@ -544,10 +544,11 @@ function SourceSettingsSection({
         </FormRow>
         <FormRow
           label="Sync to Wahoo"
-          hint="Off keeps the library in the catalogue but off every rider's Wahoo account; routes already there are removed, a few per run."
+          hint="Off keeps the library in the catalogue but off every rider's Wahoo account; routes already there are removed, five per run. Needs catalogue sync on."
         >
           <Switch
             checked={values.syncToWahoo}
+            disabled={!values.read}
             aria-label={`Sync ${label} to Wahoo`}
             onCheckedChange={(syncToWahoo) => setDraft({ ...values, syncToWahoo })}
           />

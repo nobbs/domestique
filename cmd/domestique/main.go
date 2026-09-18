@@ -178,10 +178,10 @@ func run(ctx context.Context) error {
 		AllowEmptySourceDeletion: func() bool {
 			return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
 		},
-		Withheld: func(provider route.Provider) bool {
+		Withheld: func() []route.Provider {
 			values := runtimeSettings.Values()
 
-			return values.Withheld(provider)
+			return values.WithheldProviders()
 		},
 	}, store, elevation.New(), courseEncoder(planService), destination, annotator, predictorFor(rideModel))
 	if err != nil {

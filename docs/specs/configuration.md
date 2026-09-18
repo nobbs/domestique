@@ -373,10 +373,10 @@ run refuses instead.
 
 Each entry also carries `sync_to_wahoo`, on by default. Off keeps the library
 read, stored and shown, but out of what the target half reconciles, so the
-routes already written from it are removed like any other route that left the
-library — within the per-run deletion limit
-([sync-lifecycle.md](sync-lifecycle.md#deletion-gates)). A library that is not
-read at all keeps its last stored share, and that share is still synced.
+routes already written from it are drained from each target, at most five per
+run ([sync-lifecycle.md](sync-lifecycle.md#deletion-gates)). A library that is
+not read at all has no entry and so no switch: its last stored share is still
+synced.
 
 ### Wahoo
 
