@@ -165,6 +165,31 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers());
 
+/** The waypoint rows as they read, newest markup: one line per stop. */
+function waypointRows(): string[] {
+  return screen
+    .getAllByRole("listitem")
+    .map((row) => row.textContent?.replace(/\s+/g, " ").trim() ?? "");
+}
+
+/** The coordinate a row shows, which is what an ungeocoded waypoint reads as. */
+function firstWaypointCoordinates(): string {
+  return waypointRows()[0] ?? "";
+}
+
+describe("edgeSpeed", () => {
+  it("scrolls up near the top, down near the bottom, and not in between", async () => {
+    const { edgeSpeed } = await import("./PlanPage");
+
+    expect(edgeSpeed(100, 500, 300)).toBe(0);
+    expect(edgeSpeed(100, 500, 110)).toBeLessThan(0);
+    expect(edgeSpeed(100, 500, 490)).toBeGreaterThan(0);
+    // Hardest at the very edge, gentler a row in.
+    expect(edgeSpeed(100, 500, 100)).toBeLessThan(edgeSpeed(100, 500, 130));
+    expect(edgeSpeed(100, 500, 500)).toBeGreaterThan(edgeSpeed(100, 500, 470));
+  });
+});
+
 describe("PlanPage", () => {
   it("renders the planner with a mocked map and labels drafts", async () => {
     vi.useRealTimers();
@@ -222,9 +247,9 @@ describe("PlanPage", () => {
     });
     await act(async () => {});
 
-    expect(screen.getByLabelText("Name")).toHaveValue("Alpine loop — Descent");
-    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
-    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
+    expect(screen.getByLabelText("Plan name")).toHaveValue("Alpine loop — Descent");
+    expect(waypointRows()[0]).toContain("49.0000, 8.0000");
+    expect(waypointRows()[1]).toContain("49.1000, 8.1000");
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
     expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
     expect(create).not.toHaveBeenCalled();
@@ -316,11 +341,11 @@ describe("PlanPage", () => {
     expect(reverse).toBeEnabled();
 
     fireEvent.click(reverse);
-    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+    expect(firstWaypointCoordinates()).toContain("49.1000, 8.1000");
     fireEvent.click(undo);
-    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8");
+    expect(firstWaypointCoordinates()).toContain("49.0000, 8.0000");
     fireEvent.click(redo);
-    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+    expect(firstWaypointCoordinates()).toContain("49.1000, 8.1000");
   });
 
   it("routes one preview after a burst and leaves the last good line up after a failure", () => {
@@ -371,7 +396,8 @@ describe("PlanPage", () => {
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("null");
     expect(routeOverlay).toHaveBeenCalledWith(expect.objectContaining({ showTerminals: false }));
     expect(routeOverlay).toHaveBeenLastCalledWith(expect.objectContaining({ surface: undefined }));
-    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
+    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km");
+    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("100 m");
     failed = true;
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
@@ -466,7 +492,7 @@ describe("PlanPage", () => {
     create.mockRejectedValue(new Error("Save unavailable"));
     renderPage();
 
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Draft" } });
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Draft" } });
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
@@ -523,7 +549,8 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
 
     expect(screen.getByDisplayValue("Stored loop")).toBeInTheDocument();
-    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km · 100 m");
+    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("10.0 km");
+    expect(screen.getByLabelText("Planned route summary")).toHaveTextContent("100 m");
     expect(screen.getByText("Stored route could not refresh")).toBeInTheDocument();
     expect(screen.getByTestId("route-line")).toHaveTextContent("2");
     expect(routeOverlay).toHaveBeenLastCalledWith(
@@ -618,33 +645,6 @@ describe("PlanPage", () => {
     expect(replace.mock.calls[1]?.[0]).toMatchObject({ headers: { "If-Match": "3" } });
   });
 
-  it("commits a negative waypoint coordinate after its text entry is complete", () => {
-    renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
-    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
-    const latitude = screen.getByRole("textbox", { name: "Waypoint 1 latitude" });
-    fireEvent.change(latitude, { target: { value: "-" } });
-    expect(latitude).toHaveValue("-");
-    fireEvent.change(latitude, {
-      target: { value: "-49.5" },
-    });
-    expect(latitude).toHaveValue("-49.5");
-    fireEvent.blur(latitude);
-    act(() => vi.advanceTimersByTime(300));
-
-    expect(preview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          waypoints: [
-            expect.objectContaining({ longitude: 8, latitude: -49.5 }),
-            expect.objectContaining({ longitude: 8, latitude: 49 }),
-          ],
-        }),
-      }),
-      expect.anything(),
-    );
-  });
-
   it("does not reroute after changing only the plan name", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
@@ -652,17 +652,15 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
     expect(preview).toHaveBeenCalledOnce();
 
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "No detour" } });
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "No detour" } });
     act(() => vi.advanceTimersByTime(300));
 
     expect(preview).toHaveBeenCalledOnce();
   });
 
-  it("routes with the profile selected from the route type dropdown", () => {
+  it("routes with the profile chosen from the route type control", () => {
     renderPage();
-    fireEvent.change(screen.getByRole("combobox", { name: "Route type" }), {
-      target: { value: "gravel" },
-    });
+    fireEvent.click(screen.getByRole("button", { name: "Gravel" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.advanceTimersByTime(300));
@@ -678,10 +676,9 @@ describe("PlanPage", () => {
     const map = screen.getByRole("button", { name: "Plan route map" });
 
     fireEvent.click(map);
-    expect(screen.getByRole("group", { name: "Drag Start waypoint to reorder" })).toHaveAttribute(
-      "title",
-      "Drag Start waypoint to reorder",
-    );
+    expect(
+      screen.getByRole("group", { name: "Drag Start waypoint to reorder" }),
+    ).not.toHaveAttribute("title");
     expect(screen.getByRole("img", { name: "Start waypoint" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "Finish waypoint" })).toBeNull();
 
@@ -709,20 +706,20 @@ describe("PlanPage", () => {
     fireEvent.click(map);
     mapPoint.value = { longitude: 8.2, latitude: 49 };
     fireEvent.click(map);
-    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.2");
+    expect(waypointRows()[1]).toContain("49.0000, 8.2000");
 
     mapPoint.value = { longitude: 8.1, latitude: 49.01 };
     fireEvent.click(map);
-    expect(screen.getByLabelText("Waypoint 2 longitude")).toHaveValue("8.1");
-    expect(screen.getByLabelText("Waypoint 3 longitude")).toHaveValue("8.2");
+    expect(waypointRows()[1]).toContain("49.0100, 8.1000");
+    expect(waypointRows()[2]).toContain("49.0000, 8.2000");
 
     mapPoint.value = { longitude: 9, latitude: 50 };
     fireEvent.click(map);
-    expect(screen.getByLabelText("Waypoint 4 longitude")).toHaveValue("9");
+    expect(waypointRows()[3]).toContain("50.0000, 9.0000");
 
     mapPoint.value = { longitude: 10, latitude: 50 };
     fireEvent.click(map, { altKey: true });
-    expect(screen.getByLabelText("Waypoint 5 longitude")).toHaveValue("10");
+    expect(waypointRows()[4]).toContain("50.0000, 10.0000");
     act(() => vi.advanceTimersByTime(300));
 
     expect(preview).toHaveBeenCalledWith(
@@ -780,28 +777,22 @@ describe("PlanPage", () => {
     const rows = () =>
       Array.from(screen.getByRole("list", { name: "Waypoints" }).querySelectorAll("li"));
     const rowIDs = () => rows().map((row) => row.getAttribute("data-waypoint-id"));
-    expect(first).toHaveAttribute("title", "Drag Start waypoint to reorder");
-    expect(third).toHaveAttribute("title", "Drag Finish waypoint to reorder");
+    expect(first).not.toHaveAttribute("title", "the row carries no tooltip over the map");
     expect(first).toHaveAttribute("draggable", "true");
-    expect(first).toHaveClass("rounded-lg", "border", "border-transparent", "bg-[var(--base)]");
-    expect(first.lastElementChild?.querySelector(".tabler-icon-grip-vertical")).toBeInTheDocument();
+    expect(first).toHaveClass("flex", "min-w-0", "flex-1", "items-center");
+    expect(first.querySelector(".tabler-icon-grip-vertical")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Delete waypoint 1" }).previousElementSibling).toBe(
       first,
     );
-    expect(screen.getByRole("button", { name: "Delete waypoint 1" })).toHaveClass(
-      "text-destructive",
-      "hover:bg-destructive/10",
-    );
-    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveClass(
-      "border-transparent",
-      "bg-transparent",
-      "focus-visible:border-ring",
-    );
-    expect(screen.getByLabelText("Waypoint 1 longitude")).not.toHaveAttribute("draggable", "true");
     expect(screen.getByRole("button", { name: "Move Waypoint 2 up" })).toBeInTheDocument();
+
+    const list = screen.getByRole("list", { name: "Waypoints" });
+    expect(list).not.toHaveAttribute("data-dragging");
 
     const dataTransfer = { effectAllowed: "", setData: vi.fn(), setDragImage: vi.fn() };
     fireEvent.dragStart(first, { dataTransfer });
+    // Snapping fights the browser's own scrolling while a row is in hand.
+    expect(list).toHaveAttribute("data-dragging");
     expect(dataTransfer.setDragImage).toHaveBeenCalledWith(
       first,
       expect.any(Number),
@@ -813,7 +804,6 @@ describe("PlanPage", () => {
     expect(preview).not.toHaveBeenCalled();
     fireEvent.dragEnd(first);
     expect(rowIDs()).toEqual(["0", "1", "2"]);
-    fireEvent.dragStart(screen.getByLabelText("Waypoint 1 longitude"));
     fireEvent.dragStart(screen.getByRole("button", { name: "Delete waypoint 1" }));
     expect(rowIDs()).toEqual(["0", "1", "2"]);
 
@@ -823,7 +813,7 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(300));
 
     expect(rowIDs()).toEqual(["1", "2", "0"]);
-    expect(screen.getByLabelText("Waypoint 1 longitude")).toHaveValue("8.1");
+    expect(firstWaypointCoordinates()).toContain("49.1000, 8.1000");
     expect(preview).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

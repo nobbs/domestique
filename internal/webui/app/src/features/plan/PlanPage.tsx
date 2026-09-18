@@ -2,17 +2,29 @@ import {
   IconArrowBackUp,
   IconArrowForwardUp,
   IconArrowsExchange,
+  IconBike,
   IconChevronDown,
+  IconClock,
   IconDeviceFloppy,
   IconFlagCheck,
   IconGripVertical,
   IconLayoutBottombarCollapse,
   IconMountain,
   IconPlayerPlay,
+  IconRoad,
+  IconRoute,
   IconTrash,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { type Dispatch, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { Marker, ScaleControl } from "react-map-gl/maplibre";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
@@ -33,14 +45,16 @@ import type {
   PlanSummary,
   Position,
 } from "../../api/types";
-import { PLAN_PROFILES } from "../../api/types";
 import { Button, ButtonLink } from "../../components/Button";
+import { InfoDot } from "../../components/InsetForm";
 import { Layout, PageShell } from "../../components/Layout";
 import { BasemapPicker } from "../../components/map/BasemapPicker";
 import { CartographyProvider } from "../../components/map/CartographyContext";
 import { MapControls } from "../../components/map/MapControls";
 import { MapViewport } from "../../components/map/MapViewport";
 import { MapWidget } from "../../components/map/MapWidget";
+import { Panel } from "../../components/PanelHeading";
+import { Segmented } from "../../components/Segmented";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { ButtonGroup } from "../../components/ui/button-group";
@@ -53,7 +67,7 @@ import {
 import { Input } from "../../components/ui/input";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
-import { formatAscent, formatDistance } from "../../lib/format";
+import { formatAscent, formatDistance, formatDuration } from "../../lib/format";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { buildProfile, rangeBounds } from "../../lib/profile";
 import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
@@ -197,59 +211,99 @@ function insertionIndex(
   return nearestIsFinalEndpoint ? waypoints.length : nearest + 1;
 }
 
-interface CoordinateInputProps {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onCommit: (value: number) => void;
-}
+const PROFILES = [
+  { key: "trekking", label: "Trekking", icon: <IconBike size={14} stroke={1.8} /> },
+  { key: "fastbike", label: "Road", icon: <IconRoad size={14} stroke={1.8} /> },
+  { key: "gravel", label: "Gravel", icon: <IconRoute size={14} stroke={1.8} /> },
+] as const satisfies readonly { key: PlanProfile; label: string; icon: ReactNode }[];
 
-function CoordinateInput({ label, value, min, max, onCommit }: CoordinateInputProps) {
-  const [raw, setRaw] = useState(String(value));
+const coordinatesOf = (latitude: number, longitude: number) =>
+  `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
 
-  useEffect(() => setRaw(String(value)), [value]);
+/**
+ * What the waypoint is called, falling back to its own position: the service
+ * names nothing without a geocoder, and a geocoder names nothing in open
+ * country.
+ */
+function WaypointName({ latitude, longitude }: { latitude: number; longitude: number }) {
+  const name = usePlaceName(latitude, longitude);
 
   return (
-    <Input
-      className="border-transparent bg-transparent hover:bg-[var(--panel)] focus-visible:border-ring"
-      type="text"
-      inputMode="decimal"
-      aria-label={label}
-      value={raw}
-      onChange={(event) => setRaw(event.target.value)}
-      onBlur={() => {
-        const complete = raw.trim();
-        const coordinate = Number(complete);
-        if (
-          complete !== "" &&
-          Number.isFinite(coordinate) &&
-          coordinate >= min &&
-          coordinate <= max
-        ) {
-          if (coordinate !== value) {
-            onCommit(coordinate);
-          }
-        } else {
-          setRaw(String(value));
-        }
-      }}
-    />
+    <span className="truncate">{name === "" ? coordinatesOf(latitude, longitude) : name}</span>
   );
 }
 
+/** One row's worth of edge, and the fastest the list is nudged, in pixels a frame. */
+const EDGE_ZONE = 44;
+const EDGE_SPEED = 12;
+
 /**
- * What the waypoint's place is called, where a geocoder is configured and
- * knows of one. Silent otherwise: the coordinates beneath it already say
- * where the waypoint is.
+ * How fast a dragged row should scroll the list it is over: negative up,
+ * positive down, zero away from either edge. WebKit scrolls no element but the
+ * page during a drag, so the planner does this itself.
  */
-function PlaceName({ latitude, longitude }: { latitude: number; longitude: number }) {
-  const name = usePlaceName(latitude, longitude);
-  if (name === "") {
+export function edgeSpeed(top: number, bottom: number, pointerY: number): number {
+  const intoTop = EDGE_ZONE - (pointerY - top);
+  const intoBottom = EDGE_ZONE - (bottom - pointerY);
+  if (intoTop > 0) {
+    return -Math.min(EDGE_SPEED, (intoTop / EDGE_ZONE) * EDGE_SPEED);
+  }
+  if (intoBottom > 0) {
+    return Math.min(EDGE_SPEED, (intoBottom / EDGE_ZONE) * EDGE_SPEED);
+  }
+
+  return 0;
+}
+
+/** The row's own short word for a stop, where waypointLabel names it for a reader. */
+function stopLabel(index: number, count: number): string {
+  if (index === 0) {
+    return "Start";
+  }
+  if (index === count - 1) {
+    return "Finish";
+  }
+
+  return `Via ${index}`;
+}
+
+/** How far and how long the routed line has run by the time it reaches a waypoint. */
+function progressLabel(preview: PlanRoutePreview | null, index: number): string {
+  const at = index === 0 ? undefined : preview?.waypointProgress?.[index];
+  if (!at) {
+    return "";
+  }
+  const minutes = Math.round((at.movingSeconds ?? 0) / 60);
+  const elapsed = minutes === 0 ? "" : ` · ${formatDuration(minutes * 60)}`;
+
+  return ` · ${formatDistance(at.distanceMetres)}${elapsed}`;
+}
+
+/** The plan's own figures, once the engine has routed it. */
+function PlanFigures({ preview }: { preview: PlanRoutePreview | null }) {
+  if (!preview) {
     return null;
   }
 
-  return <span className="truncate px-1 text-xs font-medium">{name}</span>;
+  return (
+    <output aria-label="Planned route summary" className="flex items-center gap-4">
+      <span className="font-semibold text-xl tabular-nums tracking-tight">
+        {formatDistance(preview.distanceMetres)}
+      </span>
+      <span className="flex items-baseline gap-1 text-[var(--ink-2)]">
+        <IconMountain size={14} stroke={1.8} aria-hidden="true" />
+        <span className="font-medium tabular-nums">{formatAscent(preview.ascentMetres)}</span>
+      </span>
+      {preview.movingSeconds === undefined ? null : (
+        <span className="flex items-baseline gap-1 text-[var(--ink-2)]">
+          <IconClock size={14} stroke={1.8} aria-hidden="true" />
+          <span className="font-medium tabular-nums">
+            {formatDuration(Math.round(preview.movingSeconds / 60) * 60)}
+          </span>
+        </span>
+      )}
+    </output>
+  );
 }
 
 export interface PlannerSidebarProps {
@@ -287,67 +341,125 @@ export function PlannerSidebar({
     const byID = new Map(state.waypoints.map((waypoint) => [waypoint.id, waypoint]));
     return visualOrder.flatMap((id) => byID.get(id) ?? []);
   }, [state.waypoints, visualOrder]);
+  const list = useRef<HTMLOListElement>(null);
+  const speed = useRef(0);
+  const frame = useRef<number | null>(null);
+  const step = () => {
+    if (!list.current || speed.current === 0) {
+      frame.current = null;
+
+      return;
+    }
+    list.current.scrollTop += speed.current;
+    frame.current = requestAnimationFrame(step);
+  };
+  const scrollNearEdge = (pointerY: number) => {
+    if (!list.current) {
+      return;
+    }
+    const box = list.current.getBoundingClientRect();
+    speed.current = edgeSpeed(box.top, box.bottom, pointerY);
+    if (speed.current !== 0 && frame.current === null) {
+      frame.current = requestAnimationFrame(step);
+    }
+  };
+  const stopScrolling = () => {
+    speed.current = 0;
+    if (frame.current !== null) {
+      cancelAnimationFrame(frame.current);
+      frame.current = null;
+    }
+  };
+  useEffect(
+    () => () => {
+      if (frame.current !== null) {
+        cancelAnimationFrame(frame.current);
+      }
+    },
+    [],
+  );
   const clearDrag = () => {
     dragging.current = null;
     dragTarget.current = null;
     dragOrder.current = null;
+    stopScrolling();
     setVisualOrder(null);
   };
 
   return (
-    <section className="flex min-h-full flex-col py-1.5">
-      <div className="flex items-center gap-1 p-1.5">
-        <h2 className="px-2 py-1 font-semibold">
-          {planId === null ? "Plan a route" : "Edit plan"}
-        </h2>
-        <div className="ml-auto flex items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" icon={<IconChevronDown size={16} stroke={2} />} />}
-              disabled={plans.length === 0}
-            >
-              Plans
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-auto min-w-52">
-              {plans.map((plan) => (
-                <DropdownMenuItem key={plan.id} render={<Link to={`/plan/${plan.id}`} />}>
-                  <span className="flex-1">{plan.name}</span>
-                  {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <ButtonLink variant="ghost" to="/plan">
-            New
-          </ButtonLink>
-        </div>
-      </div>
-      <div className="grid gap-4 px-4 pt-2 pb-4">
-        <label className="grid gap-1 text-sm font-medium">
-          Name
+    // The column fills the rail and only the stops scroll, so the actions and
+    // the plan's own figures stay in view however long the route is.
+    <section className="flex min-h-0 flex-1 flex-col gap-3 bg-[var(--base)] p-3">
+      <Panel
+        className="min-h-0 flex-1"
+        icon={<IconRoute size={18} stroke={1.8} />}
+        title={
           <Input
+            aria-label="Plan name"
+            className="min-w-0 border-transparent border-b-2 bg-transparent px-0 font-semibold text-base shadow-none focus-visible:border-[var(--accent)] focus-visible:ring-0"
+            placeholder={planId === null ? "Plan a route" : "Edit plan"}
             value={state.name}
             maxLength={120}
             onChange={(event) => dispatch({ type: "setName", name: event.target.value })}
           />
-        </label>
-        <label className="grid gap-1 text-sm font-medium">
-          Route type
-          <select
-            value={state.profile}
-            onChange={(event) =>
-              dispatch({ type: "setProfile", profile: event.target.value as PlanProfile })
+        }
+        aside={
+          <div className="flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" icon={<IconChevronDown size={16} stroke={2} />} />}
+                disabled={plans.length === 0}
+              >
+                Plans
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-auto min-w-52">
+                {plans.map((plan) => (
+                  <DropdownMenuItem key={plan.id} render={<Link to={`/plan/${plan.id}`} />}>
+                    <span className="flex-1">{plan.name}</span>
+                    {plan.published ? null : <Badge variant="secondary">Draft</Badge>}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <ButtonLink variant="ghost" to="/plan">
+              New
+            </ButtonLink>
+          </div>
+        }
+      >
+        <PlanFigures preview={preview} />
+        <Segmented
+          label="Route type"
+          items={PROFILES}
+          value={state.profile}
+          onChange={(profile) => dispatch({ type: "setProfile", profile })}
+        />
+        <h3 className="-mb-2 flex items-center gap-2 font-semibold text-sm">
+          Waypoints
+          <span className="flex-1 font-normal text-[var(--ink-2)] text-xs">
+            {state.waypoints.length === 1 ? "1 stop" : `${state.waypoints.length} stops`}
+          </span>
+          <InfoDot label="Waypoints">
+            Click the map to insert a waypoint, or Alt-click to append. Drag waypoint rows to
+            reorder; drag map pins to move them.
+          </InfoDot>
+        </h3>
+        <ol
+          ref={list}
+          onDragOver={(event) => scrollNearEdge(event.clientY)}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              stopScrolling();
             }
-            className="h-8 w-full rounded-lg border border-transparent bg-transparent px-2.5 py-1 text-sm outline-none hover:bg-[var(--panel)] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          >
-            {PLAN_PROFILES.map((profile) => (
-              <option key={profile} value={profile}>
-                {profile}
-              </option>
-            ))}
-          </select>
-        </label>
-        <ol className="grid gap-1" aria-label="Waypoints">
+          }}
+          // The card pads by 20px; the rows keep 4 of it, so a name has the width.
+          // Rows are one height and snap, so scrolling never stops on half a stop.
+          // Snapping is off while a row is being dragged: it fights the
+          // browser's own scrolling at the list's edges.
+          data-dragging={visualOrder === null ? undefined : true}
+          className="-mx-4 flex min-h-0 snap-y snap-mandatory flex-col overflow-y-auto rounded-xl bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)] empty:hidden data-dragging:snap-none"
+          aria-label="Waypoints"
+        >
           {visualWaypoints.map((waypoint, index) => {
             const stateIndex = state.waypoints.indexOf(waypoint);
 
@@ -355,14 +467,17 @@ export function PlannerSidebar({
               <li
                 key={waypoint.id}
                 data-waypoint-id={waypoint.id}
-                className="flex items-center gap-1 text-sm"
+                // The start and the finish stay in view while the stops between
+                // them scroll under, so a long route keeps its ends.
+                className="flex h-11 shrink-0 snap-start scroll-mt-11 items-center gap-1 border-[var(--panel)] border-b-2 bg-[color-mix(in_oklab,var(--ink-2)_7%,var(--panel))] pr-1.5 pl-3 text-sm last:sticky last:bottom-0 last:border-b-0 first:sticky first:top-0"
               >
                 <div
                   role="group"
                   draggable
+                  // No title: the hint under the list says rows drag, and a
+                  // tooltip over every row covers the map beside it.
                   aria-label={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                  title={`Drag ${waypointLabel(index, state.waypoints.length)} to reorder`}
-                  className={`flex min-w-0 flex-1 items-center gap-1 rounded-lg border border-transparent bg-[var(--base)] p-1 hover:border-[var(--rule)] ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
+                  className={`flex min-w-0 flex-1 items-center gap-2.5 ${dragging.current === waypoint.id ? "opacity-60" : ""}`}
                   onDragStart={(event) => {
                     if (isInteractiveDragOrigin(event.target)) {
                       event.preventDefault();
@@ -412,41 +527,21 @@ export function PlannerSidebar({
                 >
                   <span
                     aria-hidden="true"
-                    className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--accent)] text-xs font-semibold text-white"
+                    className={`grid size-6 shrink-0 place-items-center rounded-[8px] font-semibold text-white text-xs ${
+                      index === 0 || index === state.waypoints.length - 1
+                        ? "bg-[var(--accent)]"
+                        : "bg-[var(--ink-2)]"
+                    }`}
                   >
                     <WaypointMarker index={index} count={state.waypoints.length} />
                   </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <PlaceName latitude={waypoint.latitude} longitude={waypoint.longitude} />
-                    <div className="grid min-w-0 grid-cols-2 gap-1">
-                      <CoordinateInput
-                        label={`Waypoint ${index + 1} latitude`}
-                        value={waypoint.latitude}
-                        min={-90}
-                        max={90}
-                        onCommit={(latitude) =>
-                          dispatch({
-                            type: "move",
-                            index: stateIndex,
-                            waypoint: { ...waypoint, latitude },
-                          })
-                        }
-                      />
-                      <CoordinateInput
-                        label={`Waypoint ${index + 1} longitude`}
-                        value={waypoint.longitude}
-                        min={-180}
-                        max={180}
-                        onCommit={(longitude) =>
-                          dispatch({
-                            type: "move",
-                            index: stateIndex,
-                            waypoint: { ...waypoint, longitude },
-                          })
-                        }
-                      />
-                    </div>
-                  </div>
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <WaypointName latitude={waypoint.latitude} longitude={waypoint.longitude} />
+                    <span className="truncate text-[var(--ink-2)] text-xs tabular-nums">
+                      {stopLabel(index, state.waypoints.length)}
+                      {progressLabel(preview, stateIndex)}
+                    </span>
+                  </span>
                   <Button
                     variant="ghost"
                     className="sr-only focus:not-sr-only"
@@ -469,17 +564,15 @@ export function PlannerSidebar({
                   >
                     Move down
                   </Button>
-                  <span
+                  <IconGripVertical
                     aria-hidden="true"
-                    className="grid size-7 shrink-0 cursor-grab place-items-center rounded-md text-[var(--ink-2)]"
-                  >
-                    <IconGripVertical aria-hidden="true" size={16} stroke={2} />
-                  </span>
+                    size={15}
+                    className="shrink-0 cursor-grab text-[var(--ink-2)]"
+                  />
                 </div>
                 <Button
                   variant="ghost"
-                  icon={<IconTrash size={16} />}
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:text-destructive"
+                  icon={<IconTrash size={15} />}
                   aria-label={`Delete waypoint ${index + 1}`}
                   onClick={() => dispatch({ type: "delete", index: stateIndex })}
                 />
@@ -487,17 +580,8 @@ export function PlannerSidebar({
             );
           })}
         </ol>
-        <p className="text-sm text-[var(--ink-2)]">
-          Click the map to insert a waypoint, or Alt-click to append. Drag waypoint rows to reorder;
-          drag map pins to move them.
-        </p>
-      </div>
-      <div className="sticky bottom-0 mt-auto grid gap-2 border-[var(--rule)] border-t bg-[var(--panel)] px-4 py-3">
-        {preview ? (
-          <output aria-label="Planned route summary" className="text-sm font-medium tabular-nums">
-            {formatDistance(preview.distanceMetres)} · {formatAscent(preview.ascentMetres)}
-          </output>
-        ) : null}
+      </Panel>
+      <div className="grid shrink-0 gap-2">
         <div className="flex flex-wrap gap-2">
           <Button
             icon={<IconDeviceFloppy stroke={1.6} />}
