@@ -56,6 +56,18 @@ type Source struct {
 	// BaseURL is both the origin the adapter reaches and the one the page links a
 	// stage back to: the provider's web application, not an API host.
 	BaseURL string
+
+	// Withheld keeps this library's routes off every Wahoo target while it is
+	// still read; routes already written there are removed by the next run.
+	Withheld bool
+}
+
+// Withheld reports whether provider is a configured library kept off every
+// Wahoo target. A library that is not read is not withheld.
+func (v *Values) Withheld(provider route.Provider) bool {
+	return slices.ContainsFunc(v.Sources, func(source Source) bool {
+		return source.Provider == provider && source.Withheld
+	})
 }
 
 // Sync holds the reconciliation settings a run reads when it starts.

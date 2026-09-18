@@ -242,7 +242,7 @@ export const settings: Settings = {
     oauthBaseUrl: "https://api.wahooligan.com",
     clientId: "wahoo-client-id",
   },
-  sources: [{ provider: "veloplanner", baseUrl: "https://veloplanner.com" }],
+  sources: [{ provider: "veloplanner", baseUrl: "https://veloplanner.com", syncToWahoo: true }],
   rideModel: {
     secondsPerKm: 145.36,
     secondsPerAscentM: 3.22,

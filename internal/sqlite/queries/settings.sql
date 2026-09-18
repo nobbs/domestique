@@ -31,7 +31,7 @@ INSERT INTO runtime_surface_region (position, region) VALUES (?, ?);
 DELETE FROM runtime_source;
 
 -- name: InsertRuntimeSource :exec
-INSERT INTO runtime_source (position, provider, base_url) VALUES (?, ?, ?);
+INSERT INTO runtime_source (position, provider, base_url, sync_to_wahoo) VALUES (?, ?, ?, ?);
 
 -- name: ListRuntimeBasemaps :many
 SELECT name, style_url, style_url_dark, dark_cartography
@@ -39,7 +39,7 @@ FROM runtime_basemap
 ORDER BY position;
 
 -- name: ListRuntimeSources :many
-SELECT provider, base_url FROM runtime_source ORDER BY position;
+SELECT provider, base_url, sync_to_wahoo FROM runtime_source ORDER BY position;
 
 -- name: ListRuntimeSecrets :many
 SELECT name, value FROM runtime_secret;

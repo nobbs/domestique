@@ -150,6 +150,39 @@ func TestMigration064DownKeepsEveryPlan(t *testing.T) {
 	require.NoError(t, migration.Migrate(64), "must be able to re-migrate up after rolling back")
 }
 
+func TestMigration065DownKeepsEverySource(t *testing.T) {
+	t.Parallel()
+	dbPath := filepath.Join(t.TempDir(), "source-sync-rollback.db")
+	migration, closeFn, err := openMigrator(dbPath, migrationFiles, "migrations")
+	require.NoError(t, err)
+	defer closeFn()
+
+	require.NoError(t, migration.Migrate(65))
+
+	database, err := openDatabase(dbPath)
+	require.NoError(t, err)
+	defer closeDatabase(database)
+
+	_, err = database.ExecContext(t.Context(), `
+		INSERT INTO runtime_source (position, provider, base_url, sync_to_wahoo)
+		VALUES (0, 'komoot', 'https://api.komoot.de', 0)`)
+	require.NoError(t, err)
+
+	require.NoError(t, migration.Migrate(64))
+
+	var provider, baseURL string
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT provider, base_url FROM runtime_source WHERE position = 0`).Scan(&provider, &baseURL))
+	assert.Equal(t, "komoot", provider)
+	assert.Equal(t, "https://api.komoot.de", baseURL)
+	var gone int
+	require.NoError(t, database.QueryRowContext(t.Context(),
+		`SELECT COUNT(*) FROM pragma_table_info('runtime_source') WHERE name = 'sync_to_wahoo'`).Scan(&gone))
+	assert.Zero(t, gone, "the switch must be gone after rollback")
+
+	require.NoError(t, migration.Migrate(65), "must be able to re-migrate up after rolling back")
+}
+
 // No down migration in this repo is otherwise exercised by anything: the
 // compatibility harness only ever migrates forward. 029's down is the one
 // that rebuilds a table rather than dropping it outright, so it is the one

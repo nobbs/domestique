@@ -110,17 +110,23 @@ func (q *Queries) InsertRuntimeBasemap(ctx context.Context, arg InsertRuntimeBas
 }
 
 const insertRuntimeSource = `-- name: InsertRuntimeSource :exec
-INSERT INTO runtime_source (position, provider, base_url) VALUES (?, ?, ?)
+INSERT INTO runtime_source (position, provider, base_url, sync_to_wahoo) VALUES (?, ?, ?, ?)
 `
 
 type InsertRuntimeSourceParams struct {
-	Position int64
-	Provider string
-	BaseUrl  string
+	Position    int64
+	Provider    string
+	BaseUrl     string
+	SyncToWahoo int64
 }
 
 func (q *Queries) InsertRuntimeSource(ctx context.Context, arg InsertRuntimeSourceParams) error {
-	_, err := q.db.ExecContext(ctx, insertRuntimeSource, arg.Position, arg.Provider, arg.BaseUrl)
+	_, err := q.db.ExecContext(ctx, insertRuntimeSource,
+		arg.Position,
+		arg.Provider,
+		arg.BaseUrl,
+		arg.SyncToWahoo,
+	)
 	return err
 }
 
@@ -212,12 +218,13 @@ func (q *Queries) ListRuntimeSecrets(ctx context.Context) ([]ListRuntimeSecretsR
 }
 
 const listRuntimeSources = `-- name: ListRuntimeSources :many
-SELECT provider, base_url FROM runtime_source ORDER BY position
+SELECT provider, base_url, sync_to_wahoo FROM runtime_source ORDER BY position
 `
 
 type ListRuntimeSourcesRow struct {
-	Provider string
-	BaseUrl  string
+	Provider    string
+	BaseUrl     string
+	SyncToWahoo int64
 }
 
 func (q *Queries) ListRuntimeSources(ctx context.Context) ([]ListRuntimeSourcesRow, error) {
@@ -229,7 +236,7 @@ func (q *Queries) ListRuntimeSources(ctx context.Context) ([]ListRuntimeSourcesR
 	items := []ListRuntimeSourcesRow{}
 	for rows.Next() {
 		var i ListRuntimeSourcesRow
-		if err := rows.Scan(&i.Provider, &i.BaseUrl); err != nil {
+		if err := rows.Scan(&i.Provider, &i.BaseUrl, &i.SyncToWahoo); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

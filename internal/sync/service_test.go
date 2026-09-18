@@ -172,6 +172,28 @@ func TestServiceDeletesUpToFiveOwnedRoutesPerTarget(t *testing.T) {
 	assert.Equal(t, 10, result.Deleted, "deleted routes")
 }
 
+func TestServiceKeepsAWithheldLibraryOffEveryTarget(t *testing.T) {
+	kept := testProviderStage(t, route.ProviderVeloPlanner, 1, 1, "current", "current-hash")
+	written := testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")
+	unwritten := testProviderStage(t, route.ProviderKomoot, 3, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{kept, written, unwritten}
+	target := newFakeTarget()
+	seedMapping(state, "a", &written, remoteID("a", 2))
+	target.seedRoute("a", &written, remoteID("a", 2))
+	options := syncOptions(false, nil, "a")
+	options.Withheld = func(provider route.Provider) bool { return provider == route.ProviderKomoot }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunTarget() outcome")
+	assert.Equal(t, 1, result.Created, "only the library still delivered is written")
+	assert.Equal(t, 1, result.Deleted, "what was already written of the withheld library is removed")
+	assert.Equal(t, []int64{remoteID("a", 2)}, target.deletedRouteIDs, "deleted routes")
+	assert.Len(t, state.trusted, 3, "a withheld library is still read and stored")
+}
+
 // The two halves are independent: a library refresh must keep working while a
 // target waits to be reauthorised, because the refresh touches no target.
 func TestServiceReadsTheSourceWhileATargetNeedsReauthorization(t *testing.T) {

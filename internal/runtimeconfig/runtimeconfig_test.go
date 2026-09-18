@@ -465,10 +465,11 @@ func TestValidateSources(t *testing.T) {
 
 	sources, err := ValidateSources([]Source{
 		{Provider: route.ProviderVeloPlanner, BaseURL: " https://veloplanner.com "},
-		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
+		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de", Withheld: true},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "https://veloplanner.com", sources[0].BaseURL, "the address is stored trimmed")
+	assert.True(t, sources[1].Withheld, "the Wahoo switch survives validation")
 
 	tests := []struct {
 		name    string
@@ -730,4 +731,15 @@ func TestTheTimezoneDatabaseTravelsWithTheBinary(t *testing.T) {
 		_, err := ValidateTimezone(zone)
 		require.NoErrorf(t, err, "%s is not loadable from this binary", zone)
 	}
+}
+
+func TestValuesWithheld(t *testing.T) {
+	values := Values{Sources: []Source{
+		{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.com"},
+		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de", Withheld: true},
+	}}
+
+	assert.False(t, values.Withheld(route.ProviderVeloPlanner))
+	assert.True(t, values.Withheld(route.ProviderKomoot))
+	assert.False(t, values.Withheld(route.ProviderLocal), "a library that is not configured is not withheld")
 }

@@ -178,6 +178,11 @@ func run(ctx context.Context) error {
 		AllowEmptySourceDeletion: func() bool {
 			return runtimeSettings.Values().Sync.AllowEmptySourceDeletion
 		},
+		Withheld: func(provider route.Provider) bool {
+			values := runtimeSettings.Values()
+
+			return values.Withheld(provider)
+		},
 	}, store, elevation.New(), courseEncoder(planService), destination, annotator, predictorFor(rideModel))
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)

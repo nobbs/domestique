@@ -492,7 +492,11 @@ function SourceSettingsSection({
   const id = useId();
   const invalidate = useSettingsInvalidation();
   const stored = settings.sources.find((source) => source.provider === provider);
-  const [draft, setDraft] = useState<{ read: boolean; baseUrl: string } | null>(null);
+  const [draft, setDraft] = useState<{
+    read: boolean;
+    syncToWahoo: boolean;
+    baseUrl: string;
+  } | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const save = useSetSource(
@@ -505,6 +509,7 @@ function SourceSettingsSection({
 
   const values = draft ?? {
     read: stored !== undefined,
+    syncToWahoo: stored?.syncToWahoo ?? true,
     baseUrl: stored?.baseUrl ?? PROVIDER_BASE_URLS[provider],
   };
   const label = providerLabel(provider);
@@ -521,6 +526,7 @@ function SourceSettingsSection({
           provider,
           data: {
             read: values.read,
+            syncToWahoo: values.syncToWahoo,
             baseUrl: values.baseUrl,
             ...replacement("email", email),
             ...replacement("password", password),
@@ -534,6 +540,16 @@ function SourceSettingsSection({
             checked={values.read}
             aria-label={`Read ${label}`}
             onCheckedChange={(read) => setDraft({ ...values, read })}
+          />
+        </FormRow>
+        <FormRow
+          label="Sync to Wahoo"
+          hint="Off keeps the library on this page but off every rider's Wahoo account; routes already there are removed, a few per run."
+        >
+          <Switch
+            checked={values.syncToWahoo}
+            aria-label={`Sync ${label} to Wahoo`}
+            onCheckedChange={(syncToWahoo) => setDraft({ ...values, syncToWahoo })}
           />
         </FormRow>
         <FormRow label="Address" htmlFor={`${id}-url`}>

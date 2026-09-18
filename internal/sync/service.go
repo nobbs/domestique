@@ -42,6 +42,10 @@ type Options struct {
 	// read of one library never depends on the rest being configured. A
 	// provider with no configuration is reported unconfigured, not an error.
 	SourceFor func(provider route.Provider) (source Source, configured bool, err error)
+
+	// Withheld reports a library whose stages are kept off every target while it
+	// is still read, asked as a run starts. Nil withholds nothing.
+	Withheld func(provider route.Provider) bool
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -57,6 +61,7 @@ type Service struct {
 	predictor                Predictor
 	allowEmptySourceDeletion func() bool
 	targetIDs                func() []string
+	withheld                 func(route.Provider) bool
 	now                      func() time.Time
 	attempts                 planAttempts
 }
@@ -93,6 +98,7 @@ func New(
 		predictor:                predictor,
 		targetIDs:                options.TargetIDs,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
+		withheld:                 options.Withheld,
 		now:                      time.Now,
 	}, nil
 }
@@ -224,7 +230,7 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
-	desired, ordered, err := normalizeInventory(stored)
+	desired, ordered, err := normalizeInventory(s.deliverable(stored))
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
@@ -283,7 +289,7 @@ func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
-	desired, ordered, err := normalizeInventory(stored)
+	desired, ordered, err := normalizeInventory(s.deliverable(stored))
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
@@ -357,6 +363,18 @@ func (s *Service) clearTarget(ctx context.Context, targetID string) (int, Failur
 	}
 
 	return deleted, FailureNone
+}
+
+// deliverable drops the stages of every withheld library, so reconciliation
+// removes whatever it had already written of them.
+func (s *Service) deliverable(stored []route.Route) []route.Route {
+	if s.withheld == nil {
+		return stored
+	}
+
+	return slices.DeleteFunc(stored, func(stage route.Route) bool {
+		return s.withheld(stage.Key().Provider())
+	})
 }
 
 // targetOutcome states one slot's reconciliation in the same vocabulary a run

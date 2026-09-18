@@ -765,6 +765,8 @@ type WahooApplicationUpdate struct {
 type SourceUpdate struct {
 	// Read Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with.
 	Read bool `json:"read"`
+	// SyncToWahoo Whether a run writes this library's routes to riders' Wahoo accounts. Off keeps reading it and removes what was already written, within the per-run deletion limit.
+	SyncToWahoo bool `json:"syncToWahoo"`
 	// BaseURL The source's own web application, which is both the origin the service reads and the one a route is linked back to.
 	BaseURL string `json:"baseUrl"`
 	// Email The account's email address, sent only when it was typed. The rules the application secret follows apply here too.
@@ -948,6 +950,8 @@ const (
 
 type SourceSettings struct {
 	Provider SourceSettings_Provider `json:"provider"`
+	// SyncToWahoo Whether a run writes this library's routes to riders' Wahoo accounts.
+	SyncToWahoo bool `json:"syncToWahoo"`
 	// BaseURL The source's own web application, which is both the origin the service reads and the one a route is linked back to.
 	BaseURL string `json:"baseUrl"`
 }

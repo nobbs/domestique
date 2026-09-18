@@ -69,6 +69,27 @@ describe("AdminPage", () => {
     expect(screen.queryByText("Timezone")).not.toBeInTheDocument();
   });
 
+  it("sends a library's Wahoo switch with its section", async () => {
+    renderPage("/admin/integrations");
+    // The reads a save triggers never settle, so the seeded data stays on screen.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_url: string, init?: RequestInit) =>
+        init?.method === "PUT"
+          ? Promise.resolve(new Response(JSON.stringify(settings), { status: 200 }))
+          : new Promise<Response>(() => {}),
+      ),
+    );
+
+    await userEvent.click(screen.getByRole("switch", { name: "Sync VeloPlanner to Wahoo" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save VeloPlanner" }));
+
+    const put = vi
+      .mocked(fetch)
+      .mock.calls.find(([url]) => String(url).includes("/v1/settings/sources/veloplanner"));
+    expect(JSON.parse(String(put?.[1]?.body))).toMatchObject({ read: true, syncToWahoo: false });
+  });
+
   it("holds the background tasks at /admin/tasks", () => {
     renderPage("/admin/tasks");
 

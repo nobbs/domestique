@@ -308,6 +308,10 @@ The stored inventory is the handover between the halves. The target half reads
 it back rather than fetching a fresh one, and the library it reconciles is the
 last one validated as whole.
 
+The target half leaves out the share of every source whose `sync_to_wahoo` is
+off ([configuration.md](configuration.md#sources)); to the reconciler those
+routes have left the library.
+
 An inventory that cannot be read back whole fails the target half as a state
 failure and deletes nothing.
 

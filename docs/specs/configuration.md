@@ -371,6 +371,13 @@ An empty list is accepted and is what a new deployment holds. A configured
 source whose email and password have not been entered is **not** skipped: the
 run refuses instead.
 
+Each entry also carries `sync_to_wahoo`, on by default. Off keeps the library
+read, stored and shown, but out of what the target half reconciles, so the
+routes already written from it are removed like any other route that left the
+library — within the per-run deletion limit
+([sync-lifecycle.md](sync-lifecycle.md#deletion-gates)). A library that is not
+read at all keeps its last stored share, and that share is still synced.
+
 ### Wahoo
 
 `wahoo.api_base_url` and `wahoo.oauth_base_url` are absolute HTTPS origins
