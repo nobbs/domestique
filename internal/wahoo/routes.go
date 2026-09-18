@@ -146,7 +146,7 @@ func (c *Client) writeRoute(
 	metrics := calculateMetrics(geometry)
 	values := url.Values{
 		"route[file]":                   {"data:application/vnd.fit;base64," + base64.StdEncoding.EncodeToString(fitData)},
-		"route[filename]":               {"domestique.fit"},
+		"route[filename]":               {strings.ReplaceAll(stage.Key().ExternalID(), ":", "-") + ".fit"},
 		"route[provider_updated_at]":    {stage.Revision()},
 		"route[name]":                   {stage.Title()},
 		"route[workout_type_family_id]": {"0"},
