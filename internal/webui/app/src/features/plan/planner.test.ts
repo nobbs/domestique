@@ -160,6 +160,33 @@ describe("plannerReducer", () => {
     expect(loaded.future).toEqual([]);
   });
 
+  it("reads a waypoint placed on a wrapped copy of the world within one globe", () => {
+    // A click east of the antimeridian on the next copy of the map: 211.2 is
+    // the same meridian as -148.8, and the service refuses anything past 180.
+    const wrapped = reduce(
+      { type: "append", waypoint: { longitude: 211.2, latitude: 11.4 } },
+      { type: "append", waypoint: { longitude: -400, latitude: 20 } },
+    );
+
+    expect(wrapped.waypoints[0]).toMatchObject({ longitude: -148.8, latitude: 11.4 });
+    expect(wrapped.waypoints[1]).toMatchObject({ longitude: -40, latitude: 20 });
+  });
+
+  it("unwraps a waypoint dragged onto another copy of the world", () => {
+    const dragged = reduce(
+      { type: "append", waypoint: first },
+      { type: "move", index: 0, waypoint: { longitude: 368, latitude: 49 } },
+    );
+
+    expect(dragged.waypoints[0]).toMatchObject({ longitude: 8, latitude: 49 });
+  });
+
+  it("leaves a waypoint already within the globe alone", () => {
+    const placed = reduce({ type: "insert", index: 0, waypoint: { longitude: 180, latitude: 0 } });
+
+    expect(placed.waypoints[0]).toMatchObject({ longitude: 180, latitude: 0 });
+  });
+
   it("resets an opened plan to a new draft", () => {
     const edited = reduce(
       { type: "setName", name: "Stored route" },

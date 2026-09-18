@@ -121,6 +121,20 @@ export type PlannerAction =
   | { type: "reset" }
   | { type: "load"; plan: Pick<Plan, "name" | "profile" | "waypoints"> };
 
+/**
+ * The same place, read within one turn of the globe. A click or a marker drag
+ * on a wrapped copy of the world answers a longitude beyond ±180, which the
+ * service refuses as out of range.
+ */
+function unwrapped(waypoint: PlanWaypoint): PlanWaypoint {
+  if (waypoint.longitude >= -180 && waypoint.longitude <= 180) {
+    return waypoint;
+  }
+  const longitude = ((((waypoint.longitude + 180) % 360) + 360) % 360) - 180;
+
+  return { ...waypoint, longitude };
+}
+
 function snapshot({ name, profile, waypoints, nextWaypointID }: PlannerState): PlannerSnapshot {
   return { name, profile, waypoints, nextWaypointID };
 }
@@ -153,7 +167,10 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         ? state
         : apply(state, {
             ...snapshot(state),
-            waypoints: [...state.waypoints, { ...action.waypoint, id: state.nextWaypointID }],
+            waypoints: [
+              ...state.waypoints,
+              { ...unwrapped(action.waypoint), id: state.nextWaypointID },
+            ],
             nextWaypointID: state.nextWaypointID + 1,
           });
     case "insert": {
@@ -166,7 +183,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
         ...snapshot(state),
         waypoints: [
           ...state.waypoints.slice(0, index),
-          { ...action.waypoint, id: state.nextWaypointID },
+          { ...unwrapped(action.waypoint), id: state.nextWaypointID },
           ...state.waypoints.slice(index),
         ],
         nextWaypointID: state.nextWaypointID + 1,
@@ -181,7 +198,7 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
       if (!current) {
         return state;
       }
-      waypoints[action.index] = { ...action.waypoint, id: current.id };
+      waypoints[action.index] = { ...unwrapped(action.waypoint), id: current.id };
 
       return apply(state, { ...snapshot(state), waypoints });
     }
