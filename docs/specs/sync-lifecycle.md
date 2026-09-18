@@ -382,7 +382,9 @@ source-ID and stage-order sequence:
 
 1. Create a missing Wahoo route with its external ID, FIT data, and source
    revision.
-2. Update an owned Wahoo route when its source revision changed.
+2. Update an owned Wahoo route when its source revision changed, or when the
+   course the encoder now produces differs from the one recorded as uploaded —
+   a revised encoder rewrites every tracked route once, in place.
 3. Recreate an unchanged desired route if its recorded Wahoo route vanished —
    a vanished route is one the reading did not return.
 4. Delete an owned target route only after all required creates and updates for
