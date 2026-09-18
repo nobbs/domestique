@@ -124,9 +124,9 @@ type Options struct {
 	// leaves the address unregistered, as a build with no planner has it.
 	Snapper Snapper
 
-	// Places optionally names a plan's waypoints. Nil leaves the address
-	// unregistered, answering 404, and reports place names as unconfigured:
-	// the shape a build with no geocoder takes.
+	// Places optionally names a plan's waypoints and finds places by name. Nil
+	// leaves both addresses unregistered, answering 404, and reports place names
+	// as unconfigured: the shape a build with no geocoder takes.
 	Places Places
 
 	// SurfaceClassifier optionally classifies plan geometry against the current
@@ -381,6 +381,7 @@ func (h *Handler) routes() {
 		}
 		if h.places != nil {
 			h.mux.HandleFunc("GET /v1/places/reverse", h.adminOnly(h.ReversePlace))
+			h.mux.HandleFunc("GET /v1/places/search", h.adminOnly(h.SearchPlaces))
 		}
 		if h.snapper != nil {
 			h.mux.HandleFunc("GET /v1/places/snap", h.adminOnly(h.SnapPlace))

@@ -882,6 +882,36 @@ export interface Place {
   name?: string;
 }
 
+/**
+ * What sort of place it is, for the icon it is drawn with.
+ */
+export type PlaceMatchKind = (typeof PlaceMatchKind)[keyof typeof PlaceMatchKind];
+
+export const PlaceMatchKind = {
+  address: "address",
+  settlement: "settlement",
+  station: "station",
+  peak: "peak",
+  place: "place",
+} as const;
+
+/**
+ * One place a search found. Context names the wider places it lies within, and is absent where the geocoder holds none.
+ */
+export interface PlaceMatch {
+  name: string;
+  context?: string;
+  /** What sort of place it is, for the icon it is drawn with. */
+  kind: PlaceMatchKind;
+  latitude: number;
+  longitude: number;
+}
+
+export interface PlaceSearch {
+  /** @maxItems 6 */
+  places: PlaceMatch[];
+}
+
 export interface SnappedPlace {
   latitude: number;
   longitude: number;
@@ -1297,7 +1327,7 @@ export interface WebUIConfig {
   identity: BrowserIdentity;
   /** Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off. */
   planning?: boolean;
-  /** Whether a geocoder is configured, so the planner asks what a waypoint is called only where the answer exists. Absent means off, and waypoints read as coordinates. */
+  /** Whether a geocoder is configured, so the planner names waypoints and searches for places only where the answer exists. Absent means off: waypoints read as coordinates and there is no place search. */
   placeNames?: boolean;
 }
 
@@ -1516,6 +1546,26 @@ export type ReversePlaceParams = {
    * @maximum 180
    */
   longitude: number;
+};
+
+export type SearchPlacesParams = {
+  /**
+   * @minLength 3
+   * @maxLength 200
+   */
+  query: string;
+  /**
+   * Given together with longitude, or not at all.
+   * @minimum -90
+   * @maximum 90
+   */
+  latitude?: number;
+  /**
+   * Given together with latitude, or not at all.
+   * @minimum -180
+   * @maximum 180
+   */
+  longitude?: number;
 };
 
 export type SnapPlaceParams = {
@@ -6126,6 +6176,227 @@ export function useReversePlace<
   queryClient?: QueryClient,
 ): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
   const queryOptions = getReversePlaceQueryOptions(params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+export type searchPlacesResponse200 = {
+  data: PlaceSearch;
+  status: 200;
+};
+
+export type searchPlacesResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type searchPlacesResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type searchPlacesResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type searchPlacesResponse404 = {
+  data: NotFoundResponse;
+  status: 404;
+};
+
+export type searchPlacesResponse502 = {
+  data: ProviderUnavailableResponse;
+  status: 502;
+};
+
+export type searchPlacesResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type searchPlacesResponseSuccess = searchPlacesResponse200 & {
+  headers: Headers;
+};
+export type searchPlacesResponseError = (
+  | searchPlacesResponse400
+  | searchPlacesResponse401
+  | searchPlacesResponse403
+  | searchPlacesResponse404
+  | searchPlacesResponse502
+  | searchPlacesResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSearchPlacesUrl = (params: SearchPlacesParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/v1/places/search?${stringifiedParams}`
+    : `/v1/places/search`;
+};
+
+/**
+ * The places whose name or address matches a query, for adding a plan's waypoints by name. Nearest to the given point first where one is given; the point biases the answer and never confines it. No match is an empty list, not a failure. Registered only where a geocoder is configured; absent, the address is not served at all.
+ */
+export const searchPlaces = async (
+  params: SearchPlacesParams,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<searchPlacesResponseSuccess> => {
+  return domestiqueRequest<searchPlacesResponseSuccess>(getSearchPlacesUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getSearchPlacesQueryKey = (params?: SearchPlacesParams) => {
+  return [`/v1/places/search`, ...(params ? [params] : [])] as const;
+};
+
+export const getSearchPlacesQueryOptions = <
+  TData = Awaited<ReturnType<typeof searchPlaces>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SearchPlacesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof searchPlaces>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getSearchPlacesQueryKey(params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof searchPlaces>>> = ({ signal }) =>
+    searchPlaces(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof searchPlaces>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type SearchPlacesQueryResult = NonNullable<Awaited<ReturnType<typeof searchPlaces>>>;
+export type SearchPlacesQueryError = ErrorType<
+  | InvalidRequestResponse
+  | UnauthorizedResponse
+  | ForbiddenResponse
+  | NotFoundResponse
+  | ProviderUnavailableResponse
+  | UnavailableResponse
+>;
+
+export function useSearchPlaces<
+  TData = Awaited<ReturnType<typeof searchPlaces>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SearchPlacesParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof searchPlaces>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof searchPlaces>>,
+          TError,
+          Awaited<ReturnType<typeof searchPlaces>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useSearchPlaces<
+  TData = Awaited<ReturnType<typeof searchPlaces>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SearchPlacesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof searchPlaces>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof searchPlaces>>,
+          TError,
+          Awaited<ReturnType<typeof searchPlaces>>
+        >,
+        "initialData"
+      >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useSearchPlaces<
+  TData = Awaited<ReturnType<typeof searchPlaces>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SearchPlacesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof searchPlaces>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+export function useSearchPlaces<
+  TData = Awaited<ReturnType<typeof searchPlaces>>,
+  TError = ErrorType<
+    | InvalidRequestResponse
+    | UnauthorizedResponse
+    | ForbiddenResponse
+    | NotFoundResponse
+    | ProviderUnavailableResponse
+    | UnavailableResponse
+  >,
+>(
+  params: SearchPlacesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof searchPlaces>>, TError, TData>>;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getSearchPlacesQueryOptions(params, options);
 
   const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
     queryKey: DataTag<QueryKey, TData, TError>;

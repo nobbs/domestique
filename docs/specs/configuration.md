@@ -178,16 +178,18 @@ application dependency.
   registered, no local source is read, and the segment task is not
   registered ([the task](task-layer.md#the-registered-tasks)).
 - `planning.photon_url` is optional, and names the Photon geocoder a plan's
-  waypoints are named after: the absolute `http` or `https` origin, with no
-  path, of a self-hosted instance or komoot's public one. Leaving it out is not
-  an error; it leaves every waypoint reading as its coordinates, and leaves
-  `GET /v1/places/reverse` unregistered so the address answers `404`. It is a
+  waypoints are named after and the planner's place search asks: the absolute
+  `http` or `https` origin, with no path, of a self-hosted instance or komoot's
+  public one. Leaving it out is not an error; it leaves every waypoint reading
+  as its coordinates, offers no place search, and leaves
+  `GET /v1/places/reverse` and `GET /v1/places/search` unregistered so both
+  addresses answer `404`. It is a
   file field for the same reason `brouter_url` is, and it carries the same
   cost: the public instance has no terms beyond fair use, and each coordinate
-  asked about leaves the host. Answers are held in memory, keyed to about
-  eleven metres, until the cache holds 4096 of them, at which point it is
-  emptied rather than aged out one entry at a time; a failed lookup is never
-  cached, so it is retried on the next ask.
+  and search asked about leaves the host. Waypoint names are held in memory,
+  keyed to about eleven metres, until the cache holds 4096 of them, at which
+  point it is emptied rather than aged out one entry at a time; a failed lookup
+  is never cached, so it is retried on the next ask. Searches are never held.
 - `planning.segments` is optional and names the BRouter routing segments the
   service keeps current for that engine. Each entry is one of BRouter's 5°×5°
   tiles, named for its south-west corner: `E` or `W` and a longitude from 0 to

@@ -53,9 +53,9 @@ func (p modelPace) Predict(points []route.Point) (movingSeconds float64, cumulat
 	return result.MovingSeconds, result.CumulativeSeconds, true
 }
 
-// newPlaceNamer builds the geocoder the planner names waypoints with, when
-// planning.photon_url is set. A nil result is the shape a build without one
-// takes: waypoints read as coordinates.
+// newPlaceNamer builds the geocoder the planner names waypoints and searches
+// for places with, when planning.photon_url is set. A nil result is the shape a
+// build without one takes: waypoints read as coordinates, and nothing searches.
 func newPlaceNamer(settings *config.Settings) (httpapi.Places, error) {
 	if !settings.Planning.Enabled() || settings.Planning.PhotonURL == "" {
 		return nil, nil //nolint:nilnil // an absent geocoder is a configuration, not a failure
@@ -65,7 +65,34 @@ func newPlaceNamer(settings *config.Settings) (httpapi.Places, error) {
 		return nil, fmt.Errorf("creating Photon client: %w", err)
 	}
 
-	return client, nil
+	return photonPlaces{client}, nil
+}
+
+// photonPlaces answers the planner's place searches in the HTTP port's terms.
+type photonPlaces struct{ *photon.Client }
+
+var _ httpapi.Places = photonPlaces{}
+
+func (p photonPlaces) Search(
+	ctx context.Context, query string, near *httpapi.PlaceNear,
+) ([]httpapi.PlaceMatch, error) {
+	var bias *photon.Near
+	if near != nil {
+		bias = &photon.Near{Latitude: near.Latitude, Longitude: near.Longitude}
+	}
+	found, err := p.Client.Search(ctx, query, bias)
+	if err != nil {
+		return nil, fmt.Errorf("searching Photon: %w", err)
+	}
+	matches := make([]httpapi.PlaceMatch, len(found))
+	for index, place := range found {
+		matches[index] = httpapi.PlaceMatch{
+			Name: place.Name, Context: place.Context, Kind: string(place.Kind),
+			Latitude: place.Latitude, Longitude: place.Longitude,
+		}
+	}
+
+	return matches, nil
 }
 
 // surfaceSnapper moves a planned waypoint onto the nearest way the surface map

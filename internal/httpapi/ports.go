@@ -57,10 +57,30 @@ type PlanDelivery struct {
 }
 
 // Places names a coordinate, for a planner that would otherwise show a route
-// as pairs of numbers. Satisfied structurally by a geocoding adapter. An empty
-// name with no error means the geocoder knows of no place there.
+// as pairs of numbers, and finds places by name to plan through. An empty name
+// with no error means the geocoder knows of no place there; no match is an
+// empty slice, not an error.
 type Places interface {
 	Reverse(ctx context.Context, latitude, longitude float64) (string, error)
+	// Search biases towards near where it is non-nil.
+	Search(ctx context.Context, query string, near *PlaceNear) ([]PlaceMatch, error)
+}
+
+// PlaceNear is the point a place search is biased towards.
+type PlaceNear struct {
+	Latitude  float64
+	Longitude float64
+}
+
+// PlaceMatch is one place a search found. Kind is one of the words the
+// contract's PlaceMatch kind carries; Context is empty where nothing wider is
+// known.
+type PlaceMatch struct {
+	Name      string
+	Context   string
+	Kind      string
+	Latitude  float64
+	Longitude float64
 }
 
 // Snapper moves a planned waypoint onto the nearest way the local map holds.

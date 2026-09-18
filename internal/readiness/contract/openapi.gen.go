@@ -401,6 +401,31 @@ type Place struct {
 	Name *string `json:"name,omitempty"`
 }
 
+type PlaceSearch struct {
+	Places []PlaceMatch `json:"places"`
+}
+
+// PlaceMatch_Kind What sort of place it is, for the icon it is drawn with.
+type PlaceMatch_Kind string
+
+const (
+	PlaceMatch_KindAddress    PlaceMatch_Kind = "address"
+	PlaceMatch_KindSettlement PlaceMatch_Kind = "settlement"
+	PlaceMatch_KindStation    PlaceMatch_Kind = "station"
+	PlaceMatch_KindPeak       PlaceMatch_Kind = "peak"
+	PlaceMatch_KindPlace      PlaceMatch_Kind = "place"
+)
+
+// PlaceMatch One place a search found. Context names the wider places it lies within, and is absent where the geocoder holds none.
+type PlaceMatch struct {
+	Name    string  `json:"name"`
+	Context *string `json:"context,omitempty"`
+	// Kind What sort of place it is, for the icon it is drawn with.
+	Kind      PlaceMatch_Kind `json:"kind"`
+	Latitude  float64         `json:"latitude"`
+	Longitude float64         `json:"longitude"`
+}
+
 type SnappedPlace struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
@@ -971,7 +996,7 @@ type WebUIConfig struct {
 	Identity BrowserIdentity `json:"identity"`
 	// Planning Whether a routing engine is configured, so the page offers the planner only where it will answer. Absent means off.
 	Planning *bool `json:"planning,omitempty"`
-	// PlaceNames Whether a geocoder is configured, so the planner asks what a waypoint is called only where the answer exists. Absent means off, and waypoints read as coordinates.
+	// PlaceNames Whether a geocoder is configured, so the planner names waypoints and searches for places only where the answer exists. Absent means off: waypoints read as coordinates and there is no place search.
 	PlaceNames *bool `json:"placeNames,omitempty"`
 }
 

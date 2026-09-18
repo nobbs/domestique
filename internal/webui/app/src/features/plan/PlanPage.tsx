@@ -64,6 +64,7 @@ import { useEscapeKey } from "../../lib/useEscapeKey";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { GroundRibbon } from "../routes/GroundRibbon";
 import { RouteOverlay } from "../routes/RouteOverlay";
+import { PlaceSearch } from "./PlaceSearch";
 import {
   type HiddenRun,
   PlannerSidebar,
@@ -73,6 +74,7 @@ import {
 } from "./PlannerSidebar";
 import {
   initialPlannerState,
+  insertionIndex,
   isPlannerSeed,
   type PlannerAvoid,
   type PlannerSeed,
@@ -349,46 +351,6 @@ function placementIndex(
   append: boolean,
 ): number {
   return append || waypoints.length < 2 ? waypoints.length : insertionIndex(waypoints, waypoint);
-}
-
-function insertionIndex(
-  waypoints: PlannerState["waypoints"],
-  waypoint: { longitude: number; latitude: number },
-): number {
-  if (waypoints.length < 2) {
-    return waypoints.length;
-  }
-  let nearest = 0;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  let nearestIsFinalEndpoint = false;
-
-  for (let index = 0; index < waypoints.length - 1; index++) {
-    const start = waypoints[index];
-    const end = waypoints[index + 1];
-    if (!start || !end) {
-      continue;
-    }
-    const longitudeScale = Math.max(
-      0.01,
-      Math.cos(((start.latitude + end.latitude + waypoint.latitude) / 3) * (Math.PI / 180)),
-    );
-    const endX = (end.longitude - start.longitude) * longitudeScale;
-    const endY = end.latitude - start.latitude;
-    const pointX = (waypoint.longitude - start.longitude) * longitudeScale;
-    const pointY = waypoint.latitude - start.latitude;
-    const lengthSquared = endX * endX + endY * endY;
-    const projection = lengthSquared === 0 ? 0 : (pointX * endX + pointY * endY) / lengthSquared;
-    const fraction = Math.max(0, Math.min(1, projection));
-    const distance = (pointX - endX * fraction) ** 2 + (pointY - endY * fraction) ** 2;
-
-    if (distance < nearestDistance) {
-      nearest = index;
-      nearestDistance = distance;
-      nearestIsFinalEndpoint = index === waypoints.length - 2 && projection >= 1;
-    }
-  }
-
-  return nearestIsFinalEndpoint ? waypoints.length : nearest + 1;
 }
 
 /** The plan's own figures, on the strip beneath the map where the chart is. */
@@ -908,6 +870,14 @@ export function PlanPage() {
       })
       .catch(() => {});
   };
+  const addPlaces = (places: Array<{ longitude: number; latitude: number }>) => {
+    const points = places.map(({ longitude, latitude }) => ({ longitude, latitude }));
+    dispatch({ type: "insertMany", waypoints: points });
+    points.slice(0, 50 - state.waypoints.length).forEach((point, offset) => {
+      settleOnRoad(state.nextWaypointID + offset, point);
+    });
+    setFocusId(state.nextWaypointID);
+  };
   const saving = create.isPending || replace.isPending;
   const deletePlan = async () => {
     if (planId === null || !loadedPlan) {
@@ -968,6 +938,7 @@ export function PlanPage() {
                         }
                         onClick={() => setAvoidArmed((armed) => !armed)}
                       />
+                      {config.data?.placeNames ? <PlaceSearch onAdd={addPlaces} /> : null}
                     </PlannerHistoryControls>
                     <MapControls>
                       <BasemapPicker
