@@ -48,7 +48,7 @@ function SortButton({
       type="button"
       onClick={() => onSort(column)}
       aria-pressed={active}
-      className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-xs hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] ${
+      className={`inline-flex items-center gap-0.5 rounded-[9px] px-1 py-0.5 text-xs hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] ${
         active ? "font-semibold text-[var(--ink)]" : "font-normal text-[var(--ink-2)]"
       }`}
     >

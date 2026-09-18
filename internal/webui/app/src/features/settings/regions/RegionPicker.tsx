@@ -56,7 +56,7 @@ export function RegionPicker({
                     <button
                       type="button"
                       aria-label={`Remove ${slug}`}
-                      className="grid size-5 place-items-center rounded-full hover:bg-[var(--rule)]"
+                      className="grid size-5 place-items-center rounded-[9px] hover:bg-[var(--rule)]"
                       onClick={() => onChange(deselect(value, slug))}
                     >
                       <IconX className="size-3" />

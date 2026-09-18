@@ -225,7 +225,7 @@ export function RoutePanel({
         <div className="flex items-center gap-1.5 p-2 pl-4">
           <span className="min-w-0 max-w-[15rem] truncate font-semibold">{route.title}</span>
           {/* One pill for everything that is not the route: fold, menu, the way out. */}
-          <div className="ml-auto flex shrink-0 overflow-hidden rounded-full bg-[var(--muted)]">
+          <div className="ml-auto flex shrink-0 overflow-hidden rounded-[9px] bg-[var(--muted)]">
             <button
               type="button"
               aria-expanded={!collapsed}

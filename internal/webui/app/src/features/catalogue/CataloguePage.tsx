@@ -129,7 +129,7 @@ function SortHeader({
       <button
         type="button"
         onClick={() => onSort(column)}
-        className={`flex w-full items-center gap-1 rounded-md px-3 py-2 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] ${
+        className={`flex w-full items-center gap-1 rounded-[9px] px-3 py-2 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] ${
           numeric ? "justify-end" : "justify-start"
         }`}
       >

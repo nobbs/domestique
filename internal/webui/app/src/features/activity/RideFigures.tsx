@@ -33,9 +33,9 @@ function withCoverage(note: string | undefined, coverage: number | undefined): s
 }
 
 /** The page's tones plus a quiet one for figures that make no claim. */
-type Tone = VerdictTone | "quiet";
+export type Tone = VerdictTone | "quiet";
 
-interface Headline {
+export interface Headline {
   label: string;
   value: string;
   unit?: string;
@@ -45,7 +45,7 @@ interface Headline {
   tone: Tone;
 }
 
-function colour(tone: Tone): string {
+export function colour(tone: Tone): string {
   return tone === "quiet" ? "var(--ink)" : tone === "info" ? "var(--accent)" : `var(--${tone})`;
 }
 
@@ -122,17 +122,15 @@ function caloriesFigure(ride: Activity): Headline[] {
   return [];
 }
 
-export function RideFigures({ ride }: { ride: Activity | undefined }) {
-  if (!ride) {
-    return null;
-  }
+/** The ride's headline figures, in the order the hero reads them. */
+export function rideHeadlines(ride: Activity): Headline[] {
   const load = loadFigure(ride);
   const stoppedSeconds = ride.elapsedSeconds - ride.movingSeconds;
   // A dash for the ascent is "no usable profile", not a flat ride; nothing to grade.
   const climbing =
     ride.ascentMetres > 0 ? climbingVerdict(ride.ascentMetres, ride.distanceMetres) : null;
   const match = ride.routeMatch;
-  const figures: Headline[] = [
+  return [
     {
       label: "Distance",
       value: formatDistance(ride.distanceMetres),
@@ -177,6 +175,13 @@ export function RideFigures({ ride }: { ride: Activity | undefined }) {
     ...caloriesFigure(ride),
     ...(load ? [load] : []),
   ];
+}
+
+export function RideFigures({ ride }: { ride: Activity | undefined }) {
+  if (!ride) {
+    return null;
+  }
+  const figures = rideHeadlines(ride);
 
   return (
     <dl

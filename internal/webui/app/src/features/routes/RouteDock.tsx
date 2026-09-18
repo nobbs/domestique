@@ -96,7 +96,7 @@ function Panel({
                 openOnHover
                 delay={150}
                 aria-label="More about this"
-                className="grid size-7 place-items-center rounded-full bg-[var(--muted)] text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[popup-open]:bg-[var(--rule)] data-[popup-open]:text-[var(--ink)]"
+                className="grid size-7 place-items-center rounded-[9px] bg-[var(--muted)] text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)] data-[popup-open]:bg-[var(--rule)] data-[popup-open]:text-[var(--ink)]"
               >
                 <IconInfoCircle size={16} stroke={1.8} aria-hidden="true" />
               </PopoverTrigger>
@@ -269,7 +269,7 @@ function ProfileStop({
                   type="button"
                   aria-keyshortcuts="Escape"
                   onClick={() => onZoomChange(null)}
-                  className="rounded-full bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
+                  className="rounded-[9px] bg-[var(--muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--accent)]"
                 >
                   Whole route
                 </button>
@@ -505,7 +505,7 @@ export function RouteDock({
             {entry.icon}
             {entry.label}
             {entry.count === null ? null : (
-              <span className="rounded-full bg-[var(--rule)] px-1.5 py-px text-[10px] text-[var(--ink)] tabular-nums">
+              <span className="rounded-[9px] bg-[var(--rule)] px-1.5 py-px text-[10px] text-[var(--ink)] tabular-nums">
                 {entry.count}
               </span>
             )}

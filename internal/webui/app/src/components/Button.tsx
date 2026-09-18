@@ -111,6 +111,8 @@ function classes(
       variant: PRIMITIVE_VARIANT[variant],
       size: children == null || children === false ? "icon" : "default",
     }),
+    // The segmented control's segment radius, so a button beside one reads as the same shape.
+    "rounded-[9px]",
     variant === "panel" && PANEL,
     variant === "panel" && active && PANEL_ACTIVE,
     variant === "warning" && WARNING,

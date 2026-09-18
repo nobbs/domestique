@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { App } from "./App";
+import { TooltipProvider } from "./components/ui/tooltip";
 import "./index.css";
 import { lockPageZoom } from "./lib/pageZoom";
 
@@ -26,9 +27,12 @@ if (!container) {
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      {/* One short hover delay for every tooltip; Base UI's own 600 ms reads as unresponsive. */}
+      <TooltipProvider delay={150}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

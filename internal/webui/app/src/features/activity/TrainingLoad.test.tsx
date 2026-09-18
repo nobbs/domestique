@@ -46,14 +46,25 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Heart rate")).toBeInTheDocument();
     expect(screen.getByText("142")).toBeInTheDocument();
-    // The peak is folded into the same tile as the average.
-    expect(screen.getByText("178")).toBeInTheDocument();
+    // The peak reads in its own column, on the same row as the average.
+    expect(screen.getByText("max 178")).toBeInTheDocument();
     expect(screen.queryByText("Max heart rate")).not.toBeInTheDocument();
     expect(screen.getByText("Cadence")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
     // "Power" also names the group heading, so the figure is found by its tag.
     expect(screen.getByText("Power", { selector: "span" })).toBeInTheDocument();
     expect(screen.getByText("196")).toBeInTheDocument();
+  });
+
+  it("keeps a max column for a group with peaks, and none for a group without", () => {
+    show({ averageHeartRateBpm: 142, maxHeartRateBpm: 178, trimp: 42 });
+
+    const [sensors, load] = screen.getAllByRole("table") as [HTMLElement, HTMLElement];
+    expect(within(sensors).getByRole("row", { name: /Heart rate/ }).children).toHaveLength(3);
+    expect(within(sensors).getByRole("row", { name: /Heart rate/ })).toHaveTextContent(
+      "142bpmmax 178",
+    );
+    expect(within(load).getByRole("row", { name: /TRIMP/ }).children).toHaveLength(2);
   });
 
   it("lays a power-meter ride's figures out in rows without headings", () => {
@@ -88,7 +99,7 @@ describe("TrainingLoad", () => {
     show({ maxSpeedKmh: 54.2 });
 
     expect(screen.getByText("Speed")).toBeInTheDocument();
-    expect(screen.getByText("54.2")).toBeInTheDocument();
+    expect(screen.getByText("max 54.2")).toBeInTheDocument();
     expect(screen.queryByText("Max speed")).not.toBeInTheDocument();
   });
 
@@ -115,7 +126,7 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Estimated power")).toBeInTheDocument();
     expect(screen.getByText("187")).toBeInTheDocument();
-    expect(screen.getByText("watts, from the track")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Worked out from the track" })).toBeInTheDocument();
     expect(screen.queryByText("Power", { selector: "span" })).not.toBeInTheDocument();
   });
 
@@ -123,7 +134,7 @@ describe("TrainingLoad", () => {
     show({ estimatedPowerWatts: 187.4, estimatedPedallingShare: 0.87 });
 
     expect(
-      screen.getByText("watts while pedalling, 87% of its estimated samples"),
+      screen.getByRole("button", { name: "While pedalling, 87% of its estimated samples" }),
     ).toBeInTheDocument();
   });
 
@@ -140,7 +151,9 @@ describe("TrainingLoad", () => {
   it("says each zone's share of the time the ride held any zone", () => {
     show({ zoneSeconds: [60, 120, 0, 240, 120] });
 
-    const shares = screen.getAllByRole("row").map((row) => row.lastElementChild?.textContent);
+    const shares = within(screen.getByRole("region", { name: "Heart rate" }))
+      .getAllByRole("row")
+      .map((row) => row.lastElementChild?.textContent);
     expect(shares).toEqual(["11%", "22%", "0%", "44%", "22%"]);
   });
 
@@ -243,12 +256,18 @@ describe("TrainingLoad", () => {
 
     expect(screen.getByText("Decoupling")).toBeInTheDocument();
     expect(screen.getByText("4.2")).toBeInTheDocument();
-    expect(screen.getByText("% of ratio lost over the second half")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Share of the power-to-heart-rate ratio lost over the second half",
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Heat drift")).toBeInTheDocument();
     expect(screen.getByText("142")).toBeInTheDocument();
     // The pair, not the beats alone: a heart rate without its temperature is
     // not a reading of riding warm.
-    expect(screen.getByText("bpm in the endurance band at 29 °C")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Held in the endurance band at 29 °C" }),
+    ).toBeInTheDocument();
   });
 
   it("shows neither where the ride carries neither", () => {
@@ -301,7 +320,9 @@ describe("TrainingLoad", () => {
     expect(screen.getByText("612")).toBeInTheDocument();
     expect(screen.getByText("Threshold power")).toBeInTheDocument();
     expect(screen.getByText("260")).toBeInTheDocument();
-    expect(screen.getByText("watts set on the device")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set on the device" })).toBeInTheDocument();
+    // The context sits behind the info mark, not beside the value.
+    expect(screen.queryByText("Set on the device")).not.toBeInTheDocument();
   });
 
   it("leaves out the device figures a ride did not carry", () => {
