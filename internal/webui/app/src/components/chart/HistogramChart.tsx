@@ -10,6 +10,8 @@
  */
 
 import { type ReactNode, useState } from "react";
+import { useElementWidth } from "../../lib/useElementWidth";
+import { topRoundedBar } from "./TimeFrame";
 
 export interface HistogramBar<G extends string | number> {
   value: number;
@@ -37,11 +39,46 @@ export interface HistogramChartProps<G extends string | number> {
   readout?: (index: number) => ReactNode;
 }
 
-/** Height and one span unit's width in viewBox units; the chart is stretched to its box. */
-const HEIGHT = 100;
-const UNIT = 10;
-/** The ground left either side of a bar, in viewBox units. */
+/** The plot's height, and the narrowest it is drawn before it is measured, in pixels. */
+const HEIGHT = 128;
+const MIN_WIDTH = 240;
+/** The ground left either side of a bar, in pixels. */
 const GAP = 1;
+
+export interface BarBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Where each bar stands in a plot `width` pixels wide and HEIGHT tall: across the
+ * span of the axis it covers, as tall as its value per unit against the densest.
+ */
+export function histogramBoxes(bars: readonly { value: number; span?: number }[], width: number) {
+  const spans = bars.map((bar) => bar.span ?? 1);
+  const axis = Math.max(
+    spans.reduce((sum, span) => sum + span, 0),
+    1,
+  );
+  const densities = bars.map((bar, index) => bar.value / (spans[index] ?? 1));
+  const tallest = Math.max(0, ...densities);
+  let start = 0;
+
+  return bars.map((_, index): BarBox => {
+    const span = spans[index] ?? 1;
+    const height = tallest > 0 ? ((densities[index] ?? 0) / tallest) * HEIGHT : 0;
+    const box = {
+      x: (start / axis) * width + GAP,
+      y: HEIGHT - height,
+      width: Math.max((span / axis) * width - 2 * GAP, 1),
+      height,
+    };
+    start += span;
+    return box;
+  });
+}
 
 export function HistogramChart<G extends string | number>({
   label,
@@ -53,16 +90,15 @@ export function HistogramChart<G extends string | number>({
   readout,
 }: HistogramChartProps<G>) {
   const [pointed, setPointed] = useState<number | null>(null);
-  const spans = bars.map((bar) => bar.span ?? 1);
-  const starts = spans.map((_, index) =>
-    spans.slice(0, index).reduce((sum, span) => sum + span, 0),
-  );
-  const axis = spans.reduce((sum, span) => sum + span, 0);
-  const densities = bars.map((bar, index) => bar.value / (spans[index] ?? 1));
-  const tallest = Math.max(0, ...densities);
-  const heightOf = (index: number) =>
-    tallest > 0 ? ((densities[index] ?? 0) / tallest) * HEIGHT : 0;
+  const { ref, width: measured } = useElementWidth<HTMLDivElement>();
+  const width = Math.max(measured, MIN_WIDTH);
+  const boxes = histogramBoxes(bars, width);
+  const axis = bars.reduce((sum, bar) => sum + (bar.span ?? 1), 0);
   const percent = (edge: number) => (edge / Math.max(axis, 1)) * 100;
+  const columnOf = (index: number) => {
+    const box = boxes[index];
+    return box ? { x: box.x - GAP, width: box.width + 2 * GAP } : { x: 0, width: 0 };
+  };
 
   const opacity = (index: number, group: G) => {
     if (pointed !== null) {
@@ -74,11 +110,11 @@ export function HistogramChart<G extends string | number>({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="relative">
+      <div ref={ref} className="relative">
         <svg
-          viewBox={`0 0 ${axis * UNIT} ${HEIGHT}`}
-          preserveAspectRatio="none"
-          className="block h-32 w-full"
+          width={width}
+          height={HEIGHT}
+          className="block"
           role="img"
           aria-label={label}
           onMouseLeave={() => {
@@ -91,11 +127,11 @@ export function HistogramChart<G extends string | number>({
             <rect
               // biome-ignore lint/suspicious/noArrayIndexKey: a bar's place is its identity
               key={index}
-              x={(starts[index] ?? 0) * UNIT}
+              {...columnOf(index)}
               y={0}
-              width={(spans[index] ?? 1) * UNIT}
               height={HEIGHT}
               fill="transparent"
+              className="cursor-pointer"
               onMouseEnter={() => {
                 setPointed(index);
                 onActiveGroup?.(bar.group);
@@ -103,44 +139,43 @@ export function HistogramChart<G extends string | number>({
             />
           ))}
           {bars.map((bar, index) => {
-            const height = heightOf(index);
-            return (
-              <rect
+            const box = boxes[index];
+            return box ? (
+              <path
                 // biome-ignore lint/suspicious/noArrayIndexKey: a bar's place is its identity
                 key={index}
                 data-bar={index}
-                x={(starts[index] ?? 0) * UNIT + GAP}
-                y={HEIGHT - height}
-                width={(spans[index] ?? 1) * UNIT - 2 * GAP}
-                height={height}
+                d={topRoundedBar(box.x, box.y, box.width, box.height)}
                 fill={bar.colour}
                 opacity={opacity(index, bar.group)}
                 pointerEvents="none"
               />
+            ) : null;
+          })}
+          {markers.map((marker) => {
+            const x = (marker.edge / Math.max(axis, 1)) * width;
+            return (
+              <line
+                key={marker.edge}
+                x1={x}
+                x2={x}
+                y1={0}
+                y2={HEIGHT}
+                stroke="var(--ink-2)"
+                strokeDasharray="3 3"
+                strokeWidth={1}
+                pointerEvents="none"
+              />
             );
           })}
-          {markers.map((marker) => (
-            <line
-              key={marker.edge}
-              x1={marker.edge * UNIT}
-              x2={marker.edge * UNIT}
-              y1={0}
-              y2={HEIGHT}
-              stroke="var(--ink-2)"
-              strokeDasharray="3 3"
-              strokeWidth={1}
-              vectorEffect="non-scaling-stroke"
-              pointerEvents="none"
-            />
-          ))}
         </svg>
-        {pointed !== null && readout ? (
+        {pointed !== null && readout && boxes[pointed] ? (
           <div
-            className="-translate-x-1/2 -translate-y-full pointer-events-none absolute flex flex-col whitespace-nowrap rounded-md bg-[var(--panel)] px-2 py-1 text-xs tabular-nums shadow-md ring-1 ring-black/10"
+            className="-translate-x-1/2 -translate-y-full pointer-events-none absolute flex flex-col whitespace-nowrap rounded-lg bg-[var(--primary)] px-2.5 py-1.5 text-[var(--primary-foreground)] text-xs tabular-nums shadow-lg"
             style={{
               // Clamped so the readout over an edge bar stays inside the chart.
-              left: `${Math.min(88, Math.max(12, percent((starts[pointed] ?? 0) + (spans[pointed] ?? 1) / 2)))}%`,
-              top: `calc(${100 - (heightOf(pointed) / HEIGHT) * 100}% - 6px)`,
+              left: `${Math.min(88, Math.max(12, ((boxes[pointed].x + boxes[pointed].width / 2) / width) * 100))}%`,
+              top: boxes[pointed].y - 6,
             }}
           >
             {readout(pointed)}

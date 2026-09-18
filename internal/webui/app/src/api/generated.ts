@@ -398,6 +398,8 @@ export interface Activity {
   caloriesKcal?: number;
   typeId: number;
   locationId: number;
+  /** Whether the ride was ridden over no ground, as its workout type says: a trainer or virtual ride, whichever upstream recorded it. */
+  indoor: boolean;
   /** Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift. */
   provider: ActivityProvider;
   /** The ride's name as Zwift lists it, from its own single-activity response: a structured workout's name, or a free ride's route. Absent for every other provider. */

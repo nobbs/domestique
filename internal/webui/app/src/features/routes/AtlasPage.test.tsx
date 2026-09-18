@@ -545,6 +545,7 @@ describe("AtlasPage", () => {
           ascentMetres: 600,
           typeId: 40,
           locationId: 0,
+          indoor: false,
           provider: "wahoo",
           routeMatch: {
             provider: "veloplanner",

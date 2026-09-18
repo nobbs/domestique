@@ -57,6 +57,8 @@
   --series-speed: #236fc7;
   --series-target-power: #a3238e;
   --series-ahead-of-prediction: #4f7a1f;
+  --ground-outdoor: #5f7f2e;
+  --ground-indoor: #4f6d8a;
   --surface-asphalt: #556b82;
   --surface-paving: #7d3ab7;
   --surface-compacted: #009c89;
@@ -130,6 +132,8 @@
   --series-speed: #70adfb;
   --series-target-power: #e29be0;
   --series-ahead-of-prediction: #a6d46a;
+  --ground-outdoor: #a9c96f;
+  --ground-indoor: #93afcb;
   --surface-asphalt: #8da8c3;
   --surface-paving: #b77ff2;
   --surface-compacted: #59ceba;
@@ -203,6 +207,8 @@
     --series-speed: #70adfb;
     --series-target-power: #e29be0;
     --series-ahead-of-prediction: #a6d46a;
+    --ground-outdoor: #a9c96f;
+    --ground-indoor: #93afcb;
     --surface-asphalt: #8da8c3;
     --surface-paving: #b77ff2;
     --surface-compacted: #59ceba;

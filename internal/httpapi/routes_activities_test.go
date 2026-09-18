@@ -470,6 +470,7 @@ func TestGetActivitiesServesTheCallersWholeHistoryByDefault(t *testing.T) {
 	assert.InDelta(t, 1000.0, list.Activities[0].DistanceMetres, 1e-9)
 	assert.Equal(t, 15, list.Activities[0].TypeID)
 	assert.Equal(t, 1, list.Activities[0].LocationID)
+	assert.False(t, list.Activities[0].Indoor, "type 15 is ridden over ground")
 	assert.Equal(t, openapi.Activity_ProviderWahoo, list.Activities[0].Provider, "which upstream recorded the ride")
 }
 
@@ -1336,4 +1337,18 @@ func TestReanalyseActivityReportsARefusedStartAndAnUnreadableStore(t *testing.T)
 		assert.Equal(t, http.StatusServiceUnavailable,
 			postReanalyse(t, newFakeSessions(), state, reanalyseTasks(), "/v1/activities/1/reanalyse?target=rider-a"), name)
 	}
+}
+
+// Indoor follows the workout type alone, whichever upstream read the ride.
+func TestGetActivitiesMarksIndoorRidesByWorkoutType(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 48*time.Hour)
+	state.activities["rider-a"][1].TypeID = 68
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+	handler.indoorTypes = []int{68}
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+	assert.False(t, list.Activities[0].Indoor)
+	assert.True(t, list.Activities[1].Indoor)
 }

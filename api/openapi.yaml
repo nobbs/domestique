@@ -2060,6 +2060,7 @@ components:
         - ascentMetres
         - typeId
         - locationId
+        - indoor
         - provider
       properties:
         id:
@@ -2095,6 +2096,11 @@ components:
           type: integer
         locationId:
           type: integer
+        indoor:
+          type: boolean
+          description: >-
+            Whether the ride was ridden over no ground, as its workout type
+            says: a trainer or virtual ride, whichever upstream recorded it.
         provider:
           type: string
           enum:

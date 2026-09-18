@@ -2,12 +2,12 @@
  * Volume, as a reader drives it.
  *
  * What is asserted is the agreement the page keeps: the totals are the whole
- * window added up, the toggle changes which period the rows count, and a rider
+ * window added up, the chart counts weeks and the list months, and a rider
  * with nothing recorded is told where a Wahoo account is connected.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -43,6 +43,7 @@ function activity(startedAt: Date, overrides: Partial<Activity> = {}): Activity 
     ascentMetres: 300,
     typeId: 40,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     ...overrides,
   };
@@ -80,34 +81,116 @@ describe("the volume page", () => {
     vi.setSystemTime(NOW);
     show();
 
-    expect(screen.getByText("60.0 km")).toBeInTheDocument();
-    expect(screen.getByText("2 h")).toBeInTheDocument();
-    expect(screen.getByText("600 m")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent("60.0 km");
+    expect(screen.getByRole("group", { name: "Moving time" })).toHaveTextContent("2 h");
+    expect(screen.getByRole("group", { name: "Ascent" })).toHaveTextContent("600 m");
     expect(screen.queryByText(/browser's time zone/)).not.toBeInTheDocument();
   });
 
-  it("includes a ride several years old in the totals", () => {
+  it("includes a ride several years old in the totals once all are asked for", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(NOW);
     show([activity(new Date(2021, 7, 26, 8)), ...ACTIVITIES]);
+    await userEvent.click(screen.getByRole("button", { name: "All" }));
 
-    expect(screen.getByText("90.0 km")).toBeInTheDocument();
-    expect(screen.getByText("3 h")).toBeInTheDocument();
-    expect(screen.getByText("900 m")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent("90.0 km");
+    expect(screen.getByRole("group", { name: "Moving time" })).toHaveTextContent("3 h");
+    expect(screen.getByRole("group", { name: "Ascent" })).toHaveTextContent("900 m");
   });
 
-  it("counts by month once the reader asks for months", async () => {
+  it("charts the weeks and lists the months", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(NOW);
     show();
 
-    expect(screen.getByRole("heading", { name: "By week", level: 2 })).toBeInTheDocument();
-    expect(screen.getAllByText(/1 ride/)).toHaveLength(2);
+    expect(
+      // The year shown runs from its start, weeks nobody rode included.
+      screen.getByRole("img", { name: "Distance in each of the last 53 weeks" }),
+    ).toBeInTheDocument();
+    const months = screen.getByRole("region", { name: "By month" });
+    expect(within(months).getByText(/2 rides/)).toBeInTheDocument();
+  });
 
-    await userEvent.click(screen.getByRole("button", { name: "Month" }));
+  it("reads a week out without naming a ground nobody rode on", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    show();
 
-    expect(screen.getByRole("heading", { name: "By month", level: 2 })).toBeInTheDocument();
-    expect(screen.getByText(/2 rides/)).toBeInTheDocument();
+    const chart = screen.getByRole("img", { name: /^Distance in each/ });
+    // From the newest week, which is empty, back to the one holding the ride of 26 August.
+    fireEvent.keyDown(chart.parentElement as HTMLElement, { key: "ArrowLeft" });
+
+    const readout = screen.getByRole("status");
+    expect(readout).toHaveTextContent("1 ride30.0 km");
+    expect(readout).toHaveTextContent("Outdoor");
+    expect(readout).not.toHaveTextContent("Indoor");
+  });
+
+  it("sets this year against the last and names the records", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    show([activity(new Date(2025, 7, 26, 8), { distanceMetres: 90_000 }), ...ACTIVITIES]);
+    await userEvent.click(screen.getByRole("button", { name: "All" }));
+
+    const year = screen.getByRole("region", { name: "This year" });
+    expect(within(year).getByText("60.0 km")).toBeInTheDocument();
+    expect(within(year).getByText("−33%")).toBeInTheDocument();
+    const records = screen.getByRole("region", { name: "Records" });
+    expect(within(records).getByRole("link", { name: /Longest ride/ })).toHaveAttribute(
+      "href",
+      `/activities/${new Date(2025, 7, 26, 8).getTime()}`,
+    );
+  });
+
+  it("counts only the ground the reader picks", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    show([
+      activity(new Date(2026, 7, 27, 18), { indoor: true, distanceMetres: 25_000 }),
+      ...ACTIVITIES,
+    ]);
+
+    // Both grounds at once: the whole, then each ground's share beneath it.
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent(
+      "85.0 km60.0 km25.0 km",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Indoor" }));
+    // One ground alone carries no split.
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent(/^Distance25\.0 km$/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Outdoor" }));
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent("60.0 km");
+  });
+
+  it("says so when no ride was ridden on the ground picked", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    show();
+
+    await userEvent.click(screen.getByRole("button", { name: "Indoor" }));
+    expect(screen.getByText("No indoor rides in the last year.")).toBeInTheDocument();
+  });
+
+  it("counts only the range picked, and keeps this year to its calendar", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    show([
+      activity(new Date(2025, 11, 1, 8), { distanceMetres: 10_000 }),
+      activity(new Date(2026, 2, 1, 8), { distanceMetres: 40_000 }),
+      ...ACTIVITIES,
+    ]);
+
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent("110 km");
+
+    await userEvent.click(screen.getByRole("button", { name: "3 months" }));
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent("60.0 km");
+    expect(
+      within(screen.getByRole("region", { name: "This year" })).getByText("100 km"),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "YTD" }));
+    expect(screen.getByRole("group", { name: "Distance" })).toHaveTextContent("100 km");
   });
 
   it("sends a rider with nothing recorded to their settings", () => {

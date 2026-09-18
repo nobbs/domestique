@@ -3,10 +3,14 @@ import type { Activity } from "../api/types";
 import { LOCALE } from "./format";
 import {
   bucketActivities,
+  startOfYear,
+  volumeRecords,
   volumeTotals,
   weekdayIndex,
+  weekdayTotals,
   weekRangeLabel,
   weeksWithRides,
+  yearToDate,
 } from "./volume";
 
 // The runner's own zone, so the pre-existing assertions below (none of which
@@ -23,6 +27,7 @@ function activity(startedAt: Date, overrides: Partial<Activity> = {}): Activity 
     ascentMetres: 300,
     typeId: 40,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     ...overrides,
   };
@@ -209,6 +214,97 @@ describe("weekRangeLabel", () => {
 
     expect(weekRangeLabel(new Date(Date.UTC(2026, 7, 31)), "UTC")).toBe(
       `${day(new Date(Date.UTC(2026, 7, 31)))} – ${day(new Date(Date.UTC(2026, 8, 6)))}`,
+    );
+  });
+});
+
+describe("yearToDate", () => {
+  it("compares this year so far with last year to the same day", () => {
+    const totals = yearToDate(
+      [
+        activity(new Date(2026, 0, 2, 8)),
+        activity(new Date(2026, 8, 5, 8)),
+        activity(new Date(2025, 8, 5, 8)),
+        // The day after today, a year ago: not yet reached this year.
+        activity(new Date(2025, 8, 6, 8)),
+        activity(new Date(2024, 8, 1, 8)),
+      ],
+      ZONE,
+      NOW,
+    );
+
+    expect(totals.year).toBe(2026);
+    expect(totals.current.count).toBe(2);
+    expect(totals.previous.count).toBe(1);
+  });
+
+  it("reads the year in the zone given, not the runner's", () => {
+    // 23:30 UTC on New Year's Eve is already 2026 in Auckland.
+    const late = activity(new Date(Date.UTC(2025, 11, 31, 23, 30)));
+
+    expect(yearToDate([late], "Pacific/Auckland", NOW).current.count).toBe(1);
+    expect(yearToDate([late], "UTC", NOW).current.count).toBe(0);
+  });
+});
+
+describe("volumeRecords", () => {
+  it("names the biggest week, month, ride and climb", () => {
+    const long = activity(new Date(2026, 7, 3, 8), { distanceMetres: 120_000 });
+    const steep = activity(new Date(2026, 6, 1, 8), { ascentMetres: 2_000 });
+    const records = volumeRecords(
+      [
+        long,
+        steep,
+        activity(new Date(2026, 8, 1, 8)),
+        activity(new Date(2026, 8, 2, 8)),
+        activity(new Date(2026, 8, 3, 8)),
+        activity(new Date(2026, 8, 4, 8)),
+        activity(new Date(2026, 8, 5, 8)),
+      ],
+      ZONE,
+      NOW,
+    );
+
+    expect(records?.longestRide).toBe(long);
+    expect(records?.mostClimbing).toBe(steep);
+    expect(records?.biggestWeek.distanceMetres).toBe(150_000);
+    expect(records?.biggestWeek.start).toEqual(new Date(2026, 7, 31));
+    expect(records?.biggestMonth.distanceMetres).toBe(150_000);
+  });
+
+  it("has none without a dated ride", () => {
+    expect(volumeRecords([activity(NOW, { startedAt: "unknown" })], ZONE, NOW)).toBeUndefined();
+  });
+});
+
+describe("weekdayTotals", () => {
+  it("counts each weekday Monday first", () => {
+    const totals = weekdayTotals(
+      [activity(new Date(2026, 7, 31, 8)), activity(new Date(2026, 8, 6, 8))],
+      ZONE,
+    );
+
+    expect(totals.map((day) => day.count)).toEqual([1, 0, 0, 0, 0, 0, 1]);
+  });
+});
+
+describe("startOfYear", () => {
+  it("is midnight on 1 January in the zone given, not the runner's", () => {
+    expect(startOfYear("Pacific/Auckland", NOW)).toEqual(new Date(Date.UTC(2025, 11, 31, 11)));
+    expect(startOfYear("UTC", NOW)).toEqual(new Date(Date.UTC(2026, 0, 1)));
+  });
+});
+
+describe("bucketActivities from a given start", () => {
+  it("runs from the start, empty periods included, and starts the oldest bucket there", () => {
+    const from = new Date(2026, 0, 1);
+    const weeks = bucketActivities([activity(new Date(2026, 1, 10, 8))], "week", ZONE, NOW, from);
+
+    // 1 January 2026 is a Thursday: its week began on 29 December, but the bucket starts on the 1st.
+    expect(weeks.at(-1)?.start).toEqual(from);
+    expect(weeks.at(-1)?.count).toBe(0);
+    expect(weeks.at(-1)?.label).toBe(
+      new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short" }).format(from),
     );
   });
 });

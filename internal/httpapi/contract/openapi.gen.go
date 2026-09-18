@@ -123,6 +123,8 @@ type Activity struct {
 	CaloriesKcal *float64 `json:"caloriesKcal,omitempty"`
 	TypeID       int      `json:"typeId"`
 	LocationID   int      `json:"locationId"`
+	// Indoor Whether the ride was ridden over no ground, as its workout type says: a trainer or virtual ride, whichever upstream recorded it.
+	Indoor bool `json:"indoor"`
 	// Provider Which upstream this service read the ride from, not where it was ridden: an indoor ride recorded by a Wahoo head unit still answers wahoo, not zwift.
 	Provider Activity_Provider `json:"provider"`
 	// WorkoutName The ride's name as Zwift lists it, from its own single-activity response: a structured workout's name, or a free ride's route. Absent for every other provider.

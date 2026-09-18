@@ -202,8 +202,9 @@ interface RidesBucket extends VolumeBucket {
 export type RideWeek = Omit<RidesBucket, "rides"> & { rides: readonly Activity[] };
 
 /**
- * One bucket per period from the earliest activity to `now`, newest first,
- * each carrying the activities that landed in it.
+ * One bucket per period from the earliest activity, or from `from` when
+ * given, to `now`, newest first, each carrying the activities that landed in it.
+ * A `from` inside a period starts that oldest bucket at `from` itself.
  *
  * Periods nobody rode in are present and zero: a gap is a fact about the
  * riding, and a list that closed over it would read as an unbroken run.
@@ -214,6 +215,7 @@ function bucketsWithRides(
   zone: string,
   now: Date,
   withRides: boolean,
+  from?: Date,
 ): RidesBucket[] {
   const dated = dateActivities(activities);
   if (dated.length === 0) {
@@ -221,7 +223,8 @@ function bucketsWithRides(
   }
 
   const earliest = startOfBucket(
-    new Date(dated.reduce((low, { startedAt }) => Math.min(low, startedAt.getTime()), Infinity)),
+    from ??
+      new Date(dated.reduce((low, { startedAt }) => Math.min(low, startedAt.getTime()), Infinity)),
     granularity,
     zone,
   );
@@ -232,7 +235,8 @@ function bucketsWithRides(
     start.getTime() >= earliest.getTime();
     start = previousBucket(start, granularity, zone)
   ) {
-    const bucket = { ...empty(start, granularity, zone), rides: withRides ? [] : NO_RIDES };
+    const shown = from && start.getTime() < from.getTime() ? from : start;
+    const bucket = { ...empty(shown, granularity, zone), rides: withRides ? [] : NO_RIDES };
     buckets.push(bucket);
     byStart.set(start.getTime(), bucket);
   }
@@ -255,9 +259,10 @@ export function bucketActivities(
   granularity: Granularity,
   zone: string,
   now = new Date(),
+  from?: Date,
 ): VolumeBucket[] {
   // Stripped rather than hidden by the type: a totals-only bucket carries nothing.
-  return bucketsWithRides(activities, granularity, zone, now, false).map(
+  return bucketsWithRides(activities, granularity, zone, now, false, from).map(
     ({ rides: _rides, ...bucket }) => bucket,
   );
 }
@@ -294,4 +299,73 @@ export function weekRangeLabel(start: Date, zone: string): string {
   const end = zonedMidnight(year, month, day + 6, zone);
 
   return `${rangeFormatter(zone).format(start)} – ${rangeFormatter(zone).format(end)}`;
+}
+
+export interface YearToDate {
+  year: number;
+  current: VolumeTotals;
+  /** The year before, over the same calendar days up to and including today's. */
+  previous: VolumeTotals;
+}
+
+/** Midnight on 1 January of `now`'s year, as read in `zone`. */
+export function startOfYear(zone: string, now = new Date()): Date {
+  return zonedMidnight(zonedParts(now, zone).year, 1, 1, zone);
+}
+
+/** This calendar year so far in `zone`, beside the previous year to the same day. */
+export function yearToDate(activities: Activity[], zone: string, now = new Date()): YearToDate {
+  const today = zonedParts(now, zone);
+  const dayOfYear = (parts: ZonedParts) => parts.month * 100 + parts.day;
+  const pick = (year: number) =>
+    dateActivities(activities)
+      .filter(({ startedAt }) => {
+        const parts = zonedParts(startedAt, zone);
+        return parts.year === year && dayOfYear(parts) <= dayOfYear(today);
+      })
+      .map(({ activity }) => activity);
+
+  return {
+    year: today.year,
+    current: volumeTotals(pick(today.year)),
+    previous: volumeTotals(pick(today.year - 1)),
+  };
+}
+
+export interface VolumeRecords {
+  biggestWeek: VolumeBucket;
+  biggestMonth: VolumeBucket;
+  longestRide: Activity;
+  mostClimbing: Activity;
+}
+
+/** The largest week, month, ride and climb on record; undefined with no dated ride. */
+export function volumeRecords(
+  activities: Activity[],
+  zone: string,
+  now = new Date(),
+): VolumeRecords | undefined {
+  const rides = dateActivities(activities).map(({ activity }) => activity);
+  const most = <T>(items: readonly T[], value: (item: T) => number) =>
+    items.reduce((best, item) => (value(item) > value(best) ? item : best));
+  if (rides.length === 0) {
+    return undefined;
+  }
+
+  return {
+    biggestWeek: most(bucketActivities(rides, "week", zone, now), (week) => week.distanceMetres),
+    biggestMonth: most(
+      bucketActivities(rides, "month", zone, now),
+      (month) => month.distanceMetres,
+    ),
+    longestRide: most(rides, (ride) => ride.distanceMetres),
+    mostClimbing: most(rides, (ride) => ride.ascentMetres),
+  };
+}
+
+/** Totals for each weekday in `zone`, Monday first. */
+export function weekdayTotals(activities: Activity[], zone: string): VolumeTotals[] {
+  return Array.from({ length: 7 }, (_, weekday) =>
+    volumeTotals(activities.filter((ride) => weekdayIndex(ride, zone) === weekday)),
+  );
 }

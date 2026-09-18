@@ -19,6 +19,7 @@ const ride: Activity = {
   ascentMetres: 420,
   typeId: 0,
   locationId: 0,
+  indoor: false,
   provider: "wahoo",
 };
 

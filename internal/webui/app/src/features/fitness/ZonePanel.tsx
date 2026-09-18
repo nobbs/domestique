@@ -1,7 +1,13 @@
 /** Each week's time in heart-rate zones, stacked easiest at the foot, on the ride page's colours. */
 
 import type { FitnessWeek } from "../../api/types";
-import { ChartLegend, ReadoutRow, TimeFrame } from "../../components/chart/TimeFrame";
+import {
+  barOpacity,
+  ChartLegend,
+  ReadoutRow,
+  TimeFrame,
+  topRoundedBar,
+} from "../../components/chart/TimeFrame";
 import { formatDuration } from "../../lib/format";
 import { ZONE_NAMES, zoneColour } from "../activity/HeartRateZones";
 import { daysBetween } from "./form";
@@ -44,6 +50,7 @@ export function ZonePanel({ weeks, dates }: Props) {
         label={`Hours in each heart-rate zone over ${shown.length} ${shown.length === 1 ? "week" : "weeks"}`}
         dates={dates}
         snap={shown.map((week) => span(week).start)}
+        bars
         readout={(index) => {
           const week = shown.find((one) => span(one).start === index);
           if (!week) {
@@ -70,27 +77,36 @@ export function ZonePanel({ weeks, dates }: Props) {
             height: 150,
             domain: [0, high],
             format: (value) => `${value}h`,
-            draw: (x, y) =>
+            draw: (x, y, active) =>
               shown.map((week) => {
                 const { start, end } = span(week);
                 const left = x(start) + 1;
                 const width = Math.max(x(end) - left - 1, 3);
                 let base = 0;
+                const topZone = week.zoneSeconds.findLastIndex((seconds) => seconds > 0);
                 return (
-                  <g key={week.weekStart}>
+                  <g key={week.weekStart} opacity={barOpacity(active, start)}>
                     {week.zoneSeconds.map((seconds, zone) => {
                       const top = base + seconds / 3600;
-                      const segment = (
-                        <rect
-                          key={ZONE_NAMES[zone]}
-                          x={left}
-                          y={y(top)}
-                          width={width}
-                          // A surface-coloured gap keeps neighbouring zones apart.
-                          height={Math.max(y(base) - y(top) - 1, 0)}
-                          fill={zoneColour(zone)}
-                        />
-                      );
+                      // A surface-coloured gap keeps neighbouring zones apart.
+                      const height = Math.max(y(base) - y(top) - 1, 0);
+                      const segment =
+                        zone === topZone ? (
+                          <path
+                            key={ZONE_NAMES[zone]}
+                            d={topRoundedBar(left, y(top), width, height)}
+                            fill={zoneColour(zone)}
+                          />
+                        ) : (
+                          <rect
+                            key={ZONE_NAMES[zone]}
+                            x={left}
+                            y={y(top)}
+                            width={width}
+                            height={height}
+                            fill={zoneColour(zone)}
+                          />
+                        );
                       base = top;
                       return segment;
                     })}

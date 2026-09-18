@@ -494,7 +494,8 @@ The read-only JSON surface is small:
   It is omitted, never zero, for a route nothing has predicted yet.
 - `GET /v1/activities` returns one target's recorded activities, newest first:
   each one's workout id, start time, distance, moving and elapsed time, ascent,
-  Wahoo's workout type and location ids, and which upstream — `wahoo` or
+  Wahoo's workout type and location ids, whether that type makes it an
+  [indoor ride](#recorded-activities) ridden over no ground, and which upstream — `wahoo` or
   `zwift` — this service read it from, never the verbatim summary document. A
   Zwift ride also carries the name Zwift lists it under — a structured
   workout's name, or a free ride's route — with Zwift's stable hash of it and

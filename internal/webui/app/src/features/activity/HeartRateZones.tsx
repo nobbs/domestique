@@ -260,7 +260,7 @@ function DistributionChart({
           {bucket.fromBpm === bucket.toBpm ? bucket.fromBpm : `${bucket.fromBpm}–${bucket.toBpm}`}{" "}
           bpm
         </span>
-        <span className="text-[var(--ink-2)]">
+        <span className="opacity-70">
           {formatDuration(bucket.seconds)} · {formatShare(bucket.seconds, total)}
         </span>
       </>

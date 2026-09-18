@@ -54,14 +54,16 @@ describe("SeasonChart", () => {
     );
 
     const today = container.querySelector('line[stroke-dasharray="1 3"]');
-    const bars = [...container.querySelectorAll('rect[fill="var(--ink-2)"]')];
+    const bars = [...container.querySelectorAll('path[fill="var(--ink-2)"]')];
     expect(today).not.toBeNull();
     expect(bars).toHaveLength(2);
     const todayX = Number(today?.getAttribute("x1"));
     for (const bar of bars) {
-      expect(Number(bar.getAttribute("x")) + Number(bar.getAttribute("width"))).toBeLessThanOrEqual(
-        todayX,
+      // A bar's rightmost point is the largest x among the path's "x,y" pairs.
+      const xs = [...(bar.getAttribute("d") ?? "").matchAll(/(-?[\d.]+),-?[\d.]+/g)].map((pair) =>
+        Number(pair[1]),
       );
+      expect(Math.max(...xs)).toBeLessThanOrEqual(todayX);
     }
   });
 });

@@ -27,7 +27,7 @@ export function StripFigure({
   chip?: string;
   /** The chip's colour; the chip always names the status in words too. */
   tone?: string;
-  note?: string;
+  note?: ReactNode;
 }) {
   return (
     <div

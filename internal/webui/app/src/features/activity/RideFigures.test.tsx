@@ -13,6 +13,7 @@ function ride(metrics?: ActivityMetrics, totals?: Partial<Activity>): Activity {
     ascentMetres: 420,
     typeId: 0,
     locationId: 0,
+    indoor: false,
     provider: "wahoo",
     ...(metrics ? { metrics } : {}),
     ...totals,

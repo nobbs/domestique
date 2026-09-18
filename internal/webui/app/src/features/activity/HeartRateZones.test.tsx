@@ -32,8 +32,8 @@ function show(
   );
 }
 
-function bars(container: HTMLElement): SVGRectElement[] {
-  return Array.from(container.querySelectorAll<SVGRectElement>("rect[data-bar]"));
+function bars(container: HTMLElement): SVGPathElement[] {
+  return Array.from(container.querySelectorAll<SVGPathElement>("path[data-bar]"));
 }
 
 afterEach(() => {
