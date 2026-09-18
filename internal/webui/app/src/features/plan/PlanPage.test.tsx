@@ -420,6 +420,17 @@ describe("PlanPage", () => {
     expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
     expect(screen.getByText("Preview unavailable")).toBeInTheDocument();
     expect(waypointRows()).toHaveLength(2);
+
+    // The copied route stays on the map to compare against, until it is toggled off.
+    const toggle = screen.getByRole("button", { name: "Show the copied route" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(
+      JSON.parse(screen.getByTestId("plan-copied-route").dataset.geometry ?? "{}").geometry
+        .coordinates,
+    ).toHaveLength(3);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("plan-copied-route")).not.toBeInTheDocument();
   });
 
   it("initializes a new draft from a copied route seed without saving it", async () => {
@@ -468,6 +479,7 @@ describe("PlanPage", () => {
     expect(waypointRows()[1]).toContain("49.1000, 8.1000");
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
     expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
+    expect(screen.queryByRole("button", { name: "Show the copied route" })).not.toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
 
     act(() => vi.advanceTimersByTime(300));

@@ -10,6 +10,7 @@ import {
   IconLayoutBottombarCollapse,
   IconMountain,
   IconRoad,
+  IconRoute,
   IconWalk,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -280,6 +281,35 @@ function HiddenRunLayer({
         type="line"
         layout={{ "line-cap": "round", "line-join": "round" }}
         paint={{ "line-color": colour, "line-width": 7, "line-opacity": 0.9 }}
+      />
+    </Source>
+  );
+}
+
+/** The library route a copy was traced along, dashed under the plan so a deviation stands out. */
+function CopiedRouteLayer({ route }: { route: Position[] }) {
+  const colour = useThemeColour("--hold", "#9a6700");
+  const data = useMemo(
+    () => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "LineString" as const, coordinates: route },
+    }),
+    [route],
+  );
+
+  return (
+    <Source id="plan-copied-route" type="geojson" data={data}>
+      <Layer
+        id="plan-copied-route-line"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{
+          "line-color": colour,
+          "line-width": 5,
+          "line-opacity": 0.85,
+          "line-dasharray": [1.5, 1.5],
+        }}
       />
     </Source>
   );
@@ -656,6 +686,8 @@ export function PlanPage() {
   // A copy still being traced along its library route, advanced once per preview.
   const trace = useRef<TraceProgress | null>(null);
   const [tracing, setTracing] = useState(false);
+  const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
+  const [copiedRouteShown, setCopiedRouteShown] = useState(true);
   const request = useRef(0);
   const queryPlan = plan.data?.data;
   const loadedPlan =
@@ -690,6 +722,8 @@ export function PlanPage() {
       }
     }
     setTracing(trace.current !== null);
+    setCopiedRoute(trace.current?.route ?? null);
+    setCopiedRouteShown(true);
     setPreviewError(null);
     setSaveError(handedError);
     setActiveMetres(null);
@@ -985,6 +1019,19 @@ export function PlanPage() {
                         }
                         onClick={() => setAvoidArmed((armed) => !armed)}
                       />
+                      {copiedRoute ? (
+                        <Button
+                          variant="panel"
+                          icon={<IconRoute stroke={1.8} />}
+                          active={copiedRouteShown}
+                          aria-pressed={copiedRouteShown}
+                          aria-label="Show the copied route"
+                          title={
+                            copiedRouteShown ? "Hide the copied route" : "Show the copied route"
+                          }
+                          onClick={() => setCopiedRouteShown((shown) => !shown)}
+                        />
+                      ) : null}
                       {config.data?.placeNames ? <PlaceSearch onAdd={addPlaces} /> : null}
                     </PlannerHistoryControls>
                     <MapControls>
@@ -1053,6 +1100,7 @@ export function PlanPage() {
                   // first fills it; the map re-frames after either.
                   fitRevision={narrow || !dockOpen ? 0 : profile ? 2 : 1}
                 />
+                {copiedRoute && copiedRouteShown ? <CopiedRouteLayer route={copiedRoute} /> : null}
                 <RouteTransition
                   legs={legs}
                   morph={morphing}
