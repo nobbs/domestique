@@ -7,12 +7,14 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getGetPlanQueryKey, getListPlansQueryKey } from "../../api/generated";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Route as LibraryRoute, RouteGeometry, Status, WebUIConfig } from "../../api/types";
+import { useViewAsRider } from "../../lib/identity";
 import { stubPendingFetch } from "../../test/network";
 import { IDLE_STATUS } from "../../test/status";
 import { CataloguePage } from "./CataloguePage";
@@ -62,6 +64,31 @@ const STATUS: Status = {
   },
 };
 
+const PLANS = [
+  {
+    id: 7,
+    name: "Saturday gravel",
+    profile: "gravel" as const,
+    published: false,
+    version: 2,
+    distanceMetres: 42_000,
+    ascentMetres: 610,
+    waypointCount: 6,
+    updatedAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
+  },
+  {
+    id: 8,
+    name: "Weekday loop",
+    profile: "fastbike" as const,
+    published: true,
+    version: 1,
+    distanceMetres: 18_000,
+    ascentMetres: 120,
+    waypointCount: 3,
+    updatedAt: "2026-09-15T09:00:00Z",
+  },
+];
+
 const CONFIG: WebUIConfig = {
   basemaps: [],
   sourceBaseUrls: {},
@@ -100,14 +127,40 @@ function show(
   {
     geometry = true,
     nothingToDivide = false,
-  }: { geometry?: boolean; nothingToDivide?: boolean } = {},
+    planner = false,
+    plans = "seeded",
+  }: {
+    geometry?: boolean;
+    nothingToDivide?: boolean;
+    planner?: boolean;
+    /** The plan listing and each plan's line in the cache, the listing alone, or neither. */
+    plans?: "seeded" | "listed" | "none";
+  } = {},
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(routesQuery().queryKey, library);
   client.setQueryData(statusQuery().queryKey, STATUS);
-  client.setQueryData(webUIConfigQuery().queryKey, CONFIG);
+  client.setQueryData(
+    webUIConfigQuery().queryKey,
+    planner
+      ? { ...CONFIG, planning: true, identity: { display: "admin@example.test", admin: true } }
+      : CONFIG,
+  );
+  if (planner && plans !== "none") {
+    client.setQueryData(getListPlansQueryKey(), { data: { plans: PLANS } });
+  }
+  if (planner && plans === "seeded") {
+    for (const plan of PLANS) {
+      client.setQueryData(getGetPlanQueryKey(plan.id), {
+        data: {
+          ...plan,
+          geometry: { type: "LineString", coordinates: geometryFor(0).coordinates },
+        },
+      });
+    }
+  }
   // Seeded rather than fetched: the glyphs and the mix bars both read this,
   // under the same keys the atlas caches it with.
   if (!geometry) {
@@ -466,6 +519,17 @@ describe("CataloguePage", () => {
       stubViewport(true);
     });
 
+    it("stacks an admin's drafts as cards too, each opening the planner", async () => {
+      show(LIBRARY, "/catalogue", { planner: true });
+
+      await userEvent.click(screen.getByRole("button", { name: "Drafts · 1" }));
+
+      const card = screen.getByRole("link", { name: /Saturday gravel/ });
+      expect(card).toHaveAttribute("href", "/plan/7");
+      expect(card).toHaveTextContent("6 waypoints");
+      expect(card).toHaveTextContent("42.0 km");
+    });
+
     it("stacks the same routes as cards, each leading to the atlas", async () => {
       const user = userEvent.setup();
       show();
@@ -497,5 +561,86 @@ describe("CataloguePage", () => {
 
       expect(screen.getByRole("slider", { name: "Ascent min" })).toBeInTheDocument();
     });
+  });
+
+  it("offers a rider no drafts and no pencil", () => {
+    show([...LIBRARY, libraryRoute("Weekday loop", { sourceRouteId: 8, provider: "local" })]);
+
+    expect(screen.queryByRole("group", { name: "Shelf" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Edit plan/ })).toBeNull();
+  });
+
+  it("gives an admin a pencil on each published plan, and nowhere else", () => {
+    show(
+      [...LIBRARY, libraryRoute("Weekday loop", { sourceRouteId: 8, provider: "local" })],
+      "/catalogue",
+      {
+        planner: true,
+      },
+    );
+
+    const pencils = within(libraryRegion()).getAllByRole("link", { name: /Edit plan/ });
+    expect(pencils).toHaveLength(1);
+    expect(pencils[0]).toHaveAccessibleName("Edit plan Weekday loop");
+    expect(pencils[0]).toHaveAttribute("href", "/plan/8");
+  });
+
+  it("switches an admin to their drafts, newest first, each opening the planner", async () => {
+    show(LIBRARY, "/catalogue", { planner: true });
+
+    await userEvent.click(screen.getByRole("button", { name: "Drafts · 1" }));
+
+    const drafts = screen
+      .getByRole("heading", { name: /^Drafts/ })
+      .closest("section") as HTMLElement;
+    const row = within(drafts).getByRole("link", { name: /Saturday gravel/ });
+    expect(row).toHaveAttribute("href", "/plan/7");
+    expect(row).toHaveTextContent("6 waypoints");
+    expect(row).toHaveTextContent("3 h ago");
+    // The published plan is in the library, not among the drafts.
+    expect(within(drafts).queryByText("Weekday loop")).toBeNull();
+
+    // The library's own matching: every word, in any order.
+    await userEvent.type(screen.getByRole("searchbox"), "gravel satur");
+    expect(within(drafts).getByRole("link", { name: /Saturday gravel/ })).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole("searchbox"));
+    await userEvent.type(screen.getByRole("searchbox"), "nothing like it");
+    expect(within(drafts).getByText("No draft is called that.")).toBeInTheDocument();
+    // The route filters bound nothing a draft has, so they are not offered here.
+    expect(screen.queryByRole("button", { name: /Filters/ })).toBeNull();
+  });
+
+  it("asks for no draft while an admin views the page as a rider, though the listing is cached", async () => {
+    const { result } = renderHook(() => useViewAsRider());
+    act(() => result.current[1](true));
+    // Each plan's line is left unseeded: a request for one would fail the suite's fetch guard.
+    const page = show(LIBRARY, "/catalogue", { planner: true, plans: "listed" });
+    try {
+      expect(screen.queryByRole("group", { name: "Shelf" })).toBeNull();
+    } finally {
+      page.unmount();
+      act(() => result.current[1](false));
+    }
+  });
+
+  it("says nothing about drafts until the listing has answered", async () => {
+    stubPendingFetch();
+    show(LIBRARY, "/catalogue", { planner: true, plans: "none" });
+
+    await userEvent.click(screen.getByRole("button", { name: "Drafts · 0" }));
+
+    expect(screen.queryByText(/No drafts/)).toBeNull();
+  });
+});
+
+describe("editedAgo", () => {
+  it("says how long ago, in the unit a reader would", async () => {
+    const { editedAgo } = await import("./Drafts");
+    const now = new Date("2026-09-18T18:00:00Z");
+
+    expect(editedAgo("2026-09-18T17:50:00Z", now)).toBe("just now");
+    expect(editedAgo("2026-09-18T15:00:00Z", now)).toBe("3 h ago");
+    expect(editedAgo("2026-09-17T14:00:00Z", now)).toBe("yesterday");
+    expect(editedAgo("2026-09-10T18:00:00Z", now)).toBe("8 days ago");
   });
 });
