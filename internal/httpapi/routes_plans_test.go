@@ -279,6 +279,8 @@ func TestPreviewPlanRouteReturnsGeometryDistanceAndAscent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
 	assert.InDelta(t, 1200, body.DistanceMetres, 0)
 	assert.InDelta(t, 42, body.AscentMetres, 0)
+	require.NotNil(t, body.DescentMetres, "a line that only climbs still has a descent: none")
+	assert.InDelta(t, 0, *body.DescentMetres, 0)
 	require.Len(t, body.Geometry.Coordinates, 2)
 	assert.Len(t, body.Geometry.Coordinates[0], 2, "the first point carries no elevation")
 	require.Len(t, body.Geometry.Coordinates[1], 3, "the second point carries its elevation")

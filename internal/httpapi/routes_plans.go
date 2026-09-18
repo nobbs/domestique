@@ -34,7 +34,7 @@ func (h *Handler) PreviewPlanRoute(writer http.ResponseWriter, request *http.Req
 		Geometry:         lineStringOf(measured.Geometry),
 		DistanceMetres:   measured.DistanceMetres,
 		AscentMetres:     measured.AscentMetres,
-		DescentMetres:    optionalMetres(measured.DescentMetres),
+		DescentMetres:    &measured.DescentMetres,
 		MovingSeconds:    optionalSeconds(measured.MovingSeconds),
 		WaypointProgress: progressOf(measured.Progress),
 		Pushing:          windowsOf(measured.Pushing),
@@ -233,7 +233,7 @@ func (h *Handler) planOf(ctx context.Context, p *plan.Plan) openapi.Plan {
 		ID: p.ID, Name: p.Name, Profile: openapi.PlanProfile(p.Profile), Published: p.Published, Version: p.Version,
 		Waypoints: openapiWaypointsOf(p.Waypoints), Geometry: lineStringOf(p.Geometry),
 		DistanceMetres: p.DistanceMetres, AscentMetres: p.AscentMetres,
-		DescentMetres: optionalMetres(p.DescentMetres),
+		DescentMetres: &p.DescentMetres,
 		MovingSeconds: optionalSeconds(p.MovingSeconds), WaypointProgress: progressOf(p.Progress),
 		Pushing:   windowsOf(p.Pushing),
 		Surface:   h.planSurface(ctx, p.Geometry),
@@ -249,16 +249,6 @@ func optionalSeconds(seconds float64) *float64 {
 	}
 
 	return &seconds
-}
-
-// optionalMetres omits a measurement of zero, which a routed line of any
-// length never has and an unmeasured one always does.
-func optionalMetres(metres float64) *float64 {
-	if metres <= 0 {
-		return nil
-	}
-
-	return &metres
 }
 
 // windowsOf renders stretches of a plan, absent where there are none.
