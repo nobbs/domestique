@@ -32,6 +32,7 @@ describe("hasActiveFilters", () => {
     ["a distance maximum", { distanceMetres: { min: null, max: 1000 } }],
     ["an ascent bound", { ascentMetres: { min: 100, max: null } }],
     ["a duration bound", { movingSeconds: { min: null, max: 3600 } }],
+    ["a source", { providers: ["komoot"] }],
   ])("reads %s as active", (_name, overrides) => {
     expect(hasActiveFilters({ ...EMPTY_FILTERS, ...overrides })).toBe(true);
   });
@@ -50,6 +51,13 @@ describe("matchesFilters", () => {
   ])("treats a distance bound as inclusive: %s", (_name, distanceMetres, want) => {
     const filters = { ...EMPTY_FILTERS, distanceMetres: { min: 50_000, max: 80_000 } };
     expect(matchesFilters(route({ distanceMetres }), filters)).toBe(want);
+  });
+
+  it("keeps only the chosen sources, and every source when none is chosen", () => {
+    const filters = { ...EMPTY_FILTERS, providers: ["komoot", "local"] };
+    expect(matchesFilters(route({ provider: "komoot" }), filters)).toBe(true);
+    expect(matchesFilters(route({ provider: "local" }), filters)).toBe(true);
+    expect(matchesFilters(route({ provider: "veloplanner" }), filters)).toBe(false);
   });
 
   it("leaves a side unbounded when it is null", () => {

@@ -21,6 +21,7 @@ import type { Position, Route, RouteSurface } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { RangeSlider } from "../../components/RangeSlider";
 import { RouteGlyph } from "../../components/RouteGlyph";
+import { librarySources, SourceChips } from "../../components/SourceChips";
 import { Dialog, DialogOverlay, DialogPortal } from "../../components/ui/dialog";
 import { domainOf } from "../../lib/domain";
 import { EMPTY_FILTERS, hasActiveFilters, type LibraryFilters } from "../../lib/filters";
@@ -201,6 +202,7 @@ export function CommandSearch({
   };
 
   const filtersActive = hasActiveFilters(filters);
+  const sources = librarySources(library);
   const hasQuery = query.trim() !== "";
 
   return (
@@ -276,6 +278,16 @@ export function CommandSearch({
             </label>
             {filtersOpen ? (
               <div className="flex flex-col gap-3 border-[var(--rule)] border-b px-5 py-3">
+                {sources.length > 1 ? (
+                  <div className="flex items-center gap-4">
+                    <span className="shrink-0 font-semibold text-sm">Source</span>
+                    <SourceChips
+                      sources={sources}
+                      chosen={filters.providers}
+                      onChange={(providers) => onFiltersChange({ ...filters, providers })}
+                    />
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-3 gap-4">
                   {measures.map((measure) => {
                     const domain = domainOf(measure.values, [...measure.steps]);

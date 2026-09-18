@@ -42,6 +42,25 @@ function renderFilters(overrides: Partial<React.ComponentProps<typeof CatalogueF
 }
 
 describe("CatalogueFilters", () => {
+  it("offers no source choice for a library with one source", () => {
+    renderFilters();
+
+    expect(screen.queryByRole("group", { name: "Source" })).toBeNull();
+  });
+
+  it("offers each source with its count, and adds a chosen one to the filters", async () => {
+    const onFiltersChange = vi.fn();
+    renderFilters({
+      library: [...LIBRARY, route({ sourceRouteId: 3, provider: "local" })],
+      onFiltersChange,
+    });
+
+    expect(screen.getByRole("button", { name: "VeloPlanner, 2 routes" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Planner, 1 route" }));
+
+    expect(onFiltersChange).toHaveBeenCalledWith({ ...EMPTY_FILTERS, providers: ["local"] });
+  });
+
   it("shows one slider per measure, in a card of its own", () => {
     renderFilters();
 

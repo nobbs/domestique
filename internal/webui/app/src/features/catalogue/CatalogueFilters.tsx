@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import type { Route } from "../../api/types";
 import { Panel } from "../../components/PanelHeading";
 import { RangeSlider } from "../../components/RangeSlider";
+import { librarySources, SourceChips } from "../../components/SourceChips";
 import { domainOf } from "../../lib/domain";
 import type { LibraryFilters } from "../../lib/filters";
 import { EMPTY_FILTERS, hasActiveFilters } from "../../lib/filters";
@@ -35,6 +36,7 @@ export function CatalogueFilters({ library, filters, onFiltersChange }: Catalogu
     };
   }, [library]);
   const { distances, ascents, durations, distance, ascent, duration } = measures;
+  const sources = useMemo(() => librarySources(library), [library]);
 
   return (
     <Panel
@@ -52,6 +54,17 @@ export function CatalogueFilters({ library, filters, onFiltersChange }: Catalogu
       }
     >
       <div className="flex flex-col overflow-hidden rounded-[11px] bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)]">
+        {/* One source leaves nothing to choose between. */}
+        {sources.length > 1 ? (
+          <div className="flex flex-col gap-2 border-[var(--panel)] border-b-2 px-3.5 py-3">
+            <span className="font-semibold text-sm">Source</span>
+            <SourceChips
+              sources={sources}
+              chosen={filters.providers}
+              onChange={(providers) => onFiltersChange({ ...filters, providers })}
+            />
+          </div>
+        ) : null}
         <div className="border-[var(--panel)] border-b-2 px-3.5 py-3 last:border-b-0">
           <RangeSlider
             legend="Distance"
