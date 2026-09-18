@@ -187,7 +187,7 @@ describe("ForecastStrip", () => {
     const samples = forecastSamples(coordinates, movingTime(coordinates), START_AT);
     const seed = forecastFor(samples.length);
     const fixed = renderStrip({ coordinates, samples, seed });
-    const fixedBox = fixed.container.querySelector(".border") as HTMLElement;
+    const fixedBox = fixed.container.querySelector(".relative.h-full") as HTMLElement;
     expect(fixedBox.style.height).toBe("76px");
     // The tiles themselves, not just the box around them — a fixed height left
     // on a tile after this box grows would strand it at the box's own top.
@@ -198,7 +198,7 @@ describe("ForecastStrip", () => {
     fixed.unmount();
 
     const grown = renderStrip({ coordinates, samples, seed, fill: true });
-    const grownBox = grown.container.querySelector(".border") as HTMLElement;
+    const grownBox = grown.container.querySelector(".relative.h-full") as HTMLElement;
     expect(grownBox.style.height).toBe("");
     expect(grownBox).toHaveClass("h-full");
     for (const tile of grown.container.querySelectorAll<HTMLElement>(".absolute.top-0")) {

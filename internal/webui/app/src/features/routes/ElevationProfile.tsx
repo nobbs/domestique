@@ -356,7 +356,7 @@ function SeriesTooltip({
   return (
     <div
       ref={ref}
-      className="absolute w-fit max-w-[calc(100%-4px)] rounded-lg bg-[var(--panel)] px-2.5 py-2 text-xs shadow-[var(--shadow)] ring-1 ring-black/5"
+      className="absolute w-fit max-w-[calc(100%-4px)] rounded-lg bg-[var(--panel)] px-2.5 py-2 text-xs shadow-[var(--shadow)]"
       style={{ left, top }}
     >
       <div className="grid gap-y-1">

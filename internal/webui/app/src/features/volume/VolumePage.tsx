@@ -136,7 +136,7 @@ function Totals({ totals }: { totals: VolumeTotals }) {
   ];
 
   return (
-    <dl className="grid grid-cols-2 gap-3 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5 sm:grid-cols-4">
+    <dl className="grid grid-cols-2 gap-3 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)] sm:grid-cols-4">
       {figures.map(({ label, value }) => (
         <div key={label} className="flex flex-col gap-0.5">
           <dt className="text-[var(--ink-2)] text-xs">{label}</dt>

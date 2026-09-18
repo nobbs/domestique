@@ -13,10 +13,10 @@
 export const ROUTE_ACCENT = { light: "#236fc7", dark: "#70adfb" } as const;
 
 /** The panel colour on the cartography: the route's casing, the tooltip's box. */
-export const PANEL = { light: "#fcfdff", dark: "#24282c" } as const;
+export const PANEL = { light: "#ffffff", dark: "#262522" } as const;
 
 /** The ink the library's lines are drawn in, per basemap. */
-export const INK = { light: "#1c2126", dark: "#eef0f3" } as const;
+export const INK = { light: "#1a1a1a", dark: "#f1efea" } as const;
 
 /**
  * How close the camera will go to the library, or to one whole route.

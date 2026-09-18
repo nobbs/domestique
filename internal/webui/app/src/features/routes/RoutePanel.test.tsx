@@ -180,11 +180,13 @@ describe("RoutePanel", () => {
   });
 
   it("rests as a pill with the headline figures, not the full grid", () => {
-    renderPanel({ collapsed: true });
+    renderPanel({ collapsed: true, route: route({ movingSeconds: 6420 }) });
 
     expect(screen.getByText("42.5 km · 620 m")).toBeInTheDocument();
-    expect(screen.queryByText("Elevation")).toBeNull();
-    expect(screen.queryByText("Moving time")).toBeNull();
+    expect(screen.getByText("Moving time").parentElement).toHaveTextContent("1 h 45 min");
+    expect(screen.getByText("Rolling")).toBeInTheDocument();
+    expect(screen.queryByText("620 m of climbing")).toBeNull();
+    expect(screen.queryByText("Mixed surface")).toBeNull();
   });
 
   it("clears the highlight on collapse without touching the zoom", async () => {
@@ -201,15 +203,45 @@ describe("RoutePanel", () => {
   it("shows nothing for a route nothing has predicted", () => {
     renderPanel({ route: route() });
 
-    expect(screen.getByText("Moving time").nextElementSibling).toHaveTextContent("—");
+    expect(screen.getByText("Moving time").parentElement).toHaveTextContent("Moving time —");
+    expect(screen.getByText("no moving time predicted")).toBeInTheDocument();
   });
 
-  it("shows ascent and descent together as one Ascent figure", () => {
+  it("reads the climbing as a verdict beside the ascent", () => {
+    renderPanel({ route: route({ distanceMetres: 42_500, ascentMetres: 620 }) });
+
+    expect(screen.getByText("620 m of climbing").nextElementSibling).toHaveTextContent("Rolling");
+  });
+
+  it("reads the surface as a verdict, naming what the route is mostly made of", () => {
+    renderPanel({
+      surface: {
+        bands: [],
+        totalMetres: 10_000,
+        shares: [
+          { kind: "asphalt", metres: 6_000, share: 0.6 },
+          { kind: "gravel", metres: 4_000, share: 0.4 },
+        ],
+      },
+    });
+
+    expect(screen.getByText("Mixed surface").nextElementSibling).toHaveTextContent("40% unsealed");
+    expect(screen.getByText("asphalt 6.0 km · gravel 4.0 km")).toBeInTheDocument();
+    expect(screen.getByText("unsealed 4.0 km")).toBeInTheDocument();
+  });
+
+  it("says why there is no surface verdict", () => {
+    renderPanel({ surface: null, surfaceAbsence: "Surface not classified yet." });
+
+    expect(screen.getByText("Surface")).toBeInTheDocument();
+    expect(screen.getByText("Surface not classified yet.")).toBeInTheDocument();
+  });
+
+  it("shows ascent and descent together in one climbing entry", () => {
     renderPanel({ route: route({ ascentMetres: 620, descentMetres: 540 }) });
 
-    const value = screen.getByText("Ascent").nextElementSibling;
-    expect(value).toHaveTextContent("620 m");
-    expect(value).toHaveTextContent("540 m");
+    expect(screen.getByText("620 m of climbing")).toBeInTheDocument();
+    expect(screen.getByText("540 m down", { exact: false })).toBeInTheDocument();
   });
 
   it("shows the steepest climb and descent together as one Max grade figure", () => {
@@ -217,9 +249,8 @@ describe("RoutePanel", () => {
       gradients: { averageClimbing: 4.8, steepestClimbing: 11, steepestDescent: 9.2 },
     });
 
-    const value = screen.getByText("Max grade").nextElementSibling;
-    expect(value).toHaveTextContent("11%");
-    expect(value).toHaveTextContent("9.2%");
+    expect(screen.getByText("11%")).toBeInTheDocument();
+    expect(screen.getByText("9.2%")).toBeInTheDocument();
   });
 
   it("shows the predicted moving time and its qualifier", () => {
@@ -231,7 +262,7 @@ describe("RoutePanel", () => {
     });
 
     expect(screen.getByText("1 h 45 min")).toBeInTheDocument();
-    expect(screen.getByText("±7% typical")).toBeInTheDocument();
+    expect(screen.getByText("moving time ±7% typical")).toBeInTheDocument();
   });
 
   it("omits the qualifier when the loaded profile carries no measured result", () => {
@@ -239,103 +270,6 @@ describe("RoutePanel", () => {
 
     expect(screen.getByText("1 h 45 min")).toBeInTheDocument();
     expect(screen.queryByText("±", { exact: false })).toBeNull();
-  });
-
-  it("shows the door-to-door window and the allowance behind it", () => {
-    renderPanel({ route: route({ movingSeconds: 6420 }) });
-
-    expect(screen.getByText("1 h 50 min to 2 h")).toBeInTheDocument();
-    expect(
-      screen.getByText("4.4 min stopped per moving hour · spread from", {
-        exact: false,
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("242 current-bike rides", { exact: false })).toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: /^Stopping allowance, / })).toBeInTheDocument();
-  });
-
-  /*
-   * The acceptance criterion for the measured habit: a rider whose own rides
-   * carry one is offered it, and accepting moves the window onto their median.
-   */
-  it("offers the rider's own stopping habit and moves the window onto it", async () => {
-    // The allowance is remembered in storage, so a choice made here would be
-    // the next test's starting point.
-    localStorage.clear();
-    const user = userEvent.setup();
-    renderPanel({
-      route: route({ movingSeconds: 3600 }),
-      stopping: {
-        medianSecondsPerHour: 600,
-        lowerQuartileSecondsPerHour: 300,
-        upperQuartileSecondsPerHour: 1200,
-        rides: 37,
-      },
-    });
-
-    expect(screen.getByText("your 37 rides", { exact: false })).toBeInTheDocument();
-    const offer = screen.getByRole("button", { name: /Your rides stop 10.0 min per moving hour/ });
-    expect(offer).toHaveAccessibleName("Your rides stop 10.0 min per moving hour — use that");
-
-    await user.click(offer);
-
-    expect(screen.getByText("1 h 5 min to 1 h 20 min")).toBeInTheDocument();
-    expect(
-      screen.getByText("10.0 min stopped per moving hour", { exact: false }),
-    ).toBeInTheDocument();
-  });
-
-  // A habit past the slider's end lands on the end, so the offer is withdrawn
-  // there rather than staying up for a figure the slider cannot reach.
-  it("withdraws the offer at the slider's end for a habit that runs past it", async () => {
-    localStorage.clear();
-    const user = userEvent.setup();
-    renderPanel({
-      route: route({ movingSeconds: 3600 }),
-      stopping: {
-        medianSecondsPerHour: 1800,
-        lowerQuartileSecondsPerHour: 900,
-        upperQuartileSecondsPerHour: 2700,
-        rides: 8,
-      },
-    });
-
-    const offer = screen.getByRole("button", { name: /Your rides stop 30.0 min/ });
-    // The button names both figures rather than promising the one it cannot set.
-    expect(offer).toHaveAccessibleName(
-      "Your rides stop 30.0 min per moving hour — use the 15.0 min this allows",
-    );
-
-    await user.click(offer);
-
-    expect(screen.queryByRole("button", { name: /Your rides stop/ })).toBeNull();
-    expect(
-      screen.getByText("15.0 min stopped per moving hour", { exact: false }),
-    ).toBeInTheDocument();
-  });
-
-  // Nothing to accept once the allowance already sits on the measured median.
-  it("withdraws the offer once the rider is on their own median", () => {
-    localStorage.clear();
-    renderPanel({
-      route: route({ movingSeconds: 3600 }),
-      stopping: {
-        medianSecondsPerHour: 266,
-        lowerQuartileSecondsPerHour: 100,
-        upperQuartileSecondsPerHour: 500,
-        rides: 12,
-      },
-    });
-
-    expect(screen.queryByRole("button", { name: /use that/ })).toBeNull();
-    expect(screen.getByText("your 12 rides", { exact: false })).toBeInTheDocument();
-  });
-
-  it("shows no arrival at all for a route nothing has predicted", () => {
-    renderPanel({ route: route() });
-
-    expect(screen.queryByText("Door to door")).toBeNull();
-    expect(screen.queryByRole("slider")).toBeNull();
   });
 
   /*

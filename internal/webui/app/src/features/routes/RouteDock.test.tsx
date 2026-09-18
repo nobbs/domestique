@@ -200,11 +200,11 @@ describe("RouteDock", () => {
     const strip = screen.getByRole("group", { name: "Route detail, folded" });
     expect(strip).toBeInTheDocument();
     expect(within(strip).getAllByRole("button")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Show the profile" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Show the forecast" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Show the profile/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Show the forecast/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Show the route detail" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Show the forecast" }));
+    await user.click(screen.getByRole("button", { name: /^Show the forecast/ }));
     expect(screen.getByRole("tab", { name: /Forecast/ })).toHaveAttribute("aria-selected", "true");
   });
 
@@ -298,7 +298,7 @@ describe("RouteDock", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Hide the route detail" }));
-    await user.click(screen.getByRole("button", { name: "Show the ride history" }));
+    await user.click(screen.getByRole("button", { name: "Show the ride history, 3" }));
 
     expect(screen.getByRole("tab", { name: /Rides/ })).toHaveAttribute("aria-selected", "true");
   });

@@ -156,7 +156,7 @@ export function ForecastStrip({
         style={{ paddingLeft: inset ? PADDING.left : 0, paddingRight: inset ? PADDING.right : 0 }}
       >
         <div
-          className="relative h-full overflow-hidden border border-[var(--rule)]"
+          className="relative h-full overflow-hidden bg-[var(--base)]"
           style={
             fill
               ? { borderRadius: STRIP_RADIUS }

@@ -31,9 +31,9 @@ const DEFAULT_SIZE = { width: 232, height: 46 };
  * interior is light exactly where the map is dark.
  */
 const TONE = {
-  good: { light: "#317a45", dark: "#82c38f" },
-  alert: { light: "#b63132", dark: "#f2857d" },
-  hold: { light: "#8f6100", dark: "#e5b562" },
+  good: { light: "#2f8a4a", dark: "#7fc78d" },
+  alert: { light: "#c0392b", dark: "#f08a7e" },
+  hold: { light: "#9a6700", dark: "#e2b45f" },
 } as const;
 
 /*
@@ -43,8 +43,8 @@ const TONE = {
  * the ground's colour on the ground.
  */
 const GROUND = CARTOGRAPHY_INK;
-const INK = { light: "#f3f5f6", dark: "#101316" } as const;
-const TRACK = { light: "#f3f5f64d", dark: "#1013164d" } as const;
+const INK = { light: "#f4f3f0", dark: "#1c1b19" } as const;
+const TRACK = { light: "#f4f3f04d", dark: "#1c1b194d" } as const;
 
 function clamp(value: number, low: number, high: number): number {
   return high < low ? low : Math.min(Math.max(value, low), high);

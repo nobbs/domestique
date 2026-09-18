@@ -154,7 +154,7 @@ export function HeartRateZones({
   return (
     <SwitchableView
       label="Heart-rate view"
-      heading={<h2 className="font-medium text-sm">Heart rate</h2>}
+      heading={<h2 className="font-semibold text-base">Heart rate</h2>}
       views={views}
       // A row that was pointed at when its view went away never saw the pointer leave.
       onValueChange={() => setActive(null)}

@@ -28,11 +28,11 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
 
   return (
     <section
-      className="flex flex-col gap-2 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5"
+      className="flex flex-col gap-2 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
       aria-label="Analysis"
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-medium text-sm">Analysis</h2>
+        <h2 className="font-semibold text-base">Analysis</h2>
         {canAsk ? (
           <Button
             variant="outline"

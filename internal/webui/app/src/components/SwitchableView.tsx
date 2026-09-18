@@ -40,7 +40,7 @@ export function SwitchableView<V extends string>({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {heading !== undefined || views.length > 1 ? (
         <div className="flex min-h-7 items-center justify-between gap-3">
           {heading ?? <span />}

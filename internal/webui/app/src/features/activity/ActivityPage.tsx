@@ -186,8 +186,8 @@ export function ActivityPage() {
             <div
               className={
                 mapExpanded
-                  ? "h-[75vh] overflow-hidden rounded-2xl ring-1 ring-black/5 lg:col-span-2"
-                  : "h-80 overflow-hidden rounded-2xl ring-1 ring-black/5"
+                  ? "h-[75vh] overflow-hidden rounded-2xl shadow-[var(--shadow)] lg:col-span-2"
+                  : "h-80 overflow-hidden rounded-2xl shadow-[var(--shadow)]"
               }
             >
               <ActivityMap
@@ -208,7 +208,7 @@ export function ActivityPage() {
           )}
         </div>
         {drawable && profile ? (
-          <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
+          <div className="flex flex-col gap-3 rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
             <ElevationProfile
               profile={shownProfile}
               title={title}
@@ -228,7 +228,7 @@ export function ActivityPage() {
             />
           </div>
         ) : weather && weather.length > 0 && ride ? (
-          <div className="rounded-xl bg-[var(--panel)] p-3 ring-1 ring-black/5">
+          <div className="rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)]">
             <RideConditions
               steps={weather}
               starts={starts}

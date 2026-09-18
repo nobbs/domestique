@@ -264,7 +264,7 @@ function groupedSections(groups: Groups): Group[] {
   return sections;
 }
 
-const BOX = "flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 ring-1 ring-black/5";
+const BOX = "flex flex-col gap-4 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]";
 
 /** The box is titled by its first group, so that group needs no heading of its own. */
 function GroupList({ groups }: { groups: Group[] }) {
@@ -313,7 +313,7 @@ export function TrainingLoad({ ride }: { ride: Activity | undefined }) {
       ) : null}
       {sections.length > 0 ? (
         <section className={BOX} aria-label={sections[0]?.title}>
-          <h2 className="font-medium text-sm">{sections[0]?.title}</h2>
+          <h2 className="font-semibold text-base">{sections[0]?.title}</h2>
           <GroupList groups={sections} />
         </section>
       ) : null}
