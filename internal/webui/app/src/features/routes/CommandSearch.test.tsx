@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useMemo, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -172,8 +172,11 @@ describe("CommandSearch", () => {
     render(<Harness onOpen={onOpen} />);
     await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
 
+    // The dialog moves focus to the query as it opens; take it only after that.
+    await waitFor(() => expect(screen.getByRole("searchbox")).toHaveFocus());
     const filters = screen.getByRole("button", { name: "Filters" });
     filters.focus();
+    expect(filters).toHaveFocus();
     await userEvent.keyboard("{Enter}");
 
     expect(onOpen).not.toHaveBeenCalled();
