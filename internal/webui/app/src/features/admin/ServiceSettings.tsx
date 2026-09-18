@@ -535,16 +535,16 @@ function SourceSettingsSection({
       }
     >
       <FormGroup>
-        <FormRow label="Read this library">
+        <FormRow label="Sync to catalogue">
           <Switch
             checked={values.read}
-            aria-label={`Read ${label}`}
+            aria-label={`Sync ${label} to catalogue`}
             onCheckedChange={(read) => setDraft({ ...values, read })}
           />
         </FormRow>
         <FormRow
           label="Sync to Wahoo"
-          hint="Off keeps the library on this page but off every rider's Wahoo account; routes already there are removed, a few per run."
+          hint="Off keeps the library in the catalogue but off every rider's Wahoo account; routes already there are removed, a few per run."
         >
           <Switch
             checked={values.syncToWahoo}
