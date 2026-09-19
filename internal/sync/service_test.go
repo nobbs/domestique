@@ -285,6 +285,36 @@ func TestServiceRemovesTheLastLibraryNoLongerRead(t *testing.T) {
 	assert.Equal(t, 1, state.storeInventoryCalls, "a library with nothing stored is not rewritten")
 }
 
+// A library turned back on between the two settings reads is read, not dropped:
+// if that read fails, its last-known share must survive.
+func TestServiceKeepsALibraryThisRunReadsWhateverTheSettingsSayLater(t *testing.T) {
+	stored := testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{stored}
+	failing := &fakeSource{provider: route.ProviderKomoot, err: errors.New("komoot down")}
+	options := syncOptions(false, []Source{failing}, "a")
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, OutcomeFailed, service.RunSource(t.Context()).Outcome)
+	assert.Len(t, state.trusted, 1, "the last-known share is kept")
+}
+
+// A run that cannot build its libraries drops nothing either.
+func TestServiceDropsNothingWhenTheLibrariesCannotBeBuilt(t *testing.T) {
+	state := newFakeState("a")
+	state.trusted = []route.Route{testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")}
+	options := syncOptions(false, nil, "a")
+	options.Sources = func() ([]Source, error) { return nil, errors.New("credentials missing") }
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, OutcomeNotReady, service.RunSource(t.Context()).Outcome)
+	assert.Len(t, state.trusted, 1)
+}
+
 func TestServiceFailsTheReadWhenAnUnreadLibraryCannotBeRemoved(t *testing.T) {
 	for name, broken := range map[string]func(*fakeState){
 		"counting": func(state *fakeState) { state.trustedCountErr = errors.New("disk gone") },

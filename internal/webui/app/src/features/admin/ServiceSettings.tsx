@@ -537,7 +537,7 @@ function SourceSettingsSection({
       <FormGroup>
         <FormRow
           label="Sync to catalogue"
-          hint="Off removes the library's routes from the catalogue at the next library sync, and from every rider's Wahoo account five per run."
+          hint="Off removes the library's routes from the catalogue at the next library sync, and from every rider's Wahoo account up to five per run."
         >
           <Switch
             checked={values.read}
@@ -547,7 +547,7 @@ function SourceSettingsSection({
         </FormRow>
         <FormRow
           label="Sync to Wahoo"
-          hint="Off keeps the library in the catalogue but off every rider's Wahoo account; routes already there are removed, five per run. Needs catalogue sync on."
+          hint="Off keeps the library in the catalogue but off every rider's Wahoo account; routes already there are removed, up to five per run. Needs catalogue sync on."
         >
           <Switch
             checked={values.syncToWahoo}

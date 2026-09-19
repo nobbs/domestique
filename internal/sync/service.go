@@ -114,11 +114,14 @@ func New(
 // a failed one keeps its last-known stages, and the empty-source gate is
 // evaluated per source against that source's own prior count.
 func (s *Service) RunSource(ctx context.Context) Result {
-	if failure := s.dropUnread(ctx); failure != FailureNone {
+	sources, err := s.sources()
+	if err != nil {
+		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
+	}
+	if failure := s.dropUnread(ctx, sources); failure != FailureNone {
 		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: failure}
 	}
-	sources, err := s.sources()
-	if err != nil || len(sources) == 0 {
+	if len(sources) == 0 {
 		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
 	}
 
@@ -158,11 +161,15 @@ func (s *Service) RunSource(ctx context.Context) Result {
 
 // dropUnread removes the stored share of every library no longer read. It is
 // deliberate rather than an empty listing, so the empty-source gate does not apply.
-func (s *Service) dropUnread(ctx context.Context) FailureCategory {
+// A library this run reads is spared, whatever a settings edit since then says.
+func (s *Service) dropUnread(ctx context.Context, reading []Source) FailureCategory {
 	if s.unread == nil {
 		return FailureNone
 	}
 	for _, provider := range s.unread() {
+		if slices.ContainsFunc(reading, func(source Source) bool { return source.Provider() == provider }) {
+			continue
+		}
 		stored, err := s.state.TrustedInventoryCount(ctx, provider)
 		if err != nil {
 			return FailureState

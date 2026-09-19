@@ -329,7 +329,8 @@ target half reconciles from, authoritative-as-last-known rather than absent.
 
 A source the operator stops reading has its share removed from the stored
 inventory by the next read of every source, whether or not any source is left
-to read. That removal is an instruction rather than an empty listing, so the
+to read. A read that cannot build its sources removes nothing, and a source the
+read is about to read is never removed, whatever a settings edit made since says. That removal is an instruction rather than an empty listing, so the
 empty-source gate below does not hold it back; the target half then drains the
 source's routes as it drains one switched off for Wahoo
 ([Deletion gates](#deletion-gates)).
