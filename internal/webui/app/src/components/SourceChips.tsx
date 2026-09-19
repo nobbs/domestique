@@ -36,10 +36,27 @@ export interface SourceChipsProps {
   onChange: (chosen: string[]) => void;
 }
 
+/**
+ * Whether the row has anything to offer: a choice between sources, or a chosen
+ * source the library no longer holds, which must stay visible to be let go.
+ */
+export function offersSourceChoice(sources: LibrarySource[], chosen: string[]): boolean {
+  return (
+    sources.length > 1 ||
+    chosen.some((provider) => !sources.some((each) => each.provider === provider))
+  );
+}
+
 export function SourceChips({ sources, chosen, onChange }: SourceChipsProps) {
+  // A chosen source the library does not hold, say from an old link, still
+  // narrows it; its chip is what lets the reader let go of it.
+  const stale = chosen
+    .filter((provider) => !sources.some((each) => each.provider === provider))
+    .map((provider) => ({ provider, count: 0 }));
+
   return (
     <div role="group" aria-label="Source" className="flex flex-wrap gap-1.5">
-      {sources.map(({ provider, count }) => {
+      {[...sources, ...stale].map(({ provider, count }) => {
         const on = chosen.includes(provider);
         return (
           <button

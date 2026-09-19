@@ -21,7 +21,7 @@ import type { Position, Route, RouteSurface } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { RangeSlider } from "../../components/RangeSlider";
 import { RouteGlyph } from "../../components/RouteGlyph";
-import { librarySources, SourceChips } from "../../components/SourceChips";
+import { librarySources, offersSourceChoice, SourceChips } from "../../components/SourceChips";
 import { Dialog, DialogOverlay, DialogPortal } from "../../components/ui/dialog";
 import { domainOf } from "../../lib/domain";
 import { EMPTY_FILTERS, hasActiveFilters, type LibraryFilters } from "../../lib/filters";
@@ -278,7 +278,7 @@ export function CommandSearch({
             </label>
             {filtersOpen ? (
               <div className="flex flex-col gap-3 border-[var(--rule)] border-b px-5 py-3">
-                {sources.length > 1 ? (
+                {offersSourceChoice(sources, filters.providers) ? (
                   <div className="flex items-center gap-4">
                     <span className="shrink-0 font-semibold text-sm">Source</span>
                     <SourceChips

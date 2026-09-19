@@ -4,18 +4,29 @@ import { type Route, routeKey } from "../../api/types";
 import { EMPTY_FILTERS, type LibraryFilters, matchesFilters } from "../../lib/filters";
 import { matchingRoutes } from "../../lib/library";
 import { StoryProviders } from "../../storybook/fixtures";
-import { LIBRARY } from "../../storybook/routeLibrary";
+import { LIBRARY, type SpikeRoute } from "../../storybook/routeLibrary";
 import { CommandSearch, type RouteShape } from "./CommandSearch";
 
+function shapesOf(entries: SpikeRoute[]): Map<string, RouteShape> {
+  return new Map(
+    entries.map((entry) => [
+      routeKey(entry.route),
+      entry.geometry.surface
+        ? { coordinates: entry.geometry.coordinates, surface: entry.geometry.surface }
+        : { coordinates: entry.geometry.coordinates },
+    ]),
+  );
+}
+
 const library = LIBRARY.map((entry) => entry.route);
-const shapes = new Map<string, RouteShape>(
-  LIBRARY.map((entry) => [
-    routeKey(entry.route),
-    entry.geometry.surface
-      ? { coordinates: entry.geometry.coordinates, surface: entry.geometry.surface }
-      : { coordinates: entry.geometry.coordinates },
-  ]),
-);
+const shapes = shapesOf(LIBRARY);
+const MIXED = LIBRARY.map((entry, index) => ({
+  ...entry,
+  route: {
+    ...entry.route,
+    provider: index % 7 === 0 ? "local" : index % 3 === 0 ? "komoot" : "veloplanner",
+  },
+}));
 
 // The story holds the state the component reads back, so it renders rather
 // than taking args — which is what `component` here would require.
@@ -27,7 +38,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function Searching({ library }: { library: Route[] }) {
+function Searching({ library, shapes }: { library: Route[]; shapes: Map<string, RouteShape> }) {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
   const [open, setOpen] = useState(true);
@@ -56,16 +67,9 @@ function Searching({ library }: { library: Route[] }) {
   );
 }
 
-export const Panel: Story = { render: () => <Searching library={library} /> };
+export const Panel: Story = { render: () => <Searching library={library} shapes={shapes} /> };
 
 /** A library from every source, which is when the filters offer a source choice. */
 export const MixedSources: Story = {
-  render: () => (
-    <Searching
-      library={library.map((route, index) => ({
-        ...route,
-        provider: index % 7 === 0 ? "local" : index % 3 === 0 ? "komoot" : "veloplanner",
-      }))}
-    />
-  ),
+  render: () => <Searching library={MIXED.map((entry) => entry.route)} shapes={shapesOf(MIXED)} />,
 };

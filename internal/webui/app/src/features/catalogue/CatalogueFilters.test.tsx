@@ -48,6 +48,15 @@ describe("CatalogueFilters", () => {
     expect(screen.queryByRole("group", { name: "Source" })).toBeNull();
   });
 
+  it("keeps a chosen source the library does not hold, so it can be let go", async () => {
+    const onFiltersChange = vi.fn();
+    renderFilters({ filters: { ...EMPTY_FILTERS, providers: ["strava"] }, onFiltersChange });
+
+    await userEvent.click(screen.getByRole("button", { name: "strava, 0 routes" }));
+
+    expect(onFiltersChange).toHaveBeenCalledWith(EMPTY_FILTERS);
+  });
+
   it("offers each source with its count, and adds a chosen one to the filters", async () => {
     const onFiltersChange = vi.fn();
     renderFilters({
