@@ -378,10 +378,10 @@ describe("PlanPage", () => {
     preview.mockImplementation(straightRouter);
     renderPage(cornerCopy);
     await act(async () => {});
-    expect(screen.getByText("Tracing the copied route with 2 waypoints…")).toHaveAttribute(
-      "role",
-      "status",
-    );
+    expect(
+      screen.getByText("Tracing the copied route with 2 waypoints…").closest('[role="status"]'),
+    ).not.toBeNull();
+    expect(screen.getByText("2 wp")).toBeInTheDocument();
 
     for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
       act(() => vi.runOnlyPendingTimers());
@@ -408,14 +408,14 @@ describe("PlanPage", () => {
     fireEvent.click(map);
     expect(waypointRows()).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
     expect(screen.getByText("Tracing paused with 2 waypoints.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reverse" })).toBeEnabled();
     act(() => vi.runOnlyPendingTimers());
     act(() => vi.runOnlyPendingTimers());
     expect(waypointRows()).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    fireEvent.click(screen.getByRole("button", { name: "Resume tracing" }));
     for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
       act(() => vi.runOnlyPendingTimers());
     }
@@ -429,7 +429,7 @@ describe("PlanPage", () => {
     await act(async () => {});
     // The first preview lands and queues a round: cancelling must drop it too.
     act(() => vi.runOnlyPendingTimers());
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel tracing" }));
     act(() => vi.runOnlyPendingTimers());
     act(() => vi.runOnlyPendingTimers());
     expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
@@ -439,7 +439,7 @@ describe("PlanPage", () => {
 
     const unchanged = renderPage(cornerCopy);
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
     fireEvent.click(screen.getByRole("button", { name: "Route type" }));
     act(() => vi.advanceTimersByTime(0));
     fireEvent.click(screen.getByRole("menuitem", { name: "Trekking" }));
@@ -448,7 +448,7 @@ describe("PlanPage", () => {
 
     const renamed = renderPage(cornerCopy);
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
     fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Corner loop" } });
     expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
     act(() => vi.runOnlyPendingTimers());
@@ -458,7 +458,7 @@ describe("PlanPage", () => {
 
     renderPage(cornerCopy);
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
     mapPoint.value = { longitude: 8.02, latitude: 49.02 };
     fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
     act(() => vi.runOnlyPendingTimers());
@@ -515,7 +515,7 @@ describe("PlanPage", () => {
     act(() => vi.advanceTimersByTime(5000));
     expect(preview).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    fireEvent.click(screen.getByRole("button", { name: "Resume tracing" }));
     for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
       act(() => vi.runOnlyPendingTimers());
     }

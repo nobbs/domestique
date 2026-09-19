@@ -90,6 +90,7 @@ import {
   unwrapped,
 } from "./planner";
 import { provisionalLegs, RouteTransition, routedLegs } from "./RouteTransition";
+import { type TracePause, TraceStatus, TraceStoppedShort } from "./TraceStatus";
 
 function positions(preview: PlanRoutePreview | null): Position[] {
   return (preview?.geometry.coordinates ?? []).flatMap(([longitude, latitude, elevation]) => {
@@ -692,7 +693,8 @@ export function PlanPage() {
   const trace = useRef<TraceProgress | null>(null);
   const [tracing, setTracing] = useState(false);
   // Why a trace is holding its place until resumed: the admin paused it, or the engine asked for a retry.
-  const [tracePause, setTracePause] = useState<"user" | "busy" | null>(null);
+  const [tracePause, setTracePause] = useState<TracePause>(null);
+  const [tracePhase, setTracePhase] = useState<"add" | "prune">("add");
   const [previewRetry, setPreviewRetry] = useState(0);
   const [traceIncomplete, setTraceIncomplete] = useState(false);
   const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
@@ -750,6 +752,7 @@ export function PlanPage() {
     }
     setTracing(trace.current !== null);
     setTracePause(null);
+    setTracePhase("add");
     setTraceIncomplete(false);
     setCopiedRoute(trace.current?.route ?? null);
     setCopiedRouteShown(true);
@@ -869,6 +872,7 @@ export function PlanPage() {
         return;
       }
       trace.current = next;
+      setTracePhase(next.phase === "prune" ? "prune" : "add");
       dispatch({
         type: "trace",
         waypoints: next.indices.map((index) => {
@@ -1296,49 +1300,23 @@ export function PlanPage() {
             </CartographyProvider>
           ) : null}
           {tracing ? (
-            <div
-              role="status"
-              className="-translate-x-1/2 absolute top-3 left-1/2 z-30 flex items-center gap-2 rounded-full bg-[var(--panel)] px-3 py-1 text-sm shadow-[var(--shadow)]"
-            >
-              {tracePause === "busy"
-                ? "Tracing paused: the routing engine is busy."
-                : tracePause === "user"
-                  ? `Tracing paused with ${state.waypoints.length} waypoints.`
-                  : `Tracing the copied route with ${state.waypoints.length} waypoints…`}
-              {tracePause ? (
-                <Button
-                  variant="panel"
-                  onClick={() => {
-                    if (tracePause === "busy") {
-                      setPreviewError(null);
-                      setPreviewRetry((retry) => retry + 1);
-                    }
-                    setTracePause(null);
-                  }}
-                >
-                  Resume
-                </Button>
-              ) : (
-                <Button variant="panel" onClick={() => setTracePause("user")}>
-                  Pause
-                </Button>
-              )}
-              <Button variant="panel" onClick={endTrace}>
-                Cancel
-              </Button>
-            </div>
+            <TraceStatus
+              phase={tracePhase}
+              waypoints={state.waypoints.length}
+              pause={tracePause}
+              onPause={() => setTracePause("user")}
+              onResume={() => {
+                if (tracePause === "busy") {
+                  setPreviewError(null);
+                  setPreviewRetry((retry) => retry + 1);
+                }
+                setTracePause(null);
+              }}
+              onCancel={endTrace}
+            />
           ) : null}
           {traceIncomplete && !tracing ? (
-            <div
-              role="status"
-              className="-translate-x-1/2 absolute top-3 left-1/2 z-30 flex max-w-md items-center gap-2 rounded-2xl bg-[var(--panel)] px-3 py-1 text-sm shadow-[var(--shadow)]"
-            >
-              Tracing stopped before the plan fully follows the copied route; the dashed line shows
-              where they differ.
-              <Button variant="panel" onClick={() => setTraceIncomplete(false)}>
-                Dismiss
-              </Button>
-            </div>
+            <TraceStoppedShort onDismiss={() => setTraceIncomplete(false)} />
           ) : null}
           {previewError && tracePause !== "busy" ? (
             <Alert
