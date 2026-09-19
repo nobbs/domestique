@@ -466,6 +466,38 @@ describe("PlanPage", () => {
     expect(waypointRows()).toHaveLength(3);
   });
 
+  it("says so when the waypoint cap stops a trace short of the copied route", async () => {
+    preview.mockImplementation(straightRouter);
+    // A zigzag whose teeth sit about 110 m off every leg: following it needs more than the cap.
+    const route = Array.from({ length: 401 }, (_, index) => [
+      8 + index / 1000,
+      49 + (index % 2) / 1000,
+    ]);
+    const indices = Array.from({ length: 200 }, (_, index) => index * 2);
+    renderPage({
+      pathname: "/plan",
+      state: {
+        name: "Zigzag",
+        profile: "trekking",
+        waypoints: indices.map((index) => ({
+          longitude: route[index]?.[0],
+          latitude: route[index]?.[1],
+        })),
+        trace: { route, indices },
+      },
+    });
+    await act(async () => {});
+
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Tracing stopped before the plan fully follows/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/Tracing stopped before/)).not.toBeInTheDocument();
+  });
+
   it("pauses tracing while the routing engine is busy and resumes where it stopped", async () => {
     preview.mockImplementationOnce(
       (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>

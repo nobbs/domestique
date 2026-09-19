@@ -74,7 +74,11 @@ describe("plannerReducer", () => {
     const restored = pruning && nextTraceStep(pruning, [chord]);
     expect(restored).toMatchObject({ indices: [0, 40, last], settled: [40], removed: [] });
 
-    expect(restored && nextTraceStep(restored, alongRoute)).toBeNull();
+    expect(restored && nextTraceStep(restored, alongRoute)).toMatchObject({
+      phase: "done",
+      indices: [0, 40, last],
+      incomplete: false,
+    });
   });
 
   it("adds a waypoint where a routed leg wanders off the route and back", () => {
@@ -91,7 +95,33 @@ describe("plannerReducer", () => {
     // Cut a vertex past each waypoint, about 73 m out: the leg still follows the route.
     const leg: Position[] = [[7.999, 49], ...straight, [8.041, 49]];
 
-    expect(nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [leg])).toBeNull();
+    expect(nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [leg])).toMatchObject({
+      phase: "done",
+      incomplete: false,
+    });
+  });
+
+  it("ends a trace the round limit stopped as incomplete", () => {
+    const chord = [corner[0] ?? [8, 49], corner[last] ?? [8.04, 49.04]];
+    const exhausted = { ...startTrace({ route: corner, indices: [0, last] }), rounds: 12 };
+
+    expect(nextTraceStep(exhausted, [chord])).toMatchObject({
+      phase: "done",
+      indices: [0, last],
+      incomplete: true,
+    });
+  });
+
+  it("finds a leg's straying the same whichever way round it was routed", () => {
+    const straight = corner.slice(0, 41);
+    const spur: Position[] = [...straight.slice(0, 21), [8.02, 49.005], ...straight.slice(20)];
+
+    const forward = nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [spur]);
+    const backward = nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [
+      [...spur].reverse(),
+    ]);
+
+    expect(backward.indices).toEqual(forward.indices);
   });
 
   it("prunes every other waypoint a leg does without, and keeps the removal", () => {

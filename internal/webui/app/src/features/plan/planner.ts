@@ -133,13 +133,21 @@ function farthestFrom(
 ): number {
   let farthest = -1;
   let distance = toleranceMetres;
+  const segments = line.length - 1;
+  // Where the previous point found a close segment: a point further along the line
+  // finds one at once, and wrapping round still reaches every segment.
+  let cursor = 0;
   points.forEach((point, index) => {
     let nearest = Number.POSITIVE_INFINITY;
-    for (let at = 1; at < line.length && nearest > distance; at++) {
-      const from = line[at - 1];
-      const to = line[at];
+    for (let step = 0; step < segments && nearest > distance; step++) {
+      const at = (cursor + step) % segments;
+      const from = line[at];
+      const to = line[at + 1];
       if (from && to) {
         nearest = Math.min(nearest, segmentDistance(point, from, to));
+        if (nearest <= distance) {
+          cursor = at;
+        }
       }
     }
     if (nearest > distance) {
@@ -206,17 +214,19 @@ const MAX_ADD_ROUNDS = 12;
 /**
  * A trace under way: it adds waypoints where the routed legs stray, then tests
  * removing them. `removed` are the ones taken out for the round being routed;
- * `settled` are the ones such a round proved necessary.
+ * `settled` are the ones such a round proved necessary. `incomplete` is set when
+ * the waypoint cap or the round limit stopped it adding while legs still strayed.
  */
 export interface TraceProgress extends PlannerTrace {
-  phase: "add" | "prune";
+  phase: "add" | "prune" | "done";
   settled: number[];
   removed: number[];
   rounds: number;
+  incomplete: boolean;
 }
 
 export function startTrace(trace: PlannerTrace): TraceProgress {
-  return { ...trace, phase: "add", settled: [], removed: [], rounds: 0 };
+  return { ...trace, phase: "add", settled: [], removed: [], rounds: 0, incomplete: false };
 }
 
 function union(indices: number[], more: number[]): number[] {
@@ -243,10 +253,11 @@ function withRemovals(progress: TraceProgress): TraceProgress | null {
 }
 
 /**
- * The trace's next waypoints, given the legs routed for its current ones; null
- * once every interior waypoint has been tested and none needs restoring.
+ * The trace's next waypoints, given the legs routed for its current ones; phase
+ * "done", with the waypoints unchanged, once every interior waypoint has been
+ * tested and none needs restoring.
  */
-export function nextTraceStep(progress: TraceProgress, legs: Position[][]): TraceProgress | null {
+export function nextTraceStep(progress: TraceProgress, legs: Position[][]): TraceProgress {
   const straying = traceAdditions(progress, legs);
   if (progress.phase === "add") {
     const indices = union(
@@ -260,7 +271,8 @@ export function nextTraceStep(progress: TraceProgress, legs: Position[][]): Trac
     ) {
       return { ...progress, indices, rounds: progress.rounds + 1 };
     }
-    return withRemovals({ ...progress, phase: "prune" });
+    const pruning: TraceProgress = { ...progress, phase: "prune", incomplete: straying.length > 0 };
+    return withRemovals(pruning) ?? { ...pruning, phase: "done" };
   }
   const strayingLegs = new Set(straying.map((addition) => addition.index - 1));
   const failed = progress.removed.filter((index) =>
@@ -273,7 +285,7 @@ export function nextTraceStep(progress: TraceProgress, legs: Position[][]): Trac
     removed: [],
   };
 
-  return withRemovals(restored) ?? (failed.length > 0 ? restored : null);
+  return withRemovals(restored) ?? (failed.length > 0 ? restored : { ...restored, phase: "done" });
 }
 
 /** A copy's first, coarse waypoints over the valid part of a library route. */

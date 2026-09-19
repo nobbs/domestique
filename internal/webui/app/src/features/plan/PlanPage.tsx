@@ -694,6 +694,7 @@ export function PlanPage() {
   // Why a trace is holding its place until resumed: the admin paused it, or the engine asked for a retry.
   const [tracePause, setTracePause] = useState<"user" | "busy" | null>(null);
   const [previewRetry, setPreviewRetry] = useState(0);
+  const [traceIncomplete, setTraceIncomplete] = useState(false);
   const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
   // A running trace owns the plan: the admin pauses or cancels it before editing,
   // and an edit made while paused ends it, since it can only continue from its own waypoints.
@@ -749,6 +750,7 @@ export function PlanPage() {
     }
     setTracing(trace.current !== null);
     setTracePause(null);
+    setTraceIncomplete(false);
     setCopiedRoute(trace.current?.route ?? null);
     setCopiedRouteShown(true);
     setPreviewError(null);
@@ -853,9 +855,10 @@ export function PlanPage() {
         )
       : null;
     const next = legs ? nextTraceStep(progress, legs) : null;
-    if (!next) {
+    if (!next || next.phase === "done") {
       trace.current = null;
       setTracing(false);
+      setTraceIncomplete(next?.incomplete ?? false);
       return;
     }
     const ids = new Map(progress.indices.map((index, at) => [index, state.waypoints[at]?.id]));
@@ -1322,6 +1325,18 @@ export function PlanPage() {
               )}
               <Button variant="panel" onClick={endTrace}>
                 Cancel
+              </Button>
+            </div>
+          ) : null}
+          {traceIncomplete && !tracing ? (
+            <div
+              role="status"
+              className="-translate-x-1/2 absolute top-3 left-1/2 z-30 flex max-w-md items-center gap-2 rounded-2xl bg-[var(--panel)] px-3 py-1 text-sm shadow-[var(--shadow)]"
+            >
+              Tracing stopped before the plan fully follows the copied route; the dashed line shows
+              where they differ.
+              <Button variant="panel" onClick={() => setTraceIncomplete(false)}>
+                Dismiss
               </Button>
             </div>
           ) : null}
