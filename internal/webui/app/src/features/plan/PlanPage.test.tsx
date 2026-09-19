@@ -396,6 +396,50 @@ describe("PlanPage", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("summarises a copy once it traces cleanly, hiding the chip after 10 s unless it is hovered", async () => {
+    preview.mockImplementation(straightRouter);
+    renderPage(cornerCopy);
+    await act(async () => {});
+
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+
+    expect(screen.getByText("3 wp")).toBeInTheDocument();
+    expect(screen.getByText("2 → 3 → 3")).toBeInTheDocument();
+    expect(screen.getByText("Followed")).toBeInTheDocument();
+
+    const chip = screen.getByText(/Tracing finished with/).closest('[role="status"]')?.parentElement
+      ?.parentElement as HTMLElement;
+    fireEvent.mouseEnter(chip);
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(screen.getByText("3 wp")).toBeInTheDocument();
+
+    fireEvent.mouseLeave(chip);
+    act(() => vi.advanceTimersByTime(11_000));
+    expect(screen.queryByText("3 wp")).not.toBeInTheDocument();
+  });
+
+  it("dismisses the finished summary at once, and shows none after Cancel", async () => {
+    preview.mockImplementation(straightRouter);
+    const first = renderPage(cornerCopy);
+    await act(async () => {});
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("3 wp")).not.toBeInTheDocument();
+    first.unmount();
+
+    renderPage(cornerCopy);
+    await act(async () => {});
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel tracing" }));
+    act(() => vi.runOnlyPendingTimers());
+    act(() => vi.runOnlyPendingTimers());
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+  });
+
   it("locks editing while a copy is traced, until it is paused", async () => {
     preview.mockImplementation(straightRouter);
     renderPage(cornerCopy);
@@ -418,11 +462,30 @@ describe("PlanPage", () => {
     expect(waypointRows()).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: "Resume tracing" }));
-    for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
       act(() => vi.runOnlyPendingTimers());
     }
-    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
     expect(waypointRows()).toHaveLength(3);
+  });
+
+  it("reports a finished trace's time without its pauses, and every routing round it made", async () => {
+    preview.mockImplementation(straightRouter);
+    const started = Date.now();
+    renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
+    act(() => vi.advanceTimersByTime(60_000));
+    fireEvent.click(screen.getByRole("button", { name: "Resume tracing" }));
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+
+    const summary = screen.getByText("Waypoints").closest("dl") as HTMLElement;
+    const stat = (term: string) => within(summary).getByText(term).nextElementSibling?.textContent;
+    const unpaused = Math.round((Date.now() - started - 60_000) / 1000);
+    expect(Math.abs(Number.parseInt(stat("Time") ?? "", 10) - unpaused)).toBeLessThanOrEqual(1);
+    expect(stat("Rounds")).toBe(String(preview.mock.calls.length));
   });
 
   it("ends a trace on cancel, or on an edit made while it is paused", async () => {
@@ -495,7 +558,11 @@ describe("PlanPage", () => {
     }
 
     expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
+    expect(screen.getByText("Stopped short · 200 wp")).toBeInTheDocument();
     expect(screen.getByText(/Tracing stopped before the plan fully follows/)).toBeInTheDocument();
+    // Unlike a normal finish, a stopped-short chip never hides itself.
+    act(() => vi.advanceTimersByTime(15_000));
+    expect(screen.getByText("Stopped short · 200 wp")).toBeInTheDocument();
     // The strayed stretches show once the line has morphed into its routed shape.
     act(() => vi.advanceTimersByTime(500));
     const strayed = () =>
@@ -539,11 +606,11 @@ describe("PlanPage", () => {
     expect(preview).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Resume tracing" }));
-    for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
       act(() => vi.runOnlyPendingTimers());
     }
 
-    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
     expect(waypointRows()).toHaveLength(3);
   });
 
@@ -579,6 +646,7 @@ describe("PlanPage", () => {
     expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
     expect(screen.getByText("Preview unavailable")).toBeInTheDocument();
     expect(waypointRows()).toHaveLength(2);
+    expect(screen.queryByText(/Tracing finished|Stopped short/)).not.toBeInTheDocument();
 
     // The copied route stays on the map to compare against, until it is toggled off.
     const toggle = screen.getByRole("button", { name: "Show the copied route" });

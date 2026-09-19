@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../../api/types";
+import { haversineMetres } from "../../lib/profile";
 import {
   deviationStretches,
   initialPlannerState,
@@ -10,6 +11,7 @@ import {
   plannerSeedFrom,
   rideTraceCoordinates,
   startTrace,
+  summariseTrace,
 } from "./planner";
 
 const first = { longitude: 8, latitude: 49 };
@@ -685,6 +687,80 @@ describe("deviationStretches", () => {
   it("finds nothing where the plan follows the route, or against too short a plan", () => {
     expect(deviationStretches(route, route)).toEqual([]);
     expect(deviationStretches(route, [])).toEqual([]);
+  });
+});
+
+describe("summariseTrace", () => {
+  const summaryRoute: Position[] = [
+    [8, 49],
+    [8.01, 49],
+    [8.02, 49],
+    [8.03, 49],
+  ];
+  const routeMetres =
+    haversineMetres(summaryRoute[0] as Position, summaryRoute[1] as Position) +
+    haversineMetres(summaryRoute[1] as Position, summaryRoute[2] as Position) +
+    haversineMetres(summaryRoute[2] as Position, summaryRoute[3] as Position);
+
+  it("reports a full share and no strayed stretches when the plan followed everywhere", () => {
+    const summary = summariseTrace({
+      route: summaryRoute,
+      stretches: [],
+      seed: 3,
+      peak: 6,
+      final: 4,
+      rounds: 3,
+      seconds: 9,
+      planMetres: 3300,
+      incomplete: false,
+    });
+
+    expect(summary).toMatchObject({
+      waypoints: { seed: 3, peak: 6, final: 4 },
+      rounds: 3,
+      seconds: 9,
+      followedShare: 1,
+      strayedStretches: 0,
+      planKm: 3.3,
+      outcome: "complete",
+    });
+    expect(summary.copiedKm).toBeCloseTo(routeMetres / 1000);
+  });
+
+  it("subtracts a strayed stretch's own length from the followed share", () => {
+    const stretch = summaryRoute.slice(1, 3);
+    const strayedMetres = haversineMetres(summaryRoute[1] as Position, summaryRoute[2] as Position);
+
+    const summary = summariseTrace({
+      route: summaryRoute,
+      stretches: [stretch],
+      seed: 3,
+      peak: 6,
+      final: 4,
+      rounds: 3,
+      seconds: 9,
+      planMetres: 3000,
+      incomplete: false,
+    });
+
+    expect(summary.followedShare).toBeCloseTo(1 - strayedMetres / routeMetres);
+    expect(summary.strayedStretches).toBe(1);
+  });
+
+  it("marks a trace stopped by the cap or round limit as stoppedShort", () => {
+    const summary = summariseTrace({
+      route: summaryRoute,
+      stretches: [],
+      seed: 1,
+      peak: 200,
+      final: 200,
+      rounds: 12,
+      seconds: 40,
+      planMetres: 1000,
+      incomplete: true,
+    });
+
+    expect(summary.outcome).toBe("stoppedShort");
   });
 });
 

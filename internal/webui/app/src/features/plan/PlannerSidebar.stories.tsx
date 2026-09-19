@@ -103,3 +103,11 @@ export const SaveFailed: Story = {
     saveError: "The plan changed since it was loaded.",
   },
 };
+
+/** A running trace owns the plan: every editing control the sidebar offers is disabled. */
+export const LockedWhileTracing: Story = {
+  args: {
+    ...Draft.args,
+    locked: true,
+  },
+};
