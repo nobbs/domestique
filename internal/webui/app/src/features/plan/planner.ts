@@ -125,10 +125,36 @@ function simplifiedIndices(line: Position[], toleranceMetres: number): number[] 
   return [...kept].sort((a, b) => a - b);
 }
 
+/** Which of points lies farthest from line, past toleranceMetres; -1 when none does. */
+function farthestFrom(
+  points: Array<[number, number]>,
+  line: Array<[number, number]>,
+  toleranceMetres: number,
+): number {
+  let farthest = -1;
+  let distance = toleranceMetres;
+  points.forEach((point, index) => {
+    let nearest = Number.POSITIVE_INFINITY;
+    for (let at = 1; at < line.length && nearest > distance; at++) {
+      const from = line[at - 1];
+      const to = line[at];
+      if (from && to) {
+        nearest = Math.min(nearest, segmentDistance(point, from, to));
+      }
+    }
+    if (nearest > distance) {
+      farthest = index;
+      distance = nearest;
+    }
+  });
+
+  return farthest;
+}
+
 /**
- * Where the routed legs still stray from the route they trace: for each leg
- * that strays past the tolerance, the route vertex farthest from it, with the
- * waypoint index it is inserted before.
+ * Where the routed legs still stray from the route they trace, either way: a
+ * leg that misses part of the route, or one that wanders off it and back. For
+ * each such leg, the route vertex to add, with the waypoint index it goes before.
  */
 function traceAdditions(
   trace: PlannerTrace,
@@ -144,30 +170,28 @@ function traceAdditions(
     if (start === undefined || end === undefined || routed.length < 2) {
       return;
     }
-    let farthest = -1;
-    let distance = toleranceMetres;
-    for (let routeIndex = start + 1; routeIndex < end; routeIndex++) {
-      const vertex = trace.route[routeIndex];
-      if (!vertex) {
-        continue;
-      }
-      const point = project(vertex);
-      let nearest = Number.POSITIVE_INFINITY;
-      for (let at = 1; at < routed.length && nearest > distance; at++) {
-        const from = routed[at - 1];
-        const to = routed[at];
-        if (from && to) {
-          nearest = Math.min(nearest, segmentDistance(point, from, to));
-        }
-      }
-      if (nearest > distance) {
-        farthest = routeIndex;
-        distance = nearest;
-      }
+    const stretch = trace.route.slice(start, end + 1).map(project);
+    const interior = stretch.slice(1, -1);
+    const missed = farthestFrom(interior, routed, toleranceMetres);
+    if (missed !== -1) {
+      additions.push({ index: index + 1, routeIndex: start + 1 + missed });
+      return;
     }
-    if (farthest !== -1) {
-      additions.push({ index: index + 1, routeIndex: farthest });
+    const wandered = routed[farthestFrom(routed, stretch, toleranceMetres)];
+    if (!wandered || interior.length === 0) {
+      return;
     }
+    let nearest = 0;
+    interior.forEach((vertex, at) => {
+      const best = interior[nearest] ?? vertex;
+      if (
+        Math.hypot(vertex[0] - wandered[0], vertex[1] - wandered[1]) <
+        Math.hypot(best[0] - wandered[0], best[1] - wandered[1])
+      ) {
+        nearest = at;
+      }
+    });
+    additions.push({ index: index + 1, routeIndex: start + 1 + nearest });
   });
 
   return additions;

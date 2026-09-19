@@ -427,12 +427,25 @@ describe("PlanPage", () => {
     preview.mockImplementation(straightRouter);
     const first = renderPage(cornerCopy);
     await act(async () => {});
+    // The first preview lands and queues a round: cancelling must drop it too.
+    act(() => vi.runOnlyPendingTimers());
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     act(() => vi.runOnlyPendingTimers());
     act(() => vi.runOnlyPendingTimers());
     expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
     expect(waypointRows()).toHaveLength(2);
+    expect(preview).toHaveBeenCalledTimes(1);
     first.unmount();
+
+    const renamed = renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Corner loop" } });
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    act(() => vi.runOnlyPendingTimers());
+    act(() => vi.runOnlyPendingTimers());
+    expect(waypointRows()).toHaveLength(2);
+    renamed.unmount();
 
     renderPage(cornerCopy);
     await act(async () => {});

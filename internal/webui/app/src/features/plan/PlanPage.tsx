@@ -695,9 +695,23 @@ export function PlanPage() {
   const [tracePause, setTracePause] = useState<"user" | "busy" | null>(null);
   const [previewRetry, setPreviewRetry] = useState(0);
   const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
-  // A running trace owns the waypoints: the admin pauses or cancels it before editing.
+  // A running trace owns the plan: the admin pauses or cancels it before editing,
+  // and an edit made while paused ends it, since it can only continue from its own waypoints.
   const locked = tracing && tracePause === null;
-  const edit: typeof dispatch = locked ? () => undefined : dispatch;
+  const endTrace = () => {
+    trace.current = null;
+    setTracing(false);
+    setTracePause(null);
+  };
+  const edit: typeof dispatch = (action) => {
+    if (locked) {
+      return;
+    }
+    if (trace.current) {
+      endTrace();
+    }
+    dispatch(action);
+  };
   const [copiedRouteShown, setCopiedRouteShown] = useState(true);
   const request = useRef(0);
   const queryPlan = plan.data?.data;
@@ -824,24 +838,11 @@ export function PlanPage() {
 
   useEffect(() => {
     const progress = trace.current;
-    // Judged once the waypoints are routed, or failed to route: before that, a load may still be landing.
-    if (!progress || (routedFor !== state.waypoints && previewError === null)) {
-      return;
-    }
-    // An edit made while paused ends the trace: the route no longer says where its waypoints go.
-    const onRoute =
-      state.waypoints.length === progress.indices.length &&
-      state.waypoints.every((waypoint, at) => {
-        const vertex = progress.route[progress.indices[at] ?? -1];
-        return vertex?.[0] === waypoint.longitude && vertex?.[1] === waypoint.latitude;
-      });
-    if (!onRoute) {
-      trace.current = null;
-      setTracing(false);
-      setTracePause(null);
-      return;
-    }
-    if (tracePause) {
+    if (
+      !progress ||
+      tracePause ||
+      (previewError === null && (!preview || routedFor !== state.waypoints))
+    ) {
       return;
     }
     const legs = !previewError
@@ -859,6 +860,10 @@ export function PlanPage() {
     const ids = new Map(progress.indices.map((index, at) => [index, state.waypoints[at]?.id]));
     // Spaced out, so a trace spends a public engine's quota no faster than it must.
     const round = window.setTimeout(() => {
+      // Cancel ends the trace without re-running this effect, so a round already queued checks first.
+      if (trace.current !== progress) {
+        return;
+      }
       trace.current = next;
       dispatch({
         type: "trace",
@@ -988,7 +993,7 @@ export function PlanPage() {
   };
   const addPlaces = (places: Array<{ longitude: number; latitude: number }>) => {
     const points = places.map(({ longitude, latitude }) => ({ longitude, latitude }));
-    dispatch({ type: "insertMany", waypoints: points });
+    edit({ type: "insertMany", waypoints: points });
     points.slice(0, MAX_PLAN_WAYPOINTS - state.waypoints.length).forEach((point, offset) => {
       settleOnRoad(state.nextWaypointID + offset, point);
     });
@@ -1120,7 +1125,7 @@ export function PlanPage() {
                     latitude: event.lngLat.lat,
                   });
                   if (avoidArmed) {
-                    dispatch({
+                    edit({
                       type: "addAvoid",
                       longitude: point.longitude,
                       latitude: point.latitude,
@@ -1128,7 +1133,7 @@ export function PlanPage() {
                     setAvoidArmed(false);
                     return;
                   }
-                  dispatch({
+                  edit({
                     type: "insert",
                     index: placementIndex(state.waypoints, point, event.originalEvent.altKey),
                     waypoint: point,
@@ -1197,7 +1202,7 @@ export function PlanPage() {
                         latitude: event.lngLat.lat,
                       });
                       setDragged(null);
-                      dispatch({ type: "move", index, waypoint: moved });
+                      edit({ type: "move", index, waypoint: moved });
                       setFocusId(waypoint.id);
                       if (!waypoint.straight) {
                         settleOnRoad(waypoint.id, moved);
@@ -1233,7 +1238,7 @@ export function PlanPage() {
                         longitude: event.lngLat.lng,
                         latitude: event.lngLat.lat,
                       });
-                      dispatch({
+                      edit({
                         type: "moveAvoid",
                         id: area.id,
                         longitude: moved.longitude,
@@ -1265,7 +1270,7 @@ export function PlanPage() {
                       }
                       onDragEnd={(event) => {
                         setResizing(null);
-                        dispatch({
+                        edit({
                           type: "setAvoidRadius",
                           id: area.id,
                           radiusMetres: avoidRadiusTo(area, {
@@ -1314,14 +1319,7 @@ export function PlanPage() {
                   Pause
                 </Button>
               )}
-              <Button
-                variant="panel"
-                onClick={() => {
-                  trace.current = null;
-                  setTracing(false);
-                  setTracePause(null);
-                }}
-              >
+              <Button variant="panel" onClick={endTrace}>
                 Cancel
               </Button>
             </div>

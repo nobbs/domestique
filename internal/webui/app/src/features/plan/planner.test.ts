@@ -77,6 +77,15 @@ describe("plannerReducer", () => {
     expect(restored && nextTraceStep(restored, alongRoute)).toBeNull();
   });
 
+  it("adds a waypoint where a routed leg wanders off the route and back", () => {
+    const straight = corner.slice(0, 41);
+    const spur: Position[] = [...straight.slice(0, 21), [8.02, 49.005], ...straight.slice(20)];
+
+    const added = nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [spur]);
+
+    expect(added).toMatchObject({ phase: "add", indices: [0, 20, 40] });
+  });
+
   it("prunes every other waypoint a leg does without, and keeps the removal", () => {
     const straight = corner.slice(0, 41);
     const progress = {
