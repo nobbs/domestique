@@ -739,7 +739,7 @@ export function PlanPage() {
   // Time a trace spent paused, which its reported duration leaves out, and when the current pause began.
   const tracePausedMs = useRef(0);
   const tracePausedSince = useRef<number | null>(null);
-  // Routing rounds a trace has asked for, the seed's first preview among them.
+  // Rounds a trace has routed, its seed among them; a retry after a busy engine repeats a round.
   const traceRounds = useRef(0);
   const [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
   const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
