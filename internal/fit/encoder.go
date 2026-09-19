@@ -48,7 +48,7 @@ func (e *Encoder) EncodeWithCues(ctx context.Context, stage route.Route, cues []
 		return nil, fmt.Errorf("fit: encoding cancelled: %w", err)
 	}
 
-	createdAt := courseTimestamp()
+	createdAt := courseTimestamp(stage.Key())
 	course := filedef.NewCourse()
 	course.FileId.SetType(typedef.FileCourse).
 		SetManufacturer(typedef.ManufacturerDevelopment).
@@ -168,6 +168,11 @@ func courseSerial(key route.Key) uint32 {
 	return binary.BigEndian.Uint32(sum[:4])
 }
 
-func courseTimestamp() time.Time {
-	return time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
+// courseTimestamp gives each route a route-specific, past time_created: a head
+// unit that keys courses on it alone keeps only one of several that share it.
+func courseTimestamp(key route.Key) time.Time {
+	const spreadSeconds = 1 << 28 // about 8.5 years, so every course stays in the past
+	offset := time.Duration(courseSerial(key)%spreadSeconds) * time.Second
+
+	return time.Date(2010, time.January, 1, 0, 0, 0, 0, time.UTC).Add(offset)
 }
