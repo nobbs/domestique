@@ -35,13 +35,13 @@ const (
 	// FailureUnreachable is a transport error or a request that did not
 	// complete within the adapter's timeout.
 	FailureUnreachable Failure = "unreachable"
-	// FailureLimited is a 403 or 429: the engine asked to be asked again
-	// later, as the public instance does once a caller exceeds its quota.
+	// FailureLimited is a 403 or 429, or a 502, 503 or 504 from the proxy in front
+	// of an overloaded engine: worth asking again later, as the public instance is.
 	FailureLimited Failure = "limited"
 	// FailureRefused is any other 4xx response: the request, or one of its points,
 	// cannot be routed.
 	FailureRefused Failure = "refused"
-	// FailureEngine is a 5xx response from the engine itself.
+	// FailureEngine is any other 5xx response, from the engine itself.
 	FailureEngine Failure = "engine"
 	// FailureResponse is a 2xx response this adapter could not parse into a
 	// usable route.
@@ -213,11 +213,14 @@ func (c *Client) Route(
 
 	// Classified before the body is read: only a 200 is worth the cost and the
 	// exposure of parsing; every other status is closed unread.
+	switch response.StatusCode {
+	case http.StatusForbidden, http.StatusTooManyRequests,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return Answer{}, &Error{Category: FailureLimited, Status: response.StatusCode}
+	}
 	switch {
 	case response.StatusCode >= http.StatusInternalServerError:
 		return Answer{}, &Error{Category: FailureEngine, Status: response.StatusCode}
-	case response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusTooManyRequests:
-		return Answer{}, &Error{Category: FailureLimited, Status: response.StatusCode}
 	case response.StatusCode >= http.StatusBadRequest:
 		return Answer{}, &Error{Category: FailureRefused, Status: response.StatusCode}
 	case response.StatusCode != http.StatusOK:

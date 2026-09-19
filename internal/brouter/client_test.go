@@ -99,6 +99,33 @@ func TestRouteMapsFailureCategories(t *testing.T) {
 			category: FailureRefused,
 		},
 		{
+			name: "overloaded public instance answers 503 from its proxy",
+			handler: func(_ *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusServiceUnavailable)
+				}
+			},
+			category: FailureLimited,
+		},
+		{
+			name: "overloaded public instance answers 502 from its proxy",
+			handler: func(_ *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusBadGateway)
+				}
+			},
+			category: FailureLimited,
+		},
+		{
+			name: "overloaded public instance answers 504 from its proxy",
+			handler: func(_ *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusGatewayTimeout)
+				}
+			},
+			category: FailureLimited,
+		},
+		{
 			name: "rate limit answers 429",
 			handler: func(_ *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, _ *http.Request) {
