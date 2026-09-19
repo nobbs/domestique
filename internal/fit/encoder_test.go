@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"testing"
+	"time"
 
 	"github.com/muktihari/fit/decoder"
 	"github.com/muktihari/fit/profile/filedef"
@@ -48,6 +49,7 @@ func TestEncoderEncodeIsDeterministic(t *testing.T) {
 
 func TestEncoderEncodeGivesEachRouteItsOwnFileID(t *testing.T) {
 	serials := map[uint32]route.Provider{}
+	created := map[time.Time]route.Provider{}
 	for _, provider := range []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot, route.ProviderLocal} {
 		stage, err := route.NewRoute(provider, 100, 1, "2026-08-17T07:00:00", "Ride", "",
 			[]route.Point{{Longitude: 8.4, Latitude: 49.0}, {Longitude: 8.5, Latitude: 49.1}}, "hash")
@@ -59,6 +61,9 @@ func TestEncoderEncodeGivesEachRouteItsOwnFileID(t *testing.T) {
 		assert.Equal(t, typedef.ManufacturerDevelopment, fileID.Manufacturer)
 		assert.NotContains(t, serials, fileID.SerialNumber, "%s shares a serial number", provider)
 		serials[fileID.SerialNumber] = provider
+		assert.NotContains(t, created, fileID.TimeCreated, "%s shares a time_created", provider)
+		assert.True(t, fileID.TimeCreated.Before(time.Now()), "%s was created in the future", provider)
+		created[fileID.TimeCreated] = provider
 	}
 }
 
