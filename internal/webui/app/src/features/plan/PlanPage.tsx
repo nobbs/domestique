@@ -707,7 +707,8 @@ export function PlanPage() {
     if (locked) {
       return;
     }
-    if (trace.current) {
+    // An edit that changes nothing leaves a paused trace to resume.
+    if (trace.current && plannerReducer(state, action) !== state) {
       endTrace();
     }
     dispatch(action);

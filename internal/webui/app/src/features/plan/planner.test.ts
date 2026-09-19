@@ -86,6 +86,14 @@ describe("plannerReducer", () => {
     expect(added).toMatchObject({ phase: "add", indices: [0, 20, 40] });
   });
 
+  it("judges a leg by its course, not by a stray point at either end", () => {
+    const straight = corner.slice(0, 41);
+    // Cut a vertex past each waypoint, about 73 m out: the leg still follows the route.
+    const leg: Position[] = [[7.999, 49], ...straight, [8.041, 49]];
+
+    expect(nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [leg])).toBeNull();
+  });
+
   it("prunes every other waypoint a leg does without, and keeps the removal", () => {
     const straight = corner.slice(0, 41);
     const progress = {

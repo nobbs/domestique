@@ -437,6 +437,15 @@ describe("PlanPage", () => {
     expect(preview).toHaveBeenCalledTimes(1);
     first.unmount();
 
+    const unchanged = renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Route type" }));
+    act(() => vi.advanceTimersByTime(0));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Trekking" }));
+    expect(screen.getByText("Tracing paused with 2 waypoints.")).toBeInTheDocument();
+    unchanged.unmount();
+
     const renamed = renderPage(cornerCopy);
     await act(async () => {});
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));

@@ -177,7 +177,10 @@ function traceAdditions(
       additions.push({ index: index + 1, routeIndex: start + 1 + missed });
       return;
     }
-    const wandered = routed[farthestFrom(routed, stretch, toleranceMetres)];
+    // A leg's own ends are left out: its cut may run a vertex past a waypoint, and a
+    // waypoint off the road starts the leg at the point the engine snapped it to.
+    const between = routed.slice(1, -1);
+    const wandered = between[farthestFrom(between, stretch, toleranceMetres)];
     if (!wandered || interior.length === 0) {
       return;
     }
