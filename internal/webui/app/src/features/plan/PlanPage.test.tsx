@@ -494,6 +494,14 @@ describe("PlanPage", () => {
 
     expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
     expect(screen.getByText(/Tracing stopped before the plan fully follows/)).toBeInTheDocument();
+    // The strayed stretches show once the line has morphed into its routed shape.
+    act(() => vi.advanceTimersByTime(500));
+    const strayed = () =>
+      JSON.parse(screen.getByTestId("plan-copied-route-deviations").dataset.geometry ?? "{}")
+        .geometry.coordinates;
+    expect(strayed().length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Show the copied route" }));
+    expect(screen.queryByTestId("plan-copied-route-deviations")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByText(/Tracing stopped before/)).not.toBeInTheDocument();
   });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Position } from "../../api/types";
 import {
+  deviationStretches,
   initialPlannerState,
   isPlannerSeed,
   MAX_PLAN_WAYPOINTS,
@@ -650,5 +651,22 @@ describe("plannerReducer", () => {
 
       expect(placed.waypoints[0]?.longitude).toBe(8);
     });
+  });
+});
+
+describe("deviationStretches", () => {
+  // Nine vertices along a parallel; the detoured plan swings three of them about 1.1 km north.
+  const route: Position[] = Array.from({ length: 9 }, (_, index) => [8 + index * 0.01, 49]);
+  const detoured: Position[] = route.map(([longitude, latitude], index) =>
+    index >= 3 && index <= 5 ? [longitude, latitude + 0.01] : [longitude, latitude],
+  );
+
+  it("finds the stretch the plan strays from, padded by one vertex either side", () => {
+    expect(deviationStretches(route, detoured)).toEqual([route.slice(2, 7)]);
+  });
+
+  it("finds nothing where the plan follows the route, or against too short a plan", () => {
+    expect(deviationStretches(route, route)).toEqual([]);
+    expect(deviationStretches(route, [])).toEqual([]);
   });
 });

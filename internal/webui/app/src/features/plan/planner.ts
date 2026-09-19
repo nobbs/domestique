@@ -208,6 +208,56 @@ function traceAdditions(
   return additions;
 }
 
+/**
+ * The stretches of a copied route farther than toleranceMetres from the plan's
+ * routed line, each padded by one vertex so it meets the route it interrupts.
+ */
+export function deviationStretches(
+  route: Position[],
+  plan: Position[],
+  toleranceMetres = TRACE_TOLERANCE_METRES,
+): Position[][] {
+  if (plan.length < 2 || route.length === 0) {
+    return [];
+  }
+  const project = projector(route[0]?.[1] ?? 0);
+  const line = plan.map(project);
+  const segments = line.length - 1;
+  let cursor = 0;
+  const far = route.map((position) => {
+    const point = project(position);
+    let nearest = Number.POSITIVE_INFINITY;
+    for (let step = 0; step < segments && nearest > toleranceMetres; step++) {
+      const at = (cursor + step) % segments;
+      const from = line[at];
+      const to = line[at + 1];
+      if (from && to) {
+        nearest = Math.min(nearest, segmentDistance(point, from, to));
+        if (nearest <= toleranceMetres) {
+          cursor = at;
+        }
+      }
+    }
+    return nearest > toleranceMetres;
+  });
+
+  const stretches: Position[][] = [];
+  let start = -1;
+  far.forEach((isFar, index) => {
+    if (isFar && start === -1) {
+      start = index;
+    } else if (!isFar && start !== -1) {
+      stretches.push(route.slice(Math.max(0, start - 1), index + 1));
+      start = -1;
+    }
+  });
+  if (start !== -1) {
+    stretches.push(route.slice(Math.max(0, start - 1)));
+  }
+
+  return stretches;
+}
+
 /** Rounds of adding waypoints a trace may spend before it only prunes what it has. */
 const MAX_ADD_ROUNDS = 12;
 

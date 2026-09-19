@@ -75,6 +75,7 @@ import {
   waypointLabel,
 } from "./PlannerSidebar";
 import {
+  deviationStretches,
   initialPlannerState,
   insertionIndex,
   isPlannerSeed,
@@ -291,9 +292,9 @@ function HiddenRunLayer({
   );
 }
 
-/** The library route a copy was traced along, dashed under the plan so a deviation stands out. */
+/** The library route a copy was traced along, a quiet line under the plan. */
 function CopiedRouteLayer({ route }: { route: Position[] }) {
-  const colour = useThemeColour("--hold", "#9a6700");
+  const colour = useThemeColour("--ink-2", "#6e6d6a");
   const data = useMemo(
     () => ({
       type: "Feature" as const,
@@ -309,12 +310,38 @@ function CopiedRouteLayer({ route }: { route: Position[] }) {
         id="plan-copied-route-line"
         type="line"
         layout={{ "line-cap": "round", "line-join": "round" }}
-        paint={{
-          "line-color": colour,
-          "line-width": 5,
-          "line-opacity": 0.85,
-          "line-dasharray": [1.5, 1.5],
-        }}
+        paint={{ "line-color": colour, "line-width": 3, "line-opacity": 0.7 }}
+      />
+    </Source>
+  );
+}
+
+/** Where the plan strays from the copied route, drawn over the plan line in the alert tone. */
+function CopiedRouteDeviations({ route, line }: { route: Position[]; line: Position[] }) {
+  const colour = useThemeColour("--alert", "#c0392b");
+  const casing = useThemeColour("--panel", "#ffffff");
+  const data = useMemo(
+    () => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "MultiLineString" as const, coordinates: deviationStretches(route, line) },
+    }),
+    [route, line],
+  );
+
+  return (
+    <Source id="plan-copied-route-deviations" type="geojson" data={data}>
+      <Layer
+        id="plan-copied-route-deviations-casing"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{ "line-color": casing, "line-width": 10 }}
+      />
+      <Layer
+        id="plan-copied-route-deviations-line"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{ "line-color": colour, "line-width": 7 }}
       />
     </Source>
   );
@@ -1181,6 +1208,9 @@ export function PlanPage() {
                 ) : null}
                 {line.length > 1 && settled && preview?.pushing ? (
                   <PushingLine line={line} pushing={preview.pushing} />
+                ) : null}
+                {copiedRoute && copiedRouteShown && line.length > 1 && settled ? (
+                  <CopiedRouteDeviations route={copiedRoute} line={line} />
                 ) : null}
                 {line.length > 1 ? (
                   <HiddenRunLayer line={line} preview={preview} run={hiddenRun} />
