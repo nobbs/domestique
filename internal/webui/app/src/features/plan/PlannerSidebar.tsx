@@ -402,6 +402,8 @@ export interface HiddenRun {
 
 export interface PlannerSidebarProps {
   state: PlannerState;
+  /** While a copy is being traced, nothing here may change the plan. */
+  locked?: boolean;
   preview: PlanRoutePreview | null;
   planId: number | null;
   /** Whether the stored plan is published; the footer's switch only takes effect on save. */
@@ -427,6 +429,7 @@ export interface PlannerSidebarProps {
 /** The planner's column beside the map; the map remains visible while the list changes. */
 export function PlannerSidebar({
   state,
+  locked = false,
   preview,
   planId,
   published,
@@ -541,7 +544,10 @@ export function PlannerSidebar({
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-[var(--base)] p-3">
-      <div className="flex min-h-0 flex-1 flex-col rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]">
+      <fieldset
+        disabled={locked}
+        className="flex min-h-0 min-w-0 flex-1 flex-col rounded-2xl bg-[var(--panel)] shadow-[var(--shadow)]"
+      >
         <div className="flex shrink-0 items-center gap-2.5 px-5 pt-5 pb-3">
           <PlansMenu
             name={state.name}
@@ -833,7 +839,7 @@ export function PlannerSidebar({
             </p>
           ) : null}
         </div>
-      </div>
+      </fieldset>
     </section>
   );
 }

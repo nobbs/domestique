@@ -394,6 +394,56 @@ describe("PlanPage", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it("locks editing while a copy is traced, until it is paused", async () => {
+    preview.mockImplementation(straightRouter);
+    renderPage(cornerCopy);
+    await act(async () => {});
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    expect(screen.getByLabelText("Plan name")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reverse" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Avoid an area" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Show the copied route" })).toBeEnabled();
+    mapPoint.value = { longitude: 8.02, latitude: 49.02 };
+    fireEvent.click(map);
+    expect(waypointRows()).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(screen.getByText("Tracing paused with 2 waypoints.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reverse" })).toBeEnabled();
+    act(() => vi.runOnlyPendingTimers());
+    act(() => vi.runOnlyPendingTimers());
+    expect(waypointRows()).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
+  });
+
+  it("ends a trace on cancel, or on an edit made while it is paused", async () => {
+    preview.mockImplementation(straightRouter);
+    const first = renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    act(() => vi.runOnlyPendingTimers());
+    act(() => vi.runOnlyPendingTimers());
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(2);
+    first.unmount();
+
+    renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    mapPoint.value = { longitude: 8.02, latitude: 49.02 };
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.runOnlyPendingTimers());
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
+  });
+
   it("pauses tracing while the routing engine is busy and resumes where it stopped", async () => {
     preview.mockImplementationOnce(
       (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>

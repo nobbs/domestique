@@ -92,10 +92,11 @@ function PlaceRow({ place, near }: { place: PlaceMatch; near: Near | null }) {
 export interface PlaceSearchProps {
   /** Places in the order they were chosen. */
   onAdd: (places: PlaceMatch[]) => void;
+  disabled?: boolean;
 }
 
 /** Rendered as map furniture: it reads the camera to bias the search and to show what it added. */
-export function PlaceSearch({ onAdd }: PlaceSearchProps) {
+export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
   const { current: map } = useMap();
   const reducedMotion = usePrefersReducedMotion();
   const [open, setOpen] = useState(false);
@@ -142,7 +143,7 @@ export function PlaceSearch({ onAdd }: PlaceSearchProps) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (!disabled && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         show(!open);
       }
@@ -238,6 +239,7 @@ export function PlaceSearch({ onAdd }: PlaceSearchProps) {
         variant="panel"
         icon={<IconMapPinSearch stroke={1.8} />}
         className="w-56 justify-start"
+        disabled={disabled}
         onClick={() => show(true)}
       >
         <span className="flex-1 text-left">Search places</span>
