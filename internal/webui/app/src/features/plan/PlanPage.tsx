@@ -295,7 +295,7 @@ function HiddenRunLayer({
 }
 
 /**
- * The library route a copy was traced along, a quiet line under the plan. It
+ * The route a copy was traced along, a quiet line under the plan. It
  * stays mounted while hidden: a layer mounted later would draw over the plan.
  */
 function CopiedRouteLayer({ route, visible }: { route: Position[]; visible: boolean }) {
@@ -725,7 +725,7 @@ export function PlanPage() {
   const loaded = useRef<string | null>(null);
   const initialViewport = useRef<PlannerFraming | null>(null);
   const hydrating = useRef(planId !== null);
-  // A copy still being traced along its library route, advanced once per preview.
+  // A copy still being traced along the route it copies, advanced once per preview.
   const trace = useRef<TraceProgress | null>(null);
   const [tracing, setTracing] = useState(false);
   // Why a trace is holding its place until resumed: the admin paused it, or the engine asked for a retry.

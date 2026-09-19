@@ -8,9 +8,9 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activitiesQuery,
@@ -30,8 +30,10 @@ import type {
   RouteClimb,
   WebUIConfig,
 } from "../../api/types";
+import { useViewAsRider } from "../../lib/identity";
 import type { Profile } from "../../lib/profile";
 import type { AlignedSeries } from "../../lib/rideSeries";
+import { isPlannerSeed } from "../plan/planner";
 import { ActivityPage } from "./ActivityPage";
 
 const ZONE = "Europe/Berlin";
@@ -155,13 +157,21 @@ function matchedRide(routeCoverage = 1): Activity {
   };
 }
 
-function config(): WebUIConfig {
+function config(admin = false, planning = false): WebUIConfig {
   return {
     basemaps: [],
     sourceBaseUrls: {},
     timezone: ZONE,
-    identity: { display: "rider@example.test", admin: false },
+    identity: { display: "rider@example.test", admin },
+    planning,
   };
+}
+
+/** The state a navigation to `/plan` carried, read back out as JSON. */
+function LocationState() {
+  const { state } = useLocation();
+
+  return <output data-testid="activity-page-location-state">{JSON.stringify(state)}</output>;
 }
 
 function show(
@@ -173,11 +183,13 @@ function show(
   library: LibraryRoute[] | null = [],
   climbs: RouteClimb[] = [],
   aheadOfPrediction?: (number | null)[],
+  admin = false,
+  planning = false,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
-  client.setQueryData(webUIConfigQuery().queryKey, config());
+  client.setQueryData(webUIConfigQuery().queryKey, config(admin, planning));
   client.setQueryData(activitiesQuery().queryKey, [ride]);
   // Null leaves it unseeded, which is the only way to see whether the page asks.
   if (library) {
@@ -216,6 +228,7 @@ function show(
       <MemoryRouter initialEntries={[`/activities/${activityId}`]}>
         <Routes>
           <Route path="activities/:activityId" element={<ActivityPage />} />
+          <Route path="plan" element={<LocationState />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -607,5 +620,97 @@ describe("one ride's page", () => {
 
     expect(screen.getByTestId("activity-map").parentElement).toHaveClass("h-[28rem]");
     expect(screen.getByRole("button", { name: "Expand map" })).toBeInTheDocument();
+  });
+});
+
+describe("create plan from this ride", () => {
+  const BUTTON = "Create plan from this ride";
+
+  it("offers the button to an admin with planning on and an outdoor track", () => {
+    show(track(), RIDE.id, undefined, RIDE, [], [], [], undefined, true, true);
+
+    expect(screen.getByRole("button", { name: BUTTON })).toBeInTheDocument();
+  });
+
+  it("withholds the button until the ride itself has loaded", () => {
+    show(track(), "987654321", undefined, RIDE, [], [], [], undefined, true, true);
+
+    expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
+  });
+
+  it("withholds the button when planning is off", () => {
+    show(track(), RIDE.id, undefined, RIDE, [], [], [], undefined, true, false);
+
+    expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
+  });
+
+  it("withholds the button from a rider", () => {
+    show(track(), RIDE.id, undefined, RIDE, [], [], [], undefined, false, true);
+
+    expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
+  });
+
+  it("withholds the button while an admin previews the page as a rider", () => {
+    const { result } = renderHook(() => useViewAsRider());
+    act(() => result.current[1](true));
+    try {
+      show(track(), RIDE.id, undefined, RIDE, [], [], [], undefined, true, true);
+      expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
+    } finally {
+      act(() => result.current[1](false));
+    }
+  });
+
+  it("withholds the button for a ride recorded indoors", () => {
+    show(track(), RIDE.id, undefined, { ...RIDE, indoor: true }, [], [], [], undefined, true, true);
+
+    expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
+  });
+
+  // Still no ground to plan over, even though this one carries a line: it is
+  // drawn against a virtual world's own artwork, not against real roads.
+  it("withholds the button for a ride drawn over a known virtual world", () => {
+    show(
+      {
+        bbox: [165.8, -10.8, 165.85, -10.75],
+        coordinates: [
+          [165.8, -10.8],
+          [165.82, -10.78],
+          [165.84, -10.76],
+        ],
+        state: "indoor",
+        world: {
+          id: 9,
+          name: "Makuri Islands",
+          mapUrl: "/v1/zwift/worlds/9/map",
+          bounds: { north: -10.73746, west: 165.76591, south: -10.85234, east: 165.88222 },
+          imageQuarterTurns: 3,
+        },
+      },
+      RIDE.id,
+      undefined,
+      RIDE,
+      [],
+      [],
+      [],
+      undefined,
+      true,
+      true,
+    );
+
+    expect(screen.queryByRole("button", { name: BUTTON })).toBeNull();
+  });
+
+  it("seeds a plan from the ride's cleaned track and navigates to the planner", async () => {
+    const user = userEvent.setup();
+    show(track(), RIDE.id, undefined, RIDE, [], [], [], undefined, true, true);
+
+    await user.click(screen.getByRole("button", { name: BUTTON }));
+
+    const state = JSON.parse(
+      screen.getByTestId("activity-page-location-state").textContent ?? "null",
+    );
+    expect(isPlannerSeed(state)).toBe(true);
+    expect(state.trace).toBeDefined();
   });
 });

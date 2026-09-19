@@ -38,13 +38,13 @@ export interface PlannerAvoid extends PlanAvoid {
   id: number;
 }
 
-/** A library route a copy is traced along, and the vertex of it each waypoint sits on. */
+/** A route a copy is traced along, from the library or a ride, and the vertex each waypoint sits on. */
 export interface PlannerTrace {
   route: Position[];
   indices: number[];
 }
 
-/** A new local plan prefilled from the route currently open in the library. */
+/** A new local plan prefilled from a library route or a recorded ride. */
 export interface PlannerSeed {
   name: string;
   profile: PlanProfile;
@@ -58,7 +58,7 @@ export const MAX_PLAN_WAYPOINTS = 200;
 /** How far a copy's first waypoints may cut a corner; tracing adds what routing gets wrong. */
 const SEED_TOLERANCE_METRES = 1500;
 
-/** How far a traced route may stray from the library route before a waypoint is added. */
+/** How far a traced route may stray from the route it copies before a waypoint is added. */
 const TRACE_TOLERANCE_METRES = 50;
 
 const METRES_PER_DEGREE = (Math.PI / 180) * 6_371_000;
@@ -95,6 +95,60 @@ function isPosition(value: unknown): value is Position {
     latitude >= -90 &&
     latitude <= 90
   );
+}
+
+/** Recorded-track cleaning: an isolated GPS spike, and the minimum gap kept between samples. */
+const RIDE_SPIKE_TOLERANCE_METRES = 40;
+const RIDE_SPIKE_NEIGHBOUR_METRES = 60;
+const RIDE_THIN_SPACING_METRES = 25;
+
+/**
+ * A recorded ride's track made fit to trace: out-and-back GPS spikes dropped, then thinned
+ * to one point per 25 m, which also collapses stops. Both ends of the ride are always kept.
+ */
+export function rideTraceCoordinates(coordinates: Position[]): Position[] {
+  const valid = coordinates.filter(isPosition);
+  if (valid.length < 3) {
+    return valid;
+  }
+
+  const deSpiked: Position[] = [];
+  valid.forEach((point, index) => {
+    const prevKept = deSpiked.at(-1);
+    const next = valid[index + 1];
+    if (index === 0 || index === valid.length - 1 || !prevKept || !next) {
+      deSpiked.push(point);
+      return;
+    }
+    const project = projector(point[1]);
+    const a = project(prevKept);
+    const b = project(next);
+    const neighbourGap = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const isSpike =
+      neighbourGap < RIDE_SPIKE_NEIGHBOUR_METRES &&
+      segmentDistance(project(point), a, b) > RIDE_SPIKE_TOLERANCE_METRES;
+    if (!isSpike) {
+      deSpiked.push(point);
+    }
+  });
+
+  const thinned: Position[] = [];
+  deSpiked.forEach((point, index) => {
+    const last = thinned.at(-1);
+    const isFinal = index === deSpiked.length - 1;
+    if (!last) {
+      thinned.push(point);
+      return;
+    }
+    const project = projector(last[1]);
+    const [x1, y1] = project(last);
+    const [x2, y2] = project(point);
+    if (isFinal || Math.hypot(x2 - x1, y2 - y1) >= RIDE_THIN_SPACING_METRES) {
+      thinned.push(point);
+    }
+  });
+
+  return thinned;
 }
 
 /** The vertices Douglas–Peucker keeps at toleranceMetres, both ends always among them. */
@@ -421,7 +475,7 @@ export function nextTraceStep(progress: TraceProgress, legs: Position[][]): Trac
   return withRemovals(restored) ?? (failed.length > 0 ? restored : { ...restored, phase: "done" });
 }
 
-/** A copy's first, coarse waypoints over the valid part of a library route. */
+/** A copy's first, coarse waypoints over the valid part of the route it copies. */
 function seedTrace(coordinates: Position[]): PlannerTrace | null {
   const route = coordinates.filter(isPosition);
   if (route.length < 2) {
@@ -440,7 +494,7 @@ function seedTrace(coordinates: Position[]): PlannerTrace | null {
 /** The service refuses longer plan names, so a copied title is cut to fit. */
 export const MAX_PLAN_NAME_LENGTH = 120;
 
-/** An unsaved draft copied from another provider's route; null when it has no name or too short a line. */
+/** An unsaved draft copied from a library route or a ride; null when it has no name or too short a line. */
 export function plannerSeedFrom(title: string, coordinates: Position[]): PlannerSeed | null {
   const trace = seedTrace(coordinates);
   const name = Array.from(title.trim()).slice(0, MAX_PLAN_NAME_LENGTH).join("");
