@@ -665,11 +665,11 @@ describe("deviationStretches", () => {
     expect(deviationStretches(route, detoured)).toEqual([route.slice(2, 7)]);
   });
 
-  it("marks the return leg of an out-and-back the plan stops at the turnaround of", () => {
-    const back = [...route].reverse().slice(1);
-    const outAndBack = [...route, ...back];
+  it("finds nothing on a plan that rides the route backwards or starts partway round", () => {
+    const loop: Position[] = [...route, [8.08, 49.01], [8, 49.01], [8, 49]];
 
-    expect(deviationStretches(outAndBack, route)).toEqual([outAndBack.slice(9)]);
+    expect(deviationStretches(route, [...route].reverse())).toEqual([]);
+    expect(deviationStretches(loop, [...loop.slice(4), ...loop.slice(1, 5)])).toEqual([]);
   });
 
   it("finds the same stretch on a plan long enough to skip runs of it", () => {

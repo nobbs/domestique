@@ -212,10 +212,10 @@ function traceAdditions(
 const DEVIATION_CHUNK = 64;
 
 /**
- * The stretches of a copied route farther than toleranceMetres from the plan's
- * routed line, each padded by one vertex so it meets the route it interrupts.
- * Matching runs forward along the plan, so a lap or return leg the plan never
- * rides is a stretch even where it shares road with one it does.
+ * The stretches of a copied route farther than toleranceMetres from every part
+ * of the plan's routed line, each padded by one vertex so it meets the route it
+ * interrupts. Order is not weighed: a lap the plan skips on road it rides
+ * elsewhere is not a stretch.
  */
 export function deviationStretches(
   route: Position[],
@@ -240,23 +240,30 @@ export function deviationStretches(
       Math.max(...ys) + toleranceMetres,
     ]);
   }
+  // The run the previous point matched in is tried first: the next point is usually beside it.
   let cursor = 0;
   const far = route.map((position) => {
     const point = project(position);
-    for (let at = cursor; at < segments; at++) {
-      const box = boxes[Math.floor(at / DEVIATION_CHUNK)];
+    for (let step = 0; step < boxes.length; step++) {
+      const chunk = (cursor + step) % boxes.length;
+      const box = boxes[chunk];
       if (
-        box &&
-        (point[0] < box[0] || point[0] > box[2] || point[1] < box[1] || point[1] > box[3])
+        !box ||
+        point[0] < box[0] ||
+        point[0] > box[2] ||
+        point[1] < box[1] ||
+        point[1] > box[3]
       ) {
-        at = (Math.floor(at / DEVIATION_CHUNK) + 1) * DEVIATION_CHUNK - 1;
         continue;
       }
-      const from = line[at];
-      const to = line[at + 1];
-      if (from && to && segmentDistance(point, from, to) <= toleranceMetres) {
-        cursor = at;
-        return false;
+      const end = Math.min((chunk + 1) * DEVIATION_CHUNK, segments);
+      for (let at = chunk * DEVIATION_CHUNK; at < end; at++) {
+        const from = line[at];
+        const to = line[at + 1];
+        if (from && to && segmentDistance(point, from, to) <= toleranceMetres) {
+          cursor = chunk;
+          return false;
+        }
       }
     }
     return true;
