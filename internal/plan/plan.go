@@ -69,6 +69,10 @@ var ErrNotFound = errors.New("plan: not found")
 // test for it with errors.Is without seeing what the engine said.
 var ErrRouting = errors.New("plan: routing failed")
 
+// ErrRoutingLimited reports a routing failure the engine asked to be retried
+// later. A Router wraps it; it always arrives inside ErrRouting as well.
+var ErrRoutingLimited = errors.New("plan: routing engine asked to be retried later")
+
 // ErrInvalid reports that a plan's own fields did not pass validation: its
 // name, profile, waypoint count, or a waypoint's coordinates.
 var ErrInvalid = errors.New("plan: invalid")

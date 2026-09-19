@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../api/request";
 import { haversineMetres } from "../../lib/profile";
 
 const preview = vi.hoisted(() => vi.fn());
@@ -200,6 +201,53 @@ vi.mock("./PlanDelivery", () => ({
 
 const { PlanPage } = await import("./PlanPage");
 
+// A router that knows no roads: every leg is the straight line between its waypoints.
+function straightRouter(
+  variables: { data: { waypoints: { longitude: number; latitude: number }[] } },
+  callbacks: { onSuccess: (value: unknown) => void },
+) {
+  const coordinates = variables.data.waypoints.map(({ longitude, latitude }) => [
+    longitude,
+    latitude,
+  ]);
+  let distance = 0;
+  const waypointProgress = coordinates.map((position, index) => {
+    const previous = coordinates[index - 1];
+    distance += previous
+      ? haversineMetres(previous as [number, number], position as [number, number])
+      : 0;
+    return { distanceMetres: distance };
+  });
+  callbacks.onSuccess({
+    data: {
+      geometry: { type: "LineString", coordinates },
+      distanceMetres: distance,
+      ascentMetres: 0,
+      waypointProgress,
+    },
+  });
+}
+
+// An L-shaped library route copied with only its ends: tracing has to find the corner.
+const cornerCopy = {
+  pathname: "/plan",
+  state: {
+    name: "Corner",
+    profile: "trekking",
+    waypoints: [
+      { longitude: 8, latitude: 49 },
+      { longitude: 8.04, latitude: 49.04 },
+    ],
+    trace: {
+      route: [
+        ...Array.from({ length: 40 }, (_, index) => [8 + index / 1000, 49]),
+        ...Array.from({ length: 41 }, (_, index) => [8.04, 49 + index / 1000]),
+      ],
+      indices: [0, 80],
+    },
+  },
+};
+
 function renderPage(
   path: string | { pathname: string; state: unknown } = "/plan",
   config: { placeNames?: boolean } = {},
@@ -327,58 +375,16 @@ describe("PlanPage", () => {
   });
 
   it("traces a copied route round by round, keeping only the ones routing needs", async () => {
-    // A router that knows no roads: every leg is the straight line between its waypoints.
-    preview.mockImplementation(
-      (
-        variables: { data: { waypoints: { longitude: number; latitude: number }[] } },
-        callbacks: { onSuccess: (value: unknown) => void },
-      ) => {
-        const coordinates = variables.data.waypoints.map(({ longitude, latitude }) => [
-          longitude,
-          latitude,
-        ]);
-        let distance = 0;
-        const waypointProgress = coordinates.map((position, index) => {
-          const previous = coordinates[index - 1];
-          distance += previous
-            ? haversineMetres(previous as [number, number], position as [number, number])
-            : 0;
-          return { distanceMetres: distance };
-        });
-        callbacks.onSuccess({
-          data: {
-            geometry: { type: "LineString", coordinates },
-            distanceMetres: distance,
-            ascentMetres: 0,
-            waypointProgress,
-          },
-        });
-      },
-    );
-    const route = [
-      ...Array.from({ length: 40 }, (_, index) => [8 + index / 1000, 49]),
-      ...Array.from({ length: 41 }, (_, index) => [8.04, 49 + index / 1000]),
-    ];
-    renderPage({
-      pathname: "/plan",
-      state: {
-        name: "Corner",
-        profile: "trekking",
-        waypoints: [
-          { longitude: 8, latitude: 49 },
-          { longitude: 8.04, latitude: 49.04 },
-        ],
-        trace: { route, indices: [0, 80] },
-      },
-    });
+    preview.mockImplementation(straightRouter);
+    renderPage(cornerCopy);
     await act(async () => {});
     expect(screen.getByText("Tracing the copied route with 2 waypoints…")).toHaveAttribute(
       "role",
       "status",
     );
 
-    for (let round = 0; round < 6 && screen.queryByText(/Tracing the copied route/); round++) {
-      act(() => vi.advanceTimersByTime(300));
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
+      act(() => vi.runOnlyPendingTimers());
     }
 
     expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
@@ -386,6 +392,32 @@ describe("PlanPage", () => {
     expect(waypointRows()[1]).toContain("49.0000, 8.0400");
     expect(preview).toHaveBeenCalledTimes(4);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("pauses tracing while the routing engine is busy and resumes where it stopped", async () => {
+    preview.mockImplementationOnce(
+      (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
+        callbacks.onError(
+          new ApiError(502, "routing_busy", "the routing engine is busy; try again in a moment"),
+        ),
+    );
+    preview.mockImplementation(straightRouter);
+    renderPage(cornerCopy);
+    await act(async () => {});
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByText(/Tracing paused: the routing engine is busy/)).toBeInTheDocument();
+    expect(screen.queryByText("Preview unavailable")).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(preview).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
   });
 
   it("stops tracing a copied route when the routing engine refuses, keeping its waypoints", async () => {

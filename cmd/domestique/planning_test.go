@@ -179,6 +179,26 @@ func TestBrouterRouterConvertsWaypointsAndProfile(t *testing.T) {
 
 // A routing failure is wrapped rather than passed through bare, but the
 // caller must still be able to recover the adapter's own category.
+func TestBrouterRouterMarksAnEngineAskingForARetry(t *testing.T) {
+	status := http.StatusForbidden
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+	}))
+	defer server.Close()
+	client, err := brouter.New(&brouter.Options{BaseURL: server.URL})
+	require.NoError(t, err)
+	router := brouterRouter{client: client}
+	waypoints := []plan.Waypoint{{Longitude: 8.68, Latitude: 50.11}, {Longitude: 8.70, Latitude: 50.12}}
+
+	_, limited := router.Route(t.Context(), waypoints, plan.Gravel, nil)
+	require.ErrorIs(t, limited, plan.ErrRoutingLimited)
+
+	status = http.StatusBadRequest
+	_, refused := router.Route(t.Context(), waypoints, plan.Gravel, nil)
+	require.Error(t, refused)
+	assert.NotErrorIs(t, refused, plan.ErrRoutingLimited)
+}
+
 func TestBrouterRouterWrapsARoutingFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

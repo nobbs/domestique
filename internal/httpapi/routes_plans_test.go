@@ -464,6 +464,17 @@ func TestCreatePlanRejectsAValidationError(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "name is required")
 }
 
+func TestCreatePlanSaysTheRoutingEngineIsBusyWhenItAsksForARetry(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{
+		createErr: fmt.Errorf("plan: routing waypoints: %w: %w", plan.ErrRouting, plan.ErrRoutingLimited),
+	})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, plansPath, validPlanWriteBody, ""))
+	assert.Equal(t, http.StatusBadGateway, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"code":"routing_busy"`)
+}
+
 func TestCreatePlanReportsARoutingFailureWithoutLeakingItsDetail(t *testing.T) {
 	upstream := errors.New("no route found near 8.123456,49.654321")
 	handler := plansHandler(t, newFakeSessions(), &fakePlans{

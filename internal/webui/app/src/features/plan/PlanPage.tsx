@@ -29,6 +29,7 @@ import {
   useReplacePlan,
 } from "../../api/generated";
 import { webUIConfigQuery } from "../../api/queries";
+import { ApiError } from "../../api/request";
 import type {
   BoundingBox,
   Plan,
@@ -152,6 +153,9 @@ function PushingLine({ line, pushing }: { line: Position[]; pushing: PlanWindow[
     </Source>
   );
 }
+
+/** How long a trace waits between routing rounds. */
+const TRACE_ROUND_MS = 1000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Could not route these waypoints.";
@@ -686,6 +690,9 @@ export function PlanPage() {
   // A copy still being traced along its library route, advanced once per preview.
   const trace = useRef<TraceProgress | null>(null);
   const [tracing, setTracing] = useState(false);
+  // The engine asked for a retry mid-trace: the trace keeps its place until resumed.
+  const [tracePaused, setTracePaused] = useState(false);
+  const [previewRetry, setPreviewRetry] = useState(0);
   const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
   const [copiedRouteShown, setCopiedRouteShown] = useState(true);
   const request = useRef(0);
@@ -722,6 +729,7 @@ export function PlanPage() {
       }
     }
     setTracing(trace.current !== null);
+    setTracePaused(false);
     setCopiedRoute(trace.current?.route ?? null);
     setCopiedRouteShown(true);
     setPreviewError(null);
@@ -750,6 +758,7 @@ export function PlanPage() {
     setRoutedFor(identified(loadedPlan.waypoints));
   }, [loadedPlan]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewRetry is read nowhere in the body; it asks again for the same waypoints once the engine was busy.
   useEffect(() => {
     if (planId !== null && !loadedPlan) {
       request.current += 1;
@@ -791,6 +800,11 @@ export function PlanPage() {
           onError: (error) => {
             if (request.current === current) {
               setPreviewError(errorMessage(error));
+              setTracePaused(
+                trace.current !== null &&
+                  error instanceof ApiError &&
+                  error.code === "routing_busy",
+              );
             }
           },
         },
@@ -798,13 +812,17 @@ export function PlanPage() {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid]);
+  }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid, previewRetry]);
 
   const line = useMemo(() => positions(preview), [preview]);
 
   useEffect(() => {
     const progress = trace.current;
-    if (!progress || (!previewError && (!preview || routedFor !== state.waypoints))) {
+    if (
+      !progress ||
+      tracePaused ||
+      (!previewError && (!preview || routedFor !== state.waypoints))
+    ) {
       return;
     }
     // A waypoint the admin moved ends the trace: the route no longer says where it goes.
@@ -822,21 +840,27 @@ export function PlanPage() {
           )
         : null;
     const next = legs ? nextTraceStep(progress, legs) : null;
-    trace.current = next;
-    setTracing(next !== null);
     if (!next) {
+      trace.current = null;
+      setTracing(false);
       return;
     }
     const ids = new Map(progress.indices.map((index, at) => [index, state.waypoints[at]?.id]));
-    dispatch({
-      type: "trace",
-      waypoints: next.indices.map((index) => {
-        const [longitude, latitude] = next.route[index] ?? [0, 0];
-        const id = ids.get(index);
-        return id === undefined ? { longitude, latitude } : { longitude, latitude, id };
-      }),
-    });
-  }, [line, preview, previewError, routedFor, state.waypoints]);
+    // Spaced out, so a trace spends a public engine's quota no faster than it must.
+    const round = window.setTimeout(() => {
+      trace.current = next;
+      dispatch({
+        type: "trace",
+        waypoints: next.indices.map((index) => {
+          const [longitude, latitude] = next.route[index] ?? [0, 0];
+          const id = ids.get(index);
+          return id === undefined ? { longitude, latitude } : { longitude, latitude, id };
+        }),
+      });
+    }, TRACE_ROUND_MS);
+
+    return () => window.clearTimeout(round);
+  }, [line, preview, previewError, routedFor, state.waypoints, tracePaused]);
   const previewRef = useRef(preview);
   previewRef.current = preview;
   const shownWaypoints = useMemo(
@@ -1243,14 +1267,30 @@ export function PlanPage() {
             </CartographyProvider>
           ) : null}
           {tracing ? (
-            <p
+            <div
               role="status"
-              className="-translate-x-1/2 absolute top-3 left-1/2 z-30 rounded-full bg-[var(--panel)] px-3 py-1 text-sm shadow-[var(--shadow)]"
+              className="-translate-x-1/2 absolute top-3 left-1/2 z-30 flex items-center gap-2 rounded-full bg-[var(--panel)] px-3 py-1 text-sm shadow-[var(--shadow)]"
             >
-              Tracing the copied route with {state.waypoints.length} waypoints…
-            </p>
+              {tracePaused ? (
+                <>
+                  Tracing paused: the routing engine is busy.
+                  <Button
+                    variant="panel"
+                    onClick={() => {
+                      setTracePaused(false);
+                      setPreviewError(null);
+                      setPreviewRetry((retry) => retry + 1);
+                    }}
+                  >
+                    Resume
+                  </Button>
+                </>
+              ) : (
+                <>Tracing the copied route with {state.waypoints.length} waypoints…</>
+              )}
+            </div>
           ) : null}
-          {previewError ? (
+          {previewError && !tracePaused ? (
             <Alert
               variant="destructive"
               className="absolute top-1/2 right-3 z-30 max-w-sm -translate-y-1/2"
