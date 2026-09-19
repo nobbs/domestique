@@ -112,6 +112,12 @@ describe("readView", () => {
     expect(view.filters.movingSeconds).toEqual({ min: null, max: 7200 });
   });
 
+  it("reads each named source", () => {
+    const view = readView(new URLSearchParams("source=komoot&source=&source=local"));
+
+    expect(view.filters.providers).toEqual(["komoot", "local"]);
+  });
+
   it("falls back rather than failing on anything it does not recognise", () => {
     const view = readView(new URLSearchParams("sort=colour&dir=sideways&distanceMin=far"));
 
@@ -136,6 +142,7 @@ describe("writeView", () => {
         distanceMetres: { min: 8_000, max: 120_000 },
         ascentMetres: { min: null, max: 900 },
         movingSeconds: { min: 1800, max: null },
+        providers: ["komoot", "local"],
       },
     };
 

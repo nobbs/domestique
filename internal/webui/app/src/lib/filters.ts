@@ -15,6 +15,8 @@ export interface LibraryFilters {
   distanceMetres: NumericRange;
   ascentMetres: NumericRange;
   movingSeconds: NumericRange;
+  /** The source providers to keep; empty keeps every source. */
+  providers: string[];
 }
 
 // Three separate objects, deliberately: every edit path replaces a range with
@@ -23,6 +25,7 @@ export const EMPTY_FILTERS: LibraryFilters = {
   distanceMetres: { min: null, max: null },
   ascentMetres: { min: null, max: null },
   movingSeconds: { min: null, max: null },
+  providers: [],
 };
 
 function isActive(range: NumericRange): boolean {
@@ -33,14 +36,17 @@ export function hasActiveFilters(filters: LibraryFilters): boolean {
   return (
     isActive(filters.distanceMetres) ||
     isActive(filters.ascentMetres) ||
-    isActive(filters.movingSeconds)
+    isActive(filters.movingSeconds) ||
+    filters.providers.length > 0
   );
 }
 
-/** How many of the three measures carry a bound, for a toggle's count badge. */
+/** How many filters narrow the library, for a toggle's count badge. */
 export function activeFilterCount(filters: LibraryFilters): number {
-  return [filters.distanceMetres, filters.ascentMetres, filters.movingSeconds].filter(isActive)
-    .length;
+  return (
+    [filters.distanceMetres, filters.ascentMetres, filters.movingSeconds].filter(isActive).length +
+    (filters.providers.length > 0 ? 1 : 0)
+  );
 }
 
 function inRange(value: number, range: NumericRange): boolean {
@@ -67,6 +73,7 @@ export function matchesFilters(route: Route, filters: LibraryFilters): boolean {
   return (
     inRange(route.distanceMetres, filters.distanceMetres) &&
     inRange(route.ascentMetres, filters.ascentMetres) &&
-    inRange(route.movingSeconds ?? 0, filters.movingSeconds)
+    inRange(route.movingSeconds ?? 0, filters.movingSeconds) &&
+    (filters.providers.length === 0 || filters.providers.includes(route.provider))
   );
 }

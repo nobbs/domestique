@@ -42,6 +42,34 @@ function renderFilters(overrides: Partial<React.ComponentProps<typeof CatalogueF
 }
 
 describe("CatalogueFilters", () => {
+  it("offers no source choice for a library with one source", () => {
+    renderFilters();
+
+    expect(screen.queryByRole("group", { name: "Source" })).toBeNull();
+  });
+
+  it("keeps a chosen source the library does not hold, so it can be let go", async () => {
+    const onFiltersChange = vi.fn();
+    renderFilters({ filters: { ...EMPTY_FILTERS, providers: ["strava"] }, onFiltersChange });
+
+    await userEvent.click(screen.getByRole("button", { name: "strava, 0 routes" }));
+
+    expect(onFiltersChange).toHaveBeenCalledWith(EMPTY_FILTERS);
+  });
+
+  it("offers each source with its count, and adds a chosen one to the filters", async () => {
+    const onFiltersChange = vi.fn();
+    renderFilters({
+      library: [...LIBRARY, route({ sourceRouteId: 3, provider: "local" })],
+      onFiltersChange,
+    });
+
+    expect(screen.getByRole("button", { name: "VeloPlanner, 2 routes" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Planner, 1 route" }));
+
+    expect(onFiltersChange).toHaveBeenCalledWith({ ...EMPTY_FILTERS, providers: ["local"] });
+  });
+
   it("shows one slider per measure, in a card of its own", () => {
     renderFilters();
 

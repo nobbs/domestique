@@ -219,6 +219,17 @@ describe("CommandSearch", () => {
     expect(screen.queryByRole("option", { name: /Kaiserstuhl Loop/ })).toBeNull();
   });
 
+  it("narrows the list to a chosen source", async () => {
+    render(<Harness library={[VALLEY, FOREST, { ...KAISERSTUHL, provider: "komoot" }]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+    await userEvent.click(screen.getByRole("button", { name: "Komoot, 1 route" }));
+
+    expect(screen.getByRole("option", { name: /Kaiserstuhl Loop/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Valley floor/ })).toBeNull();
+  });
+
   it("clears the filters from the panel's own control", async () => {
     render(<Harness />);
     await userEvent.click(screen.getByRole("button", { name: "Search the route library" }));

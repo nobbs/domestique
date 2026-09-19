@@ -183,6 +183,7 @@ export function readView(params: URLSearchParams): CatalogueView {
       distanceMetres: readRange(params, "distance"),
       ascentMetres: readRange(params, "ascent"),
       movingSeconds: readRange(params, "duration"),
+      providers: params.getAll("source").filter((provider) => provider !== ""),
     },
   };
 }
@@ -206,6 +207,9 @@ export function writeView(view: CatalogueView): URLSearchParams {
   writeRange(params, "distance", view.filters.distanceMetres);
   writeRange(params, "ascent", view.filters.ascentMetres);
   writeRange(params, "duration", view.filters.movingSeconds);
+  for (const provider of view.filters.providers) {
+    params.append("source", provider);
+  }
 
   return params;
 }
