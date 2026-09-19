@@ -747,7 +747,7 @@ describe("summariseTrace", () => {
     expect(summary.strayedStretches).toBe(1);
   });
 
-  it("marks a trace the cap or round limit stopped as stoppedShort", () => {
+  it("marks a trace stopped by the cap or round limit as stoppedShort", () => {
     const summary = summariseTrace({
       route: summaryRoute,
       stretches: [],

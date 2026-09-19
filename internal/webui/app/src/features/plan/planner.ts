@@ -341,7 +341,7 @@ export function deviationStretches(
   return stretches;
 }
 
-/** How a finished trace read: its waypoint counts, timing, and how closely the plan follows what it copied. */
+/** How a finished trace went: its waypoint counts, timing, and how closely the plan follows what it copied. */
 export interface TraceSummary {
   waypoints: { seed: number; peak: number; final: number };
   rounds: number;

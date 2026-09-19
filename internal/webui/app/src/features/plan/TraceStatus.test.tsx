@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import type { TraceSummary } from "./planner";
 import { TraceFinished } from "./TraceStatus";
 
@@ -38,7 +38,26 @@ function stubReducedMotion(reduced: boolean) {
 }
 
 describe("TraceFinished", () => {
-  it("shows no countdown ring for a trace the cap stopped, only a dismiss button", () => {
+  it("holds its countdown while keyboard focus is inside it", () => {
+    vi.useFakeTimers();
+    try {
+      const onDismiss = vi.fn();
+      render(<TraceFinished summary={summary()} onDismiss={onDismiss} />);
+      const dismiss = screen.getByRole("button", { name: "Dismiss" });
+
+      act(() => dismiss.focus());
+      act(() => vi.advanceTimersByTime(12_000));
+      expect(onDismiss).not.toHaveBeenCalled();
+
+      act(() => dismiss.blur());
+      act(() => vi.advanceTimersByTime(12_000));
+      expect(onDismiss).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows no countdown ring for a trace stopped by the cap, only a dismiss button", () => {
     render(<TraceFinished summary={summary({ outcome: "stoppedShort" })} onDismiss={() => {}} />);
 
     expect(screen.getByText("Stopped short · 24 wp")).toBeInTheDocument();
