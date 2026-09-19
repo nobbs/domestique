@@ -75,6 +75,7 @@ import {
   waypointLabel,
 } from "./PlannerSidebar";
 import {
+  deviationStretches,
   initialPlannerState,
   insertionIndex,
   isPlannerSeed,
@@ -291,9 +292,12 @@ function HiddenRunLayer({
   );
 }
 
-/** The library route a copy was traced along, dashed under the plan so a deviation stands out. */
-function CopiedRouteLayer({ route }: { route: Position[] }) {
-  const colour = useThemeColour("--hold", "#9a6700");
+/**
+ * The library route a copy was traced along, a quiet line under the plan. It
+ * stays mounted while hidden: a layer mounted later would draw over the plan.
+ */
+function CopiedRouteLayer({ route, visible }: { route: Position[]; visible: boolean }) {
+  const colour = useThemeColour("--ink-2", "#6e6d6a");
   const data = useMemo(
     () => ({
       type: "Feature" as const,
@@ -308,13 +312,43 @@ function CopiedRouteLayer({ route }: { route: Position[] }) {
       <Layer
         id="plan-copied-route-line"
         type="line"
-        layout={{ "line-cap": "round", "line-join": "round" }}
-        paint={{
-          "line-color": colour,
-          "line-width": 5,
-          "line-opacity": 0.85,
-          "line-dasharray": [1.5, 1.5],
+        layout={{
+          "line-cap": "round",
+          "line-join": "round",
+          visibility: visible ? "visible" : "none",
         }}
+        paint={{ "line-color": colour, "line-width": 3, "line-opacity": 0.7 }}
+      />
+    </Source>
+  );
+}
+
+/** Where the plan strays from the copied route, drawn over the plan line in the alert tone. */
+function CopiedRouteDeviations({ stretches }: { stretches: Position[][] }) {
+  const colour = useThemeColour("--alert", "#c0392b");
+  const casing = useThemeColour("--panel", "#ffffff");
+  const data = useMemo(
+    () => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "MultiLineString" as const, coordinates: stretches },
+    }),
+    [stretches],
+  );
+
+  return (
+    <Source id="plan-copied-route-deviations" type="geojson" data={data}>
+      <Layer
+        id="plan-copied-route-deviations-casing"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{ "line-color": casing, "line-width": 10 }}
+      />
+      <Layer
+        id="plan-copied-route-deviations-line"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{ "line-color": colour, "line-width": 7 }}
       />
     </Source>
   );
@@ -841,6 +875,11 @@ export function PlanPage() {
   }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid, previewRetry]);
 
   const line = useMemo(() => positions(preview), [preview]);
+  // Once per routed line, not per redraw: the layer remounts on every settle.
+  const strayed = useMemo(
+    () => (copiedRoute ? deviationStretches(copiedRoute, line) : []),
+    [copiedRoute, line],
+  );
 
   useEffect(() => {
     const progress = trace.current;
@@ -1157,7 +1196,9 @@ export function PlanPage() {
                   // first fills it; the map re-frames after either.
                   fitRevision={narrow || !dockOpen ? 0 : profile ? 2 : 1}
                 />
-                {copiedRoute && copiedRouteShown ? <CopiedRouteLayer route={copiedRoute} /> : null}
+                {copiedRoute ? (
+                  <CopiedRouteLayer route={copiedRoute} visible={copiedRouteShown} />
+                ) : null}
                 <RouteTransition
                   legs={legs}
                   morph={morphing}
@@ -1181,6 +1222,9 @@ export function PlanPage() {
                 ) : null}
                 {line.length > 1 && settled && preview?.pushing ? (
                   <PushingLine line={line} pushing={preview.pushing} />
+                ) : null}
+                {copiedRouteShown && settled && previewError === null && strayed.length > 0 ? (
+                  <CopiedRouteDeviations stretches={strayed} />
                 ) : null}
                 {line.length > 1 ? (
                   <HiddenRunLayer line={line} preview={preview} run={hiddenRun} />

@@ -162,7 +162,9 @@ vi.mock("react-map-gl/maplibre", () => ({
       {children}
     </div>
   ),
-  Layer: () => null,
+  Layer: ({ id, layout }: { id: string; layout?: { visibility?: string } }) => (
+    <i data-testid={id} data-visibility={layout?.visibility ?? "visible"} />
+  ),
   ScaleControl: ({ position, unit }: { position: string; unit: string }) => (
     <output data-testid="plan-scale" data-position={position} data-unit={unit} />
   ),
@@ -494,6 +496,27 @@ describe("PlanPage", () => {
 
     expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
     expect(screen.getByText(/Tracing stopped before the plan fully follows/)).toBeInTheDocument();
+    // The strayed stretches show once the line has morphed into its routed shape.
+    act(() => vi.advanceTimersByTime(500));
+    const strayed = () =>
+      JSON.parse(screen.getByTestId("plan-copied-route-deviations").dataset.geometry ?? "{}")
+        .geometry.coordinates;
+    expect(strayed().length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Show the copied route" }));
+    expect(screen.queryByTestId("plan-copied-route-deviations")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show the copied route" }));
+    expect(strayed().length).toBeGreaterThan(0);
+
+    // A preview that fails leaves the old line on screen, so its strayed stretches go.
+    preview.mockImplementation(
+      (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
+        callbacks.onError(new Error("unavailable")),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Route type" }));
+    act(() => vi.advanceTimersByTime(0));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Gravel" }));
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.queryByTestId("plan-copied-route-deviations")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     expect(screen.queryByText(/Tracing stopped before/)).not.toBeInTheDocument();
   });
@@ -566,7 +589,8 @@ describe("PlanPage", () => {
     ).toHaveLength(3);
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-pressed", "false");
-    expect(screen.queryByTestId("plan-copied-route")).not.toBeInTheDocument();
+    // Hidden, not removed: a layer mounted again later would draw over the plan.
+    expect(screen.getByTestId("plan-copied-route-line")).toHaveAttribute("data-visibility", "none");
   });
 
   it("initializes a new draft from a copied route seed without saving it", async () => {

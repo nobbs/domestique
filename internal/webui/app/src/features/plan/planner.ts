@@ -208,6 +208,84 @@ function traceAdditions(
   return additions;
 }
 
+/** Plan segments grouped under one bounding box, so a far point skips a run at a time. */
+const DEVIATION_CHUNK = 64;
+
+/**
+ * The stretches of a copied route farther than toleranceMetres from every part
+ * of the plan's routed line, each padded by one vertex so it meets the route it
+ * interrupts. Order is not weighed: a lap the plan skips on road it rides
+ * elsewhere is not a stretch.
+ */
+export function deviationStretches(
+  route: Position[],
+  plan: Position[],
+  toleranceMetres = TRACE_TOLERANCE_METRES,
+): Position[][] {
+  if (plan.length < 2 || route.length === 0) {
+    return [];
+  }
+  const project = projector(route[0]?.[1] ?? 0);
+  const line = plan.map(project);
+  const segments = line.length - 1;
+  const boxes: Array<[number, number, number, number]> = [];
+  for (let first = 0; first < segments; first += DEVIATION_CHUNK) {
+    const run = line.slice(first, Math.min(first + DEVIATION_CHUNK, segments) + 1);
+    const xs = run.map(([x]) => x);
+    const ys = run.map(([, y]) => y);
+    boxes.push([
+      Math.min(...xs) - toleranceMetres,
+      Math.min(...ys) - toleranceMetres,
+      Math.max(...xs) + toleranceMetres,
+      Math.max(...ys) + toleranceMetres,
+    ]);
+  }
+  // The run the previous point matched in is tried first: the next point is usually beside it.
+  let cursor = 0;
+  const far = route.map((position) => {
+    const point = project(position);
+    for (let step = 0; step < boxes.length; step++) {
+      const chunk = (cursor + step) % boxes.length;
+      const box = boxes[chunk];
+      if (
+        !box ||
+        point[0] < box[0] ||
+        point[0] > box[2] ||
+        point[1] < box[1] ||
+        point[1] > box[3]
+      ) {
+        continue;
+      }
+      const end = Math.min((chunk + 1) * DEVIATION_CHUNK, segments);
+      for (let at = chunk * DEVIATION_CHUNK; at < end; at++) {
+        const from = line[at];
+        const to = line[at + 1];
+        if (from && to && segmentDistance(point, from, to) <= toleranceMetres) {
+          cursor = chunk;
+          return false;
+        }
+      }
+    }
+    return true;
+  });
+
+  const stretches: Position[][] = [];
+  let start = -1;
+  far.forEach((isFar, index) => {
+    if (isFar && start === -1) {
+      start = index;
+    } else if (!isFar && start !== -1) {
+      stretches.push(route.slice(Math.max(0, start - 1), index + 1));
+      start = -1;
+    }
+  });
+  if (start !== -1) {
+    stretches.push(route.slice(Math.max(0, start - 1)));
+  }
+
+  return stretches;
+}
+
 /** Rounds of adding waypoints a trace may spend before it only prunes what it has. */
 const MAX_ADD_ROUNDS = 12;
 
