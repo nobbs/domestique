@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../api/request";
+import { haversineMetres } from "../../lib/profile";
 
 const preview = vi.hoisted(() => vi.fn());
 const create = vi.hoisted(() => vi.fn());
@@ -199,6 +201,53 @@ vi.mock("./PlanDelivery", () => ({
 
 const { PlanPage } = await import("./PlanPage");
 
+// A router that knows no roads: every leg is the straight line between its waypoints.
+function straightRouter(
+  variables: { data: { waypoints: { longitude: number; latitude: number }[] } },
+  callbacks: { onSuccess: (value: unknown) => void },
+) {
+  const coordinates = variables.data.waypoints.map(({ longitude, latitude }) => [
+    longitude,
+    latitude,
+  ]);
+  let distance = 0;
+  const waypointProgress = coordinates.map((position, index) => {
+    const previous = coordinates[index - 1];
+    distance += previous
+      ? haversineMetres(previous as [number, number], position as [number, number])
+      : 0;
+    return { distanceMetres: distance };
+  });
+  callbacks.onSuccess({
+    data: {
+      geometry: { type: "LineString", coordinates },
+      distanceMetres: distance,
+      ascentMetres: 0,
+      waypointProgress,
+    },
+  });
+}
+
+// An L-shaped library route copied with only its ends: tracing has to find the corner.
+const cornerCopy = {
+  pathname: "/plan",
+  state: {
+    name: "Corner",
+    profile: "trekking",
+    waypoints: [
+      { longitude: 8, latitude: 49 },
+      { longitude: 8.04, latitude: 49.04 },
+    ],
+    trace: {
+      route: [
+        ...Array.from({ length: 40 }, (_, index) => [8 + index / 1000, 49]),
+        ...Array.from({ length: 41 }, (_, index) => [8.04, 49 + index / 1000]),
+      ],
+      indices: [0, 80],
+    },
+  },
+};
+
 function renderPage(
   path: string | { pathname: string; state: unknown } = "/plan",
   config: { placeNames?: boolean } = {},
@@ -325,6 +374,201 @@ describe("PlanPage", () => {
     expect(screen.getByTestId("plan-scale")).toHaveAttribute("data-unit", "metric");
   });
 
+  it("traces a copied route round by round, keeping only the ones routing needs", async () => {
+    preview.mockImplementation(straightRouter);
+    renderPage(cornerCopy);
+    await act(async () => {});
+    expect(
+      screen.getByText("Tracing the copied route with 2 waypoints…").closest('[role="status"]'),
+    ).not.toBeNull();
+    expect(screen.getByText("2 wp")).toBeInTheDocument();
+
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
+    expect(waypointRows()[1]).toContain("49.0000, 8.0400");
+    expect(preview).toHaveBeenCalledTimes(4);
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("locks editing while a copy is traced, until it is paused", async () => {
+    preview.mockImplementation(straightRouter);
+    renderPage(cornerCopy);
+    await act(async () => {});
+    const map = screen.getByRole("button", { name: "Plan route map" });
+
+    expect(screen.getByLabelText("Plan name")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reverse" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Avoid an area" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Show the copied route" })).toBeEnabled();
+    mapPoint.value = { longitude: 8.02, latitude: 49.02 };
+    fireEvent.click(map);
+    expect(waypointRows()).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
+    expect(screen.getByText("Tracing paused with 2 waypoints.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reverse" })).toBeEnabled();
+    act(() => vi.runOnlyPendingTimers());
+    act(() => vi.runOnlyPendingTimers());
+    expect(waypointRows()).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume tracing" }));
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
+  });
+
+  it("ends a trace on cancel, or on an edit made while it is paused", async () => {
+    preview.mockImplementation(straightRouter);
+    const first = renderPage(cornerCopy);
+    await act(async () => {});
+    // The first preview lands and queues a round: cancelling must drop it too.
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel tracing" }));
+    act(() => vi.runOnlyPendingTimers());
+    act(() => vi.runOnlyPendingTimers());
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(2);
+    expect(preview).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    const unchanged = renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Route type" }));
+    act(() => vi.advanceTimersByTime(0));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Trekking" }));
+    expect(screen.getByText("Tracing paused with 2 waypoints.")).toBeInTheDocument();
+    unchanged.unmount();
+
+    const renamed = renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Corner loop" } });
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    act(() => vi.runOnlyPendingTimers());
+    act(() => vi.runOnlyPendingTimers());
+    expect(waypointRows()).toHaveLength(2);
+    renamed.unmount();
+
+    renderPage(cornerCopy);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("button", { name: "Pause tracing" }));
+    mapPoint.value = { longitude: 8.02, latitude: 49.02 };
+    fireEvent.click(screen.getByRole("button", { name: "Plan route map" }));
+    act(() => vi.runOnlyPendingTimers());
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
+  });
+
+  it("says so when the waypoint cap stops a trace short of the copied route", async () => {
+    preview.mockImplementation(straightRouter);
+    // A zigzag whose teeth sit about 110 m off every leg: following it needs more than the cap.
+    const route = Array.from({ length: 401 }, (_, index) => [
+      8 + index / 1000,
+      49 + (index % 2) / 1000,
+    ]);
+    const indices = Array.from({ length: 200 }, (_, index) => index * 2);
+    renderPage({
+      pathname: "/plan",
+      state: {
+        name: "Zigzag",
+        profile: "trekking",
+        waypoints: indices.map((index) => ({
+          longitude: route[index]?.[0],
+          latitude: route[index]?.[1],
+        })),
+        trace: { route, indices },
+      },
+    });
+    await act(async () => {});
+
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing the copied route/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Tracing stopped before the plan fully follows/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText(/Tracing stopped before/)).not.toBeInTheDocument();
+  });
+
+  it("pauses tracing while the routing engine is busy and resumes where it stopped", async () => {
+    preview.mockImplementationOnce(
+      (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
+        callbacks.onError(
+          new ApiError(502, "routing_busy", "the routing engine is busy; try again in a moment"),
+        ),
+    );
+    preview.mockImplementation(straightRouter);
+    renderPage(cornerCopy);
+    await act(async () => {});
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.getByText(/Tracing paused: the routing engine is busy/)).toBeInTheDocument();
+    expect(screen.queryByText("Preview unavailable")).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(preview).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume tracing" }));
+    for (let step = 0; step < 20 && screen.queryByText(/Tracing/); step++) {
+      act(() => vi.runOnlyPendingTimers());
+    }
+
+    expect(screen.queryByText(/Tracing/)).not.toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(3);
+  });
+
+  it("stops tracing a copied route when the routing engine refuses, keeping its waypoints", async () => {
+    preview.mockImplementation(
+      (_variables: unknown, callbacks: { onError: (error: Error) => void }) =>
+        callbacks.onError(new Error("unavailable")),
+    );
+    renderPage({
+      pathname: "/plan",
+      state: {
+        name: "Corner",
+        profile: "trekking",
+        waypoints: [
+          { longitude: 8, latitude: 49 },
+          { longitude: 8.04, latitude: 49.04 },
+        ],
+        trace: {
+          route: [
+            [8, 49],
+            [8.04, 49],
+            [8.04, 49.04],
+          ],
+          indices: [0, 2],
+        },
+      },
+    });
+    await act(async () => {});
+    expect(screen.getByText("Tracing the copied route with 2 waypoints…")).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(300));
+
+    expect(screen.queryByText(/Tracing the copied route/)).not.toBeInTheDocument();
+    expect(screen.getByText("Preview unavailable")).toBeInTheDocument();
+    expect(waypointRows()).toHaveLength(2);
+
+    // The copied route stays on the map to compare against, until it is toggled off.
+    const toggle = screen.getByRole("button", { name: "Show the copied route" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(
+      JSON.parse(screen.getByTestId("plan-copied-route").dataset.geometry ?? "{}").geometry
+        .coordinates,
+    ).toHaveLength(3);
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByTestId("plan-copied-route")).not.toBeInTheDocument();
+  });
+
   it("initializes a new draft from a copied route seed without saving it", async () => {
     preview.mockImplementation(
       (
@@ -371,6 +615,7 @@ describe("PlanPage", () => {
     expect(waypointRows()[1]).toContain("49.1000, 8.1000");
     expect(screen.getByTestId("plan-viewport")).toHaveTextContent("[8,49,8.1,49.1]");
     expect(screen.getByTestId("plan-viewport")).toHaveAttribute("data-fit-revision", "1");
+    expect(screen.queryByRole("button", { name: "Show the copied route" })).not.toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
 
     act(() => vi.advanceTimersByTime(300));

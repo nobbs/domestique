@@ -17,6 +17,7 @@ import (
 const (
 	codePreconditionFailed = "precondition_failed"
 	codeRoutingFailed      = "routing_failed"
+	codeRoutingBusy        = "routing_busy"
 )
 
 // PreviewPlanRoute routes a set of waypoints over the configured engine and
@@ -273,6 +274,9 @@ func (h *Handler) planFailed(writer http.ResponseWriter, err error) bool {
 		h.notFound(writer)
 	case errors.Is(err, plan.ErrVersionMismatch):
 		h.error(writer, http.StatusPreconditionFailed, codePreconditionFailed, "the plan has changed since it was last read")
+	case errors.Is(err, plan.ErrRoutingLimited):
+		slog.Warn("the routing engine asked to be retried later", "error", err)
+		h.error(writer, http.StatusBadGateway, codeRoutingBusy, "the routing engine is busy; try again in a moment")
 	case errors.Is(err, plan.ErrRouting):
 		// The engine's own error, and any coordinate, stay in the log: nothing
 		// about what was asked to route ever reaches a caller.

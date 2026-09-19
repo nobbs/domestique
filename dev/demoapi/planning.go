@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -103,6 +104,9 @@ func (r brouterRouter) Route(
 	}
 
 	answer, err := r.client.Route(ctx, converted, string(profile), nogos)
+	if failure := (*brouter.Error)(nil); errors.As(err, &failure) && failure.Category == brouter.FailureLimited {
+		return plan.Routed{}, fmt.Errorf("routing waypoints: %w: %w", plan.ErrRoutingLimited, err)
+	}
 	if err != nil {
 		return plan.Routed{}, fmt.Errorf("routing waypoints: %w", err)
 	}

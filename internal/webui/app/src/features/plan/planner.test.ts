@@ -3,29 +3,172 @@ import type { Position } from "../../api/types";
 import {
   initialPlannerState,
   isPlannerSeed,
+  MAX_PLAN_WAYPOINTS,
+  nextTraceStep,
   plannerReducer,
   plannerSeedFrom,
-  samplePlanWaypoints,
+  startTrace,
 } from "./planner";
 
 const first = { longitude: 8, latitude: 49 };
 const second = { longitude: 8.1, latitude: 49.1 };
 const third = { longitude: 8.2, latitude: 49.2 };
 
+function seedOf(waypoints: number) {
+  return {
+    name: "Alpine loop",
+    profile: "trekking",
+    waypoints: Array.from({ length: waypoints }, (_, index) => ({
+      longitude: 8 + index / 1000,
+      latitude: 49,
+    })),
+  };
+}
+
+// An L: about 2.9 km east, then 4.4 km north, turning at vertex 40.
+const corner: Position[] = [
+  ...Array.from({ length: 40 }, (_, index): Position => [8 + index / 1000, 49]),
+  ...Array.from({ length: 41 }, (_, index): Position => [8.04, 49 + index / 1000]),
+];
+const last = corner.length - 1;
+
 function reduce(...actions: Parameters<typeof plannerReducer>[1][]) {
   return actions.reduce(plannerReducer, initialPlannerState);
 }
 
 describe("plannerReducer", () => {
-  it("samples a valid source line deterministically within the waypoint cap", () => {
-    const coordinates: Position[] = Array.from({ length: 52 }, (_, index) => [8 + index / 100, 49]);
-    coordinates.splice(1, 0, [Number.NaN, 49]);
+  it("seeds a copy with the route's ends and turns, remembering where each sits on it", () => {
+    const wiggled: Position[] = corner.map(([longitude, latitude], index) =>
+      index === 20 ? [longitude, latitude + 0.0001] : [longitude, latitude],
+    );
+    wiggled.splice(1, 0, [Number.NaN, 49]);
 
-    const sampled = samplePlanWaypoints(coordinates);
+    const seed = plannerSeedFrom("Corner", wiggled);
 
-    expect(sampled).toHaveLength(50);
-    expect(sampled[0]).toEqual({ longitude: 8, latitude: 49 });
-    expect(sampled.at(-1)).toEqual({ longitude: 8.51, latitude: 49 });
+    expect(seed?.waypoints).toEqual([
+      { longitude: 8, latitude: 49 },
+      { longitude: 8.04, latitude: 49 },
+      { longitude: 8.04, latitude: 49.04 },
+    ]);
+    expect(seed?.trace?.indices).toEqual([0, 40, last]);
+    expect(seed?.trace?.route).toHaveLength(corner.length);
+    expect(seed && isPlannerSeed(seed)).toBe(true);
+    expect(seed && isPlannerSeed({ ...seed, trace: { ...seed.trace, indices: [0, last] } })).toBe(
+      false,
+    );
+    expect(
+      seed && isPlannerSeed({ ...seed, trace: { ...seed.trace, indices: [40, 0, last] } }),
+    ).toBe(false);
+  });
+
+  it("adds a waypoint where the routed leg strays, then proves it necessary", () => {
+    const chord = [corner[0] ?? [8, 49], corner[last] ?? [8.04, 49.04]];
+    const alongRoute = [corner.slice(0, 41), corner.slice(40)];
+
+    const added = nextTraceStep(startTrace({ route: corner, indices: [0, last] }), [chord]);
+    expect(added).toMatchObject({ phase: "add", indices: [0, 40, last], rounds: 1 });
+
+    const pruning = added && nextTraceStep(added, alongRoute);
+    expect(pruning).toMatchObject({ phase: "prune", indices: [0, last], removed: [40] });
+
+    const restored = pruning && nextTraceStep(pruning, [chord]);
+    expect(restored).toMatchObject({ indices: [0, 40, last], settled: [40], removed: [] });
+
+    expect(restored && nextTraceStep(restored, alongRoute)).toMatchObject({
+      phase: "done",
+      indices: [0, 40, last],
+      incomplete: false,
+    });
+  });
+
+  it("adds a waypoint where a routed leg wanders off the route and back", () => {
+    const straight = corner.slice(0, 41);
+    const spur: Position[] = [...straight.slice(0, 21), [8.02, 49.005], ...straight.slice(20)];
+
+    const added = nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [spur]);
+
+    expect(added).toMatchObject({ phase: "add", indices: [0, 20, 40] });
+  });
+
+  it("judges a leg by its course, not by a stray point at either end", () => {
+    const straight = corner.slice(0, 41);
+    // Cut a vertex past each waypoint, about 73 m out: the leg still follows the route.
+    const leg: Position[] = [[7.999, 49], ...straight, [8.041, 49]];
+
+    expect(nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [leg])).toMatchObject({
+      phase: "done",
+      incomplete: false,
+    });
+  });
+
+  it("ends a trace the round limit stopped as incomplete", () => {
+    const chord = [corner[0] ?? [8, 49], corner[last] ?? [8.04, 49.04]];
+    const exhausted = { ...startTrace({ route: corner, indices: [0, last] }), rounds: 12 };
+
+    expect(nextTraceStep(exhausted, [chord])).toMatchObject({
+      phase: "done",
+      indices: [0, last],
+      incomplete: true,
+    });
+  });
+
+  it("finds a leg's straying the same whichever way round it was routed", () => {
+    const straight = corner.slice(0, 41);
+    const spur: Position[] = [...straight.slice(0, 21), [8.02, 49.005], ...straight.slice(20)];
+
+    const forward = nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [spur]);
+    const backward = nextTraceStep(startTrace({ route: straight, indices: [0, 40] }), [
+      [...spur].reverse(),
+    ]);
+
+    expect(backward.indices).toEqual(forward.indices);
+  });
+
+  it("prunes every other waypoint a leg does without, and keeps the removal", () => {
+    const straight = corner.slice(0, 41);
+    const progress = {
+      ...startTrace({ route: straight, indices: [0, 10, 20, 30, 40] }),
+      rounds: 1,
+    };
+
+    const pruning = nextTraceStep(
+      progress,
+      [0, 10, 20, 30].map((at) => straight.slice(at, at + 11)),
+    );
+    expect(pruning).toMatchObject({ phase: "prune", indices: [0, 20, 40], removed: [10, 30] });
+
+    const next = pruning && nextTraceStep(pruning, [straight.slice(0, 21), straight.slice(20)]);
+    expect(next).toMatchObject({ indices: [0, 40], removed: [20], settled: [] });
+  });
+
+  it("traces waypoints in place, keeping their ids and leaving nothing to undo", () => {
+    const state = reduce({
+      type: "load",
+      plan: { name: "Trace", profile: "trekking", waypoints: [first, third] },
+    });
+
+    const traced = plannerReducer(state, {
+      type: "trace",
+      waypoints: [{ ...first, id: 0 }, second, { ...third, id: 1 }],
+    });
+
+    expect(traced.waypoints.map((waypoint) => waypoint.id)).toEqual([0, 2, 1]);
+    expect(traced.nextWaypointID).toBe(3);
+    expect(traced.past).toEqual([]);
+    expect(plannerReducer(state, { type: "trace", waypoints: [first] })).toBe(state);
+  });
+
+  it("stops accepting waypoints at the cap", () => {
+    const filled = Array.from({ length: MAX_PLAN_WAYPOINTS }, () => ({
+      type: "append" as const,
+      waypoint: first,
+    })).reduce(plannerReducer, initialPlannerState);
+
+    expect(filled.waypoints).toHaveLength(MAX_PLAN_WAYPOINTS);
+    expect(plannerReducer(filled, { type: "append", waypoint: second })).toBe(filled);
+    expect(plannerReducer(filled, { type: "insert", index: 0, waypoint: second })).toBe(filled);
+    expect(isPlannerSeed(seedOf(MAX_PLAN_WAYPOINTS))).toBe(true);
+    expect(isPlannerSeed(seedOf(MAX_PLAN_WAYPOINTS + 1))).toBe(false);
   });
 
   it("cuts a copied title to a name the planner accepts", () => {
@@ -482,14 +625,14 @@ describe("plannerReducer", () => {
     });
 
     it("adds no more than the waypoint cap leaves room for", () => {
-      const many = Array.from({ length: 60 }, (_, index) => ({
+      const many = Array.from({ length: MAX_PLAN_WAYPOINTS + 10 }, (_, index) => ({
         longitude: 8,
         latitude: 49 + index / 1000,
       }));
 
       const placed = reduce({ type: "insertMany", waypoints: many });
 
-      expect(placed.waypoints).toHaveLength(50);
+      expect(placed.waypoints).toHaveLength(MAX_PLAN_WAYPOINTS);
       expect(plannerReducer(placed, { type: "insertMany", waypoints: [early] })).toBe(placed);
       expect(plannerReducer(route, { type: "insertMany", waypoints: [] })).toBe(route);
     });

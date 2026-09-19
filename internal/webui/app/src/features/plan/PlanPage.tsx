@@ -10,6 +10,7 @@ import {
   IconLayoutBottombarCollapse,
   IconMountain,
   IconRoad,
+  IconRoute,
   IconWalk,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ import {
   useReplacePlan,
 } from "../../api/generated";
 import { webUIConfigQuery } from "../../api/queries";
+import { ApiError } from "../../api/request";
 import type {
   BoundingBox,
   Plan,
@@ -76,14 +78,19 @@ import {
   initialPlannerState,
   insertionIndex,
   isPlannerSeed,
+  MAX_PLAN_WAYPOINTS,
+  nextTraceStep,
   type PlannerAvoid,
   type PlannerSeed,
   type PlannerState,
   type PlannerWaypoint,
   plannerReducer,
+  startTrace,
+  type TraceProgress,
   unwrapped,
 } from "./planner";
 import { provisionalLegs, RouteTransition, routedLegs } from "./RouteTransition";
+import { type TracePause, TraceStatus, TraceStoppedShort } from "./TraceStatus";
 
 function positions(preview: PlanRoutePreview | null): Position[] {
   return (preview?.geometry.coordinates ?? []).flatMap(([longitude, latitude, elevation]) => {
@@ -147,6 +154,9 @@ function PushingLine({ line, pushing }: { line: Position[]; pushing: PlanWindow[
     </Source>
   );
 }
+
+/** How long a trace waits between routing rounds. */
+const TRACE_ROUND_MS = 1000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Could not route these waypoints.";
@@ -281,6 +291,35 @@ function HiddenRunLayer({
   );
 }
 
+/** The library route a copy was traced along, dashed under the plan so a deviation stands out. */
+function CopiedRouteLayer({ route }: { route: Position[] }) {
+  const colour = useThemeColour("--hold", "#9a6700");
+  const data = useMemo(
+    () => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry: { type: "LineString" as const, coordinates: route },
+    }),
+    [route],
+  );
+
+  return (
+    <Source id="plan-copied-route" type="geojson" data={data}>
+      <Layer
+        id="plan-copied-route-line"
+        type="line"
+        layout={{ "line-cap": "round", "line-join": "round" }}
+        paint={{
+          "line-color": colour,
+          "line-width": 5,
+          "line-opacity": 0.85,
+          "line-dasharray": [1.5, 1.5],
+        }}
+      />
+    </Source>
+  );
+}
+
 /** The circles a plan keeps its route out of, filled and outlined in the alert tone. */
 function AvoidAreasLayer({ areas }: { areas: PlannerAvoid[] }) {
   const colour = useThemeColour("--alert", "#c0392b");
@@ -401,8 +440,9 @@ function PlanFigures({ preview }: { preview: PlanRoutePreview | null }) {
 function PlannerHistoryControls({
   state,
   dispatch,
+  locked,
   children,
-}: Pick<PlannerSidebarProps, "state" | "dispatch"> & { children?: ReactNode }) {
+}: Pick<PlannerSidebarProps, "state" | "dispatch"> & { locked: boolean; children?: ReactNode }) {
   return (
     <div className="pointer-events-auto absolute top-3 left-3 z-10 flex items-center gap-2">
       <ButtonGroup
@@ -413,7 +453,7 @@ function PlannerHistoryControls({
         <Button
           variant="ghost"
           icon={<IconArrowBackUp stroke={1.6} />}
-          disabled={state.past.length === 0}
+          disabled={locked || state.past.length === 0}
           aria-label="Undo"
           title="Undo"
           onClick={() => dispatch({ type: "undo" })}
@@ -421,7 +461,7 @@ function PlannerHistoryControls({
         <Button
           variant="ghost"
           icon={<IconArrowForwardUp stroke={1.6} />}
-          disabled={state.future.length === 0}
+          disabled={locked || state.future.length === 0}
           aria-label="Redo"
           title="Redo"
           onClick={() => dispatch({ type: "redo" })}
@@ -430,7 +470,7 @@ function PlannerHistoryControls({
       <Button
         variant="panel"
         icon={<IconArrowsExchange stroke={1.6} />}
-        disabled={state.waypoints.length < 2}
+        disabled={locked || state.waypoints.length < 2}
         aria-label="Reverse"
         title="Reverse"
         onClick={() => dispatch({ type: "reverse" })}
@@ -649,6 +689,34 @@ export function PlanPage() {
   const loaded = useRef<string | null>(null);
   const initialViewport = useRef<PlannerFraming | null>(null);
   const hydrating = useRef(planId !== null);
+  // A copy still being traced along its library route, advanced once per preview.
+  const trace = useRef<TraceProgress | null>(null);
+  const [tracing, setTracing] = useState(false);
+  // Why a trace is holding its place until resumed: the admin paused it, or the engine asked for a retry.
+  const [tracePause, setTracePause] = useState<TracePause>(null);
+  const [tracePhase, setTracePhase] = useState<"add" | "prune">("add");
+  const [previewRetry, setPreviewRetry] = useState(0);
+  const [traceIncomplete, setTraceIncomplete] = useState(false);
+  const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
+  // A running trace owns the plan: the admin pauses or cancels it before editing,
+  // and an edit made while paused ends it, since it can only continue from its own waypoints.
+  const locked = tracing && tracePause === null;
+  const endTrace = () => {
+    trace.current = null;
+    setTracing(false);
+    setTracePause(null);
+  };
+  const edit: typeof dispatch = (action) => {
+    if (locked) {
+      return;
+    }
+    // An edit that changes nothing leaves a paused trace to resume.
+    if (trace.current && plannerReducer(state, action) !== state) {
+      endTrace();
+    }
+    dispatch(action);
+  };
+  const [copiedRouteShown, setCopiedRouteShown] = useState(true);
   const request = useRef(0);
   const queryPlan = plan.data?.data;
   const loadedPlan =
@@ -672,13 +740,22 @@ export function PlanPage() {
     request.current += 1;
     setSavedPlan(null);
     dispatch({ type: "reset" });
+    trace.current = null;
     if (planId === null) {
       setPreview(null);
       if (copySeed) {
-        initialViewport.current = framing(null, copySeed);
-        dispatch({ type: "load", plan: copySeed });
+        const { trace: seedTrace, ...seed } = copySeed;
+        initialViewport.current = framing(null, seed);
+        dispatch({ type: "load", plan: seed });
+        trace.current = seedTrace ? startTrace(seedTrace) : null;
       }
     }
+    setTracing(trace.current !== null);
+    setTracePause(null);
+    setTracePhase("add");
+    setTraceIncomplete(false);
+    setCopiedRoute(trace.current?.route ?? null);
+    setCopiedRouteShown(true);
     setPreviewError(null);
     setSaveError(handedError);
     setActiveMetres(null);
@@ -705,6 +782,7 @@ export function PlanPage() {
     setRoutedFor(identified(loadedPlan.waypoints));
   }, [loadedPlan]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewRetry is read nowhere in the body; it asks again for the same waypoints once the engine was busy.
   useEffect(() => {
     if (planId !== null && !loadedPlan) {
       request.current += 1;
@@ -746,6 +824,13 @@ export function PlanPage() {
           onError: (error) => {
             if (request.current === current) {
               setPreviewError(errorMessage(error));
+              if (
+                trace.current !== null &&
+                error instanceof ApiError &&
+                error.code === "routing_busy"
+              ) {
+                setTracePause("busy");
+              }
             }
           },
         },
@@ -753,9 +838,53 @@ export function PlanPage() {
     }, 300);
 
     return () => window.clearTimeout(timeout);
-  }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid]);
+  }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid, previewRetry]);
 
   const line = useMemo(() => positions(preview), [preview]);
+
+  useEffect(() => {
+    const progress = trace.current;
+    if (
+      !progress ||
+      tracePause ||
+      (previewError === null && (!preview || routedFor !== state.waypoints))
+    ) {
+      return;
+    }
+    const legs = !previewError
+      ? routedLegs(
+          line,
+          preview?.waypointProgress?.map((at) => at.distanceMetres),
+        )
+      : null;
+    const next = legs ? nextTraceStep(progress, legs) : null;
+    if (!next || next.phase === "done") {
+      trace.current = null;
+      setTracing(false);
+      setTraceIncomplete(next?.incomplete ?? false);
+      return;
+    }
+    const ids = new Map(progress.indices.map((index, at) => [index, state.waypoints[at]?.id]));
+    // Spaced out, so a trace spends a public engine's quota no faster than it must.
+    const round = window.setTimeout(() => {
+      // Cancel ends the trace without re-running this effect, so a round already queued checks first.
+      if (trace.current !== progress) {
+        return;
+      }
+      trace.current = next;
+      setTracePhase(next.phase === "prune" ? "prune" : "add");
+      dispatch({
+        type: "trace",
+        waypoints: next.indices.map((index) => {
+          const [longitude, latitude] = next.route[index] ?? [0, 0];
+          const id = ids.get(index);
+          return id === undefined ? { longitude, latitude } : { longitude, latitude, id };
+        }),
+      });
+    }, TRACE_ROUND_MS);
+
+    return () => window.clearTimeout(round);
+  }, [line, preview, previewError, routedFor, state.waypoints, tracePause]);
   const previewRef = useRef(preview);
   previewRef.current = preview;
   const shownWaypoints = useMemo(
@@ -872,8 +1001,8 @@ export function PlanPage() {
   };
   const addPlaces = (places: Array<{ longitude: number; latitude: number }>) => {
     const points = places.map(({ longitude, latitude }) => ({ longitude, latitude }));
-    dispatch({ type: "insertMany", waypoints: points });
-    points.slice(0, 50 - state.waypoints.length).forEach((point, offset) => {
+    edit({ type: "insertMany", waypoints: points });
+    points.slice(0, MAX_PLAN_WAYPOINTS - state.waypoints.length).forEach((point, offset) => {
       settleOnRoad(state.nextWaypointID + offset, point);
     });
     setFocusId(state.nextWaypointID);
@@ -924,11 +1053,12 @@ export function PlanPage() {
                 furniture={
                   <>
                     <ScaleControl position="bottom-left" unit="metric" />
-                    <PlannerHistoryControls state={state} dispatch={dispatch}>
+                    <PlannerHistoryControls state={state} dispatch={edit} locked={locked}>
                       <Button
                         variant="panel"
                         icon={<IconBan stroke={1.8} />}
                         active={avoidArmed}
+                        disabled={locked}
                         aria-pressed={avoidArmed}
                         aria-label={avoidArmed ? "Cancel avoiding an area" : "Avoid an area"}
                         title={
@@ -938,7 +1068,22 @@ export function PlanPage() {
                         }
                         onClick={() => setAvoidArmed((armed) => !armed)}
                       />
-                      {config.data?.placeNames ? <PlaceSearch onAdd={addPlaces} /> : null}
+                      {copiedRoute ? (
+                        <Button
+                          variant="panel"
+                          icon={<IconRoute stroke={1.8} />}
+                          active={copiedRouteShown}
+                          aria-pressed={copiedRouteShown}
+                          aria-label="Show the copied route"
+                          title={
+                            copiedRouteShown ? "Hide the copied route" : "Show the copied route"
+                          }
+                          onClick={() => setCopiedRouteShown((shown) => !shown)}
+                        />
+                      ) : null}
+                      {config.data?.placeNames ? (
+                        <PlaceSearch onAdd={addPlaces} disabled={locked} />
+                      ) : null}
                     </PlannerHistoryControls>
                     <MapControls>
                       <BasemapPicker
@@ -951,11 +1096,16 @@ export function PlanPage() {
                     </MapControls>
                   </>
                 }
-                cursor={state.waypoints.length === 50 && !avoidArmed ? "" : "crosshair"}
+                cursor={
+                  locked || (state.waypoints.length === MAX_PLAN_WAYPOINTS && !avoidArmed)
+                    ? ""
+                    : "crosshair"
+                }
                 onMouseDown={(event) => {
                   if (
+                    locked ||
                     avoidArmed ||
-                    state.waypoints.length >= 50 ||
+                    state.waypoints.length >= MAX_PLAN_WAYPOINTS ||
                     event.originalEvent.button !== 0 ||
                     (event.originalEvent.target instanceof Element &&
                       event.originalEvent.target.closest(".maplibregl-marker") !== null)
@@ -975,12 +1125,15 @@ export function PlanPage() {
                 onMoveStart={() => setPressed(null)}
                 onClick={(event) => {
                   setPressed(null);
+                  if (locked) {
+                    return;
+                  }
                   const point = unwrapped({
                     longitude: event.lngLat.lng,
                     latitude: event.lngLat.lat,
                   });
                   if (avoidArmed) {
-                    dispatch({
+                    edit({
                       type: "addAvoid",
                       longitude: point.longitude,
                       latitude: point.latitude,
@@ -988,7 +1141,7 @@ export function PlanPage() {
                     setAvoidArmed(false);
                     return;
                   }
-                  dispatch({
+                  edit({
                     type: "insert",
                     index: placementIndex(state.waypoints, point, event.originalEvent.altKey),
                     waypoint: point,
@@ -1004,6 +1157,7 @@ export function PlanPage() {
                   // first fills it; the map re-frames after either.
                   fitRevision={narrow || !dockOpen ? 0 : profile ? 2 : 1}
                 />
+                {copiedRoute && copiedRouteShown ? <CopiedRouteLayer route={copiedRoute} /> : null}
                 <RouteTransition
                   legs={legs}
                   morph={morphing}
@@ -1043,7 +1197,7 @@ export function PlanPage() {
                     key={waypoint.id}
                     longitude={waypoint.longitude}
                     latitude={waypoint.latitude}
-                    draggable
+                    draggable={!locked}
                     onDrag={(event) =>
                       setDragged({
                         id: waypoint.id,
@@ -1056,7 +1210,7 @@ export function PlanPage() {
                         latitude: event.lngLat.lat,
                       });
                       setDragged(null);
-                      dispatch({ type: "move", index, waypoint: moved });
+                      edit({ type: "move", index, waypoint: moved });
                       setFocusId(waypoint.id);
                       if (!waypoint.straight) {
                         settleOnRoad(waypoint.id, moved);
@@ -1086,13 +1240,13 @@ export function PlanPage() {
                     key={area.id}
                     longitude={area.longitude}
                     latitude={area.latitude}
-                    draggable
+                    draggable={!locked}
                     onDragEnd={(event) => {
                       const moved = unwrapped({
                         longitude: event.lngLat.lng,
                         latitude: event.lngLat.lat,
                       });
-                      dispatch({
+                      edit({
                         type: "moveAvoid",
                         id: area.id,
                         longitude: moved.longitude,
@@ -1114,7 +1268,7 @@ export function PlanPage() {
                       key={`edge-${area.id}`}
                       longitude={edge.longitude}
                       latitude={edge.latitude}
-                      draggable
+                      draggable={!locked}
                       onDrag={(event) =>
                         setResizing({
                           id: area.id,
@@ -1124,7 +1278,7 @@ export function PlanPage() {
                       }
                       onDragEnd={(event) => {
                         setResizing(null);
-                        dispatch({
+                        edit({
                           type: "setAvoidRadius",
                           id: area.id,
                           radiusMetres: avoidRadiusTo(area, {
@@ -1145,7 +1299,26 @@ export function PlanPage() {
               </MapWidget>
             </CartographyProvider>
           ) : null}
-          {previewError ? (
+          {tracing ? (
+            <TraceStatus
+              phase={tracePhase}
+              waypoints={state.waypoints.length}
+              pause={tracePause}
+              onPause={() => setTracePause("user")}
+              onResume={() => {
+                if (tracePause === "busy") {
+                  setPreviewError(null);
+                  setPreviewRetry((retry) => retry + 1);
+                }
+                setTracePause(null);
+              }}
+              onCancel={endTrace}
+            />
+          ) : null}
+          {traceIncomplete && !tracing ? (
+            <TraceStoppedShort onDismiss={() => setTraceIncomplete(false)} />
+          ) : null}
+          {previewError && tracePause !== "busy" ? (
             <Alert
               variant="destructive"
               className="absolute top-1/2 right-3 z-30 max-w-sm -translate-y-1/2"
@@ -1184,7 +1357,8 @@ export function PlanPage() {
         onSave={(published) => void save(published)}
         onDelete={() => void deletePlan()}
         onHighlight={setHiddenRun}
-        dispatch={dispatch}
+        locked={locked}
+        dispatch={edit}
       />
     </Layout>
   );

@@ -1001,8 +1001,9 @@ browser origin described above, and answer 403 without it.
   failed the last push of this revision (with the failure category), or holds
   no copy and is owed none; it is read from stored state and asks no target
   anything. The whole group is absent, answering `404`, when no routing engine is
-  configured, and a routing failure is `502` carrying a category and nothing
-  of the engine's response. A plan carries no credential, no rider's data, and
+  configured, and a routing failure is `502` carrying a category, `routing_busy`
+  when the engine asked to be retried later and `routing_failed` otherwise, and
+  nothing of the engine's response. A plan carries no credential, no rider's data, and
   no geometry beyond the one the engine returned for its waypoints. These seven
   operations and the planning flag are in
   [`api/openapi.yaml`](../../api/openapi.yaml), which is normative for their

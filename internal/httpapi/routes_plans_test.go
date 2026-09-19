@@ -464,6 +464,17 @@ func TestCreatePlanRejectsAValidationError(t *testing.T) {
 	assert.Contains(t, response.Body.String(), "name is required")
 }
 
+func TestCreatePlanSaysTheRoutingEngineIsBusyWhenItAsksForARetry(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{
+		createErr: fmt.Errorf("plan: routing waypoints: %w: %w", plan.ErrRouting, plan.ErrRoutingLimited),
+	})
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, planRequest(http.MethodPost, plansPath, validPlanWriteBody, ""))
+	assert.Equal(t, http.StatusBadGateway, response.Code, response.Body.String())
+	assert.Contains(t, response.Body.String(), `"code":"routing_busy"`)
+}
+
 func TestCreatePlanReportsARoutingFailureWithoutLeakingItsDetail(t *testing.T) {
 	upstream := errors.New("no route found near 8.123456,49.654321")
 	handler := plansHandler(t, newFakeSessions(), &fakePlans{
@@ -520,7 +531,44 @@ func TestListPlansCarriesNoGeometry(t *testing.T) {
 	assert.NotContains(t, response.Body.String(), "geometry", "the list carries a geometry field")
 }
 
-// A plan body carries at most 50 waypoints; one built to overrun the 8 KiB
+// planWriteBody is a create body carrying count waypoints and the most avoided
+// areas the contract allows, every number at the longest decimal form a
+// browser's JSON produces, so a body at the waypoint cap is as large as one gets.
+func planWriteBody(count int) string {
+	waypoints := make([]string, count)
+	for index := range waypoints {
+		waypoints[index] = fmt.Sprintf(
+			`{"longitude":%.15f,"latitude":%.14f,"straight":false}`,
+			-8.123456789012345-float64(index)/1e6, -49.12345678901234,
+		)
+	}
+	avoid := make([]string, 20)
+	for index := range avoid {
+		avoid[index] = fmt.Sprintf(
+			`{"longitude":%.15f,"latitude":%.14f,"radiusMetres":%.13f}`,
+			-8.123456789012345-float64(index)/1e3, -49.12345678901234, 4999.123456789012,
+		)
+	}
+
+	return `{"name":"` + strings.Repeat("a", 120) + `","profile":"trekking","waypoints":[` +
+		strings.Join(waypoints, ",") + `],"avoid":[` + strings.Join(avoid, ",") + `],"published":false}`
+}
+
+// The waypoint cap is 200, and maximumPlanBytes is sized to hold a body that
+// carries that many; one waypoint more is refused by the contract.
+func TestCreatePlanAcceptsTheWaypointCapAndRefusesOneMore(t *testing.T) {
+	handler := plansHandler(t, newFakeSessions(), &fakePlans{})
+
+	atCap := httptest.NewRecorder()
+	handler.ServeHTTP(atCap, planRequest(http.MethodPost, plansPath, planWriteBody(200), ""))
+	assert.Equal(t, http.StatusCreated, atCap.Code, atCap.Body.String())
+
+	overCap := httptest.NewRecorder()
+	handler.ServeHTTP(overCap, planRequest(http.MethodPost, plansPath, planWriteBody(201), ""))
+	assert.Equal(t, http.StatusBadRequest, overCap.Code, overCap.Body.String())
+}
+
+// A plan body carries at most 200 waypoints; one built to overrun the 24 KiB
 // bound this surface holds every plan request to is refused rather than read.
 func TestCreatePlanRejectsAnOversizedBody(t *testing.T) {
 	oversized := `{"name":"` + strings.Repeat("a", int(maximumPlanBytes)) + `","profile":"trekking","waypoints":[]}`

@@ -99,6 +99,26 @@ func TestRouteMapsFailureCategories(t *testing.T) {
 			category: FailureRefused,
 		},
 		{
+			name: "rate limit answers 429",
+			handler: func(_ *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusTooManyRequests)
+				}
+			},
+			category: FailureLimited,
+		},
+		{
+			name: "public instance quota answers 403 asking for a retry",
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(http.StatusForbidden)
+					_, writeErr := w.Write([]byte("Please, retry later!"))
+					assert.NoError(t, writeErr)
+				}
+			},
+			category: FailureLimited,
+		},
+		{
 			name: "garbage 200 body",
 			handler: func(t *testing.T) http.HandlerFunc {
 				return func(w http.ResponseWriter, _ *http.Request) {

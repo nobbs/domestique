@@ -35,7 +35,10 @@ const (
 	// FailureUnreachable is a transport error or a request that did not
 	// complete within the adapter's timeout.
 	FailureUnreachable Failure = "unreachable"
-	// FailureRefused is a 4xx response: the request, or one of its points,
+	// FailureLimited is a 403 or 429: the engine asked to be asked again
+	// later, as the public instance does once a caller exceeds its quota.
+	FailureLimited Failure = "limited"
+	// FailureRefused is any other 4xx response: the request, or one of its points,
 	// cannot be routed.
 	FailureRefused Failure = "refused"
 	// FailureEngine is a 5xx response from the engine itself.
@@ -213,6 +216,8 @@ func (c *Client) Route(
 	switch {
 	case response.StatusCode >= http.StatusInternalServerError:
 		return Answer{}, &Error{Category: FailureEngine, Status: response.StatusCode}
+	case response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusTooManyRequests:
+		return Answer{}, &Error{Category: FailureLimited, Status: response.StatusCode}
 	case response.StatusCode >= http.StatusBadRequest:
 		return Answer{}, &Error{Category: FailureRefused, Status: response.StatusCode}
 	case response.StatusCode != http.StatusOK:

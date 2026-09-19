@@ -3269,7 +3269,7 @@ components:
         waypoints:
           type: array
           minItems: 2
-          maxItems: 50
+          maxItems: 200
           items:
             $ref: '#/components/schemas/PlanWaypoint'
         avoid:
@@ -3333,7 +3333,7 @@ components:
         waypoints:
           type: array
           minItems: 2
-          maxItems: 50
+          maxItems: 200
           items:
             $ref: '#/components/schemas/PlanWaypoint'
         published:

@@ -44,8 +44,10 @@ func ParseProfile(value string) (Profile, error) {
 }
 
 const (
-	minWaypoints  = 2
-	maxWaypoints  = 50
+	minWaypoints = 2
+	// maxWaypoints must match the contract's maxItems and fit httpapi's
+	// maximumPlanBytes; the routing engine itself accepts far more.
+	maxWaypoints  = 200
 	maxNameLength = 120
 	// maxAvoid bounds how many areas one plan may route around.
 	maxAvoid = 20
@@ -66,6 +68,10 @@ var ErrNotFound = errors.New("plan: not found")
 // waypoints. Route wraps it around the engine's own error, so a caller can
 // test for it with errors.Is without seeing what the engine said.
 var ErrRouting = errors.New("plan: routing failed")
+
+// ErrRoutingLimited reports a routing failure the engine asked to be retried
+// later. A Router wraps it; it always arrives inside ErrRouting as well.
+var ErrRoutingLimited = errors.New("plan: routing engine asked to be retried later")
 
 // ErrInvalid reports that a plan's own fields did not pass validation: its
 // name, profile, waypoint count, or a waypoint's coordinates.
