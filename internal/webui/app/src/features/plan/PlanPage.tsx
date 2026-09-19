@@ -292,8 +292,11 @@ function HiddenRunLayer({
   );
 }
 
-/** The library route a copy was traced along, a quiet line under the plan. */
-function CopiedRouteLayer({ route }: { route: Position[] }) {
+/**
+ * The library route a copy was traced along, a quiet line under the plan. It
+ * stays mounted while hidden: a layer mounted later would draw over the plan.
+ */
+function CopiedRouteLayer({ route, visible }: { route: Position[]; visible: boolean }) {
   const colour = useThemeColour("--ink-2", "#6e6d6a");
   const data = useMemo(
     () => ({
@@ -309,7 +312,11 @@ function CopiedRouteLayer({ route }: { route: Position[] }) {
       <Layer
         id="plan-copied-route-line"
         type="line"
-        layout={{ "line-cap": "round", "line-join": "round" }}
+        layout={{
+          "line-cap": "round",
+          "line-join": "round",
+          visibility: visible ? "visible" : "none",
+        }}
         paint={{ "line-color": colour, "line-width": 3, "line-opacity": 0.7 }}
       />
     </Source>
@@ -317,16 +324,16 @@ function CopiedRouteLayer({ route }: { route: Position[] }) {
 }
 
 /** Where the plan strays from the copied route, drawn over the plan line in the alert tone. */
-function CopiedRouteDeviations({ route, line }: { route: Position[]; line: Position[] }) {
+function CopiedRouteDeviations({ stretches }: { stretches: Position[][] }) {
   const colour = useThemeColour("--alert", "#c0392b");
   const casing = useThemeColour("--panel", "#ffffff");
   const data = useMemo(
     () => ({
       type: "Feature" as const,
       properties: {},
-      geometry: { type: "MultiLineString" as const, coordinates: deviationStretches(route, line) },
+      geometry: { type: "MultiLineString" as const, coordinates: stretches },
     }),
-    [route, line],
+    [stretches],
   );
 
   return (
@@ -868,6 +875,11 @@ export function PlanPage() {
   }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid, previewRetry]);
 
   const line = useMemo(() => positions(preview), [preview]);
+  // Once per routed line, not per redraw: the layer remounts on every settle.
+  const strayed = useMemo(
+    () => (copiedRoute ? deviationStretches(copiedRoute, line) : []),
+    [copiedRoute, line],
+  );
 
   useEffect(() => {
     const progress = trace.current;
@@ -1184,7 +1196,9 @@ export function PlanPage() {
                   // first fills it; the map re-frames after either.
                   fitRevision={narrow || !dockOpen ? 0 : profile ? 2 : 1}
                 />
-                {copiedRoute && copiedRouteShown ? <CopiedRouteLayer route={copiedRoute} /> : null}
+                {copiedRoute ? (
+                  <CopiedRouteLayer route={copiedRoute} visible={copiedRouteShown} />
+                ) : null}
                 <RouteTransition
                   legs={legs}
                   morph={morphing}
@@ -1209,8 +1223,8 @@ export function PlanPage() {
                 {line.length > 1 && settled && preview?.pushing ? (
                   <PushingLine line={line} pushing={preview.pushing} />
                 ) : null}
-                {copiedRoute && copiedRouteShown && line.length > 1 && settled ? (
-                  <CopiedRouteDeviations route={copiedRoute} line={line} />
+                {copiedRouteShown && settled && previewError === null && strayed.length > 0 ? (
+                  <CopiedRouteDeviations stretches={strayed} />
                 ) : null}
                 {line.length > 1 ? (
                   <HiddenRunLayer line={line} preview={preview} run={hiddenRun} />

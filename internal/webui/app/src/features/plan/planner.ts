@@ -208,9 +208,14 @@ function traceAdditions(
   return additions;
 }
 
+/** Plan segments grouped under one bounding box, so a far point skips a run at a time. */
+const DEVIATION_CHUNK = 64;
+
 /**
  * The stretches of a copied route farther than toleranceMetres from the plan's
  * routed line, each padded by one vertex so it meets the route it interrupts.
+ * Matching runs forward along the plan, so a lap or return leg the plan never
+ * rides is a stretch even where it shares road with one it does.
  */
 export function deviationStretches(
   route: Position[],
@@ -223,22 +228,38 @@ export function deviationStretches(
   const project = projector(route[0]?.[1] ?? 0);
   const line = plan.map(project);
   const segments = line.length - 1;
+  const boxes: Array<[number, number, number, number]> = [];
+  for (let first = 0; first < segments; first += DEVIATION_CHUNK) {
+    const run = line.slice(first, Math.min(first + DEVIATION_CHUNK, segments) + 1);
+    const xs = run.map(([x]) => x);
+    const ys = run.map(([, y]) => y);
+    boxes.push([
+      Math.min(...xs) - toleranceMetres,
+      Math.min(...ys) - toleranceMetres,
+      Math.max(...xs) + toleranceMetres,
+      Math.max(...ys) + toleranceMetres,
+    ]);
+  }
   let cursor = 0;
   const far = route.map((position) => {
     const point = project(position);
-    let nearest = Number.POSITIVE_INFINITY;
-    for (let step = 0; step < segments && nearest > toleranceMetres; step++) {
-      const at = (cursor + step) % segments;
+    for (let at = cursor; at < segments; at++) {
+      const box = boxes[Math.floor(at / DEVIATION_CHUNK)];
+      if (
+        box &&
+        (point[0] < box[0] || point[0] > box[2] || point[1] < box[1] || point[1] > box[3])
+      ) {
+        at = (Math.floor(at / DEVIATION_CHUNK) + 1) * DEVIATION_CHUNK - 1;
+        continue;
+      }
       const from = line[at];
       const to = line[at + 1];
-      if (from && to) {
-        nearest = Math.min(nearest, segmentDistance(point, from, to));
-        if (nearest <= toleranceMetres) {
-          cursor = at;
-        }
+      if (from && to && segmentDistance(point, from, to) <= toleranceMetres) {
+        cursor = at;
+        return false;
       }
     }
-    return nearest > toleranceMetres;
+    return true;
   });
 
   const stretches: Position[][] = [];
