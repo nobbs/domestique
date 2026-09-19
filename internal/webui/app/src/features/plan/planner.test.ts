@@ -8,6 +8,7 @@ import {
   nextTraceStep,
   plannerReducer,
   plannerSeedFrom,
+  rideTraceCoordinates,
   startTrace,
 } from "./planner";
 
@@ -684,5 +685,76 @@ describe("deviationStretches", () => {
   it("finds nothing where the plan follows the route, or against too short a plan", () => {
     expect(deviationStretches(route, route)).toEqual([]);
     expect(deviationStretches(route, [])).toEqual([]);
+  });
+});
+
+describe("rideTraceCoordinates", () => {
+  const metresPerDegree = (Math.PI / 180) * 6_371_000;
+  // A straight south-north line at the equator, where a degree of longitude
+  // and of latitude are both worth one metresPerDegree: no cos(latitude)
+  // scaling to account for.
+  const at = (northMetres: number): Position => [8, northMetres / metresPerDegree];
+
+  it("drops an isolated out-and-back spike", () => {
+    const track: Position[] = [
+      at(0),
+      at(50),
+      at(100),
+      [8.02, at(100)[1]], // ~2.2 km east, sandwiched between two samples back at 100 m
+      at(100),
+      at(150),
+      at(200),
+    ];
+
+    const cleaned = rideTraceCoordinates(track);
+
+    expect(cleaned.some(([longitude]) => longitude === 8.02)).toBe(false);
+    expect(cleaned[0]).toEqual(track[0]);
+    expect(cleaned.at(-1)).toEqual(track.at(-1));
+  });
+
+  it("thins a dense line to at least 25 m spacing", () => {
+    const dense: Position[] = Array.from({ length: 20 }, (_, index) => at(index * 5));
+
+    const cleaned = rideTraceCoordinates(dense);
+
+    expect(cleaned.length).toBeLessThan(dense.length);
+    expect(cleaned[0]).toEqual(dense[0]);
+    expect(cleaned.at(-1)).toEqual(dense.at(-1));
+    for (let index = 1; index < cleaned.length - 1; index++) {
+      const gap = ((cleaned[index]?.[1] ?? 0) - (cleaned[index - 1]?.[1] ?? 0)) * metresPerDegree;
+      expect(gap).toBeGreaterThanOrEqual(25);
+    }
+  });
+
+  it("collapses a stationary cluster to one point", () => {
+    const cluster: Position[] = [at(0), at(100), at(102), at(99), at(101), at(200)];
+
+    const cleaned = rideTraceCoordinates(cluster);
+
+    expect(cleaned).toEqual([at(0), at(100), at(200)]);
+  });
+
+  it("always keeps the first and last valid points, however close the last is to what came before", () => {
+    const track: Position[] = [at(0), at(50), at(100), at(150), at(153)];
+
+    const cleaned = rideTraceCoordinates(track);
+
+    expect(cleaned[0]).toEqual(at(0));
+    expect(cleaned.at(-1)).toEqual(at(153));
+  });
+
+  it("drops invalid positions before cleaning", () => {
+    const track: Position[] = [at(0), [Number.NaN, 0], at(100), [200, 49], at(200)];
+
+    const cleaned = rideTraceCoordinates(track);
+
+    expect(cleaned).toEqual([at(0), at(100), at(200)]);
+  });
+
+  it("leaves a clean 30 m-spaced line untouched", () => {
+    const evenly: Position[] = Array.from({ length: 6 }, (_, index) => at(index * 30));
+
+    expect(rideTraceCoordinates(evenly)).toEqual(evenly);
   });
 });
