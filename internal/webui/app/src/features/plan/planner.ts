@@ -6,6 +6,7 @@ import {
   type PlanWaypoint,
   type Position,
 } from "../../api/types";
+import { cumulativeMetres } from "../../lib/profile";
 
 export interface PlannerState {
   name: string;
@@ -284,6 +285,60 @@ export function deviationStretches(
   }
 
   return stretches;
+}
+
+/** How a finished trace read: its waypoint counts, timing, and how closely the plan follows what it copied. */
+export interface TraceSummary {
+  waypoints: { seed: number; peak: number; final: number };
+  rounds: number;
+  seconds: number;
+  /** Share (0..1) of the copied route outside the strayed stretches, each counted with its one padding vertex a side. */
+  followedShare: number;
+  strayedStretches: number;
+  planKm: number;
+  copiedKm: number;
+  /** stoppedShort = the waypoint cap or round limit ended it, not a full match. */
+  outcome: "complete" | "stoppedShort";
+}
+
+function lengthMetres(coordinates: Position[]): number {
+  return cumulativeMetres(coordinates).at(-1) ?? 0;
+}
+
+export function summariseTrace({
+  route,
+  stretches,
+  seed,
+  peak,
+  final,
+  rounds,
+  seconds,
+  planMetres,
+  incomplete,
+}: {
+  route: Position[];
+  stretches: Position[][];
+  seed: number;
+  peak: number;
+  final: number;
+  rounds: number;
+  seconds: number;
+  planMetres: number;
+  incomplete: boolean;
+}): TraceSummary {
+  const copiedMetres = lengthMetres(route);
+  const strayedMetres = stretches.reduce((total, stretch) => total + lengthMetres(stretch), 0);
+
+  return {
+    waypoints: { seed, peak, final },
+    rounds,
+    seconds,
+    followedShare: copiedMetres > 0 ? 1 - strayedMetres / copiedMetres : 1,
+    strayedStretches: stretches.length,
+    planKm: planMetres / 1000,
+    copiedKm: copiedMetres / 1000,
+    outcome: incomplete ? "stoppedShort" : "complete",
+  };
 }
 
 /** Rounds of adding waypoints a trace may spend before it only prunes what it has. */

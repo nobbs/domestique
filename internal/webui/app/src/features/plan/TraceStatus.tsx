@@ -1,6 +1,5 @@
 import {
   IconCheck,
-  IconInfoCircle,
   IconPlayerPause,
   IconPlayerPlay,
   IconRoute,
@@ -8,9 +7,11 @@ import {
   IconSeedling,
   IconX,
 } from "@tabler/icons-react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "../../components/Button";
+import { usePrefersReducedMotion } from "../../lib/mediaQuery";
 import { cn } from "../../lib/utils";
+import type { TraceSummary } from "./planner";
 
 type StepStatus = "done" | "current" | "pending";
 
@@ -116,7 +117,7 @@ export function TraceStatus({
           </div>
         ))}
       </div>
-      <p role="status" className="text-xs tabular-nums">
+      <p role="status" className="whitespace-nowrap text-xs tabular-nums">
         <span className="sr-only">{sentence}</span>
         <span aria-hidden="true" className={cn(pause === "busy" && "text-[var(--alert)]")}>
           {pause === "busy"
@@ -156,28 +157,195 @@ export function TraceStatus({
   );
 }
 
-const STOPPED_SHORT =
-  "Tracing stopped before the plan fully follows the copied route; the dashed line shows where they differ.";
+/** Three checked Seed·Match·Trim circles: the resting shape the running steps settle into. */
+function DoneSteps() {
+  return (
+    <div className="flex items-center gap-0.5" aria-hidden="true">
+      {STEPS.map((step, index) => (
+        <div key={step.key} className="flex items-center gap-0.5">
+          {index > 0 ? <span className="h-px w-3 bg-[var(--rule)]" /> : null}
+          <StepCircle status="done" label={step.label} icon={step.icon} pause={null} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
-/** A trace the waypoint cap or its round limit stopped before the plan follows the copied route. */
-export function TraceStoppedShort({ onDismiss }: { onDismiss: () => void }) {
+function formatPercent(share: number): string {
+  return `${(share * 100).toFixed(1)}%`;
+}
+
+function formatKm(km: number): string {
+  return `${km.toFixed(1)} km`;
+}
+
+/** seed → peak → final waypoints, rounds, time, % followed, distance, and strayed stretches when any. */
+function TraceStats({ summary }: { summary: TraceSummary }) {
+  const rows: [string, string][] = [
+    [
+      "Waypoints",
+      `${summary.waypoints.seed} → ${summary.waypoints.peak} → ${summary.waypoints.final}`,
+    ],
+    ["Rounds", `${summary.rounds}`],
+    ["Time", `${summary.seconds} s`],
+    ["Followed", formatPercent(summary.followedShare)],
+    ["Distance", `${formatKm(summary.planKm)} of ${formatKm(summary.copiedKm)}`],
+  ];
+  if (summary.strayedStretches > 0) {
+    rows.push([
+      "Strayed",
+      `${summary.strayedStretches} stretch${summary.strayedStretches === 1 ? "" : "es"}`,
+    ]);
+  }
+
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+      {rows.map(([term, value]) => (
+        <div key={term} className="contents">
+          <dt className="text-[var(--ink-2)]">{term}</dt>
+          <dd className="text-right tabular-nums">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function CountdownRing({ fraction }: { fraction: number }) {
+  const radius = 8;
+  const circumference = 2 * Math.PI * radius;
+
+  return (
+    <svg
+      width={20}
+      height={20}
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+      className="shrink-0"
+      data-testid="trace-countdown"
+    >
+      <circle
+        cx={10}
+        cy={10}
+        r={radius}
+        className="fill-none stroke-[var(--rule)]"
+        strokeWidth={2}
+      />
+      <circle
+        cx={10}
+        cy={10}
+        r={radius}
+        className="fill-none stroke-[var(--accent)]"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={circumference * (1 - fraction)}
+        transform="rotate(-90 10 10)"
+      />
+    </svg>
+  );
+}
+
+/** How long a finished trace's chip stays before it hides itself. */
+const FINISHED_HIDE_MS = 10_000;
+
+/**
+ * A pausable countdown in milliseconds. `active` toggling off freezes the
+ * remaining time rather than resetting it; toggling back on resumes from there.
+ */
+function useCountdown(totalMs: number, active: boolean): number {
+  const [remaining, setRemaining] = useState(totalMs);
+  const remainingRef = useRef(totalMs);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const start = Date.now();
+    const from = remainingRef.current;
+    const id = window.setInterval(() => {
+      const left = Math.max(0, from - (Date.now() - start));
+      remainingRef.current = left;
+      setRemaining(left);
+      if (left <= 0) {
+        window.clearInterval(id);
+      }
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [active]);
+
+  return remaining;
+}
+
+/** A trace that finished, or that the waypoint cap or round limit stopped short. */
+export function TraceFinished({
+  summary,
+  onDismiss,
+}: {
+  summary: TraceSummary;
+  onDismiss: () => void;
+}) {
+  const reducedMotion = usePrefersReducedMotion();
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const stoppedShort = summary.outcome === "stoppedShort";
+  const autoHide = !stoppedShort;
+  const remaining = useCountdown(FINISHED_HIDE_MS, autoHide && !hovered && !focused);
+
+  useEffect(() => {
+    if (autoHide && remaining <= 0) {
+      onDismiss();
+    }
+  }, [autoHide, remaining, onDismiss]);
+
+  const sentence = stoppedShort
+    ? "Tracing stopped before the plan fully follows the copied route; the red stretches show where they differ."
+    : `Tracing finished with ${summary.waypoints.final} waypoints; the plan follows ${(summary.followedShare * 100).toFixed(1)} % of the copied route.`;
+
   return (
     <div
-      role="status"
-      className="-translate-x-1/2 absolute top-3 left-1/2 z-30 flex items-center gap-1.5 rounded-full bg-[var(--panel)] py-1 pr-1 pl-3 text-[var(--hold)] text-xs shadow-[var(--shadow)]"
+      className="-translate-x-1/2 absolute top-3 left-1/2 z-30 flex flex-col items-center gap-1.5"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
     >
-      <span className="sr-only">{STOPPED_SHORT}</span>
-      <span aria-hidden="true">Stopped short of the copied route</span>
-      <span title={STOPPED_SHORT} aria-hidden="true" className="cursor-help">
-        <IconInfoCircle size={13} />
-      </span>
-      <Button
-        variant="ghost"
-        icon={<IconX size={13} />}
-        aria-label="Dismiss"
-        title="Dismiss"
-        onClick={onDismiss}
-      />
+      <div className="flex items-center gap-3 rounded-full bg-[var(--panel)] py-1.5 pr-1.5 pl-3 shadow-[var(--shadow)]">
+        <DoneSteps />
+        <p role="status" className="whitespace-nowrap text-xs tabular-nums">
+          <span className="sr-only">{sentence}</span>
+          <span aria-hidden="true" className={cn(stoppedShort && "text-[var(--hold)]")}>
+            {stoppedShort
+              ? `Stopped short · ${summary.waypoints.final} wp`
+              : `${summary.waypoints.final} wp`}
+          </span>
+        </p>
+        <div className="flex items-center">
+          {autoHide ? (
+            <span
+              className="grid size-8 place-items-center"
+              title={`Hides in ${Math.ceil(remaining / 1000)} s`}
+            >
+              {reducedMotion ? (
+                <span className="text-[var(--ink-2)] text-xs tabular-nums">
+                  {Math.ceil(remaining / 1000)}s
+                </span>
+              ) : (
+                <CountdownRing fraction={remaining / FINISHED_HIDE_MS} />
+              )}
+            </span>
+          ) : null}
+          <Button
+            variant="ghost"
+            icon={<IconX size={14} />}
+            aria-label="Dismiss"
+            title="Dismiss"
+            onClick={onDismiss}
+          />
+        </div>
+      </div>
+      <div className="w-[min(280px,90vw)] rounded-[11px] bg-[var(--panel)] px-3 py-2 shadow-[var(--shadow)]">
+        <TraceStats summary={summary} />
+      </div>
     </div>
   );
 }

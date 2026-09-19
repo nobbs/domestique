@@ -87,11 +87,13 @@ import {
   type PlannerWaypoint,
   plannerReducer,
   startTrace,
+  summariseTrace,
   type TraceProgress,
+  type TraceSummary,
   unwrapped,
 } from "./planner";
 import { provisionalLegs, RouteTransition, routedLegs } from "./RouteTransition";
-import { type TracePause, TraceStatus, TraceStoppedShort } from "./TraceStatus";
+import { TraceFinished, type TracePause, TraceStatus } from "./TraceStatus";
 
 function positions(preview: PlanRoutePreview | null): Position[] {
   return (preview?.geometry.coordinates ?? []).flatMap(([longitude, latitude, elevation]) => {
@@ -730,7 +732,16 @@ export function PlanPage() {
   const [tracePause, setTracePause] = useState<TracePause>(null);
   const [tracePhase, setTracePhase] = useState<"add" | "prune">("add");
   const [previewRetry, setPreviewRetry] = useState(0);
-  const [traceIncomplete, setTraceIncomplete] = useState(false);
+  // The trace's own waypoint count when it started, and the most it ever reached mid-trace.
+  const traceSeedCount = useRef(0);
+  const tracePeakCount = useRef(0);
+  const traceStartedAt = useRef(0);
+  // Time a trace spent paused, which its reported duration leaves out, and when the current pause began.
+  const tracePausedMs = useRef(0);
+  const tracePausedSince = useRef<number | null>(null);
+  // Routing rounds a trace has asked for, the seed's first preview among them.
+  const traceRounds = useRef(0);
+  const [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
   const [copiedRoute, setCopiedRoute] = useState<Position[] | null>(null);
   // A running trace owns the plan: the admin pauses or cancels it before editing,
   // and an edit made while paused ends it, since it can only continue from its own waypoints.
@@ -787,7 +798,13 @@ export function PlanPage() {
     setTracing(trace.current !== null);
     setTracePause(null);
     setTracePhase("add");
-    setTraceIncomplete(false);
+    traceSeedCount.current = trace.current?.indices.length ?? 0;
+    tracePeakCount.current = trace.current?.indices.length ?? 0;
+    traceStartedAt.current = trace.current ? Date.now() : 0;
+    tracePausedMs.current = 0;
+    tracePausedSince.current = null;
+    traceRounds.current = trace.current ? 1 : 0;
+    setTraceSummary(null);
     setCopiedRoute(trace.current?.route ?? null);
     setCopiedRouteShown(true);
     setPreviewError(null);
@@ -874,6 +891,15 @@ export function PlanPage() {
     return () => window.clearTimeout(timeout);
   }, [loadedPlan, planId, previewRoute, state.profile, state.waypoints, state.avoid, previewRetry]);
 
+  useEffect(() => {
+    if (tracePause !== null) {
+      tracePausedSince.current ??= Date.now();
+    } else if (tracePausedSince.current !== null) {
+      tracePausedMs.current += Date.now() - tracePausedSince.current;
+      tracePausedSince.current = null;
+    }
+  }, [tracePause]);
+
   const line = useMemo(() => positions(preview), [preview]);
   // Once per routed line, not per redraw: the layer remounts on every settle.
   const strayed = useMemo(
@@ -900,9 +926,27 @@ export function PlanPage() {
     if (!next || next.phase === "done") {
       trace.current = null;
       setTracing(false);
-      setTraceIncomplete(next?.incomplete ?? false);
+      // A routing error also ends the trace here, but with nothing to summarise.
+      setTraceSummary(
+        next && !previewError
+          ? summariseTrace({
+              route: progress.route,
+              stretches: strayed,
+              seed: traceSeedCount.current,
+              peak: Math.max(tracePeakCount.current, next.indices.length),
+              final: next.indices.length,
+              rounds: traceRounds.current,
+              seconds: Math.round(
+                (Date.now() - traceStartedAt.current - tracePausedMs.current) / 1000,
+              ),
+              planMetres: preview?.distanceMetres ?? 0,
+              incomplete: next.incomplete,
+            })
+          : null,
+      );
       return;
     }
+    tracePeakCount.current = Math.max(tracePeakCount.current, next.indices.length);
     const ids = new Map(progress.indices.map((index, at) => [index, state.waypoints[at]?.id]));
     // Spaced out, so a trace spends a public engine's quota no faster than it must.
     const round = window.setTimeout(() => {
@@ -912,6 +956,7 @@ export function PlanPage() {
       }
       trace.current = next;
       setTracePhase(next.phase === "prune" ? "prune" : "add");
+      traceRounds.current += 1;
       dispatch({
         type: "trace",
         waypoints: next.indices.map((index) => {
@@ -923,7 +968,7 @@ export function PlanPage() {
     }, TRACE_ROUND_MS);
 
     return () => window.clearTimeout(round);
-  }, [line, preview, previewError, routedFor, state.waypoints, tracePause]);
+  }, [line, preview, previewError, routedFor, state.waypoints, tracePause, strayed]);
   const previewRef = useRef(preview);
   previewRef.current = preview;
   const shownWaypoints = useMemo(
@@ -1359,8 +1404,8 @@ export function PlanPage() {
               onCancel={endTrace}
             />
           ) : null}
-          {traceIncomplete && !tracing ? (
-            <TraceStoppedShort onDismiss={() => setTraceIncomplete(false)} />
+          {traceSummary && !tracing ? (
+            <TraceFinished summary={traceSummary} onDismiss={() => setTraceSummary(null)} />
           ) : null}
           {previewError && tracePause !== "busy" ? (
             <Alert
