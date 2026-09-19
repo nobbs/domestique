@@ -6,22 +6,25 @@
  * track request; a direct link fetches both.
  */
 
-import { IconMountain } from "@tabler/icons-react";
+import { IconMountain, IconRoute } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import {
   activitySplitsQuery,
   activityTrackQuery,
   routeClimbsQuery,
   routesQuery,
+  webUIConfigQuery,
 } from "../../api/queries";
-import type { Activity, ActivityTrackState } from "../../api/types";
+import type { Activity, ActivityTrackState, Route } from "../../api/types";
 import { routeKey } from "../../api/types";
+import { Button } from "../../components/Button";
 import { PageShell } from "../../components/Layout";
 import { PanelHeading } from "../../components/PanelHeading";
 import { Skeleton } from "../../components/ui/skeleton";
 import { formatTimestamp } from "../../lib/format";
+import { useEffectiveAdmin } from "../../lib/identity";
 import type { DistanceWindow } from "../../lib/profile";
 import {
   buildActivityProfile,
@@ -32,6 +35,7 @@ import {
 } from "../../lib/profile";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { conditionsSentence } from "../../lib/weather";
+import { plannerSeedFrom, rideTraceCoordinates } from "../plan/planner";
 import { ElevationProfile } from "../routes/ElevationProfile";
 import { ActivityMap } from "./ActivityMap";
 import { RideAnalysis } from "./RideAnalysis";
@@ -57,6 +61,11 @@ export function ActivityPage() {
   // "By the kilometre", is gone in favour of RideClimbs.
   const splits = useQuery({ ...activitySplitsQuery(id ?? ""), enabled: id !== null });
   const routeMatch = ride?.routeMatch;
+  // The listing is only worth a request once there is a route to name in it.
+  const matchedRoutes = useQuery({ ...routesQuery(), enabled: routeMatch !== undefined });
+  const matchedRoute = routeMatch
+    ? matchedRoutes.data?.find((held) => routeKey(held) === routeKey(routeMatch))
+    : undefined;
   const routeClimbs = useQuery({
     ...routeClimbsQuery(
       routeMatch?.provider ?? "",
@@ -153,12 +162,42 @@ export function ActivityPage() {
     [weather, ride, stripMetres, splits.isPending, splits.data],
   );
   const drawable = !track.isError && !!track.data?.bbox && coordinates.length >= 2;
+  const navigate = useNavigate();
+  const config = useQuery(webUIConfigQuery());
+  const admin = useEffectiveAdmin();
+  const outdoor = !track.data?.world && !ride?.indoor;
+  const canPlanFromRide =
+    !!config.data?.planning && admin && ride !== undefined && coordinates.length >= 2 && outdoor;
+  // Computed only on demand: a ride's raw track can hold tens of thousands of
+  // points, too many to clean on every render.
+  const planFromRide = useCallback(() => {
+    if (!ride) {
+      return;
+    }
+    const name = matchedRoute?.title ?? formatTimestamp(ride.startedAt);
+    const seed = plannerSeedFrom(name, rideTraceCoordinates(coordinates));
+    if (seed) {
+      navigate("/plan", { state: seed });
+    }
+  }, [ride, matchedRoute, coordinates, navigate]);
 
   return (
     <PageShell>
       <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-4">
         <div className="grid gap-4 rounded-2xl bg-[var(--panel)] p-5 shadow-[var(--shadow)]">
-          <RideHeader ride={ride} />
+          <div className="flex items-start justify-between gap-3">
+            <RideHeader ride={ride} route={matchedRoute} />
+            {canPlanFromRide ? (
+              <Button
+                variant="outline"
+                icon={<IconRoute stroke={1.8} />}
+                className="shrink-0"
+                onClick={planFromRide}
+              >
+                Create plan from this ride
+              </Button>
+            ) : null}
+          </div>
           <RideFigures ride={ride} />
         </div>
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -245,11 +284,7 @@ export function ActivityPage() {
  * knows one, else the date; whichever is not the title goes beneath it with
  * the weather. The distance figure carries how much of the route was ridden.
  */
-function RideHeader({ ride }: { ride: Activity | undefined }) {
-  const match = ride?.routeMatch;
-  // The listing is only worth a request once there is a route to name in it.
-  const routes = useQuery({ ...routesQuery(), enabled: match !== undefined });
-  const route = match ? routes.data?.find((held) => routeKey(held) === routeKey(match)) : undefined;
+function RideHeader({ ride, route }: { ride: Activity | undefined; route: Route | undefined }) {
   const when = ride ? formatTimestamp(ride.startedAt) : "Activity";
   const weather = ride?.weather ? conditionsSentence(ride.weather) : null;
   const subline = [route ? when : null, weather].filter((part) => part !== null).join(" · ");
