@@ -465,10 +465,11 @@ func TestValidateSources(t *testing.T) {
 
 	sources, err := ValidateSources([]Source{
 		{Provider: route.ProviderVeloPlanner, BaseURL: " https://veloplanner.com "},
-		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
+		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de", Withheld: true},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "https://veloplanner.com", sources[0].BaseURL, "the address is stored trimmed")
+	assert.True(t, sources[1].Withheld, "the Wahoo switch survives validation")
 
 	tests := []struct {
 		name    string
@@ -730,4 +731,29 @@ func TestTheTimezoneDatabaseTravelsWithTheBinary(t *testing.T) {
 		_, err := ValidateTimezone(zone)
 		require.NoErrorf(t, err, "%s is not loadable from this binary", zone)
 	}
+}
+
+func TestValuesWithheldProviders(t *testing.T) {
+	values := Values{Sources: []Source{
+		{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de", Withheld: true},
+	}}
+
+	assert.Equal(t, []route.Provider{route.ProviderVeloPlanner}, values.UnreadProviders())
+	assert.ElementsMatch(t, []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot},
+		values.WithheldProviders(), "a library not read is withheld too")
+
+	values.Sources = append(values.Sources, Source{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.com"})
+	assert.Empty(t, values.UnreadProviders())
+	assert.Equal(t, []route.Provider{route.ProviderKomoot}, values.WithheldProviders())
+}
+
+func TestCurrentReportsTheLiveLibrariesKeptOffWahoo(t *testing.T) {
+	values := validValues()
+	values.Sources = []Source{{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de", Withheld: true}}
+	current, err := Load(t.Context(), &stubStore{values: values})
+	require.NoError(t, err)
+
+	assert.Equal(t, []route.Provider{route.ProviderVeloPlanner}, current.UnreadProviders())
+	assert.ElementsMatch(t, []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot},
+		current.WithheldProviders())
 }

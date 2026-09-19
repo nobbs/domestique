@@ -1075,6 +1075,8 @@ export const SourceSettingsProvider = {
 
 export interface SourceSettings {
   provider: SourceSettingsProvider;
+  /** Whether a run writes this library's routes to riders' Wahoo accounts. */
+  syncToWahoo: boolean;
   /** The source's own web application, which is both the origin the service reads and the one a route is linked back to. */
   baseUrl: string;
 }
@@ -1160,8 +1162,10 @@ export interface WahooApplicationUpdate {
  * One library, and the account it is read with.
  */
 export interface SourceUpdate {
-  /** Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with. */
+  /** Whether a run reads this library at all. Off takes it out of the list without forgetting the account it was read with; the next read of every library removes its routes from the catalogue, and from Wahoo at most five routes per target per run. */
   read: boolean;
+  /** Whether a run writes this library's routes to riders' Wahoo accounts. Off keeps reading it and removes what was already written, at most five routes per target per run. Ignored while read is off. */
+  syncToWahoo: boolean;
   /** The source's own web application, which is both the origin the service reads and the one a route is linked back to. */
   baseUrl: string;
   /** The account's email address, sent only when it was typed. The rules the application secret follows apply here too. */

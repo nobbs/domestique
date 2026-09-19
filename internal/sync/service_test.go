@@ -172,6 +172,170 @@ func TestServiceDeletesUpToFiveOwnedRoutesPerTarget(t *testing.T) {
 	assert.Equal(t, 10, result.Deleted, "deleted routes")
 }
 
+func TestServiceKeepsAWithheldLibraryOffEveryTarget(t *testing.T) {
+	kept := testProviderStage(t, route.ProviderVeloPlanner, 1, 1, "current", "current-hash")
+	written := testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")
+	unwritten := testProviderStage(t, route.ProviderKomoot, 3, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{kept, written, unwritten}
+	target := newFakeTarget()
+	seedMapping(state, "a", &written, remoteID("a", 2))
+	target.seedRoute("a", &written, remoteID("a", 2))
+	options := syncOptions(false, nil, "a")
+	options.Withheld = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunTarget() outcome")
+	assert.Equal(t, 1, result.Created, "only the library still delivered is written")
+	assert.Equal(t, 1, result.Deleted, "what was already written of the withheld library is removed")
+	assert.Equal(t, []int64{remoteID("a", 2)}, target.deletedRouteIDs, "deleted routes")
+	assert.Len(t, state.trusted, 3, "a withheld library is still read and stored")
+}
+
+// A withheld library larger than the deletion limit must not block the rest of
+// the library: it leaves within the limit, run by run.
+func TestServiceDrainsAWithheldLibraryWithinTheDeletionLimit(t *testing.T) {
+	added := testProviderStage(t, route.ProviderVeloPlanner, 1, 1, "current", "current-hash")
+	gone := testProviderStage(t, route.ProviderVeloPlanner, 2, 1, "old", "old-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{added}
+	target := newFakeTarget()
+	seedMapping(state, "a", &gone, remoteID("a", 2))
+	target.seedRoute("a", &gone, remoteID("a", 2))
+	for routeID := int64(10); routeID < 17; routeID++ {
+		withheld := testProviderStage(t, route.ProviderKomoot, routeID, 1, "current", "current-hash")
+		state.trusted = append(state.trusted, withheld)
+		seedMapping(state, "a", &withheld, remoteID("a", routeID))
+		target.seedRoute("a", &withheld, remoteID("a", routeID))
+	}
+	options := syncOptions(false, nil, "a")
+	options.Withheld = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	require.NoError(t, err, "New()")
+
+	first := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, first.Outcome, "first run outcome")
+	assert.Equal(t, 1, first.Created, "the delivered library still syncs")
+	assert.Equal(t, maxDeletionsPerTarget, first.Deleted, "the removed route and four withheld ones")
+	assert.Contains(t, target.deletedRouteIDs, remoteID("a", 2), "a route that left its library goes first")
+	assert.Len(t, state.mappings["a"], 4, "three withheld routes wait for the next run")
+
+	second := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeSucceeded, second.Outcome, "second run outcome")
+	assert.Equal(t, map[route.Key]bool{added.Key(): true}, trackedKeys(state.mappings["a"]),
+		"the rest of the withheld library is gone")
+}
+
+func trackedKeys(mappings map[route.Key]targetStage) map[route.Key]bool {
+	keys := make(map[route.Key]bool, len(mappings))
+	for key := range mappings {
+		keys[key] = true
+	}
+
+	return keys
+}
+
+func TestServiceStillBlocksALargeShrinkBesideAWithheldLibrary(t *testing.T) {
+	state := newFakeState("a")
+	target := newFakeTarget()
+	for routeID := int64(1); routeID <= 6; routeID++ {
+		stale := testProviderStage(t, route.ProviderVeloPlanner, routeID, 1, "old", "old-hash")
+		seedMapping(state, "a", &stale, remoteID("a", routeID))
+		target.seedRoute("a", &stale, remoteID("a", routeID))
+	}
+	options := syncOptions(false, nil, "a")
+	options.Withheld = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunTarget(t.Context(), "a")
+	assert.Equal(t, OutcomeBlocked, result.Outcome)
+	assert.Empty(t, target.deletedRouteIDs)
+}
+
+func TestServiceRemovesALibraryNoLongerReadFromTheCatalogue(t *testing.T) {
+	read := testProviderStage(t, route.ProviderVeloPlanner, 1, 1, "current", "current-hash")
+	unread := testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{read, unread}
+	options := syncOptions(false, []Source{&fakeSource{stages: []route.Route{read}}}, "a")
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	result := service.RunSource(t.Context())
+	assert.Equal(t, OutcomeSucceeded, result.Outcome, "RunSource() outcome")
+	require.Len(t, state.trusted, 1, "stored inventory")
+	assert.Equal(t, read.Key(), state.trusted[0].Key(), "only the library still read is kept")
+}
+
+// Turning every library off leaves nothing to read, and still empties the catalogue.
+func TestServiceRemovesTheLastLibraryNoLongerRead(t *testing.T) {
+	state := newFakeState("a")
+	state.trusted = []route.Route{testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")}
+	options := syncOptions(false, nil, "a")
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, OutcomeNotReady, service.RunSource(t.Context()).Outcome)
+	assert.Empty(t, state.trusted, "stored inventory")
+	assert.Equal(t, 1, state.storeInventoryCalls, "a library with nothing stored is not rewritten")
+}
+
+// A library turned back on between the two settings reads is read, not dropped:
+// if that read fails, its last-known share must survive.
+func TestServiceKeepsALibraryThisRunReadsWhateverTheSettingsSayLater(t *testing.T) {
+	stored := testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")
+	state := newFakeState("a")
+	state.trusted = []route.Route{stored}
+	failing := &fakeSource{provider: route.ProviderKomoot, err: errors.New("komoot down")}
+	options := syncOptions(false, []Source{failing}, "a")
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, OutcomeFailed, service.RunSource(t.Context()).Outcome)
+	assert.Len(t, state.trusted, 1, "the last-known share is kept")
+}
+
+// A run that cannot build its libraries drops nothing either.
+func TestServiceDropsNothingWhenTheLibrariesCannotBeBuilt(t *testing.T) {
+	state := newFakeState("a")
+	state.trusted = []route.Route{testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")}
+	options := syncOptions(false, nil, "a")
+	options.Sources = func() ([]Source, error) { return nil, errors.New("credentials missing") }
+	options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+	require.NoError(t, err, "New()")
+
+	assert.Equal(t, OutcomeNotReady, service.RunSource(t.Context()).Outcome)
+	assert.Len(t, state.trusted, 1)
+}
+
+func TestServiceFailsTheReadWhenAnUnreadLibraryCannotBeRemoved(t *testing.T) {
+	for name, broken := range map[string]func(*fakeState){
+		"counting": func(state *fakeState) { state.trustedCountErr = errors.New("disk gone") },
+		"storing":  func(state *fakeState) { state.storeErr = errors.New("disk full") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := newFakeState("a")
+			state.trusted = []route.Route{testProviderStage(t, route.ProviderKomoot, 2, 1, "current", "current-hash")}
+			broken(state)
+			options := syncOptions(false, nil, "a")
+			options.Unread = func() []route.Provider { return []route.Provider{route.ProviderKomoot} }
+			service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, newFakeTarget(), nil, nil)
+			require.NoError(t, err, "New()")
+
+			result := service.RunSource(t.Context())
+			assert.Equal(t, OutcomeFailed, result.Outcome)
+			assert.Equal(t, FailureState, result.Failure)
+		})
+	}
+}
+
 // The two halves are independent: a library refresh must keep working while a
 // target waits to be reauthorised, because the refresh touches no target.
 func TestServiceReadsTheSourceWhileATargetNeedsReauthorization(t *testing.T) {

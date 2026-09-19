@@ -42,6 +42,14 @@ type Options struct {
 	// read of one library never depends on the rest being configured. A
 	// provider with no configuration is reported unconfigured, not an error.
 	SourceFor func(provider route.Provider) (source Source, configured bool, err error)
+
+	// Withheld lists the libraries whose stages are kept off every target, asked
+	// once as a target run starts. Nil withholds nothing.
+	Withheld func() []route.Provider
+
+	// Unread lists the libraries no longer read, whose stored share a full source
+	// read removes. Nil removes nothing.
+	Unread func() []route.Provider
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -57,6 +65,8 @@ type Service struct {
 	predictor                Predictor
 	allowEmptySourceDeletion func() bool
 	targetIDs                func() []string
+	withheld                 func() []route.Provider
+	unread                   func() []route.Provider
 	now                      func() time.Time
 	attempts                 planAttempts
 }
@@ -93,6 +103,8 @@ func New(
 		predictor:                predictor,
 		targetIDs:                options.TargetIDs,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
+		withheld:                 options.Withheld,
+		unread:                   options.Unread,
 		now:                      time.Now,
 	}, nil
 }
@@ -103,7 +115,13 @@ func New(
 // evaluated per source against that source's own prior count.
 func (s *Service) RunSource(ctx context.Context) Result {
 	sources, err := s.sources()
-	if err != nil || len(sources) == 0 {
+	if err != nil {
+		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
+	}
+	if failure := s.dropUnread(ctx, sources); failure != FailureNone {
+		return Result{Phase: PhaseSource, Outcome: OutcomeFailed, Failure: failure}
+	}
+	if len(sources) == 0 {
 		return Result{Phase: PhaseSource, Outcome: OutcomeNotReady}
 	}
 
@@ -139,6 +157,32 @@ func (s *Service) RunSource(ctx context.Context) Result {
 	}
 
 	return result
+}
+
+// dropUnread removes the stored share of every library no longer read. It is
+// deliberate rather than an empty listing, so the empty-source gate does not apply.
+// A library this run reads is spared, whatever a settings edit since then says.
+func (s *Service) dropUnread(ctx context.Context, reading []Source) FailureCategory {
+	if s.unread == nil {
+		return FailureNone
+	}
+	for _, provider := range s.unread() {
+		if slices.ContainsFunc(reading, func(source Source) bool { return source.Provider() == provider }) {
+			continue
+		}
+		stored, err := s.state.TrustedInventoryCount(ctx, provider)
+		if err != nil {
+			return FailureState
+		}
+		if stored == 0 {
+			continue
+		}
+		if err := s.state.StoreTrustedInventory(ctx, provider, nil); err != nil {
+			return FailureState
+		}
+	}
+
+	return FailureNone
 }
 
 // RunSourceProvider reads exactly one configured source library, leaving every
@@ -224,7 +268,8 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
-	desired, ordered, err := normalizeInventory(stored)
+	withheld := s.withheldProviders()
+	desired, ordered, err := normalizeInventory(deliverable(stored, withheld))
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
@@ -235,7 +280,7 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 		Targets:      make([]TargetResult, 0, len(targetIDs)),
 	}
 	for _, targetID := range targetIDs {
-		applied, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
+		applied, failure := s.reconcileTarget(ctx, targetID, desired, ordered, withheld)
 		result.Created += applied.created
 		result.Updated += applied.updated
 		result.Deleted += applied.deleted
@@ -283,12 +328,13 @@ func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
-	desired, ordered, err := normalizeInventory(stored)
+	withheld := s.withheldProviders()
+	desired, ordered, err := normalizeInventory(deliverable(stored, withheld))
 	if err != nil {
 		return Result{Phase: PhaseTargets, Outcome: OutcomeFailed, Failure: FailureState}
 	}
 
-	targetCounts, failure := s.reconcileTarget(ctx, targetID, desired, ordered)
+	targetCounts, failure := s.reconcileTarget(ctx, targetID, desired, ordered, withheld)
 
 	return Result{
 		Phase:        PhaseTargets,
@@ -357,6 +403,22 @@ func (s *Service) clearTarget(ctx context.Context, targetID string) (int, Failur
 	}
 
 	return deleted, FailureNone
+}
+
+func (s *Service) withheldProviders() []route.Provider {
+	if s.withheld == nil {
+		return nil
+	}
+
+	return s.withheld()
+}
+
+// deliverable drops the stages of every withheld library, so reconciliation
+// removes whatever it had already written of them.
+func deliverable(stored []route.Route, withheld []route.Provider) []route.Route {
+	return slices.DeleteFunc(stored, func(stage route.Route) bool {
+		return slices.Contains(withheld, stage.Key().Provider())
+	})
 }
 
 // targetOutcome states one slot's reconciliation in the same vocabulary a run
@@ -463,6 +525,7 @@ func (s *Service) reconcileTarget(
 	targetID string,
 	desired map[route.Key]route.Route,
 	ordered []route.Route,
+	withheld []route.Provider,
 ) (counts, FailureCategory) {
 	accessToken, failure := s.accessToken(ctx, targetID)
 	if failure != FailureNone {
@@ -473,10 +536,13 @@ func (s *Service) reconcileTarget(
 	if mappingsErr != nil {
 		return counts{}, FailureState
 	}
-	deletions := missingStages(mappings, desired)
+	deletions, withdrawn := splitWithdrawn(missingStages(mappings, desired), withheld)
 	if len(deletions) > maxDeletionsPerTarget {
 		return counts{}, FailureDeletionLimit
 	}
+	// A withheld library drains within the limit instead of tripping it, so the
+	// rest of the library keeps syncing while its routes leave a few per run.
+	deletions = append(deletions, withdrawn[:min(len(withdrawn), maxDeletionsPerTarget-len(deletions))]...)
 
 	// One listing answers ownership for every stage below, so an unchanged library
 	// costs one request rather than one per stage against a shared quota.

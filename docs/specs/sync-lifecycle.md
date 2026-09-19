@@ -308,6 +308,10 @@ The stored inventory is the handover between the halves. The target half reads
 it back rather than fetching a fresh one, and the library it reconciles is the
 last one validated as whole.
 
+The target half leaves out the share of every source whose `sync_to_wahoo` is
+off, or that is no longer read ([configuration.md](configuration.md#sources));
+to the reconciler those routes have left the library.
+
 An inventory that cannot be read back whole fails the target half as a state
 failure and deletes nothing.
 
@@ -322,6 +326,14 @@ stored inventory replaced wholesale. A source that fails — an unreachable or
 invalid read, or an empty result blocked by the gate below — keeps the routes it
 was last known to have, and those routes remain part of the merged inventory the
 target half reconciles from, authoritative-as-last-known rather than absent.
+
+A source the operator stops reading has its share removed from the stored
+inventory by the next read of every source, whether or not any source is left
+to read. A read that cannot build its sources removes nothing, and a source the
+read is about to read is never removed, whatever a settings edit made since says. That removal is an instruction rather than an empty listing, so the
+empty-source gate below does not hold it back; the target half then drains the
+source's routes as it drains one switched off for Wahoo
+([Deletion gates](#deletion-gates)).
 
 The empty-source deletion gate is evaluated per source against that source's own
 prior route count. A source that had routes and now reports none is blocked for
@@ -482,6 +494,11 @@ A target deletion is permitted only when all conditions hold:
   route identity;
 - the target has completed all required creates and updates in the run; and
 - the deletion plan contains at most five routes for that target.
+
+The routes of a source whose `sync_to_wahoo` is off, or that is no longer read,
+count apart from that plan: they never trip the limit, and each run removes as many of them as the
+limit leaves room for after the plan, so the source drains from the target over
+several runs while the rest of the library keeps syncing.
 
 A source inventory that was populated and becomes empty is blocked while the
 empty-source deletion gate is closed. The gate is closed by default. It is

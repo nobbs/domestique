@@ -59,6 +59,7 @@ const (
 	alertsSubmission  = `{"alerts": [{"task": "sync", "alert": "source", "enabled": false}]}`
 	komootSubmission  = `{
 		"read": true,
+		"syncToWahoo": false,
 		"baseUrl": "https://komoot.example.test",
 		"email": "rider@example.test",
 		"password": "opensesame"
@@ -244,7 +245,7 @@ func TestEachSectionIsStoredByItsOwnEndpoint(t *testing.T) {
 			stored: func(t *testing.T, values runtimeconfig.Values) {
 				t.Helper()
 				assert.Equal(t, []runtimeconfig.Source{
-					{Provider: route.ProviderKomoot, BaseURL: "https://komoot.example.test"},
+					{Provider: route.ProviderKomoot, BaseURL: "https://komoot.example.test", Withheld: true},
 				}, values.Sources, "the libraries read")
 			},
 		},
@@ -287,10 +288,18 @@ func TestLibrariesAreReadInTheirOwnOrderHoweverTheyAreTurnedOn(t *testing.T) {
 
 	saveSection(t, handler, settingsKomootPath, komootSubmission)
 	saveSection(t, handler, settingsVeloPlannerPath,
-		`{"read": true, "baseUrl": "https://veloplanner.example.test"}`)
+		`{"read": true, "syncToWahoo": true, "baseUrl": "https://veloplanner.example.test"}`)
 
 	assert.Equal(t, []route.Provider{route.ProviderVeloPlanner, route.ProviderKomoot},
 		[]route.Provider{settings.Values().Sources[0].Provider, settings.Values().Sources[1].Provider})
+}
+
+func TestALibraryKeptOffWahooIsServedAsSuch(t *testing.T) {
+	handler, _ := settingsHandler(t)
+
+	view := saveSection(t, handler, settingsKomootPath, komootSubmission)
+	require.Len(t, view.Sources, 1)
+	assert.False(t, view.Sources[0].SyncToWahoo)
 }
 
 // A library turned off is not read, and the account it was read with stays
@@ -299,7 +308,7 @@ func TestALibraryTurnedOffKeepsItsAccount(t *testing.T) {
 	handler, settings := settingsHandler(t)
 	saveSection(t, handler, settingsKomootPath, komootSubmission)
 
-	saveSection(t, handler, settingsKomootPath, `{"read": false, "baseUrl": "https://komoot.example.test"}`)
+	saveSection(t, handler, settingsKomootPath, `{"read": false, "syncToWahoo": true, "baseUrl": "https://komoot.example.test"}`)
 	assert.Empty(t, settings.Values().Sources, "the libraries read")
 	assert.True(t, settings.SecretIsSet(runtimeconfig.SecretKomootPassword), "the stored account")
 }
@@ -355,11 +364,11 @@ func TestOnlyTheCredentialsAnEditCarriesAreWritten(t *testing.T) {
 	handler, settings := settingsHandler(t)
 	saveSection(t, handler, settingsKomootPath, komootSubmission)
 
-	saveSection(t, handler, settingsKomootPath, `{"read": true, "baseUrl": "https://komoot.example.test"}`)
+	saveSection(t, handler, settingsKomootPath, `{"read": true, "syncToWahoo": true, "baseUrl": "https://komoot.example.test"}`)
 	assert.True(t, settings.SecretIsSet(runtimeconfig.SecretKomootPassword), "a credential left out")
 
 	saveSection(t, handler, settingsKomootPath,
-		`{"read": true, "baseUrl": "https://komoot.example.test", "password": ""}`)
+		`{"read": true, "syncToWahoo": true, "baseUrl": "https://komoot.example.test", "password": ""}`)
 	assert.False(t, settings.SecretIsSet(runtimeconfig.SecretKomootPassword), "a credential sent empty")
 	assert.True(t, settings.SecretIsSet(runtimeconfig.SecretKomootEmail), "the one beside it")
 }

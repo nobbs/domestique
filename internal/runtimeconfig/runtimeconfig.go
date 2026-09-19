@@ -56,6 +56,30 @@ type Source struct {
 	// BaseURL is both the origin the adapter reaches and the one the page links a
 	// stage back to: the provider's web application, not an API host.
 	BaseURL string
+
+	// Withheld keeps this library's routes off every Wahoo target while it is
+	// still read; routes already written there are removed by the next run.
+	Withheld bool
+}
+
+// UnreadProviders lists the libraries a run can read but is not configured to.
+func (v *Values) UnreadProviders() []route.Provider {
+	return slices.DeleteFunc(SourceProviders(), func(provider route.Provider) bool {
+		return slices.ContainsFunc(v.Sources, func(source Source) bool { return source.Provider == provider })
+	})
+}
+
+// WithheldProviders lists the libraries kept off every Wahoo target: those
+// switched off for Wahoo, and those not read at all.
+func (v *Values) WithheldProviders() []route.Provider {
+	withheld := v.UnreadProviders()
+	for _, source := range v.Sources {
+		if source.Withheld {
+			withheld = append(withheld, source.Provider)
+		}
+	}
+
+	return withheld
 }
 
 // Sync holds the reconciliation settings a run reads when it starts.
@@ -259,6 +283,20 @@ func mergeSecrets(current, incoming map[SecretName]Secret) map[SecretName]Secret
 // snapshot cannot be changed underneath by the next edit.
 func (c *Current) Values() Values {
 	return c.Snapshot().Values()
+}
+
+// WithheldProviders reports the live settings' libraries kept off every Wahoo target.
+func (c *Current) WithheldProviders() []route.Provider {
+	values := c.Values()
+
+	return values.WithheldProviders()
+}
+
+// UnreadProviders reports the libraries the live settings do not read.
+func (c *Current) UnreadProviders() []route.Provider {
+	values := c.Values()
+
+	return values.UnreadProviders()
 }
 
 // Snapshot returns one coherent generation for readers that need settings and credentials.

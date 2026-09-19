@@ -120,7 +120,7 @@ func ValidateSources(raw []Source) ([]Source, error) {
 		if err := ValidateHTTPSOrigin(name, baseURL); err != nil {
 			return nil, err
 		}
-		sources = append(sources, Source{Provider: source.Provider, BaseURL: baseURL})
+		sources = append(sources, Source{Provider: source.Provider, BaseURL: baseURL, Withheld: source.Withheld})
 	}
 	if len(sources) == 0 {
 		return nil, nil

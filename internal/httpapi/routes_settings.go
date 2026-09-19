@@ -74,7 +74,9 @@ func (h *Handler) SetSource(writer http.ResponseWriter, request *http.Request) {
 		for _, each := range runtimeconfig.SourceProviders() {
 			switch {
 			case each == provider && body.Read:
-				read = append(read, runtimeconfig.Source{Provider: provider, BaseURL: body.BaseURL})
+				read = append(read, runtimeconfig.Source{
+					Provider: provider, BaseURL: body.BaseURL, Withheld: !body.SyncToWahoo,
+				})
 			case each == provider:
 			default:
 				if stored := sourceOf(values.Sources, each); stored != nil {
@@ -377,8 +379,9 @@ func (h *Handler) settingsView() openapi.Settings {
 	}
 	for _, source := range values.Sources {
 		view.Sources = append(view.Sources, openapi.SourceSettings{
-			Provider: openapi.SourceSettings_Provider(source.Provider),
-			BaseURL:  source.BaseURL,
+			Provider:    openapi.SourceSettings_Provider(source.Provider),
+			BaseURL:     source.BaseURL,
+			SyncToWahoo: !source.Withheld,
 		})
 	}
 	for _, name := range runtimeconfig.SecretNames() {

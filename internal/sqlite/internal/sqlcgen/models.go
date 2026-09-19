@@ -326,9 +326,10 @@ type RuntimeSetting struct {
 }
 
 type RuntimeSource struct {
-	Position int64
-	Provider string
-	BaseUrl  string
+	Position    int64
+	Provider    string
+	BaseUrl     string
+	SyncToWahoo int64
 }
 
 type RuntimeSurfaceRegion struct {

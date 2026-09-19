@@ -106,6 +106,7 @@ func (s *Store) writeRuntimeSettings(ctx context.Context, queries *sqlcgen.Queri
 	for position, source := range values.Sources {
 		if err := queries.InsertRuntimeSource(ctx, sqlcgen.InsertRuntimeSourceParams{
 			Position: int64(position), Provider: string(source.Provider), BaseUrl: source.BaseURL,
+			SyncToWahoo: boolInteger(!source.Withheld),
 		}); err != nil {
 			return fmt.Errorf("storing a source: %w", err)
 		}
@@ -137,7 +138,9 @@ func (s *Store) runtimeSources(ctx context.Context) ([]runtimeconfig.Source, err
 	}
 	sources := make([]runtimeconfig.Source, 0, len(rows))
 	for _, row := range rows {
-		sources = append(sources, runtimeconfig.Source{Provider: route.Provider(row.Provider), BaseURL: row.BaseUrl})
+		sources = append(sources, runtimeconfig.Source{
+			Provider: route.Provider(row.Provider), BaseURL: row.BaseUrl, Withheld: row.SyncToWahoo == 0,
+		})
 	}
 
 	return sources, nil

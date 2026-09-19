@@ -69,7 +69,7 @@ func TestStoreKeepsTheRuntimeSettingsItWasGiven(t *testing.T) {
 			ClientID:     "client-id",
 		},
 		Sources: []runtimeconfig.Source{
-			{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de"},
+			{Provider: route.ProviderKomoot, BaseURL: "https://api.komoot.de", Withheld: true},
 			{Provider: route.ProviderVeloPlanner, BaseURL: "https://veloplanner.com"},
 		},
 		Notifications: runtimeconfig.Notifications{
