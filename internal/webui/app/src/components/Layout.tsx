@@ -95,8 +95,13 @@ export function Layout({
                   // own. A rail with chrome paints an empty rounded square over
                   // the map for as long as the library is still on its way, and
                   // then sheds it as the search pill mounts.
+                  //
+                  // It scrolls only where something it cannot bound stands in
+                  // it: a panel holds its own height, an alert is as long as
+                  // the failure it is reporting. Scrolling always would clip
+                  // the pill's shadow, which a scroll box cannot show.
                   <aside
-                    className="pointer-events-auto absolute top-3 left-3 flex max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] flex-col gap-3"
+                    className="pointer-events-auto absolute top-3 left-3 flex max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] flex-col gap-3 has-[>[data-slot=alert]]:overflow-y-auto"
                     aria-label={workspaceLabel}
                   >
                     {children}
