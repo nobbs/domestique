@@ -19,6 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Position, Route, RouteSurface } from "../../api/types";
 import { routeKey } from "../../api/types";
+import { Button } from "../../components/Button";
 import { RangeSlider } from "../../components/RangeSlider";
 import { RouteGlyph } from "../../components/RouteGlyph";
 import { librarySources, offersSourceChoice, SourceChips } from "../../components/SourceChips";
@@ -208,13 +209,15 @@ export function CommandSearch({
   return (
     <>
       {routeOpen ? null : (
-        <button
-          type="button"
-          onClick={() => onOpenChange(true)}
+        // The planner's place search wears the same pill; both are the one way
+        // into a map from a name.
+        <Button
+          variant="panel"
+          icon={<IconSearch stroke={1.8} />}
+          className="w-64 justify-start"
           aria-label="Search the route library"
-          className="flex h-10 w-64 items-center gap-2 rounded-[11px] bg-[var(--panel)] px-3 text-[var(--ink-2)] text-sm shadow-[var(--shadow)] hover:text-[var(--ink)]"
+          onClick={() => onOpenChange(true)}
         >
-          <IconSearch size={16} stroke={1.8} aria-hidden="true" />
           <span className="flex-1 truncate text-left">
             {query || `Search ${library.length} routes`}
           </span>
@@ -224,8 +227,8 @@ export function CommandSearch({
               className="size-2 rounded-full bg-[var(--accent)]"
             />
           ) : null}
-          <kbd className="rounded-[7px] bg-[var(--muted)] px-2 py-0.5 font-sans text-xs">⌘K</kbd>
-        </button>
+          <kbd className="rounded-[7px] bg-[var(--muted)] px-1.5 py-0.5 font-sans text-xs">⌘K</kbd>
+        </Button>
       )}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogPortal>
