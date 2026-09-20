@@ -36,6 +36,16 @@ describe("Layout", () => {
     expect(screen.queryByRole("button", { name: "Browse routes" })).toBeNull();
   });
 
+  // The rail used to bring its own card, which painted an empty rounded square
+  // over the map until the first panel mounted and then shed it mid-flight.
+  it("gives the overlay rail no card of its own", () => {
+    show(false);
+
+    const rail = screen.getByRole("complementary", { name: "Route library controls" });
+
+    expect(rail.className).not.toMatch(/bg-|shadow-|\bp-3\b/);
+  });
+
   it("stands a sidebar workspace and its dock beside the map, off the overlay", () => {
     vi.mocked(useNarrowViewport).mockReturnValue(false);
     render(

@@ -208,28 +208,24 @@ export function CommandSearch({
   return (
     <>
       {routeOpen ? null : (
-        // The same pill mechanism `RoutePanel` uses: `data-compact-workspace`
-        // strips the workspace rail's own chrome, so this button is the pill.
-        <div data-compact-workspace="" className="w-fit max-w-full">
-          <button
-            type="button"
-            onClick={() => onOpenChange(true)}
-            aria-label="Search the route library"
-            className="flex h-10 w-64 items-center gap-2 rounded-[11px] bg-[var(--panel)] px-3 text-[var(--ink-2)] text-sm shadow-[var(--shadow)] hover:text-[var(--ink)]"
-          >
-            <IconSearch size={16} stroke={1.8} aria-hidden="true" />
-            <span className="flex-1 truncate text-left">
-              {query || `Search ${library.length} routes`}
-            </span>
-            {filtersActive ? (
-              <span
-                data-testid="filters-active-dot"
-                className="size-2 rounded-full bg-[var(--accent)]"
-              />
-            ) : null}
-            <kbd className="rounded-[7px] bg-[var(--muted)] px-2 py-0.5 font-sans text-xs">⌘K</kbd>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => onOpenChange(true)}
+          aria-label="Search the route library"
+          className="flex h-10 w-64 items-center gap-2 rounded-[11px] bg-[var(--panel)] px-3 text-[var(--ink-2)] text-sm shadow-[var(--shadow)] hover:text-[var(--ink)]"
+        >
+          <IconSearch size={16} stroke={1.8} aria-hidden="true" />
+          <span className="flex-1 truncate text-left">
+            {query || `Search ${library.length} routes`}
+          </span>
+          {filtersActive ? (
+            <span
+              data-testid="filters-active-dot"
+              className="size-2 rounded-full bg-[var(--accent)]"
+            />
+          ) : null}
+          <kbd className="rounded-[7px] bg-[var(--muted)] px-2 py-0.5 font-sans text-xs">⌘K</kbd>
+        </button>
       )}
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogPortal>

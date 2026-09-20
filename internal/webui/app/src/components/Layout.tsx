@@ -91,8 +91,12 @@ export function Layout({
             ) : (
               <div className="shell__overlay pointer-events-none absolute inset-0 z-20">
                 {workspace === "sidebar" ? null : (
+                  // No card of its own: every panel that stands here brings its
+                  // own. A rail with chrome paints an empty rounded square over
+                  // the map for as long as the library is still on its way, and
+                  // then sheds it as the search pill mounts.
                   <aside
-                    className="pointer-events-auto absolute top-3 left-3 max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] overflow-y-auto rounded-xl bg-[var(--panel)] p-3 shadow-[var(--shadow)] transition-[background-color,box-shadow,padding] duration-200 has-[>[data-compact-workspace]]:overflow-visible has-[>[data-compact-workspace]]:bg-transparent has-[>[data-compact-workspace]]:p-0 has-[>[data-compact-workspace]]:shadow-none has-[>[data-compact-workspace]]:ring-0"
+                    className="pointer-events-auto absolute top-3 left-3 flex max-h-[calc(100%-1.5rem)] w-fit max-w-[calc(100dvw-1.5rem)] flex-col gap-3"
                     aria-label={workspaceLabel}
                   >
                     {children}
