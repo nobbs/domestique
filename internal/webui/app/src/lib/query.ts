@@ -9,8 +9,7 @@
  * its natural direction, `by x asc` or `by x desc` either way; `by` followed by
  * anything else is a word. A known key whose value does not parse, half-typed or
  * mistyped, is ignored rather than matched against names, which would empty the
- * list while it is being written. The query text is the one source of truth: the
- * palette's controls edit it through `withToken`.
+ * list while it is being written.
  */
 
 import type { LibraryFilters, NumericRange } from "./filters";
@@ -52,7 +51,7 @@ const SORT_NAMES: Record<string, SortColumn> = {
   nearest: "start",
 };
 
-/** The spelling `withToken` writes for each column. */
+/** The spelling completions offer for each column. */
 const SORT_SPELLING: Record<SortColumn, string> = {
   title: "name",
   distance: "distance",
@@ -193,28 +192,6 @@ function formatDuration(seconds: number): string {
   return minutes === 0 ? `${hours}h` : `${hours}h${minutes}`;
 }
 
-/** A range as a token value, or null for an unbounded one. */
-export function formatRange(range: NumericRange, write: (value: number) => string): string | null {
-  if (range.min !== null && range.max !== null) {
-    return `${write(range.min)}-${write(range.max)}`;
-  }
-  if (range.max !== null) {
-    return `<${write(range.max)}`;
-  }
-  return range.min === null ? null : `>${write(range.min)}`;
-}
-
-/** Token values for the palette's controls to hand to `withToken`. */
-export const tokenValue = {
-  dist: (range: NumericRange) => formatRange(range, formatKilometres),
-  up: (range: NumericRange) => formatRange(range, (metres) => String(Math.round(metres))),
-  time: (range: NumericRange) => formatRange(range, formatDuration),
-  sort: (column: SortColumn, direction: SortDirection) =>
-    column === "title" && direction === "asc"
-      ? null
-      : `by ${SORT_SPELLING[column]}${direction === initialDirection(column) ? "" : ` ${direction}`}`,
-};
-
 /** The query without one token exactly as it was typed, say from its chip. */
 export function withoutToken(text: string, token: Token): string {
   const words = text.split(/\s+/).filter(Boolean);
@@ -224,19 +201,6 @@ export function withoutToken(text: string, token: Token): string {
   );
 
   return (at < 0 ? words : [...words.slice(0, at), ...words.slice(at + span.length)]).join(" ");
-}
-
-/**
- * The query with every `key:` token replaced by `key:value`, appended where none
- * was, or removed for a null value. `src` takes a list; the words are untouched.
- */
-export function withToken(text: string, key: TokenKey, value: string | string[] | null): string {
-  const parsed = parseQuery(text);
-  const others = parsed.tokens.filter((token) => token.key !== key).map((token) => token.text);
-  const values = value === null ? [] : Array.isArray(value) ? value : [value];
-  const added = values.map((each) => (key === "draft" || key === "sort" ? each : `${key}:${each}`));
-
-  return [parsed.words, ...others, ...added].filter(Boolean).join(" ");
 }
 
 /** One completion for the word being typed: what to show, and the query it leaves. */

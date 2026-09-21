@@ -1,4 +1,4 @@
-/** Ordering the library by what a route measures, for the search palette's sort control. */
+/** Ordering the library by what a route measures, for the search palette's `by` order. */
 
 import type { Route } from "../api/types";
 
@@ -6,17 +6,6 @@ import type { Route } from "../api/types";
 export type SortColumn = "title" | "distance" | "ascent" | "gradient" | "movingTime" | "start";
 
 export type SortDirection = "asc" | "desc";
-
-/** The measures the list ranks by, in the order Option+1 to 6 picks them. */
-export const SORT_COLUMNS: ReadonlyArray<{ readonly column: SortColumn; readonly label: string }> =
-  [
-    { column: "title", label: "Name" },
-    { column: "distance", label: "Distance" },
-    { column: "ascent", label: "Ascent" },
-    { column: "movingTime", label: "Time" },
-    { column: "gradient", label: "Steepest" },
-    { column: "start", label: "Nearest" },
-  ];
 
 /**
  * What each measured column reads off a route.

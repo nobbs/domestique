@@ -39,9 +39,8 @@ import { matchesText, matchingRoutes, routePath } from "../../lib/library";
 import { useMediaQuery } from "../../lib/mediaQuery";
 import { haversineMetres, rangeBounds } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
-import { parseQuery, suggest, tokenValue, withoutToken, withToken } from "../../lib/query";
-import type { SortColumn } from "../../lib/ranking";
-import { initialDirection, SORT_COLUMNS, sortRoutes } from "../../lib/ranking";
+import { parseQuery, suggest, withoutToken } from "../../lib/query";
+import { sortRoutes } from "../../lib/ranking";
 import { ownsShortcut, useSearchPalette } from "../../lib/searchPalette";
 import { useStartupLocation } from "../../lib/startupLocation";
 import { resolvesDark, type ThemeChoice } from "../../lib/theme";
@@ -267,34 +266,29 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
     setOpen(false);
     navigate(target.to);
   };
-  const sortBy = (column: SortColumn) => {
-    const next =
-      column === sort ? (direction === "asc" ? "desc" : "asc") : initialDirection(column);
-    setQuery((text) => withToken(text, "sort", tokenValue.sort(column, next)));
-    setActive(0);
-  };
   const onKeyDown = (event: React.KeyboardEvent) => {
     // By physical key: on a Mac, Option turns the letter into another character.
-    if (event.altKey && !event.metaKey && !event.ctrlKey) {
-      const column = SORT_COLUMNS[Number(event.code.replace("Digit", "")) - 1];
-      if (event.code.startsWith("Digit") && column) {
-        event.preventDefault();
-        sortBy(column.column);
-      }
-      return;
-    }
     // The list answers keys typed into the query; the chips and completions keep their own.
     if (event.target !== field.current) {
       return;
     }
     if (event.key === "Tab" && offered) {
       event.preventDefault();
-      if (event.shiftKey) {
-        setSuggested((suggested + 1) % suggestions.length);
-      } else {
-        setQuery(offered.query);
-        setSuggested(0);
-      }
+      setQuery(offered.query);
+      setSuggested(0);
+      return;
+    }
+    // Right has nowhere to take the caret at the end of the query, so it picks the next
+    // completion there; Left steps back only while a later one is picked.
+    const atEnd = field.current.selectionStart === query.length;
+    if (event.key === "ArrowRight" && atEnd && suggestions.length > 1) {
+      event.preventDefault();
+      setSuggested((suggested + 1) % suggestions.length);
+      return;
+    }
+    if (event.key === "ArrowLeft" && atEnd && suggested > 0) {
+      event.preventDefault();
+      setSuggested(suggested - 1);
       return;
     }
     if (event.key === "ArrowDown") {
@@ -363,7 +357,7 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
                   <span className="opacity-70">{entry.hint}</span>
                 </button>
               ))}
-              <span className="ml-auto text-[var(--ink-2)]">tab to complete</span>
+              <span className="ml-auto text-[var(--ink-2)]">←→ choose · tab complete</span>
             </div>
           ) : null}
           {parsed.tokens.length > 0 ? (
@@ -462,9 +456,6 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
             </span>
             <span className="flex items-center gap-1">
               <IconCornerDownLeft size={12} /> open
-            </span>
-            <span title="Option+1 to 6 sorts by name, distance, ascent, time, steepest or nearness">
-              ⌥1–6 sort
             </span>
             <span>esc close</span>
           </div>

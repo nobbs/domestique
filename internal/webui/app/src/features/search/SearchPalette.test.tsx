@@ -174,19 +174,6 @@ function titles(): string[] {
   return screen.getAllByRole("option").map((option) => option.textContent ?? "");
 }
 
-/**
- * Picks a column off the sort control by its label.
- *
- * Kept as the one place a sort test drives the control, so a change to its
- * shape — the segmented group and direction toggle today — only has to be
- * matched here.
- */
-/** Sorts through the palette's own shortcut, whichever sort control is on show. */
-async function sortBy(label: "Distance" | "Nearest"): Promise<void> {
-  searchbox().focus();
-  await userEvent.keyboard(label === "Distance" ? "{Alt>}[Digit2]{/Alt}" : "{Alt>}[Digit6]{/Alt}");
-}
-
 function searchbox(): HTMLInputElement {
   return screen.getByRole("searchbox", { name: "Search the route library" });
 }
@@ -271,23 +258,21 @@ describe("SearchPalette", () => {
     expect(screen.getAllByRole("option")).toHaveLength(LIBRARY.length);
   });
 
-  it("ranks by a measure when it is chosen, and turns it around on a second press", async () => {
+  it("orders by a measure in its natural direction, or the other way with asc", async () => {
     show("/activities");
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    await sortBy("Distance");
+    await userEvent.type(searchbox(), "by distance");
     expect(titles()).toEqual([
       expect.stringContaining("Kaiserstuhl Loop"),
       expect.stringContaining("Rhine Traverse"),
     ]);
-    expect(searchbox()).toHaveValue("by distance");
 
-    await sortBy("Distance");
+    await userEvent.type(searchbox(), " asc");
     expect(titles()).toEqual([
       expect.stringContaining("Rhine Traverse"),
       expect.stringContaining("Kaiserstuhl Loop"),
     ]);
-    expect(searchbox()).toHaveValue("by distance asc");
   });
 
   it("narrows and orders by tokens typed into the query, each shown as a removable chip", async () => {
@@ -300,6 +285,20 @@ describe("SearchPalette", () => {
     await userEvent.click(screen.getByRole("button", { name: "Remove dist:>15" }));
     expect(searchbox()).toHaveValue("by distance");
     expect(titles()).toHaveLength(LIBRARY.length);
+  });
+
+  it("chooses between completions with Right and Left at the end of the query", async () => {
+    show("/activities");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    await userEvent.type(searchbox(), "d");
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("button", { name: /^draft/, pressed: true })).toBeInTheDocument();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("button", { name: /^dist:/, pressed: true })).toBeInTheDocument();
+
+    await userEvent.keyboard("{ArrowRight}{Tab}");
+    expect(searchbox()).toHaveValue("draft ");
   });
 
   it("completes a started key with Tab", async () => {
@@ -318,7 +317,7 @@ describe("SearchPalette", () => {
     show("/activities", { geometry: true });
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
 
-    await sortBy("Nearest");
+    await userEvent.type(searchbox(), "by near");
 
     expect(titles()).toEqual([
       expect.stringContaining("Rhine Traverse"),

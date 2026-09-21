@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SuggestionSource } from "./query";
-import { parseQuery, suggest, tokenValue, withoutToken, withToken } from "./query";
+import { parseQuery, suggest, withoutToken } from "./query";
 
 describe("parseQuery", () => {
   it("keeps plain words for the name match and applies nothing else", () => {
@@ -68,23 +68,6 @@ describe("parseQuery", () => {
   });
 });
 
-describe("withToken", () => {
-  it("replaces a key's token, keeping the words and the other tokens", () => {
-    expect(withToken("rhine dist:10-20 up:<500", "dist", "40-80")).toBe("rhine up:<500 dist:40-80");
-  });
-
-  it("appends a token where there was none, and removes it for null", () => {
-    expect(withToken("rhine", "sort", "by distance")).toBe("rhine by distance");
-    expect(withToken("rhine by distance asc", "sort", null)).toBe("rhine");
-  });
-
-  it("writes every source of a list", () => {
-    expect(withToken("src:komoot", "src", ["veloplanner", "local"])).toBe(
-      "src:veloplanner src:local",
-    );
-  });
-});
-
 describe("withoutToken", () => {
   it("removes a token spanning several words", () => {
     const text = "loop by distance asc src:komoot";
@@ -104,25 +87,6 @@ describe("withoutToken", () => {
     if (komoot) {
       expect(withoutToken(text, komoot)).toBe("loop src:local");
     }
-  });
-});
-
-describe("tokenValue", () => {
-  it("writes ranges the parser reads back to the same bounds", () => {
-    const range = { min: 42_300, max: null };
-    const value = tokenValue.dist(range);
-
-    expect(value).toBe(">42.3");
-    expect(parseQuery(`dist:${value}`).filters.distanceMetres).toEqual(range);
-    expect(tokenValue.time({ min: 5_400, max: 7_200 })).toBe("1h30-2h");
-    expect(tokenValue.up({ min: null, max: null })).toBeNull();
-  });
-
-  it("leaves the default order unwritten, and a natural direction unsaid", () => {
-    expect(tokenValue.sort("title", "asc")).toBeNull();
-    expect(tokenValue.sort("title", "desc")).toBe("by name desc");
-    expect(tokenValue.sort("distance", "desc")).toBe("by distance");
-    expect(tokenValue.sort("distance", "asc")).toBe("by distance asc");
   });
 });
 
