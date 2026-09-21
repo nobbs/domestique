@@ -23,7 +23,7 @@ const { MapViewport } = await import("./MapViewport");
 
 interface Framing {
   bounds: unknown;
-  options: { padding: Insets; duration: number; maxZoom: number };
+  options: { padding: Insets; duration: number; maxZoom: number; linear: boolean };
 }
 
 function fakeMap() {
@@ -110,9 +110,17 @@ describe("MapViewport", () => {
           [7.9, 48.9],
           [8.2, 49.1],
         ],
-        options: { padding: evenly(56), duration: 600, maxZoom: 14 },
+        options: { padding: evenly(56), duration: 600, maxZoom: 14, linear: true },
       },
     ]);
+  });
+
+  // A flight zooms out and back in, so a route picked while the camera is mid-flight
+  // was flown to from nearly the whole world; an ease just pans and zooms.
+  it("eases to a new subject rather than flying there", () => {
+    show(BOUNDS);
+
+    expect(map().framings()[0]?.options.linear).toBe(true);
   });
 
   /*

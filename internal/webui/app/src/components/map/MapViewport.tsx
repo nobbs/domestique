@@ -124,6 +124,9 @@ export function MapViewport({
         ),
         duration: reducedMotion ? 0 : 600,
         maxZoom,
+        // An ease, not MapLibre's default flight: a flight arcs out and back in, and a
+        // new subject arriving mid-flight starts the next one from far out.
+        linear: true,
       },
     );
   }, [map, bounds, maxZoom, padding, top, right, bottom, left, fitRevision, reducedMotion]);
