@@ -8,12 +8,13 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
-import { routesQuery } from "../api/queries";
-import type { Route as LibraryRoute } from "../api/types";
+import { getListPlansQueryKey } from "../api/generated";
+import { routesQuery, webUIConfigQuery } from "../api/queries";
+import type { Route as LibraryRoute, WebUIConfig } from "../api/types";
 import { RouteJump } from "./RouteJump";
 
 function route(sourceRouteId: number, title: string): LibraryRoute {
@@ -50,11 +51,51 @@ function Landed() {
   );
 }
 
-function show(at: string, state?: unknown) {
+const PLANS = [
+  {
+    id: 7,
+    name: "Saturday gravel",
+    profile: "gravel" as const,
+    published: false,
+    version: 2,
+    distanceMetres: 42_000,
+    ascentMetres: 610,
+    waypointCount: 6,
+    updatedAt: "2026-09-20T09:00:00Z",
+  },
+  {
+    id: 8,
+    name: "Weekday loop",
+    profile: "fastbike" as const,
+    published: true,
+    version: 1,
+    distanceMetres: 18_000,
+    ascentMetres: 120,
+    waypointCount: 3,
+    updatedAt: "2026-09-15T09:00:00Z",
+  },
+];
+
+function config(planner: boolean): WebUIConfig {
+  return {
+    basemaps: [],
+    sourceBaseUrls: {},
+    timezone: "Europe/Berlin",
+    planning: planner,
+    identity: { display: "someone@example.test", admin: planner },
+  };
+}
+
+function show(at: string, state?: unknown, { planner = false }: { planner?: boolean } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(routesQuery().queryKey, LIBRARY);
+  client.setQueryData(webUIConfigQuery().queryKey, config(planner));
+  // A rider's jump asks for no plans: unseeded, the listing would reach the refusing fetch.
+  if (planner) {
+    client.setQueryData(getListPlansQueryKey(), { data: { plans: PLANS } });
+  }
   // No geometry is seeded: opening the panel must ask for none, and the suite's
   // refusing fetch fails any test that does.
 
@@ -117,5 +158,27 @@ describe("RouteJump", () => {
     expect(screen.getByTestId("landed")).toHaveTextContent(
       'state={"catalogue":"?sort=ascent&dir=asc"}',
     );
+  });
+
+  it("lists an admin's drafts first, marked as drafts, and opens them in the planner", async () => {
+    show("/activities", undefined, { planner: true });
+    await userEvent.click(screen.getByRole("button", { name: "Jump to a route" }));
+
+    const options = screen.getAllByRole("option");
+    expect(options[0]).toHaveTextContent("Saturday gravel");
+    expect(within(options[0] as HTMLElement).getByText("Draft")).toBeInTheDocument();
+    // A published plan is in the library, not among the drafts.
+    expect(screen.queryByRole("option", { name: /Weekday loop/ })).toBeNull();
+
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByTestId("landed")).toHaveTextContent("/plan/7");
+  });
+
+  it("shows a rider no drafts", async () => {
+    show("/activities");
+    await userEvent.click(screen.getByRole("button", { name: "Jump to a route" }));
+
+    expect(screen.queryByText("Draft")).toBeNull();
+    expect(screen.getAllByRole("option")).toHaveLength(LIBRARY.length);
   });
 });

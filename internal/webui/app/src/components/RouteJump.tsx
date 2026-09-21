@@ -4,7 +4,8 @@
  * It lives in the menu bar and owns its own state — what was typed, which row is
  * active — because it belongs to no page. Pages with a search of their own keep
  * ⌘K for it: the catalogue's field narrows the list in place, and the planner's
- * finds a place. There the jump is a button only.
+ * finds a place. There the jump is a button only. An admin on a deployment that
+ * plans also finds their drafts here, marked as such, which open in the planner.
  */
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
@@ -12,11 +13,25 @@ import { IconArrowDown, IconArrowUp, IconCornerDownLeft, IconSearch } from "@tab
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { routesQuery } from "../api/queries";
+import { getListPlansQueryOptions } from "../api/generated";
+import { routesQuery, webUIConfigQuery } from "../api/queries";
 import { routeKey } from "../api/types";
 import { formatAscent, formatDistance, formatMovingTime } from "../lib/format";
-import { matchingRoutes, routePath } from "../lib/library";
+import { useEffectiveAdmin } from "../lib/identity";
+import { matchesText, matchingRoutes, routePath } from "../lib/library";
+import { Badge } from "./ui/badge";
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog";
+
+/** One row the jump can open: a published route, or one of the admin's drafts. */
+interface Entry {
+  key: string;
+  title: string;
+  to: string;
+  draft: boolean;
+  distanceMetres: number;
+  ascentMetres: number;
+  movingSeconds?: number;
+}
 
 /** Whether the page at this path answers ⌘K with a search of its own. */
 export function ownsShortcut(pathname: string): boolean {
@@ -36,7 +51,44 @@ export function RouteJump() {
 
   const routes = useQuery(routesQuery());
   const library = useMemo(() => routes.data ?? [], [routes.data]);
-  const shown = useMemo(() => matchingRoutes(library, query), [library, query]);
+  const config = useQuery(webUIConfigQuery());
+  const planner = useEffectiveAdmin() && config.data?.planning === true;
+  // Asked for only while the panel is up, and only by someone who has drafts.
+  const plans = useQuery({ ...getListPlansQueryOptions(), enabled: open && planner });
+  const drafts = useMemo(
+    () =>
+      planner
+        ? (plans.data?.data.plans ?? [])
+            .filter((plan) => !plan.published)
+            .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        : [],
+    [planner, plans.data],
+  );
+  // Drafts first: an admin's work in progress is the likelier target than the library at large.
+  const shown = useMemo<Entry[]>(
+    () => [
+      ...drafts
+        .filter((plan) => matchesText(plan.name, query))
+        .map((plan) => ({
+          key: `draft/${plan.id}`,
+          title: plan.name,
+          to: `/plan/${plan.id}`,
+          draft: true,
+          distanceMetres: plan.distanceMetres,
+          ascentMetres: plan.ascentMetres,
+        })),
+      ...matchingRoutes(library, query).map((route) => ({
+        key: routeKey(route),
+        title: route.title,
+        to: routePath(route),
+        draft: false,
+        distanceMetres: route.distanceMetres,
+        ascentMetres: route.ascentMetres,
+        ...(route.movingSeconds === undefined ? {} : { movingSeconds: route.movingSeconds }),
+      })),
+    ],
+    [drafts, library, query],
+  );
 
   useEffect(() => {
     if (!shortcut) {
@@ -75,7 +127,7 @@ export function RouteJump() {
     }
     setOpen(false);
     // Carried along, so a route reached by jumping still closes to the catalogue it came from.
-    navigate(routePath(target), { state });
+    navigate(target.to, target.draft ? undefined : { state });
   };
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "ArrowDown") {
@@ -138,7 +190,7 @@ export function RouteJump() {
                 placeholder="Route name or place"
                 aria-label="Search the route library"
                 aria-activedescendant={
-                  shown[clampedActive] ? `jump-option-${routeKey(shown[clampedActive])}` : undefined
+                  shown[clampedActive] ? `jump-option-${shown[clampedActive].key}` : undefined
                 }
                 className="min-w-0 flex-1 bg-transparent text-lg outline-none placeholder:text-[var(--ink-2)] [&::-webkit-search-cancel-button]:appearance-none"
               />
@@ -149,8 +201,8 @@ export function RouteJump() {
                   Nothing here is called that.
                 </li>
               ) : (
-                shown.map((route, index) => {
-                  const key = routeKey(route);
+                shown.map((entry, index) => {
+                  const { key } = entry;
                   const isActive = index === clampedActive;
 
                   return (
@@ -166,15 +218,16 @@ export function RouteJump() {
                         isActive ? "bg-[var(--muted)]" : ""
                       }`}
                     >
-                      <span className="min-w-0 flex-1 truncate font-medium text-sm">
-                        {route.title}
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        <span className="truncate font-medium text-sm">{entry.title}</span>
+                        {entry.draft ? <Badge variant="secondary">Draft</Badge> : null}
                       </span>
                       <span className="flex gap-3 text-[var(--ink-2)] text-xs tabular-nums">
                         <span className="font-semibold text-[var(--ink)]">
-                          {formatDistance(route.distanceMetres)}
+                          {formatDistance(entry.distanceMetres)}
                         </span>
-                        <span>{formatAscent(route.ascentMetres)}</span>
-                        <span>{formatMovingTime(route.movingSeconds)}</span>
+                        <span>{formatAscent(entry.ascentMetres)}</span>
+                        {entry.draft ? null : <span>{formatMovingTime(entry.movingSeconds)}</span>}
                       </span>
                     </li>
                   );
@@ -183,9 +236,9 @@ export function RouteJump() {
             </ul>
             <div className="flex items-center gap-4 border-[var(--rule)] border-t px-5 py-2.5 text-[var(--ink-2)] text-xs">
               <span>
-                {shown.length === library.length
-                  ? `${library.length} routes`
-                  : `${shown.length} of ${library.length}`}
+                {shown.length === library.length + drafts.length
+                  ? `${library.length} routes${drafts.length > 0 ? ` · ${drafts.length} drafts` : ""}`
+                  : `${shown.length} of ${library.length + drafts.length}`}
               </span>
               <span className="ml-auto flex items-center gap-1">
                 <IconArrowUp size={12} />
