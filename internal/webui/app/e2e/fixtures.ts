@@ -286,27 +286,33 @@ export function catalogueSearch(page: Page): Locator {
 }
 
 /**
- * One route, opened through the legacy `/?route=` redirect.
- *
- * A route now has its own page at `/routes/<provider>/<id>/<stage>`; this goes
- * there via the query-string address the entry page used to hand out, which is
- * what a bookmark from before the route had a page of its own still is.
+ * One route's page, with the map settled and nothing opened over it. The
+ * network must go quiet first: the dock arriving re-frames the camera.
  */
+export async function visitRoute(
+  page: Page,
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+): Promise<void> {
+  await page.goto(`/routes/${provider}/${sourceRouteId}/${stageOrder}`);
+  await page.waitForLoadState("networkidle");
+  await settleMap(page);
+}
+
+/** One route's page with its panel showing: in a Drawer on a narrow screen. */
 export async function openRoute(
   page: Page,
   provider: string,
   sourceRouteId: number,
   stageOrder: number,
 ): Promise<void> {
-  await page.goto(`/?route=${provider}%2F${sourceRouteId}%2F${stageOrder}`);
+  await visitRoute(page, provider, sourceRouteId, stageOrder);
+  const close = page.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ });
+  const browse = page.getByRole("button", { name: "Browse routes" });
+  await expect(close.or(browse)).toBeVisible();
   await openWorkspace(page);
-  // The route panel's own close control, whose name carries the count: the
-  // panel has no row to write "Search 42 routes" on any more, so the way back
-  // says it where a name is read rather than where one is drawn.
-  await expect(
-    page.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
-  ).toBeVisible();
-  await settleMap(page);
+  await expect(close).toBeVisible();
 }
 
 /**

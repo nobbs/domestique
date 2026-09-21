@@ -20,6 +20,7 @@ import {
   profileScrubber,
   settleMap,
   test,
+  visitRoute,
 } from "./fixtures";
 
 const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
@@ -182,7 +183,7 @@ test.describe("on a narrow viewport", () => {
    * the two marks at the far end keep their places.
    */
   test("the colour scheme is still in the bar", async ({ offlinePage: page }) => {
-    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
+    await visitRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     const toggle = page.getByRole("button", { name: /^Theme: / });
     await expect(toggle).toBeVisible();
@@ -195,7 +196,7 @@ test.describe("on a narrow viewport", () => {
   // The tile credit is read out of a style document the page fetched, which is
   // why this is asked in a real browser rather than in jsdom.
   test("the account's data sources credit every source", async ({ offlinePage: page }) => {
-    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
+    await visitRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     await followAccount(page);
     await page.getByRole("tab", { name: "Data sources" }).click();
 
