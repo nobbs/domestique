@@ -335,8 +335,8 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
             <IconSearch size={20} stroke={1.8} className="text-[var(--ink-2)]" aria-hidden="true" />
             {chips.map((token, index) => (
               <span
-                // Position too: `src:` repeats, and two orders can read the same.
-                key={`${index}:${token.text}`}
+                // The occurrence too: `src:` repeats, and two orders can read the same.
+                key={`${token.text}#${chips.slice(0, index).filter((chip) => chip.text === token.text).length}`}
                 className="flex items-center gap-1 rounded-[7px] bg-[var(--muted)] py-0.5 pr-1 pl-2 font-mono text-[var(--ink)] text-sm"
               >
                 {token.text}
