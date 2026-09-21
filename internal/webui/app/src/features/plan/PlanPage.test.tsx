@@ -804,6 +804,29 @@ describe("PlanPage", () => {
     expect(firstWaypointCoordinates()).toContain("49.1000, 8.1000");
   });
 
+  it("closes the loop with a copy of the start, undone in one step", () => {
+    renderPage();
+    const closeLoop = screen.getByRole("button", { name: "Close loop" });
+    expect(closeLoop).toBeDisabled();
+    expect(closeLoop).toHaveAttribute("title", "Close loop");
+
+    const map = screen.getByRole("button", { name: "Plan route map" });
+    fireEvent.click(map);
+    expect(closeLoop).toBeDisabled();
+
+    mapPoint.value = { longitude: 8.1, latitude: 49.1 };
+    fireEvent.click(map);
+    expect(closeLoop).toBeEnabled();
+
+    fireEvent.click(closeLoop);
+    expect(waypointRows()).toHaveLength(3);
+    expect(waypointRows()[2]).toContain("49.0000, 8.0000");
+    expect(closeLoop).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(waypointRows()).toHaveLength(2);
+  });
+
   it("routes one preview after a burst and leaves the last good line up after a failure", () => {
     let failed = false;
     preview.mockImplementation(

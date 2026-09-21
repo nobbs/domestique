@@ -9,6 +9,7 @@ import {
   IconClock,
   IconLayoutBottombarCollapse,
   IconMountain,
+  IconRepeat,
   IconRoad,
   IconRoute,
   IconWalk,
@@ -75,6 +76,7 @@ import {
   waypointLabel,
 } from "./PlannerSidebar";
 import {
+  canCloseLoop,
   deviationStretches,
   initialPlannerState,
   insertionIndex,
@@ -510,6 +512,14 @@ function PlannerHistoryControls({
         aria-label="Reverse"
         title="Reverse"
         onClick={() => dispatch({ type: "reverse" })}
+      />
+      <Button
+        variant="panel"
+        icon={<IconRepeat stroke={1.6} />}
+        disabled={locked || !canCloseLoop(state.waypoints)}
+        aria-label="Close loop"
+        title="Close loop"
+        onClick={() => dispatch({ type: "closeLoop" })}
       />
       {children}
     </div>

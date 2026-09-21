@@ -249,6 +249,31 @@ describe("plannerReducer", () => {
     expect(state.waypoints).toMatchObject([first, second]);
   });
 
+  it("closes a loop with a distinct copy of the start, undone in one step", () => {
+    const state = reduce({ type: "append", waypoint: first }, { type: "append", waypoint: second });
+
+    const closed = plannerReducer(state, { type: "closeLoop" });
+    expect(closed.waypoints).toMatchObject([first, second, first]);
+    expect(closed.waypoints[2]?.id).not.toBe(closed.waypoints[0]?.id);
+    expect(plannerReducer(closed, { type: "undo" }).waypoints).toMatchObject([first, second]);
+
+    expect(plannerReducer(initialPlannerState, { type: "closeLoop" })).toBe(initialPlannerState);
+    const single = reduce({ type: "append", waypoint: first });
+    expect(plannerReducer(single, { type: "closeLoop" })).toBe(single);
+    const alreadyClosed = plannerReducer(closed, { type: "closeLoop" });
+    expect(alreadyClosed).toBe(closed);
+
+    const filled = [
+      ...Array.from({ length: MAX_PLAN_WAYPOINTS - 1 }, () => ({
+        type: "append" as const,
+        waypoint: first,
+      })),
+      { type: "append" as const, waypoint: second },
+    ].reduce(plannerReducer, initialPlannerState);
+    expect(filled.waypoints).toHaveLength(MAX_PLAN_WAYPOINTS);
+    expect(plannerReducer(filled, { type: "closeLoop" })).toBe(filled);
+  });
+
   it("commits a dragged waypoint order as one history entry", () => {
     const state = reduce(
       { type: "append", waypoint: first },
