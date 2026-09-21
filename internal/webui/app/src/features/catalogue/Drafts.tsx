@@ -26,6 +26,11 @@ export function editedAgo(at: string, now = new Date()): string {
   return days === 1 ? "yesterday" : `${days} days ago`;
 }
 
+/** A draft's key beside the library's route keys, which never begin with "draft/". */
+export function draftKey(planId: number): string {
+  return `draft/${planId}`;
+}
+
 export interface Draft {
   plan: PlanSummary;
   coordinates: Position[];
@@ -82,13 +87,27 @@ export function EditPlanButton({ route, className }: { route: Route; className?:
 }
 
 /** A draft as a ledger row: its shape, name, the figures a draft has, and when it was last edited. */
-function DraftRow({ draft }: { draft: Draft }) {
+function DraftRow({
+  draft,
+  active,
+  onActivate,
+}: {
+  draft: Draft;
+  active: boolean;
+  onActivate: (key: string) => void;
+}) {
   const { plan } = draft;
+  const key = draftKey(plan.id);
 
   return (
-    <li className="border-[var(--panel)] border-b-2 last:border-b-0">
+    <li
+      data-active={active || undefined}
+      onMouseEnter={() => onActivate(key)}
+      className="border-[var(--panel)] border-b-2 last:border-b-0 data-active:bg-[color-mix(in_oklab,var(--accent)_12%,transparent)]"
+    >
       <Link
         to={`/plan/${plan.id}`}
+        onFocus={() => onActivate(key)}
         className="relative grid grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5rem_6.5rem_1rem] items-center gap-x-4 px-3 py-2.5 text-sm tabular-nums before:absolute before:inset-1 before:rounded-[7px] hover:before:bg-[color-mix(in_oklab,var(--ink-2)_8%,transparent)]"
       >
         <span className="relative block size-10">
@@ -142,11 +161,16 @@ export function DraftList({
   drafts,
   searched,
   narrow,
+  activeKey = null,
+  onActivate = () => {},
 }: {
   drafts: Draft[];
   /** Whether a search hid drafts that exist, so an empty list is a miss rather than none. */
   searched: boolean;
   narrow: boolean;
+  /** The draft the sidebar map shows, as `draftKey` spells it. */
+  activeKey?: string | null;
+  onActivate?: (key: string) => void;
 }) {
   if (drafts.length === 0) {
     return (
@@ -167,7 +191,12 @@ export function DraftList({
   ) : (
     <ul className="flex flex-col overflow-hidden rounded-[11px] bg-[color-mix(in_oklab,var(--ink-2)_7%,transparent)]">
       {drafts.map((draft) => (
-        <DraftRow key={draft.plan.id} draft={draft} />
+        <DraftRow
+          key={draft.plan.id}
+          draft={draft}
+          active={draftKey(draft.plan.id) === activeKey}
+          onActivate={onActivate}
+        />
       ))}
     </ul>
   );

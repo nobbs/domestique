@@ -64,7 +64,7 @@ import { useEffectiveAdmin } from "../../lib/identity";
 import { matchesText, matchingRoutes, type RouteVisit, routePath } from "../../lib/library";
 import { useMediaQuery, useNarrowViewport } from "../../lib/mediaQuery";
 import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
-import { gradientBand, gradientShares, haversineMetres } from "../../lib/profile";
+import { gradientBand, gradientShares, haversineMetres, rangeBounds } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { useSeenRoutes } from "../../lib/seenRoutes";
 import { useStartupLocation } from "../../lib/startupLocation";
@@ -73,7 +73,7 @@ import { resolvesDark, type ThemeChoice } from "../../lib/theme";
 import { LibraryMap, type MapLine } from "../routes/LibraryMap";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
 import { CatalogueFilters } from "./CatalogueFilters";
-import { DraftList, EditPlanButton, planEditLink, useDrafts } from "./Drafts";
+import { DraftList, draftKey, EditPlanButton, planEditLink, useDrafts } from "./Drafts";
 import type { ThinBarSegment } from "./ThinBar";
 import { ThinBar } from "./ThinBar";
 
@@ -639,20 +639,39 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
     [library, view.query, view.filters, view.sort, view.direction, startOf],
   );
 
-  // The route pointed at last, while the search still shows it; else the first row.
-  const activeKey =
-    chosenKey !== null && shown.some((route) => routeKey(route) === chosenKey)
-      ? chosenKey
-      : shown[0]
-        ? routeKey(shown[0])
-        : null;
-  const activeCoordinates = activeKey ? drawn.shapes.get(activeKey) : undefined;
+  const shownDrafts = drafted.drafts.filter(({ plan }) => matchesText(plan.name, view.query));
+  // The row pointed at last, while the shelf still shows it; else its first row.
+  const candidates: Array<{ key: string; coordinates: Position[] | undefined }> = onDrafts
+    ? shownDrafts.map(({ plan, coordinates }) => ({ key: draftKey(plan.id), coordinates }))
+    : shown.map((route) => ({
+        key: routeKey(route),
+        coordinates: drawn.shapes.get(routeKey(route)),
+      }));
+  const active =
+    candidates.find((candidate) => candidate.key === chosenKey) ?? candidates[0] ?? null;
+  const activeKey = active?.key ?? null;
+  const activeCoordinates = active?.coordinates;
   const lines = useMemo<MapLine[]>(
     () =>
-      activeKey && activeCoordinates ? [{ key: activeKey, coordinates: activeCoordinates }] : [],
+      activeKey && activeCoordinates && activeCoordinates.length > 1
+        ? [{ key: activeKey, coordinates: activeCoordinates }]
+        : [],
     [activeKey, activeCoordinates],
   );
-  const bounds = activeKey ? (drawn.boxes.get(activeKey) ?? null) : null;
+  // A draft's listing carries no box, so its line is measured; memoised, or every render would fly the camera.
+  const bounds = useMemo(
+    () =>
+      activeKey === null
+        ? null
+        : (drawn.boxes.get(activeKey) ??
+          (activeCoordinates
+            ? rangeBounds(activeCoordinates, {
+                startIndex: 0,
+                endIndex: activeCoordinates.length - 1,
+              })
+            : null)),
+    [activeKey, activeCoordinates, drawn.boxes],
+  );
   const basemap = config.data
     ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
     : null;
@@ -662,7 +681,6 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
   });
 
   const hasQuery = view.query.trim() !== "";
-  const shownDrafts = drafted.drafts.filter(({ plan }) => matchesText(plan.name, view.query));
   const filtersActive = hasActiveFilters(view.filters);
   const sortedLabel = SORT_COLUMNS.find((entry) => entry.column === view.sort)?.label ?? "Route";
   const narrowed = shown.length !== library.length;
@@ -732,6 +750,8 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
                       drafts={shownDrafts}
                       searched={shownDrafts.length < drafted.drafts.length}
                       narrow={narrow}
+                      activeKey={activeKey}
+                      onActivate={setChosenKey}
                     />
                   )}
                 </>
@@ -804,7 +824,7 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
             </Panel>
           </div>
           <div className="order-1 flex flex-col gap-5 lg:order-2 lg:sticky lg:top-20">
-            {basemap && wide && !onDrafts && lines.length > 0 ? (
+            {basemap && wide && lines.length > 0 ? (
               <div className="h-64 overflow-hidden rounded-2xl shadow-[var(--shadow)]">
                 <LibraryMap
                   styleUrl={basemap.styleUrl}
