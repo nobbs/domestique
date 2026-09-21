@@ -8,8 +8,7 @@ describe("parseQuery", () => {
 
     expect(parsed.words).toBe("rhine valley");
     expect(parsed.tokens).toEqual([]);
-    expect(parsed.sort).toBe("title");
-    expect(parsed.direction).toBe("asc");
+    expect(parsed.order).toEqual([]);
     expect(parsed.drafts).toBeNull();
   });
 
@@ -33,16 +32,26 @@ describe("parseQuery", () => {
   });
 
   it("reads the order, each measure in its natural direction unless asc or desc follows", () => {
-    expect(parseQuery("by distance")).toMatchObject({ sort: "distance", direction: "desc" });
+    expect(parseQuery("by distance").order).toEqual([{ column: "distance", direction: "desc" }]);
     expect(parseQuery("rhine by up asc")).toMatchObject({
-      sort: "ascent",
-      direction: "asc",
+      order: [{ column: "ascent", direction: "asc" }],
       words: "rhine",
     });
-    expect(parseQuery("BY near")).toMatchObject({ sort: "start", direction: "asc" });
+    expect(parseQuery("BY near").order).toEqual([{ column: "start", direction: "asc" }]);
     expect(parseQuery("by distance desc").tokens).toEqual([
       { key: "sort", text: "by distance desc" },
     ]);
+  });
+
+  it("reads each further by as a tiebreak, most significant first", () => {
+    const parsed = parseQuery("by ascent desc loop by distance");
+
+    expect(parsed.order).toEqual([
+      { column: "ascent", direction: "desc" },
+      { column: "distance", direction: "desc" },
+    ]);
+    expect(parsed.words).toBe("loop");
+    expect(parsed.tokens.map((token) => token.text)).toEqual(["by ascent desc", "by distance"]);
   });
 
   it("keeps by as a word unless a measure follows, but not while it is still being typed", () => {

@@ -6,8 +6,9 @@
  *
  * Distances are kilometres, ascent metres, times `2h`, `90m` or `1h30`. A range
  * is `a-b`, `<b`, `>a`, or a bare `b` for at most b. `by x` orders by a measure in
- * its natural direction, `by x asc` or `by x desc` either way; `by` followed by
- * anything else is a word. A known key whose value does not parse, half-typed or
+ * its natural direction, `by x asc` or `by x desc` either way, and each further
+ * `by` breaks the ties of the ones before it; `by` followed by anything else is a
+ * word. A known key whose value does not parse, half-typed or
  * mistyped, is ignored rather than matched against names, which would empty the
  * list while it is being written.
  */
@@ -30,8 +31,8 @@ export interface ParsedQuery {
   /** What is left for matching names, tokens removed. */
   words: string;
   filters: LibraryFilters;
-  sort: SortColumn;
-  direction: SortDirection;
+  /** The order, most significant first; empty is by name, the order matching leaves. */
+  order: Array<{ column: SortColumn; direction: SortDirection }>;
   /** `draft` lists only drafts, `-draft` none; absent, drafts sit on top as usual. */
   drafts: "only" | "none" | null;
   tokens: Token[];
@@ -128,8 +129,7 @@ const RANGE_KEYS: Partial<
 /** The query as the palette applies it. */
 export function parseQuery(text: string): ParsedQuery {
   const filters: LibraryFilters = { ...EMPTY_FILTERS, providers: [] };
-  let sort: SortColumn = "title";
-  let direction: SortDirection = "asc";
+  const order: ParsedQuery["order"] = [];
   let drafts: ParsedQuery["drafts"] = null;
   const tokens: Token[] = [];
   const words: string[] = [];
@@ -143,8 +143,7 @@ export function parseQuery(text: string): ParsedQuery {
       const next = (list[index + 2] ?? "").toLowerCase();
       const explicit = next === "asc" || next === "desc" ? next : null;
       const span = list.slice(index, index + (explicit ? 3 : 2));
-      sort = column;
-      direction = explicit ?? initialDirection(column);
+      order.push({ column, direction: explicit ?? initialDirection(column) });
       tokens.push({ key: "sort", text: span.join(" ") });
       index += span.length - 1;
       continue;
@@ -176,7 +175,7 @@ export function parseQuery(text: string): ParsedQuery {
     tokens.push({ key: key as TokenKey, text: word });
   }
 
-  return { words: words.join(" "), filters, sort, direction, drafts, tokens };
+  return { words: words.join(" "), filters, order, drafts, tokens };
 }
 
 function formatKilometres(metres: number): string {

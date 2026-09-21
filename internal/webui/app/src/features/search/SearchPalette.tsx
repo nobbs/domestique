@@ -76,7 +76,7 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
   const [query, setQuery] = useState("");
   // The query text is the one source of truth; every control edits its tokens.
   const parsed = useMemo(() => parseQuery(query), [query]);
-  const { filters, sort, direction } = parsed;
+  const { filters, order } = parsed;
   const [active, setActive] = useState(0);
   const field = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
@@ -88,7 +88,7 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
   const planner = useEffectiveAdmin() && config.data?.planning === true;
   const plans = useQuery({ ...getListPlansQueryOptions(), enabled: open && planner });
 
-  const nearest = sort === "start";
+  const nearest = order.some((key) => key.column === "start");
   // Never stored or sent: it only measures how far each start is from here.
   const location = useStartupLocation(open && nearest);
   const combine = useCallback(
@@ -129,11 +129,10 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
     const ranked =
       parsed.drafts === "only"
         ? []
-        : sortRoutes(
+        : // Least significant key first: each stable sort keeps the ties the next one leaves.
+          order.reduceRight(
+            (list, key) => sortRoutes(list, key.column, key.direction, startOf),
             matchingRoutes(library, parsed.words).filter((route) => matchesFilters(route, filters)),
-            sort,
-            direction,
-            startOf,
           );
 
     return [
@@ -164,7 +163,7 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
         };
       }),
     ];
-  }, [planner, filtersActive, plans.data, library, parsed, filters, sort, direction, startOf]);
+  }, [planner, filtersActive, plans.data, library, parsed, filters, order, startOf]);
 
   useEffect(() => {
     if (!shortcut) {

@@ -275,6 +275,27 @@ describe("SearchPalette", () => {
     ]);
   });
 
+  it("orders by the first by, breaking its ties with each further one", async () => {
+    show("/activities");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    // By name alone Kaiserstuhl leads; the first key must win over the second.
+    await userEvent.type(searchbox(), "by distance asc by name");
+    expect(titles()).toEqual([
+      expect.stringContaining("Rhine Traverse"),
+      expect.stringContaining("Kaiserstuhl Loop"),
+    ]);
+
+    // Both routes climb the same, so here the second key decides.
+    await userEvent.clear(searchbox());
+    await userEvent.type(searchbox(), "by ascent by distance asc");
+    expect(titles()).toEqual([
+      expect.stringContaining("Rhine Traverse"),
+      expect.stringContaining("Kaiserstuhl Loop"),
+    ]);
+    expect(screen.getAllByRole("button", { name: /^Remove by / })).toHaveLength(2);
+  });
+
   it("narrows and orders by tokens typed into the query, each shown as a removable chip", async () => {
     show("/activities");
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
