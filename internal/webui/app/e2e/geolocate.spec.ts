@@ -123,17 +123,16 @@ test("asks for no position as the page opens", async ({ offlinePage: page }) => 
   expect(await geolocationCalls(page)).toEqual([]);
 });
 
-test("denying permission leaves the camera untouched and raises no error", async ({
-  offlinePage: page,
-}) => {
+// The pin and the camera flight are set in the same answer, so no pin means no
+// flight; a pixel comparison here flaked on the route page's late repaints.
+test("denying permission places no pin and raises no error", async ({ offlinePage: page }) => {
   await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
-  const before = await cameraScreenshot(page);
 
   // No permission was granted, so Chromium answers the request as denied
   // without a dialog — the same answer a reader who says no gets.
   await locateButton(page).click();
   await settleMap(page);
 
-  expect((await cameraScreenshot(page)).equals(before)).toBe(true);
+  await expect(page.getByRole("img", { name: "Your location" })).toHaveCount(0);
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
