@@ -744,6 +744,15 @@ describe("CataloguePage", () => {
     }
   });
 
+  it("maps the draft pointed at on the Drafts shelf", async () => {
+    show(LIBRARY, "/catalogue", { planner: true });
+    await userEvent.click(screen.getByRole("button", { name: "Drafts · 1" }));
+
+    expect(drawn.keys).toEqual(["draft/7"]);
+    const row = screen.getByRole("link", { name: /Saturday gravel/ }).closest("li");
+    expect(row).toHaveAttribute("data-active");
+  });
+
   it("says nothing about drafts until the listing has answered", async () => {
     stubPendingFetch();
     show(LIBRARY, "/catalogue", { planner: true, plans: "none" });
