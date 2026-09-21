@@ -12,7 +12,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it } from "vitest";
-import { routeGeometryQuery, routesQuery } from "../api/queries";
+import { routesQuery } from "../api/queries";
 import type { Route as LibraryRoute } from "../api/types";
 import { RouteJump } from "./RouteJump";
 
@@ -55,14 +55,8 @@ function show(at: string, state?: unknown) {
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(routesQuery().queryKey, LIBRARY);
-  // Geometry only fetches once the panel is open; seeded so opening it never
-  // reaches the refusing fetch every unseeded query in this suite hits.
-  for (const entry of LIBRARY) {
-    client.setQueryData(
-      routeGeometryQuery(entry.provider, entry.sourceRouteId, entry.stageOrder).queryKey,
-      { bbox: [8, 49, 8.1, 49.1], coordinates: [] },
-    );
-  }
+  // No geometry is seeded: opening the panel must ask for none, and the suite's
+  // refusing fetch fails any test that does.
 
   const entry = { pathname: at, ...(state !== undefined ? { state } : {}) };
 

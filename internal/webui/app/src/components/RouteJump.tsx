@@ -9,17 +9,13 @@
 
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { IconArrowDown, IconArrowUp, IconCornerDownLeft, IconSearch } from "@tabler/icons-react";
-import type { UseQueryResult } from "@tanstack/react-query";
-import { useQueries, useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { routeGeometryQuery, routesQuery } from "../api/queries";
-import type { Position, RouteGeometry } from "../api/types";
+import { routesQuery } from "../api/queries";
 import { routeKey } from "../api/types";
 import { formatAscent, formatDistance, formatMovingTime } from "../lib/format";
 import { matchingRoutes, routePath } from "../lib/library";
-import { gradientBand } from "../lib/profile";
-import { RouteGlyph } from "./RouteGlyph";
 import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog";
 
 /** Whether the page at this path answers ⌘K with a search of its own. */
@@ -41,28 +37,6 @@ export function RouteJump() {
   const routes = useQuery(routesQuery());
   const library = useMemo(() => routes.data ?? [], [routes.data]);
   const shown = useMemo(() => matchingRoutes(library, query), [library, query]);
-
-  // Glyphs only while the panel is up; the same keys every page caches geometry under.
-  const combine = useCallback(
-    (results: Array<UseQueryResult<RouteGeometry>>) => {
-      const shapes = new Map<string, Position[]>();
-      library.forEach((route, index) => {
-        const coordinates = results[index]?.data?.coordinates;
-        if (coordinates) {
-          shapes.set(routeKey(route), coordinates);
-        }
-      });
-      return shapes;
-    },
-    [library],
-  );
-  const shapes = useQueries({
-    queries: library.map((route) => ({
-      ...routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder),
-      enabled: open,
-    })),
-    combine,
-  });
 
   useEffect(() => {
     if (!shortcut) {
@@ -192,13 +166,6 @@ export function RouteJump() {
                         isActive ? "bg-[var(--muted)]" : ""
                       }`}
                     >
-                      <span className="block size-8 shrink-0">
-                        <RouteGlyph
-                          coordinates={shapes.get(key) ?? []}
-                          title={route.title}
-                          band={gradientBand(route.maxGradientPercent)}
-                        />
-                      </span>
                       <span className="min-w-0 flex-1 truncate font-medium text-sm">
                         {route.title}
                       </span>
