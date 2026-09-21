@@ -348,17 +348,11 @@ describe("LibraryMap", () => {
    * took the stretch it was zoomed into with it. The library goes away with the
    * pick: nothing left to hit, and nothing left to hit it with.
    */
-  it("puts the library away while the opened route has the map", async () => {
-    show({ pickedKey: "2/1", overlay: <div data-testid="overlay" />, onPick: () => {} });
+  it("puts the library away while the opened route has the map", () => {
+    show({ pickedKey: "2/1", overlay: <div data-testid="overlay" /> });
 
     expect(layer("library-line").layout).toMatchObject({ visibility: "none" });
     expect(drawn.layers.find((entry) => entry.id === "library-hit")).toBeUndefined();
-    expect(drawn.maps.at(-1)).toMatchObject({ interactiveLayerIds: [] });
-
-    await userEvent.click(screen.getByRole("button", { name: "point at a line" }));
-
-    expect(drawn.layers.find((entry) => entry.id === "library-hover-line")).toBeUndefined();
-    expect(drawn.maps.at(-1)).toMatchObject({ cursor: "" });
   });
 
   it("draws nothing in the accent while no route is picked", () => {
@@ -479,8 +473,6 @@ describe("LibraryMap", () => {
     expect(changed).toHaveBeenCalledWith("Streets");
   });
 
-  // Nothing is listening for a pick, so nothing is offered — the same bargain
-  // the hit band strikes above.
   it("offers no chooser where no one is listening for one", () => {
     show();
 
@@ -498,81 +490,6 @@ describe("LibraryMap", () => {
 
     expect(drawn.furniture).toEqual([]);
     expect(screen.queryByTestId("map-controls")).not.toBeInTheDocument();
-  });
-
-  /*
-   * Two pixels of ink is not a target. The band that is actually asked about is
-   * far wider and invisible, and it carries the same identity as the line inside
-   * it, so what is clicked and what lights up cannot disagree.
-   */
-  it("gives every route a band wide enough to point at", () => {
-    show({ onPick: () => {} });
-
-    const hit = layer("library-hit");
-    expect(hit.paint["line-opacity"]).toBe(0);
-    expect(hit.paint["line-width"]).toBeGreaterThan(12);
-    expect(drawn.maps.at(-1)).toMatchObject({ interactiveLayerIds: ["library-hit"] });
-  });
-
-  // Nothing is listening, so nothing is offered: no band, no cursor promising a
-  // click, and no paint answering a pointer.
-  it("stays inert where no one is listening for a pick", () => {
-    show();
-
-    expect(drawn.layers.find((entry) => entry.id === "library-hit")).toBeUndefined();
-    expect(drawn.maps.at(-1)).toMatchObject({ interactiveLayerIds: [] });
-  });
-
-  it("hands back the route the pointer clicked", async () => {
-    const picked: string[] = [];
-    show({ onPick: (key: string) => picked.push(key) });
-
-    await userEvent.click(screen.getByRole("button", { name: "click a line" }));
-
-    expect(picked).toEqual(["2/1"]);
-  });
-
-  /*
-   * The map answers "this one?" before it is asked to commit: the line under the
-   * pointer is lit in the accent a selection is drawn in, and the cursor says it
-   * can be had.
-   */
-  it("lights the line under the pointer, and lets it go again", async () => {
-    show({ onPick: () => {} });
-
-    await userEvent.click(screen.getByRole("button", { name: "point at a line" }));
-
-    expect(layer("library-hover-line").filter).toEqual(["==", ["get", "key"], "2/1"]);
-    expect(layer("library-hover-line").paint["line-color"]).toBe("#236fc7");
-    expect(drawn.maps.at(-1)).toMatchObject({ cursor: "pointer" });
-
-    await userEvent.click(screen.getByRole("button", { name: "point at the ground" }));
-
-    expect(drawn.maps.at(-1)).toMatchObject({ cursor: "" });
-  });
-
-  /*
-   * It is painted in that accent already, and a second line over it at another
-   * opacity would be the selection quietly changing colour under the pointer.
-   * The cursor stays, because a second click on a picked route opens it.
-   */
-  it("leaves the route it is already showing unlit, but still offered", async () => {
-    show({ pickedKey: "2/1", onPick: () => {} });
-
-    await userEvent.click(screen.getByRole("button", { name: "point at a line" }));
-
-    expect(drawn.layers.find((entry) => entry.id === "library-hover-line")).toBeUndefined();
-    expect(drawn.maps.at(-1)).toMatchObject({ cursor: "pointer" });
-  });
-
-  // The cursor is a promise, and there is nothing left for a click on the open
-  // route to do: it is the answer already.
-  it("offers no cursor for the line a pick would do nothing to", async () => {
-    show({ pickedKey: "2/1", inertKey: "2/1", onPick: () => {} });
-
-    await userEvent.click(screen.getByRole("button", { name: "point at a line" }));
-
-    expect(drawn.maps.at(-1)).toMatchObject({ cursor: "" });
   });
 
   /*

@@ -2,13 +2,12 @@
  * Ordering the library by what a route measures, and keeping that order in the
  * address.
  *
- * The atlas has one fixed order and argues against a control to change it — see
- * `library.ts`. Ranking the library by a number is the reason the catalogue
- * exists, so here the order is the reader's to choose.
+ * Ranking the library by a number is the reason the catalogue exists, so here
+ * the order is the reader's to choose.
  *
  * The choice lives in the query string rather than in component state because
- * opening a route leaves this page for the atlas: without it, coming back would
- * land on an unsorted, unsearched table every time. A sorted and narrowed
+ * opening a route leaves this page for the route's own: without it, coming back
+ * would land on an unsorted, unsearched table every time. A sorted and narrowed
  * catalogue is also the one view on this UI worth sending to somebody.
  */
 

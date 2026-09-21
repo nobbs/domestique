@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { StoryProviders } from "../../storybook/fixtures";
+import { Route, Routes } from "react-router";
+import { route, StoryProviders } from "../../storybook/fixtures";
 import { AtlasPage } from "./AtlasPage";
 
 // `AtlasPage` renders the real `LibraryMap` — the same live `Source`/`Layer`
@@ -7,15 +8,17 @@ import { AtlasPage } from "./AtlasPage";
 // assumes a live map context and crashes without one. So this stays live rather
 // than joining the chrome stories' deterministic placeholder.
 const meta = {
-  title: "Features/Atlas/Entry Page",
+  title: "Features/Atlas/Route Page",
   component: AtlasPage,
   tags: ["autodocs"],
   args: { themeChoice: "system" },
   decorators: [
     (Story) => (
-      <StoryProviders>
+      <StoryProviders path={`/routes/${route.provider}/${route.sourceRouteId}/${route.stageOrder}`}>
         <div className="h-dvh">
-          <Story />
+          <Routes>
+            <Route path="/routes/:provider/:sourceRouteId/:stageOrder" element={<Story />} />
+          </Routes>
         </div>
       </StoryProviders>
     ),
@@ -25,5 +28,5 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The whole entry page as the reader first sees it: map, menu bar, and the browsing panel. */
-export const Library: Story = {};
+/** One route's page as the reader sees it: map, panel, and the dock along the foot. */
+export const OpenRoute: Story = {};

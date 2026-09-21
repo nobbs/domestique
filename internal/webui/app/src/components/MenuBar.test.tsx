@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
-import { statusQuery, webUIConfigQuery } from "../api/queries";
+import { routesQuery, statusQuery, webUIConfigQuery } from "../api/queries";
 import type { Status, WebUIConfig } from "../api/types";
 import { IDLE_STATUS } from "../test/status";
 import { MenuBar } from "./MenuBar";
@@ -18,16 +18,23 @@ function config(admin: boolean, planning?: boolean): WebUIConfig {
   };
 }
 
-function renderBar(admin: boolean, status: Status = IDLE_STATUS, planning?: boolean) {
+function renderBar(
+  admin: boolean,
+  status: Status = IDLE_STATUS,
+  planning?: boolean,
+  at = "/activities",
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config(admin, planning));
   client.setQueryData(statusQuery().queryKey, status);
+  // The bar's own ⌘K jump reads the library on every page it is mounted on.
+  client.setQueryData(routesQuery().queryKey, []);
 
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[at]}>
         <MenuBar />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -103,11 +110,11 @@ describe("the Admin link", () => {
 });
 
 describe("the Plan link", () => {
-  it("is offered to an admin between Atlas and Catalogue when routing is configured", () => {
+  it("is offered to an admin right after Catalogue when routing is configured", () => {
     renderBar(true, IDLE_STATUS, true);
 
     const links = screen.getAllByRole("link").map((link) => link.textContent);
-    expect(links.indexOf("Plan")).toBe(links.indexOf("Atlas") + 1);
+    expect(links.indexOf("Plan")).toBe(links.indexOf("Catalogue") + 1);
     expect(screen.getByRole("link", { name: "Plan" })).toHaveAttribute("href", "/plan");
   });
 
@@ -129,14 +136,14 @@ describe("a row too narrow for every name", () => {
     layOutRow(2 * (ITEM_WIDTH + ITEM_GAP));
     renderBar(false);
 
-    expect(screen.getByRole("link", { name: "Atlas" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Activities" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Activities" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Catalogue" })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "More" }));
 
-    expect(await screen.findByRole("menuitem", { name: "Activities" })).toHaveAttribute(
+    expect(await screen.findByRole("menuitem", { name: "Catalogue" })).toHaveAttribute(
       "href",
-      "/activities",
+      "/catalogue",
     );
   });
 
@@ -148,9 +155,9 @@ describe("a row too narrow for every name", () => {
    */
   it("marks the control when the page being read is inside it", () => {
     layOutRow(ITEM_WIDTH);
-    renderBar(false);
+    renderBar(false, IDLE_STATUS, undefined, "/catalogue");
 
-    expect(screen.queryByRole("link", { name: "Atlas" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Activities" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "More" })).toHaveAttribute("data-holds-current");
   });
 

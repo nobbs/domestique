@@ -1,5 +1,5 @@
 /**
- * Choosing the ground the library is drawn on.
+ * Choosing the ground a route's page is drawn on.
  *
  * The chooser is the one control on this page whose effect is a network
  * request: everything else it could be asserted about — that a radio is
@@ -19,7 +19,10 @@
  */
 
 import { SECOND_BASEMAP_MARKER, SECOND_BASEMAP_NAME } from "./basemap";
-import { expect, installOfflineBasemap, openLibrary, pinRendering, test } from "./fixtures";
+import { expect, installOfflineBasemap, openRoute, pinRendering, test } from "./fixtures";
+
+/** A demo route, whose own page is where the basemap chooser lives now. */
+const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
 
 /** The style documents the page asked for, marker aside. */
 function askedForSecond(requested: string[]): boolean {
@@ -34,7 +37,7 @@ test.describe("the basemap chooser", () => {
       secondBasemap: true,
     });
     await pinRendering(page);
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     // What a reader who has chosen nothing gets: the first configured entry.
     expect(askedForSecond(requested)).toBe(false);
@@ -61,7 +64,7 @@ test.describe("the basemap chooser", () => {
       secondBasemap: true,
     });
     await pinRendering(page);
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     await page.getByRole("button", { name: "Choose the basemap" }).click();
     await page.getByText(SECOND_BASEMAP_NAME, { exact: true }).click();
@@ -71,7 +74,7 @@ test.describe("the basemap chooser", () => {
 
     requested.length = 0;
     await page.reload();
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     // Not merely that it was asked for again, but that it was the only thing
     // asked for: a page that loaded the first entry and then corrected itself

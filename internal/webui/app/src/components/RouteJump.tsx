@@ -1,0 +1,237 @@
+/**
+ * The ⌘K jump: a route by name, from any page, in a few keystrokes.
+ *
+ * It lives in the menu bar and owns its own state — what was typed, which row is
+ * active — because it belongs to no page. Pages with a search of their own keep
+ * ⌘K for it: the catalogue's field narrows the list in place, and the planner's
+ * finds a place. There the jump is a button only.
+ */
+
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import { IconArrowDown, IconArrowUp, IconCornerDownLeft, IconSearch } from "@tabler/icons-react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
+import { routeGeometryQuery, routesQuery } from "../api/queries";
+import type { Position, RouteGeometry } from "../api/types";
+import { routeKey } from "../api/types";
+import { formatAscent, formatDistance, formatMovingTime } from "../lib/format";
+import { matchingRoutes, routePath } from "../lib/library";
+import { gradientBand } from "../lib/profile";
+import { RouteGlyph } from "./RouteGlyph";
+import { Dialog, DialogOverlay, DialogPortal } from "./ui/dialog";
+
+/** Whether the page at this path answers ⌘K with a search of its own. */
+export function ownsShortcut(pathname: string): boolean {
+  return pathname === "/catalogue" || pathname === "/plan" || pathname.startsWith("/plan/");
+}
+
+/** The menu bar's jump button and the panel it opens. */
+export function RouteJump() {
+  const { pathname, state } = useLocation();
+  const navigate = useNavigate();
+  const shortcut = !ownsShortcut(pathname);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const field = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+
+  const routes = useQuery(routesQuery());
+  const library = useMemo(() => routes.data ?? [], [routes.data]);
+  const shown = useMemo(() => matchingRoutes(library, query), [library, query]);
+
+  // Glyphs only while the panel is up; the same keys every page caches geometry under.
+  const combine = useCallback(
+    (results: Array<UseQueryResult<RouteGeometry>>) => {
+      const shapes = new Map<string, Position[]>();
+      library.forEach((route, index) => {
+        const coordinates = results[index]?.data?.coordinates;
+        if (coordinates) {
+          shapes.set(routeKey(route), coordinates);
+        }
+      });
+      return shapes;
+    },
+    [library],
+  );
+  const shapes = useQueries({
+    queries: library.map((route) => ({
+      ...routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder),
+      enabled: open,
+    })),
+    combine,
+  });
+
+  useEffect(() => {
+    if (!shortcut) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setOpen((current) => !current);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcut]);
+
+  // Every opening starts over: an empty field on the top row.
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setActive(0);
+    }
+  }, [open]);
+
+  const clampedActive = shown.length === 0 ? 0 : Math.min(active, shown.length - 1);
+  useEffect(() => {
+    list.current
+      ?.querySelector(`[data-index="${clampedActive}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [clampedActive]);
+
+  const pick = (index: number) => {
+    const target = shown[index];
+    if (!target) {
+      return;
+    }
+    setOpen(false);
+    // Carried along, so a route reached by jumping still closes to the catalogue it came from.
+    navigate(routePath(target), { state });
+  };
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive(Math.min(clampedActive + 1, shown.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(Math.max(clampedActive - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      pick(clampedActive);
+    }
+  };
+
+  // The catalogue's own field is the search there.
+  if (pathname === "/catalogue") {
+    return null;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Jump to a route"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-8 shrink-0 items-center gap-2 rounded-[9px] bg-[var(--muted)] px-2.5 text-[var(--ink-2)] text-sm hover:text-[var(--ink)]"
+      >
+        <IconSearch size={15} stroke={1.8} aria-hidden="true" />
+        <span className="hidden sm:inline">Routes</span>
+        {shortcut ? (
+          <kbd className="hidden rounded-[6px] bg-[var(--panel)] px-1.5 font-sans text-xs sm:inline">
+            ⌘K
+          </kbd>
+        ) : null}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogPortal>
+          <DialogOverlay />
+          <DialogPrimitive.Popup
+            aria-label="Jump to a route"
+            initialFocus={field}
+            className="fixed top-[10vh] left-1/2 z-50 flex h-fit max-h-[70vh] w-[36rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col overflow-hidden rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] outline-none"
+            onKeyDown={onKeyDown}
+          >
+            <label className="flex items-center gap-3 border-[var(--rule)] border-b px-5 py-4">
+              <IconSearch
+                size={20}
+                stroke={1.8}
+                className="text-[var(--ink-2)]"
+                aria-hidden="true"
+              />
+              <input
+                ref={field}
+                type="search"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setActive(0);
+                }}
+                placeholder="Route name or place"
+                aria-label="Search the route library"
+                aria-activedescendant={
+                  shown[clampedActive] ? `jump-option-${routeKey(shown[clampedActive])}` : undefined
+                }
+                className="min-w-0 flex-1 bg-transparent text-lg outline-none placeholder:text-[var(--ink-2)] [&::-webkit-search-cancel-button]:appearance-none"
+              />
+            </label>
+            <ul ref={list} role="listbox" className="flex min-h-0 flex-col overflow-y-auto p-2">
+              {shown.length === 0 ? (
+                <li className="px-3 py-6 text-center text-[var(--ink-2)] text-sm">
+                  Nothing here is called that.
+                </li>
+              ) : (
+                shown.map((route, index) => {
+                  const key = routeKey(route);
+                  const isActive = index === clampedActive;
+
+                  return (
+                    <li
+                      key={key}
+                      id={`jump-option-${key}`}
+                      role="option"
+                      aria-selected={isActive}
+                      data-index={index}
+                      onMouseMove={() => setActive(index)}
+                      onClick={() => pick(index)}
+                      className={`flex cursor-pointer items-center gap-3 rounded-[9px] px-3 py-2 ${
+                        isActive ? "bg-[var(--muted)]" : ""
+                      }`}
+                    >
+                      <span className="block size-8 shrink-0">
+                        <RouteGlyph
+                          coordinates={shapes.get(key) ?? []}
+                          title={route.title}
+                          band={gradientBand(route.maxGradientPercent)}
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium text-sm">
+                        {route.title}
+                      </span>
+                      <span className="flex gap-3 text-[var(--ink-2)] text-xs tabular-nums">
+                        <span className="font-semibold text-[var(--ink)]">
+                          {formatDistance(route.distanceMetres)}
+                        </span>
+                        <span>{formatAscent(route.ascentMetres)}</span>
+                        <span>{formatMovingTime(route.movingSeconds)}</span>
+                      </span>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+            <div className="flex items-center gap-4 border-[var(--rule)] border-t px-5 py-2.5 text-[var(--ink-2)] text-xs">
+              <span>
+                {shown.length === library.length
+                  ? `${library.length} routes`
+                  : `${shown.length} of ${library.length}`}
+              </span>
+              <span className="ml-auto flex items-center gap-1">
+                <IconArrowUp size={12} />
+                <IconArrowDown size={12} /> move
+              </span>
+              <span className="flex items-center gap-1">
+                <IconCornerDownLeft size={12} /> open route
+              </span>
+              <span>esc close</span>
+            </div>
+          </DialogPrimitive.Popup>
+        </DialogPortal>
+      </Dialog>
+    </>
+  );
+}

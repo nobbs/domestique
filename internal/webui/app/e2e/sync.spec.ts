@@ -9,7 +9,7 @@
  * the map.
  */
 
-import { expect, followAccount, followDestination, openLibrary, openSync, test } from "./fixtures";
+import { expect, followAccount, followDestination, openSync, test } from "./fixtures";
 
 /** A reference no recorded run can have, standing in for a pruned one. */
 const PRUNED = "000000000000";
@@ -28,13 +28,13 @@ test("the page puts notices before the operational questions", async ({ offlineP
   await expect(page.getByRole("region", { name: "What has happened" })).toContainText(/\d/);
 });
 
-test("the way back is the map itself", async ({ offlinePage: page }) => {
+test("the way back is the catalogue", async ({ offlinePage: page }) => {
   await openSync(page);
 
-  await followDestination(page, "Atlas");
+  await followDestination(page, "Catalogue");
 
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
+  await expect(page).toHaveURL(/\/catalogue$/);
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
 });
 
 test("a notification about a run that is gone says so", async ({ offlinePage: page }) => {
@@ -85,7 +85,7 @@ test("the account's data sources name the running build", async ({ offlinePage: 
 });
 
 test("the session menu is the way in that a reader needs", async ({ offlinePage: page }) => {
-  await openLibrary(page);
+  await page.goto("/catalogue");
 
   await followAccount(page);
 

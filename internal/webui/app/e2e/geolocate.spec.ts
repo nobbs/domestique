@@ -2,8 +2,8 @@
  * The locate button: jumping the camera to where the reader is.
  *
  * jsdom has no Geolocation API and no camera to fly, so what proves the button
- * works — and what proves the library asks once as it opens, a deep link never
- * does, and a denial is honest — needs a real browser. The camera's own state cannot be read back any
+ * works — and that a route page never asks on its own, and that a denial is
+ * honest — needs a real browser. The camera's own state cannot be read back any
  * more than the basemap chooser's can, so a screenshot is the evidence, the same
  * way it is in `basemap.spec.ts` — cropped away from the corners, because the
  * canvas fills the whole map behind the controls and a denial's own icon change
@@ -11,7 +11,7 @@
  */
 
 import type { Page } from "@playwright/test";
-import { expect, openLibrary, openRoute, settleMap, test } from "./fixtures";
+import { expect, openRoute, settleMap, test } from "./fixtures";
 
 // The demo library sits near 48.40N 8.10E; Paris is nowhere close, so a jump
 // to it reads unmistakably in a screenshot diff.
@@ -102,7 +102,7 @@ test.describe("granted", () => {
   // never appear is `watchPosition`.
   test("asks for one-shot positions, never a continuous watch", async ({ offlinePage: page }) => {
     await trackGeolocationCalls(page);
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     await locateButton(page).click();
     await settleMap(page);
@@ -113,19 +113,9 @@ test.describe("granted", () => {
   });
 });
 
-test("asks for the reader's position as the library opens, and reads it only", async ({
-  offlinePage: page,
-}) => {
-  await trackGeolocationCalls(page);
-
-  await openLibrary(page);
-
-  const calls = await geolocationCalls(page);
-  expect(calls.length).toBeGreaterThan(0);
-  expect(calls.every((call) => call === "getCurrentPosition")).toBe(true);
-});
-
-test("asks for no position when a route is deep-linked", async ({ offlinePage: page }) => {
+// A route's page always renders `lines=[]` and never frames the rider's own
+// position on load — only the button asks.
+test("asks for no position as the page opens", async ({ offlinePage: page }) => {
   await trackGeolocationCalls(page);
 
   await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
@@ -136,7 +126,7 @@ test("asks for no position when a route is deep-linked", async ({ offlinePage: p
 test("denying permission leaves the camera untouched and raises no error", async ({
   offlinePage: page,
 }) => {
-  await openLibrary(page);
+  await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
   const before = await cameraScreenshot(page);
 
   // No permission was granted, so Chromium answers the request as denied

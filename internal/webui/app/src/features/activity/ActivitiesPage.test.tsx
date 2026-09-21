@@ -11,7 +11,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activitiesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
+import { activitiesQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Activity, Status, WebUIConfig } from "../../api/types";
 import { IDLE_STATUS } from "../../test/status";
 import { ActivitiesPage } from "./ActivitiesPage";
@@ -59,6 +59,8 @@ function show(activities: Activity[] | null = ACTIVITIES, path = "/activities") 
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
   client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
+  // The bar's own ⌘K jump reads the library wherever it is mounted.
+  client.setQueryData(routesQuery().queryKey, []);
   if (activities) {
     client.setQueryData(activitiesQuery().queryKey, activities);
   }

@@ -1,27 +1,20 @@
 /**
  * The catalogue: the whole library written out and ranked.
  *
- * The atlas answers where a ride goes, and its column is a way to one route the
- * reader already has in mind. Neither answers "which of these is about eighty
- * kilometres with under a thousand metres of climbing", because answering that
- * means comparing every route against every other one — which is a ledger, and
- * a ledger needs the width the atlas spends on cartography.
- *
- * It asks the service for exactly what the atlas asks for, under the same keys:
- * the listing, and one geometry per route. The listing carries no coordinates,
- * so a row's glyph — the shape that says at a glance whether a ride is a loop or
- * an out-and-back — has nowhere else to come from. Arriving from the atlas those
- * requests are already answered; arriving here first answers them for the atlas
- * in turn. Rows render without geometry and gain their glyph and mix bars as it
- * lands, so a cold catalogue is readable before any of it arrives. An admin on a
- * deployment that plans also reads the plan listing and each draft, for the Drafts shelf.
+ * It asks the service for the listing and one geometry per route, under the
+ * same keys the route page and the ⌘K jump use. The listing carries no
+ * coordinates, so a row's glyph — the shape that says at a glance whether a ride
+ * is a loop or an out-and-back — has nowhere else to come from. Rows render
+ * without geometry and gain their glyph and mix bars as it lands, so a cold
+ * catalogue is readable before any of it arrives. An admin on a deployment that
+ * plans also reads the plan listing and each draft, for the Drafts shelf.
  *
  * On a wide screen the sidebar carries a map of one route: the row last pointed
  * at, or the first row until one is. A map of every route at once is a tangle
  * past a dozen of them.
  *
- * Opening a route hands it to the atlas at `/?route=…` rather than showing it
- * here. There is one place a route is read, and this is a way into it.
+ * Opening a route leads to its own page at `/routes/…`: there is one place a
+ * route is read, and this is the way into it.
  */
 
 import {
@@ -68,7 +61,7 @@ import {
   formatTimestamp,
 } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
-import { matchesText, matchingRoutes } from "../../lib/library";
+import { matchesText, matchingRoutes, type RouteVisit, routePath } from "../../lib/library";
 import { useMediaQuery, useNarrowViewport } from "../../lib/mediaQuery";
 import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
 import { gradientBand, gradientShares, haversineMetres } from "../../lib/profile";
@@ -83,11 +76,6 @@ import { CatalogueFilters } from "./CatalogueFilters";
 import { DraftList, EditPlanButton, planEditLink, useDrafts } from "./Drafts";
 import type { ThinBarSegment } from "./ThinBar";
 import { ThinBar } from "./ThinBar";
-
-/** The address the atlas reads a route back off. */
-function atlasLink(route: Route): string {
-  return `/?route=${encodeURIComponent(routeKey(route))}`;
-}
 
 /** The source route this one came off, where the title does not already say it. */
 function secondName(route: Route): string | null {
@@ -297,6 +285,7 @@ function LedgerRow({
   planner,
   start,
   link,
+  visit,
 }: {
   route: Route;
   coordinates: Position[];
@@ -307,6 +296,7 @@ function LedgerRow({
   planner: boolean;
   start: StartDistance;
   link: RowLink;
+  visit: RouteVisit;
 }) {
   const key = routeKey(route);
   return (
@@ -317,6 +307,7 @@ function LedgerRow({
     >
       <Link
         to={to}
+        state={visit}
         onFocus={() => link.onActivate(key)}
         className={`${planner ? "pr-12 " : ""}relative grid ${start === null ? "grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem]" : "grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem_5rem]"} items-center gap-x-4 px-3 py-2.5 text-sm tabular-nums before:absolute before:inset-1 before:rounded-[7px] hover:before:bg-[color-mix(in_oklab,var(--ink-2)_8%,transparent)]`}
       >
@@ -369,19 +360,22 @@ function CatalogueCard({
   change,
   planner,
   start,
+  visit,
 }: {
   route: Route;
   coordinates: Position[];
   change: RouteChange;
   planner: boolean;
   start: StartDistance;
+  visit: RouteVisit;
 }) {
   const where = secondName(route);
 
   return (
     <li className="group relative">
       <Link
-        to={atlasLink(route)}
+        to={routePath(route)}
+        state={visit}
         className={`${planner && planEditLink(route) !== null ? "pr-12 " : ""}flex items-start gap-3 rounded-lg border border-[var(--rule)] p-3 hover:bg-[var(--base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]`}
       >
         <span className="mt-0.5 block size-10 shrink-0">
@@ -450,10 +444,12 @@ function Recent({
   library,
   shapeOf,
   changeOf,
+  visit,
 }: {
   library: Route[];
   shapeOf: (route: Route) => Position[];
   changeOf: (route: Route) => RouteChange;
+  visit: RouteVisit;
 }) {
   const recent = useMemo(
     () =>
@@ -488,7 +484,11 @@ function Recent({
                 />
               </span>
               <span className="flex min-w-0 flex-1 flex-col text-sm">
-                <Link to={atlasLink(route)} className="truncate font-medium hover:underline">
+                <Link
+                  to={routePath(route)}
+                  state={visit}
+                  className="truncate font-medium hover:underline"
+                >
                   {route.title}
                 </Link>
                 <span className="text-[var(--ink-2)] text-xs">
@@ -538,6 +538,7 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
 
   const [params, setParams] = useSearchParams();
   const view = useMemo(() => readView(params), [params]);
+  const visit = useMemo<RouteVisit>(() => ({ catalogue: `?${params}` }), [params]);
 
   /*
    * What is in the search field, held here as well as in the address. See the
@@ -776,6 +777,7 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
                           change={changeOf(route)}
                           planner={planner}
                           start={startOf(route)}
+                          visit={visit}
                         />
                       ))}
                     </ul>
@@ -788,10 +790,11 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
                           coordinates={shapeOf(route)}
                           surface={drawn.ranges.get(routeKey(route))}
                           change={changeOf(route)}
-                          to={atlasLink(route)}
+                          to={routePath(route)}
                           planner={planner}
                           start={startOf(route)}
                           link={linkOf(route)}
+                          visit={visit}
                         />
                       ))}
                     </ul>
@@ -821,7 +824,7 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
               />
             ) : null}
             <Totals library={library} />
-            <Recent library={library} shapeOf={shapeOf} changeOf={changeOf} />
+            <Recent library={library} shapeOf={shapeOf} changeOf={changeOf} visit={visit} />
           </div>
         </div>
       </div>

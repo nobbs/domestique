@@ -1,7 +1,6 @@
 /** The route-library map assembled from reusable MapWidget layers. */
 
 import { type ReactNode, useState } from "react";
-import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 import { ScaleControl } from "react-map-gl/maplibre";
 import type { Basemap, BoundingBox } from "../../api/types";
 import { BasemapPicker } from "../../components/map/BasemapPicker";
@@ -13,12 +12,7 @@ import { WeatherOverlayPicker } from "../../components/map/WeatherOverlayPicker"
 import { ROUTE_MAX_ZOOM } from "../../lib/cartography";
 import { MEASURES, type MeasureKey } from "../../lib/measures";
 import type { Insets } from "../../lib/overlayInsets";
-import {
-  LIBRARY_HIT_LAYER,
-  LIBRARY_LINE_LAYER,
-  LibraryRoutes,
-  type MapLine,
-} from "./LibraryRoutes";
+import { LIBRARY_LINE_LAYER, LibraryRoutes, type MapLine } from "./LibraryRoutes";
 import { ScalarOverlay } from "./ScalarOverlay";
 import { WindOverlay } from "./WindOverlay";
 
@@ -50,16 +44,8 @@ export interface LibraryMapProps {
   maxZoom?: number;
   /** The selected route's full layer stack, rendered over the library. */
   children?: ReactNode;
-  onPick?: (key: string) => void;
-  inertKey?: string | null;
   /** False for a small preview: no scale, zoom, basemap or weather controls. */
   controls?: boolean;
-}
-
-function keyAt(event: MapLayerMouseEvent): string | null {
-  const key = event.features?.[0]?.properties?.key;
-
-  return typeof key === "string" ? key : null;
 }
 
 export function LibraryMap({
@@ -74,11 +60,8 @@ export function LibraryMap({
   insets,
   maxZoom = ROUTE_MAX_ZOOM,
   children,
-  onPick,
-  inertKey = null,
   controls = true,
 }: LibraryMapProps) {
-  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [weatherPickerOpen, setWeatherPickerOpen] = useState(false);
   const [overlays, setOverlays] = useState<ReadonlySet<MeasureKey>>(new Set());
@@ -95,26 +78,12 @@ export function LibraryMap({
       return next;
     });
   const hasOverlay = children !== null && children !== undefined;
-  // An opened route has the map to itself: the library is put away, so there is
-  // nothing under the pointer to light, point at, or land a pick on.
-  const pickable = onPick !== undefined && !hasOverlay;
-  const focusedKey = hasOverlay ? null : hoveredKey;
 
   return (
     <CartographyProvider dark={darkBasemap}>
       <MapWidget
         styleUrl={styleUrl}
         ariaLabel="Map of the route library"
-        interactiveLayerIds={pickable ? [LIBRARY_HIT_LAYER] : []}
-        cursor={focusedKey !== null && focusedKey !== inertKey ? "pointer" : ""}
-        onMouseMove={(event) => setHoveredKey(keyAt(event))}
-        onMouseOut={() => setHoveredKey(null)}
-        onClick={(event) => {
-          const key = keyAt(event);
-          if (key !== null) {
-            onPick?.(key);
-          }
-        }}
         // Everything the cartography has no say over. It stays mounted while a
         // new basemap loads, so choosing one does not take the controls away
         // from under the hand that just used them.
@@ -147,13 +116,7 @@ export function LibraryMap({
         }
       >
         <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />
-        <LibraryRoutes
-          lines={lines}
-          pickedKey={pickedKey}
-          overlaid={hasOverlay}
-          hoveredKey={focusedKey}
-          {...(onPick ? { hitLayerId: LIBRARY_HIT_LAYER } : {})}
-        />
+        <LibraryRoutes lines={lines} pickedKey={pickedKey} overlaid={hasOverlay} />
         {/* After the library, whose line it is ordered beneath; that layer is
             always mounted and only hidden while a route is open. */}
         {SCALAR_OVERLAYS.map(({ measure, variable }) => (

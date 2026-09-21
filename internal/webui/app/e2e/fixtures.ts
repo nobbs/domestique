@@ -272,13 +272,7 @@ export const test = playwrightTest.extend<{
 
 export { expect };
 
-/** The entry page, once the library has arrived and the map is drawn. */
-export async function openLibrary(page: Page): Promise<void> {
-  await page.goto("/");
-  await settleMap(page);
-}
-
-/** Opens the compact workspace when the map is being viewed on a narrow screen. */
+/** Opens the route's Drawer when the page is being viewed on a narrow screen. */
 export async function openWorkspace(page: Page): Promise<void> {
   const browse = page.getByRole("button", { name: "Browse routes" });
   if (await browse.isVisible()) {
@@ -286,24 +280,17 @@ export async function openWorkspace(page: Page): Promise<void> {
   }
 }
 
-/** Opens the library's command search and returns the dialog's own search field. */
-export async function openSearch(page: Page): Promise<Locator> {
-  const field = page.getByRole("searchbox", { name: "Search the route library" });
-  await openWorkspace(page);
-  if (!(await field.isVisible())) {
-    await page.getByRole("button", { name: "Search the route library" }).click();
-  }
-  await expect(field).toBeVisible();
-
-  return field;
+/** The catalogue's own search field, once the catalogue is on screen. */
+export function catalogueSearch(page: Page): Locator {
+  return page.getByRole("searchbox", { name: "Search the route library" });
 }
 
 /**
- * One route, opened over the library map.
+ * One route, opened through the legacy `/?route=` redirect.
  *
- * The route is a panel rather than a page, so it is addressed by the query the
- * panel carries. Going there directly is what a shared link does, and it is the
- * shortest way into the state every test in this suite starts from.
+ * A route now has its own page at `/routes/<provider>/<id>/<stage>`; this goes
+ * there via the query-string address the entry page used to hand out, which is
+ * what a bookmark from before the route had a page of its own still is.
  */
 export async function openRoute(
   page: Page,
