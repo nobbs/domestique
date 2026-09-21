@@ -266,9 +266,11 @@ The operator's **browser** fetches basemap tiles from a configured third-party
 tile origin, and the area those tiles cover is the viewport on screen: a viewed
 route's, or, once the reader presses the map's locate button, an area centred on
 their own live position. The service itself never contacts a tile origin. The
-raw coordinates the locate button reads from the browser's Geolocation API move
-the camera and go nowhere else: they are never sent to this service, a log,
-storage, or the tile origin as a discrete value. Only the resulting tile
+raw coordinates the browser's Geolocation API returns — read when the locate
+button is pressed, and once as the catalogue opens, to rank routes by how far
+each starts from the reader — stay in the page: they move the camera or are
+compared against route starts there, and are never sent to this service, a
+log, storage, or the tile origin as a discrete value. Only the resulting tile
 requests, naming the area rather than a point, reach it. The default is a single
 keyless provider, so no credential is exposed to the browser and the requests
 carry no account identity. The basemaps are a runtime setting, so an origin can
