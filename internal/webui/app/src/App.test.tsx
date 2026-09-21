@@ -110,6 +110,15 @@ afterEach(() => {
 });
 
 describe("the client routes", () => {
+  // Without a session every request is answered by a redirect back to sign in,
+  // so the page reached without one must make none; the suite's fetch refuses any.
+  it("asks for nothing on the sign-in page, which has no session to ask with", () => {
+    open("/auth/login");
+
+    expect(address()).toBe("/auth/login");
+    expect(screen.queryByRole("dialog", { name: "Search" })).toBeNull();
+  });
+
   it("opens a route's own page directly, at its own address", () => {
     open("/routes/veloplanner/12/1", false);
 

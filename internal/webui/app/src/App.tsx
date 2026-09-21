@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
-import { Navigate, Route, Routes, useParams, useSearchParams } from "react-router";
+import { Navigate, Route, Routes, useLocation, useParams, useSearchParams } from "react-router";
 import { webUIConfigQuery } from "./api/queries";
 import { Button } from "./components/Button";
 import { Unavailable } from "./components/Unavailable";
@@ -17,7 +17,7 @@ import { SearchPalette } from "./features/search/SearchPalette";
 import { useEffectiveAdmin, useViewAsRider } from "./lib/identity";
 import { parseRouteKey, routePath } from "./lib/library";
 import { SearchPaletteProvider } from "./lib/searchPalette";
-import { useThemeChoice } from "./lib/theme";
+import { type ThemeChoice, useThemeChoice } from "./lib/theme";
 
 /**
  * Guards an admin-only route. Nothing is rendered while identity is still
@@ -109,6 +109,16 @@ function OpenedLegacyRoute() {
   return <Navigate to={`/routes/veloplanner/${sourceRouteId}/${stageOrder}`} replace />;
 }
 
+/**
+ * The palette on every page but sign-in: it asks for the config, and a request
+ * made without a session is sent to sign in, which would reload that page forever.
+ */
+function SignedInSearch({ themeChoice }: { themeChoice: ThemeChoice }) {
+  const { pathname } = useLocation();
+
+  return pathname.startsWith("/auth/") ? null : <SearchPalette themeChoice={themeChoice} />;
+}
+
 /** Each address is a distinct draft, so an opened plan never leaks into the next one. */
 function OpenedPlan() {
   const { planId } = useParams();
@@ -142,7 +152,7 @@ export function App() {
 
   return (
     <SearchPaletteProvider>
-      <SearchPalette themeChoice={themeChoice} />
+      <SignedInSearch themeChoice={themeChoice} />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route
