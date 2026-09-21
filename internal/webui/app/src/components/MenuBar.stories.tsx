@@ -115,7 +115,10 @@ export const Destinations: Story = {
   }),
   play: async ({ canvas }) => {
     await expect(canvas.queryByRole("link", { name: /^Account/ })).toBeNull();
-    await expect(canvas.getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "/");
+    await expect(canvas.getByRole("link", { name: "Activities" })).toHaveAttribute(
+      "href",
+      "/activities",
+    );
     await expect(canvas.getByText("domestique")).toBeInTheDocument();
     // The whole bar, end to end: the mark, the three destinations, and the
     // session at the far end of them.
