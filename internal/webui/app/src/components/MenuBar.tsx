@@ -39,7 +39,7 @@ import { webUIConfigQuery } from "../api/queries";
 import { useEffectiveAdmin } from "../lib/identity";
 import { useFittingCount } from "../lib/useFittingCount";
 import { Wordmark } from "./brand/Wordmark";
-import { RouteJump } from "./RouteJump";
+import { SearchButton } from "./SearchButton";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserPill } from "./UserPill";
 
@@ -52,9 +52,7 @@ interface Destination {
 /** The landing page: `/` redirects here. */
 const ACTIVITIES_DESTINATION: Destination = { to: "/activities", label: "Activities", end: false };
 
-const CATALOGUE_DESTINATION: Destination = { to: "/catalogue", label: "Catalogue", end: false };
-
-/** After the catalogue: shown only where the planner exists — an admin and a routing engine. */
+/** After Activities: shown only where the planner exists — an admin and a routing engine. */
 const PLAN_DESTINATION: Destination = { to: "/plan", label: "Plan", end: false };
 
 const REST_DESTINATIONS: readonly Destination[] = [
@@ -90,7 +88,6 @@ export function MenuBar() {
   const effectiveAdmin = useEffectiveAdmin();
   const destinations = [
     ACTIVITIES_DESTINATION,
-    CATALOGUE_DESTINATION,
     ...(config?.planning && effectiveAdmin ? [PLAN_DESTINATION] : []),
     ...REST_DESTINATIONS,
     ...(effectiveAdmin ? [ADMIN_DESTINATION] : []),
@@ -174,7 +171,7 @@ export function MenuBar() {
         ) : null}
       </nav>
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        <RouteJump />
+        <SearchButton />
         <ThemeToggle />
         <UserPill />
       </div>

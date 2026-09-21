@@ -41,9 +41,7 @@ async function chooseStartTime(page: Page): Promise<void> {
 function routePanel(page: Page) {
   // Anchored on the way back out, whose name carries the library count: the
   // panel no longer has a row to write that on, so the close control says it.
-  return page
-    .getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ })
-    .locator("xpath=ancestor::section");
+  return page.getByRole("button", { name: "Close the route" }).locator("xpath=ancestor::section");
 }
 
 function profile(page: Page) {
@@ -322,22 +320,18 @@ test("hovering the route labels the position while the profile is folded away", 
   await expect(tooltip).toBeHidden();
 });
 
-test("the way back to the library is reachable from the keyboard", async ({
-  offlinePage: page,
-}) => {
+test("the way back is reachable from the keyboard", async ({ offlinePage: page }) => {
   await openRoute(page, LINE_ROUTE.provider, LINE_ROUTE.sourceRouteId, LINE_ROUTE.stageOrder);
 
-  const back = page.getByRole("button", {
-    name: /^Close the route and go back to \d+ routes?$/,
-  });
+  const back = page.getByRole("button", { name: "Close the route" });
   await back.focus();
   await expect(back).toBeFocused();
   await back.press("Enter");
 
-  // Reached by a direct `page.goto`, so there is no router state naming a
-  // catalogue query to return to — the plain address is the fallback.
-  await expect(page).toHaveURL(/\/catalogue$/);
-  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
+  // Reached by a direct `page.goto`, so there is no in-app history to go back
+  // to — the landing page is the fallback.
+  await expect(page).toHaveURL(/\/activities$/);
+  await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
 });
 
 /*

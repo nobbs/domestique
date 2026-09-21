@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Route } from "../api/types";
-import { catalogueOf, matchesQuery, matchingRoutes, parseRouteKey, routePath } from "./library";
+import { matchesQuery, matchingRoutes, parseRouteKey, routePath } from "./library";
 
 function stage(overrides: Partial<Route> = {}): Route {
   return {
@@ -149,20 +149,5 @@ describe("parseRouteKey", () => {
     expect(parseRouteKey("veloplanner/x/2")).toBeNull();
     expect(parseRouteKey("veloplanner/0/2")).toBeNull();
     expect(parseRouteKey("veloplanner/12/0")).toBeNull();
-  });
-});
-
-describe("catalogueOf", () => {
-  it("reads the catalogue address a route page was opened with", () => {
-    expect(catalogueOf({ catalogue: "?sort=ascent&dir=asc" })).toBe(
-      "/catalogue?sort=ascent&dir=asc",
-    );
-  });
-
-  it("falls back to a bare catalogue for anything else", () => {
-    expect(catalogueOf(null)).toBe("/catalogue");
-    expect(catalogueOf(undefined)).toBe("/catalogue");
-    expect(catalogueOf({})).toBe("/catalogue");
-    expect(catalogueOf({ catalogue: "not a query" })).toBe("/catalogue");
   });
 });

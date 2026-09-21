@@ -8,7 +8,7 @@
  * failing to show what it fetched.
  */
 
-import { catalogueSearch, mapRegion, openRoute, openSync, settleMap } from "../fixtures";
+import { mapRegion, openRoute, openSync, paletteSearch, settleMap } from "../fixtures";
 import { callsTo, expect, test } from "./fixtures";
 
 const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
@@ -40,18 +40,17 @@ test("the service serves a bundle the browser can boot", async ({ bundlePage: pa
 });
 
 test("the library is drawn from the routes view", async ({ bundlePage: page, apiCalls }) => {
-  await page.goto("/catalogue");
+  await page.goto("/activities");
+  const search = await paletteSearch(page);
 
-  // The listing is counted where the page states its size: the catalogue's own
-  // heading says how much of the library there is.
-  await expect(page.getByRole("region", { name: /^Library/ })).toContainText("7 routes");
-  await catalogueSearch(page).fill("kaiserstuhl");
+  // The footer counts the listing where the palette states its size.
+  await expect(page.getByText(/of 7 routes/)).toBeVisible();
+  await search.fill("kaiserstuhl");
   // Distances come from `distanceMetres`, so a result with a figure on it proves
   // the generated route model matched the real response.
-  await expect(
-    page.getByRole("region", { name: /^Library/ }).getByText("Synthetic Kaiserstuhl Loop"),
-  ).toBeVisible();
-  await expect(page.getByRole("region", { name: /^Library/ })).toContainText("km");
+  const option = page.getByRole("option", { name: /Synthetic Kaiserstuhl Loop/ });
+  await expect(option).toBeVisible();
+  await expect(option).toContainText("km");
   expect(callsTo(apiCalls, "GET", "/v1/routes").map((call) => call.status)).toContain(200);
   expect(callsTo(apiCalls, "GET", "/v1/webui/config").map((call) => call.status)).toContain(200);
 });

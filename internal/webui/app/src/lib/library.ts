@@ -65,10 +65,9 @@ export function matchesText(name: string, query: string): boolean {
 /**
  * What a search leaves, by name.
  *
- * The ⌘K jump lists it in this one order. The catalogue ranks what this returns
- * rather than ordering the library itself; see `lib/catalogue.ts`, which relies
- * on the order below being total and on `sort` being stable to inherit it as a
- * tiebreak.
+ * The search palette ranks what this returns rather than ordering the library
+ * itself; see `lib/ranking.ts`, which relies on the order below being total and
+ * on `sort` being stable to inherit it as a tiebreak.
  *
  * The order is total: two routes that share a name fall back to their own stable
  * identity, so nothing swaps places between renders.
@@ -82,22 +81,6 @@ export function matchingRoutes(routes: Route[], query: string): Route[] {
         left.sourceRouteId - right.sourceRouteId ||
         left.stageOrder - right.stageOrder,
     );
-}
-
-/**
- * What a route page is handed when it is opened: the catalogue address to close
- * back to, so its search and sort survive the visit.
- */
-export interface RouteVisit {
-  catalogue: string;
-}
-
-/** The catalogue address a route page closes to, off whatever state it was handed. */
-export function catalogueOf(state: unknown): string {
-  const search = (state as Partial<RouteVisit> | null)?.catalogue;
-  return typeof search === "string" && search.startsWith("?")
-    ? `/catalogue${search}`
-    : "/catalogue";
 }
 
 /** The page a route is read on. */

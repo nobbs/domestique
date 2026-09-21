@@ -79,18 +79,16 @@ hold".
 **library** — the collection of routes this service holds. Nothing else. A
 remote service is a *source* or a *provider*; MapLibre is *MapLibre*.
 
-**atlas** — the entry page: the whole library drawn on one map, with one route
-opened over it. This is the reader's word for that page and its nav label. What
-the atlas draws is the *library*; what it draws on is a *map*. It is a browser
-UI word only — the API has no atlas.
+**atlas** — one route's own page, at `/routes/{provider}/{id}/{stage}`: the route
+on a map, its panel, and the dock along the foot. The code's name for that page
+(`AtlasPage`); what it draws on is a *map*. It is a browser UI word only — the
+API has no atlas.
 
-**catalogue** — the second view of the same library: every route written out as
-a table, ranked by whatever the reader sorted on. The atlas answers *where does
-this ride go*; the catalogue answers *which of these rides is the one I want*.
-Its nav label and its path are both "catalogue", and like the atlas it is a
-browser UI word only — the API has no catalogue, and the page asks it for
-nothing the atlas does not already ask for, apart from an admin's plan
-listing and drafts, which it shows on a Drafts shelf of its own.
+**search palette** — the one way to find a route: a panel ⌘K or the menu bar's
+Search button opens on any page, narrowing the *library* by name and measure,
+ranking what is left, and previewing the highlighted route on a map. An admin on
+a deployment that plans also finds their drafts there. A browser UI word only;
+it asks the API for nothing a route page does not, apart from the plan listing.
 
 ## Identity and the map
 

@@ -68,7 +68,6 @@ function renderPanel(
     onHighlightClear: () => {},
     collapsed: false,
     onCollapsedChange: () => {},
-    libraryCount: 0,
     onClose: () => {},
     sourceBaseUrls: {},
     ...overrides,
@@ -306,7 +305,6 @@ describe("RoutePanel", () => {
           onHighlightClear={() => {}}
           collapsed={false}
           onCollapsedChange={() => {}}
-          libraryCount={0}
           onClose={() => {}}
           sourceBaseUrls={{}}
         />

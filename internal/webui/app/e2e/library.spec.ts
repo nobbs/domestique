@@ -1,14 +1,13 @@
 /**
- * A route's own page, the catalogue's search over the whole library, and the
+ * A route's own page, the search palette over the whole library, and the
  * addresses that lead into a route.
  *
- * The map and the catalogue's search are the paths a component test cannot
+ * The map and the palette's search are the paths a component test cannot
  * reach — a real MapLibre map, and a search whose narrowing is only worth
  * asserting against the network it did or did not reach.
  */
 
-import type { Page } from "@playwright/test";
-import { catalogueSearch, expect, followAccount, mapRegion, openRoute, test } from "./fixtures";
+import { expect, followAccount, mapRegion, openRoute, paletteSearch, test } from "./fixtures";
 
 /** The demo's loop, which a route page and a redirect both have to land on. */
 const LOOP = {
@@ -17,14 +16,6 @@ const LOOP = {
   stageOrder: 1,
   title: "Synthetic Kaiserstuhl Loop",
 };
-
-function libraryRegion(page: Page) {
-  return page.getByRole("region", { name: /^Library/ });
-}
-
-function rows(page: Page) {
-  return libraryRegion(page).getByRole("listitem");
-}
 
 test("a route's page draws its map, its panel and its dock", async ({ offlinePage: page }) => {
   await openRoute(page, LOOP.provider, LOOP.sourceRouteId, LOOP.stageOrder);
@@ -42,25 +33,27 @@ test("a route's page draws its map, its panel and its dock", async ({ offlinePag
 
 // The mixed case: a library assembled from more than one source, and a reader
 // telling its stages apart by more than the row they happen to sit in.
-test("a search can narrow the catalogue to one route", async ({ offlinePage: page }) => {
-  await page.goto("/catalogue");
+test("a search can narrow the palette to one route", async ({ offlinePage: page }) => {
+  await page.goto("/activities");
+  const search = await paletteSearch(page);
 
-  await catalogueSearch(page).fill("komoot");
+  await search.fill("komoot");
 
-  await expect(rows(page)).toHaveCount(1);
-  await expect(rows(page)).toContainText("Synthetic Foothill Circuit");
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await expect(page.getByRole("option")).toContainText("Synthetic Foothill Circuit");
 
-  await catalogueSearch(page).fill("kaiserstuhl");
-  await expect(rows(page)).toContainText(LOOP.title);
+  await search.fill("kaiserstuhl");
+  await expect(page.getByRole("option")).toContainText(LOOP.title);
 });
 
 test("nothing a reader types leaves the page", async ({ offlinePage: page }) => {
-  await page.goto("/catalogue");
+  await page.goto("/activities");
+  const search = await paletteSearch(page);
   const asked: string[] = [];
   page.on("request", (request) => asked.push(request.url()));
 
-  await catalogueSearch(page).fill("kaiserstuhl");
-  await expect(rows(page)).toHaveCount(1);
+  await search.fill("kaiserstuhl");
+  await expect(page.getByRole("option")).toHaveCount(1);
 
   // Narrowing happens in the browser over the listing the page already holds,
   // which is what keeps route names out of an access log.
@@ -68,7 +61,7 @@ test("nothing a reader types leaves the page", async ({ offlinePage: page }) => 
 });
 
 test("the bar names the session the gate admitted", async ({ offlinePage: page }) => {
-  await page.goto("/catalogue");
+  await page.goto("/activities");
 
   // The demo mints its own session, so what the gate admitted here is what a
   // deployment's gate admits: the account the session names.
@@ -85,7 +78,7 @@ test("the bar names the session the gate admitted", async ({ offlinePage: page }
 test("the session says what sync is doing and leads to the account", async ({
   offlinePage: page,
 }) => {
-  await page.goto("/catalogue");
+  await page.goto("/activities");
 
   // The demo has one connected slot and one that never onboarded, so the dot
   // on the session is painted and the menu item's name says why.

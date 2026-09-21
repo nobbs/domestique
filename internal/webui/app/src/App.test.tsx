@@ -23,9 +23,6 @@ import { IDLE_STATUS } from "./test/status";
 vi.mock("./features/routes/AtlasPage", () => ({
   AtlasPage: () => <p>the library</p>,
 }));
-vi.mock("./features/catalogue/CataloguePage", () => ({
-  CataloguePage: () => <p>the catalogue</p>,
-}));
 vi.mock("./features/activity/ActivitiesPage", () => ({
   ActivitiesPage: () => <p>the activities page</p>,
 }));
@@ -114,7 +111,7 @@ afterEach(() => {
 
 describe("the client routes", () => {
   it("opens a route's own page directly, at its own address", () => {
-    open("/routes/veloplanner/12/1");
+    open("/routes/veloplanner/12/1", false);
 
     expect(address()).toBe("/routes/veloplanner/12/1");
     expect(screen.getByText("the library")).toBeInTheDocument();
@@ -123,7 +120,7 @@ describe("the client routes", () => {
   // The spelling a link had before providers existed. Only VeloPlanner ever
   // handed one out, so it names that provider and lands on the same route.
   it("answers the two-segment path with the provider it always meant", () => {
-    open("/routes/12/1");
+    open("/routes/12/1", false);
 
     expect(address()).toBe("/routes/veloplanner/12/1");
   });
@@ -131,39 +128,39 @@ describe("the client routes", () => {
   // The bare address the entry page handed out before a route had a page of
   // its own. Still read, so a link made then still opens the same route.
   it("turns a bare /?route= link into the route's own page", () => {
-    open("/?route=veloplanner%2F12%2F1");
+    open("/?route=veloplanner%2F12%2F1", false);
 
     expect(address()).toBe("/routes/veloplanner/12/1");
     expect(screen.getByText("the library")).toBeInTheDocument();
   });
 
   it("reads the two-segment form of that same link the same way", () => {
-    open("/?route=12%2F1");
+    open("/?route=12%2F1", false);
 
     expect(address()).toBe("/routes/veloplanner/12/1");
   });
 
   it("lands the bare entry address on the rider's activities", () => {
-    open("/");
+    open("/", false);
 
     expect(address()).toBe("/activities");
   });
 
   it("sends anything else to activities too", () => {
-    open("/nowhere");
+    open("/nowhere", false);
 
     expect(address()).toBe("/activities");
   });
 
-  it("serves the catalogue at its own address", () => {
-    open("/catalogue");
+  // The catalogue page is gone; the search palette replaces it.
+  it("sends the removed /catalogue to activities", () => {
+    open("/catalogue", false);
 
-    expect(address()).toBe("/catalogue");
-    expect(screen.getByText("the catalogue")).toBeInTheDocument();
+    expect(address()).toBe("/activities");
   });
 
   it("serves the account page and each of its tabs", () => {
-    open("/account/profile");
+    open("/account/profile", false);
 
     expect(address()).toBe("/account/profile");
     expect(screen.getByText("the account page")).toBeInTheDocument();
@@ -288,14 +285,14 @@ describe("the client routes", () => {
 describe("the document theme", () => {
   it("sets no override for the system default", () => {
     stubStorage();
-    open("/routes/veloplanner/12/1");
+    open("/routes/veloplanner/12/1", false);
 
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
 
   it("applies the reader's remembered override on load", () => {
     stubStorage("dark");
-    open("/routes/veloplanner/12/1");
+    open("/routes/veloplanner/12/1", false);
 
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });

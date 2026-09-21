@@ -280,8 +280,10 @@ export async function openWorkspace(page: Page): Promise<void> {
   }
 }
 
-/** The catalogue's own search field, once the catalogue is on screen. */
-export function catalogueSearch(page: Page): Locator {
+/** Opens the search palette from the menu bar's Search button, and returns its field. */
+export async function paletteSearch(page: Page): Promise<Locator> {
+  await page.getByRole("button", { name: "Search" }).click();
+
   return page.getByRole("searchbox", { name: "Search the route library" });
 }
 
@@ -308,7 +310,7 @@ export async function openRoute(
   stageOrder: number,
 ): Promise<void> {
   await visitRoute(page, provider, sourceRouteId, stageOrder);
-  const close = page.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ });
+  const close = page.getByRole("button", { name: "Close the route" });
   const browse = page.getByRole("button", { name: "Browse routes" });
   await expect(close.or(browse)).toBeVisible();
   await openWorkspace(page);

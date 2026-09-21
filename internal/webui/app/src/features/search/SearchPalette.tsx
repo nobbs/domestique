@@ -1,0 +1,475 @@
+/**
+ * The search palette: the one way to find a route, from any page.
+ *
+ * ⌘K or the menu bar's Search button opens it. One field takes names and the
+ * query language in `lib/query.ts` (`dist:40-80 by distance`), with completions
+ * for its tokens; on a wide screen the highlighted row is mapped beside the list.
+ * An admin on a deployment that plans also finds their drafts here, marked as
+ * such, which open in the planner. The query outlasts closing the palette.
+ *
+ * Nothing is fetched for opening it beyond the listing: the preview asks for the
+ * one highlighted route's line, and only ranking by distance to start asks for
+ * the reader's position and every route's line.
+ */
+
+import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
+import {
+  IconArrowDown,
+  IconArrowUp,
+  IconCornerDownLeft,
+  IconSearch,
+  IconX,
+} from "@tabler/icons-react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router";
+import { getGetPlanQueryOptions, getListPlansQueryOptions } from "../../api/generated";
+import { routeGeometryQuery, routesQuery, webUIConfigQuery } from "../../api/queries";
+import type { Position, Route, RouteGeometry } from "../../api/types";
+import { routeKey } from "../../api/types";
+import { librarySources } from "../../components/SourceChips";
+import { Badge } from "../../components/ui/badge";
+import { Dialog, DialogOverlay, DialogPortal } from "../../components/ui/dialog";
+import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
+import { hasActiveFilters, matchesFilters } from "../../lib/filters";
+import { formatAscent, formatDistance, formatMovingTime } from "../../lib/format";
+import { useEffectiveAdmin } from "../../lib/identity";
+import { matchesText, matchingRoutes, routePath } from "../../lib/library";
+import { useMediaQuery } from "../../lib/mediaQuery";
+import { haversineMetres, rangeBounds } from "../../lib/profile";
+import { providerLabel } from "../../lib/provider";
+import { parseQuery, suggest, tokenValue, withoutToken, withToken } from "../../lib/query";
+import type { SortColumn } from "../../lib/ranking";
+import { initialDirection, SORT_COLUMNS, sortRoutes } from "../../lib/ranking";
+import { ownsShortcut, useSearchPalette } from "../../lib/searchPalette";
+import { useStartupLocation } from "../../lib/startupLocation";
+import { resolvesDark, type ThemeChoice } from "../../lib/theme";
+import { LibraryMap } from "../routes/LibraryMap";
+
+/** One row the palette can open: a published route, or one of the admin's drafts. */
+interface Entry {
+  key: string;
+  title: string;
+  to: string;
+  route: Route | null;
+  draftId: number | null;
+  distanceMetres: number;
+  ascentMetres: number;
+  movingSeconds?: number;
+  startMetres?: number;
+}
+
+/** A row's columns: the name, then its figures, and the distance to its start while ranked by it. */
+const ROW_GRID = "grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.5rem] gap-x-3";
+const ROW_GRID_NEAREST = "grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_4.5rem_4.5rem] gap-x-3";
+
+/** Where a start lies, once its line has arrived; formatDistance reads zero as missing. */
+function formatStart(metres: number): string {
+  return metres === 0 ? "0 m" : formatDistance(metres);
+}
+
+export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { open, setOpen } = useSearchPalette();
+  const shortcut = !ownsShortcut(pathname);
+  const [query, setQuery] = useState("");
+  // The query text is the one source of truth; every control edits its tokens.
+  const parsed = useMemo(() => parseQuery(query), [query]);
+  const { filters, sort, direction } = parsed;
+  const [active, setActive] = useState(0);
+  const field = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLUListElement>(null);
+  const wide = useMediaQuery("(min-width: 64rem)");
+
+  const routes = useQuery({ ...routesQuery(), enabled: open });
+  const library = useMemo(() => routes.data ?? [], [routes.data]);
+  const config = useQuery(webUIConfigQuery());
+  const planner = useEffectiveAdmin() && config.data?.planning === true;
+  const plans = useQuery({ ...getListPlansQueryOptions(), enabled: open && planner });
+
+  const nearest = sort === "start";
+  // Never stored or sent: it only measures how far each start is from here.
+  const location = useStartupLocation(open && nearest);
+  const combine = useCallback(
+    (results: Array<UseQueryResult<RouteGeometry>>) => {
+      const starts = new Map<string, Position>();
+      library.forEach((route, index) => {
+        const first = results[index]?.data?.coordinates[0];
+        if (first) {
+          starts.set(routeKey(route), first);
+        }
+      });
+      return starts;
+    },
+    [library],
+  );
+  const starts = useQueries({
+    queries: library.map((route) => ({
+      ...routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder),
+      enabled: open && nearest,
+    })),
+    combine,
+  });
+  const startOf = useCallback(
+    (route: Route) => {
+      const first = starts.get(routeKey(route));
+      return location && first ? haversineMetres(location, first) : undefined;
+    },
+    [location, starts],
+  );
+
+  const filtersActive = hasActiveFilters(filters);
+  const shown = useMemo<Entry[]>(() => {
+    // Filters measure what a draft's listing does not carry, so a filtered search holds no drafts.
+    const drafts =
+      planner && parsed.drafts !== "none" && (parsed.drafts === "only" || !filtersActive)
+        ? (plans.data?.data.plans ?? [])
+        : [];
+    const ranked =
+      parsed.drafts === "only"
+        ? []
+        : sortRoutes(
+            matchingRoutes(library, parsed.words).filter((route) => matchesFilters(route, filters)),
+            sort,
+            direction,
+            startOf,
+          );
+
+    return [
+      ...drafts
+        .filter((plan) => !plan.published && matchesText(plan.name, parsed.words))
+        .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+        .map((plan) => ({
+          key: `draft/${plan.id}`,
+          title: plan.name,
+          to: `/plan/${plan.id}`,
+          route: null,
+          draftId: plan.id,
+          distanceMetres: plan.distanceMetres,
+          ascentMetres: plan.ascentMetres,
+        })),
+      ...ranked.map((route) => {
+        const start = startOf(route);
+        return {
+          key: routeKey(route),
+          title: route.title,
+          to: routePath(route),
+          route,
+          draftId: null,
+          distanceMetres: route.distanceMetres,
+          ascentMetres: route.ascentMetres,
+          ...(route.movingSeconds === undefined ? {} : { movingSeconds: route.movingSeconds }),
+          ...(start === undefined ? {} : { startMetres: start }),
+        };
+      }),
+    ];
+  }, [planner, filtersActive, plans.data, library, parsed, filters, sort, direction, startOf]);
+
+  useEffect(() => {
+    if (!shortcut) {
+      return;
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setOpen((current) => !current);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcut, setOpen]);
+
+  useEffect(() => {
+    if (open) {
+      setActive(0);
+    }
+  }, [open]);
+
+  const clampedActive = shown.length === 0 ? 0 : Math.min(active, shown.length - 1);
+  useEffect(() => {
+    list.current
+      ?.querySelector(`[data-index="${clampedActive}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [clampedActive]);
+
+  const current = shown[clampedActive] ?? null;
+  const preview = open && wide && current !== null;
+  const routeLine = useQuery({
+    ...routeGeometryQuery(
+      current?.route?.provider ?? "",
+      current?.route?.sourceRouteId ?? 0,
+      current?.route?.stageOrder ?? 0,
+    ),
+    enabled: preview && current?.route !== null,
+  });
+  const draftLine = useQuery(
+    getGetPlanQueryOptions(current?.draftId ?? 0, {
+      query: { enabled: preview && current?.draftId !== null },
+    }),
+  );
+  const previewCoordinates = useMemo<Position[]>(
+    () =>
+      (current?.route
+        ? routeLine.data?.coordinates
+        : (draftLine.data?.data.geometry.coordinates as Position[] | undefined)) ?? [],
+    [current?.route, routeLine.data, draftLine.data],
+  );
+  // Memoised on the line itself, or every render would fly the camera again.
+  const previewBounds = useMemo(
+    () =>
+      current?.route
+        ? (routeLine.data?.bbox ?? null)
+        : rangeBounds(previewCoordinates, {
+            startIndex: 0,
+            endIndex: previewCoordinates.length - 1,
+          }),
+    [current?.route, routeLine.data, previewCoordinates],
+  );
+  const previewLines = useMemo(
+    () =>
+      current && previewCoordinates.length > 1
+        ? [{ key: current.key, coordinates: previewCoordinates }]
+        : [],
+    [current, previewCoordinates],
+  );
+  const prefersDark = usePrefersDarkScheme();
+  const [basemapChoice] = useBasemapChoice();
+  const basemap = config.data
+    ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
+    : null;
+
+  const sources = useMemo(() => librarySources(library), [library]);
+  const suggestions = useMemo(
+    () =>
+      suggest(query, {
+        providers: sources.map(({ provider, count }) => ({
+          provider,
+          count,
+          label: provider === "local" ? "Planner" : providerLabel(provider),
+        })),
+        distances: library.map((route) => route.distanceMetres),
+        ascents: library.map((route) => route.ascentMetres),
+        durations: library.map((route) => route.movingSeconds ?? 0),
+      }),
+    [query, sources, library],
+  );
+  const [suggested, setSuggested] = useState(0);
+  const offered = suggestions[suggested] ?? suggestions[0];
+
+  const pick = (index: number) => {
+    const target = shown[index];
+    if (!target) {
+      return;
+    }
+    setOpen(false);
+    navigate(target.to);
+  };
+  const sortBy = (column: SortColumn) => {
+    const next =
+      column === sort ? (direction === "asc" ? "desc" : "asc") : initialDirection(column);
+    setQuery((text) => withToken(text, "sort", tokenValue.sort(column, next)));
+    setActive(0);
+  };
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    // By physical key: on a Mac, Option turns the letter into another character.
+    if (event.altKey && !event.metaKey && !event.ctrlKey) {
+      const column = SORT_COLUMNS[Number(event.code.replace("Digit", "")) - 1];
+      if (event.code.startsWith("Digit") && column) {
+        event.preventDefault();
+        sortBy(column.column);
+      }
+      return;
+    }
+    // The list answers keys typed into the query; the chips and completions keep their own.
+    if (event.target !== field.current) {
+      return;
+    }
+    if (event.key === "Tab" && offered) {
+      event.preventDefault();
+      if (event.shiftKey) {
+        setSuggested((suggested + 1) % suggestions.length);
+      } else {
+        setQuery(offered.query);
+        setSuggested(0);
+      }
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive(Math.min(clampedActive + 1, shown.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(Math.max(clampedActive - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      pick(clampedActive);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogPortal>
+        <DialogOverlay />
+        <DialogPrimitive.Popup
+          aria-label="Search"
+          initialFocus={field}
+          className="fixed top-[8vh] left-1/2 z-50 flex h-fit max-h-[80vh] w-[40rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col overflow-hidden rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] outline-none lg:w-[64rem]"
+          onKeyDown={onKeyDown}
+        >
+          <label className="flex items-center gap-3 border-[var(--rule)] border-b px-5 py-4">
+            <IconSearch size={20} stroke={1.8} className="text-[var(--ink-2)]" aria-hidden="true" />
+            <input
+              ref={field}
+              type="search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setActive(0);
+                setSuggested(0);
+              }}
+              placeholder="Route name or place, or dist:40-80 up:<1000 by distance"
+              aria-label="Search the route library"
+              aria-activedescendant={current ? `search-option-${current.key}` : undefined}
+              className="min-w-0 flex-1 bg-transparent text-lg outline-none placeholder:text-[var(--ink-2)] [&::-webkit-search-cancel-button]:appearance-none"
+            />
+          </label>
+          {suggestions.length > 0 ? (
+            <div
+              role="group"
+              aria-label="Completions"
+              className="flex flex-wrap items-center gap-1.5 border-[var(--rule)] border-b px-5 py-2 text-xs"
+            >
+              {suggestions.map((entry) => (
+                <button
+                  key={entry.label}
+                  type="button"
+                  aria-pressed={entry === offered}
+                  title={entry.hint}
+                  onClick={() => {
+                    setQuery(entry.query);
+                    setSuggested(0);
+                    field.current?.focus();
+                  }}
+                  className={`flex items-center gap-1.5 rounded-[7px] px-2 py-0.5 ${
+                    entry === offered
+                      ? "bg-[var(--ink)] text-[var(--panel)]"
+                      : "bg-[var(--muted)] text-[var(--ink)] hover:bg-[var(--rule)]"
+                  }`}
+                >
+                  <span className="font-mono">{entry.label}</span>
+                  <span className="opacity-70">{entry.hint}</span>
+                </button>
+              ))}
+              <span className="ml-auto text-[var(--ink-2)]">tab to complete</span>
+            </div>
+          ) : null}
+          {parsed.tokens.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 border-[var(--rule)] border-b px-5 py-2">
+              {parsed.tokens.map((token) => (
+                <span
+                  key={token.text}
+                  className="flex items-center gap-1 rounded-[7px] bg-[var(--muted)] py-0.5 pr-1 pl-2 font-mono text-[var(--ink)] text-xs"
+                >
+                  {token.text}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${token.text}`}
+                    onClick={() => setQuery((text) => withoutToken(text, token))}
+                    className="text-[var(--ink-2)] hover:text-[var(--ink)]"
+                  >
+                    <IconX size={12} aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex min-h-0 flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_24rem]">
+            <div className="flex min-h-0 w-full flex-col">
+              <ul
+                ref={list}
+                role="listbox"
+                className="flex min-h-0 w-full flex-col overflow-y-auto p-2 lg:max-h-[56vh]"
+              >
+                {shown.length === 0 ? (
+                  <li className="px-3 py-6 text-center text-[var(--ink-2)] text-sm">
+                    {filtersActive
+                      ? "Nothing here matches this search."
+                      : "Nothing here is called that."}
+                  </li>
+                ) : (
+                  shown.map((entry, index) => {
+                    const isActive = index === clampedActive;
+
+                    return (
+                      <li
+                        key={entry.key}
+                        id={`search-option-${entry.key}`}
+                        role="option"
+                        aria-selected={isActive}
+                        data-index={index}
+                        onMouseMove={() => setActive(index)}
+                        onClick={() => pick(index)}
+                        className={`${nearest ? ROW_GRID_NEAREST : ROW_GRID} cursor-pointer items-center rounded-[9px] px-3 py-2 text-[var(--ink-2)] text-xs tabular-nums ${
+                          isActive ? "bg-[var(--muted)]" : ""
+                        }`}
+                      >
+                        <span className="flex min-w-0 items-center gap-2 text-[var(--ink)]">
+                          <span className="truncate font-medium text-sm">{entry.title}</span>
+                          {entry.draftId === null ? null : <Badge variant="secondary">Draft</Badge>}
+                        </span>
+                        <span className="text-right font-semibold text-[var(--ink)]">
+                          {formatDistance(entry.distanceMetres)}
+                        </span>
+                        <span className="text-right">{formatAscent(entry.ascentMetres)}</span>
+                        <span className="text-right">
+                          {entry.route ? formatMovingTime(entry.movingSeconds) : "–"}
+                        </span>
+                        {nearest ? (
+                          <span className="text-right" title="Distance to start">
+                            {entry.startMetres === undefined ? "–" : formatStart(entry.startMetres)}
+                          </span>
+                        ) : null}
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>
+            {wide && basemap && previewLines.length > 0 ? (
+              <div className="m-2 ml-0 hidden min-h-80 overflow-hidden rounded-[11px] lg:block">
+                <LibraryMap
+                  styleUrl={basemap.styleUrl}
+                  darkBasemap={basemap.dark}
+                  lines={previewLines}
+                  pickedKey={current?.key ?? null}
+                  bounds={previewBounds}
+                  controls={false}
+                />
+              </div>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-4 border-[var(--rule)] border-t px-5 py-2.5 text-[var(--ink-2)] text-xs">
+            <span>
+              {`${shown.filter((entry) => entry.route).length} of ${library.length} routes`}
+              {nearest && location === null ? " · waiting for your position" : ""}
+            </span>
+            <span className="ml-auto flex items-center gap-1">
+              <IconArrowUp size={12} />
+              <IconArrowDown size={12} /> move
+            </span>
+            <span className="flex items-center gap-1">
+              <IconCornerDownLeft size={12} /> open
+            </span>
+            <span title="Option+1 to 6 sorts by name, distance, ascent, time, steepest or nearness">
+              ⌥1–6 sort
+            </span>
+            <span>esc close</span>
+          </div>
+        </DialogPrimitive.Popup>
+      </DialogPortal>
+    </Dialog>
+  );
+}

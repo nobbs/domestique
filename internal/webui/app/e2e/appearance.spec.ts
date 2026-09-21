@@ -10,12 +10,12 @@
 import type { Page } from "@playwright/test";
 import { BASEMAP_ATTRIBUTION_TEXT } from "./basemap";
 import {
-  catalogueSearch,
   expect,
   followAccount,
   installOfflineBasemap,
   mapRegion,
   openRoute,
+  paletteSearch,
   pinRendering,
   profileScrubber,
   settleMap,
@@ -251,8 +251,8 @@ test.describe("text selection", () => {
   });
 
   test("a field still selects the text typed into it", async ({ offlinePage: page }) => {
-    await page.goto("/catalogue");
-    const search = catalogueSearch(page);
+    await page.goto("/activities");
+    const search = await paletteSearch(page);
     await search.fill("rhine");
 
     // Triple click rather than `selectText`, which selects through the DOM and

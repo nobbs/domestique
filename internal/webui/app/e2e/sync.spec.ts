@@ -28,12 +28,15 @@ test("the page puts notices before the operational questions", async ({ offlineP
   await expect(page.getByRole("region", { name: "What has happened" })).toContainText(/\d/);
 });
 
-test("the way back is the catalogue", async ({ offlinePage: page }) => {
+test("the way back is Activities, with the search palette one click away", async ({
+  offlinePage: page,
+}) => {
   await openSync(page);
 
-  await followDestination(page, "Catalogue");
+  await followDestination(page, "Activities");
 
-  await expect(page).toHaveURL(/\/catalogue$/);
+  await expect(page).toHaveURL(/\/activities$/);
+  await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
 });
 
@@ -85,7 +88,7 @@ test("the account's data sources name the running build", async ({ offlinePage: 
 });
 
 test("the session menu is the way in that a reader needs", async ({ offlinePage: page }) => {
-  await page.goto("/catalogue");
+  await page.goto("/activities");
 
   await followAccount(page);
 

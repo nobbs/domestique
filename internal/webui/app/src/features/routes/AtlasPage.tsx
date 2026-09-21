@@ -7,7 +7,7 @@
  * chart marks the route, and a chip pressed in the panel lights the same ground
  * on both.
  *
- * Choosing a route happens elsewhere: the catalogue, or the ⌘K jump. A map of
+ * Choosing a route happens elsewhere, in the search palette. A map of
  * every route at once was a tangle past a dozen of them.
  */
 
@@ -26,7 +26,7 @@ import { Layout } from "../../components/Layout";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
-import { catalogueOf, parseRouteKey } from "../../lib/library";
+import { parseRouteKey } from "../../lib/library";
 import { useOverlayInsets } from "../../lib/overlayInsets";
 import { coordinateRange, rangeBounds } from "../../lib/profile";
 import { riddenOn } from "../../lib/rideHistory";
@@ -196,15 +196,19 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
 
   const navigate = useNavigate();
   const location = useLocation();
-  // Back to the catalogue as it was left, however many routes were jumped between.
+  // Back to wherever the route was opened from inside the app, else the landing page.
   const close = useCallback(() => {
     forget();
-    navigate(catalogueOf(location.state));
-  }, [forget, location.state, navigate]);
+    if (location.key === "default") {
+      navigate("/activities");
+    } else {
+      navigate(-1);
+    }
+  }, [forget, location.key, navigate]);
 
   // Escape leaves one thing at a time, and the stretch on show is the innermost:
   // the overlay answers that one, so this only fires once there is nothing left
-  // between the reader and the catalogue.
+  // between the reader and the page they came from.
   useEscapeKey(openKey !== null && shownWindow === null, close);
 
   // The stretch on show, else the whole route. Memoised: a fresh box every render
@@ -333,7 +337,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           onHighlightClear={() => setHighlight(null)}
           collapsed={panelCollapsed}
           onCollapsedChange={setPanelCollapsed}
-          libraryCount={library.length}
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
           copySeed={copySeed}

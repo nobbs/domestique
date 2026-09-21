@@ -10,12 +10,13 @@ import { ActivitiesPage } from "./features/activity/ActivitiesPage";
 import { ActivityPage } from "./features/activity/ActivityPage";
 import { AdminPage } from "./features/admin/AdminPage";
 import { SignInPage } from "./features/auth/SignInPage";
-import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { FitnessPage } from "./features/fitness/FitnessPage";
 import { PlanPage } from "./features/plan/PlanPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
+import { SearchPalette } from "./features/search/SearchPalette";
 import { useEffectiveAdmin, useViewAsRider } from "./lib/identity";
 import { parseRouteKey, routePath } from "./lib/library";
+import { SearchPaletteProvider } from "./lib/searchPalette";
 import { useThemeChoice } from "./lib/theme";
 
 /**
@@ -140,59 +141,61 @@ export function App() {
   }, [themeChoice]);
 
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route
-        path="routes/:provider/:sourceRouteId/:stageOrder"
-        element={<AtlasPage themeChoice={themeChoice} />}
-      />
-      <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
-      <Route path="catalogue" element={<CataloguePage themeChoice={themeChoice} />} />
-      {/* The one page reached without a session. The service serves this same
+    <SearchPaletteProvider>
+      <SearchPalette themeChoice={themeChoice} />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route
+          path="routes/:provider/:sourceRouteId/:stageOrder"
+          element={<AtlasPage themeChoice={themeChoice} />}
+        />
+        <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
+        {/* The one page reached without a session. The service serves this same
           document there, so the sign-in form is the application's own. */}
-      <Route path="auth/login" element={<SignInPage />} />
-      <Route path="fitness" element={<FitnessPage />} />
-      {/* One element for both views, so the range and ground chosen survive a switch. */}
-      <Route path="activities" element={<ActivitiesPage />}>
-        <Route index />
-        <Route path="rides" />
-      </Route>
-      <Route path="activities/:activityId" element={<ActivityPage />} />
-      <Route path="account" element={<AccountPage />} />
-      <Route path="account/:section" element={<AccountPage />} />
-      <Route
-        path="plan"
-        element={
-          <PlanningOnly>
-            <OpenedPlan />
-          </PlanningOnly>
-        }
-      />
-      <Route
-        path="plan/:planId"
-        element={
-          <PlanningOnly>
-            <OpenedPlan />
-          </PlanningOnly>
-        }
-      />
-      <Route
-        path="admin"
-        element={
-          <AdminOnly>
-            <AdminPage />
-          </AdminOnly>
-        }
-      />
-      <Route
-        path="admin/:section"
-        element={
-          <AdminOnly>
-            <AdminPage />
-          </AdminOnly>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="auth/login" element={<SignInPage />} />
+        <Route path="fitness" element={<FitnessPage />} />
+        {/* One element for both views, so the range and ground chosen survive a switch. */}
+        <Route path="activities" element={<ActivitiesPage />}>
+          <Route index />
+          <Route path="rides" />
+        </Route>
+        <Route path="activities/:activityId" element={<ActivityPage />} />
+        <Route path="account" element={<AccountPage />} />
+        <Route path="account/:section" element={<AccountPage />} />
+        <Route
+          path="plan"
+          element={
+            <PlanningOnly>
+              <OpenedPlan />
+            </PlanningOnly>
+          }
+        />
+        <Route
+          path="plan/:planId"
+          element={
+            <PlanningOnly>
+              <OpenedPlan />
+            </PlanningOnly>
+          }
+        />
+        <Route
+          path="admin"
+          element={
+            <AdminOnly>
+              <AdminPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="admin/:section"
+          element={
+            <AdminOnly>
+              <AdminPage />
+            </AdminOnly>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </SearchPaletteProvider>
   );
 }

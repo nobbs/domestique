@@ -267,7 +267,7 @@ tile origin, and the area those tiles cover is the viewport on screen: a viewed
 route's, or, once the reader presses the map's locate button, an area centred on
 their own live position. The service itself never contacts a tile origin. The
 raw coordinates the browser's Geolocation API returns — read when the locate
-button is pressed, and once as the catalogue opens, to rank routes by how far
+button is pressed, and once the search palette is asked to rank routes by how far
 each starts from the reader — stay in the page: they move the camera or are
 compared against route starts there, and are never sent to this service, a
 log, storage, or the tile origin as a discrete value. Only the resulting tile
@@ -1084,14 +1084,10 @@ HTML of its own. `/`, `/routes/{provider}/{source-route-id}/{stage-order}`,
 `/admin` with any tab under it (`/admin/{section}`, tasks among them) requires
 an admin session: any other session is answered not found rather than `403`,
 since a document is not one of the contract's operations. The former `/sync`,
-`/settings`, `/settings/tasks` and `/volume` documents are gone and answer not found. `/` forwards in the browser to `/activities`, and a `/?route=` link the entry page once handed out forwards to that route's page. The catalogue asks the
-service for nothing of its own: it is the library as a sortable table beside a
-map of the one route pointed at, and the ordering, searching and narrowing it
-offers all happen in the browser. A route is read on its own page, reached from
-the catalogue or by name from any page. For an
-admin on a deployment that plans, it also reads the plan listing and each
-unpublished plan, to show those drafts on a shelf of their own that opens them
-in the planner, and marks each published plan's row with a way into it there. Account
+`/settings`, `/settings/tasks` and `/volume` documents are gone and answer not found. `/` forwards in the browser to `/activities`; `/catalogue`, a page that is gone, forwards there too, and a `/?route=` link the entry page once handed out forwards to that route's page. A route is read on its own page, reached through the search palette every page opens: it asks the
+service for nothing of its own, and the searching, narrowing and ordering it
+offers all happen in the browser. For an admin on a deployment that plans, it
+also reads the plan listing, to list those drafts and open them in the planner. Account
 holds this rider's sync status and history, their own Wahoo and Zwift
 connections and rider profile, and lists the data sources this service credits, while the service's runtime settings are read and written over the
 endpoints above and are the same for every browser. The colour scheme is

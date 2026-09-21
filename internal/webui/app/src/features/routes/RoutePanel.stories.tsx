@@ -34,7 +34,6 @@ export const RouteDetail: Story = {
           onHighlightClear={() => setHighlight(null)}
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
-          libraryCount={47}
           onClose={() => {}}
           sourceBaseUrls={{ veloplanner: "https://veloplanner.com" }}
         />

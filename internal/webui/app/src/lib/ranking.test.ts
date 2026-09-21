@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Route } from "../api/types";
-import type { CatalogueView } from "./catalogue";
-import { DEFAULT_VIEW, initialDirection, readView, sortRoutes, writeView } from "./catalogue";
-import { EMPTY_FILTERS } from "./filters";
+import { initialDirection, sortRoutes } from "./ranking";
 
 function route(title: string, overrides: Partial<Route> = {}): Route {
   return {
@@ -104,60 +102,5 @@ describe("initialDirection", () => {
     expect(initialDirection("title")).toBe("asc");
     expect(initialDirection("distance")).toBe("desc");
     expect(initialDirection("movingTime")).toBe("desc");
-  });
-});
-
-describe("readView", () => {
-  it("answers an empty address with the default view", () => {
-    expect(readView(new URLSearchParams())).toEqual(DEFAULT_VIEW);
-  });
-
-  it("reads a search, an order, and the bounds", () => {
-    const view = readView(
-      new URLSearchParams("q=rhine&sort=ascent&dir=desc&distanceMin=8000&durationMax=7200"),
-    );
-
-    expect(view.query).toBe("rhine");
-    expect(view.sort).toBe("ascent");
-    expect(view.direction).toBe("desc");
-    expect(view.filters.distanceMetres).toEqual({ min: 8_000, max: null });
-    expect(view.filters.movingSeconds).toEqual({ min: null, max: 7200 });
-  });
-
-  it("reads each named source", () => {
-    const view = readView(new URLSearchParams("source=komoot&source=&source=local"));
-
-    expect(view.filters.providers).toEqual(["komoot", "local"]);
-  });
-
-  it("falls back rather than failing on anything it does not recognise", () => {
-    const view = readView(new URLSearchParams("sort=colour&dir=sideways&distanceMin=far"));
-
-    expect(view.sort).toBe(DEFAULT_VIEW.sort);
-    expect(view.direction).toBe(DEFAULT_VIEW.direction);
-    expect(view.filters.distanceMetres.min).toBeNull();
-  });
-});
-
-describe("writeView", () => {
-  it("writes nothing at all for an untouched catalogue", () => {
-    expect(writeView(DEFAULT_VIEW).toString()).toBe("");
-  });
-
-  it("round-trips a view through the address", () => {
-    const view: CatalogueView = {
-      query: "rhine",
-      sort: "gradient",
-      direction: "asc",
-      filters: {
-        ...EMPTY_FILTERS,
-        distanceMetres: { min: 8_000, max: 120_000 },
-        ascentMetres: { min: null, max: 900 },
-        movingSeconds: { min: 1800, max: null },
-        providers: ["komoot", "local"],
-      },
-    };
-
-    expect(readView(writeView(view))).toEqual(view);
   });
 });
