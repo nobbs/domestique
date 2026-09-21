@@ -308,8 +308,24 @@ describe("SearchPalette", () => {
     expect(titles()).toHaveLength(LIBRARY.length);
   });
 
-  it("chooses between completions with Right and Left at the end of the query", async () => {
+  it("offers the filters and by before anything is typed", async () => {
     show("/activities");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    const offered = within(screen.getByRole("group", { name: "Completions" }))
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(offered).toEqual([
+      expect.stringMatching(/^dist:/),
+      expect.stringMatching(/^up:/),
+      expect.stringMatching(/^time:/),
+      expect.stringMatching(/^src:/),
+      expect.stringMatching(/^by/),
+    ]);
+  });
+
+  it("chooses between completions with Right and Left at the end of the query", async () => {
+    show("/activities", { planner: true });
     await userEvent.click(screen.getByRole("button", { name: "Search" }));
     await userEvent.type(searchbox(), "d");
 

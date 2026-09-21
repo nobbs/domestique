@@ -252,8 +252,9 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
         distances: library.map((route) => route.distanceMetres),
         ascents: library.map((route) => route.ascentMetres),
         durations: library.map((route) => route.movingSeconds ?? 0),
+        drafts: planner,
       }),
-    [query, sources, library],
+    [query, sources, library, planner],
   );
   const [suggested, setSuggested] = useState(0);
   const offered = suggestions[suggested] ?? suggestions[0];
@@ -368,36 +369,44 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
               className="min-w-32 flex-1 bg-transparent text-lg outline-none placeholder:text-[var(--ink-2)] [&::-webkit-search-cancel-button]:appearance-none"
             />
           </div>
-          {suggestions.length > 0 ? (
-            <div
-              role="group"
-              aria-label="Completions"
-              className="flex flex-wrap items-center gap-1.5 border-[var(--rule)] border-b px-5 py-2 text-xs"
-            >
-              {suggestions.map((entry) => (
-                <button
-                  key={entry.label}
-                  type="button"
-                  aria-pressed={entry === offered}
-                  title={entry.hint}
-                  onClick={() => {
-                    setQuery(entry.query);
-                    setSuggested(0);
-                    field.current?.focus();
-                  }}
-                  className={`flex items-center gap-1.5 rounded-[7px] px-2 py-0.5 ${
-                    entry === offered
-                      ? "bg-[var(--ink)] text-[var(--panel)]"
-                      : "bg-[var(--muted)] text-[var(--ink)] hover:bg-[var(--rule)]"
-                  }`}
-                >
-                  <span className="font-mono">{entry.label}</span>
-                  <span className="opacity-70">{entry.hint}</span>
-                </button>
-              ))}
-              <span className="ml-auto text-[var(--ink-2)]">←→ choose · tab complete</span>
-            </div>
-          ) : null}
+          <div
+            role="group"
+            aria-label="Completions"
+            className="flex min-h-10 flex-wrap items-center gap-1.5 border-[var(--rule)] border-b px-5 py-2 text-xs"
+          >
+            {suggestions.length === 0 ? (
+              <span className="text-[var(--ink-2)]">Space for filters</span>
+            ) : null}
+            {suggestions.map((entry) => (
+              <button
+                key={entry.label}
+                type="button"
+                aria-pressed={entry === offered}
+                title={entry.example ?? entry.hint}
+                onClick={() => {
+                  setQuery(entry.query);
+                  setSuggested(0);
+                  field.current?.focus();
+                }}
+                className={`flex items-center gap-1.5 rounded-[7px] px-2 py-0.5 ${
+                  entry === offered
+                    ? "bg-[var(--ink)] text-[var(--panel)]"
+                    : "bg-[var(--muted)] text-[var(--ink)] hover:bg-[var(--rule)]"
+                }`}
+              >
+                <span className="font-mono">{entry.label}</span>
+                <span className="opacity-70">{entry.hint}</span>
+              </button>
+            ))}
+            {suggestions.length > 0 ? (
+              <span
+                className="ml-auto text-[var(--ink-2)]"
+                title="Left and right choose; Tab completes"
+              >
+                ←→ tab
+              </span>
+            ) : null}
+          </div>
           <div className="flex min-h-0 flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_24rem]">
             <div className="flex min-h-0 w-full flex-col">
               <ul

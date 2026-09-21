@@ -244,7 +244,10 @@ export function withoutToken(text: string, token: Token): string {
 /** One completion for the word being typed: what to show, and the query it leaves. */
 export interface Suggestion {
   label: string;
+  /** A word or two, to fit many in a row. */
   hint: string;
+  /** The longer explanation, for a tooltip. */
+  example?: string;
   query: string;
 }
 
@@ -254,15 +257,17 @@ export interface SuggestionSource {
   distances: readonly number[];
   ascents: readonly number[];
   durations: readonly number[];
+  /** Whether the reader has drafts, and so a use for the `draft` key. */
+  drafts: boolean;
 }
 
-const KEYS: ReadonlyArray<{ key: string; hint: string }> = [
-  { key: "dist:", hint: "distance in km, e.g. dist:40-80" },
-  { key: "up:", hint: "ascent in m, e.g. up:<1000" },
-  { key: "time:", hint: "moving time, e.g. time:<2h" },
-  { key: "src:", hint: "source" },
-  { key: "by", hint: "order, e.g. by distance desc" },
-  { key: "draft", hint: "only drafts" },
+const KEYS: ReadonlyArray<{ key: string; hint: string; example: string }> = [
+  { key: "dist:", hint: "km", example: "Distance in km, e.g. dist:40-80" },
+  { key: "up:", hint: "climb m", example: "Ascent in m, e.g. up:<1000" },
+  { key: "time:", hint: "moving", example: "Moving time, e.g. time:<2h" },
+  { key: "src:", hint: "source", example: "Source, e.g. src:komoot" },
+  { key: "by", hint: "order", example: "Order, e.g. by distance desc by name" },
+  { key: "draft", hint: "drafts", example: "Only drafts; -draft hides them" },
 ];
 
 /** The value a third of the way and two thirds of the way through, rounded to `step`. */
@@ -296,22 +301,47 @@ function rangeSuggestions(
   ].map((entry) => ({ ...entry, value: `${key}:${entry.value}` }));
 }
 
+/** The keys this reader has a use for. */
+function keysFor(source: SuggestionSource) {
+  return KEYS.filter(({ key }) => key !== "draft" || source.drafts);
+}
+
+/** Every key the query does not hold yet, to follow `text`, which ends where a word would begin. */
+function freshKeys(text: string, source: SuggestionSource): Suggestion[] {
+  const held = new Set(parseQuery(text).tokens.map((token) => token.key));
+  return keysFor(source)
+    .filter(({ key }) => !["dist:", "up:", "time:", "draft"].includes(key) || !held.has(keyOf(key)))
+    .map(({ key, hint, example }) => ({
+      label: key,
+      hint,
+      example,
+      query: `${text}${key}${key.endsWith(":") ? "" : " "}`,
+    }));
+}
+
+/** The token key a completion key names: `dist:` names `dist`, `by` names `sort`. */
+function keyOf(key: string): TokenKey {
+  return key === "by" ? "sort" : (key.replace(":", "") as TokenKey);
+}
+
 /**
- * Completions for the last word of the query, best first; none while that word
- * is empty or already a whole token. Accepting one replaces that word.
+ * Completions for the last word of the query, best first; with no word begun,
+ * the keys the query does not already hold. Accepting one replaces that word.
  */
 export function suggest(text: string, source: SuggestionSource): Suggestion[] {
   const direction = /(^|\s)by\s+(\S+)\s+(\S*)$/i.exec(text);
   if (direction?.[2] && SORT_NAMES[direction[2].toLowerCase()]) {
     const partial = (direction[3] ?? "").toLowerCase();
     const before = text.slice(0, text.length - partial.length);
-    return (["asc", "desc"] as const)
+    const directions = (["asc", "desc"] as const)
       .filter((each) => each.startsWith(partial) && each !== partial)
       .map((each) => ({
         label: each,
         hint: each === "asc" ? "ascending" : "descending",
         query: `${before}${each} `,
       }));
+    // Nothing begun after the measure: a direction, or the next filter.
+    return partial === "" ? [...directions, ...freshKeys(text, source)] : directions;
   }
   const measure = /(^|\s)by\s+(\S*)$/i.exec(text);
   if (measure) {
@@ -326,20 +356,21 @@ export function suggest(text: string, source: SuggestionSource): Suggestion[] {
         query: `${before}${spelling} `,
       }));
   }
+  const offered = keysFor(source);
   const match = /(^|\s)(\S+)$/.exec(text);
   const word = match?.[2];
   if (word === undefined) {
-    return [];
+    return freshKeys(text, source);
   }
   const before = text.slice(0, text.length - word.length);
   const lower = word.toLowerCase();
   const colon = lower.indexOf(":");
-  let options: Array<{ value: string; hint: string; final: boolean }>;
+  let options: Array<{ value: string; hint: string; example?: string; final: boolean }>;
 
   if (colon < 0) {
-    options = KEYS.filter(({ key }) => key.startsWith(lower) && key !== lower).map(
-      ({ key, hint }) => ({ value: key, hint, final: !key.endsWith(":") }),
-    );
+    options = offered
+      .filter(({ key }) => key.startsWith(lower) && key !== lower)
+      .map(({ key, hint, example }) => ({ value: key, hint, example, final: !key.endsWith(":") }));
   } else {
     const key = lower.slice(0, colon);
     let values: Array<{ value: string; hint: string }> = [];
@@ -360,9 +391,10 @@ export function suggest(text: string, source: SuggestionSource): Suggestion[] {
       .map((entry) => ({ ...entry, final: true }));
   }
 
-  return options.map(({ value, hint, final }) => ({
+  return options.map(({ value, hint, example, final }) => ({
     label: value,
     hint,
+    ...(example === undefined ? {} : { example }),
     query: `${before}${value}${final ? " " : ""}`,
   }));
 }

@@ -108,15 +108,27 @@ describe("suggest", () => {
     distances: [10_000, 20_000, 30_000, 40_000, 50_000, 60_000],
     ascents: [100, 300, 500, 700, 900, 1_100],
     durations: [1_800, 3_600, 5_400, 7_200, 9_000, 10_800],
+    drafts: true,
   };
   const labels = (text: string) => suggest(text, source).map((entry) => entry.label);
 
   it("offers the keys a started word could be, and nothing for a finished word", () => {
     expect(labels("rhine d")).toEqual(["dist:", "draft"]);
     expect(labels("b")).toEqual(["by"]);
-    expect(labels("")).toEqual([]);
-    expect(labels("rhine ")).toEqual([]);
     expect(labels("draft")).toEqual([]);
+  });
+
+  it("offers every key the query does not hold yet while no word is begun", () => {
+    expect(labels("")).toEqual(["dist:", "up:", "time:", "src:", "by", "draft"]);
+    expect(labels("rhine dist:<30 ")).toEqual(["up:", "time:", "src:", "by", "draft"]);
+    expect(suggest("rhine ", source)[0]?.query).toBe("rhine dist:");
+    expect(suggest("", source).find((entry) => entry.label === "by")?.query).toBe("by ");
+  });
+
+  it("offers draft only to a reader with drafts", () => {
+    const rider = { ...source, drafts: false };
+    expect(suggest("", rider).map((entry) => entry.label)).not.toContain("draft");
+    expect(suggest("d", rider).map((entry) => entry.label)).toEqual(["dist:"]);
   });
 
   it("leaves the cursor after a key, and a space after a whole token", () => {
@@ -138,9 +150,19 @@ describe("suggest", () => {
       "by near",
     ]);
     expect(suggest("by dis", source)[0]?.query).toBe("by distance ");
-    expect(labels("by distance ")).toEqual(["asc", "desc"]);
+    expect(labels("by distance ")).toEqual([
+      "asc",
+      "desc",
+      "dist:",
+      "up:",
+      "time:",
+      "src:",
+      "by",
+      "draft",
+    ]);
     expect(labels("by distance d")).toEqual(["desc"]);
-    expect(labels("stand by me ")).toEqual([]);
+    // "me" is no measure, so this is a name followed by the keys, not an order.
+    expect(labels("stand by me ")).toEqual(["dist:", "up:", "time:", "src:", "by", "draft"]);
   });
 
   it("offers ranges cut from the library's own thirds, in friendly steps", () => {
