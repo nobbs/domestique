@@ -230,7 +230,7 @@ function stubViewport(narrow: boolean) {
   vi.stubGlobal(
     "matchMedia",
     vi.fn((query: string) => ({
-      matches: narrow && query.includes("max-width"),
+      matches: query.includes(narrow ? "max-width" : "min-width"),
       media: query,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
@@ -306,6 +306,21 @@ describe("CataloguePage", () => {
 
     const row = within(libraryRegion()).getByRole("link", { name: /Alpine loop/ });
     expect(await within(row).findByTitle("Distance to start")).toHaveTextContent("0 m");
+  });
+
+  it("mounts no map between the narrow breakpoint and the sidebar's", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn((query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+    show();
+
+    expect(screen.queryByTestId("library-map")).not.toBeInTheDocument();
   });
 
   it("offers no nearest-first ranking without a position", () => {

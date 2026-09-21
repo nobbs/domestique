@@ -69,7 +69,7 @@ import {
 } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
 import { matchesText, matchingRoutes } from "../../lib/library";
-import { useNarrowViewport } from "../../lib/mediaQuery";
+import { useMediaQuery, useNarrowViewport } from "../../lib/mediaQuery";
 import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
 import { gradientBand, gradientShares, haversineMetres } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
@@ -525,6 +525,8 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
   // stage seen. Only the atlas does, from the moment a route's own panel shows.
   const { changeOf } = useSeenRoutes();
   const narrow = useNarrowViewport();
+  // Tailwind's `lg`, where the sidebar stands beside the table; below it the map is not mounted at all.
+  const wide = useMediaQuery("(min-width: 64rem)");
   // Open by default on a wide screen, closed on a narrow one; the reader's own
   // later toggling is never revisited when the viewport itself changes.
   const [filtersOpen, setFiltersOpen] = useState(() => !narrow);
@@ -799,8 +801,8 @@ export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
             </Panel>
           </div>
           <div className="order-1 flex flex-col gap-5 lg:order-2 lg:sticky lg:top-20">
-            {basemap && !narrow && !onDrafts && lines.length > 0 ? (
-              <div className="hidden h-64 overflow-hidden rounded-2xl shadow-[var(--shadow)] lg:block">
+            {basemap && wide && !onDrafts && lines.length > 0 ? (
+              <div className="h-64 overflow-hidden rounded-2xl shadow-[var(--shadow)]">
                 <LibraryMap
                   styleUrl={basemap.styleUrl}
                   darkBasemap={basemap.dark}
