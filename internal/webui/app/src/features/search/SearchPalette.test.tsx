@@ -20,15 +20,21 @@ import { SearchPaletteProvider } from "../../lib/searchPalette";
 import { stubPendingFetch } from "../../test/network";
 import { SearchPalette } from "./SearchPalette";
 
-const drawn = vi.hoisted(() => ({ keys: [] as string[] }));
+const drawn = vi.hoisted(() => ({ keys: [] as string[], mounts: 0 }));
 
 // jsdom has no WebGL: the preview map only records which route it was asked to draw.
-vi.mock("../routes/LibraryMap", () => ({
-  LibraryMap: (props: { lines: Array<{ key: string }> }) => {
-    drawn.keys = props.lines.map((line) => line.key);
-    return <div data-testid="library-map" />;
-  },
-}));
+vi.mock("../routes/LibraryMap", async () => {
+  const { useEffect } = await import("react");
+  return {
+    LibraryMap: (props: { lines: Array<{ key: string }> }) => {
+      drawn.keys = props.lines.map((line) => line.key);
+      useEffect(() => {
+        drawn.mounts += 1;
+      }, []);
+      return <div data-testid="library-map" />;
+    },
+  };
+});
 
 function route(sourceRouteId: number, title: string): LibraryRoute {
   return {
@@ -113,8 +119,8 @@ function show(
     listing = "seeded",
   }: {
     planner?: boolean;
-    /** Seeds every route's line, for the preview and the Nearest sort. */
-    geometry?: boolean;
+    /** Seeds every route's line, or only the first listed one's, for the preview and the Nearest sort. */
+    geometry?: boolean | "first";
     /** The route listing in the cache, still on its way, or refused. */
     listing?: "seeded" | "pending" | "failed";
   } = {},
@@ -138,6 +144,9 @@ function show(
   }
   if (geometry) {
     LIBRARY.forEach((entry, index) => {
+      if (geometry === "first" && entry !== KAISERSTUHL) {
+        return;
+      }
       client.setQueryData(
         routeGeometryQuery(entry.provider, entry.sourceRouteId, entry.stageOrder).queryKey,
         geometryFor(index),
@@ -197,6 +206,7 @@ beforeEach(() => {
   // fetch would otherwise fail it.
   stubViewport(true);
   drawn.keys = [];
+  drawn.mounts = 0;
 });
 
 afterEach(() => {
@@ -410,6 +420,30 @@ describe("SearchPalette", () => {
 
     expect(screen.getByTestId("library-map")).toBeInTheDocument();
     expect(drawn.keys).toEqual(["veloplanner/2/1"]);
+  });
+
+  it("keeps the preview map, and the last line, while the next route's line loads", async () => {
+    stubViewport(false);
+    stubPendingFetch();
+    show("/activities", { geometry: "first" });
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(drawn.keys).toEqual(["veloplanner/2/1"]);
+
+    // The next row's line never arrives; a fresh map would start from the whole world.
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByTestId("library-map")).toBeInTheDocument();
+    expect(drawn.keys).toEqual(["veloplanner/2/1"]);
+    expect(drawn.mounts).toBe(1);
+  });
+
+  it("puts the preview away once a search leaves no row to show", async () => {
+    stubViewport(false);
+    show("/activities", { geometry: true });
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.getByTestId("library-map")).toBeInTheDocument();
+
+    await userEvent.type(searchbox(), "nowhere");
+    expect(screen.queryByTestId("library-map")).toBeNull();
   });
 
   it("mounts no preview map on a narrow screen", async () => {

@@ -227,13 +227,23 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
           }),
     [current?.route, routeLine.data, previewCoordinates],
   );
-  const previewLines = useMemo(
+  const fresh = useMemo(
     () =>
       current && previewCoordinates.length > 1
-        ? [{ key: current.key, coordinates: previewCoordinates }]
-        : [],
-    [current, previewCoordinates],
+        ? { lines: [{ key: current.key, coordinates: previewCoordinates }], bounds: previewBounds }
+        : null,
+    [current, previewCoordinates, previewBounds],
   );
+  // The last line shown stays up while the next one loads: unmounting the map in the
+  // gap would start a new one from the whole world for every row the reader moves to.
+  const [held, setHeld] = useState<typeof fresh>(null);
+  useEffect(() => {
+    if (fresh) {
+      setHeld(fresh);
+    }
+  }, [fresh]);
+  // With no row highlighted there is nothing to preview, and no next line coming.
+  const shownPreview = current ? (fresh ?? held) : null;
   const prefersDark = usePrefersDarkScheme();
   const [basemapChoice] = useBasemapChoice();
   const basemap = config.data
@@ -464,14 +474,14 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
                 )}
               </ul>
             </div>
-            {wide && basemap && previewLines.length > 0 ? (
+            {wide && basemap && shownPreview ? (
               <div className="m-2 ml-0 hidden min-h-80 overflow-hidden rounded-[11px] lg:block">
                 <LibraryMap
                   styleUrl={basemap.styleUrl}
                   darkBasemap={basemap.dark}
-                  lines={previewLines}
-                  pickedKey={current?.key ?? null}
-                  bounds={previewBounds}
+                  lines={shownPreview.lines}
+                  pickedKey={shownPreview.lines[0]?.key ?? null}
+                  bounds={shownPreview.bounds}
                   controls={false}
                 />
               </div>
