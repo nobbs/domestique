@@ -319,7 +319,20 @@ describe("SearchPalette", () => {
     expect(screen.getByRole("button", { name: /^dist:/, pressed: true })).toBeInTheDocument();
 
     await userEvent.keyboard("{ArrowRight}{Tab}");
-    expect(searchbox()).toHaveValue("draft ");
+    // Finished, the token leaves the text for a chip in the field.
+    expect(searchbox()).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Remove draft" })).toBeInTheDocument();
+  });
+
+  it("takes the last chip back into the text on Backspace in an empty field", async () => {
+    show("/activities");
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    await userEvent.type(searchbox(), "dist:>15 ");
+    expect(searchbox()).toHaveValue("");
+
+    await userEvent.keyboard("{Backspace}");
+    expect(searchbox()).toHaveValue("dist:>15");
+    expect(screen.queryByRole("button", { name: "Remove dist:>15" })).toBeNull();
   });
 
   it("completes a started key with Tab", async () => {

@@ -39,7 +39,7 @@ import { matchesText, matchingRoutes, routePath } from "../../lib/library";
 import { useMediaQuery } from "../../lib/mediaQuery";
 import { haversineMetres, rangeBounds } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
-import { parseQuery, suggest, withoutToken } from "../../lib/query";
+import { joinQuery, parseQuery, splitQuery, suggest, withoutToken } from "../../lib/query";
 import { sortRoutes } from "../../lib/ranking";
 import { ownsShortcut, useSearchPalette } from "../../lib/searchPalette";
 import { useStartupLocation } from "../../lib/startupLocation";
@@ -76,6 +76,7 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
   const [query, setQuery] = useState("");
   // The query text is the one source of truth; every control edits its tokens.
   const parsed = useMemo(() => parseQuery(query), [query]);
+  const { chips, draft } = useMemo(() => splitQuery(query), [query]);
   const { filters, order } = parsed;
   const [active, setActive] = useState(0);
   const field = useRef<HTMLInputElement>(null);
@@ -279,7 +280,14 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
     }
     // Right has nowhere to take the caret at the end of the query, so it picks the next
     // completion there; Left steps back only while a later one is picked.
-    const atEnd = field.current.selectionStart === query.length;
+    const atEnd = field.current.selectionStart === draft.length;
+    // Backspace in an empty field takes the last chip back into the text, to edit it.
+    const last = chips[chips.length - 1];
+    if (event.key === "Backspace" && draft === "" && last) {
+      event.preventDefault();
+      setQuery(joinQuery(chips.slice(0, -1), last.text));
+      return;
+    }
     if (event.key === "ArrowRight" && atEnd && suggestions.length > 1) {
       event.preventDefault();
       setSuggested((suggested + 1) % suggestions.length);
@@ -312,23 +320,54 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
           className="fixed top-[8vh] left-1/2 z-50 flex h-fit max-h-[80vh] w-[40rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-col overflow-hidden rounded-xl bg-[var(--panel)] shadow-[var(--shadow)] outline-none lg:w-[64rem]"
           onKeyDown={onKeyDown}
         >
-          <label className="flex items-center gap-3 border-[var(--rule)] border-b px-5 py-4">
+          {/* Not a label: it holds the chips' own buttons, and a label would press the first. */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: a pointer convenience; the field itself takes focus from the keyboard */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: as above */}
+          <div
+            onClick={(event) => {
+              if (event.target === event.currentTarget) {
+                field.current?.focus();
+              }
+            }}
+            className="flex cursor-text flex-wrap items-center gap-x-2 gap-y-1.5 border-[var(--rule)] border-b px-5 py-4"
+          >
             <IconSearch size={20} stroke={1.8} className="text-[var(--ink-2)]" aria-hidden="true" />
+            {chips.map((token) => (
+              <span
+                key={token.text}
+                className="flex items-center gap-1 rounded-[7px] bg-[var(--muted)] py-0.5 pr-1 pl-2 font-mono text-[var(--ink)] text-sm"
+              >
+                {token.text}
+                <button
+                  type="button"
+                  aria-label={`Remove ${token.text}`}
+                  onClick={() => {
+                    setQuery((text) => withoutToken(text, token));
+                    field.current?.focus();
+                  }}
+                  className="text-[var(--ink-2)] hover:text-[var(--ink)]"
+                >
+                  <IconX size={12} aria-hidden="true" />
+                </button>
+              </span>
+            ))}
             <input
               ref={field}
               type="search"
-              value={query}
+              value={draft}
               onChange={(event) => {
-                setQuery(event.target.value);
+                setQuery(joinQuery(chips, event.target.value));
                 setActive(0);
                 setSuggested(0);
               }}
-              placeholder="Route name or place, or dist:40-80 up:<1000 by distance"
+              placeholder={
+                chips.length === 0 ? "Route name or place, or dist:40-80 up:<1000 by distance" : ""
+              }
               aria-label="Search the route library"
               aria-activedescendant={current ? `search-option-${current.key}` : undefined}
-              className="min-w-0 flex-1 bg-transparent text-lg outline-none placeholder:text-[var(--ink-2)] [&::-webkit-search-cancel-button]:appearance-none"
+              className="min-w-32 flex-1 bg-transparent text-lg outline-none placeholder:text-[var(--ink-2)] [&::-webkit-search-cancel-button]:appearance-none"
             />
-          </label>
+          </div>
           {suggestions.length > 0 ? (
             <div
               role="group"
@@ -357,26 +396,6 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
                 </button>
               ))}
               <span className="ml-auto text-[var(--ink-2)]">←→ choose · tab complete</span>
-            </div>
-          ) : null}
-          {parsed.tokens.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5 border-[var(--rule)] border-b px-5 py-2">
-              {parsed.tokens.map((token) => (
-                <span
-                  key={token.text}
-                  className="flex items-center gap-1 rounded-[7px] bg-[var(--muted)] py-0.5 pr-1 pl-2 font-mono text-[var(--ink)] text-xs"
-                >
-                  {token.text}
-                  <button
-                    type="button"
-                    aria-label={`Remove ${token.text}`}
-                    onClick={() => setQuery((text) => withoutToken(text, token))}
-                    className="text-[var(--ink-2)] hover:text-[var(--ink)]"
-                  >
-                    <IconX size={12} aria-hidden="true" />
-                  </button>
-                </span>
-              ))}
             </div>
           ) : null}
           <div className="flex min-h-0 flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_24rem]">

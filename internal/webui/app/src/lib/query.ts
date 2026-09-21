@@ -191,6 +191,45 @@ function formatDuration(seconds: number): string {
   return minutes === 0 ? `${hours}h` : `${hours}h${minutes}`;
 }
 
+/**
+ * The query as the search field shows it: each finished token as a chip, and
+ * what is left as text. A token still at the end of the query, with nothing typed
+ * after it, is not finished — `by distance` may yet take `asc` — so it stays text.
+ */
+export function splitQuery(text: string): { chips: Token[]; draft: string } {
+  const words = text.split(/\s+/).filter(Boolean);
+  const trailing = /\s$/.test(text);
+  const { tokens } = parseQuery(text);
+  const chips: Token[] = [];
+  const rest: string[] = [];
+  let at = 0;
+  let next = 0;
+  while (at < words.length) {
+    const token = tokens[next];
+    const span = token?.text.split(" ") ?? [];
+    if (token && span.every((part, offset) => words[at + offset] === part)) {
+      const end = at + span.length;
+      if (end < words.length || trailing) {
+        chips.push(token);
+      } else {
+        rest.push(...span);
+      }
+      at = end;
+      next += 1;
+    } else {
+      rest.push(words[at] as string);
+      at += 1;
+    }
+  }
+
+  return { chips, draft: `${rest.join(" ")}${trailing && rest.length > 0 ? " " : ""}` };
+}
+
+/** The whole query from the field's chips and its text, the inverse of `splitQuery`. */
+export function joinQuery(chips: Token[], draft: string): string {
+  return chips.length === 0 ? draft : `${chips.map((chip) => chip.text).join(" ")} ${draft}`;
+}
+
 /** The query without one token exactly as it was typed, say from its chip. */
 export function withoutToken(text: string, token: Token): string {
   const words = text.split(/\s+/).filter(Boolean);

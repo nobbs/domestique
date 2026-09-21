@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SuggestionSource } from "./query";
-import { parseQuery, suggest, withoutToken } from "./query";
+import { joinQuery, parseQuery, splitQuery, suggest, withoutToken } from "./query";
 
 describe("parseQuery", () => {
   it("keeps plain words for the name match and applies nothing else", () => {
@@ -151,5 +151,35 @@ describe("suggest", () => {
 
   it("offers no ranges for a library too small to cut in thirds", () => {
     expect(suggest("dist:", { ...source, distances: [10_000] })).toEqual([]);
+  });
+});
+
+describe("splitQuery", () => {
+  const chipTexts = (text: string) => splitQuery(text).chips.map((chip) => chip.text);
+
+  it("makes each finished token a chip and leaves the words as text", () => {
+    expect(splitQuery("rhine dist:40-80 loop")).toEqual({
+      chips: [{ key: "dist", text: "dist:40-80" }],
+      draft: "rhine loop",
+    });
+  });
+
+  it("leaves a token at the very end as text until something follows it", () => {
+    expect(splitQuery("dist:40-80")).toEqual({ chips: [], draft: "dist:40-80" });
+    expect(chipTexts("dist:40-80 ")).toEqual(["dist:40-80"]);
+    expect(splitQuery("by distance").draft).toBe("by distance");
+    expect(chipTexts("by distance asc by name ")).toEqual(["by distance asc", "by name"]);
+  });
+
+  it("keeps a trailing space after words, so typing carries on where it was", () => {
+    expect(splitQuery("rhine ").draft).toBe("rhine ");
+    expect(splitQuery("dist:>20 ").draft).toBe("");
+  });
+
+  it("joins back to a query that splits the same way", () => {
+    for (const text of ["rhine dist:40-80 loop", "dist:>20 ", "by ascent desc by distance ", ""]) {
+      const { chips, draft } = splitQuery(text);
+      expect(splitQuery(joinQuery(chips, draft))).toEqual({ chips, draft });
+    }
   });
 });
