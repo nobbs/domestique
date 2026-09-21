@@ -7,9 +7,9 @@ import { routeGeometryQuery, routesQuery, webUIConfigQuery } from "../../api/que
 import { coordinates, route, routeGeometryFixture, StoryProviders } from "../../storybook/fixtures";
 import { CataloguePage } from "./CataloguePage";
 
-// No map: the catalogue is a ledger, and the
-// geometry it fetches for the glyphs is already seeded by `StoryProviders`
-// under the same keys the atlas caches it with.
+// The sidebar mounts a real map of the first row, on the basemap `StoryProviders`
+// configures; the geometry it and the glyphs read is seeded there too, under the
+// same keys the atlas caches it with.
 //
 // Every assertion below waits rather than reading once: a click or a keystroke
 // settles on the machine's own schedule, and a `getBy` that reads a beat early

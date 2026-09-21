@@ -2,12 +2,9 @@
  * Ordering the library by what a route measures, and keeping that order in the
  * address.
  *
- * This is the catalogue's whole difference from the atlas. The atlas has one
- * fixed order and argues against a control to change it — see `library.ts` —
- * because a column beside a map is read from the top while the map answers
- * where each route goes. The catalogue has no map to answer that, and ranking
- * the library by a number is the reason it exists, so here the order is the
- * reader's to choose.
+ * The atlas has one fixed order and argues against a control to change it — see
+ * `library.ts`. Ranking the library by a number is the reason the catalogue
+ * exists, so here the order is the reader's to choose.
  *
  * The choice lives in the query string rather than in component state because
  * opening a route leaves this page for the atlas: without it, coming back would
@@ -20,7 +17,7 @@ import type { LibraryFilters, NumericRange } from "./filters";
 import { EMPTY_FILTERS } from "./filters";
 
 /** Which measure the table is ranked by. */
-export type SortColumn = "title" | "distance" | "ascent" | "gradient" | "movingTime";
+export type SortColumn = "title" | "distance" | "ascent" | "gradient" | "movingTime" | "start";
 
 export type SortDirection = "asc" | "desc";
 
@@ -50,6 +47,7 @@ export const SORT_COLUMNS: ReadonlyArray<{
   { column: "ascent", label: "Climbing", short: "Ascent" },
   { column: "gradient", label: "Max gradient", short: "Max" },
   { column: "movingTime", label: "Moving time", short: "Time" },
+  { column: "start", label: "Distance to start", short: "Start" },
 ];
 
 /** One measure's names, or undefined for a column that is not ranked by. */
@@ -81,10 +79,11 @@ const SORT_COLUMN_NAMES = new Set<string>(SORT_COLUMNS.map((entry) => entry.colu
  *
  * A reader sorting by name wants A before Z, and a reader sorting by anything
  * measured is asking which is the longest, the steepest, the hardest — so the
- * numeric columns open descending and only reverse when asked again.
+ * numeric columns open descending and only reverse when asked again. Distance
+ * to start is the exception: the question there is which is nearest.
  */
 export function initialDirection(column: SortColumn): SortDirection {
-  return column === "title" ? "asc" : "desc";
+  return column === "title" || column === "start" ? "asc" : "desc";
 }
 
 export const DEFAULT_VIEW: CatalogueView = {
@@ -106,10 +105,16 @@ export const DEFAULT_VIEW: CatalogueView = {
  * A route with no predicted moving time sorts last in both directions. It is
  * not the shortest ride in the library; it is one the model has nothing to say
  * about, and burying it under the answers is closer to the truth than ranking
- * it as zero.
+ * it as zero. A start distance not yet known — no position, no geometry — sorts
+ * last the same way.
  */
-export function sortRoutes(routes: Route[], sort: SortColumn, direction: SortDirection): Route[] {
-  const measure = MEASURES[sort];
+export function sortRoutes(
+  routes: Route[],
+  sort: SortColumn,
+  direction: SortDirection,
+  startMetres: (route: Route) => number | undefined = () => undefined,
+): Route[] {
+  const measure = sort === "start" ? startMetres : MEASURES[sort];
   // The name column is the order the library already came in, so descending is
   // that order backwards rather than a comparison of its own.
   if (!measure) {

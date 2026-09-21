@@ -52,6 +52,8 @@ export interface LibraryMapProps {
   children?: ReactNode;
   onPick?: (key: string) => void;
   inertKey?: string | null;
+  /** False for a small preview: no scale, zoom, basemap or weather controls. */
+  controls?: boolean;
 }
 
 function keyAt(event: MapLayerMouseEvent): string | null {
@@ -74,6 +76,7 @@ export function LibraryMap({
   children,
   onPick,
   inertKey = null,
+  controls = true,
 }: LibraryMapProps) {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -116,29 +119,31 @@ export function LibraryMap({
         // new basemap loads, so choosing one does not take the controls away
         // from under the hand that just used them.
         furniture={
-          <>
-            <ScaleControl position="bottom-left" unit="metric" />
-            <MapControls>
-              {onBasemapChange ? (
-                <BasemapPicker
-                  basemaps={basemaps}
-                  selectedName={selectedBasemap}
-                  onSelect={onBasemapChange}
-                  expanded={pickerOpen}
-                  onExpandedChange={setPickerOpen}
+          controls ? (
+            <>
+              <ScaleControl position="bottom-left" unit="metric" />
+              <MapControls>
+                {onBasemapChange ? (
+                  <BasemapPicker
+                    basemaps={basemaps}
+                    selectedName={selectedBasemap}
+                    onSelect={onBasemapChange}
+                    expanded={pickerOpen}
+                    onExpandedChange={setPickerOpen}
+                  />
+                ) : null}
+                <WeatherOverlayPicker
+                  measures={MEASURES}
+                  selected={overlays}
+                  onToggle={toggleOverlay}
+                  hoursAhead={hoursAhead}
+                  onHoursAheadChange={setHoursAhead}
+                  expanded={weatherPickerOpen}
+                  onExpandedChange={setWeatherPickerOpen}
                 />
-              ) : null}
-              <WeatherOverlayPicker
-                measures={MEASURES}
-                selected={overlays}
-                onToggle={toggleOverlay}
-                hoursAhead={hoursAhead}
-                onHoursAheadChange={setHoursAhead}
-                expanded={weatherPickerOpen}
-                onExpandedChange={setWeatherPickerOpen}
-              />
-            </MapControls>
-          </>
+              </MapControls>
+            </>
+          ) : null
         }
       >
         <MapViewport bounds={bounds} maxZoom={maxZoom} {...(insets ? { insets } : {})} />

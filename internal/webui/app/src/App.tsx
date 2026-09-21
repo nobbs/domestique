@@ -156,7 +156,7 @@ export function App() {
       <Route path="/" element={<AtlasPage themeChoice={themeChoice} />} />
       <Route path="routes/:provider/:sourceRouteId/:stageOrder" element={<OpenedRoute />} />
       <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
-      <Route path="catalogue" element={<CataloguePage />} />
+      <Route path="catalogue" element={<CataloguePage themeChoice={themeChoice} />} />
       {/* The one page reached without a session. The service serves this same
           document there, so the sign-in form is the application's own. */}
       <Route path="auth/login" element={<SignInPage />} />

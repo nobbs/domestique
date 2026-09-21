@@ -493,6 +493,13 @@ describe("LibraryMap", () => {
     expect(drawn.scaleUnit).toBe("metric");
   });
 
+  it("draws no scale or controls for a preview", () => {
+    show({ controls: false });
+
+    expect(drawn.furniture).toEqual([]);
+    expect(screen.queryByTestId("map-controls")).not.toBeInTheDocument();
+  });
+
   /*
    * Two pixels of ink is not a target. The band that is actually asked about is
    * far wider and invisible, and it carries the same identity as the line inside
