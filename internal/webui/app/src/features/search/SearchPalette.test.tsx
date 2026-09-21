@@ -436,6 +436,16 @@ describe("SearchPalette", () => {
     expect(drawn.mounts).toBe(1);
   });
 
+  it("puts the preview away once a search leaves no row to show", async () => {
+    stubViewport(false);
+    show("/activities", { geometry: true });
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(screen.getByTestId("library-map")).toBeInTheDocument();
+
+    await userEvent.type(searchbox(), "nowhere");
+    expect(screen.queryByTestId("library-map")).toBeNull();
+  });
+
   it("mounts no preview map on a narrow screen", async () => {
     show("/activities", { geometry: true });
     await userEvent.click(screen.getByRole("button", { name: "Search" }));

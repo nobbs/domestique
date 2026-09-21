@@ -242,7 +242,8 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
       setHeld(fresh);
     }
   }, [fresh]);
-  const shownPreview = fresh ?? held;
+  // With no row highlighted there is nothing to preview, and no next line coming.
+  const shownPreview = current ? (fresh ?? held) : null;
   const prefersDark = usePrefersDarkScheme();
   const [basemapChoice] = useBasemapChoice();
   const basemap = config.data
