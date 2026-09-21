@@ -79,6 +79,18 @@ describe("sortRoutes", () => {
     expect(titles(sortRoutes(neither, "movingTime", "desc"))).toEqual(["Alps", "Border"]);
   });
 
+  it("ranks by distance to start nearest first, unknown starts last", () => {
+    const start: Record<string, number | undefined> = { Alps: 5_000, Coast: 1_000 };
+    const startOf = (entry: Route) => start[entry.title];
+
+    expect(titles(sortRoutes(library, "start", "asc", startOf))).toEqual([
+      "Coast",
+      "Alps",
+      "Border",
+    ]);
+    expect(initialDirection("start")).toBe("asc");
+  });
+
   it("does not disturb the array it was given", () => {
     const original = [...library];
     sortRoutes(library, "distance", "desc");

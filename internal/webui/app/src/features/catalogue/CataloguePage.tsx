@@ -16,6 +16,10 @@
  * lands, so a cold catalogue is readable before any of it arrives. An admin on a
  * deployment that plans also reads the plan listing and each draft, for the Drafts shelf.
  *
+ * On a wide screen the sidebar carries a map of one route: the row last pointed
+ * at, or the first row until one is. A map of every route at once is a tangle
+ * past a dozen of them.
+ *
  * Opening a route hands it to the atlas at `/?route=…` rather than showing it
  * here. There is one place a route is read, and this is a way into it.
  */
@@ -35,7 +39,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { Position, Route, RouteGeometry, SurfaceRange } from "../../api/types";
+import type { BoundingBox, Position, Route, RouteGeometry, SurfaceRange } from "../../api/types";
 import { routeKey } from "../../api/types";
 import { PageShell } from "../../components/Layout";
 import { Panel } from "../../components/PanelHeading";
@@ -43,6 +47,7 @@ import { RouteGlyph } from "../../components/RouteGlyph";
 import type { SegmentedItem } from "../../components/Segmented";
 import { Segmented } from "../../components/Segmented";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
+import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import type { CatalogueView, SortColumn } from "../../lib/catalogue";
 import {
   initialDirection,
@@ -66,10 +71,13 @@ import { useEffectiveAdmin } from "../../lib/identity";
 import { matchesText, matchingRoutes } from "../../lib/library";
 import { useNarrowViewport } from "../../lib/mediaQuery";
 import { bandLabel, bandVariable, surfaceLabel, surfaceVariable } from "../../lib/mix";
-import { gradientBand, gradientShares } from "../../lib/profile";
+import { gradientBand, gradientShares, haversineMetres } from "../../lib/profile";
 import type { RouteChange } from "../../lib/seenRoutes";
 import { useSeenRoutes } from "../../lib/seenRoutes";
+import { useStartupLocation } from "../../lib/startupLocation";
 import { summariseSurface } from "../../lib/surface";
+import { resolvesDark, type ThemeChoice } from "../../lib/theme";
+import { LibraryMap, type MapLine } from "../routes/LibraryMap";
 import { RouteChangeBadge } from "../routes/RouteChangeBadge";
 import { CatalogueFilters } from "./CatalogueFilters";
 import { DraftList, EditPlanButton, planEditLink, useDrafts } from "./Drafts";
@@ -93,6 +101,7 @@ const SORT_ITEMS: ReadonlyArray<SegmentedItem<SortColumn>> = [
   { key: "movingTime", label: "Time" },
   { key: "gradient", label: "Steepest" },
 ];
+const START_ITEM: SegmentedItem<SortColumn> = { key: "start", label: "Nearest" };
 
 /** Focuses the search field on ⌘K or Ctrl+K, as its hint says. */
 function useShortcut(ref: React.RefObject<HTMLInputElement | null>) {
@@ -191,13 +200,22 @@ function FiltersToggle({
 function SortControl({
   view,
   sortBy,
+  nearby,
 }: {
   view: CatalogueView;
   sortBy: (column: SortColumn) => void;
+  /** Whether the reader's position is known, so distance to start can rank. */
+  nearby: boolean;
 }) {
   return (
     <span className="flex flex-wrap items-center gap-1.5">
-      <Segmented label="Sort by" size="sm" items={SORT_ITEMS} value={view.sort} onChange={sortBy} />
+      <Segmented
+        label="Sort by"
+        size="sm"
+        items={nearby ? [...SORT_ITEMS, START_ITEM] : SORT_ITEMS}
+        value={view.sort}
+        onChange={sortBy}
+      />
       <button
         type="button"
         aria-label={view.direction === "asc" ? "Ascending" : "Descending"}
@@ -252,6 +270,19 @@ function RouteMixBars({
   );
 }
 
+/** How far a route's start is: null hides the figure, undefined is not known yet. */
+type StartDistance = number | undefined | null;
+
+function formatStart(start: StartDistance): string {
+  return start === undefined || start === null ? "–" : formatDistance(start);
+}
+
+/** What a row reports back to the map it shares the page with. */
+interface RowLink {
+  active: boolean;
+  onActivate: (key: string) => void;
+}
+
 /** One route, as an inset ledger row: shape, name and mixes, then its figures. */
 function LedgerRow({
   route,
@@ -260,6 +291,8 @@ function LedgerRow({
   change,
   to,
   planner,
+  start,
+  link,
 }: {
   route: Route;
   coordinates: Position[];
@@ -268,12 +301,20 @@ function LedgerRow({
   to: string;
   /** Whether the reader edits plans; every row then keeps room for a published plan's pencil. */
   planner: boolean;
+  start: StartDistance;
+  link: RowLink;
 }) {
+  const key = routeKey(route);
   return (
-    <li className="group relative border-[var(--panel)] border-b-2 last:border-b-0">
+    <li
+      data-active={link.active || undefined}
+      onMouseEnter={() => link.onActivate(key)}
+      className="group relative border-[var(--panel)] border-b-2 last:border-b-0 data-active:bg-[color-mix(in_oklab,var(--accent)_12%,transparent)]"
+    >
       <Link
         to={to}
-        className={`${planner ? "pr-12 " : ""}relative grid grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem] items-center gap-x-4 px-3 py-2.5 text-sm tabular-nums before:absolute before:inset-1 before:rounded-[7px] hover:before:bg-[color-mix(in_oklab,var(--ink-2)_8%,transparent)]`}
+        onFocus={() => link.onActivate(key)}
+        className={`${planner ? "pr-12 " : ""}relative grid ${start === null ? "grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem]" : "grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_5.5rem_5rem_4rem_5rem]"} items-center gap-x-4 px-3 py-2.5 text-sm tabular-nums before:absolute before:inset-1 before:rounded-[7px] hover:before:bg-[color-mix(in_oklab,var(--ink-2)_8%,transparent)]`}
       >
         <span className="relative block size-10">
           <RouteGlyph
@@ -298,6 +339,11 @@ function LedgerRow({
         <span className="relative text-right text-[var(--ink-2)]">
           {formatGradient(route.maxGradientPercent)}
         </span>
+        {start === null ? null : (
+          <span className="relative text-right text-[var(--ink-2)]" title="Distance to start">
+            {formatStart(start)}
+          </span>
+        )}
       </Link>
       {planner ? (
         <EditPlanButton route={route} className="absolute top-1/2 right-2 z-10 -translate-y-1/2" />
@@ -318,11 +364,13 @@ function CatalogueCard({
   coordinates,
   change,
   planner,
+  start,
 }: {
   route: Route;
   coordinates: Position[];
   change: RouteChange;
   planner: boolean;
+  start: StartDistance;
 }) {
   const where = secondName(route);
 
@@ -352,6 +400,7 @@ function CatalogueCard({
             <span>{formatAscent(route.ascentMetres)}</span>
             <span>{formatGradient(route.maxGradientPercent)}</span>
             <span>{formatMovingTime(route.movingSeconds)}</span>
+            {start === null ? null : <span>{formatStart(start)} to start</span>}
           </span>
         </span>
       </Link>
@@ -454,7 +503,12 @@ function Recent({
   );
 }
 
-export function CataloguePage() {
+export interface CataloguePageProps {
+  /** The reader's colour-scheme pick. Held by `App` — see there for why. */
+  themeChoice?: ThemeChoice;
+}
+
+export function CataloguePage({ themeChoice = "system" }: CataloguePageProps) {
   const routes = useQuery(routesQuery());
   const status = useQuery(statusQuery());
   const config = useQuery(webUIConfigQuery());
@@ -470,6 +524,11 @@ export function CataloguePage() {
   // Open by default on a wide screen, closed on a narrow one; the reader's own
   // later toggling is never revisited when the viewport itself changes.
   const [filtersOpen, setFiltersOpen] = useState(() => !narrow);
+  const prefersDark = usePrefersDarkScheme();
+  const [basemapChoice] = useBasemapChoice();
+  // Never stored or sent: it only measures how far each start is from here.
+  const location = useStartupLocation(true);
+  const [chosenKey, setChosenKey] = useState<string | null>(null);
 
   const [params, setParams] = useSearchParams();
   const view = useMemo(() => readView(params), [params]);
@@ -521,6 +580,7 @@ export function CataloguePage() {
     (results: Array<UseQueryResult<RouteGeometry>>) => {
       const shapes = new Map<string, Position[]>();
       const ranges = new Map<string, SurfaceRange[]>();
+      const boxes = new Map<string, BoundingBox>();
       library.forEach((route, index) => {
         const geometry = results[index]?.data;
         if (!geometry) {
@@ -528,12 +588,13 @@ export function CataloguePage() {
         }
         const key = routeKey(route);
         shapes.set(key, geometry.coordinates);
+        boxes.set(key, geometry.bbox);
         if (geometry.surface && geometry.surface.matchedMetres > 0) {
           ranges.set(key, geometry.surface.ranges);
         }
       });
 
-      return { shapes, ranges };
+      return { shapes, ranges, boxes };
     },
     [library],
   );
@@ -549,15 +610,49 @@ export function CataloguePage() {
     [drawn.shapes],
   );
 
+  const startOf = useCallback(
+    (route: Route): StartDistance => {
+      if (location === null) {
+        return null;
+      }
+      const first = drawn.shapes.get(routeKey(route))?.[0];
+      return first ? haversineMetres(location, first) : undefined;
+    },
+    [location, drawn.shapes],
+  );
+
   const shown = useMemo(
     () =>
       sortRoutes(
         matchingRoutes(library, view.query).filter((route) => matchesFilters(route, view.filters)),
         view.sort,
         view.direction,
+        (route) => startOf(route) ?? undefined,
       ),
-    [library, view.query, view.filters, view.sort, view.direction],
+    [library, view.query, view.filters, view.sort, view.direction, startOf],
   );
+
+  // The route pointed at last, while the search still shows it; else the first row.
+  const activeKey =
+    chosenKey !== null && shown.some((route) => routeKey(route) === chosenKey)
+      ? chosenKey
+      : shown[0]
+        ? routeKey(shown[0])
+        : null;
+  const activeCoordinates = activeKey ? drawn.shapes.get(activeKey) : undefined;
+  const lines = useMemo<MapLine[]>(
+    () =>
+      activeKey && activeCoordinates ? [{ key: activeKey, coordinates: activeCoordinates }] : [],
+    [activeKey, activeCoordinates],
+  );
+  const bounds = activeKey ? (drawn.boxes.get(activeKey) ?? null) : null;
+  const basemap = config.data
+    ? basemapFor(config.data, resolvesDark(themeChoice, prefersDark), basemapChoice)
+    : null;
+  const linkOf = (route: Route): RowLink => ({
+    active: routeKey(route) === activeKey,
+    onActivate: setChosenKey,
+  });
 
   const hasQuery = view.query.trim() !== "";
   const shownDrafts = drafted.drafts.filter(({ plan }) => matchesText(plan.name, view.query));
@@ -601,7 +696,9 @@ export function CataloguePage() {
               subtitle={onDrafts ? formatCount(shownDrafts.length, "draft") : subtitle}
               aside={
                 <span className="flex flex-wrap items-center justify-end gap-2">
-                  {onDrafts ? null : <SortControl view={view} sortBy={sortBy} />}
+                  {onDrafts ? null : (
+                    <SortControl view={view} sortBy={sortBy} nearby={location !== null} />
+                  )}
                   {planner ? (
                     <Segmented
                       label="Shelf"
@@ -672,6 +769,7 @@ export function CataloguePage() {
                           coordinates={shapeOf(route)}
                           change={changeOf(route)}
                           planner={planner}
+                          start={startOf(route)}
                         />
                       ))}
                     </ul>
@@ -686,6 +784,8 @@ export function CataloguePage() {
                           change={changeOf(route)}
                           to={atlasLink(route)}
                           planner={planner}
+                          start={startOf(route)}
+                          link={linkOf(route)}
                         />
                       ))}
                     </ul>
@@ -695,6 +795,18 @@ export function CataloguePage() {
             </Panel>
           </div>
           <div className="order-1 flex flex-col gap-5 lg:order-2 lg:sticky lg:top-20">
+            {basemap && !narrow && !onDrafts && lines.length > 0 ? (
+              <div className="hidden h-64 overflow-hidden rounded-2xl shadow-[var(--shadow)] lg:block">
+                <LibraryMap
+                  styleUrl={basemap.styleUrl}
+                  darkBasemap={basemap.dark}
+                  lines={lines}
+                  pickedKey={activeKey}
+                  bounds={bounds}
+                  controls={false}
+                />
+              </div>
+            ) : null}
             {filtersOpen && !onDrafts ? (
               <CatalogueFilters
                 library={library}

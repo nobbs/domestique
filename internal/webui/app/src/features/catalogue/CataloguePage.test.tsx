@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getGetPlanQueryKey, getListPlansQueryKey } from "../../api/generated";
 import { routeGeometryQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
 import type { Route as LibraryRoute, RouteGeometry, Status, WebUIConfig } from "../../api/types";
@@ -18,6 +18,16 @@ import { useViewAsRider } from "../../lib/identity";
 import { stubPendingFetch } from "../../test/network";
 import { IDLE_STATUS } from "../../test/status";
 import { CataloguePage } from "./CataloguePage";
+
+const drawn = vi.hoisted(() => ({ keys: [] as string[] }));
+
+// jsdom has no WebGL: the map only records which routes it was asked to draw.
+vi.mock("../routes/LibraryMap", () => ({
+  LibraryMap: (props: { lines: Array<{ key: string }> }) => {
+    drawn.keys = props.lines.map((line) => line.key);
+    return <div data-testid="library-map" />;
+  },
+}));
 
 function libraryRoute(
   title: string,
@@ -230,9 +240,72 @@ function stubViewport(narrow: boolean) {
 
 beforeEach(() => {
   stubViewport(false);
+  drawn.keys = [];
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+/** A position just north of every test route's start, the third route's nearest. */
+function stubPosition() {
+  vi.stubGlobal("navigator", {
+    geolocation: {
+      getCurrentPosition: (found: (position: { coords: object }) => void) =>
+        found({ coords: { latitude: 49.25, longitude: 8 } }),
+    },
+  });
+}
+
 describe("CataloguePage", () => {
+  it("maps only the first row until another is pointed at", () => {
+    show();
+    expect(drawn.keys).toEqual(["veloplanner/1/1"]);
+
+    const row = within(libraryRegion())
+      .getByRole("link", { name: /Border run/ })
+      .closest("li");
+    fireEvent.mouseEnter(row as HTMLElement);
+    expect(drawn.keys).toEqual(["veloplanner/2/1"]);
+    expect(row).toHaveAttribute("data-active");
+
+    // Leaving the row keeps it on the map, so the pointer can travel to the map.
+    fireEvent.mouseLeave(row as HTMLElement);
+    expect(drawn.keys).toEqual(["veloplanner/2/1"]);
+  });
+
+  it("falls back to the first shown row once the search hides the active one", async () => {
+    const user = userEvent.setup();
+    show();
+    fireEvent.mouseEnter(
+      within(libraryRegion())
+        .getByRole("link", { name: /Border run/ })
+        .closest("li") as HTMLElement,
+    );
+
+    await user.type(screen.getByRole("searchbox"), "coast");
+    expect(drawn.keys).toEqual(["veloplanner/3/1"]);
+  });
+
+  it("ranks by distance to start once the reader's position is known", async () => {
+    stubPosition();
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole("button", { name: "Nearest" }));
+    expect(shownTitles()).toEqual([
+      expect.stringContaining("Coast ride"),
+      expect.stringContaining("Border run"),
+      expect.stringContaining("Alpine loop"),
+    ]);
+  });
+
+  it("offers no nearest-first ranking without a position", () => {
+    show();
+
+    expect(screen.queryByRole("button", { name: "Nearest" })).not.toBeInTheDocument();
+  });
+
   it("lists the whole library by name, and says how much of it is shown", () => {
     show();
 
