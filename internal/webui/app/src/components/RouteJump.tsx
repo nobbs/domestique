@@ -53,7 +53,7 @@ export function RouteJump() {
   const library = useMemo(() => routes.data ?? [], [routes.data]);
   const config = useQuery(webUIConfigQuery());
   const planner = useEffectiveAdmin() && config.data?.planning === true;
-  // Asked for only while the panel is up, and only by someone who has drafts.
+  // Asked for only while the panel is up, and only by an admin on a deployment that plans.
   const plans = useQuery({ ...getListPlansQueryOptions(), enabled: open && planner });
   const drafts = useMemo(
     () =>
