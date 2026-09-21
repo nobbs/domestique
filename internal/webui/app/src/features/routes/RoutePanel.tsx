@@ -158,16 +158,7 @@ export interface RoutePanelProps {
    */
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
-  /**
-   * How many routes the search goes back to.
-   *
-   * The count is what makes leaving a described action rather than an undo: a
-   * reader who opened a route by accident is told what is behind it. It is the
-   * close button's accessible name, since the pill has no room for a row of its
-   * own to write it on.
-   */
-  libraryCount: number;
-  /** Puts the route away and gives the search pill back. */
+  /** Puts the route away and goes back to where it was opened from. */
   onClose: () => void;
   /** Each configured source's web application, keyed by provider. */
   sourceBaseUrls: Record<string, string>;
@@ -188,7 +179,6 @@ export function RoutePanel({
   onHighlightClear,
   collapsed,
   onCollapsedChange,
-  libraryCount,
   onClose,
   sourceBaseUrls,
 }: RoutePanelProps) {
@@ -292,13 +282,7 @@ export function RoutePanel({
           <button
             type="button"
             onClick={onClose}
-            aria-label={
-              // Zero is the listing still loading, not an empty library, and
-              // "go back to 0 routes" reads as the second.
-              libraryCount === 0
-                ? "Close the route and go back to the library"
-                : `Close the route and go back to ${libraryCount} ${libraryCount === 1 ? "route" : "routes"}`
-            }
+            aria-label="Close the route"
             className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] border-[var(--rule)] border-l"
           >
             <IconX size={16} stroke={2} aria-hidden="true" />

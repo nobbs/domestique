@@ -79,8 +79,8 @@ function renderPage(
   options: {
     library?: LibraryRoute[];
     at?: string;
-    /** Router state to land the page with, e.g. the catalogue address to close back to. */
-    state?: unknown;
+    /** Entries before the route itself, so closing has in-app history to go back to. */
+    entries?: string[];
     /** "failed" leaves geometry unseeded, so the stubbed 404 fetch answers it. */
     geometry?: RouteGeometry | "failed";
     activities?: Activity[];
@@ -121,21 +121,18 @@ function renderPage(
     }
   }
 
-  const entry = {
-    pathname: options.at ?? "/routes/veloplanner/2/1",
-    ...(options.state !== undefined ? { state: options.state } : {}),
-  };
+  const entries = [...(options.entries ?? []), options.at ?? "/routes/veloplanner/2/1"];
 
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[entry]}>
+      <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
         <Landed />
         <Routes>
           <Route
             path="/routes/:provider/:sourceRouteId/:stageOrder"
             element={<AtlasPage themeChoice="system" />}
           />
-          <Route path="/catalogue" element={<span>the catalogue</span>} />
+          <Route path="/activities" element={<span>the activities page</span>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -222,25 +219,22 @@ describe("AtlasPage", () => {
     expect(screen.queryByRole("region", { name: "Kaiserstuhl Loop" })).toBeNull();
   });
 
-  it("closes to the catalogue address carried in router state", async () => {
-    renderPage({ state: { catalogue: "?sort=ascent&dir=asc" } });
+  it("closes back to wherever it was opened from, in-app", async () => {
+    renderPage({ entries: ["/activities"] });
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Close the route" }));
 
-    expect(screen.getByTestId("landed")).toHaveTextContent("/catalogue?sort=ascent&dir=asc");
+    expect(screen.getByText("the activities page")).toBeInTheDocument();
+    expect(screen.getByTestId("landed")).toHaveTextContent("/activities");
   });
 
-  it("closes to the catalogue's own address when it was opened with no state", async () => {
+  it("closes to the activities page when it was opened directly, with no history", async () => {
     renderPage();
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Close the route" }));
 
-    expect(screen.getByText("the catalogue")).toBeInTheDocument();
-    expect(screen.getByTestId("landed")).toHaveTextContent("/catalogue");
+    expect(screen.getByText("the activities page")).toBeInTheDocument();
+    expect(screen.getByTestId("landed")).toHaveTextContent("/activities");
   });
 
   it("closes on Escape the same way the close button does", async () => {
@@ -249,6 +243,6 @@ describe("AtlasPage", () => {
 
     await userEvent.keyboard("{Escape}");
 
-    expect(screen.getByText("the catalogue")).toBeInTheDocument();
+    expect(screen.getByText("the activities page")).toBeInTheDocument();
   });
 });

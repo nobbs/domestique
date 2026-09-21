@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
-import { Navigate, Route, Routes, useParams, useSearchParams } from "react-router";
+import { Navigate, Route, Routes, useLocation, useParams, useSearchParams } from "react-router";
 import { webUIConfigQuery } from "./api/queries";
 import { Button } from "./components/Button";
 import { Unavailable } from "./components/Unavailable";
@@ -10,13 +10,14 @@ import { ActivitiesPage } from "./features/activity/ActivitiesPage";
 import { ActivityPage } from "./features/activity/ActivityPage";
 import { AdminPage } from "./features/admin/AdminPage";
 import { SignInPage } from "./features/auth/SignInPage";
-import { CataloguePage } from "./features/catalogue/CataloguePage";
 import { FitnessPage } from "./features/fitness/FitnessPage";
 import { PlanPage } from "./features/plan/PlanPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
+import { SearchPalette } from "./features/search/SearchPalette";
 import { useEffectiveAdmin, useViewAsRider } from "./lib/identity";
 import { parseRouteKey, routePath } from "./lib/library";
-import { useThemeChoice } from "./lib/theme";
+import { SearchPaletteProvider } from "./lib/searchPalette";
+import { type ThemeChoice, useThemeChoice } from "./lib/theme";
 
 /**
  * Guards an admin-only route. Nothing is rendered while identity is still
@@ -108,6 +109,16 @@ function OpenedLegacyRoute() {
   return <Navigate to={`/routes/veloplanner/${sourceRouteId}/${stageOrder}`} replace />;
 }
 
+/**
+ * The palette on every page but sign-in: it asks for the config, and a request
+ * made without a session is sent to sign in, which would reload that page forever.
+ */
+function SignedInSearch({ themeChoice }: { themeChoice: ThemeChoice }) {
+  const { pathname } = useLocation();
+
+  return pathname.startsWith("/auth/") ? null : <SearchPalette themeChoice={themeChoice} />;
+}
+
 /** Each address is a distinct draft, so an opened plan never leaks into the next one. */
 function OpenedPlan() {
   const { planId } = useParams();
@@ -140,59 +151,61 @@ export function App() {
   }, [themeChoice]);
 
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route
-        path="routes/:provider/:sourceRouteId/:stageOrder"
-        element={<AtlasPage themeChoice={themeChoice} />}
-      />
-      <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
-      <Route path="catalogue" element={<CataloguePage themeChoice={themeChoice} />} />
-      {/* The one page reached without a session. The service serves this same
+    <SearchPaletteProvider>
+      <SignedInSearch themeChoice={themeChoice} />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route
+          path="routes/:provider/:sourceRouteId/:stageOrder"
+          element={<AtlasPage themeChoice={themeChoice} />}
+        />
+        <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
+        {/* The one page reached without a session. The service serves this same
           document there, so the sign-in form is the application's own. */}
-      <Route path="auth/login" element={<SignInPage />} />
-      <Route path="fitness" element={<FitnessPage />} />
-      {/* One element for both views, so the range and ground chosen survive a switch. */}
-      <Route path="activities" element={<ActivitiesPage />}>
-        <Route index />
-        <Route path="rides" />
-      </Route>
-      <Route path="activities/:activityId" element={<ActivityPage />} />
-      <Route path="account" element={<AccountPage />} />
-      <Route path="account/:section" element={<AccountPage />} />
-      <Route
-        path="plan"
-        element={
-          <PlanningOnly>
-            <OpenedPlan />
-          </PlanningOnly>
-        }
-      />
-      <Route
-        path="plan/:planId"
-        element={
-          <PlanningOnly>
-            <OpenedPlan />
-          </PlanningOnly>
-        }
-      />
-      <Route
-        path="admin"
-        element={
-          <AdminOnly>
-            <AdminPage />
-          </AdminOnly>
-        }
-      />
-      <Route
-        path="admin/:section"
-        element={
-          <AdminOnly>
-            <AdminPage />
-          </AdminOnly>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="auth/login" element={<SignInPage />} />
+        <Route path="fitness" element={<FitnessPage />} />
+        {/* One element for both views, so the range and ground chosen survive a switch. */}
+        <Route path="activities" element={<ActivitiesPage />}>
+          <Route index />
+          <Route path="rides" />
+        </Route>
+        <Route path="activities/:activityId" element={<ActivityPage />} />
+        <Route path="account" element={<AccountPage />} />
+        <Route path="account/:section" element={<AccountPage />} />
+        <Route
+          path="plan"
+          element={
+            <PlanningOnly>
+              <OpenedPlan />
+            </PlanningOnly>
+          }
+        />
+        <Route
+          path="plan/:planId"
+          element={
+            <PlanningOnly>
+              <OpenedPlan />
+            </PlanningOnly>
+          }
+        />
+        <Route
+          path="admin"
+          element={
+            <AdminOnly>
+              <AdminPage />
+            </AdminOnly>
+          }
+        />
+        <Route
+          path="admin/:section"
+          element={
+            <AdminOnly>
+              <AdminPage />
+            </AdminOnly>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </SearchPaletteProvider>
   );
 }
