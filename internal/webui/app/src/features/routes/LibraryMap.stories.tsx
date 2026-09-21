@@ -39,7 +39,6 @@ type Story = StoryObj<typeof meta>;
 export const Library: Story = {
   args: { styleUrl: streets.styleUrl, lines: [], pickedKey: null, bounds },
   render: () => {
-    const [pickedKey, setPickedKey] = useState<string | null>(null);
     const [basemap, setBasemap] = useState(streets);
 
     return (
@@ -62,9 +61,8 @@ export const Library: Story = {
             ]),
           },
         ]}
-        pickedKey={pickedKey}
+        pickedKey={null}
         bounds={bounds}
-        onPick={setPickedKey}
       />
     );
   },

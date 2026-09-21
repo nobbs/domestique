@@ -113,6 +113,18 @@ function Address() {
   return <span data-testid="address">{`${location.pathname}${location.search}`}</span>;
 }
 
+/** Stands in for the route page a catalogue row leads to, and reports what it was carried with. */
+function AtlasStub() {
+  const location = useLocation();
+
+  return (
+    <span>
+      the atlas
+      <span data-testid="atlas-state">{JSON.stringify(location.state)}</span>
+    </span>
+  );
+}
+
 /** A short line, enough for a glyph to have a shape and a surface to classify. */
 function geometryFor(index: number): RouteGeometry {
   const coordinates = Array.from({ length: 8 }, (_, step): [number, number, number] => [
@@ -196,7 +208,7 @@ function show(
         <Address />
         <Routes>
           <Route path="/catalogue" element={<CataloguePage />} />
-          <Route path="/" element={<span>the atlas</span>} />
+          <Route path="/routes/:provider/:sourceRouteId/:stageOrder" element={<AtlasStub />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -443,7 +455,20 @@ describe("CataloguePage", () => {
     await user.click(within(libraryRegion()).getByRole("link", { name: /Coast ride/ }));
 
     expect(screen.getByText("the atlas")).toBeInTheDocument();
-    expect(screen.getByTestId("address")).toHaveTextContent("route=veloplanner%2F3%2F1");
+    expect(screen.getByTestId("address")).toHaveTextContent("/routes/veloplanner/3/1");
+  });
+
+  // The address a row's own visit carries, so a route reached from a search or
+  // a sort can close straight back to it rather than to a bare catalogue.
+  it("carries its own address along for the route page to close back to", async () => {
+    const user = userEvent.setup();
+    show(LIBRARY, "/catalogue?sort=ascent&dir=asc");
+
+    await user.click(within(libraryRegion()).getByRole("link", { name: /Coast ride/ }));
+
+    expect(screen.getByTestId("atlas-state")).toHaveTextContent(
+      JSON.stringify({ catalogue: "?sort=ascent&dir=asc" }),
+    );
   });
 
   it("draws each route's shape from the geometry the atlas caches", () => {

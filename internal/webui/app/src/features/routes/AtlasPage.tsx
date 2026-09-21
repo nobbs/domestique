@@ -1,28 +1,19 @@
 /**
- * The entry page: a map of everything, and one panel over it.
+ * One route's page: the route on a map, its panel, and the dock along the foot.
  *
- * The page owns everything the map and the panel have to agree on — what the
- * library is, what the search left of it, which route is selected, which one is
- * open, and every question asked of an open route. Neither the map nor the
- * panel holds a copy, because they are two views of one answer: pointing at the
- * route marks the chart, scrubbing the chart marks the route, and a chip pressed
- * in the panel lights the same ground on both.
+ * The page owns everything the map and the panel have to agree on — the open
+ * route and every question asked of it. Neither holds a copy, because they are
+ * two views of one answer: pointing at the route marks the chart, scrubbing the
+ * chart marks the route, and a chip pressed in the panel lights the same ground
+ * on both.
  *
- * There is one MapLibre instance for the life of the page. Opening a route adds
- * a stack of layers over the library rather than mounting a second map, so the
- * ground the reader was already looking at is never thrown away and the style is
- * never downloaded twice.
- *
- * Geometry is fetched per route rather than taken from the listing, because the
- * listing carries no bounding box: the entry map needs a line for every route
- * and the glyphs need the same points, so one query serves both — and the route
- * that is opened is served from the same cache, with no second request.
+ * Choosing a route happens elsewhere: the catalogue, or the ⌘K jump. A map of
+ * every route at once was a tangle past a dozen of them.
  */
 
-import type { UseQueryResult } from "@tanstack/react-query";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import {
   activitiesQuery,
   routeClimbsQuery,
@@ -30,85 +21,28 @@ import {
   routesQuery,
   webUIConfigQuery,
 } from "../../api/queries";
-import type { BoundingBox, Position, RouteGeometry, SurfaceKind } from "../../api/types";
-import { routeKey } from "../../api/types";
+import type { Position } from "../../api/types";
 import { Layout } from "../../components/Layout";
 import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
 import { basemapFor, useBasemapChoice, usePrefersDarkScheme } from "../../lib/basemap";
 import { ROUTE_MAX_ZOOM, WINDOW_MAX_ZOOM } from "../../lib/cartography";
-import type { LibraryFilters } from "../../lib/filters";
-import { EMPTY_FILTERS, matchesFilters } from "../../lib/filters";
-import { matchingRoutes } from "../../lib/library";
+import { catalogueOf, parseRouteKey } from "../../lib/library";
 import { useOverlayInsets } from "../../lib/overlayInsets";
 import { coordinateRange, rangeBounds } from "../../lib/profile";
 import { riddenOn } from "../../lib/rideHistory";
 import { useSeenRoutes } from "../../lib/seenRoutes";
 import { useStartTime } from "../../lib/startTime";
-import { boxAround, LOCATION_ZOOM, useStartupLocation } from "../../lib/startupLocation";
 import type { ThemeChoice } from "../../lib/theme";
 import { resolvesDark } from "../../lib/theme";
 import { useEscapeKey } from "../../lib/useEscapeKey";
 import { type PlannerSeed, plannerSeedFrom } from "../plan/planner";
-import { CommandSearch, type RouteShape } from "./CommandSearch";
-import { LibraryMap, type MapLine } from "./LibraryMap";
+import { LibraryMap } from "./LibraryMap";
 import { RouteDock } from "./RouteDock";
 import { RouteOverlay } from "./RouteOverlay";
 import { RoutePanel } from "./RoutePanel";
 import { useOpenRoute } from "./useOpenRoute";
 
-/** The smallest box every drawn route fits inside, or null for no geometry yet. */
-function unionOf(boxes: BoundingBox[]): BoundingBox | null {
-  const first = boxes[0];
-  if (!first) {
-    return null;
-  }
-
-  return boxes.reduce<BoundingBox>(
-    (total, box) => [
-      Math.min(total[0], box[0]),
-      Math.min(total[1], box[1]),
-      Math.max(total[2], box[2]),
-      Math.max(total[3], box[3]),
-    ],
-    first,
-  );
-}
-
-/**
- * The three parts a `routeKey` is made of, or null for anything that is not one.
- *
- * The address carries every part of the identity the service serves a route
- * under even though nothing on the page ever shows the last two: a library
- * with more than one provider or more than one route under a source route
- * would otherwise have routes that cannot be linked to.
- *
- * The two-part form this address had before a second provider existed is still
- * read, and means the provider it always meant. This is the address the app
- * itself handed out — a bookmarked or shared `?route=12%2F1` predates the
- * provider entirely — so refusing it here would strand exactly the links this
- * change is supposed to keep working, the same way the Go handler keeps the
- * two-segment paths resolving.
- */
-function parseRouteKey(
-  value: string | null,
-): { provider: string; sourceRouteId: number; stageOrder: number } | null {
-  const parts = (value ?? "").split("/");
-  const [provider, left, right] = parts.length === 2 ? ["veloplanner", ...parts] : parts;
-  if (
-    parts.length > 3 ||
-    !provider ||
-    !left ||
-    !right ||
-    !/^\d+$/.test(left) ||
-    !/^\d+$/.test(right)
-  ) {
-    return null;
-  }
-  const sourceRouteId = Number.parseInt(left, 10);
-  const stageOrder = Number.parseInt(right, 10);
-
-  return sourceRouteId > 0 && stageOrder > 0 ? { provider, sourceRouteId, stageOrder } : null;
-}
+const NO_LINES: [] = [];
 
 export interface AtlasPageProps {
   /** The reader's colour-scheme pick. Held by `App` — see there for why. */
@@ -149,99 +83,25 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   // Remembered across visits, and the next half hour where nothing is. See
   // lib/startTime.ts.
   const [startAt, setStartAt] = useStartTime();
-  const { changeOf, markSeen } = useSeenRoutes();
+  const { markSeen } = useSeenRoutes();
   // What the panels are standing on, so the camera frames a route in the part
   // of the map the reader can actually see.
   const insets = useOverlayInsets();
 
-  const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<LibraryFilters>(EMPTY_FILTERS);
-  const [pickedKey, setPickedKey] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-
-  /*
-   * The open route lives in the address rather than in state, so one is still a
-   * link somebody can send: everything else on this page — what was typed, which
-   * row is expanded, whether the chart is up — is a way of getting to a route
-   * rather than a thing worth linking to.
-   */
-  const [params, setParams] = useSearchParams();
-  const opened = parseRouteKey(params.get("route"));
+  const params = useParams();
+  const opened = parseRouteKey(`${params.provider}/${params.sourceRouteId}/${params.stageOrder}`);
   const openKey = opened ? `${opened.provider}/${opened.sourceRouteId}/${opened.stageOrder}` : null;
 
   const library = useMemo(() => routes.data ?? [], [routes.data]);
 
-  /*
-   * One request per route, in parallel, and each of them cached for as long as
-   * the geometry query says. It is the cost of a map of everything: the listing
-   * has no bounding box to draw from, and adding one would be a change to the
-   * service's wire contract for the sake of a first paint.
-   */
-  /*
-   * Combined here rather than in a memo over the results, because `useQueries`
-   * hands back a new array on every render and a memo keyed on it would rebuild
-   * the collection every time — and the map would be given new lines to upload
-   * every time with it. `combine` is memoised against the results themselves,
-   * so the map is handed the same lines until a geometry actually arrives.
-   */
-  const combine = useCallback(
-    (results: Array<UseQueryResult<RouteGeometry>>) => {
-      const lines: MapLine[] = [];
-      const shapes = new Map<string, RouteShape>();
-      const boxes = new Map<string, BoundingBox>();
-      // Ground classes actually present on each route, once its geometry has
-      // arrived and the enrichment pass has classified it — read from the same
-      // fetch the map already makes, not a second one for the filter's sake.
-      const surfaces = new Map<string, Set<SurfaceKind>>();
-      library.forEach((route, index) => {
-        const geometry = results[index]?.data;
-        if (!geometry) {
-          return;
-        }
-        const key = routeKey(route);
-        const coordinates: Position[] = geometry.coordinates;
-        lines.push({ key, coordinates });
-        shapes.set(
-          key,
-          geometry.surface ? { coordinates, surface: geometry.surface } : { coordinates },
-        );
-        boxes.set(key, geometry.bbox);
-        const surface = geometry.surface;
-        // The distinct kinds a filter checks against, not a share of the
-        // route. This runs for every already-arrived route each time another
-        // one's geometry lands, so it deliberately skips `summariseSurface`'s
-        // walk over every coordinate to measure lengths this has no use for.
-        if (surface && surface.matchedMetres > 0 && surface.ranges.length > 0) {
-          surfaces.set(key, new Set(surface.ranges.map((range) => range.kind)));
-        }
-      });
-
-      return { lines, shapes, boxes, surfaces };
-    },
-    [library],
-  );
-
-  const drawn = useQueries({
-    queries: library.map((route) =>
-      routeGeometryQuery(route.provider, route.sourceRouteId, route.stageOrder),
-    ),
-    combine,
-  });
-
-  // Matched and sorted on its own memo, so adjusting a filter — which leaves
-  // the query untouched — does not repeat a sort over the whole library for
-  // every keystroke in the filter panel.
-  const queried = useMemo(() => matchingRoutes(library, query), [library, query]);
-  const shown = useMemo(
-    () => queried.filter((route) => matchesFilters(route, filters)),
-    [queried, filters],
-  );
-
-  // The open route's geometry, which the library pass has already fetched under
-  // exactly this key: asking for it by name is a read of the cache rather than
-  // a second request, and it is how the panel's own surface classification —
-  // richer than the filter's kind-only reading of the same fetch — reaches it.
-  const openRoute = library.find((route) => routeKey(route) === openKey) ?? null;
+  const openRoute = opened
+    ? (library.find(
+        (route) =>
+          route.provider === opened.provider &&
+          route.sourceRouteId === opened.sourceRouteId &&
+          route.stageOrder === opened.stageOrder,
+      ) ?? null)
+    : null;
   const openGeometry = useQuery({
     ...routeGeometryQuery(
       opened?.provider ?? "",
@@ -252,16 +112,16 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
     // not is answered by saying so, not by asking the service about it.
     enabled: openRoute !== null,
   });
-  const openCoordinates = useMemo(
-    () => (openKey ? (drawn.shapes.get(openKey)?.coordinates ?? []) : []),
-    [drawn.shapes, openKey],
+  const openCoordinates = useMemo<Position[]>(
+    () => openGeometry.data?.coordinates ?? [],
+    [openGeometry.data],
   );
 
   /*
    * A route the library holds whose geometry did not arrive. Nothing can be
    * drawn, framed, or profiled from it, so the panel would be a title over an
    * empty page and the chart an axis with no line under it: the page says what
-   * happened instead, and leaves the search standing as the way on.
+   * happened instead.
    */
   const openFailed = openRoute !== null && openGeometry.isError;
   const shownRoute = openFailed ? null : openRoute;
@@ -273,10 +133,8 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   }, [openCoordinates, shownRoute]);
 
   // The rides matched to the open route, off the query the activity pages share.
-  // Not asked for until one is open: the library map has no history to show.
   const activities = useQuery({ ...activitiesQuery(), enabled: shownRoute !== null });
-  // The rider's own attempts at the open route's climbs. Asked for on the same
-  // terms as the rides: the library map has no climb of anyone's to time.
+  // The rider's own attempts at the open route's climbs.
   const routeClimbs = useQuery({
     ...routeClimbsQuery(
       shownRoute?.provider ?? "",
@@ -336,82 +194,21 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
   const [dockOpen, setDockOpen] = useState(true);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
 
-  const open = useCallback(
-    (key: string) => {
-      forget();
-      setParams((current) => {
-        const next = new URLSearchParams(current);
-        next.set("route", key);
-
-        return next;
-      });
-    },
-    [forget, setParams],
-  );
-
-  /**
-   * The route standing out on the map: the one that is open, or the one picked.
-   *
-   * Keyed rather than indexed, because geometry arrives one request at a time
-   * and a position in a list of what has arrived is not a position in the
-   * library.
-   */
-  const focusKey = openKey ?? pickedKey;
-
-  /**
-   * A route picked off the map, by pointing at where it goes.
-   *
-   * The map is the library, so a line on it is the route itself rather than a
-   * picture of one: pointing at where a ride goes is the most direct way there
-   * is of asking about it. It opens the command panel with that route active,
-   * the same as ⌘K would, rather than jumping straight to the route — the
-   * lines cross and the reader is panning across them, so a map where one
-   * click swapped the whole page would be a minefield.
-   *
-   * An opened route keeps the map to itself: its hit target is gone once the
-   * overlay is up, and a pick before that is still not a way out of the route.
-   */
-  const pick = useCallback(
-    (key: string) => {
-      if (openKey !== null) {
-        return;
-      }
-      setSearchOpen(true);
-      // The search is one way to a route and the map is another, so a route
-      // picked off the map is the answer to whatever was typed: a card that
-      // stayed hidden behind a query it does not match would be a selection the
-      // reader can see on the ground and nowhere else.
-      if (!shown.some((route) => routeKey(route) === key)) {
-        setQuery("");
-      }
-      setPickedKey(key);
-    },
-    [openKey, shown],
-  );
-
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Back to the catalogue as it was left, however many routes were jumped between.
   const close = useCallback(() => {
     forget();
-    setPickedKey(null);
-    setParams((current) => {
-      const next = new URLSearchParams(current);
-      next.delete("route");
-
-      return next;
-    });
-  }, [forget, setParams]);
+    navigate(catalogueOf(location.state));
+  }, [forget, location.state, navigate]);
 
   // Escape leaves one thing at a time, and the stretch on show is the innermost:
   // the overlay answers that one, so this only fires once there is nothing left
-  // between the reader and the library.
+  // between the reader and the catalogue.
   useEscapeKey(openKey !== null && shownWindow === null, close);
 
-  /*
-   * What the camera frames, in the order the reader asked for it: the stretch
-   * on show, then the route they opened or picked out of the column, then the
-   * whole library. Each of them is memoised, because the camera moves when the
-   * framing changes and a fresh box every render would be a new flight every
-   * keystroke — the map snapping back from wherever it had been panned.
-   */
+  // The stretch on show, else the whole route. Memoised: a fresh box every render
+  // would be a new camera flight every render.
   const windowBounds = useMemo(() => {
     const range = shownWindow
       ? coordinateRange(openCoordinates, shownWindow.startMetres, shownWindow.endMetres)
@@ -419,19 +216,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
 
     return range ? rangeBounds(openCoordinates, range) : null;
   }, [openCoordinates, shownWindow]);
-  const focusBox = focusKey ? (drawn.boxes.get(focusKey) ?? null) : null;
-  const libraryBounds = useMemo(() => unionOf([...drawn.boxes.values()]), [drawn.boxes]);
-  // Decided once, at mount, from the URL alone: a deep link keeps framing its
-  // route once the geometry arrives, rather than flying off to a position.
-  const [locationEnabled] = useState(() => openKey === null);
-  const location = useStartupLocation(locationEnabled);
-  // Only while nothing is focused: a picked route whose box has not arrived
-  // yet must not be pulled away from in the meantime.
-  const locationBox = useMemo(
-    () => (focusKey === null && location ? boxAround(location) : null),
-    [focusKey, location],
-  );
-  const bounds = windowBounds ?? focusBox ?? locationBox ?? libraryBounds;
+  const bounds = windowBounds ?? openGeometry.data?.bbox ?? null;
 
   const basemap = config.data ? basemapFor(config.data, resolvedDark, basemapChoice) : null;
   return (
@@ -444,15 +229,11 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
             basemaps={config.data?.basemaps ?? []}
             selectedBasemap={basemap.name}
             onBasemapChange={chooseBasemap}
-            lines={drawn.lines}
-            pickedKey={focusKey}
+            lines={NO_LINES}
+            pickedKey={openKey}
             bounds={bounds}
             insets={insets}
-            maxZoom={
-              windowBounds ? WINDOW_MAX_ZOOM : locationBox !== null ? LOCATION_ZOOM : ROUTE_MAX_ZOOM
-            }
-            onPick={pick}
-            inertKey={openKey}
+            maxZoom={windowBounds ? WINDOW_MAX_ZOOM : ROUTE_MAX_ZOOM}
           >
             {shownRoute && openCoordinates.length > 1 ? (
               <RouteOverlay
@@ -510,28 +291,14 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
        * top-level heading at all and a reader navigating by heading is dropped
        * into the middle of a hierarchy. It is not drawn: the map is the title.
        */}
-      <h1 className="visually-hidden">Route library</h1>
+      <h1 className="visually-hidden">{shownRoute?.title ?? "Route"}</h1>
       {routes.isError ? loadFailure("the route library", routes.error) : null}
       {config.isError ? loadFailure("the map configuration", config.error) : null}
       {/*
-       * Nothing while the library is on its way: the map with no traces on it is
-       * the loading state, and a panel saying so would cover the ground it is
-       * waiting to draw.
+       * An address naming a route this library does not have. Nothing while the
+       * library is on its way: the empty map is the loading state.
        */}
-      {routes.isSuccess && library.length === 0 ? (
-        <Alert role="status">
-          <AlertTitle>No routes yet.</AlertTitle>
-          <AlertDescription>
-            Routes appear here after the first successful read of the library.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      {/*
-       * An address naming a route this library does not have. It is the one
-       * failure this page can arrive in rather than fall into, so it says what
-       * happened instead of silently showing the library.
-       */}
-      {routes.isSuccess && library.length > 0 && openKey !== null && openRoute === null ? (
+      {routes.isSuccess && openRoute === null ? (
         <Alert variant="destructive">
           <AlertTitle>No route at that address.</AlertTitle>
           <AlertDescription>
@@ -543,8 +310,7 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
         <Alert variant="destructive">
           <AlertTitle>Could not load that route's geometry.</AlertTitle>
           <AlertDescription>
-            The library still lists it, so this is worth retrying; search below for another route in
-            the meantime.
+            The library still lists it, so this is worth retrying.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -571,32 +337,6 @@ export function AtlasPage({ themeChoice }: AtlasPageProps) {
           onClose={close}
           sourceBaseUrls={config.data?.sourceBaseUrls ?? {}}
           copySeed={copySeed}
-        />
-      ) : null}
-      {library.length > 0 ? (
-        <CommandSearch
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          routeOpen={shownRoute !== null}
-          library={library}
-          shown={shown}
-          query={query}
-          onQueryChange={(next) => {
-            setQuery(next);
-            // A search that no longer holds the picked route would leave the
-            // map highlighting one the panel no longer lists.
-            setPickedKey(null);
-          }}
-          filters={filters}
-          onFiltersChange={(next) => {
-            setFilters(next);
-            // Same reasoning as a changed search.
-            setPickedKey(null);
-          }}
-          activeKey={focusKey}
-          onOpen={open}
-          shapes={drawn.shapes}
-          changeOf={changeOf}
         />
       ) : null}
     </Layout>

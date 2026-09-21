@@ -334,10 +334,10 @@ test("the way back to the library is reachable from the keyboard", async ({
   await expect(back).toBeFocused();
   await back.press("Enter");
 
-  await expect(page).toHaveURL(/\/$/);
-  // The library is a map, not a list: what proves the way back arrived is the
-  // search over everything rather than a column of cards.
-  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
+  // Reached by a direct `page.goto`, so there is no router state naming a
+  // catalogue query to return to — the plain address is the fallback.
+  await expect(page).toHaveURL(/\/catalogue$/);
+  await expect(page.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
 });
 
 /*

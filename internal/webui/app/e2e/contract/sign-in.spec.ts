@@ -89,7 +89,7 @@ test("an unauthenticated page request is sent to sign in", async ({ page }) => {
 test("signing in completes the round trip and boots the app", async ({ page, identity }) => {
   await signIn(page, identity.origin ?? "");
 
-  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Activities", level: 1 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Signed in as rider@example.test" })).toBeVisible();
 });
 

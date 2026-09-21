@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Route } from "../api/types";
-import { matchesQuery, matchingRoutes } from "./library";
+import { catalogueOf, matchesQuery, matchingRoutes, parseRouteKey, routePath } from "./library";
 
 function stage(overrides: Partial<Route> = {}): Route {
   return {
@@ -107,5 +107,62 @@ describe("matchingRoutes", () => {
     matchingRoutes(given, "");
 
     expect(given).toEqual(library);
+  });
+});
+
+describe("routePath", () => {
+  it("addresses a route by its provider, source route and stage", () => {
+    expect(routePath({ provider: "veloplanner", sourceRouteId: 12, stageOrder: 2 })).toBe(
+      "/routes/veloplanner/12/2",
+    );
+  });
+
+  it("encodes a provider name that is not already URL-safe", () => {
+    expect(routePath({ provider: "open trail", sourceRouteId: 1, stageOrder: 1 })).toBe(
+      "/routes/open%20trail/1/1",
+    );
+  });
+});
+
+describe("parseRouteKey", () => {
+  it("reads the three-part form", () => {
+    expect(parseRouteKey("komoot/12/2")).toEqual({
+      provider: "komoot",
+      sourceRouteId: 12,
+      stageOrder: 2,
+    });
+  });
+
+  it("assumes VeloPlanner for the legacy two-part form", () => {
+    expect(parseRouteKey("12/2")).toEqual({
+      provider: "veloplanner",
+      sourceRouteId: 12,
+      stageOrder: 2,
+    });
+  });
+
+  it("rejects anything that is not one to three digit-bearing segments", () => {
+    expect(parseRouteKey(null)).toBeNull();
+    expect(parseRouteKey("")).toBeNull();
+    expect(parseRouteKey("12")).toBeNull();
+    expect(parseRouteKey("veloplanner/12/2/1")).toBeNull();
+    expect(parseRouteKey("veloplanner/x/2")).toBeNull();
+    expect(parseRouteKey("veloplanner/0/2")).toBeNull();
+    expect(parseRouteKey("veloplanner/12/0")).toBeNull();
+  });
+});
+
+describe("catalogueOf", () => {
+  it("reads the catalogue address a route page was opened with", () => {
+    expect(catalogueOf({ catalogue: "?sort=ascent&dir=asc" })).toBe(
+      "/catalogue?sort=ascent&dir=asc",
+    );
+  });
+
+  it("falls back to a bare catalogue for anything else", () => {
+    expect(catalogueOf(null)).toBe("/catalogue");
+    expect(catalogueOf(undefined)).toBe("/catalogue");
+    expect(catalogueOf({})).toBe("/catalogue");
+    expect(catalogueOf({ catalogue: "not a query" })).toBe("/catalogue");
   });
 });

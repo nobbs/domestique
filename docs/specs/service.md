@@ -1077,15 +1077,18 @@ The browser UI is served from the same origin and the same listener: an
 application entry document and immutable hashed static assets. `/auth/login`
 is the one unauthenticated browser entry route, and serves that same entry
 document: the sign-in form is the application's, and this service renders no
-HTML of its own. `/`, `/catalogue`, `/activities` (its rides at
+HTML of its own. `/`, `/routes/{provider}/{source-route-id}/{stage-order}`,
+`/catalogue`, `/activities` (its rides at
 `/activities/rides`, one ride at `/activities/{id}`) and
 `/account` with any tab under it (`/account/{section}`) require a session, and
 `/admin` with any tab under it (`/admin/{section}`, tasks among them) requires
 an admin session: any other session is answered not found rather than `403`,
 since a document is not one of the contract's operations. The former `/sync`,
-`/settings`, `/settings/tasks` and `/volume` documents are gone and answer not found. The catalogue reads the same inventory listing `/` does and asks the
-service for nothing of its own: it is the library as a sortable table, and the
-ordering, searching and narrowing it offers all happen in the browser. For an
+`/settings`, `/settings/tasks` and `/volume` documents are gone and answer not found. `/` forwards in the browser to `/activities`, and a `/?route=` link the entry page once handed out forwards to that route's page. The catalogue asks the
+service for nothing of its own: it is the library as a sortable table beside a
+map of the one route pointed at, and the ordering, searching and narrowing it
+offers all happen in the browser. A route is read on its own page, reached from
+the catalogue or by name from any page. For an
 admin on a deployment that plans, it also reads the plan listing and each
 unpublished plan, to show those drafts on a shelf of their own that opens them
 in the planner, and marks each published plan's row with a way into it there. Account

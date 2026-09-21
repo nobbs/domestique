@@ -65,16 +65,9 @@ export function matchesText(name: string, query: string): boolean {
 /**
  * What a search leaves, by name.
  *
- * One order, and on the atlas no control to change it: that column is read by
- * eye, from the top, while the map beside it answers where each route goes, so
- * a sort by distance would be a second way to ask a question the figures in
- * each row already answer.
- *
- * The catalogue does offer that control, because the argument above does not
- * survive the map being taken away — ranking the library by a measurement is
- * the whole reason that page exists. It ranks what this returns rather than
- * ordering the library itself; see `lib/catalogue.ts`, which relies on the
- * order below being total and on `sort` being stable to inherit it as a
+ * The ⌘K jump lists it in this one order. The catalogue ranks what this returns
+ * rather than ordering the library itself; see `lib/catalogue.ts`, which relies
+ * on the order below being total and on `sort` being stable to inherit it as a
  * tiebreak.
  *
  * The order is total: two routes that share a name fall back to their own stable
@@ -89,4 +82,53 @@ export function matchingRoutes(routes: Route[], query: string): Route[] {
         left.sourceRouteId - right.sourceRouteId ||
         left.stageOrder - right.stageOrder,
     );
+}
+
+/**
+ * What a route page is handed when it is opened: the catalogue address to close
+ * back to, so its search and sort survive the visit.
+ */
+export interface RouteVisit {
+  catalogue: string;
+}
+
+/** The catalogue address a route page closes to, off whatever state it was handed. */
+export function catalogueOf(state: unknown): string {
+  const search = (state as Partial<RouteVisit> | null)?.catalogue;
+  return typeof search === "string" && search.startsWith("?")
+    ? `/catalogue${search}`
+    : "/catalogue";
+}
+
+/** The page a route is read on. */
+export function routePath(route: Pick<Route, "provider" | "sourceRouteId" | "stageOrder">): string {
+  return `/routes/${encodeURIComponent(route.provider)}/${route.sourceRouteId}/${route.stageOrder}`;
+}
+
+/**
+ * The route a `routeKey` names, or null for anything that is not one.
+ *
+ * Still read for the `/?route=` links the entry page handed out before a route
+ * had a page of its own. The two-part form predates a second provider and means
+ * VeloPlanner, as the Go handler assumes for the same paths.
+ */
+export function parseRouteKey(
+  value: string | null,
+): { provider: string; sourceRouteId: number; stageOrder: number } | null {
+  const parts = (value ?? "").split("/");
+  const [provider, left, right] = parts.length === 2 ? ["veloplanner", ...parts] : parts;
+  if (
+    parts.length > 3 ||
+    !provider ||
+    !left ||
+    !right ||
+    !/^\d+$/.test(left) ||
+    !/^\d+$/.test(right)
+  ) {
+    return null;
+  }
+  const sourceRouteId = Number.parseInt(left, 10);
+  const stageOrder = Number.parseInt(right, 10);
+
+  return sourceRouteId > 0 && stageOrder > 0 ? { provider, sourceRouteId, stageOrder } : null;
 }

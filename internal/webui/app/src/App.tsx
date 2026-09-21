@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useLayoutEffect } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router";
+import { Navigate, Route, Routes, useParams, useSearchParams } from "react-router";
 import { webUIConfigQuery } from "./api/queries";
 import { Button } from "./components/Button";
 import { Unavailable } from "./components/Unavailable";
@@ -15,6 +15,7 @@ import { FitnessPage } from "./features/fitness/FitnessPage";
 import { PlanPage } from "./features/plan/PlanPage";
 import { AtlasPage } from "./features/routes/AtlasPage";
 import { useEffectiveAdmin, useViewAsRider } from "./lib/identity";
+import { parseRouteKey, routePath } from "./lib/library";
 import { useThemeChoice } from "./lib/theme";
 
 /**
@@ -86,38 +87,25 @@ function PlanningOnly({ children }: { children: ReactNode }) {
 }
 
 /**
- * The address a route used to have, answered by the one it has now.
- *
- * A route is no longer a page: it is the entry page with a route open, carried
- * in the query so it stays linkable. Anything that already held the old path —
- * a bookmark, a link in a note — lands on the same route rather than on a
- * missing page, and the identity travels across unchanged.
- *
- * Nothing here checks that the segments are present: this renders only because
- * the pattern below matched, and a pattern matches only with every dynamic
- * segment filled. What the address says is a route is checked where it can
- * actually be wrong — against the library, once the query is read back.
+ * The entry address: the rider's activities, unless it is a `/?route=` link from
+ * before a route had a page of its own, which lands on that route's page.
  */
-function OpenedRoute() {
-  const { provider, sourceRouteId, stageOrder } = useParams();
-  const key = `${provider}/${sourceRouteId}/${stageOrder}`;
+function Home() {
+  const [params] = useSearchParams();
+  const opened = parseRouteKey(params.get("route"));
 
-  return <Navigate to={`/?route=${encodeURIComponent(key)}`} replace />;
+  return <Navigate to={opened ? routePath(opened) : "/activities"} replace />;
 }
 
 /**
  * The address a route had before a second provider gave every route a
- * provider of its own, answered the same way.
- *
- * Only VeloPlanner ever handed out a two-segment link, so the provider a link
- * like this named is the one it always meant — the same assumption the Go
- * handler makes for the same paths in production.
+ * provider of its own. Only VeloPlanner ever handed out a two-segment link, the
+ * same assumption the Go handler makes for the same paths.
  */
 function OpenedLegacyRoute() {
   const { sourceRouteId, stageOrder } = useParams();
-  const key = `veloplanner/${sourceRouteId}/${stageOrder}`;
 
-  return <Navigate to={`/?route=${encodeURIComponent(key)}`} replace />;
+  return <Navigate to={`/routes/veloplanner/${sourceRouteId}/${stageOrder}`} replace />;
 }
 
 /** Each address is a distinct draft, so an opened plan never leaks into the next one. */
@@ -153,8 +141,11 @@ export function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<AtlasPage themeChoice={themeChoice} />} />
-      <Route path="routes/:provider/:sourceRouteId/:stageOrder" element={<OpenedRoute />} />
+      <Route path="/" element={<Home />} />
+      <Route
+        path="routes/:provider/:sourceRouteId/:stageOrder"
+        element={<AtlasPage themeChoice={themeChoice} />}
+      />
       <Route path="routes/:sourceRouteId/:stageOrder" element={<OpenedLegacyRoute />} />
       <Route path="catalogue" element={<CataloguePage themeChoice={themeChoice} />} />
       {/* The one page reached without a session. The service serves this same

@@ -8,7 +8,7 @@
  * failing to show what it fetched.
  */
 
-import { mapRegion, openLibrary, openRoute, openSearch, openSync, settleMap } from "../fixtures";
+import { catalogueSearch, mapRegion, openRoute, openSync, settleMap } from "../fixtures";
 import { callsTo, expect, test } from "./fixtures";
 
 const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
@@ -27,31 +27,31 @@ test("the service serves a bundle the browser can boot", async ({ bundlePage: pa
   expect(headers["x-content-type-options"]).toBe("nosniff");
 
   // The application mounted, which means the hashed module the document names was
-  // served, parsed and run by the embed handler's file server.
-  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
+  // served, parsed and run by the embed handler's file server. `/` redirects to
+  // the rider's activities, whose own heading is the landing content.
+  await expect(page.getByRole("heading", { level: 1, name: "Activities" })).toBeVisible();
   const asset = await page.locator("script[type='module']").first().getAttribute("src");
   expect(asset).toMatch(/^\/assets\/.+\.js$/);
 
   // A contract cutover replaces field names in place, so deployment verification
   // must include the browser request that discards its prior bundle.
   await page.reload({ waitUntil: "networkidle" });
-  await expect(page.getByRole("button", { name: "Search the route library" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Activities" })).toBeVisible();
 });
 
 test("the library is drawn from the routes view", async ({ bundlePage: page, apiCalls }) => {
-  await openLibrary(page);
+  await page.goto("/catalogue");
 
-  // The listing is counted where the page states its size: the entry page draws
-  // the library on the map, and the search pill says how much of it there is.
-  await expect(page.getByRole("button", { name: "Search the route library" })).toContainText(
-    "Search 7 routes",
-  );
-  await (await openSearch(page)).fill("kaiserstuhl");
+  // The listing is counted where the page states its size: the catalogue's own
+  // heading says how much of the library there is.
+  await expect(page.getByRole("region", { name: /^Library/ })).toContainText("7 routes");
+  await catalogueSearch(page).fill("kaiserstuhl");
   // Distances come from `distanceMetres`, so a result with a figure on it proves
   // the generated route model matched the real response.
-  await expect(page.getByRole("option", { name: /Synthetic Kaiserstuhl Loop/ })).toContainText(
-    "km",
-  );
+  await expect(
+    page.getByRole("region", { name: /^Library/ }).getByText("Synthetic Kaiserstuhl Loop"),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: /^Library/ })).toContainText("km");
   expect(callsTo(apiCalls, "GET", "/v1/routes").map((call) => call.status)).toContain(200);
   expect(callsTo(apiCalls, "GET", "/v1/webui/config").map((call) => call.status)).toContain(200);
 });

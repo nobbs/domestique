@@ -10,18 +10,17 @@
 import type { Page } from "@playwright/test";
 import { BASEMAP_ATTRIBUTION_TEXT } from "./basemap";
 import {
+  catalogueSearch,
   expect,
   followAccount,
   installOfflineBasemap,
   mapRegion,
-  openLibrary,
   openRoute,
-  openSearch,
-  openWorkspace,
   pinRendering,
   profileScrubber,
   settleMap,
   test,
+  visitRoute,
 } from "./fixtures";
 
 const LOOP_ROUTE = { provider: "veloplanner", sourceRouteId: 4102, stageOrder: 1 };
@@ -114,7 +113,7 @@ test.describe("the theme override", () => {
     offlinePage: page,
     basemapRequests,
   }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     expect(await backgroundOfBody(page)).toBe(LIGHT_SURFACE);
 
     // From the map itself: the scheme is in the bar, so it is reached without
@@ -131,7 +130,7 @@ test.describe("the theme override", () => {
   });
 
   test("holds across a page the control is not on", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     await chooseDarkTheme(page);
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
@@ -146,7 +145,7 @@ test.describe("the theme override", () => {
   });
 
   test("survives a reload", async ({ offlinePage: page, baseURL }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     await chooseDarkTheme(page);
     await expect.poll(() => backgroundOfBody(page)).toBe(DARK_SURFACE);
 
@@ -161,8 +160,7 @@ test.describe("on a narrow viewport", () => {
   test("the panel gives up its fixed width and the map keeps the page", async ({
     offlinePage: page,
   }) => {
-    await openLibrary(page);
-    await (await openSearch(page)).fill("rhine");
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     const panel = await page.getByRole("dialog", { name: "Route library" }).boundingBox();
     const map = await mapRegion(page).boundingBox();
@@ -171,9 +169,9 @@ test.describe("on a narrow viewport", () => {
     if (!panel || !map) {
       return;
     }
-    // Below the one breakpoint the panel is no longer the 436 px column it is on
+    // Below the one breakpoint the panel is no longer the 384 px column it is on
     // a desktop, and neither it nor the map runs off the side.
-    expect(panel.width).toBeLessThan(436);
+    expect(panel.width).toBeLessThan(384);
     expect(panel.x + panel.width).toBeLessThanOrEqual(375);
     expect(map.width).toBeLessThanOrEqual(375);
   });
@@ -185,7 +183,7 @@ test.describe("on a narrow viewport", () => {
    * the two marks at the far end keep their places.
    */
   test("the colour scheme is still in the bar", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await visitRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     const toggle = page.getByRole("button", { name: /^Theme: / });
     await expect(toggle).toBeVisible();
@@ -198,7 +196,7 @@ test.describe("on a narrow viewport", () => {
   // The tile credit is read out of a style document the page fetched, which is
   // why this is asked in a real browser rather than in jsdom.
   test("the account's data sources credit every source", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await visitRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     await followAccount(page);
     await page.getByRole("tab", { name: "Data sources" }).click();
 
@@ -213,7 +211,7 @@ test.describe("on a narrow viewport", () => {
   });
 
   test("the map itself carries no credit", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
     await expect(page.getByText(BASEMAP_ATTRIBUTION_TEXT)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /the map credit/ })).toHaveCount(0);
@@ -241,7 +239,7 @@ test.describe("on a narrow viewport", () => {
  */
 test.describe("text selection", () => {
   test("a double click on the page's own text selects nothing", async ({ offlinePage: page }) => {
-    await openLibrary(page);
+    await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
     await followAccount(page);
     await page.getByRole("tab", { name: "Data sources" }).click();
 
@@ -253,8 +251,8 @@ test.describe("text selection", () => {
   });
 
   test("a field still selects the text typed into it", async ({ offlinePage: page }) => {
-    await openLibrary(page);
-    const search = await openSearch(page);
+    await page.goto("/catalogue");
+    const search = catalogueSearch(page);
     await search.fill("rhine");
 
     // Triple click rather than `selectText`, which selects through the DOM and
@@ -274,8 +272,7 @@ test.describe("text selection", () => {
     // index.css overrules it, and what wins is decided by the cascade rather
     // than by either file on its own.
     test("the drawer does not hand selection back", async ({ offlinePage: page }) => {
-      await openLibrary(page);
-      await openWorkspace(page);
+      await openRoute(page, LOOP_ROUTE.provider, LOOP_ROUTE.sourceRouteId, LOOP_ROUTE.stageOrder);
 
       const content = page.locator('[data-slot="drawer-content"]');
       await expect(content).toBeVisible();

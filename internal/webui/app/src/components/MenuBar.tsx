@@ -39,6 +39,7 @@ import { webUIConfigQuery } from "../api/queries";
 import { useEffectiveAdmin } from "../lib/identity";
 import { useFittingCount } from "../lib/useFittingCount";
 import { Wordmark } from "./brand/Wordmark";
+import { RouteJump } from "./RouteJump";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserPill } from "./UserPill";
 
@@ -48,21 +49,16 @@ interface Destination {
   readonly end: boolean;
 }
 
-/**
- * Which page a link leads to, and whether it is the page being read.
- *
- * `end` only on the map, whose path is a prefix of nothing but is matched by
- * everything without it.
- */
-const ATLAS_DESTINATION: Destination = { to: "/", label: "Atlas", end: true };
+/** The landing page: `/` redirects here. */
+const ACTIVITIES_DESTINATION: Destination = { to: "/activities", label: "Activities", end: false };
 
-/** Between Atlas and Catalogue: shown only where the planner exists — an admin and a routing engine. */
+const CATALOGUE_DESTINATION: Destination = { to: "/catalogue", label: "Catalogue", end: false };
+
+/** After the catalogue: shown only where the planner exists — an admin and a routing engine. */
 const PLAN_DESTINATION: Destination = { to: "/plan", label: "Plan", end: false };
 
 const REST_DESTINATIONS: readonly Destination[] = [
-  { to: "/catalogue", label: "Catalogue", end: false },
   { to: "/fitness", label: "Fitness", end: false },
-  { to: "/activities", label: "Activities", end: false },
 ];
 
 const ADMIN_DESTINATION: Destination = { to: "/admin", label: "Admin", end: false };
@@ -93,7 +89,8 @@ export function MenuBar() {
   const { data: config } = useQuery(webUIConfigQuery());
   const effectiveAdmin = useEffectiveAdmin();
   const destinations = [
-    ATLAS_DESTINATION,
+    ACTIVITIES_DESTINATION,
+    CATALOGUE_DESTINATION,
     ...(config?.planning && effectiveAdmin ? [PLAN_DESTINATION] : []),
     ...REST_DESTINATIONS,
     ...(effectiveAdmin ? [ADMIN_DESTINATION] : []),
@@ -177,6 +174,7 @@ export function MenuBar() {
         ) : null}
       </nav>
       <div className="ml-auto flex shrink-0 items-center gap-1">
+        <RouteJump />
         <ThemeToggle />
         <UserPill />
       </div>

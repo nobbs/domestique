@@ -1,11 +1,11 @@
 /**
  * The client routes, read as addresses.
  *
- * A route is a panel over the library rather than a page of its own, so every
- * path that names one is answered by a redirect into the query the library
- * reads. The address each path lands on is the thing worth asserting: it is what
- * a bookmark holds, and both spellings of it have to keep naming the same route
- * now that a route's identity carries its provider.
+ * A route has its own page at `/routes/…`, so a path naming one renders it
+ * directly; only the addresses that predate that page — the bare `/?route=`
+ * link and the two-segment path from before a second provider existed — are
+ * answered by a redirect. The address each path lands on is the thing worth
+ * asserting: it is what a bookmark holds.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -13,7 +13,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { statusQuery, webUIConfigQuery } from "./api/queries";
+import { routesQuery, statusQuery, webUIConfigQuery } from "./api/queries";
 import type { WebUIConfig } from "./api/types";
 import { IDLE_STATUS } from "./test/status";
 
@@ -22,6 +22,12 @@ import { IDLE_STATUS } from "./test/status";
 // resolved to.
 vi.mock("./features/routes/AtlasPage", () => ({
   AtlasPage: () => <p>the library</p>,
+}));
+vi.mock("./features/catalogue/CataloguePage", () => ({
+  CataloguePage: () => <p>the catalogue</p>,
+}));
+vi.mock("./features/activity/ActivitiesPage", () => ({
+  ActivitiesPage: () => <p>the activities page</p>,
 }));
 vi.mock("./features/account/AccountPage", () => ({
   AccountPage: () => <p>the account page</p>,
@@ -64,6 +70,8 @@ function open(path: string, admin?: boolean, planning = false): void {
   }
   // The notice keeps the menu bar, which asks after sync; nothing here is about that.
   client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
+  // The menu bar's own ⌘K jump reads the library wherever it is mounted.
+  client.setQueryData(routesQuery().queryKey, []);
 
   render(
     <QueryClientProvider client={client}>
@@ -105,10 +113,10 @@ afterEach(() => {
 });
 
 describe("the client routes", () => {
-  it("turns a route's path into the query the library opens it from", () => {
+  it("opens a route's own page directly, at its own address", () => {
     open("/routes/veloplanner/12/1");
 
-    expect(address()).toBe("/?route=veloplanner%2F12%2F1");
+    expect(address()).toBe("/routes/veloplanner/12/1");
     expect(screen.getByText("the library")).toBeInTheDocument();
   });
 
@@ -117,13 +125,41 @@ describe("the client routes", () => {
   it("answers the two-segment path with the provider it always meant", () => {
     open("/routes/12/1");
 
-    expect(address()).toBe("/?route=veloplanner%2F12%2F1");
+    expect(address()).toBe("/routes/veloplanner/12/1");
   });
 
-  it("sends anything else back to the library", () => {
+  // The bare address the entry page handed out before a route had a page of
+  // its own. Still read, so a link made then still opens the same route.
+  it("turns a bare /?route= link into the route's own page", () => {
+    open("/?route=veloplanner%2F12%2F1");
+
+    expect(address()).toBe("/routes/veloplanner/12/1");
+    expect(screen.getByText("the library")).toBeInTheDocument();
+  });
+
+  it("reads the two-segment form of that same link the same way", () => {
+    open("/?route=12%2F1");
+
+    expect(address()).toBe("/routes/veloplanner/12/1");
+  });
+
+  it("lands the bare entry address on the rider's activities", () => {
+    open("/");
+
+    expect(address()).toBe("/activities");
+  });
+
+  it("sends anything else to activities too", () => {
     open("/nowhere");
 
-    expect(address()).toBe("/");
+    expect(address()).toBe("/activities");
+  });
+
+  it("serves the catalogue at its own address", () => {
+    open("/catalogue");
+
+    expect(address()).toBe("/catalogue");
+    expect(screen.getByText("the catalogue")).toBeInTheDocument();
   });
 
   it("serves the account page and each of its tabs", () => {
@@ -135,11 +171,11 @@ describe("the client routes", () => {
 
   // Sync and Settings were merged into Account; their paths were removed, not redirected.
   it.each(["/sync", "/settings", "/settings/tasks"])(
-    "sends the removed %s to the library",
+    "sends the removed %s to activities",
     (path) => {
       open(path, true);
 
-      expect(address()).toBe("/");
+      expect(address()).toBe("/activities");
     },
   );
 
@@ -166,7 +202,7 @@ describe("the client routes", () => {
   it("keeps planner routes absent for a non-admin", () => {
     open("/plan/4", false, true);
 
-    expect(address()).toBe("/");
+    expect(address()).toBe("/activities");
     expect(screen.queryByText("the planner")).not.toBeInTheDocument();
   });
 
@@ -183,6 +219,7 @@ describe("the client routes", () => {
     });
     client.setQueryData(webUIConfigQuery().queryKey, config(true, planning));
     client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
+    client.setQueryData(routesQuery().queryKey, []);
     render(
       <QueryClientProvider client={client}>
         <MemoryRouter initialEntries={[path]}>
@@ -222,7 +259,7 @@ describe("the client routes", () => {
   it("explains nothing to a non-admin, who is sent away instead", () => {
     open("/plan", false, true);
 
-    expect(address()).toBe("/");
+    expect(address()).toBe("/activities");
     expect(screen.queryByText(/rider view/)).not.toBeInTheDocument();
     expect(screen.queryByText(/planner is switched off/)).not.toBeInTheDocument();
   });
@@ -251,14 +288,14 @@ describe("the client routes", () => {
 describe("the document theme", () => {
   it("sets no override for the system default", () => {
     stubStorage();
-    open("/");
+    open("/routes/veloplanner/12/1");
 
     expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
 
   it("applies the reader's remembered override on load", () => {
     stubStorage("dark");
-    open("/");
+    open("/routes/veloplanner/12/1");
 
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
   });

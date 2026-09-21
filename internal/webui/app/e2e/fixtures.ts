@@ -272,13 +272,7 @@ export const test = playwrightTest.extend<{
 
 export { expect };
 
-/** The entry page, once the library has arrived and the map is drawn. */
-export async function openLibrary(page: Page): Promise<void> {
-  await page.goto("/");
-  await settleMap(page);
-}
-
-/** Opens the compact workspace when the map is being viewed on a narrow screen. */
+/** Opens the route's Drawer when the page is being viewed on a narrow screen. */
 export async function openWorkspace(page: Page): Promise<void> {
   const browse = page.getByRole("button", { name: "Browse routes" });
   if (await browse.isVisible()) {
@@ -286,40 +280,39 @@ export async function openWorkspace(page: Page): Promise<void> {
   }
 }
 
-/** Opens the library's command search and returns the dialog's own search field. */
-export async function openSearch(page: Page): Promise<Locator> {
-  const field = page.getByRole("searchbox", { name: "Search the route library" });
-  await openWorkspace(page);
-  if (!(await field.isVisible())) {
-    await page.getByRole("button", { name: "Search the route library" }).click();
-  }
-  await expect(field).toBeVisible();
-
-  return field;
+/** The catalogue's own search field, once the catalogue is on screen. */
+export function catalogueSearch(page: Page): Locator {
+  return page.getByRole("searchbox", { name: "Search the route library" });
 }
 
 /**
- * One route, opened over the library map.
- *
- * The route is a panel rather than a page, so it is addressed by the query the
- * panel carries. Going there directly is what a shared link does, and it is the
- * shortest way into the state every test in this suite starts from.
+ * One route's page, with the map settled and nothing opened over it. The
+ * network must go quiet first: the dock arriving re-frames the camera.
  */
+export async function visitRoute(
+  page: Page,
+  provider: string,
+  sourceRouteId: number,
+  stageOrder: number,
+): Promise<void> {
+  await page.goto(`/routes/${provider}/${sourceRouteId}/${stageOrder}`);
+  await page.waitForLoadState("networkidle");
+  await settleMap(page);
+}
+
+/** One route's page with its panel showing: in a Drawer on a narrow screen. */
 export async function openRoute(
   page: Page,
   provider: string,
   sourceRouteId: number,
   stageOrder: number,
 ): Promise<void> {
-  await page.goto(`/?route=${provider}%2F${sourceRouteId}%2F${stageOrder}`);
+  await visitRoute(page, provider, sourceRouteId, stageOrder);
+  const close = page.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ });
+  const browse = page.getByRole("button", { name: "Browse routes" });
+  await expect(close.or(browse)).toBeVisible();
   await openWorkspace(page);
-  // The route panel's own close control, whose name carries the count: the
-  // panel has no row to write "Search 42 routes" on any more, so the way back
-  // says it where a name is read rather than where one is drawn.
-  await expect(
-    page.getByRole("button", { name: /^Close the route and go back to \d+ routes?$/ }),
-  ).toBeVisible();
-  await settleMap(page);
+  await expect(close).toBeVisible();
 }
 
 /**
