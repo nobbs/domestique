@@ -571,6 +571,7 @@ export type PlannerAction =
   | { type: "snap"; id: number; from: PlanWaypoint; waypoint: PlanWaypoint }
   | { type: "delete"; index: number }
   | { type: "reverse" }
+  | { type: "closeLoop" }
   | { type: "reorder"; index: number; direction: "up" | "down" }
   | { type: "reorder"; order: number[] }
   | { type: "setStraight"; id: number; straight: boolean }
@@ -599,6 +600,21 @@ export function unwrapped(waypoint: PlanWaypoint): PlanWaypoint {
   const longitude = ((((waypoint.longitude + 180) % 360) + 360) % 360) - 180;
 
   return { ...waypoint, longitude };
+}
+
+/** Whether "closeLoop" would add a waypoint: not already closed, and room under the cap. */
+export function canCloseLoop(
+  waypoints: ReadonlyArray<{ longitude: number; latitude: number }>,
+): boolean {
+  const start = waypoints[0];
+  const end = waypoints[waypoints.length - 1];
+  return (
+    waypoints.length >= 2 &&
+    waypoints.length < MAX_PLAN_WAYPOINTS &&
+    !!start &&
+    !!end &&
+    (start.longitude !== end.longitude || start.latitude !== end.latitude)
+  );
 }
 
 /** The first waypoint can never be straight; every waypoint mutation runs through here. */
@@ -814,6 +830,23 @@ export function plannerReducer(state: PlannerState, action: PlannerAction): Plan
             waypoints: state.waypoints.filter((_, index) => index !== action.index),
           })
         : state;
+    case "closeLoop": {
+      const start = state.waypoints[0];
+      if (!start || !canCloseLoop(state.waypoints)) {
+        return state;
+      }
+      return apply(state, {
+        ...snapshot(state),
+        waypoints: [
+          ...state.waypoints,
+          {
+            ...unwrapped({ longitude: start.longitude, latitude: start.latitude }),
+            id: state.nextWaypointID,
+          },
+        ],
+        nextWaypointID: state.nextWaypointID + 1,
+      });
+    }
     case "reverse": {
       if (state.waypoints.length < 2) {
         return state;
