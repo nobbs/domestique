@@ -274,7 +274,11 @@ function RouteMixBars({
 type StartDistance = number | undefined | null;
 
 function formatStart(start: StartDistance): string {
-  return start === undefined || start === null ? "–" : formatDistance(start);
+  if (start === undefined || start === null) {
+    return "–";
+  }
+  // formatDistance reads zero as missing data; standing on the start is not that.
+  return start === 0 ? "0 m" : formatDistance(start);
 }
 
 /** What a row reports back to the map it shares the page with. */

@@ -248,11 +248,11 @@ afterEach(() => {
 });
 
 /** A position just north of every test route's start, the third route's nearest. */
-function stubPosition() {
+function stubPosition(latitude = 49.25) {
   vi.stubGlobal("navigator", {
     geolocation: {
       getCurrentPosition: (found: (position: { coords: object }) => void) =>
-        found({ coords: { latitude: 49.25, longitude: 8 } }),
+        found({ coords: { latitude, longitude: 8 } }),
     },
   });
 }
@@ -298,6 +298,14 @@ describe("CataloguePage", () => {
       expect.stringContaining("Border run"),
       expect.stringContaining("Alpine loop"),
     ]);
+  });
+
+  it("says a start the reader stands on is 0 m away, not missing", async () => {
+    stubPosition(49);
+    show();
+
+    const row = within(libraryRegion()).getByRole("link", { name: /Alpine loop/ });
+    expect(await within(row).findByTitle("Distance to start")).toHaveTextContent("0 m");
   });
 
   it("offers no nearest-first ranking without a position", () => {
