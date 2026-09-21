@@ -38,9 +38,28 @@ describe("sortRoutes", () => {
     route("Coast", { distanceMetres: 20_000, ascentMetres: 100, maxGradientPercent: 8 }),
   ];
 
-  it("leaves the library in the order it arrived when sorting by name", () => {
-    expect(titles(sortRoutes(library, "title", "asc"))).toEqual(["Alps", "Border", "Coast"]);
-    expect(titles(sortRoutes(library, "title", "desc"))).toEqual(["Coast", "Border", "Alps"]);
+  it("orders by name whatever order the library arrived in", () => {
+    const shuffled = [library[2], library[0], library[1]].filter((entry) => entry !== undefined);
+
+    expect(titles(sortRoutes(shuffled, "title", "asc"))).toEqual(["Alps", "Border", "Coast"]);
+    expect(titles(sortRoutes(shuffled, "title", "desc"))).toEqual(["Coast", "Border", "Alps"]);
+  });
+
+  it("keeps routes of one name in the order they arrived, either way, so a later key can break the tie", () => {
+    const named = [
+      route("Loop", { distanceMetres: 10_000 }),
+      route("Alps"),
+      route("Loop", { distanceMetres: 30_000 }),
+    ];
+    // Least significant first, as the palette applies several `by`s.
+    const byDistance = sortRoutes(named, "distance", "asc");
+    const byNameThenDistance = sortRoutes(byDistance, "title", "desc");
+
+    expect(byNameThenDistance.map((entry) => `${entry.title} ${entry.distanceMetres}`)).toEqual([
+      "Loop 10000",
+      "Loop 30000",
+      "Alps 10000",
+    ]);
   });
 
   it("ranks by each measured column in both directions", () => {

@@ -333,9 +333,10 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
             className="flex cursor-text flex-wrap items-center gap-x-2 gap-y-1.5 border-[var(--rule)] border-b px-5 py-4"
           >
             <IconSearch size={20} stroke={1.8} className="text-[var(--ink-2)]" aria-hidden="true" />
-            {chips.map((token) => (
+            {chips.map((token, index) => (
               <span
-                key={token.text}
+                // Position too: `src:` repeats, and two orders can read the same.
+                key={`${index}:${token.text}`}
                 className="flex items-center gap-1 rounded-[7px] bg-[var(--muted)] py-0.5 pr-1 pl-2 font-mono text-[var(--ink)] text-sm"
               >
                 {token.text}
@@ -416,9 +417,13 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
               >
                 {shown.length === 0 ? (
                   <li className="px-3 py-6 text-center text-[var(--ink-2)] text-sm">
-                    {filtersActive
-                      ? "Nothing here matches this search."
-                      : "Nothing here is called that."}
+                    {routes.isError
+                      ? "Could not load the route library."
+                      : routes.isPending
+                        ? "Loading the route library…"
+                        : filtersActive
+                          ? "Nothing here matches this search."
+                          : "Nothing here is called that."}
                   </li>
                 ) : (
                   shown.map((entry, index) => {

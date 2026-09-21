@@ -10,8 +10,7 @@ export type SortDirection = "asc" | "desc";
 /**
  * What each measured column reads off a route.
  *
- * Title is absent because it is not a measurement: it is the order the library
- * already arrives in, which `sortRoutes` reverses rather than recomputes.
+ * Title is absent because it is not a measurement; `sortRoutes` compares it as text.
  *
  * `undefined` is a real answer for moving time — nothing has predicted this
  * stage — rather than a small number, so it is kept out of the comparison
@@ -39,11 +38,10 @@ export function initialDirection(column: SortColumn): SortDirection {
 /**
  * The library in the order the reader asked for.
  *
- * `routes` arrives in `matchingRoutes`' total order — title, then the route's
- * own identity — and `Array.prototype.sort` is stable, so a single-key
- * comparator here inherits that as its tiebreak for free: two routes of the
- * same length stay in alphabetical order, and reversing the direction does not
- * shuffle them against each other.
+ * `Array.prototype.sort` is stable, so whatever order `routes` arrives in is the
+ * tiebreak: two routes of the same length keep their places, in either direction.
+ * That is what lets several keys be applied one after another, least significant
+ * first — which is also why no direction is a reversal of the whole list.
  *
  * A route with no predicted moving time sorts last in both directions. It is
  * not the shortest ride in the library; it is one the model has nothing to say
@@ -57,13 +55,11 @@ export function sortRoutes(
   direction: SortDirection,
   startMetres: (route: Route) => number | undefined = () => undefined,
 ): Route[] {
-  const measure = sort === "start" ? startMetres : MEASURES[sort];
-  // The name column is the order the library already came in, so descending is
-  // that order backwards rather than a comparison of its own.
-  if (!measure) {
-    return direction === "desc" ? [...routes].reverse() : [...routes];
-  }
   const sign = direction === "desc" ? -1 : 1;
+  const measure = sort === "start" ? startMetres : MEASURES[sort];
+  if (!measure) {
+    return [...routes].sort((left, right) => left.title.localeCompare(right.title) * sign);
+  }
 
   return [...routes].sort((left, right) => {
     const leftValue = measure(left);

@@ -17,6 +17,7 @@ import { routeGeometryQuery, routesQuery, webUIConfigQuery } from "../../api/que
 import type { Route as LibraryRoute, Position, RouteGeometry, WebUIConfig } from "../../api/types";
 import { SearchButton } from "../../components/SearchButton";
 import { SearchPaletteProvider } from "../../lib/searchPalette";
+import { stubPendingFetch } from "../../test/network";
 import { SearchPalette } from "./SearchPalette";
 
 const drawn = vi.hoisted(() => ({ keys: [] as string[] }));
@@ -109,16 +110,28 @@ function show(
   {
     planner = false,
     geometry = false,
+    listing = "seeded",
   }: {
     planner?: boolean;
     /** Seeds every route's line, for the preview and the Nearest sort. */
     geometry?: boolean;
+    /** The route listing in the cache, still on its way, or refused. */
+    listing?: "seeded" | "pending" | "failed";
   } = {},
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
-  client.setQueryData(routesQuery().queryKey, LIBRARY);
+  if (listing === "seeded") {
+    client.setQueryData(routesQuery().queryKey, LIBRARY);
+  } else if (listing === "pending") {
+    stubPendingFetch();
+  } else {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 500 })),
+    );
+  }
   client.setQueryData(webUIConfigQuery().queryKey, config(planner));
   if (planner) {
     client.setQueryData(getListPlansQueryKey(), { data: { plans: PLANS } });
@@ -192,6 +205,21 @@ afterEach(() => {
 });
 
 describe("SearchPalette", () => {
+  it("says the library is loading, not that nothing matches, while it is on its way", async () => {
+    show("/activities", { listing: "pending" });
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(screen.getByText("Loading the route library…")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing here is called that.")).toBeNull();
+  });
+
+  it("says the library could not be loaded when the listing fails", async () => {
+    show("/activities", { listing: "failed" });
+    await userEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(await screen.findByText("Could not load the route library.")).toBeInTheDocument();
+  });
+
   it("opens from the menu bar's Search button", async () => {
     show("/activities");
 
