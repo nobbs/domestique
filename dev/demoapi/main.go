@@ -367,8 +367,11 @@ func seed(ctx context.Context, store *sqlite.Store, slots []demo.Slot, planSourc
 type demoAsker struct{}
 
 func (demoAsker) Ask(context.Context, string) (text, model string, err error) {
-	return "A synthetic analysis: the demo has no model to ask, so every ride reads the same.\n\n" +
-		"A real deployment with a Claude token writes a few short paragraphs about the ride here.", "demo", nil
+	return `{"ride_type":"endurance","headline":"A synthetic ride","summary":` +
+			`"A synthetic analysis: the demo has no model to ask, so every ride reads the same. ` +
+			`A real deployment with a Claude token writes a few short paragraphs about the ride here.",` +
+			`"load_effect":"","highlights":[],"concerns":[],"next_session":{"advice":"","suggested_rest_days":0},"data_gaps":[]}`,
+		"demo", nil
 }
 
 func (demoAsker) FailureOf(error) activity.Failure { return activity.FailureExecutable }

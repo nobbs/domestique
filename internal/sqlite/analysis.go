@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -53,10 +54,17 @@ func (s *Store) ActivitiesAwaitingAnalysis(
 	return pending, nil
 }
 
-// StoreActivityAnalysis records what was said about one ride.
+// StoreActivityAnalysis records what was said about one ride. The structured
+// document is written for a revision 3 answer, and left NULL for an older one.
+//
+//nolint:gocritic // hugeParam: mirrors activity.AnalyseStore's own by-value signature.
 func (s *Store) StoreActivityAnalysis(
 	ctx context.Context, targetID string, id int64, analysis activity.Analysis,
 ) error {
+	document, err := analysisDocumentColumn(analysis.PromptRevision, &analysis.Document)
+	if err != nil {
+		return err
+	}
 	if err := s.queries.UpsertActivityAnalysis(ctx, sqlcgen.UpsertActivityAnalysisParams{
 		TargetSlot:     targetID,
 		WorkoutID:      id,
@@ -64,11 +72,40 @@ func (s *Store) StoreActivityAnalysis(
 		Model:          analysis.Model,
 		PromptRevision: int64(analysis.PromptRevision),
 		AnalysedAtUnix: analysis.AnalysedAt.Unix(),
+		Document:       document,
 	}); err != nil {
 		return fmt.Errorf("recording an activity analysis: %w", err)
 	}
 
 	return nil
+}
+
+// analysisDocumentColumn encodes a revision 3 document for storage, and NULL
+// for anything earlier: an older revision's Document is always its zero value.
+func analysisDocumentColumn(revision int, document *activity.AnalysisDocument) (sql.NullString, error) {
+	if revision < 3 {
+		return sql.NullString{}, nil
+	}
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		return sql.NullString{}, fmt.Errorf("encoding an activity analysis document: %w", err)
+	}
+
+	return sql.NullString{String: string(encoded), Valid: true}, nil
+}
+
+// analysisDocumentOf decodes a stored document column, or the zero value for
+// a row written before revision 3, which carries none.
+func analysisDocumentOf(column sql.NullString) (activity.AnalysisDocument, error) {
+	var document activity.AnalysisDocument
+	if !column.Valid {
+		return document, nil
+	}
+	if err := json.Unmarshal([]byte(column.String), &document); err != nil {
+		return document, fmt.Errorf("decoding an activity analysis document: %w", err)
+	}
+
+	return document, nil
 }
 
 // AnalysesBefore is what was said about the target's rides that started before
@@ -87,10 +124,16 @@ func (s *Store) AnalysesBefore(
 	}
 	analyses := make([]activity.Analysis, 0, len(rows))
 	for _, row := range rows {
+		document, err := analysisDocumentOf(row.Document)
+		if err != nil {
+			return nil, err
+		}
 		analyses = append(analyses, activity.Analysis{
 			AnalysedAt:     time.Unix(row.AnalysedAtUnix, 0).UTC(),
+			StartedAt:      time.Unix(row.StartedAtUnix, 0).UTC(),
 			Text:           row.Text,
 			Model:          row.Model,
+			Document:       document,
 			PromptRevision: int(row.PromptRevision),
 		})
 	}
@@ -113,10 +156,15 @@ func (s *Store) ActivityAnalyses(
 	}
 	analyses := make(map[int64]activity.Analysis, len(rows))
 	for _, row := range rows {
+		document, err := analysisDocumentOf(row.Document)
+		if err != nil {
+			return nil, err
+		}
 		analyses[row.WorkoutID] = activity.Analysis{
 			AnalysedAt:     time.Unix(row.AnalysedAtUnix, 0).UTC(),
 			Text:           row.Text,
 			Model:          row.Model,
+			Document:       document,
 			PromptRevision: int(row.PromptRevision),
 		}
 	}

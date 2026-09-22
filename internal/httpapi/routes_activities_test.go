@@ -1243,6 +1243,34 @@ func TestGetActivitiesCarriesEachRidesAnalysis(t *testing.T) {
 	assert.Nil(t, list.Activities[1].Analysis)
 }
 
+// The structured document rides along only from prompt revision 3 on; an
+// older row still serves its text with no document.
+func TestGetActivitiesCarriesTheDocumentFromPromptRevisionThreeOnly(t *testing.T) {
+	state := activityState("rider-a", time.Hour, 2*time.Hour)
+	document := activities.AnalysisDocument{RideType: "endurance", Headline: "Solid endurance ride", Summary: "Steady effort throughout."}
+	document.NextSession.Advice = "Recover easy tomorrow."
+	document.NextSession.SuggestedRestDays = 1
+	state.analyses = map[string]map[int64]activities.Analysis{
+		"rider-a": {
+			1: {Text: "A steady ride.", Model: "model-a", PromptRevision: 3, Document: document},
+			2: {Text: "An older ride.", Model: "model-a", PromptRevision: 2},
+		},
+	}
+	handler := activityHandler(t, state, nonAdminSessions("rider-a"))
+
+	code, list := getActivities(t, handler, "/v1/activities")
+	require.Equal(t, http.StatusOK, code)
+	require.Len(t, list.Activities, 2)
+	require.NotNil(t, list.Activities[0].Analysis)
+	require.NotNil(t, list.Activities[0].Analysis.Document)
+	assert.Equal(t, openapi.ActivityAnalysis_Document_RideTypeEndurance, list.Activities[0].Analysis.Document.RideType)
+	assert.Equal(t, "Solid endurance ride", list.Activities[0].Analysis.Document.Headline)
+	assert.Equal(t, "Recover easy tomorrow.", list.Activities[0].Analysis.Document.NextSession.Advice)
+	assert.Equal(t, 1, list.Activities[0].Analysis.Document.NextSession.SuggestedRestDays)
+	require.NotNil(t, list.Activities[1].Analysis)
+	assert.Nil(t, list.Activities[1].Analysis.Document)
+}
+
 func TestGetActivitiesReportsAnUnreadableAnalysisStore(t *testing.T) {
 	state := activityState("rider-a", time.Hour)
 	state.analysesErr = errors.New("unreadable")

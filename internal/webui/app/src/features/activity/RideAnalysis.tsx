@@ -9,9 +9,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useReanalyseActivity } from "../../api/generated";
 import { tasksQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
-import type { Activity } from "../../api/types";
+import type { Activity, ActivityAnalysisDocument } from "../../api/types";
 import { Button } from "../../components/Button";
 import { PanelHeading } from "../../components/PanelHeading";
+import { Badge } from "../../components/ui/badge";
 import { formatTimestamp } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
 
@@ -47,8 +48,12 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
       </div>
       {analysis ? (
         <>
-          {/* The model is asked for plain paragraphs; any markup it returns shows as typed. */}
-          <p className="whitespace-pre-line text-sm leading-relaxed">{analysis.text}</p>
+          {analysis.document ? (
+            <RideAnalysisDocument analysis={analysis.document} />
+          ) : (
+            // The model is asked for plain paragraphs; any markup it returns shows as typed.
+            <p className="whitespace-pre-line text-sm leading-relaxed">{analysis.text}</p>
+          )}
           <p className="text-[var(--ink-2)] text-xs">
             {analysis.model} · {formatTimestamp(analysis.analysedAt)}
           </p>
@@ -66,5 +71,48 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
         </p>
       ) : null}
     </section>
+  );
+}
+
+function RideAnalysisDocument({ analysis }: { analysis: ActivityAnalysisDocument }) {
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <p className="font-semibold text-sm">{analysis.headline}</p>
+        <Badge variant="secondary">{analysis.rideType}</Badge>
+      </div>
+      <p className="whitespace-pre-line text-sm leading-relaxed">{analysis.summary}</p>
+      <p className="text-[var(--ink-2)] text-sm">{analysis.loadEffect}</p>
+      <AnalysisList title="Highlights" items={analysis.highlights} />
+      <AnalysisList title="Concerns" items={analysis.concerns} />
+      <p className="text-sm">
+        <span className="font-medium">Next session: </span>
+        {analysis.nextSession.advice}
+        {analysis.nextSession.suggestedRestDays > 0
+          ? ` Suggested rest: ${analysis.nextSession.suggestedRestDays} day(s).`
+          : null}
+      </p>
+      {analysis.dataGaps.length > 0 ? (
+        <p className="text-[var(--ink-2)] text-xs">
+          Missing figures: {analysis.dataGaps.join(", ")}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function AnalysisList({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+  return (
+    <div className="text-sm">
+      <p className="font-medium">{title}</p>
+      <ul className="list-disc pl-5">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }

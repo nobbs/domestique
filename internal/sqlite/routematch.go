@@ -230,6 +230,26 @@ func (s *Store) StageProfile(
 	return line, elevations, true, nil
 }
 
+// RouteName is one route's own display name, for the analysis prompt only:
+// the route's name and, where it differs, its stage's own name.
+func (s *Store) RouteName(ctx context.Context, key route.Key) (name string, found bool, err error) {
+	row, err := s.queries.GetStageGeometry(ctx, sqlcgen.GetStageGeometryParams{
+		Provider: string(key.Provider()), RouteID: key.SourceRouteID(), StageOrder: int64(key.StageOrder()),
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("reading a route's name: %w", err)
+	}
+	name = row.SourceRouteName
+	if row.RouteName != "" && row.RouteName != row.SourceRouteName {
+		name += " — " + row.RouteName
+	}
+
+	return name, true, nil
+}
+
 // RouteClimbAttempts is every attempt one target's rides made at one route's
 // climbs, newest ride first.
 func (s *Store) RouteClimbAttempts(

@@ -65,6 +65,10 @@ type Options struct {
 	Home string
 	// Token is the operator's Claude Code OAuth token.
 	Token []byte
+	// Schema is a JSON Schema the answer must conform to. Nil keeps the plain
+	// text behaviour; set, Ask asks the executable for that shape and reads
+	// Answer.Text from its structured_output rather than its result text.
+	Schema []byte
 	// Timeout bounds one prompt. Zero is three minutes.
 	Timeout time.Duration
 }
@@ -80,10 +84,13 @@ type Client struct {
 	executable string
 	home       string
 	token      string
+	schema     string
 	timeout    time.Duration
 }
 
 // New validates options without running anything.
+//
+//nolint:gocritic // hugeParam: Options is the package's public constructor shape.
 func New(options Options) (*Client, error) {
 	if !filepath.IsAbs(options.Executable) {
 		return nil, errors.New("claude executable must be an absolute path")
@@ -103,6 +110,7 @@ func New(options Options) (*Client, error) {
 		home:       options.Home,
 		token:      string(options.Token),
 		timeout:    cmp.Or(options.Timeout, defaultTimeout),
+		schema:     string(options.Schema),
 	}, nil
 }
 
@@ -110,6 +118,8 @@ func New(options Options) (*Client, error) {
 type result struct {
 	Type   string `json:"type"`
 	Result string `json:"result"`
+	//nolint:tagliatelle // Mirrors the executable's own field name.
+	StructuredOutput json.RawMessage `json:"structured_output"`
 	//nolint:tagliatelle // Mirrors the executable's own field name.
 	APIErrorStatus int `json:"api_error_status"`
 	//nolint:tagliatelle // Mirrors the executable's own field name.
@@ -122,8 +132,7 @@ func (c *Client) Ask(ctx context.Context, prompt string) (Answer, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	//nolint:gosec // G204: the executable path is operator configuration; no argument is caller-supplied.
-	command := exec.CommandContext(ctx, c.executable,
+	args := []string{
 		"--print",
 		"--output-format", "json",
 		"--model", Model,
@@ -133,7 +142,12 @@ func (c *Client) Ask(ctx context.Context, prompt string) (Answer, error) {
 		// Home is a writable volume: a settings file planted there could add
 		// hooks or point the token at another host, so none is read.
 		"--setting-sources", "",
-	)
+	}
+	if c.schema != "" {
+		args = append(args, "--json-schema", c.schema)
+	}
+	//nolint:gosec // G204: the executable path is operator configuration; no argument is caller-supplied.
+	command := exec.CommandContext(ctx, c.executable, args...)
 	command.Dir = c.home
 	command.Env = []string{
 		"HOME=" + c.home,
@@ -159,12 +173,29 @@ func (c *Client) Ask(ctx context.Context, prompt string) (Answer, error) {
 	if document.IsError || runErr != nil {
 		return Answer{}, &Error{Category: errorCategory(document.APIErrorStatus)}
 	}
+	if c.schema != "" {
+		return structuredAnswer(document.StructuredOutput)
+	}
 	text := strings.TrimSpace(document.Result)
 	if text == "" {
 		return Answer{}, &Error{Category: CategoryUnusable}
 	}
 
 	return Answer{Text: text, Model: Model}, nil
+}
+
+// structuredAnswer compacts a schema-constrained answer's structured_output
+// into Answer.Text; a missing or empty document is unusable.
+func structuredAnswer(raw json.RawMessage) (Answer, error) {
+	if len(raw) == 0 {
+		return Answer{}, &Error{Category: CategoryUnusable}
+	}
+	compact := &bytes.Buffer{}
+	if err := json.Compact(compact, raw); err != nil {
+		return Answer{}, &Error{Category: CategoryUnusable}
+	}
+
+	return Answer{Text: compact.String(), Model: Model}, nil
 }
 
 func errorCategory(status int) Category {

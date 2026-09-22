@@ -823,9 +823,13 @@ The read-only JSON surface is small:
   and on its own where it did not; never stored, never mixed with either
   figure above.
 
-  Each activity that has one also carries its `analysis`: the plain text a
-  language model wrote about the ride, at most two thousand characters, with
-  the model and prompt revision that produced it and when. It is absent for a
+  Each activity that has one also carries its `analysis`: the plain-text
+  summary a language model wrote about the ride, at most two thousand characters, with
+  the model and prompt revision that produced it and when, and, from prompt
+  revision 3, the whole document it answered with — the kind of ride, a
+  headline, that summary, its effect on the rider's load, highlights, concerns,
+  the next session with any rest it suggests, and the figures it wanted and
+  lacked. An older analysis carries its text alone. It is absent for a
   ride not yet analysed, for a ride its derivation yielded nothing for, and
   for every ride of a deployment that never configured a token; removing the
   token stops new analyses and leaves stored ones served. It is text for the
@@ -1467,18 +1471,29 @@ exactly as an outdoor ride's are.
 
 Once a ride has been derived, and where the operator has configured a Claude
 Code OAuth token, `activity:analyse` asks a language model what to make of it
-([the task](task-layer.md#the-registered-tasks)). What leaves the host is the
-ride's derived metrics and sensor means, the rider's profile and zone bounds,
-the rider's current fitness, fatigue and form, and the analyses of the same
-target's five most recent earlier analyses so the answer can speak to a trend —
-never another target's, whoever owns it; never the track, the
-weather, the provider's document or the rider's identity. The request goes
+([the task](task-layer.md#the-registered-tasks)). What leaves the host is
+everything this service holds about the ride short of where it was: the
+ride's own recording as a series of five-second means without its coordinates,
+its device-declared and derived figures, its splits, its attempts on the
+library route's climbs beside the rider's earlier attempts on them, the
+structured workout it followed, the weather over it and the library route it
+was ridden on, by name; the rider's profile, zone bounds and best power ever;
+the rider's recent rides as figures, load timeline, weekly zones and outlook;
+and the same target's five most recent earlier analyses so the answer can
+speak to a trend — never another target's, whoever owns it; never a coordinate,
+the provider's document or the rider's identity. A coordinate is the one thing
+withheld because it is the one thing the reading does not need: the route's
+name, its climbs and the recording's altitude and grade already say what the
+ground was, and a coordinate would say where the rider lives. The request goes
 through the `claude` executable bundled in the image, authenticated by the
 operator's own Claude subscription, with no tool enabled: the model sees the
-prompt and answers text. That text is stored beside the ride with the model
-and prompt revision that produced it, served on the activity contract, and
-read back by later prompts alone — no load, no suggestion and no calibration
-ever reads it. No run asks again about a ride whose analysis stands. A
+prompt and answers one document against a schema the executable validates —
+the kind of ride, a headline, a summary of a few paragraphs, its effect on
+fitness, fatigue and form, highlights, concerns, the next session, and the
+figures it wanted and lacked. That document is stored beside the ride with
+the model and prompt revision that produced it, its summary served on the
+activity contract as the analysis text, and read back by later prompts alone
+— no load, no suggestion and no calibration ever reads it. No run asks again about a ride whose analysis stands. A
 profile edit re-derives it but does not re-analyse it; a derivation that
 removes the ride's figures removes the analysis with them, and only a later
 derivation that gives the ride figures again asks once more. The one request

@@ -139,6 +139,36 @@ type Activity struct {
 	Analysis          *ActivityAnalysis       `json:"analysis,omitempty"`
 }
 
+type ActivityAnalysis_Document_RideType string
+
+const (
+	ActivityAnalysis_Document_RideTypeRecovery  ActivityAnalysis_Document_RideType = "recovery"
+	ActivityAnalysis_Document_RideTypeEndurance ActivityAnalysis_Document_RideType = "endurance"
+	ActivityAnalysis_Document_RideTypeTempo     ActivityAnalysis_Document_RideType = "tempo"
+	ActivityAnalysis_Document_RideTypeThreshold ActivityAnalysis_Document_RideType = "threshold"
+	ActivityAnalysis_Document_RideTypeIntervals ActivityAnalysis_Document_RideType = "intervals"
+	ActivityAnalysis_Document_RideTypeRace      ActivityAnalysis_Document_RideType = "race"
+	ActivityAnalysis_Document_RideTypeMixed     ActivityAnalysis_Document_RideType = "mixed"
+	ActivityAnalysis_Document_RideTypeCommute   ActivityAnalysis_Document_RideType = "commute"
+)
+
+type ActivityAnalysis_Document_NextSession struct {
+	Advice            string `json:"advice"`
+	SuggestedRestDays int    `json:"suggestedRestDays"`
+}
+
+// ActivityAnalysis_Document Absent for an analysis written before prompt revision 3; text stays the summary for every revision.
+type ActivityAnalysis_Document struct {
+	RideType    ActivityAnalysis_Document_RideType    `json:"rideType"`
+	Headline    string                                `json:"headline"`
+	Summary     string                                `json:"summary"`
+	LoadEffect  string                                `json:"loadEffect"`
+	Highlights  []string                              `json:"highlights"`
+	Concerns    []string                              `json:"concerns"`
+	NextSession ActivityAnalysis_Document_NextSession `json:"nextSession"`
+	DataGaps    []string                              `json:"dataGaps"`
+}
+
 // ActivityAnalysis What a language model made of this ride. Absent for a ride not yet analysed, for one whose derivation yielded nothing, and everywhere on a deployment that never configured a token. Text for the rider to read; never an input to any figure served here.
 type ActivityAnalysis struct {
 	// Text Plain text, never empty, at most 2000 characters.
@@ -148,6 +178,8 @@ type ActivityAnalysis struct {
 	// PromptRevision The revision of the prompt it was asked with.
 	PromptRevision int       `json:"promptRevision"`
 	AnalysedAt     time.Time `json:"analysedAt"`
+	// Document Absent for an analysis written before prompt revision 3; text stays the summary for every revision.
+	Document *ActivityAnalysis_Document `json:"document,omitempty"`
 }
 
 // ActivityRouteMatch The library route this ride was ridden on. Absent where the ride was ridden on none of them, or has not been matched yet; the two are not distinguished, because neither gives a route to show.

@@ -196,6 +196,74 @@ func TestAskErrorCarriesNothingTheExecutablePrinted(t *testing.T) {
 	assert.NotContains(t, err.Error(), "oauth-token")
 }
 
+func TestAskPassesTheSchemaFlagOnlyWhenOneIsSet(t *testing.T) {
+	t.Parallel()
+	t.Run("with a schema", func(t *testing.T) {
+		t.Parallel()
+		home := t.TempDir()
+		contents, err := json.Marshal(scenario{
+			Stdout: resultDocument(t, map[string]any{"is_error": false, "result": "", "structured_output": map[string]any{"a": 1}}),
+		})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(home, "scenario.json"), contents, 0o600))
+		executable, err := os.Executable()
+		require.NoError(t, err)
+		client, err := New(Options{
+			Executable: executable, Home: home, Token: []byte("oauth-token"), Schema: []byte(`{"type":"object"}`),
+		})
+		require.NoError(t, err)
+
+		answer, err := client.Ask(context.Background(), "prompt")
+		require.NoError(t, err)
+		assert.Equal(t, Answer{Text: `{"a":1}`, Model: Model}, answer)
+
+		seen := readInvocation(t, home)
+		assert.Contains(t, seen.Args, "--json-schema")
+		idx := -1
+		for i, arg := range seen.Args {
+			if arg == "--json-schema" {
+				idx = i
+			}
+		}
+		require.GreaterOrEqual(t, idx, 0)
+		assert.JSONEq(t, `{"type":"object"}`, seen.Args[idx+1])
+	})
+
+	t.Run("without a schema", func(t *testing.T) {
+		t.Parallel()
+		client, home := newTestClient(t, scenario{
+			Stdout: resultDocument(t, map[string]any{"is_error": false, "result": "plain answer"}),
+		}, 0)
+
+		_, err := client.Ask(context.Background(), "prompt")
+		require.NoError(t, err)
+
+		seen := readInvocation(t, home)
+		assert.NotContains(t, seen.Args, "--json-schema")
+	})
+}
+
+func TestAskWithASchemaButNoStructuredOutputIsUnusable(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	contents, err := json.Marshal(scenario{
+		Stdout: resultDocument(t, map[string]any{"is_error": false, "result": "ignored"}),
+	})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(home, "scenario.json"), contents, 0o600))
+	executable, err := os.Executable()
+	require.NoError(t, err)
+	client, err := New(Options{
+		Executable: executable, Home: home, Token: []byte("oauth-token"), Schema: []byte(`{"type":"object"}`),
+	})
+	require.NoError(t, err)
+
+	_, err = client.Ask(context.Background(), "prompt")
+	var failure *Error
+	require.ErrorAs(t, err, &failure)
+	assert.Equal(t, CategoryUnusable, failure.Category)
+}
+
 func TestAskGivesUpAtTheTimeout(t *testing.T) {
 	client, _ := newTestClient(t, scenario{
 		Stdout: resultDocument(t, map[string]any{"result": "too late"}),

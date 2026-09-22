@@ -127,6 +127,18 @@ WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
   AND latitude IS NOT NULL AND longitude IS NOT NULL
 ORDER BY record_index;
 
+-- Every record of one activity, positioned or not, with the estimated power
+-- beside the sensors: what a ride's analysis reads, so an indoor ride and a
+-- GPS dropout are recorded too.
+-- name: ListActivityRecordSeries :many
+SELECT recorded_at_unix, distance_metres, altitude_metres,
+  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres, target_power_watts,
+  estimated_power_watts
+FROM activity_records
+WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
+ORDER BY record_index;
+
 -- name: ListActivitySeries :many
 SELECT recorded_at_unix, distance_metres, altitude_metres,
   heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,

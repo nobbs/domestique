@@ -433,8 +433,12 @@ hourly, because the edge alone would not try again: a derivation that already
 succeeded is not repeated, so a ride left owed by a failed request would wait
 for the next new ride rather than the next hour. A scheduled run with nothing
 owed asks nothing and costs a query per target. An answer is stored only when
-it fits the contract's bound: non-empty and at most two thousand characters.
-An empty or longer one is `unusable` and the ride stays owed. The log carries
+it is the document the schema asks for, with a summary that fits the contract's
+bound: non-empty and at most two thousand characters. An answer that does not
+parse, names a kind of ride the schema does not, or carries an empty or longer
+summary is `unusable` and the ride stays owed. The prompt carries the ride's
+recording as five-second means, cut at six hours so a long day costs a bounded
+request. The log carries
 counts and the alert one stable failure category — `token` refused,
 `allowance` exhausted, `executable` failing, answer `unusable`, or `state` when
 stored state could not be read — and neither ever carries the prompt or the

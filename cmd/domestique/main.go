@@ -378,7 +378,9 @@ func startAnalysis(
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return nil, fmt.Errorf("creating the claude home directory: %w", err)
 	}
-	client, err := claude.New(claude.Options{Executable: claudeExecutable, Home: home, Token: settings.Analysis.ClaudeToken()})
+	client, err := claude.New(claude.Options{
+		Executable: claudeExecutable, Home: home, Token: settings.Analysis.ClaudeToken(), Schema: activity.AnalysisSchema(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("creating the claude client: %w", err)
 	}

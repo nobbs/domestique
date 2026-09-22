@@ -1,4 +1,4 @@
-h1:w+9Bs1cY/YlI8E3KPIzmRxb3RPdEiF2BkL0F0ych6zM=
+h1:vL3ATQOB+pgXQ5gEKxDNrrUCWWEoC3+qmGuFvC9xEFo=
 000027_current_schema.down.sql h1:4KgXME8ZJn+sr4MkT5LNmc4UZNykYRLmKebEulT8Sa0=
 000027_current_schema.up.sql h1:Nmnng6Kv5PVz6LlQI5QBUexc2FqZ0hVgo5Xyvu64VOA=
 000028_web_sessions.down.sql h1:BgNVP2FYbWjRhAn+flXvgtjGAdIYIJMryAfHJ77dsw0=
@@ -77,3 +77,5 @@ h1:w+9Bs1cY/YlI8E3KPIzmRxb3RPdEiF2BkL0F0ych6zM=
 000064_plan_straight_and_avoid.up.sql h1:phwNfN/1qqtLZboHasJ8YUk6RVQ4SCpSR//qveZ3yJg=
 000065_source_sync_to_wahoo.down.sql h1:1TIwztb2BGol1QTTjk4pLLI6ddVRlHTY8UibELir1D4=
 000065_source_sync_to_wahoo.up.sql h1:GSdRgHU/ggoSQxaC9OUA7sxgPyHytJ+MpsC3s/29Lq4=
+000066_activity_analysis_document.down.sql h1:jOJxxSKx7Y4Ath/SSjfxmBRgUie7hSL+BqfF/u5PHdg=
+000066_activity_analysis_document.up.sql h1:fWWyHFfCx2mAeCHwJTVZCRedHD2N0YZMegd4t8UUQGQ=
