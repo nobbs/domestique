@@ -506,6 +506,7 @@ func TestLoadReadsTheClaudeTokenFromAFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, settings.Analysis.Enabled(), "Analysis.Enabled()")
 	assert.Equal(t, []byte("claude-token-value"), settings.Analysis.ClaudeToken(), "Analysis.ClaudeToken()")
+	assert.Equal(t, DefaultClaudeExecutable, settings.Analysis.ClaudeExecutable, "Analysis.ClaudeExecutable")
 }
 
 func TestLoadClearsTheDirectClaudeToken(t *testing.T) {
@@ -667,4 +668,37 @@ func TestLoadAcceptsTheExampleConfigurationsPlanningTiles(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t,
 		[]string{"E5_N45", "E10_N45", "E5_N50", "E10_N50"}, settings.Planning.Segments, "Planning.Segments")
+}
+
+func TestLoadTakesAnotherClaudeExecutable(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+	appendToFile(t, configPath, "\n[analysis]\nclaude_executable = \"/opt/claude/claude\"\n")
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "/opt/claude/claude", settings.Analysis.ClaudeExecutable, "Analysis.ClaudeExecutable")
+}
+
+func TestLoadRefusesAClaudeExecutableThatIsNotAbsolute(t *testing.T) {
+	for name, value := range map[string]string{"relative": "claude", "empty": ""} {
+		t.Run(name, func(t *testing.T) {
+			configPath, _ := writeValidConfiguration(t, t.TempDir())
+			t.Setenv(configFileEnv, configPath)
+			appendToFile(t, configPath, fmt.Sprintf("\n[analysis]\nclaude_executable = %q\n", value))
+
+			_, err := Load()
+			require.ErrorContains(t, err, "claude_executable")
+		})
+	}
+}
+
+func TestLoadTakesTheClaudeExecutableFromTheEnvironment(t *testing.T) {
+	configPath, _ := writeValidConfiguration(t, t.TempDir())
+	t.Setenv(configFileEnv, configPath)
+	t.Setenv("DOMESTIQUE_ANALYSIS__CLAUDE_EXECUTABLE", "/opt/claude/claude")
+
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "/opt/claude/claude", settings.Analysis.ClaudeExecutable, "Analysis.ClaudeExecutable")
 }

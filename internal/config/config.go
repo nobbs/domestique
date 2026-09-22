@@ -75,8 +75,15 @@ func (p *Planning) Enabled() bool {
 
 // Analysis configures the optional ride analysis. Without a token it is off.
 type Analysis struct {
-	claudeToken runtimeconfig.Secret
+	// ClaudeExecutable is the absolute path of the claude executable the
+	// analysis runs; the image's bundled build unless the file names another.
+	ClaudeExecutable string
+	claudeToken      runtimeconfig.Secret
 }
+
+// DefaultClaudeExecutable is where the runtime image installs the bundled
+// executable.
+const DefaultClaudeExecutable = "/usr/local/bin/claude"
 
 // Enabled reports whether the operator configured a Claude Code OAuth token.
 func (a *Analysis) Enabled() bool {
@@ -160,8 +167,9 @@ type rawSettings struct {
 type rawAnalysis struct {
 	// ClaudeTokenFile is nil when no file input names the key at all, which is
 	// the one way to leave the analysis off; an empty path is still refused.
-	ClaudeTokenFile *string `koanf:"claude_token_file"`
-	ClaudeToken     string  `koanf:"claude_token"`
+	ClaudeTokenFile  *string `koanf:"claude_token_file"`
+	ClaudeExecutable *string `koanf:"claude_executable"`
+	ClaudeToken      string  `koanf:"claude_token"`
 }
 
 // rawPlanning is a pointer field on rawSettings so an absent [planning]
@@ -449,6 +457,13 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err != nil {
 		return nil, err
 	}
+	claudeExecutable := DefaultClaudeExecutable
+	if raw.Analysis.ClaudeExecutable != nil {
+		claudeExecutable = *raw.Analysis.ClaudeExecutable
+	}
+	if !filepath.IsAbs(claudeExecutable) {
+		return nil, errors.New("analysis.claude_executable must be an absolute path")
+	}
 	var level slog.Level
 	if levelErr := level.UnmarshalText([]byte(strings.TrimSpace(raw.Log.Level))); levelErr != nil {
 		return nil, fmt.Errorf("log.level: %w", levelErr)
@@ -475,7 +490,7 @@ func build(raw *rawSettings) (*Settings, error) {
 			DatabasePath:  raw.State.DatabasePath,
 			encryptionKey: key,
 		},
-		Analysis: Analysis{claudeToken: claudeToken},
+		Analysis: Analysis{ClaudeExecutable: claudeExecutable, claudeToken: claudeToken},
 		Planning: planning,
 		Log:      Log{Level: level},
 	}, nil

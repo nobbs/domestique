@@ -116,6 +116,13 @@ A literal `state.encryption_key`, `auth.auth0.client_secret` or
 variable. A `*_FILE` environment variable overrides the matching TOML file
 path, but it must not accompany the direct value.
 
+Beside the token, `analysis.claude_executable` is an ordinary setting, not a
+secret: the absolute path of the `claude` executable the analysis runs, in the
+TOML file or as `DOMESTIQUE_ANALYSIS__CLAUDE_EXECUTABLE`. Absent, it is
+`/usr/local/bin/claude`, where the image installs its bundled build; a service
+run outside the image names the build it has. An empty or relative path is
+refused.
+
 A file secret must be an absolute path to a regular readable file, non-empty
 after one terminal line break is trimmed. The state encryption key is
 additionally validated as a base64url encoding of exactly 32 random bytes;

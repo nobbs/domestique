@@ -4,15 +4,30 @@
     {
       "name": "storybook",
       "runtimeExecutable": "mise",
-      "runtimeArgs": ["run", "storybook"],
+      "runtimeArgs": [
+        "run",
+        "storybook"
+      ],
       "port": 6006
     },
     {
       "name": "demo",
       "runtimeExecutable": "mise",
-      "runtimeArgs": ["run", "demo"],
+      "runtimeArgs": [
+        "run",
+        "demo"
+      ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "dev-api",
+      "runtimeExecutable": "mise",
+      "runtimeArgs": [
+        "run",
+        "dev-api"
+      ],
+      "port": 8081
     }
   ]
 }

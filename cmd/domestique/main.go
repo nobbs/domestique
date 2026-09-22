@@ -357,9 +357,6 @@ func configuredStyleURLs(basemaps []runtimeconfig.Basemap) []string {
 	return styles
 }
 
-// claudeExecutable is where the runtime image installs the bundled executable.
-const claudeExecutable = "/usr/local/bin/claude"
-
 // startAnalysis registers the ride analysis only when the operator configured a
 // Claude token, recording the instant it was first enabled. Its home directory
 // lives beside the state database, which the image keeps writable.
@@ -379,7 +376,7 @@ func startAnalysis(
 		return nil, fmt.Errorf("creating the claude home directory: %w", err)
 	}
 	client, err := claude.New(claude.Options{
-		Executable: claudeExecutable, Home: home, Token: settings.Analysis.ClaudeToken(), Schema: activity.AnalysisSchema(),
+		Executable: settings.Analysis.ClaudeExecutable, Home: home, Token: settings.Analysis.ClaudeToken(), Schema: activity.AnalysisSchema(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating the claude client: %w", err)
