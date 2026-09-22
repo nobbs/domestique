@@ -59,6 +59,8 @@ encryption_key_file = "/run/secrets/state_encryption_key"
 # out registers no analysis task and sends nothing to Anthropic.
 # [analysis]
 # claude_token_file = "/run/secrets/claude_token"
+# The executable itself; the image's bundled build when absent.
+# claude_executable = "/usr/local/bin/claude"
 
 # Optional. The BRouter engine the route planner routes with: a sidecar on
 # this host, or the project's public instance https://brouter.de at the cost
