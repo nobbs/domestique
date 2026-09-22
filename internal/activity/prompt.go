@@ -18,7 +18,10 @@ import (
 const promptInstruction = `You are a cycling coach reading one ride a rider has finished, with the rider's recent history and the ride's own recording.
 Answer with the JSON document the schema describes and nothing else. Plain text inside every string: no Markdown, no lists inside strings.
 Be brief: the rider reads this on a phone. The summary is one short paragraph of at most five sentences on what the ride was and what mattered in it; load_effect is one or two sentences and repeats nothing from the summary; each highlight, concern and data gap is one short clause; leave a list empty rather than pad it. Quote a figure only where it carries the point.
-tailwind_kmh is the wind's component along the direction of travel, positive from behind, negative into the face. Use only the figures below; where a figure you would want is absent, say so under data_gaps rather than guessing. Timestamps are in the rider's local time zone unless a column says otherwise.`
+tailwind_kmh is the wind's component along the direction of travel, positive from behind, negative into the face; a sign that keeps flipping is a winding road, worth a word only where it explains an effort. temp_c is the head unit's own sensor, warmed by sun and cooled by rain and wind, so a fall in it is weather, not a fault; the weather table says whether it rained.
+A concern is something the rider should act on: a sensor that dropped out, a load out of proportion, a target missed. A normal feature of the ride is not one.
+data_gaps names only figures this service records but this ride lacks: a sensor the bicycle did not carry, a strap that dropped out, no weather, no route. Never name what this service never holds, such as sleep, HRV, nutrition or how the rider felt.
+Use only the figures below; where a figure you would want is absent, say so under data_gaps rather than guessing. Timestamps are in the rider's local time zone unless a column says otherwise.`
 
 // The two ways a prompt names the training load it carries.
 const (
