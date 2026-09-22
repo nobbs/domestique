@@ -137,16 +137,17 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
   );
 }
 
-/** Background/ink pair per ride type, tokens where one matches the mock's hue, literal hexes otherwise. */
+/** Background/ink pair per ride type, every hue a token so each reads in both themes. */
 export const RIDE_TYPE_CHIP: Record<ActivityAnalysisDocumentRideType, string> = {
   recovery: "bg-[color-mix(in_srgb,var(--good)_15%,transparent)] text-[var(--good)]",
   endurance: "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-[var(--accent)]",
   tempo: "bg-[color-mix(in_srgb,var(--hold)_15%,transparent)] text-[var(--hold)]",
   intervals: "bg-[color-mix(in_srgb,var(--alert)_15%,transparent)] text-[var(--alert)]",
-  threshold: "bg-[color-mix(in_srgb,#c2561a_18%,transparent)] text-[#c2561a]",
-  race: "bg-[color-mix(in_srgb,#6b3fa0_18%,transparent)] text-[#6b3fa0]",
-  mixed: "bg-[color-mix(in_srgb,#6e6d6a_18%,transparent)] text-[#6e6d6a]",
-  commute: "bg-[color-mix(in_srgb,#4a6b7a_18%,transparent)] text-[#4a6b7a]",
+  threshold:
+    "bg-[color-mix(in_srgb,var(--ride-threshold)_15%,transparent)] text-[var(--ride-threshold)]",
+  race: "bg-[color-mix(in_srgb,var(--ride-race)_15%,transparent)] text-[var(--ride-race)]",
+  mixed: "bg-[color-mix(in_srgb,var(--ride-mixed)_15%,transparent)] text-[var(--ride-mixed)]",
+  commute: "bg-[color-mix(in_srgb,var(--ride-commute)_15%,transparent)] text-[var(--ride-commute)]",
 };
 
 function RideTypeChip({ type }: { type: ActivityAnalysisDocumentRideType }) {
@@ -226,7 +227,8 @@ function LoadCard({
   const metrics = ride.metrics;
   const tss = metrics?.powerTss ?? metrics?.heartRateTss;
   // heartRateTss is a different scale than power TSS; RideFigures.tsx names it "hrTSS" for the same reason.
-  const tssLabel = metrics?.powerTss !== undefined ? "TSS" : "hrTSS";
+  const tssLabel =
+    metrics?.powerTss === undefined && metrics?.heartRateTss !== undefined ? "hrTSS" : "TSS";
 
   return (
     <Card label="Load">
