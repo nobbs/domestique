@@ -275,11 +275,13 @@ weather provider once after the ride's samples were stored and kept per hour.
 Distinct from a *forecast*, which is about a course somebody is planning to
 ride: one is the past tense of the other, and the two are never mixed.
 
-**analysis** — what a language model made of one [[activity]]: a short plain-text
-reading of the ride, what it did to [[fitness / fatigue / form]], and one
-recommendation for the next session. Written by `activity:analyse`, or by
-`activity:reanalyse` when an administrator asks again, from the
-[[derived metrics]] and the rider's recent load, stored beside the ride with the
+**analysis** — what a language model made of one [[activity]]: a document
+naming the kind of ride, a short plain-text summary, what it did to
+[[fitness / fatigue / form]], highlights, concerns, and one recommendation for
+the next session. Written by `activity:analyse`, or by `activity:reanalyse`
+when an administrator asks again, from the ride's recording, its
+[[derived metrics]], its weather and route, and the rider's recent rides and
+load, stored beside the ride with the
 model and prompt revision that produced it, and never read back into any figure
 this service computes.
 

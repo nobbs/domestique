@@ -23,17 +23,18 @@ ORDER BY a.started_at_unix, a.workout_id
 LIMIT sqlc.arg(row_limit);
 
 -- name: UpsertActivityAnalysis :exec
-INSERT INTO activity_analyses (target_slot, workout_id, text, model, prompt_revision, analysed_at_unix)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO activity_analyses (target_slot, workout_id, text, model, prompt_revision, analysed_at_unix, document)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   text = excluded.text,
   model = excluded.model,
   prompt_revision = excluded.prompt_revision,
-  analysed_at_unix = excluded.analysed_at_unix;
+  analysed_at_unix = excluded.analysed_at_unix,
+  document = excluded.document;
 
 -- The analyses of rides that started before one, newest first.
 -- name: ListAnalysesBefore :many
-SELECT x.text, x.model, x.prompt_revision, x.analysed_at_unix, a.started_at_unix
+SELECT x.text, x.model, x.prompt_revision, x.analysed_at_unix, x.document, a.started_at_unix
 FROM activity_analyses AS x
 JOIN activities AS a ON a.target_slot = x.target_slot AND a.workout_id = x.workout_id
 WHERE x.target_slot = sqlc.arg(target_slot)
@@ -49,7 +50,7 @@ DELETE FROM activity_analyses WHERE target_slot = ?;
 
 -- The analyses of the rides that started inside a window, as the list reads them.
 -- name: ListActivityAnalyses :many
-SELECT x.workout_id, x.text, x.model, x.prompt_revision, x.analysed_at_unix
+SELECT x.workout_id, x.text, x.model, x.prompt_revision, x.analysed_at_unix, x.document
 FROM activity_analyses AS x
 JOIN activities AS a ON a.target_slot = x.target_slot AND a.workout_id = x.workout_id
 WHERE x.target_slot = sqlc.arg(target_slot)

@@ -36,6 +36,35 @@ func testAnalysis(text string) activity.Analysis {
 	return activity.Analysis{AnalysedAt: activityNow(), Text: text, Model: "model", PromptRevision: 1}
 }
 
+// A revision 3 analysis's document round-trips; an older revision's stays NULL
+// in storage and reads back as the document's zero value.
+func TestStoreActivityAnalysisRoundTripsTheDocument(t *testing.T) {
+	t.Parallel()
+	store := metricsStore(t)
+	storeRideAt(t, store, 1, activityNow(), true)
+	storeRideAt(t, store, 2, activityNow().Add(time.Hour), true)
+
+	document := activity.AnalysisDocument{
+		RideType: "endurance", Headline: "A steady grind", Summary: "said",
+		Highlights: []string{"strong finish"}, Concerns: []string{"heat"}, DataGaps: []string{"no power meter"},
+	}
+	document.NextSession.Advice, document.NextSession.SuggestedRestDays = "rest a day", 1
+	revision3 := activity.Analysis{AnalysedAt: activityNow(), Text: "said", Model: "model", PromptRevision: 3, Document: document}
+	require.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 1, revision3), "StoreActivityAnalysis() revision 3")
+	require.NoError(t, store.StoreActivityAnalysis(t.Context(), "rider-a", 2, testAnalysis("older")), "StoreActivityAnalysis() revision 1")
+
+	earlier, err := store.AnalysesBefore(t.Context(), "rider-a", activityNow().Add(2*time.Hour), 5)
+	require.NoError(t, err, "AnalysesBefore()")
+	require.Len(t, earlier, 2)
+	assert.Equal(t, activity.AnalysisDocument{}, earlier[0].Document, "an older revision carries no document")
+	assert.Equal(t, document, earlier[1].Document, "revision 3 reads its document back")
+
+	analyses, err := store.ActivityAnalyses(t.Context(), "rider-a", activityNow(), activityNow().Add(2*time.Hour))
+	require.NoError(t, err, "ActivityAnalyses()")
+	assert.Equal(t, document, analyses[1].Document)
+	assert.Equal(t, activity.AnalysisDocument{}, analyses[2].Document)
+}
+
 func pendingIDs(pending []activity.PendingAnalysis) []int64 {
 	ids := make([]int64, 0, len(pending))
 	for _, ride := range pending {
@@ -99,8 +128,8 @@ func TestAnalysesBeforeReadsEarlierRidesNewestFirst(t *testing.T) {
 	earlier, err := store.AnalysesBefore(t.Context(), "rider-a", start.Add(4*time.Hour), 2)
 	require.NoError(t, err, "AnalysesBefore()")
 	assert.Equal(t, []activity.Analysis{
-		{AnalysedAt: activityNow(), Text: "ride 3", Model: "model", PromptRevision: 3},
-		{AnalysedAt: activityNow(), Text: "ride 2", Model: "model", PromptRevision: 2},
+		{AnalysedAt: activityNow(), StartedAt: start.Add(3 * time.Hour), Text: "ride 3", Model: "model", PromptRevision: 3},
+		{AnalysedAt: activityNow(), StartedAt: start.Add(2 * time.Hour), Text: "ride 2", Model: "model", PromptRevision: 2},
 	}, earlier, "the ride itself and anything after it are not its context")
 }
 

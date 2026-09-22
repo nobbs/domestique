@@ -36,6 +36,7 @@ type ActivityAnalysis struct {
 	Model          string
 	PromptRevision int64
 	AnalysedAtUnix int64
+	Document       sql.NullString
 }
 
 type ActivityClimbAttempt struct {

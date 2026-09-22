@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const clearActivityAnalyses = `-- name: ClearActivityAnalyses :exec
@@ -110,7 +111,7 @@ func (q *Queries) ListActivitiesAwaitingAnalysis(ctx context.Context, arg ListAc
 }
 
 const listActivityAnalyses = `-- name: ListActivityAnalyses :many
-SELECT x.workout_id, x.text, x.model, x.prompt_revision, x.analysed_at_unix
+SELECT x.workout_id, x.text, x.model, x.prompt_revision, x.analysed_at_unix, x.document
 FROM activity_analyses AS x
 JOIN activities AS a ON a.target_slot = x.target_slot AND a.workout_id = x.workout_id
 WHERE x.target_slot = ?1
@@ -129,6 +130,7 @@ type ListActivityAnalysesRow struct {
 	Model          string
 	PromptRevision int64
 	AnalysedAtUnix int64
+	Document       sql.NullString
 }
 
 // The analyses of the rides that started inside a window, as the list reads them.
@@ -147,6 +149,7 @@ func (q *Queries) ListActivityAnalyses(ctx context.Context, arg ListActivityAnal
 			&i.Model,
 			&i.PromptRevision,
 			&i.AnalysedAtUnix,
+			&i.Document,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +165,7 @@ func (q *Queries) ListActivityAnalyses(ctx context.Context, arg ListActivityAnal
 }
 
 const listAnalysesBefore = `-- name: ListAnalysesBefore :many
-SELECT x.text, x.model, x.prompt_revision, x.analysed_at_unix, a.started_at_unix
+SELECT x.text, x.model, x.prompt_revision, x.analysed_at_unix, x.document, a.started_at_unix
 FROM activity_analyses AS x
 JOIN activities AS a ON a.target_slot = x.target_slot AND a.workout_id = x.workout_id
 WHERE x.target_slot = ?1
@@ -182,6 +185,7 @@ type ListAnalysesBeforeRow struct {
 	Model          string
 	PromptRevision int64
 	AnalysedAtUnix int64
+	Document       sql.NullString
 	StartedAtUnix  int64
 }
 
@@ -200,6 +204,7 @@ func (q *Queries) ListAnalysesBefore(ctx context.Context, arg ListAnalysesBefore
 			&i.Model,
 			&i.PromptRevision,
 			&i.AnalysedAtUnix,
+			&i.Document,
 			&i.StartedAtUnix,
 		); err != nil {
 			return nil, err
@@ -230,13 +235,14 @@ func (q *Queries) RecordAnalysisEnabled(ctx context.Context, enabledSinceUnix in
 }
 
 const upsertActivityAnalysis = `-- name: UpsertActivityAnalysis :exec
-INSERT INTO activity_analyses (target_slot, workout_id, text, model, prompt_revision, analysed_at_unix)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO activity_analyses (target_slot, workout_id, text, model, prompt_revision, analysed_at_unix, document)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_slot, workout_id) DO UPDATE SET
   text = excluded.text,
   model = excluded.model,
   prompt_revision = excluded.prompt_revision,
-  analysed_at_unix = excluded.analysed_at_unix
+  analysed_at_unix = excluded.analysed_at_unix,
+  document = excluded.document
 `
 
 type UpsertActivityAnalysisParams struct {
@@ -246,6 +252,7 @@ type UpsertActivityAnalysisParams struct {
 	Model          string
 	PromptRevision int64
 	AnalysedAtUnix int64
+	Document       sql.NullString
 }
 
 func (q *Queries) UpsertActivityAnalysis(ctx context.Context, arg UpsertActivityAnalysisParams) error {
@@ -256,6 +263,7 @@ func (q *Queries) UpsertActivityAnalysis(ctx context.Context, arg UpsertActivity
 		arg.Model,
 		arg.PromptRevision,
 		arg.AnalysedAtUnix,
+		arg.Document,
 	)
 	return err
 }
