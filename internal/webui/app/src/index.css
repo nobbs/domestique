@@ -24,6 +24,11 @@
   --alert: #c0392b;
   --good: #2f8a4a;
   --hold: #9a6700;
+  /* The four kinds of ride no other token names; the chip tints each at 15 %. */
+  --ride-threshold: #c2561a;
+  --ride-race: #6b3fa0;
+  --ride-mixed: #6e6d6a;
+  --ride-commute: #4a6b7a;
   --letterbox: #000;
   --grade-0: #8e979f;
   --grade-1: #22a94e;
@@ -102,6 +107,10 @@
   --alert: #f08a7e;
   --good: #7fc78d;
   --hold: #e2b45f;
+  --ride-threshold: #f0a070;
+  --ride-race: #c4a5ee;
+  --ride-mixed: #b5b2ab;
+  --ride-commute: #9fc0cf;
   --grade-0: #a9b3bc;
   --grade-1: #3fd074;
   --grade-2: #f7d13f;
@@ -179,6 +188,10 @@
     --alert: #f08a7e;
     --good: #7fc78d;
     --hold: #e2b45f;
+    --ride-threshold: #f0a070;
+    --ride-race: #c4a5ee;
+    --ride-mixed: #b5b2ab;
+    --ride-commute: #9fc0cf;
     --grade-0: #a9b3bc;
     --grade-1: #3fd074;
     --grade-2: #f7d13f;
