@@ -153,9 +153,9 @@ func (s *fakeAnalyseStore) ActivitiesBetween(
 		return nil, s.recentErr
 	}
 	var inWindow []Stored
-	for _, ride := range s.recentRides {
-		if !ride.StartedAt.Before(from) && ride.StartedAt.Before(to) {
-			inWindow = append(inWindow, ride)
+	for index := range s.recentRides {
+		if ride := &s.recentRides[index]; !ride.StartedAt.Before(from) && ride.StartedAt.Before(to) {
+			inWindow = append(inWindow, *ride)
 		}
 	}
 
