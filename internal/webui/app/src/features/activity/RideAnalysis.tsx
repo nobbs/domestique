@@ -45,9 +45,13 @@ function shiftDay(date: string, delta: number): string {
   return at.toISOString().slice(0, 10);
 }
 
-/** The two days the load card's form figure is read from: the ride's day and the one before it. */
+/**
+ * The window the load card's form figure is read from, as the instants the
+ * endpoint takes: a day either side of the ride's, so the ride's own day is
+ * inside it whatever zone the service cuts days in.
+ */
 export function fitnessWindowFor(rideDay: string): { from: string; to: string } {
-  return { from: shiftDay(rideDay, -1), to: shiftDay(rideDay, 1) };
+  return { from: `${shiftDay(rideDay, -1)}T00:00:00Z`, to: `${shiftDay(rideDay, 2)}T00:00:00Z` };
 }
 
 export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
