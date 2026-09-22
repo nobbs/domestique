@@ -53,7 +53,10 @@ func TestComposeCarriesThisRideAndOmitsCoordinatesAndSubject(t *testing.T) {
 	b.routeName = "Alpe secrète"
 	b.weather = &WeatherSummary{TemperatureMinCelsius: 10, TemperatureMaxCelsius: 18, WeatherCode: 1}
 	at := b.ride.StartedAt
-	b.series = []SampleRow{{Time: at, HeartRateBPM: Reading{Value: 140, Known: true}, AltitudeMetres: Reading{Value: 512, Known: true}}}
+	b.series = []SampleRow{{
+		Time: at, HeartRateBPM: Reading{Value: 140, Known: true}, AltitudeMetres: Reading{Value: 512, Known: true},
+		Latitude: Reading{Value: 47.123456, Known: true}, Longitude: Reading{Value: 8.654321, Known: true},
+	}}
 
 	prompt := b.compose()
 	assert.Contains(t, prompt, "This ride:")
@@ -305,8 +308,22 @@ func TestTimeseriesTailwindFollowsTheBearing(t *testing.T) {
 	}
 
 	prompt := b.compose()
+	assert.NotContains(t, prompt, "50.00", "no coordinate leaves the host")
 	assert.Contains(t, prompt, "\n0,,,,,140,,,,,,-20", "riding north into a north wind")
 	assert.Contains(t, prompt, "\n5,,,,,140,,,,,,20", "riding north with a south wind behind")
 	assert.Contains(t, prompt, "\n10,,,,,140,,,,,,\n", "a bucket that did not move has no bearing")
 	assert.True(t, strings.HasSuffix(prompt, "\n60,,,,,140,,,,,,"), "a bucket outside every step has no wind")
+}
+
+func TestTimeseriesKeepsAPositionOnlyBucketForItsTailwind(t *testing.T) {
+	t.Parallel()
+	b := minimalBundle()
+	origin := b.at
+	b.series = []SampleRow{
+		{Time: origin, Latitude: Reading{Value: 50, Known: true}, Longitude: Reading{Value: 8, Known: true}},
+		{Time: origin.Add(4 * time.Second), Latitude: Reading{Value: 50.001, Known: true}, Longitude: Reading{Value: 8, Known: true}},
+	}
+	b.weatherSteps = []WeatherStep{{At: origin, Step: time.Minute, WindSpeedKMH: 10, WindDirectionDegrees: 180}}
+
+	assert.Contains(t, b.compose(), "\n0,,,,,,,,,,,10")
 }

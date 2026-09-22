@@ -631,9 +631,11 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 	var rows []string
 	for _, index := range order {
 		bucket := buckets[index]
-		if !bucket.hasDistance && !bucket.hasAltitude && bucket.grade.count == 0 && bucket.speed.count == 0 &&
-			bucket.heartRate.count == 0 && bucket.power.count == 0 && bucket.estPower.count == 0 &&
-			bucket.cadence.count == 0 && bucket.temp.count == 0 && bucket.target.count == 0 {
+		tailwind := b.tailwindKMH(bucket, origin.Add(time.Duration(index)*timeseriesStep))
+		if !bucket.hasDistance && !bucket.hasAltitude && !tailwind.Known && bucket.grade.count == 0 &&
+			bucket.speed.count == 0 && bucket.heartRate.count == 0 && bucket.power.count == 0 &&
+			bucket.estPower.count == 0 && bucket.cadence.count == 0 && bucket.temp.count == 0 &&
+			bucket.target.count == 0 {
 			continue
 		}
 		rows = append(rows, fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
@@ -648,7 +650,7 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 			readingCell(bucket.cadence.reading(), "%.0f"),
 			readingCell(bucket.temp.reading(), "%.1f"),
 			readingCell(bucket.target.reading(), "%.0f"),
-			readingCell(b.tailwindKMH(bucket, origin.Add(time.Duration(index)*timeseriesStep)), "%.0f")))
+			readingCell(tailwind, "%.0f")))
 	}
 	writeCSV(prompt, "Timeseries",
 		"t_s,dist_km,alt_m,grade_pct,speed_kmh,hr,power,est_power,cadence,temp_c,target_w,tailwind_kmh", rows)
