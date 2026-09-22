@@ -112,13 +112,15 @@ environment value supports a simple local setup.
 | Claude Code OAuth token | `analysis.claude_token_file` | `DOMESTIQUE_ANALYSIS__CLAUDE_TOKEN` | `DOMESTIQUE_ANALYSIS__CLAUDE_TOKEN_FILE` |
 
 A literal `state.encryption_key`, `auth.auth0.client_secret` or
-`analysis.claude_executable` names the absolute path of the `claude` executable the
-analysis runs, `/usr/local/bin/claude` when absent, which is where the image
-installs its bundled build; a development service names its own. It is a
-path, not a secret.
 `analysis.claude_token` is invalid in the TOML file. Each is accepted only from its documented direct environment
 variable. A `*_FILE` environment variable overrides the matching TOML file
 path, but it must not accompany the direct value.
+
+Beside the token, `analysis.claude_executable` is an ordinary setting, not a
+secret: the absolute path of the `claude` executable the analysis runs, in the
+TOML file or as `DOMESTIQUE_ANALYSIS__CLAUDE_EXECUTABLE`. Absent, it is
+`/usr/local/bin/claude`, where the image installs its bundled build; a
+development service names its own. An empty or relative path is refused.
 
 A file secret must be an absolute path to a regular readable file, non-empty
 after one terminal line break is trimmed. The state encryption key is

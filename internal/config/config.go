@@ -2,7 +2,6 @@
 package config
 
 import (
-	"cmp"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -169,8 +168,8 @@ type rawAnalysis struct {
 	// ClaudeTokenFile is nil when no file input names the key at all, which is
 	// the one way to leave the analysis off; an empty path is still refused.
 	ClaudeTokenFile  *string `koanf:"claude_token_file"`
+	ClaudeExecutable *string `koanf:"claude_executable"`
 	ClaudeToken      string  `koanf:"claude_token"`
-	ClaudeExecutable string  `koanf:"claude_executable"`
 }
 
 // rawPlanning is a pointer field on rawSettings so an absent [planning]
@@ -458,7 +457,10 @@ func build(raw *rawSettings) (*Settings, error) {
 	if err != nil {
 		return nil, err
 	}
-	claudeExecutable := cmp.Or(raw.Analysis.ClaudeExecutable, DefaultClaudeExecutable)
+	claudeExecutable := DefaultClaudeExecutable
+	if raw.Analysis.ClaudeExecutable != nil {
+		claudeExecutable = *raw.Analysis.ClaudeExecutable
+	}
 	if !filepath.IsAbs(claudeExecutable) {
 		return nil, errors.New("analysis.claude_executable must be an absolute path")
 	}

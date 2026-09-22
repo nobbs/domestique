@@ -680,11 +680,25 @@ func TestLoadTakesAnotherClaudeExecutable(t *testing.T) {
 	assert.Equal(t, "/opt/claude/claude", settings.Analysis.ClaudeExecutable, "Analysis.ClaudeExecutable")
 }
 
-func TestLoadRefusesARelativeClaudeExecutable(t *testing.T) {
+func TestLoadRefusesAClaudeExecutableThatIsNotAbsolute(t *testing.T) {
+	for name, value := range map[string]string{"relative": "claude", "empty": ""} {
+		t.Run(name, func(t *testing.T) {
+			configPath, _ := writeValidConfiguration(t, t.TempDir())
+			t.Setenv(configFileEnv, configPath)
+			appendToFile(t, configPath, fmt.Sprintf("\n[analysis]\nclaude_executable = %q\n", value))
+
+			_, err := Load()
+			require.ErrorContains(t, err, "claude_executable")
+		})
+	}
+}
+
+func TestLoadTakesTheClaudeExecutableFromTheEnvironment(t *testing.T) {
 	configPath, _ := writeValidConfiguration(t, t.TempDir())
 	t.Setenv(configFileEnv, configPath)
-	appendToFile(t, configPath, "\n[analysis]\nclaude_executable = \"claude\"\n")
+	t.Setenv("DOMESTIQUE_ANALYSIS__CLAUDE_EXECUTABLE", "/opt/claude/claude")
 
-	_, err := Load()
-	require.ErrorContains(t, err, "claude_executable")
+	settings, err := Load()
+	require.NoError(t, err)
+	assert.Equal(t, "/opt/claude/claude", settings.Analysis.ClaudeExecutable, "Analysis.ClaudeExecutable")
 }
