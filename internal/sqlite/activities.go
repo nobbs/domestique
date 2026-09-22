@@ -354,6 +354,8 @@ func (s *Store) ActivityRecordSeries(ctx context.Context, targetID string, id in
 			DescentMetres:       reading(row.DescentMetres),
 			TargetPowerWatts:    reading(row.TargetPowerWatts),
 			EstimatedPowerWatts: reading(row.EstimatedPowerWatts),
+			Latitude:            reading(row.Latitude),
+			Longitude:           reading(row.Longitude),
 		})
 	}
 

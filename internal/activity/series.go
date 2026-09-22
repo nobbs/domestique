@@ -54,6 +54,9 @@ type SampleRow struct {
 	// EstimatedPowerWatts is the power this service worked out for the record,
 	// never a measurement; only ActivityRecordSeries fills it.
 	EstimatedPowerWatts Reading
+	// Latitude and Longitude are the record's position, only ActivityRecordSeries
+	// fills them, and only a bearing is ever read off them.
+	Latitude, Longitude Reading
 }
 
 // Series reads one named series off a ride's samples, one reading per row in

@@ -134,7 +134,7 @@ ORDER BY record_index;
 SELECT recorded_at_unix, distance_metres, altitude_metres,
   heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
   speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres, target_power_watts,
-  estimated_power_watts
+  estimated_power_watts, latitude, longitude
 FROM activity_records
 WHERE target_slot = sqlc.arg(target_slot) AND workout_id = sqlc.arg(workout_id)
 ORDER BY record_index;

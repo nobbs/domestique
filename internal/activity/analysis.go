@@ -18,7 +18,7 @@ import (
 const (
 	// PromptRevision names the prompt below; an analysis records the one it
 	// was asked with.
-	PromptRevision = 4
+	PromptRevision = 5
 
 	// MaximumAnalysisCharacters is the contract's bound on a stored summary.
 	MaximumAnalysisCharacters = 2000

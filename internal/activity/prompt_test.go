@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -205,9 +206,9 @@ func TestTimeseriesBucketsMeanAndLastKnownValueAndBlanksTheUnmeasured(t *testing
 	}
 
 	prompt := b.compose()
-	assert.Contains(t, prompt, "Timeseries:\nt_s,dist_km,alt_m,grade_pct,speed_kmh,hr,power,est_power,cadence,temp_c,target_w")
-	assert.Contains(t, prompt, "0,0.0,105,,18.0,145,,,,,")
-	assert.Contains(t, prompt, "5,0.0,,,9.0,,,,,,")
+	assert.Contains(t, prompt, "Timeseries:\nt_s,dist_km,alt_m,grade_pct,speed_kmh,hr,power,est_power,cadence,temp_c,target_w,tailwind_kmh")
+	assert.Contains(t, prompt, "0,0.0,105,,18.0,145,,,,,,")
+	assert.Contains(t, prompt, "5,0.0,,,9.0,,,,,,,")
 }
 
 func TestTimeseriesTruncatesAtSixHours(t *testing.T) {
@@ -278,4 +279,34 @@ func TestWeatherCodeWordsFollowWMO(t *testing.T) {
 	assert.Equal(t, "mainly clear", weatherCodeWord(1))
 	assert.Equal(t, "overcast", weatherCodeWord(3))
 	assert.Equal(t, "code 30", weatherCodeWord(30))
+}
+
+// Tailwind: the wind's component along a bucket's bearing, from the step that
+// covers it; a bucket that did not move, or has no step, carries none.
+func TestTimeseriesTailwindFollowsTheBearing(t *testing.T) {
+	t.Parallel()
+	b := minimalBundle()
+	origin := b.at
+	north := func(at time.Time, lat float64) SampleRow {
+		return SampleRow{
+			Time: at, Latitude: Reading{Value: lat, Known: true}, Longitude: Reading{Value: 8, Known: true},
+			HeartRateBPM: Reading{Value: 140, Known: true},
+		}
+	}
+	b.series = []SampleRow{
+		north(origin, 50), north(origin.Add(4*time.Second), 50.001),
+		north(origin.Add(5*time.Second), 50.001), north(origin.Add(9*time.Second), 50.002),
+		north(origin.Add(10*time.Second), 50.002), north(origin.Add(14*time.Second), 50.002),
+		north(origin.Add(60*time.Second), 50.002), north(origin.Add(64*time.Second), 50.003),
+	}
+	b.weatherSteps = []WeatherStep{
+		{At: origin, Step: 5 * time.Second, WindSpeedKMH: 20, WindDirectionDegrees: 0},
+		{At: origin.Add(5 * time.Second), Step: 10 * time.Second, WindSpeedKMH: 20, WindDirectionDegrees: 180},
+	}
+
+	prompt := b.compose()
+	assert.Contains(t, prompt, "\n0,,,,,140,,,,,,-20", "riding north into a north wind")
+	assert.Contains(t, prompt, "\n5,,,,,140,,,,,,20", "riding north with a south wind behind")
+	assert.Contains(t, prompt, "\n10,,,,,140,,,,,,\n", "a bucket that did not move has no bearing")
+	assert.True(t, strings.HasSuffix(prompt, "\n60,,,,,140,,,,,,"), "a bucket outside every step has no wind")
 }

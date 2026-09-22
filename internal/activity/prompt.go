@@ -2,6 +2,7 @@ package activity
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -17,7 +18,7 @@ import (
 const promptInstruction = `You are a cycling coach reading one ride a rider has finished, with the rider's recent history and the ride's own recording.
 Answer with the JSON document the schema describes and nothing else. Plain text inside every string: no Markdown, no lists inside strings.
 Be brief: the rider reads this on a phone. The summary is one short paragraph of at most five sentences on what the ride was and what mattered in it; load_effect is one or two sentences and repeats nothing from the summary; each highlight, concern and data gap is one short clause; leave a list empty rather than pad it. Quote a figure only where it carries the point.
-Use only the figures below; where a figure you would want is absent, say so under data_gaps rather than guessing. Timestamps are in the rider's local time zone unless a column says otherwise.`
+tailwind_kmh is the wind's component along the direction of travel, positive from behind, negative into the face. Use only the figures below; where a figure you would want is absent, say so under data_gaps rather than guessing. Timestamps are in the rider's local time zone unless a column says otherwise.`
 
 // The two ways a prompt names the training load it carries.
 const (
@@ -533,8 +534,44 @@ func (b *bundle) weatherStepRows() []string {
 // timeseriesBucket is one 5 s bucket of the ride's samples.
 type timeseriesBucket struct {
 	distanceKM, altitudeM                                           float64
-	hasDistance, hasAltitude                                        bool
+	first, last                                                     measure.Coordinate
+	hasDistance, hasAltitude, hasPosition                           bool
 	grade, speed, heartRate, power, estPower, cadence, temp, target mean
+}
+
+// minimumBearingMetres is how far a bucket must travel before its bearing,
+// and so its tailwind, is trusted: below it GPS jitter points anywhere.
+const minimumBearingMetres = 3.0
+
+// tailwindKMH is the wind's component along a bucket's direction of travel,
+// positive from behind, from the weather step covering its time. A bucket
+// with no bearing, or no step, has none.
+func (b *bundle) tailwindKMH(bucket *timeseriesBucket, at time.Time) Reading {
+	if !bucket.hasPosition || measure.HaversineMetres(bucket.first, bucket.last) < minimumBearingMetres {
+		return Reading{}
+	}
+	step, found := b.weatherStepAt(at)
+	if !found {
+		return Reading{}
+	}
+	bearing := measure.Bearing(bucket.first, bucket.last)
+	// Wind direction is where the wind comes from: the same as the bearing is a
+	// headwind, so the along-track component is negated.
+	along := -step.WindSpeedKMH * math.Cos((step.WindDirectionDegrees-bearing)*math.Pi/180)
+
+	return Reading{Value: along, Known: true}
+}
+
+// weatherStepAt is the step whose window holds one instant.
+func (b *bundle) weatherStepAt(at time.Time) (WeatherStep, bool) {
+	for index := range b.weatherSteps {
+		step := &b.weatherSteps[index]
+		if !at.Before(step.At) && at.Before(step.At.Add(step.Step)) {
+			return *step, true
+		}
+	}
+
+	return WeatherStep{}, false
 }
 
 // writeTimeseries is section 8: 5 s buckets, mean of known readings, last
@@ -569,6 +606,12 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 		if row.AltitudeMetres.Known {
 			bucket.altitudeM, bucket.hasAltitude = row.AltitudeMetres.Value, true
 		}
+		if row.Latitude.Known && row.Longitude.Known {
+			bucket.last = measure.Coordinate{Latitude: row.Latitude.Value, Longitude: row.Longitude.Value}
+			if !bucket.hasPosition {
+				bucket.first, bucket.hasPosition = bucket.last, true
+			}
+		}
 		bucket.grade.add(row.GradePercent)
 		if index < len(speeds) {
 			bucket.speed.add(speeds[index])
@@ -590,7 +633,7 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 			bucket.cadence.count == 0 && bucket.temp.count == 0 && bucket.target.count == 0 {
 			continue
 		}
-		rows = append(rows, fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
+		rows = append(rows, fmt.Sprintf("%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s",
 			index*int(timeseriesStep/time.Second),
 			numberCell(bucket.hasDistance, bucket.distanceKM, "%.1f"),
 			numberCell(bucket.hasAltitude, bucket.altitudeM, "%.0f"),
@@ -601,10 +644,11 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 			readingCell(bucket.estPower.reading(), "%.0f"),
 			readingCell(bucket.cadence.reading(), "%.0f"),
 			readingCell(bucket.temp.reading(), "%.1f"),
-			readingCell(bucket.target.reading(), "%.0f")))
+			readingCell(bucket.target.reading(), "%.0f"),
+			readingCell(b.tailwindKMH(bucket, origin.Add(time.Duration(index)*timeseriesStep)), "%.0f")))
 	}
 	writeCSV(prompt, "Timeseries",
-		"t_s,dist_km,alt_m,grade_pct,speed_kmh,hr,power,est_power,cadence,temp_c,target_w", rows)
+		"t_s,dist_km,alt_m,grade_pct,speed_kmh,hr,power,est_power,cadence,temp_c,target_w,tailwind_kmh", rows)
 	if truncated {
 		prompt.WriteString("\n(timeseries truncated at six hours)")
 	}
