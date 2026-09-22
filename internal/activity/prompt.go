@@ -337,7 +337,7 @@ func hoursMinutes(seconds float64) string {
 func weatherCodeWord(code int) string {
 	switch {
 	case code >= 0 && code <= 3:
-		return [...]string{"clear", "clear", "mainly clear", "partly cloudy"}[code]
+		return [...]string{"clear", "mainly clear", "partly cloudy", "overcast"}[code]
 	case code >= 45 && code <= 48:
 		return "fog"
 	case code >= 51 && code <= 67:
@@ -409,8 +409,13 @@ func climbStats(attempts []StoredClimbAttempt) (best, median float64, count int)
 		seconds[index] = attempt.Seconds
 	}
 	sort.Float64s(seconds)
+	middle := len(seconds) / 2
+	median = seconds[middle]
+	if len(seconds)%2 == 0 {
+		median = (seconds[middle-1] + seconds[middle]) / 2
+	}
 
-	return seconds[0], seconds[len(seconds)/2], len(seconds)
+	return seconds[0], median, len(seconds)
 }
 
 func minutesCell(seconds float64) string {

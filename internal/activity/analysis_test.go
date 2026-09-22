@@ -28,6 +28,9 @@ type fakeAnalyseStore struct {
 	matches         map[int64]RouteMatch
 	weatherSums     map[int64]WeatherSummary
 	routeNames      map[route.Key]string
+	stageLine       []measure.Coordinate
+	stageElevations []float64
+	climbAttempts   []StoredClimbAttempt
 	ownerErr        error
 	pendingErr      error
 	storeErr        error
@@ -132,18 +135,19 @@ func (s *fakeAnalyseStore) StoreActivityAnalysis(_ context.Context, _ string, id
 func (s *fakeAnalyseStore) ActivitiesBetween(
 	_ context.Context, _ string, from, to time.Time, limit int,
 ) ([]Stored, error) {
-	if limit == 1 {
+	if limit == sameSecondRides {
 		if s.ridesErr != nil {
 			return nil, s.ridesErr
 		}
+		var inWindow []Stored
 		for id := range s.rides {
 			ride := s.rides[id]
 			if !ride.StartedAt.Before(from) && ride.StartedAt.Before(to) {
-				return []Stored{ride}, nil
+				inWindow = append(inWindow, ride)
 			}
 		}
 
-		return nil, nil
+		return inWindow, nil
 	}
 
 	return s.recentRides, s.recentErr
@@ -179,14 +183,14 @@ func (s *fakeAnalyseStore) ActivityTrack(context.Context, string, int64) ([]Trac
 	return nil, s.trackErr
 }
 
-func (*fakeAnalyseStore) StageProfile(
+func (s *fakeAnalyseStore) StageProfile(
 	context.Context, route.Key,
 ) (line []measure.Coordinate, elevations []float64, found bool, err error) {
-	return nil, nil, false, nil
+	return s.stageLine, s.stageElevations, s.stageLine != nil, nil
 }
 
-func (*fakeAnalyseStore) RouteClimbAttempts(context.Context, string, route.Key) ([]StoredClimbAttempt, error) {
-	return nil, nil
+func (s *fakeAnalyseStore) RouteClimbAttempts(context.Context, string, route.Key) ([]StoredClimbAttempt, error) {
+	return s.climbAttempts, nil
 }
 
 func (s *fakeAnalyseStore) PowerCurve(context.Context, []string, time.Time, time.Time) (rider.PowerCurve, error) {
@@ -560,4 +564,63 @@ func TestReanalyseReportsStoreFailuresAsState(t *testing.T) {
 			assert.Equal(t, Result{Outcome: Failed, Failure: FailureState}, result)
 		})
 	}
+}
+
+// Two rides can start in the same second; the bundle is read for the owed one,
+// and a ride gone between listing and reading is a state failure, never a
+// prompt about a zero-valued ride.
+func TestAnalysePicksTheOwedRideOutOfItsStartSecond(t *testing.T) {
+	t.Parallel()
+	startedAt := analyseNow().Add(-time.Hour)
+	ride := PendingAnalysis{ID: 2, StartedAt: startedAt}
+	store := newFakeAnalyseStore(ride)
+	store.rides[1] = Stored{ID: 1, StartedAt: startedAt, DistanceMetres: 99000}
+	store.rides[2] = Stored{ID: 2, StartedAt: startedAt, DistanceMetres: 42000}
+	asker := &fakeAsker{answers: []string{document("the right ride")}}
+
+	result := newTestAnalyser(t, store, asker).Analyse(t.Context(), "rider-a")
+
+	assert.Equal(t, Result{Outcome: Polled, Analysed: 1}, result)
+	require.Len(t, asker.prompts, 1)
+	assert.Contains(t, asker.prompts[0], "distance 42.0 km")
+	assert.NotContains(t, asker.prompts[0], "99.0 km")
+}
+
+func TestAnalyseFailsAsStateWhenTheOwedRideIsGone(t *testing.T) {
+	t.Parallel()
+	ride := PendingAnalysis{ID: 1, StartedAt: analyseNow().Add(-time.Hour)}
+	store := newFakeAnalyseStore(ride)
+	delete(store.rides, 1)
+	asker := &fakeAsker{answers: []string{document("never asked")}}
+
+	result := newTestAnalyser(t, store, asker).Analyse(t.Context(), "rider-a")
+
+	assert.Equal(t, Result{Outcome: Failed, Failure: FailureState}, result)
+	assert.Empty(t, asker.prompts)
+}
+
+// An older owed ride is read against what came before it: a later ride's
+// climb attempt and its row in the recent-rides table are left out.
+func TestAnalyseCutsHistoryAtTheRidesStart(t *testing.T) {
+	t.Parallel()
+	ride := PendingAnalysis{ID: 1, StartedAt: analyseNow().Add(-48 * time.Hour)}
+	store := newFakeAnalyseStore(ride)
+	key := route.NewKey(route.ProviderVeloPlanner, 42, 0)
+	store.matches = map[int64]RouteMatch{1: {Key: key}, 3: {Key: key}}
+	store.stageLine = []measure.Coordinate{{Latitude: 47, Longitude: 8}, {Latitude: 47.02, Longitude: 8}}
+	store.stageElevations = []float64{100, 400}
+	store.climbAttempts = []StoredClimbAttempt{
+		{WorkoutID: 1, RiddenAt: ride.StartedAt, ClimbAttempt: ClimbAttempt{Seconds: 600}},                     //nolint:modernize // Explicit type keeps the rows scannable.
+		{WorkoutID: 3, RiddenAt: ride.StartedAt.Add(24 * time.Hour), ClimbAttempt: ClimbAttempt{Seconds: 100}}, //nolint:modernize // Explicit type keeps the rows scannable.
+	}
+	store.recentRides = []Stored{{ID: 3, StartedAt: ride.StartedAt.Add(24 * time.Hour), DistanceMetres: 77000}}
+	asker := &fakeAsker{answers: []string{document("an older ride")}}
+
+	result := newTestAnalyser(t, store, asker).Analyse(t.Context(), "rider-a")
+
+	assert.Equal(t, Result{Outcome: Polled, Analysed: 1}, result)
+	require.Len(t, asker.prompts, 1)
+	assert.Contains(t, asker.prompts[0], "Climbs:")
+	assert.NotContains(t, asker.prompts[0], "77.0")
+	assert.NotContains(t, asker.prompts[0], ",1.7,") // the later attempt's 100 s would be the best
 }

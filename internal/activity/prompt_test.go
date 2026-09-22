@@ -263,3 +263,21 @@ func TestRecentRidesExcludesThisRide(t *testing.T) {
 	assert.Contains(t, prompt, "20.0,1.0,0")
 	assert.NotContains(t, prompt, ",1.0,0.0,")
 }
+
+func TestClimbsMedianInterpolatesAnEvenCount(t *testing.T) {
+	t.Parallel()
+	_, median, count := climbStats([]StoredClimbAttempt{
+		{ClimbAttempt: ClimbAttempt{Seconds: 700}}, //nolint:modernize // Explicit type keeps the rows scannable.
+		{ClimbAttempt: ClimbAttempt{Seconds: 500}}, //nolint:modernize // Explicit type keeps the rows scannable.
+	})
+	assert.InDelta(t, 600, median, 0.001)
+	assert.Equal(t, 2, count)
+}
+
+func TestWeatherCodeWordsFollowWMO(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "clear", weatherCodeWord(0))
+	assert.Equal(t, "mainly clear", weatherCodeWord(1))
+	assert.Equal(t, "overcast", weatherCodeWord(3))
+	assert.Equal(t, "code 30", weatherCodeWord(30))
+}

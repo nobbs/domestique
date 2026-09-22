@@ -37,7 +37,12 @@ const (
 	recentRideHistoryDays  = 90
 	recentRideHistoryLimit = 20
 	analysisSplitMetres    = 5000
+	// sameSecondRides bounds how many rides one start second is read for.
+	sameSecondRides = 8
 )
+
+// errRideGone is an owed ride that was removed between being listed and read.
+var errRideGone = errors.New("activity: the ride is no longer stored")
 
 // rideTypes is every ride_type the schema allows.
 var rideTypes = []string{ //nolint:gochecknoglobals // A constant list of enum values, never mutated.
@@ -72,10 +77,10 @@ const (
 )
 
 // AnalysisSchema is the JSON Schema AnalysisDocument is asked for under,
-// handed to claude.Options.Schema.
-//
-//nolint:gochecknoglobals // A constant document, never mutated; a []byte const is not possible in Go.
-var AnalysisSchema = []byte(`{
+// handed to claude.Options.Schema; each call returns its own copy.
+func AnalysisSchema() []byte { return []byte(analysisSchema) }
+
+const analysisSchema = `{
   "type": "object",
   "additionalProperties": false,
   "required": ["ride_type", "headline", "summary", "load_effect", "highlights", "concerns", "next_session", "data_gaps"],
@@ -97,7 +102,7 @@ var AnalysisSchema = []byte(`{
     },
     "data_gaps": {"type": "array", "maxItems": 6, "items": {"type": "string", "maxLength": 200}}
   }
-}`)
+}`
 
 // Analysis is what a language model made of one ride, with what produced it.
 type Analysis struct {
@@ -282,14 +287,17 @@ func (a *Analyser) buildBundle(
 	ctx context.Context, targetID string, ride PendingAnalysis, run *analysisContext, metrics *RideMetrics,
 	earlier []Analysis,
 ) (*bundle, error) {
-	rides, err := a.store.ActivitiesBetween(ctx, targetID, ride.StartedAt, ride.StartedAt.Add(time.Second), 1)
+	// Start times are not unique, so the second the ride started in is read
+	// and the ride picked out of it by id.
+	rides, err := a.store.ActivitiesBetween(ctx, targetID, ride.StartedAt, ride.StartedAt.Add(time.Second), sameSecondRides)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // Reported as FailureState; the error itself is never shown.
 	}
-	var stored Stored
-	if len(rides) > 0 {
-		stored = rides[0]
+	index := slices.IndexFunc(rides, func(stored Stored) bool { return stored.ID == ride.ID })
+	if index < 0 {
+		return nil, errRideGone
 	}
+	stored := rides[index]
 	weatherSteps, err := a.store.ActivityWeatherSteps(ctx, targetID, ride.ID)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // Reported as FailureState; the error itself is never shown.
@@ -308,7 +316,7 @@ func (a *Analyser) buildBundle(
 		ride: stored, indoor: slices.Contains(run.indoorTypes, stored.TypeID),
 		session: run.sessions[ride.ID], metrics: metrics,
 		weatherSteps: weatherSteps, series: series, track: track,
-		recent: run.recent, recentByID: run.metrics, matches: run.matches,
+		recent: ridesBefore(run.recent, ride.StartedAt), recentByID: run.metrics, matches: run.matches,
 		routeNames: map[route.Key]string{}, indoorTypes: run.indoorTypes,
 		day: run.load, loadLabel: run.loadLabel, loads: run.loads,
 		location: run.location, at: run.at, earlier: earlier,
@@ -329,9 +337,10 @@ func (a *Analyser) buildBundle(
 			if attemptErr == nil {
 				b.thisAttempts = map[int]ClimbAttempt{}
 				for _, attempt := range attempts {
-					if attempt.WorkoutID == ride.ID {
+					switch {
+					case attempt.WorkoutID == ride.ID:
 						b.thisAttempts[attempt.ClimbIndex] = attempt.ClimbAttempt
-					} else {
+					case attempt.RiddenAt.Before(ride.StartedAt):
 						b.otherAttempts = append(b.otherAttempts, attempt)
 					}
 				}
@@ -354,6 +363,19 @@ func (a *Analyser) buildBundle(
 	}
 
 	return b, nil
+}
+
+// ridesBefore is the rides of a run's recent window that started before one
+// instant: an older owed ride is read against what came before it, not after.
+func ridesBefore(rides []Stored, before time.Time) []Stored {
+	var kept []Stored
+	for index := range rides {
+		if rides[index].StartedAt.Before(before) {
+			kept = append(kept, rides[index])
+		}
+	}
+
+	return kept
 }
 
 // heldTypes is the indoor types a rider with Zwift credentials has held back
