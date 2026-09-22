@@ -34,6 +34,27 @@ const analysed: Activity = {
   },
 };
 
+const withDocument: Activity = {
+  ...ride,
+  metrics: { trimp: 42 },
+  analysis: {
+    text: "A steady endurance ride.",
+    model: "claude-sonnet-5",
+    promptRevision: 3,
+    analysedAt: "2026-09-01T08:00:00Z",
+    document: {
+      rideType: "endurance",
+      headline: "Solid endurance work",
+      summary: "Steady effort throughout, in zone the whole way.",
+      loadEffect: "Adds a moderate training load.",
+      highlights: ["Held power steady on the climb"],
+      concerns: ["Cadence dropped in the last hour"],
+      nextSession: { advice: "Recover easy tomorrow.", suggestedRestDays: 1 },
+      dataGaps: ["power meter offline for the first 10 minutes"],
+    },
+  },
+};
+
 function config(admin: boolean): WebUIConfig {
   return {
     basemaps: [],
@@ -79,6 +100,60 @@ describe("RideAnalysis", () => {
     const { container } = show(ride);
 
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders each part of a structured document", () => {
+    show(withDocument);
+
+    const section = screen.getByRole("region", { name: "Analysis" });
+    expect(section).toHaveTextContent("Solid endurance work");
+    expect(section).toHaveTextContent("endurance");
+    expect(section).toHaveTextContent("Steady effort throughout, in zone the whole way.");
+    expect(section).toHaveTextContent("Adds a moderate training load.");
+    expect(section).toHaveTextContent("Held power steady on the climb");
+    expect(section).toHaveTextContent("Cadence dropped in the last hour");
+    expect(section).toHaveTextContent("Recover easy tomorrow.");
+    expect(section).toHaveTextContent("Suggested rest: 1 day(s).");
+    expect(section).toHaveTextContent("power meter offline for the first 10 minutes");
+    expect(section).toHaveTextContent("claude-sonnet-5");
+  });
+
+  it("falls back to the text when a document is absent", () => {
+    show(analysed);
+
+    const section = screen.getByRole("region", { name: "Analysis" });
+    expect(section).toHaveTextContent("A steady endurance ride.");
+    expect(section).not.toHaveTextContent("Suggested rest");
+  });
+
+  it("omits empty lists and a zero rest suggestion", () => {
+    const noRest: Activity = {
+      ...ride,
+      metrics: { trimp: 42 },
+      analysis: {
+        text: "A steady endurance ride.",
+        model: "claude-sonnet-5",
+        promptRevision: 3,
+        analysedAt: "2026-09-01T08:00:00Z",
+        document: {
+          rideType: "endurance",
+          headline: "Solid endurance work",
+          summary: "Steady effort throughout.",
+          loadEffect: "Adds a moderate training load.",
+          highlights: [],
+          concerns: [],
+          nextSession: { advice: "Keep it easy.", suggestedRestDays: 0 },
+          dataGaps: [],
+        },
+      },
+    };
+    show(noRest);
+
+    const section = screen.getByRole("region", { name: "Analysis" });
+    expect(section).not.toHaveTextContent("Highlights");
+    expect(section).not.toHaveTextContent("Concerns");
+    expect(section).not.toHaveTextContent("Missing figures");
+    expect(section).not.toHaveTextContent("Suggested rest");
   });
 
   it("lets an admin ask again about an analysed ride", async () => {

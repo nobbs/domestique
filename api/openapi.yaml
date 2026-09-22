@@ -2364,6 +2364,62 @@ components:
         analysedAt:
           type: string
           format: date-time
+        document:
+          type: object
+          additionalProperties: false
+          description: >-
+            Absent for an analysis written before prompt revision 3; text stays
+            the summary for every revision.
+          required:
+            - rideType
+            - headline
+            - summary
+            - loadEffect
+            - highlights
+            - concerns
+            - nextSession
+            - dataGaps
+          properties:
+            rideType:
+              type: string
+              enum:
+                - recovery
+                - endurance
+                - tempo
+                - threshold
+                - intervals
+                - race
+                - mixed
+                - commute
+            headline:
+              type: string
+            summary:
+              type: string
+            loadEffect:
+              type: string
+            highlights:
+              type: array
+              items:
+                type: string
+            concerns:
+              type: array
+              items:
+                type: string
+            nextSession:
+              type: object
+              additionalProperties: false
+              required:
+                - advice
+                - suggestedRestDays
+              properties:
+                advice:
+                  type: string
+                suggestedRestDays:
+                  type: integer
+            dataGaps:
+              type: array
+              items:
+                type: string
     ActivityRouteMatch:
       type: object
       additionalProperties: false

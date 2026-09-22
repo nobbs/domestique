@@ -825,7 +825,11 @@ The read-only JSON surface is small:
 
   Each activity that has one also carries its `analysis`: the plain-text
   summary a language model wrote about the ride, at most two thousand characters, with
-  the model and prompt revision that produced it and when. It is absent for a
+  the model and prompt revision that produced it and when, and, from prompt
+  revision 3, the whole document it answered with — the kind of ride, a
+  headline, that summary, its effect on the rider's load, highlights, concerns,
+  the next session with any rest it suggests, and the figures it wanted and
+  lacked. An older analysis carries its text alone. It is absent for a
   ride not yet analysed, for a ride its derivation yielded nothing for, and
   for every ride of a deployment that never configured a token; removing the
   token stops new analyses and leaves stored ones served. It is text for the

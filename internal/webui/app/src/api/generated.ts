@@ -368,6 +368,39 @@ export interface ActivityRouteMatch {
   direction: RouteRideDirection;
 }
 
+export type ActivityAnalysisDocumentRideType =
+  (typeof ActivityAnalysisDocumentRideType)[keyof typeof ActivityAnalysisDocumentRideType];
+
+export const ActivityAnalysisDocumentRideType = {
+  recovery: "recovery",
+  endurance: "endurance",
+  tempo: "tempo",
+  threshold: "threshold",
+  intervals: "intervals",
+  race: "race",
+  mixed: "mixed",
+  commute: "commute",
+} as const;
+
+export type ActivityAnalysisDocumentNextSession = {
+  advice: string;
+  suggestedRestDays: number;
+};
+
+/**
+ * Absent for an analysis written before prompt revision 3; text stays the summary for every revision.
+ */
+export type ActivityAnalysisDocument = {
+  rideType: ActivityAnalysisDocumentRideType;
+  headline: string;
+  summary: string;
+  loadEffect: string;
+  highlights: string[];
+  concerns: string[];
+  nextSession: ActivityAnalysisDocumentNextSession;
+  dataGaps: string[];
+};
+
 /**
  * What a language model made of this ride. Absent for a ride not yet analysed, for one whose derivation yielded nothing, and everywhere on a deployment that never configured a token. Text for the rider to read; never an input to any figure served here.
  */
@@ -383,6 +416,8 @@ export interface ActivityAnalysis {
   /** The revision of the prompt it was asked with. */
   promptRevision: number;
   analysedAt: string;
+  /** Absent for an analysis written before prompt revision 3; text stays the summary for every revision. */
+  document?: ActivityAnalysisDocument;
 }
 
 export interface Activity {

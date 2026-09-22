@@ -29,6 +29,30 @@ func weatherSummary(summary activities.WeatherSummary) *openapi.ActivityWeatherS
 	}
 }
 
+// activityAnalysisDocument is the wire form of a ride's structured analysis.
+// Rows written before prompt revision 3 carry a zero-value Document and serve
+// none.
+func activityAnalysisDocument(analysis *activities.Analysis) *openapi.ActivityAnalysis_Document {
+	if analysis.PromptRevision < 3 {
+		return nil
+	}
+	document := &analysis.Document
+
+	return &openapi.ActivityAnalysis_Document{
+		RideType:   openapi.ActivityAnalysis_Document_RideType(document.RideType),
+		Headline:   document.Headline,
+		Summary:    document.Summary,
+		LoadEffect: document.LoadEffect,
+		Highlights: document.Highlights,
+		Concerns:   document.Concerns,
+		NextSession: openapi.ActivityAnalysis_Document_NextSession{
+			Advice:            document.NextSession.Advice,
+			SuggestedRestDays: document.NextSession.SuggestedRestDays,
+		},
+		DataGaps: document.DataGaps,
+	}
+}
+
 // rideWeatherSteps is the wire form of one ride's steps.
 func rideWeatherSteps(steps []activities.WeatherStep) []openapi.RideWeatherStep {
 	if len(steps) == 0 {
@@ -323,6 +347,7 @@ func (h *Handler) GetActivities(writer http.ResponseWriter, request *http.Reques
 				activity.Analysis = &openapi.ActivityAnalysis{
 					Text: analysis.Text, Model: analysis.Model, PromptRevision: analysis.PromptRevision,
 					AnalysedAt: wireTime(analysis.AnalysedAt),
+					Document:   activityAnalysisDocument(&analysis),
 				}
 			}
 			view.Activities = append(view.Activities, activity)
