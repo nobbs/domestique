@@ -716,6 +716,9 @@ func TestActivityRecordSeriesReadsBackUnpositionedSamples(t *testing.T) {
 	require.Len(t, series, 2, "the sample without a position is still a record")
 	assert.InDelta(t, 110.0, series[0].AltitudeMetres.Value, 1e-9)
 	assert.True(t, series[0].AltitudeMetres.Known)
+	assert.InDelta(t, 49.0, series[0].Latitude.Value, 1e-9)
+	assert.InDelta(t, 8.4, series[0].Longitude.Value, 1e-9)
+	assert.False(t, series[1].Latitude.Known, "a sample without a position has no coordinate")
 	assert.InDelta(t, 140.0, series[1].HeartRateBPM.Value, 1e-9)
 	assert.False(t, series[1].EstimatedPowerWatts.Known, "no estimate has been stored")
 }

@@ -91,3 +91,12 @@ func TestCumulativeMetresIsTheRunningSum(t *testing.T) {
 	assert.InDelta(t, step1, got[1], 1e-9)
 	assert.InDelta(t, step1+step2, got[2], 1e-9)
 }
+
+func TestBearingPointsTheCompass(t *testing.T) {
+	t.Parallel()
+	origin := measure.Coordinate{Latitude: 50, Longitude: 8}
+	assert.InDelta(t, 0, measure.Bearing(origin, measure.Coordinate{Latitude: 50.01, Longitude: 8}), 0.01)
+	assert.InDelta(t, 90, measure.Bearing(origin, measure.Coordinate{Latitude: 50, Longitude: 8.01}), 0.1)
+	assert.InDelta(t, 180, measure.Bearing(origin, measure.Coordinate{Latitude: 49.99, Longitude: 8}), 0.01)
+	assert.InDelta(t, 270, measure.Bearing(origin, measure.Coordinate{Latitude: 50, Longitude: 7.99}), 0.1)
+}

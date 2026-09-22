@@ -1473,7 +1473,8 @@ Once a ride has been derived, and where the operator has configured a Claude
 Code OAuth token, `activity:analyse` asks a language model what to make of it
 ([the task](task-layer.md#the-registered-tasks)). What leaves the host is
 everything this service holds about the ride short of where it was: the
-ride's own recording as a series of five-second means without its coordinates,
+ride's own recording as a series of five-second means without its coordinates
+but with the wind's component along each stretch's direction of travel,
 its device-declared and derived figures, its splits, its attempts on the
 library route's climbs beside the rider's earlier attempts on them, the
 structured workout it followed, the weather over it and the library route it

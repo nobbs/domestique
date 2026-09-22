@@ -40,6 +40,39 @@ hover or drag frame is implemented in the browser as well as in Go.
 **Status.** Validated: this is the standard formula, and both
 implementations agree to the metre by construction.
 
+## Bearing and along-track wind
+
+**Definition.** The initial compass bearing from one point to another on the
+sphere, and the component of the wind along it: what a rider moving on that
+bearing feels from behind.
+
+**Formula.** In symbols:
+
+~~~text
+θ      = atan2(sin(Δlon)·cos(lat2), cos(lat1)·sin(lat2) − sin(lat1)·cos(lat2)·cos(Δlon))
+along  = −v · cos(φ − θ)
+~~~
+
+θ is in degrees clockwise from north, 0 to 360; lat and lon are in radians;
+v is the wind speed in km/h and φ the direction it blows from, in degrees, as
+the weather provider reports both; along is in km/h, positive as tailwind.
+
+**Constants.** None.
+
+**Source.** Sinnott 1984 (forward azimuth on the sphere); the along-track
+component is the dot product of two unit vectors.
+
+**Applied by.** `internal/measure/geo.go` `Bearing`, over the first and last
+positioned samples of each five-second bucket the ride analysis prompt
+carries, by `internal/activity/prompt.go` `tailwindKMH`, which takes v and
+φ from the weather step whose window holds the bucket. A bucket that moved
+under three metres has no bearing: GPS scatter at rest points anywhere.
+
+**Status.** Validated: the standard formula, checked at the four cardinal
+points. Informative only: the along-track wind is read by the language
+model and enters no figure this service computes; the power estimate stays
+wind-free.
+
 ## Profiles
 
 **Definition.** Altitude as a function of cumulative distance, resampled to

@@ -42,3 +42,14 @@ func CumulativeMetres(coordinates []Coordinate) []float64 {
 
 	return distances
 }
+
+// Bearing is the initial compass bearing from a to b in degrees, 0 north and
+// 90 east, over the same sphere HaversineMetres measures on.
+func Bearing(a, b Coordinate) float64 {
+	latA, latB := a.Latitude*math.Pi/180, b.Latitude*math.Pi/180
+	deltaLon := (b.Longitude - a.Longitude) * math.Pi / 180
+	y := math.Sin(deltaLon) * math.Cos(latB)
+	x := math.Cos(latA)*math.Sin(latB) - math.Sin(latA)*math.Cos(latB)*math.Cos(deltaLon)
+
+	return math.Mod(math.Atan2(y, x)*180/math.Pi+360, 360)
+}

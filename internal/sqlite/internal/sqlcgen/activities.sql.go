@@ -525,7 +525,7 @@ const listActivityRecordSeries = `-- name: ListActivityRecordSeries :many
 SELECT recorded_at_unix, distance_metres, altitude_metres,
   heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
   speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres, target_power_watts,
-  estimated_power_watts
+  estimated_power_watts, latitude, longitude
 FROM activity_records
 WHERE target_slot = ?1 AND workout_id = ?2
 ORDER BY record_index
@@ -551,6 +551,8 @@ type ListActivityRecordSeriesRow struct {
 	DescentMetres       sql.NullFloat64
 	TargetPowerWatts    sql.NullFloat64
 	EstimatedPowerWatts sql.NullFloat64
+	Latitude            sql.NullFloat64
+	Longitude           sql.NullFloat64
 }
 
 // Every record of one activity, positioned or not, with the estimated power
@@ -580,6 +582,8 @@ func (q *Queries) ListActivityRecordSeries(ctx context.Context, arg ListActivity
 			&i.DescentMetres,
 			&i.TargetPowerWatts,
 			&i.EstimatedPowerWatts,
+			&i.Latitude,
+			&i.Longitude,
 		); err != nil {
 			return nil, err
 		}
