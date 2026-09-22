@@ -1,3 +1,12 @@
+import {
+  IconBolt,
+  IconGauge,
+  IconHeart,
+  IconMountain,
+  IconRotateClockwise2,
+  IconSparkles,
+  IconWind,
+} from "@tabler/icons-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -12,7 +21,7 @@ import type {
   WebUIConfig,
 } from "../../api/types";
 import { calendarDay } from "../fitness/DecouplingPanel";
-import { firstSentence, fitnessWindowFor, RideAnalysis } from "./RideAnalysis";
+import { firstSentence, fitnessWindowFor, highlightIcon, RideAnalysis } from "./RideAnalysis";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -104,6 +113,12 @@ function day(date: string, overrides: Partial<FitnessDay> = {}): FitnessDay {
 function fitnessData(days: FitnessDay[]): Fitness {
   return { days, weeks: [] };
 }
+
+/** `withDocument`, but the metrics carry only a heart-rate TSS, no power meter. */
+const withHeartRateTssOnly: Activity = {
+  ...withDocument,
+  metrics: { heartRateTss: 58, trimp: 58 },
+};
 
 /** `withDocument`, with the document replaced by `overrides` merged over its own. */
 function withDocumentOverrides(overrides: Partial<ActivityAnalysisDocument>): Activity {
@@ -309,5 +324,70 @@ describe("RideAnalysis", () => {
 
     const underived = show(ride, true);
     expect(underived.container).toBeEmptyDOMElement();
+  });
+
+  it("tints the ride-type chip by type, one mapped ink colour per type", () => {
+    show(withDocument, false, withReanalyse, fitnessData([day("2026-09-01")]));
+    expect(screen.getByText("endurance", { selector: "span" })).toHaveClass("text-[var(--accent)]");
+  });
+
+  it("tints a different type in its own colour", () => {
+    show(withDocumentOverrides({ rideType: "intervals" }));
+    expect(screen.getByText("intervals", { selector: "span" })).toHaveClass("text-[var(--alert)]");
+  });
+
+  it("renders one glyph per highlight row, matching each line's subject", () => {
+    show(
+      withDocumentOverrides({
+        highlights: [
+          "Averaged 285 W in the final interval",
+          "Heart rate held near 160 bpm in zone 4",
+          "A stiff headwind for the return leg",
+        ],
+      }),
+    );
+    // `selector: "span"` picks the row's label span, not the row itself: both
+    // would otherwise match, since the icon beside it renders no text of its own.
+    const glyphFor = (text: string) =>
+      screen
+        .getByText(text, { selector: "span" })
+        .previousElementSibling?.querySelector("svg")
+        ?.getAttribute("class");
+
+    expect(glyphFor("Averaged 285 W in the final interval")).toContain("tabler-icon-bolt");
+    expect(glyphFor("Heart rate held near 160 bpm in zone 4")).toContain("tabler-icon-heart");
+    expect(glyphFor("A stiff headwind for the return leg")).toContain("tabler-icon-wind");
+  });
+
+  it("shows the gaps as an info strip, absent when there are none", () => {
+    const { container: withGap } = show(withDocument);
+    expect(withGap.querySelector("svg.tabler-icon-info-circle")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Analysis" })).toHaveTextContent(
+      "Not measured: No power meter fitted, only estimated power from speed and grade",
+    );
+
+    const { container: withoutGap } = show(withDocumentOverrides({ dataGaps: [] }));
+    expect(withoutGap.querySelector("svg.tabler-icon-info-circle")).not.toBeInTheDocument();
+  });
+
+  it("labels the load figure hrTSS when only a heart-rate TSS is available", () => {
+    show(withHeartRateTssOnly, false, withReanalyse, fitnessData([day("2026-09-01")]));
+
+    expect(screen.getByText("hrTSS")).toBeInTheDocument();
+    expect(screen.queryByText("TSS")).not.toBeInTheDocument();
+  });
+});
+
+describe("highlightIcon", () => {
+  it.each([
+    ["power", "Averaged 285 W in the final interval", IconBolt],
+    ["heart rate", "Heart rate held near 160 bpm in zone 4", IconHeart],
+    ["cadence", "Cadence sat around 92 rpm throughout", IconRotateClockwise2],
+    ["speed", "Speed dropped to 18 km/h on the climb", IconGauge],
+    ["climbing", "A steady climb over 420 m of ascent", IconMountain],
+    ["weather", "A stiff headwind for the return leg", IconWind],
+    ["fallback", "Nothing measurable stood out this time", IconSparkles],
+  ])("picks the %s glyph", (_bucket, text, icon) => {
+    expect(highlightIcon(text)).toBe(icon);
   });
 });

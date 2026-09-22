@@ -6,16 +6,26 @@
  * analysis is on.
  */
 
-import { IconSparkles } from "@tabler/icons-react";
+import {
+  IconBolt,
+  IconGauge,
+  IconHeart,
+  IconInfoCircle,
+  IconMountain,
+  IconRefresh,
+  IconRotateClockwise2,
+  IconSparkles,
+  IconWind,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
+import type { ActivityAnalysisDocumentRideType } from "../../api/generated";
 import { useReanalyseActivity } from "../../api/generated";
 import { fitnessQuery, tasksQuery, webUIConfigQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
 import type { Activity, ActivityAnalysisDocument } from "../../api/types";
 import { Button } from "../../components/Button";
 import { PanelHeading } from "../../components/PanelHeading";
-import { Badge } from "../../components/ui/badge";
 import { formatTimestamp } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
 import { calendarDay } from "../fitness/DecouplingPanel";
@@ -80,15 +90,16 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
         aside={
           doc || canAsk ? (
             <div className="flex items-center gap-2">
-              {doc ? <Badge variant="secondary">{doc.rideType}</Badge> : null}
+              {doc ? <RideTypeChip type={doc.rideType} /> : null}
               {canAsk ? (
                 <Button
                   variant="outline"
+                  icon={<IconRefresh size={18} stroke={1.8} />}
+                  aria-label={analysis ? "Analyse again" : "Analyse"}
+                  title={analysis ? "Analyse again" : "Analyse"}
                   disabled={reanalyse.isPending || reanalyse.isSuccess}
                   onClick={() => reanalyse.mutate({ activityId: ride.id })}
-                >
-                  {analysis ? "Analyse again" : "Analyse"}
-                </Button>
+                />
               ) : null}
             </div>
           ) : undefined
@@ -123,6 +134,29 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
         </p>
       ) : null}
     </section>
+  );
+}
+
+/** Background/ink pair per ride type, tokens where one matches the mock's hue, literal hexes otherwise. */
+export const RIDE_TYPE_CHIP: Record<ActivityAnalysisDocumentRideType, string> = {
+  recovery: "bg-[color-mix(in_srgb,var(--good)_15%,transparent)] text-[var(--good)]",
+  endurance: "bg-[color-mix(in_srgb,var(--accent)_15%,transparent)] text-[var(--accent)]",
+  tempo: "bg-[color-mix(in_srgb,var(--hold)_15%,transparent)] text-[var(--hold)]",
+  intervals: "bg-[color-mix(in_srgb,var(--alert)_15%,transparent)] text-[var(--alert)]",
+  threshold: "bg-[color-mix(in_srgb,#c2561a_18%,transparent)] text-[#c2561a]",
+  race: "bg-[color-mix(in_srgb,#6b3fa0_18%,transparent)] text-[#6b3fa0]",
+  mixed: "bg-[color-mix(in_srgb,#6e6d6a_18%,transparent)] text-[#6e6d6a]",
+  commute: "bg-[color-mix(in_srgb,#4a6b7a_18%,transparent)] text-[#4a6b7a]",
+};
+
+function RideTypeChip({ type }: { type: ActivityAnalysisDocumentRideType }) {
+  return (
+    <span
+      className={`inline-flex h-[22px] w-fit shrink-0 items-center gap-1.5 rounded-full px-2.5 font-semibold text-xs ${RIDE_TYPE_CHIP[type]}`}
+    >
+      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
+      {type}
+    </span>
   );
 }
 
@@ -191,11 +225,13 @@ function LoadCard({
 }) {
   const metrics = ride.metrics;
   const tss = metrics?.powerTss ?? metrics?.heartRateTss;
+  // heartRateTss is a different scale than power TSS; RideFigures.tsx names it "hrTSS" for the same reason.
+  const tssLabel = metrics?.powerTss !== undefined ? "TSS" : "hrTSS";
 
   return (
     <Card label="Load">
       <div className="flex gap-3.5">
-        <Figure value={tss === undefined ? "–" : tss.toFixed(0)} label="TSS" />
+        <Figure value={tss === undefined ? "–" : tss.toFixed(0)} label={tssLabel} />
         <Figure
           value={metrics?.trimp === undefined ? "–" : metrics.trimp.toFixed(0)}
           label="TRIMP"
@@ -261,16 +297,55 @@ function RideAnalysisDocument({
           <span className="font-semibold text-[var(--ink-2)] text-xs uppercase tracking-wide">
             Highlights
           </span>
-          <ul className="list-disc space-y-1 pl-4 text-[13px] leading-relaxed">
-            {analysis.highlights.map((highlight) => (
-              <li key={highlight}>{highlight}</li>
-            ))}
-          </ul>
+          <div className="flex flex-col">
+            {analysis.highlights.map((highlight) => {
+              const Icon = highlightIcon(highlight);
+              return (
+                <div
+                  key={highlight}
+                  className="flex items-center gap-3 border-[var(--rule)] border-t py-2"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--base)]"
+                  >
+                    <Icon size={14} />
+                  </span>
+                  <span className="text-[14px] leading-relaxed">{highlight}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : null}
       {analysis.dataGaps.length > 0 ? (
-        <p className="text-[var(--ink-2)] text-xs">Not measured: {analysis.dataGaps.join(", ")}</p>
+        <div className="flex items-center gap-2 rounded-lg bg-[var(--base)] px-2.5 py-2 text-[var(--ink-2)] text-xs">
+          <IconInfoCircle size={13} aria-hidden="true" />
+          <span>Not measured: {analysis.dataGaps.join(", ")}</span>
+        </div>
       ) : null}
     </>
   );
+}
+
+type Mark = ComponentType<{ size?: number; stroke?: number }>;
+
+const HIGHLIGHT_ICONS: [RegExp, Mark][] = [
+  [/\bW\b|watt|power|target/i, IconBolt],
+  [/bpm|heart|hr\b|zone/i, IconHeart],
+  [/rpm|cadence/i, IconRotateClockwise2],
+  [/km\/h|speed|pace|split/i, IconGauge],
+  [/climb|ascent|gradient|grade|\bm\b/i, IconMountain],
+  [/wind|tailwind|headwind|rain|drizzle|°C|temperature/i, IconWind],
+];
+
+/** The glyph a highlight line earns, by the first pattern it matches; `IconSparkles` otherwise. */
+export function highlightIcon(text: string): Mark {
+  for (const [pattern, icon] of HIGHLIGHT_ICONS) {
+    if (pattern.test(text)) {
+      return icon;
+    }
+  }
+
+  return IconSparkles;
 }

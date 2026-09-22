@@ -22,16 +22,16 @@ const RIDE: Activity = {
     promptRevision: 3,
     analysedAt: "2026-09-22T14:07:00Z",
     document: {
-      rideType: "endurance",
-      headline: "Easy endurance spin with one short hard surge",
+      rideType: "intervals",
+      headline: "Six on-target intervals, the last one deep into zone 5",
       summary:
         "A 36.2 km outdoor ride, 87 minutes moving, held at an easy aerobic pace with average heart rate of 113 bpm and 92% of moving time in zones 1-2. A brief surge around the 17 km mark took heart rate to a peak of 155 bpm for roughly a minute before settling back down. No power meter was fitted; estimated pedalling power averaged 154 W across the 92% of the ride spent pedalling. Conditions were mild and breezy with drizzle noted at the start but no measurable rainfall.",
       loadEffect:
         "TSS and TRIMP of 64 kept fitness essentially flat at 42 while nudging fatigue up slightly, leaving form at -2, a low-cost day close to the rider's habitual daily load of around 42.",
       highlights: [
-        "92% of time spent in heart-rate zones 1-2",
-        "Brief peak of 155 bpm near the 17 km mark",
-        "Estimated power 154 W while pedalling, about 62% of FTP",
+        "Six intervals at 270-285 W landed within 1% of target power each time",
+        "Cadence averaged 92 rpm, spinning smoothly at high power",
+        "Final effort pushed heart rate to 167 bpm, deep into zone 5",
       ],
       concerns: [],
       nextSession: {
@@ -39,7 +39,7 @@ const RIDE: Activity = {
           "Form is close to neutral, a good window to bring back a short structured zone 3-4 interval session rather than another pure endurance ride.",
         suggestedRestDays: 0,
       },
-      dataGaps: ["No power meter fitted, only estimated power from speed and grade"],
+      dataGaps: ["No temperature reading recorded for the entire ride"],
     },
   },
 };
