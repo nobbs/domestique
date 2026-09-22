@@ -521,6 +521,79 @@ func (q *Queries) ListActivityMovingSeconds(ctx context.Context, arg ListActivit
 	return items, nil
 }
 
+const listActivityRecordSeries = `-- name: ListActivityRecordSeries :many
+SELECT recorded_at_unix, distance_metres, altitude_metres,
+  heart_rate_bpm, cadence_rpm, power_watts, temperature_celsius,
+  speed_ms, grade_percent, calories_kcal, ascent_metres, descent_metres, target_power_watts,
+  estimated_power_watts
+FROM activity_records
+WHERE target_slot = ?1 AND workout_id = ?2
+ORDER BY record_index
+`
+
+type ListActivityRecordSeriesParams struct {
+	TargetSlot string
+	WorkoutID  int64
+}
+
+type ListActivityRecordSeriesRow struct {
+	RecordedAtUnix      int64
+	DistanceMetres      sql.NullFloat64
+	AltitudeMetres      sql.NullFloat64
+	HeartRateBpm        sql.NullFloat64
+	CadenceRpm          sql.NullFloat64
+	PowerWatts          sql.NullFloat64
+	TemperatureCelsius  sql.NullFloat64
+	SpeedMs             sql.NullFloat64
+	GradePercent        sql.NullFloat64
+	CaloriesKcal        sql.NullFloat64
+	AscentMetres        sql.NullFloat64
+	DescentMetres       sql.NullFloat64
+	TargetPowerWatts    sql.NullFloat64
+	EstimatedPowerWatts sql.NullFloat64
+}
+
+// Every record of one activity, positioned or not, with the estimated power
+// beside the sensors: what a ride's analysis reads, so an indoor ride and a
+// GPS dropout are recorded too.
+func (q *Queries) ListActivityRecordSeries(ctx context.Context, arg ListActivityRecordSeriesParams) ([]ListActivityRecordSeriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityRecordSeries, arg.TargetSlot, arg.WorkoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityRecordSeriesRow{}
+	for rows.Next() {
+		var i ListActivityRecordSeriesRow
+		if err := rows.Scan(
+			&i.RecordedAtUnix,
+			&i.DistanceMetres,
+			&i.AltitudeMetres,
+			&i.HeartRateBpm,
+			&i.CadenceRpm,
+			&i.PowerWatts,
+			&i.TemperatureCelsius,
+			&i.SpeedMs,
+			&i.GradePercent,
+			&i.CaloriesKcal,
+			&i.AscentMetres,
+			&i.DescentMetres,
+			&i.TargetPowerWatts,
+			&i.EstimatedPowerWatts,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActivityRides = `-- name: ListActivityRides :many
 SELECT target_slot, started_at_unix, distance_metres, moving_seconds, ascent_metres
 FROM activities

@@ -699,6 +699,27 @@ func TestRecordedRidesReportsAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, err, "reading recorded activities")
 }
 
+// The record series reads back every sample, positioned or not, in record order.
+func TestActivityRecordSeriesReadsBackUnpositionedSamples(t *testing.T) {
+	store := openTestStore(t, testKey(1))
+	require.NoError(t, store.EnsureTargetOwner(t.Context(), "rider-a"), "EnsureTargetOwner()")
+	require.NoError(t, storeTestActivity(t, store, "rider-a", 1, 100), "StoreActivity()")
+	require.NoError(t, store.StoreActivityRecords(t.Context(), "rider-a", 1, activity.FIT{
+		Records: []activity.Record{
+			{Time: activityNow(), Latitude: 49.0, Longitude: 8.4, AltitudeMetres: 110, HasPosition: true, HasAltitude: true},
+			{Time: activityNow().Add(time.Second), HeartRateBPM: 140, HasHeartRate: true},
+		},
+	}, activity.RecordsVersion), "StoreActivityRecords()")
+
+	series, err := store.ActivityRecordSeries(t.Context(), "rider-a", 1)
+	require.NoError(t, err, "ActivityRecordSeries()")
+	require.Len(t, series, 2, "the sample without a position is still a record")
+	assert.InDelta(t, 110.0, series[0].AltitudeMetres.Value, 1e-9)
+	assert.True(t, series[0].AltitudeMetres.Known)
+	assert.InDelta(t, 140.0, series[1].HeartRateBPM.Value, 1e-9)
+	assert.False(t, series[1].EstimatedPowerWatts.Known, "no estimate has been stored")
+}
+
 // The track reads back the samples that carried a position, in record order,
 // and belongs to the target whose account recorded it.
 func TestActivityTrackReadsBackPositionedSamples(t *testing.T) {

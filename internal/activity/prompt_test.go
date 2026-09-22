@@ -52,8 +52,7 @@ func TestComposeCarriesThisRideAndOmitsCoordinatesAndSubject(t *testing.T) {
 	b.routeName = "Alpe secrète"
 	b.weather = &WeatherSummary{TemperatureMinCelsius: 10, TemperatureMaxCelsius: 18, WeatherCode: 1}
 	at := b.ride.StartedAt
-	b.series = []SampleRow{{Time: at, HeartRateBPM: Reading{Value: 140, Known: true}}}
-	b.track = []TrackPoint{{Time: at, Latitude: 47.123456, Longitude: 8.654321, AltitudeMetres: 512, HasAltitude: true}}
+	b.series = []SampleRow{{Time: at, HeartRateBPM: Reading{Value: 140, Known: true}, AltitudeMetres: Reading{Value: 512, Known: true}}}
 
 	prompt := b.compose()
 	assert.Contains(t, prompt, "This ride:")
@@ -194,14 +193,15 @@ func TestTimeseriesBucketsMeanAndLastKnownValueAndBlanksTheUnmeasured(t *testing
 	b := minimalBundle()
 	origin := b.at
 	b.series = []SampleRow{
-		{Time: origin, DistanceMetres: Reading{Value: 0, Known: true}, HeartRateBPM: Reading{Value: 140, Known: true}},
-		{Time: origin.Add(2 * time.Second), DistanceMetres: Reading{Value: 10, Known: true}, HeartRateBPM: Reading{Value: 150, Known: true}},
+		{
+			Time: origin, DistanceMetres: Reading{Value: 0, Known: true}, HeartRateBPM: Reading{Value: 140, Known: true},
+			AltitudeMetres: Reading{Value: 100, Known: true},
+		},
+		{
+			Time: origin.Add(2 * time.Second), DistanceMetres: Reading{Value: 10, Known: true},
+			HeartRateBPM: Reading{Value: 150, Known: true}, AltitudeMetres: Reading{Value: 105, Known: true},
+		},
 		{Time: origin.Add(6 * time.Second), DistanceMetres: Reading{Value: 20, Known: true}},
-	}
-	b.track = []TrackPoint{
-		{Time: origin, AltitudeMetres: 100, HasAltitude: true},
-		{Time: origin.Add(2 * time.Second), AltitudeMetres: 105, HasAltitude: true},
-		{Time: origin.Add(6 * time.Second)},
 	}
 
 	prompt := b.compose()
@@ -215,13 +215,11 @@ func TestTimeseriesTruncatesAtSixHours(t *testing.T) {
 	b := minimalBundle()
 	origin := b.at
 	rows := make([]SampleRow, 0, maximumTimeseriesRows+5)
-	track := make([]TrackPoint, 0, maximumTimeseriesRows+5)
 	for i := range maximumTimeseriesRows + 5 {
 		at := origin.Add(time.Duration(i) * timeseriesStep)
 		rows = append(rows, SampleRow{Time: at, HeartRateBPM: Reading{Value: 140, Known: true}})
-		track = append(track, TrackPoint{Time: at})
 	}
-	b.series, b.track = rows, track
+	b.series = rows
 
 	prompt := b.compose()
 	assert.Contains(t, prompt, "(timeseries truncated at six hours)")

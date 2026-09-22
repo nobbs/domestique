@@ -160,8 +160,9 @@ type AnalyseStore interface {
 	RouteName(ctx context.Context, key route.Key) (name string, found bool, err error)
 	ActivityWeatherSummaries(ctx context.Context, targetID string) (map[int64]WeatherSummary, error)
 	ActivityWeatherSteps(ctx context.Context, targetID string, id int64) ([]WeatherStep, error)
-	ActivitySeries(ctx context.Context, targetID string, id int64) ([]SampleRow, error)
-	ActivityTrack(ctx context.Context, targetID string, id int64) ([]TrackPoint, error)
+	// ActivityRecordSeries is every record of one ride, positioned or not,
+	// with its estimated power.
+	ActivityRecordSeries(ctx context.Context, targetID string, id int64) ([]SampleRow, error)
 	StageProfile(ctx context.Context, key route.Key) (line []measure.Coordinate, elevations []float64, found bool, err error)
 	// RouteClimbAttempts is every attempt any of the target's rides made at
 	// one route's climbs, newest ride first.
@@ -302,11 +303,14 @@ func (a *Analyser) buildBundle(
 	if err != nil {
 		return nil, err //nolint:wrapcheck // Reported as FailureState; the error itself is never shown.
 	}
-	series, err := a.store.ActivitySeries(ctx, targetID, ride.ID)
+	series, err := a.store.ActivityRecordSeries(ctx, targetID, ride.ID)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // Reported as FailureState; the error itself is never shown.
 	}
-	track, err := a.store.ActivityTrack(ctx, targetID, ride.ID)
+	// The window ends at this ride, so an older owed ride reads what came
+	// before it and the newest still gets its full twenty.
+	recent, err := a.store.ActivitiesBetween(
+		ctx, targetID, ride.StartedAt.Add(-recentRideHistoryDays*24*time.Hour), ride.StartedAt, recentRideHistoryLimit)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // Reported as FailureState; the error itself is never shown.
 	}
@@ -315,8 +319,8 @@ func (a *Analyser) buildBundle(
 		profile: run.profile, powerCurve: run.powerCurve,
 		ride: stored, indoor: slices.Contains(run.indoorTypes, stored.TypeID),
 		session: run.sessions[ride.ID], metrics: metrics,
-		weatherSteps: weatherSteps, series: series, track: track,
-		recent: ridesBefore(run.recent, ride.StartedAt), recentByID: run.metrics, matches: run.matches,
+		weatherSteps: weatherSteps, series: series,
+		recent: recent, recentByID: run.metrics, matches: run.matches,
 		routeNames: map[route.Key]string{}, indoorTypes: run.indoorTypes,
 		day: run.load, loadLabel: run.loadLabel, loads: run.loads,
 		location: run.location, at: run.at, earlier: earlier,
@@ -349,8 +353,8 @@ func (a *Analyser) buildBundle(
 	}
 	// Every distinct route among the recent rides, so recentRows can name one
 	// without asking the store again per ride.
-	for index := range run.recent {
-		match, matched := run.matches[run.recent[index].ID]
+	for index := range recent {
+		match, matched := run.matches[recent[index].ID]
 		if !matched {
 			continue
 		}
@@ -363,19 +367,6 @@ func (a *Analyser) buildBundle(
 	}
 
 	return b, nil
-}
-
-// ridesBefore is the rides of a run's recent window that started before one
-// instant: an older owed ride is read against what came before it, not after.
-func ridesBefore(rides []Stored, before time.Time) []Stored {
-	var kept []Stored
-	for index := range rides {
-		if rides[index].StartedAt.Before(before) {
-			kept = append(kept, rides[index])
-		}
-	}
-
-	return kept
 }
 
 // heldTypes is the indoor types a rider with Zwift credentials has held back
@@ -403,7 +394,6 @@ type analysisContext struct {
 	matches     map[int64]RouteMatch
 	weatherSums map[int64]WeatherSummary
 	loadLabel   string
-	recent      []Stored
 	loads       []trainingload.RideLoad
 	indoorTypes []int
 	profile     rider.Profile
@@ -439,10 +429,6 @@ func (a *Analyser) readContext(ctx context.Context, targetID, subject string, no
 	if err != nil {
 		return analysisContext{}, err //nolint:wrapcheck // Reported as FailureState; the error itself is never shown.
 	}
-	recent, err := a.store.ActivitiesBetween(ctx, targetID, now.Add(-recentRideHistoryDays*24*time.Hour), now, recentRideHistoryLimit)
-	if err != nil {
-		return analysisContext{}, err //nolint:wrapcheck // Reported as FailureState; the error itself is never shown.
-	}
 	location, err := time.LoadLocation(a.timezone())
 	if err != nil {
 		location = time.UTC
@@ -450,7 +436,7 @@ func (a *Analyser) readContext(ctx context.Context, targetID, subject string, no
 
 	run := analysisContext{
 		metrics: metrics, profile: profile, loadLabel: loadNow, powerCurve: powerCurve,
-		sessions: sessions, matches: matches, weatherSums: weatherSums, loads: loads, recent: recent,
+		sessions: sessions, matches: matches, weatherSums: weatherSums, loads: loads,
 		location: location, at: now, indoorTypes: a.indoorTypes,
 	}
 	if days := trainingload.Timeline(loads, now, location); len(days) > 0 {

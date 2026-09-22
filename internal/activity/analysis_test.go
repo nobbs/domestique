@@ -47,7 +47,6 @@ type fakeAnalyseStore struct {
 	ridesErr        error
 	weatherStepsErr error
 	seriesErr       error
-	trackErr        error
 	owner           string
 	email           string
 	password        string
@@ -150,7 +149,17 @@ func (s *fakeAnalyseStore) ActivitiesBetween(
 		return inWindow, nil
 	}
 
-	return s.recentRides, s.recentErr
+	if s.recentErr != nil {
+		return nil, s.recentErr
+	}
+	var inWindow []Stored
+	for _, ride := range s.recentRides {
+		if !ride.StartedAt.Before(from) && ride.StartedAt.Before(to) {
+			inWindow = append(inWindow, ride)
+		}
+	}
+
+	return inWindow, nil
 }
 
 func (s *fakeAnalyseStore) ActivitySessions(context.Context, string) (map[int64]Session, error) {
@@ -175,12 +184,8 @@ func (s *fakeAnalyseStore) ActivityWeatherSteps(context.Context, string, int64) 
 	return nil, s.weatherStepsErr
 }
 
-func (s *fakeAnalyseStore) ActivitySeries(context.Context, string, int64) ([]SampleRow, error) {
+func (s *fakeAnalyseStore) ActivityRecordSeries(context.Context, string, int64) ([]SampleRow, error) {
 	return nil, s.seriesErr
-}
-
-func (s *fakeAnalyseStore) ActivityTrack(context.Context, string, int64) ([]TrackPoint, error) {
-	return nil, s.trackErr
 }
 
 func (s *fakeAnalyseStore) StageProfile(
@@ -413,7 +418,6 @@ func TestAnalyseReportsStoreFailuresAsState(t *testing.T) {
 		"the ride's own read":      func(s *fakeAnalyseStore) { s.ridesErr = errFakeAnalyseStore },
 		"the ride's weather steps": func(s *fakeAnalyseStore) { s.weatherStepsErr = errFakeAnalyseStore },
 		"the ride's series":        func(s *fakeAnalyseStore) { s.seriesErr = errFakeAnalyseStore },
-		"the ride's track":         func(s *fakeAnalyseStore) { s.trackErr = errFakeAnalyseStore },
 	}
 	for name, breakStore := range tests {
 		t.Run(name, func(t *testing.T) {

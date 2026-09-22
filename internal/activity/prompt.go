@@ -53,7 +53,6 @@ type bundle struct {
 	otherAttempts []StoredClimbAttempt
 	recent        []Stored
 	weatherSteps  []WeatherStep
-	track         []TrackPoint
 	indoorTypes   []int
 	earlier       []Analysis
 	loads         []trainingload.RideLoad
@@ -547,7 +546,7 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 	buckets := map[int]*timeseriesBucket{}
 	var order []int
 	truncated := false
-	limit := min(len(b.series), len(b.track))
+	limit := len(b.series)
 	for index := range limit {
 		row := &b.series[index]
 		bucketIndex := int(row.Time.Sub(origin) / timeseriesStep)
@@ -565,9 +564,8 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 		if row.DistanceMetres.Known {
 			bucket.distanceKM, bucket.hasDistance = row.DistanceMetres.Value/1000, true
 		}
-		track := &b.track[index]
-		if track.HasAltitude {
-			bucket.altitudeM, bucket.hasAltitude = track.AltitudeMetres, true
+		if row.AltitudeMetres.Known {
+			bucket.altitudeM, bucket.hasAltitude = row.AltitudeMetres.Value, true
 		}
 		bucket.grade.add(row.GradePercent)
 		if index < len(speeds) {
@@ -575,7 +573,7 @@ func (b *bundle) writeTimeseries(prompt *strings.Builder) {
 		}
 		bucket.heartRate.add(row.HeartRateBPM)
 		bucket.power.add(row.PowerWatts)
-		bucket.estPower.add(Reading{Value: track.EstimatedPowerWatts, Known: track.HasEstimatedPower})
+		bucket.estPower.add(row.EstimatedPowerWatts)
 		bucket.cadence.add(row.CadenceRPM)
 		bucket.temp.add(row.TemperatureCelsius)
 		bucket.target.add(row.TargetPowerWatts)

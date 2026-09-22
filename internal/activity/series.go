@@ -51,6 +51,9 @@ type SampleRow struct {
 	// TargetPowerWatts is the power a structured workout prescribed for this
 	// record, decoded from a Zwift FIT's own developer field.
 	TargetPowerWatts Reading
+	// EstimatedPowerWatts is the power this service worked out for the record,
+	// never a measurement; only ActivityRecordSeries fills it.
+	EstimatedPowerWatts Reading
 }
 
 // Series reads one named series off a ride's samples, one reading per row in

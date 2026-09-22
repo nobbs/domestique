@@ -329,6 +329,37 @@ func (s *Store) ActivitySeries(ctx context.Context, targetID string, id int64) (
 	return samples, nil
 }
 
+// ActivityRecordSeries is every record of one activity in the order recorded,
+// positioned or not, with its estimated power: what the ride's analysis reads.
+func (s *Store) ActivityRecordSeries(ctx context.Context, targetID string, id int64) ([]activity.SampleRow, error) {
+	rows, err := s.queries.ListActivityRecordSeries(ctx, sqlcgen.ListActivityRecordSeriesParams{TargetSlot: targetID, WorkoutID: id})
+	if err != nil {
+		return nil, fmt.Errorf("reading an activity record series: %w", err)
+	}
+	samples := make([]activity.SampleRow, 0, len(rows))
+	for i := range rows {
+		row := &rows[i]
+		samples = append(samples, activity.SampleRow{
+			Time:                time.Unix(row.RecordedAtUnix, 0).UTC(),
+			DistanceMetres:      reading(row.DistanceMetres),
+			AltitudeMetres:      reading(row.AltitudeMetres),
+			HeartRateBPM:        reading(row.HeartRateBpm),
+			CadenceRPM:          reading(row.CadenceRpm),
+			PowerWatts:          reading(row.PowerWatts),
+			TemperatureCelsius:  reading(row.TemperatureCelsius),
+			SpeedMS:             reading(row.SpeedMs),
+			GradePercent:        reading(row.GradePercent),
+			CaloriesKcal:        reading(row.CaloriesKcal),
+			AscentMetres:        reading(row.AscentMetres),
+			DescentMetres:       reading(row.DescentMetres),
+			TargetPowerWatts:    reading(row.TargetPowerWatts),
+			EstimatedPowerWatts: reading(row.EstimatedPowerWatts),
+		})
+	}
+
+	return samples, nil
+}
+
 // reading carries a nullable column across as the optional value it is.
 func reading(column sql.NullFloat64) activity.Reading {
 	return activity.Reading{Value: column.Float64, Known: column.Valid}
