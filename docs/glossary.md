@@ -276,7 +276,7 @@ Distinct from a *forecast*, which is about a course somebody is planning to
 ride: one is the past tense of the other, and the two are never mixed.
 
 **analysis** — what a language model made of one [[activity]]: a document
-naming the kind of ride, a short plain-text summary, what it did to
+naming the kind of ride, a one-paragraph plain-text summary, what it did to
 [[fitness / fatigue / form]], highlights, concerns, and one recommendation for
 the next session. Written by `activity:analyse`, or by `activity:reanalyse`
 when an administrator asks again, from the ride's recording, its

@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -627,4 +628,27 @@ func TestAnalyseCutsHistoryAtTheRidesStart(t *testing.T) {
 	assert.Contains(t, asker.prompts[0], "Climbs:")
 	assert.NotContains(t, asker.prompts[0], "77.0")
 	assert.NotContains(t, asker.prompts[0], ",1.7,") // the later attempt's 100 s would be the best
+}
+
+// The schema is what keeps an answer short: a rider reads it on a phone.
+func TestAnalysisSchemaBoundsEveryFieldOfTheAnswer(t *testing.T) {
+	t.Parallel()
+	type bound struct {
+		Items      *bound           `json:"items"`
+		Properties map[string]bound `json:"properties"`
+		MaxLength  int              `json:"maxLength"`
+		MaxItems   int              `json:"maxItems"`
+	}
+	var schema bound
+	require.NoError(t, json.Unmarshal(AnalysisSchema(), &schema))
+	fields := schema.Properties
+	assert.Equal(t, 120, fields["headline"].MaxLength)
+	assert.Equal(t, 700, fields["summary"].MaxLength)
+	assert.Equal(t, 300, fields["load_effect"].MaxLength)
+	for _, list := range []string{"highlights", "concerns", "data_gaps"} {
+		assert.Equal(t, 3, fields[list].MaxItems, list)
+		require.NotNil(t, fields[list].Items, list)
+		assert.Equal(t, 120, fields[list].Items.MaxLength, list)
+	}
+	assert.Equal(t, 300, fields["next_session"].Properties["advice"].MaxLength)
 }

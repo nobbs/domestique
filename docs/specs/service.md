@@ -834,8 +834,8 @@ The read-only JSON surface is small:
   for every ride of a deployment that never configured a token; removing the
   token stops new analyses and leaves stored ones served. It is text for the
   rider to read and is never an input to any figure this service serves. The
-  bound is what lets it ride on the list: it is asked for as a few short
-  paragraphs, and an answer over the bound is refused rather than stored.
+  bound is what lets it ride on the list: it is asked for as one short
+  paragraph, and an answer over the bound is refused rather than stored.
 - `GET /v1/settings/rider` returns the signed-in rider's own parameters —
   maximum, resting and threshold heart rate, functional threshold power, rider
   and bike mass, and the bicycle's drag area and rolling resistance — every one
@@ -1488,7 +1488,7 @@ ground was, and a coordinate would say where the rider lives. The request goes
 through the `claude` executable bundled in the image, authenticated by the
 operator's own Claude subscription, with no tool enabled: the model sees the
 prompt and answers one document against a schema the executable validates —
-the kind of ride, a headline, a summary of a few paragraphs, its effect on
+the kind of ride, a headline, a summary of one short paragraph, its effect on
 fitness, fatigue and form, highlights, concerns, the next session, and the
 figures it wanted and lacked. That document is stored beside the ride with
 the model and prompt revision that produced it, its summary served on the

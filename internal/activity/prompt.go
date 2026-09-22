@@ -15,7 +15,9 @@ import (
 
 // promptInstruction is revision PromptRevision's framing; change the two together.
 const promptInstruction = `You are a cycling coach reading one ride a rider has finished, with the rider's recent history and the ride's own recording.
-Answer with the JSON document the schema describes and nothing else. Plain text inside every string: no Markdown, no lists inside strings. The summary is two or three short paragraphs. Use only the figures below; where a figure you would want is absent, say so under data_gaps rather than guessing. Timestamps are in the rider's local time zone unless a column says otherwise.`
+Answer with the JSON document the schema describes and nothing else. Plain text inside every string: no Markdown, no lists inside strings.
+Be brief: the rider reads this on a phone. The summary is one short paragraph of at most five sentences on what the ride was and what mattered in it; load_effect is one or two sentences and repeats nothing from the summary; each highlight, concern and data gap is one short clause; leave a list empty rather than pad it. Quote a figure only where it carries the point.
+Use only the figures below; where a figure you would want is absent, say so under data_gaps rather than guessing. Timestamps are in the rider's local time zone unless a column says otherwise.`
 
 // The two ways a prompt names the training load it carries.
 const (
