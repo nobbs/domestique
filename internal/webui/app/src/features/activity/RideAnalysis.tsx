@@ -1,13 +1,16 @@
 /**
- * What a language model made of one ride, as the plain text it wrote. Absent
- * until the ride has been analysed, and on a deployment that never had a token.
- * An admin may ask again about any derived ride while analysis is on.
+ * What a language model made of one ride: a card per field for a structured
+ * document, or its plain text for an analysis written before that document
+ * existed, or on a deployment that never had a token. Absent until the ride
+ * has been analysed. An admin may ask again about any derived ride while
+ * analysis is on.
  */
 
 import { IconSparkles } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useReanalyseActivity } from "../../api/generated";
-import { tasksQuery } from "../../api/queries";
+import { fitnessQuery, tasksQuery, webUIConfigQuery } from "../../api/queries";
 import { TASKS } from "../../api/tasks";
 import type { Activity, ActivityAnalysisDocument } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -15,12 +18,45 @@ import { PanelHeading } from "../../components/PanelHeading";
 import { Badge } from "../../components/ui/badge";
 import { formatTimestamp } from "../../lib/format";
 import { useEffectiveAdmin } from "../../lib/identity";
+import { calendarDay } from "../fitness/DecouplingPanel";
+import { signed } from "../fitness/form";
+
+/**
+ * Splits at the first `. `/`! `/`? ` that is followed by a capital letter, for
+ * the lead sentence's emphasis; the whole text is the first sentence when no
+ * such boundary exists (a lone sentence, or every break followed by a digit
+ * or lowercase word such as a decimal).
+ */
+export function firstSentence(text: string): { first: string; rest: string } {
+  const match = /[.!?] (?=[A-Z])/.exec(text);
+  if (!match) {
+    return { first: text, rest: "" };
+  }
+  const end = match.index + 1;
+
+  return { first: text.slice(0, end), rest: text.slice(end) };
+}
+
+/** The calendar day shifted by `delta` days, both as `YYYY-MM-DD`. */
+function shiftDay(date: string, delta: number): string {
+  const at = new Date(`${date}T00:00:00Z`);
+  at.setUTCDate(at.getUTCDate() + delta);
+
+  return at.toISOString().slice(0, 10);
+}
+
+/** The two days the load card's form figure is read from: the ride's day and the one before it. */
+export function fitnessWindowFor(rideDay: string): { from: string; to: string } {
+  return { from: shiftDay(rideDay, -1), to: shiftDay(rideDay, 1) };
+}
 
 export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
   const admin = useEffectiveAdmin();
   const tasks = useQuery({ ...tasksQuery(), enabled: admin });
+  const config = useQuery(webUIConfigQuery());
   const reanalyse = useReanalyseActivity();
   const analysis = ride?.analysis;
+  const doc = analysis?.document;
   const canAsk =
     admin &&
     ride?.metrics !== undefined &&
@@ -34,22 +70,34 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
       className="flex flex-col gap-2 rounded-xl bg-[var(--panel)] p-4 shadow-[var(--shadow)]"
       aria-label="Analysis"
     >
-      <div className="flex items-center justify-between gap-2">
-        <PanelHeading icon={<IconSparkles size={18} stroke={1.8} />} title="Analysis" />
-        {canAsk ? (
-          <Button
-            variant="outline"
-            disabled={reanalyse.isPending || reanalyse.isSuccess}
-            onClick={() => reanalyse.mutate({ activityId: ride.id })}
-          >
-            {analysis ? "Analyse again" : "Analyse"}
-          </Button>
-        ) : null}
-      </div>
+      <PanelHeading
+        icon={<IconSparkles size={18} stroke={1.8} />}
+        title="Analysis"
+        aside={
+          doc || canAsk ? (
+            <div className="flex items-center gap-2">
+              {doc ? <Badge variant="secondary">{doc.rideType}</Badge> : null}
+              {canAsk ? (
+                <Button
+                  variant="outline"
+                  disabled={reanalyse.isPending || reanalyse.isSuccess}
+                  onClick={() => reanalyse.mutate({ activityId: ride.id })}
+                >
+                  {analysis ? "Analyse again" : "Analyse"}
+                </Button>
+              ) : null}
+            </div>
+          ) : undefined
+        }
+      />
       {analysis ? (
         <>
-          {analysis.document ? (
-            <RideAnalysisDocument analysis={analysis.document} />
+          {doc ? (
+            <RideAnalysisDocument
+              analysis={doc}
+              ride={ride}
+              zone={config.data?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
+            />
           ) : (
             // The model is asked for plain paragraphs; any markup it returns shows as typed.
             <p className="whitespace-pre-line text-sm leading-relaxed">{analysis.text}</p>
@@ -74,45 +122,151 @@ export function RideAnalysis({ ride }: { ride: Activity | undefined }) {
   );
 }
 
-function RideAnalysisDocument({ analysis }: { analysis: ActivityAnalysisDocument }) {
+/** The card's own background, label and body — a uniform frame for the three findings. */
+function Card({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <>
-      <div className="flex items-center gap-2">
-        <p className="font-semibold text-sm">{analysis.headline}</p>
-        <Badge variant="secondary">{analysis.rideType}</Badge>
-      </div>
-      <p className="whitespace-pre-line text-sm leading-relaxed">{analysis.summary}</p>
-      <p className="text-[var(--ink-2)] text-sm">{analysis.loadEffect}</p>
-      <AnalysisList title="Highlights" items={analysis.highlights} />
-      <AnalysisList title="Concerns" items={analysis.concerns} />
-      <p className="text-sm">
-        <span className="font-medium">Next session: </span>
-        {analysis.nextSession.advice}
-        {analysis.nextSession.suggestedRestDays > 0
-          ? ` Suggested rest: ${analysis.nextSession.suggestedRestDays} day(s).`
-          : null}
-      </p>
-      {analysis.dataGaps.length > 0 ? (
-        <p className="text-[var(--ink-2)] text-xs">
-          Missing figures: {analysis.dataGaps.join(", ")}
-        </p>
-      ) : null}
-    </>
+    <div className="flex flex-col gap-1.5 rounded-xl bg-[var(--base)] p-3.5">
+      <span className="font-semibold text-[var(--ink-2)] text-xs uppercase tracking-wide">
+        {label}
+      </span>
+      {children}
+    </div>
   );
 }
 
-function AnalysisList({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) {
-    return null;
-  }
+const GOOD_PILL = "bg-[color-mix(in_srgb,var(--good)_15%,transparent)] text-[var(--good)]";
+const HOLD_PILL = "bg-[color-mix(in_srgb,var(--hold)_15%,transparent)] text-[var(--hold)]";
+
+function Pill({ tone, children }: { tone: "good" | "hold"; children: ReactNode }) {
   return (
-    <div className="text-sm">
-      <p className="font-medium">{title}</p>
-      <ul className="list-disc pl-5">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
+    <span
+      className={`inline-flex h-5 w-fit shrink-0 items-center rounded-full px-2 font-semibold text-xs ${tone === "good" ? GOOD_PILL : HOLD_PILL}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Figure({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="font-semibold text-xl leading-tight">{value}</span>
+      <span className="text-[11px] text-[var(--ink-2)]">{label}</span>
     </div>
+  );
+}
+
+function NextSessionCard({
+  nextSession,
+}: {
+  nextSession: ActivityAnalysisDocument["nextSession"];
+}) {
+  const noRest = nextSession.suggestedRestDays === 0;
+
+  return (
+    <Card label="Next session">
+      <p className="text-[13px] leading-relaxed">{nextSession.advice}</p>
+      <Pill tone={noRest ? "good" : "hold"}>
+        {noRest
+          ? "no rest needed"
+          : `rest ${nextSession.suggestedRestDays} ${nextSession.suggestedRestDays === 1 ? "day" : "days"}`}
+      </Pill>
+    </Card>
+  );
+}
+
+/** The ride's own TSS, TRIMP and form beside the model's read of what they add up to. */
+function LoadCard({
+  ride,
+  loadEffect,
+  form,
+}: {
+  ride: Activity;
+  loadEffect: string;
+  form: number | undefined;
+}) {
+  const metrics = ride.metrics;
+  const tss = metrics?.powerTss ?? metrics?.heartRateTss;
+
+  return (
+    <Card label="Load">
+      <div className="flex gap-3.5">
+        <Figure value={tss === undefined ? "–" : tss.toFixed(0)} label="TSS" />
+        <Figure
+          value={metrics?.trimp === undefined ? "–" : metrics.trimp.toFixed(0)}
+          label="TRIMP"
+        />
+        <Figure value={form === undefined ? "–" : signed(form)} label="form" />
+      </div>
+      <p className="text-[12px] text-[var(--ink-2)]">{loadEffect}</p>
+    </Card>
+  );
+}
+
+function WatchOutCard({ concerns }: { concerns: string[] }) {
+  return (
+    <Card label="Watch out">
+      {concerns.length > 0 ? (
+        <ul className="list-disc space-y-1 pl-4 text-[13px] leading-relaxed">
+          {concerns.map((concern) => (
+            <li key={concern}>{concern}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[13px] text-[var(--ink-2)]">Nothing to flag</p>
+      )}
+      {concerns.length > 0 ? (
+        <Pill tone="hold">
+          {concerns.length} {concerns.length === 1 ? "concern" : "concerns"}
+        </Pill>
+      ) : null}
+    </Card>
+  );
+}
+
+function RideAnalysisDocument({
+  analysis,
+  ride,
+  zone,
+}: {
+  analysis: ActivityAnalysisDocument;
+  ride: Activity;
+  zone: string;
+}) {
+  const rideDay = calendarDay(ride.startedAt, zone);
+  const fitness = useQuery(fitnessQuery(fitnessWindowFor(rideDay)));
+  const day = fitness.data?.days.find((candidate) => candidate.date === rideDay);
+  const hasTss = ride.metrics?.powerTss !== undefined || ride.metrics?.heartRateTss !== undefined;
+  const form = day === undefined ? undefined : hasTss ? day.tssForm : day.trimpForm;
+  const { first, rest } = firstSentence(analysis.summary);
+
+  return (
+    <>
+      <p className="font-semibold text-lg leading-snug">{analysis.headline}</p>
+      <p className="whitespace-pre-line text-base leading-relaxed">
+        <span className="font-medium">{first}</span>
+        {rest}
+      </p>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+        <NextSessionCard nextSession={analysis.nextSession} />
+        <LoadCard ride={ride} loadEffect={analysis.loadEffect} form={form} />
+        <WatchOutCard concerns={analysis.concerns} />
+      </div>
+      {analysis.highlights.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <span className="font-semibold text-[var(--ink-2)] text-xs uppercase tracking-wide">
+            Highlights
+          </span>
+          <ul className="list-disc space-y-1 pl-4 text-[13px] leading-relaxed">
+            {analysis.highlights.map((highlight) => (
+              <li key={highlight}>{highlight}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {analysis.dataGaps.length > 0 ? (
+        <p className="text-[var(--ink-2)] text-xs">Not measured: {analysis.dataGaps.join(", ")}</p>
+      ) : null}
+    </>
   );
 }
