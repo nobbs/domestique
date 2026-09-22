@@ -634,10 +634,10 @@ func TestAnalyseCutsHistoryAtTheRidesStart(t *testing.T) {
 func TestAnalysisSchemaBoundsEveryFieldOfTheAnswer(t *testing.T) {
 	t.Parallel()
 	type bound struct {
-		MaxLength  int `json:"maxLength"`
-		MaxItems   int `json:"maxItems"`
-		Items      *bound
+		Items      *bound           `json:"items"`
 		Properties map[string]bound `json:"properties"`
+		MaxLength  int              `json:"maxLength"`
+		MaxItems   int              `json:"maxItems"`
 	}
 	var schema bound
 	require.NoError(t, json.Unmarshal(AnalysisSchema(), &schema))
