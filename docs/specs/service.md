@@ -1488,7 +1488,7 @@ ground was, and a coordinate would say where the rider lives. The request goes
 through the `claude` executable bundled in the image, authenticated by the
 operator's own Claude subscription, with no tool enabled: the model sees the
 prompt and answers one document against a schema the executable validates —
-the kind of ride, a headline, a summary of a few paragraphs, its effect on
+the kind of ride, a headline, a summary of one short paragraph, its effect on
 fitness, fatigue and form, highlights, concerns, the next session, and the
 figures it wanted and lacked. That document is stored beside the ride with
 the model and prompt revision that produced it, its summary served on the

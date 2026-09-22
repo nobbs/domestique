@@ -2,6 +2,7 @@ package activity
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -627,4 +628,20 @@ func TestAnalyseCutsHistoryAtTheRidesStart(t *testing.T) {
 	assert.Contains(t, asker.prompts[0], "Climbs:")
 	assert.NotContains(t, asker.prompts[0], "77.0")
 	assert.NotContains(t, asker.prompts[0], ",1.7,") // the later attempt's 100 s would be the best
+}
+
+// The schema is what keeps an answer short: a rider reads it on a phone.
+func TestAnalysisSchemaBoundsTheSummaryToOneParagraph(t *testing.T) {
+	t.Parallel()
+	var schema struct {
+		Properties map[string]struct {
+			MaxLength int `json:"maxLength"`
+			MaxItems  int `json:"maxItems"`
+		} `json:"properties"`
+	}
+	require.NoError(t, json.Unmarshal(AnalysisSchema(), &schema))
+	assert.LessOrEqual(t, schema.Properties["summary"].MaxLength, 700)
+	assert.LessOrEqual(t, schema.Properties["load_effect"].MaxLength, 300)
+	assert.LessOrEqual(t, schema.Properties["highlights"].MaxItems, 3)
+	assert.LessOrEqual(t, schema.Properties["concerns"].MaxItems, 3)
 }

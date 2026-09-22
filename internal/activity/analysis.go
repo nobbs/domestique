@@ -18,7 +18,7 @@ import (
 const (
 	// PromptRevision names the prompt below; an analysis records the one it
 	// was asked with.
-	PromptRevision = 3
+	PromptRevision = 4
 
 	// MaximumAnalysisCharacters is the contract's bound on a stored summary.
 	MaximumAnalysisCharacters = 2000
@@ -86,21 +86,21 @@ const analysisSchema = `{
   "required": ["ride_type", "headline", "summary", "load_effect", "highlights", "concerns", "next_session", "data_gaps"],
   "properties": {
     "ride_type": {"type": "string", "enum": ["recovery", "endurance", "tempo", "threshold", "intervals", "race", "mixed", "commute"]},
-    "headline": {"type": "string", "maxLength": 200},
-    "summary": {"type": "string", "maxLength": 2000},
-    "load_effect": {"type": "string", "maxLength": 1000},
-    "highlights": {"type": "array", "maxItems": 6, "items": {"type": "string", "maxLength": 200}},
-    "concerns": {"type": "array", "maxItems": 6, "items": {"type": "string", "maxLength": 200}},
+    "headline": {"type": "string", "maxLength": 120},
+    "summary": {"type": "string", "maxLength": 700},
+    "load_effect": {"type": "string", "maxLength": 300},
+    "highlights": {"type": "array", "maxItems": 3, "items": {"type": "string", "maxLength": 120}},
+    "concerns": {"type": "array", "maxItems": 3, "items": {"type": "string", "maxLength": 120}},
     "next_session": {
       "type": "object",
       "additionalProperties": false,
       "required": ["advice", "suggested_rest_days"],
       "properties": {
-        "advice": {"type": "string", "maxLength": 500},
+        "advice": {"type": "string", "maxLength": 300},
         "suggested_rest_days": {"type": "integer", "minimum": 0, "maximum": 7}
       }
     },
-    "data_gaps": {"type": "array", "maxItems": 6, "items": {"type": "string", "maxLength": 200}}
+    "data_gaps": {"type": "array", "maxItems": 3, "items": {"type": "string", "maxLength": 120}}
   }
 }`
 
