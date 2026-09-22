@@ -631,17 +631,24 @@ func TestAnalyseCutsHistoryAtTheRidesStart(t *testing.T) {
 }
 
 // The schema is what keeps an answer short: a rider reads it on a phone.
-func TestAnalysisSchemaBoundsTheSummaryToOneParagraph(t *testing.T) {
+func TestAnalysisSchemaBoundsEveryFieldOfTheAnswer(t *testing.T) {
 	t.Parallel()
-	var schema struct {
-		Properties map[string]struct {
-			MaxLength int `json:"maxLength"`
-			MaxItems  int `json:"maxItems"`
-		} `json:"properties"`
+	type bound struct {
+		MaxLength  int `json:"maxLength"`
+		MaxItems   int `json:"maxItems"`
+		Items      *bound
+		Properties map[string]bound `json:"properties"`
 	}
+	var schema bound
 	require.NoError(t, json.Unmarshal(AnalysisSchema(), &schema))
-	assert.LessOrEqual(t, schema.Properties["summary"].MaxLength, 700)
-	assert.LessOrEqual(t, schema.Properties["load_effect"].MaxLength, 300)
-	assert.LessOrEqual(t, schema.Properties["highlights"].MaxItems, 3)
-	assert.LessOrEqual(t, schema.Properties["concerns"].MaxItems, 3)
+	fields := schema.Properties
+	assert.Equal(t, 120, fields["headline"].MaxLength)
+	assert.Equal(t, 700, fields["summary"].MaxLength)
+	assert.Equal(t, 300, fields["load_effect"].MaxLength)
+	for _, list := range []string{"highlights", "concerns", "data_gaps"} {
+		assert.Equal(t, 3, fields[list].MaxItems, list)
+		require.NotNil(t, fields[list].Items, list)
+		assert.Equal(t, 120, fields[list].Items.MaxLength, list)
+	}
+	assert.Equal(t, 300, fields["next_session"].Properties["advice"].MaxLength)
 }
