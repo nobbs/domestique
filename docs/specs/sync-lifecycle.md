@@ -290,23 +290,32 @@ that target:
    last sign-in was refused are skipped without a request: a refused password
    is not tried again until the rider saves new credentials.
 2. It lists the rider's routes with the stored device session. Only when none
-   is stored, or Wahoo rejects it, does it sign in again, and it stores the
-   new session encrypted in place of the old. The device API can neither
+   is stored for the current email and password, or Wahoo rejects it with
+   `401`, does it sign in again, and it stores the new session encrypted in
+   place of the old. The device API can neither
    refresh nor end a session, so every sign-in leaves one behind; reusing the
    stored one keeps that to one per credential change or expiry.
-3. A refused sign-in removes the stored session and marks the credentials
-   refused, which the rider's settings page reports.
+3. A sign-in Wahoo answers `401` removes the stored session and marks the
+   credentials refused, which the rider's settings page reports. Any other
+   failure, a `403` or `422` included, is only logged, so a filter in front of
+   the API cannot lock out a correct password. The session and the refusal are
+   each bound to the email and password they were earned with, so one a run
+   writes after the rider saved or removed that pair is ignored.
 4. Every listed route whose `external_id` this service issued and whose
    `provider_id` is empty is given its own Wahoo route ID as `provider_id`. A
    `provider_id` already set is never changed: a device keeps the entry the
    earlier value made, so a changed value would leave a stale route behind. A
-   later public-API update keeps the value.
+   later public-API update keeps the value. A run writes at most 50 and is
+   bounded to two minutes; a larger library is labelled over successive runs.
 
-Labelling never fails, blocks or changes a target run. A failure is logged as
+Labelling never fails or changes a target run, and its bounds keep it from
+holding one open for long. A failure is logged as
 counts and a stable reason only (`state`, `sign_in`, `refused`, `listing`,
 `session`, `write`), never a route, an email or a token, and the next run
-tries again. Labelling deletes nothing and contacts no target but the one just
-reconciled.
+tries again. Labelling deletes nothing and changes nothing on the target but
+`provider_id`. It acts on whichever Wahoo account the rider's credentials sign
+in to, which is not checked against the target's own: a rider who enters
+another account's credentials labels that account's routes and not their own.
 
 ## Sync lifecycle
 

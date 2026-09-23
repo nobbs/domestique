@@ -39,3 +39,27 @@ func TestCredentialDoesNotRenderItsValue(t *testing.T) {
 		assert.NotContains(t, fmt.Sprintf(verb, credential), "opensesame", verb)
 	}
 }
+
+func TestWahooSessionAndRefusalHoldOnlyForThePairTheyWereStoredFor(t *testing.T) {
+	t.Parallel()
+	credentials := map[rider.CredentialName]rider.Credential{
+		rider.CredentialWahooEmail:    rider.NewCredential([]byte("rider@example.test")),
+		rider.CredentialWahooPassword: rider.NewCredential([]byte("old")),
+	}
+	credentials[rider.CredentialWahooSession] = rider.NewWahooSession(credentials, "token:with:colons")
+	credentials[rider.CredentialWahooRefused] = rider.NewWahooRefusal(credentials)
+
+	token, stored := rider.WahooSession(credentials)
+	assert.True(t, stored)
+	assert.Equal(t, "token:with:colons", token)
+	assert.True(t, rider.WahooRefused(credentials))
+
+	credentials[rider.CredentialWahooPassword] = rider.NewCredential([]byte("new"))
+	_, stored = rider.WahooSession(credentials)
+	assert.False(t, stored, "a session issued for the old password")
+	assert.False(t, rider.WahooRefused(credentials), "a refusal of the old password")
+
+	credentials[rider.CredentialWahooSession] = rider.NewCredential([]byte("unbound"))
+	_, stored = rider.WahooSession(credentials)
+	assert.False(t, stored)
+}

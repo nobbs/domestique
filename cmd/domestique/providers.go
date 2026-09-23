@@ -795,8 +795,6 @@ func (f predictorFunc) Predict(ctx context.Context, stages []route.Route) (predi
 	return f(ctx, stages)
 }
 
-// zwiftProvider adapts the Zwift client to activity.ZwiftSource. It is the only
-// place that knows both vocabularies, exactly as the Wahoo mapping above is.
 // wahooDeviceProvider adapts the device API client to the sync service's
 // vocabulary, which never names the adapter's own route type.
 type wahooDeviceProvider struct{ client *wahoodevice.Client }
@@ -824,6 +822,8 @@ func (p wahooDeviceProvider) SetProviderID(ctx context.Context, token string, ro
 
 func (p wahooDeviceProvider) IsUnauthorized(err error) bool { return p.client.IsUnauthorized(err) }
 
+// zwiftProvider adapts the Zwift client to activity.ZwiftSource. It is the only
+// place that knows both vocabularies, exactly as the Wahoo mapping above is.
 type zwiftProvider struct{ client *zwift.Client }
 
 // zwiftWorldOf adapts the Zwift adapter's world table to the HTTP surface,

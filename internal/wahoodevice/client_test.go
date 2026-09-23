@@ -46,8 +46,12 @@ func TestClientSignsInWithFlatFormFields(t *testing.T) {
 	assert.Equal(t, "session-token", token)
 }
 
-func TestClientReportsARefusedSignInAsUnauthorized(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusUnprocessableEntity} {
+func TestClientReportsOnlyA401AsUnauthorized(t *testing.T) {
+	for status, unauthorized := range map[int]bool{
+		http.StatusUnauthorized:        true,
+		http.StatusForbidden:           false,
+		http.StatusUnprocessableEntity: false,
+	} {
 		client := newTestClient(t, func(writer http.ResponseWriter, _ *http.Request) {
 			writer.WriteHeader(status)
 			writeBody(t, writer, `{"error":"secret-bearing body"}`)
@@ -55,7 +59,7 @@ func TestClientReportsARefusedSignInAsUnauthorized(t *testing.T) {
 
 		_, err := client.SignIn(t.Context(), []byte("rider@example.com"), []byte("wrong"))
 		require.Error(t, err)
-		assert.True(t, client.IsUnauthorized(err), "HTTP %d", status)
+		assert.Equal(t, unauthorized, client.IsUnauthorized(err), "HTTP %d", status)
 		assert.NotContains(t, err.Error(), "secret-bearing")
 	}
 }
@@ -192,4 +196,18 @@ func TestNewAppliesDefaultsAndRefusesANegativeTimeout(t *testing.T) {
 
 func TestProviderIDReadsNothingFromAnUnexpectedShape(t *testing.T) {
 	assert.Empty(t, providerID([]byte(`{"nested":true}`)))
+}
+
+func TestClientFollowsNoRedirect(t *testing.T) {
+	var followed bool
+	client := newTestClient(t, func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/elsewhere" {
+			followed = true
+		}
+		http.Redirect(writer, request, "/elsewhere", http.StatusTemporaryRedirect)
+	})
+
+	_, err := client.SignIn(t.Context(), []byte("rider@example.com"), []byte("secret"))
+	require.ErrorContains(t, err, "HTTP 307")
+	assert.False(t, followed, "the password must not be sent on to a redirect target")
 }

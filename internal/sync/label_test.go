@@ -125,7 +125,7 @@ func wahooCredentials(session string) map[rider.CredentialName]rider.Credential 
 		rider.CredentialWahooPassword: rider.NewCredential([]byte("secret")),
 	}
 	if session != "" {
-		credentials[rider.CredentialWahooSession] = rider.NewCredential([]byte(session))
+		credentials[rider.CredentialWahooSession] = rider.NewWahooSession(credentials, session)
 	}
 
 	return credentials
@@ -147,8 +147,9 @@ func TestLabelerSignsInAfreshOnlyWhenTheStoredSessionIsRejected(t *testing.T) {
 
 	assert.Equal(t, 1, api.signIns)
 	assert.Equal(t, map[int64]string{11: "11"}, api.written)
-	assert.Equal(t, []byte("fresh:rider@example.test:secret"),
-		state.credentials["rider-a"][rider.CredentialWahooSession].Bytes(), "the new session is kept for the next run")
+	token, stored := rider.WahooSession(state.credentials["rider-a"])
+	assert.True(t, stored, "the new session is kept for the next run")
+	assert.Equal(t, "fresh:rider@example.test:secret", token)
 }
 
 func TestLabelerSignsInWhenNoSessionIsStored(t *testing.T) {
@@ -292,4 +293,32 @@ func TestLabelerWritesNothingWhenTheStoreOrListingFails(t *testing.T) {
 			assert.Empty(t, api.written)
 		})
 	}
+}
+
+// A session or refusal stored for a pair the rider has since replaced, by a
+// run racing their save, is ignored rather than trusted.
+func TestLabelerIgnoresASessionOrRefusalOfAnotherPair(t *testing.T) {
+	old := wahooCredentials("")
+	old[rider.CredentialWahooPassword] = rider.NewCredential([]byte("old"))
+	current := wahooCredentials("")
+	current[rider.CredentialWahooSession] = rider.NewWahooSession(old, "stored")
+	current[rider.CredentialWahooRefused] = rider.NewWahooRefusal(old)
+	labeler, api, _ := newLabelFixture(t, current)
+
+	labeler.Label(t.Context(), "a")
+
+	assert.Equal(t, 1, api.signIns, "the old pair's session is not reused")
+	assert.Equal(t, map[int64]string{11: "11"}, api.written, "the old pair's refusal does not stop the new one")
+}
+
+func TestLabelerWritesAtMostTheRunCap(t *testing.T) {
+	labeler, api, _ := newLabelFixture(t, wahooCredentials("stored"))
+	api.routes = nil
+	for index := range maxLabelsPerRun + 5 {
+		api.routes = append(api.routes, DeviceRoute{ID: int64(100 + index), ExternalID: ownedExternalID(t, int64(100+index))})
+	}
+
+	labeler.Label(t.Context(), "a")
+
+	assert.Len(t, api.written, maxLabelsPerRun)
 }

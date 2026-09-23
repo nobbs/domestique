@@ -1,6 +1,12 @@
 package rider
 
-import "slices"
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"slices"
+	"strings"
+)
 
 // CredentialName identifies one credential held against a rider's own
 // subject rather than against the deployment. It is the name the value is
@@ -17,11 +23,11 @@ const (
 	CredentialWahooEmail CredentialName = "wahoo.email"
 	// CredentialWahooPassword is the rider's own Wahoo account password.
 	CredentialWahooPassword CredentialName = "wahoo.password"
-	// CredentialWahooSession is the device session token that sign-in issued.
-	// The API can neither refresh nor end one, so it is kept and reused.
+	// CredentialWahooSession is the device session token that sign-in issued,
+	// bound to the pair it was issued for; see NewWahooSession.
 	CredentialWahooSession CredentialName = "wahoo.session"
-	// CredentialWahooRefused marks the rider's Wahoo email and password as
-	// refused by the last sign-in; it holds no secret and is cleared by a save.
+	// CredentialWahooRefused marks the pair the last sign-in refused; see
+	// NewWahooRefusal.
 	CredentialWahooRefused CredentialName = "wahoo.refused"
 )
 
@@ -31,6 +37,44 @@ func WahooCredentialNames() []CredentialName {
 	return []CredentialName{
 		CredentialWahooEmail, CredentialWahooPassword, CredentialWahooSession, CredentialWahooRefused,
 	}
+}
+
+// NewWahooSession binds a device session token to the Wahoo pair it was
+// issued for, so a session stored after the rider changed the pair is ignored.
+func NewWahooSession(credentials map[CredentialName]Credential, token string) Credential {
+	return NewCredential([]byte(wahooPairFingerprint(credentials) + ":" + token))
+}
+
+// NewWahooRefusal marks the current Wahoo pair refused, on the same terms.
+func NewWahooRefusal(credentials map[CredentialName]Credential) Credential {
+	return NewCredential([]byte(wahooPairFingerprint(credentials)))
+}
+
+// WahooSession returns the stored device session token when it was issued for
+// the current Wahoo pair.
+func WahooSession(credentials map[CredentialName]Credential) (string, bool) {
+	fingerprint, token, found := strings.Cut(string(credentials[CredentialWahooSession].value), ":")
+	if !found || token == "" || fingerprint != wahooPairFingerprint(credentials) {
+		return "", false
+	}
+
+	return token, true
+}
+
+// WahooRefused reports whether the last sign-in refused the current Wahoo pair.
+func WahooRefused(credentials map[CredentialName]Credential) bool {
+	refusal := credentials[CredentialWahooRefused]
+
+	return refusal.IsSet() && bytes.Equal(refusal.value, []byte(wahooPairFingerprint(credentials)))
+}
+
+func wahooPairFingerprint(credentials map[CredentialName]Credential) string {
+	digest := sha256.New()
+	digest.Write(credentials[CredentialWahooEmail].value)
+	digest.Write([]byte{0})
+	digest.Write(credentials[CredentialWahooPassword].value)
+
+	return hex.EncodeToString(digest.Sum(nil))
 }
 
 // Credential carries a rider's own credential without exposing it through

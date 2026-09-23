@@ -442,12 +442,13 @@ func TestDeletingOneAccountsCredentialsKeepsTheOther(t *testing.T) {
 // next run signs in with the new ones; neither is ever reported as a value.
 func TestSetRiderWahooCredentialsForgetsTheSessionAndRefusal(t *testing.T) {
 	state := riderState()
-	state.riderCredentials = map[string]map[rider.CredentialName]rider.Credential{"rider-a": {
+	stored := map[rider.CredentialName]rider.Credential{
 		rider.CredentialWahooEmail:    rider.NewCredential([]byte("wahoo@example.test")),
 		rider.CredentialWahooPassword: rider.NewCredential([]byte("old")),
-		rider.CredentialWahooSession:  rider.NewCredential([]byte("session-token")),
-		rider.CredentialWahooRefused:  rider.NewCredential([]byte("1")),
-	}}
+	}
+	stored[rider.CredentialWahooSession] = rider.NewWahooSession(stored, "session-token")
+	stored[rider.CredentialWahooRefused] = rider.NewWahooRefusal(stored)
+	state.riderCredentials = map[string]map[rider.CredentialName]rider.Credential{"rider-a": stored}
 	handler := riderHandler(t, state, "rider-a")
 
 	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))

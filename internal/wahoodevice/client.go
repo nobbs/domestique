@@ -77,8 +77,16 @@ func New(options *Options) (*Client, error) {
 	}
 
 	return &Client{
-		httpClient: &http.Client{Timeout: timeout, Transport: transport},
-		baseURL:    baseURL,
+		httpClient: &http.Client{
+			Timeout:   timeout,
+			Transport: transport,
+			// A redirect would carry the password or WF-USER-TOKEN, which Go does
+			// not strip, to whatever host it names.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
+		baseURL: baseURL,
 	}, nil
 }
 
@@ -103,7 +111,7 @@ func (c *Client) SignIn(ctx context.Context, email, password []byte) (string, er
 	var response struct {
 		Token string `json:"token"`
 	}
-	if err := c.do(request, &response, true); err != nil {
+	if err := c.do(request, &response); err != nil {
 		return "", err
 	}
 	if response.Token == "" {
@@ -130,7 +138,7 @@ func (c *Client) Routes(ctx context.Context, token string) ([]Route, error) {
 		ProviderID json.RawMessage `json:"provider_id"`
 		ID         int64           `json:"id"`
 	}
-	if err := c.do(request, &response, false); err != nil {
+	if err := c.do(request, &response); err != nil {
 		return nil, err
 	}
 	if len(response) > maximumRoutes {
@@ -172,7 +180,7 @@ func (c *Client) SetProviderID(ctx context.Context, token string, routeID int64,
 	}
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 
-	return c.do(request, nil, false)
+	return c.do(request, nil)
 }
 
 func (c *Client) newRequest(
@@ -198,7 +206,7 @@ func (c *Client) newRequest(
 
 // do sends request and, when output is not nil, decodes a JSON reply into it.
 // Errors carry only the status, never a response body.
-func (c *Client) do(request *http.Request, output any, signIn bool) (err error) {
+func (c *Client) do(request *http.Request, output any) (err error) {
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		if urlErr, ok := errors.AsType[*url.Error](err); ok {
@@ -213,10 +221,9 @@ func (c *Client) do(request *http.Request, output any, signIn bool) (err error) 
 
 	switch status := response.StatusCode; {
 	case status >= http.StatusOK && status < http.StatusMultipleChoices:
-	case status == http.StatusUnauthorized || status == http.StatusForbidden:
-		return fmt.Errorf("%w: HTTP %d", ErrUnauthorized, status)
-	// A wrong password is answered 422 rather than 401.
-	case signIn && status == http.StatusUnprocessableEntity:
+	// Only 401 speaks for the credentials or the session: a wrong password gets
+	// one, a malformed sign-in 422, and a 403 may come from a filter in front.
+	case status == http.StatusUnauthorized:
 		return fmt.Errorf("%w: HTTP %d", ErrUnauthorized, status)
 	default:
 		return fmt.Errorf("wahoodevice: request returned HTTP %d", status)

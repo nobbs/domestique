@@ -119,7 +119,7 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 		Wahoo: openapi.RiderWahooCredentialState{
 			EmailSet:      credentials[rider.CredentialWahooEmail].IsSet(),
 			PasswordSet:   credentials[rider.CredentialWahooPassword].IsSet(),
-			SignInRefused: credentials[rider.CredentialWahooRefused].IsSet(),
+			SignInRefused: rider.WahooRefused(credentials),
 		},
 	})
 }

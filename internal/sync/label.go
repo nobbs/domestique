@@ -5,9 +5,19 @@ import (
 	"errors"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/nobbs/domestique/internal/rider"
 	"github.com/nobbs/domestique/internal/route"
+)
+
+const (
+	// labelTimeout bounds one target's labelling, which runs while the target
+	// run still holds the inventory.
+	labelTimeout = 2 * time.Minute
+	// maxLabelsPerRun bounds the writes one run makes; a large library is
+	// labelled over successive runs.
+	maxLabelsPerRun = 50
 )
 
 // DeviceRoute is one route as the Wahoo device API lists it.
@@ -57,6 +67,9 @@ func NewDeviceLabeler(api DeviceAPI, state LabelState) (*DeviceLabeler, error) {
 // credentials, or whose last sign-in was refused, is skipped until they save
 // new ones, and anything else is logged as counts and a reason.
 func (l *DeviceLabeler) Label(ctx context.Context, targetID string) {
+	ctx, cancel := context.WithTimeout(ctx, labelTimeout)
+	defer cancel()
+
 	subject, err := l.state.TargetOwner(ctx, targetID)
 	if err != nil {
 		logLabel(0, 0, "state")
@@ -73,12 +86,11 @@ func (l *DeviceLabeler) Label(ctx context.Context, targetID string) {
 		return
 	}
 	email, password := credentials[rider.CredentialWahooEmail], credentials[rider.CredentialWahooPassword]
-	if !email.IsSet() || !password.IsSet() || credentials[rider.CredentialWahooRefused].IsSet() {
+	if !email.IsSet() || !password.IsSet() || rider.WahooRefused(credentials) {
 		return
 	}
 
-	session := string(credentials[rider.CredentialWahooSession].Bytes())
-	token, routes, reason := l.signedInRoutes(ctx, subject, email.Bytes(), password.Bytes(), session)
+	token, routes, reason := l.signedInRoutes(ctx, subject, credentials)
 	if reason != "" {
 		logLabel(0, 0, reason)
 
@@ -89,6 +101,9 @@ func (l *DeviceLabeler) Label(ctx context.Context, targetID string) {
 	for _, owned := range routes {
 		if !route.OwnsExternalID(owned.ExternalID) || owned.ProviderID != "" {
 			continue
+		}
+		if labelled+failed == maxLabelsPerRun {
+			break
 		}
 		if err := l.api.SetProviderID(ctx, token, owned.ID, strconv.FormatInt(owned.ID, 10)); err != nil {
 			failed++
@@ -111,12 +126,14 @@ func (l *DeviceLabeler) Label(ctx context.Context, targetID string) {
 }
 
 // signedInRoutes lists the rider's routes with the stored session, signing in
-// afresh only when there is none or Wahoo no longer accepts it. A new session
-// is stored; refused credentials are marked for the settings page.
+// afresh only when there is none for the current pair or Wahoo no longer
+// accepts it. A new session is stored; refused credentials are marked for the
+// settings page. Both are bound to the pair read, so a write racing the rider's
+// own save is ignored rather than trusted.
 func (l *DeviceLabeler) signedInRoutes(
-	ctx context.Context, subject string, email, password []byte, token string,
+	ctx context.Context, subject string, credentials map[rider.CredentialName]rider.Credential,
 ) (session string, routes []DeviceRoute, reason string) {
-	if token != "" {
+	if token, stored := rider.WahooSession(credentials); stored {
 		listed, err := l.api.Routes(ctx, token)
 		if err == nil {
 			return token, listed, ""
@@ -126,14 +143,15 @@ func (l *DeviceLabeler) signedInRoutes(
 		}
 	}
 
-	token, err := l.api.SignIn(ctx, email, password)
+	token, err := l.api.SignIn(ctx,
+		credentials[rider.CredentialWahooEmail].Bytes(), credentials[rider.CredentialWahooPassword].Bytes())
 	if err != nil {
 		if !l.api.IsUnauthorized(err) {
 			return "", nil, "sign_in"
 		}
 		if storeErr := l.state.SetRiderCredentials(ctx, subject, map[rider.CredentialName]rider.Credential{
 			rider.CredentialWahooSession: {},
-			rider.CredentialWahooRefused: rider.NewCredential([]byte("1")),
+			rider.CredentialWahooRefused: rider.NewWahooRefusal(credentials),
 		}); storeErr != nil {
 			return "", nil, "state"
 		}
@@ -141,7 +159,7 @@ func (l *DeviceLabeler) signedInRoutes(
 		return "", nil, "refused"
 	}
 	if storeErr := l.state.SetRiderCredentials(ctx, subject, map[rider.CredentialName]rider.Credential{
-		rider.CredentialWahooSession: rider.NewCredential([]byte(token)),
+		rider.CredentialWahooSession: rider.NewWahooSession(credentials, token),
 		rider.CredentialWahooRefused: {},
 	}); storeErr != nil {
 		return "", nil, "state"
