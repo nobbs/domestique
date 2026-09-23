@@ -2764,16 +2764,6 @@ func (s *fakeState) SetRiderCredentials(
 	return nil
 }
 
-// ClearRiderCredentials removes every credential the test stored for this subject.
-func (s *fakeState) ClearRiderCredentials(_ context.Context, subject string) error {
-	if s.riderCredentialsErr != nil {
-		return s.riderCredentialsErr
-	}
-	delete(s.riderCredentials, subject)
-
-	return nil
-}
-
 // PowerCurve is the curve the test seeded for each target, folded the way the
 // store folds it: the best each duration reached across every target asked for.
 // Every call's own window is kept, in order, so a test can tell a curve read

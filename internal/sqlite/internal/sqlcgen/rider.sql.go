@@ -25,15 +25,6 @@ func (q *Queries) DeleteRiderCredential(ctx context.Context, arg DeleteRiderCred
 	return err
 }
 
-const deleteRiderCredentials = `-- name: DeleteRiderCredentials :exec
-DELETE FROM rider_credentials WHERE subject = ?
-`
-
-func (q *Queries) DeleteRiderCredentials(ctx context.Context, subject string) error {
-	_, err := q.db.ExecContext(ctx, deleteRiderCredentials, subject)
-	return err
-}
-
 const getRiderProfile = `-- name: GetRiderProfile :one
 SELECT max_heart_rate_bpm, resting_heart_rate_bpm, threshold_heart_rate_bpm,
   functional_threshold_power_watts, rider_mass_kg, bike_mass_kg,

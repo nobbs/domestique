@@ -314,8 +314,6 @@ type RiderProfileState interface {
 	// SetRiderCredentials writes only the names it is given; an unset value
 	// removes that name.
 	SetRiderCredentials(ctx context.Context, subject string, credentials map[rider.CredentialName]rider.Credential) error
-	// ClearRiderCredentials removes every credential the subject has entered.
-	ClearRiderCredentials(ctx context.Context, subject string) error
 }
 
 // ActivityState is what a poll recorded about each target's rides. The

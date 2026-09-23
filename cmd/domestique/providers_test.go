@@ -18,7 +18,9 @@ import (
 	"github.com/nobbs/domestique/internal/claude"
 	"github.com/nobbs/domestique/internal/runtimeconfig"
 	"github.com/nobbs/domestique/internal/session"
+	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/wahoo"
+	"github.com/nobbs/domestique/internal/wahoodevice"
 	"github.com/nobbs/domestique/internal/zwift"
 )
 
@@ -548,4 +550,37 @@ func TestClaudeAskerPassesAFailedRunOn(t *testing.T) {
 
 	_, _, err = claudeAsker{client: client}.Ask(t.Context(), "prompt")
 	assert.Equal(t, activity.FailureExecutable, claudeAsker{}.FailureOf(err))
+}
+
+// The device API's route reaches the sync service in its own vocabulary, and
+// a rejected session stays recognisable across the shim.
+func TestWahooDeviceProviderRelaysTheDeviceAPI(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/api/v1/sessions/":
+			writer.Write([]byte(`{"token":"session"}`)) //nolint:errcheck,gosec // test server, nothing to act on
+		case request.Method == http.MethodGet && request.Header.Get("WF-USER-TOKEN") == "session":
+			writer.Write([]byte(`[{"id":5,"external_id":"domestique:x","provider_id":null}]`)) //nolint:errcheck,gosec // test server, nothing to act on
+		case request.Method == http.MethodPut && request.Header.Get("WF-USER-TOKEN") == "session":
+			writer.WriteHeader(http.StatusOK)
+		default:
+			writer.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	defer server.Close()
+	client, err := wahoodevice.New(&wahoodevice.Options{BaseURL: server.URL, Transport: server.Client().Transport})
+	require.NoError(t, err)
+	provider := wahooDeviceProvider{client: client}
+
+	token, err := provider.SignIn(t.Context(), []byte("rider@example.test"), []byte("secret"))
+	require.NoError(t, err)
+	routes, err := provider.Routes(t.Context(), token)
+	require.NoError(t, err)
+	assert.Equal(t, []syncservice.DeviceRoute{{ID: 5, ExternalID: "domestique:x"}}, routes)
+	require.NoError(t, provider.SetProviderID(t.Context(), token, 5, "5"))
+
+	_, err = provider.Routes(t.Context(), "stale")
+	assert.True(t, provider.IsUnauthorized(err))
 }

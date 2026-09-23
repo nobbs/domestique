@@ -12,7 +12,26 @@ const (
 	CredentialZwiftEmail CredentialName = "zwift.email" //nolint:gosec // G101: a storage name, not a credential
 	// CredentialZwiftPassword is the rider's own Zwift account password.
 	CredentialZwiftPassword CredentialName = "zwift.password"
+	// CredentialWahooEmail is the rider's own Wahoo account email, used only for
+	// the device sign-in that sets each route's provider_id.
+	CredentialWahooEmail CredentialName = "wahoo.email"
+	// CredentialWahooPassword is the rider's own Wahoo account password.
+	CredentialWahooPassword CredentialName = "wahoo.password"
+	// CredentialWahooSession is the device session token that sign-in issued.
+	// The API can neither refresh nor end one, so it is kept and reused.
+	CredentialWahooSession CredentialName = "wahoo.session"
+	// CredentialWahooRefused marks the rider's Wahoo email and password as
+	// refused by the last sign-in; it holds no secret and is cleared by a save.
+	CredentialWahooRefused CredentialName = "wahoo.refused"
 )
+
+// WahooCredentialNames are every name a Wahoo save or removal resets, so new
+// credentials never reuse a session or a refusal the old ones earned.
+func WahooCredentialNames() []CredentialName {
+	return []CredentialName{
+		CredentialWahooEmail, CredentialWahooPassword, CredentialWahooSession, CredentialWahooRefused,
+	}
+}
 
 // Credential carries a rider's own credential without exposing it through
 // formatting or JSON serialization, mirroring runtimeconfig.Secret.

@@ -414,6 +414,58 @@ func TestSetRiderZwiftCredentialsRefusesAFieldThisSectionHasNot(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 }
 
+const riderWahooCredentialsPath = "/v1/settings/rider/credentials/wahoo" //nolint:gosec // G101: a route path, not a credential
+
+// Revoking one account leaves the other stored.
+func TestDeletingOneAccountsCredentialsKeepsTheOther(t *testing.T) {
+	state := riderState()
+	state.riderCredentials = map[string]map[rider.CredentialName]rider.Credential{"rider-a": {
+		rider.CredentialZwiftEmail: rider.NewCredential([]byte("zwift@example.test")),
+		rider.CredentialWahooEmail: rider.NewCredential([]byte("wahoo@example.test")),
+	}}
+	handler := riderHandler(t, state, "rider-a")
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodDelete, riderZwiftCredentialsPath))
+	require.Equal(t, http.StatusNoContent, response.Code)
+	assert.Equal(t, map[rider.CredentialName]rider.Credential{
+		rider.CredentialWahooEmail: rider.NewCredential([]byte("wahoo@example.test")),
+	}, state.riderCredentials["rider-a"])
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequest(http.MethodDelete, riderWahooCredentialsPath))
+	require.Equal(t, http.StatusNoContent, response.Code)
+	assert.Empty(t, state.riderCredentials["rider-a"])
+}
+
+// A save forgets the session and refusal the old credentials earned, so the
+// next run signs in with the new ones; neither is ever reported as a value.
+func TestSetRiderWahooCredentialsForgetsTheSessionAndRefusal(t *testing.T) {
+	state := riderState()
+	state.riderCredentials = map[string]map[rider.CredentialName]rider.Credential{"rider-a": {
+		rider.CredentialWahooEmail:    rider.NewCredential([]byte("wahoo@example.test")),
+		rider.CredentialWahooPassword: rider.NewCredential([]byte("old")),
+		rider.CredentialWahooSession:  rider.NewCredential([]byte("session-token")),
+		rider.CredentialWahooRefused:  rider.NewCredential([]byte("1")),
+	}}
+	handler := riderHandler(t, state, "rider-a")
+
+	view := riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	assert.True(t, view.Wahoo.SignInRefused)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderWahooCredentialsPath,
+		`{"password": "new"}`))
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	assert.Equal(t, map[rider.CredentialName]rider.Credential{
+		rider.CredentialWahooEmail:    rider.NewCredential([]byte("wahoo@example.test")),
+		rider.CredentialWahooPassword: rider.NewCredential([]byte("new")),
+	}, state.riderCredentials["rider-a"])
+
+	view = riderProfileOf(t, handler, authenticatedRequest(http.MethodGet, riderPath))
+	assert.Equal(t, openapi.RiderWahooCredentialState{EmailSet: true, PasswordSet: true}, view.Wahoo)
+}
+
 const wahooConnectionPath = "/v1/settings/rider/connections/wahoo"
 
 // Only the caller's own target is disconnected, whoever else is connected.

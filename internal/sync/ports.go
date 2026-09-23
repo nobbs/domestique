@@ -43,6 +43,13 @@ type Target interface {
 	IsUnauthorized(err error) bool
 }
 
+// Labeler gives each route a target holds the identity an ELEMNT device keys
+// it by. Optional: it never fails a run, and a nil labeler leaves every route
+// as the public API wrote it.
+type Labeler interface {
+	Label(ctx context.Context, targetID string)
+}
+
 // Annotator enriches the stored inventory with the surface classification of the
 // ground each stage covers. Optional and narrow: whatever it learns it records
 // itself. It reports counts because a pass that classified nothing and a pass

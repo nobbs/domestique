@@ -890,15 +890,29 @@ type TaskRunPage struct {
 }
 
 type RiderProfile struct {
-	Profile     RiderParameters      `json:"profile"`
-	Suggestions RiderSuggestions     `json:"suggestions"`
-	Zwift       RiderCredentialState `json:"zwift"`
+	Profile     RiderParameters           `json:"profile"`
+	Suggestions RiderSuggestions          `json:"suggestions"`
+	Zwift       RiderCredentialState      `json:"zwift"`
+	Wahoo       RiderWahooCredentialState `json:"wahoo"`
 }
 
-// RiderCredentialState Whether the rider's own Zwift email and password are stored. Never the values themselves: a credential entered on this page is written and never read back, over the rider's own subject alone.
+// RiderCredentialState Whether the rider's own email and password are stored. Never the values themselves: a credential entered on this page is written and never read back, over the rider's own subject alone.
 type RiderCredentialState struct {
 	EmailSet    bool `json:"emailSet"`
 	PasswordSet bool `json:"passwordSet"`
+}
+
+// RiderWahooCredentialState Whether the rider's own Wahoo email and password are stored, and whether the last device sign-in refused them. Never the values themselves, nor whether a device session is held.
+type RiderWahooCredentialState struct {
+	EmailSet      bool `json:"emailSet"`
+	PasswordSet   bool `json:"passwordSet"`
+	SignInRefused bool `json:"signInRefused"`
+}
+
+// RiderWahooCredentialsUpdate A save carries only what was typed: a field left out keeps whatever is stored.
+type RiderWahooCredentialsUpdate struct {
+	Email    *string `json:"email,omitempty"`
+	Password *string `json:"password,omitempty"`
 }
 
 // RiderZwiftCredentialsUpdate A save carries only what was typed: a field left out keeps whatever is stored, unlike the rider's parameters below, which a save replaces whole.

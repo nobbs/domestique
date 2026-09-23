@@ -46,9 +46,6 @@ ON CONFLICT(subject, name) DO UPDATE SET value = excluded.value,
 -- name: DeleteRiderCredential :exec
 DELETE FROM rider_credentials WHERE subject = ? AND name = ?;
 
--- name: DeleteRiderCredentials :exec
-DELETE FROM rider_credentials WHERE subject = ?;
-
 -- name: ListRiderStoppingRides :many
 SELECT moving_seconds, elapsed_seconds, distance_metres
 FROM activities

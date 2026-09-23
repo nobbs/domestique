@@ -37,6 +37,7 @@ import (
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/task"
 	"github.com/nobbs/domestique/internal/wahoo"
+	"github.com/nobbs/domestique/internal/wahoodevice"
 	"github.com/nobbs/domestique/internal/webui"
 	"github.com/nobbs/domestique/internal/zwift"
 )
@@ -169,6 +170,16 @@ func run(ctx context.Context) error {
 	if wireErr != nil {
 		return wireErr
 	}
+	// The device API is the only way to give a route the provider_id an ELEMNT
+	// keys it by; its host is compiled in like Zwift's.
+	wahooDeviceClient, err := wahoodevice.New(&wahoodevice.Options{})
+	if err != nil {
+		return fmt.Errorf("creating the Wahoo device client: %w", err)
+	}
+	deviceLabeler, err := syncservice.NewDeviceLabeler(wahooDeviceProvider{client: wahooDeviceClient}, store)
+	if err != nil {
+		return fmt.Errorf("creating the device route labeler: %w", err)
+	}
 	reconciler, err := syncservice.New(&syncservice.Options{
 		TargetIDs: destination.targetIDs,
 		Sources:   func() ([]syncservice.Source, error) { return sourceClients.sources(runtimeSettings) },
@@ -180,6 +191,7 @@ func run(ctx context.Context) error {
 		},
 		Withheld: runtimeSettings.WithheldProviders,
 		Unread:   runtimeSettings.UnreadProviders,
+		Labeler:  deviceLabeler,
 	}, store, elevation.New(), courseEncoder(planService), destination, annotator, predictorFor(rideModel))
 	if err != nil {
 		return fmt.Errorf("creating sync service: %w", err)

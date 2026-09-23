@@ -1322,23 +1322,41 @@ export interface RiderSuggestions {
 }
 
 /**
- * Whether the rider's own Zwift email and password are stored. Never the values themselves: a credential entered on this page is written and never read back, over the rider's own subject alone.
+ * Whether the rider's own email and password are stored. Never the values themselves: a credential entered on this page is written and never read back, over the rider's own subject alone.
  */
 export interface RiderCredentialState {
   emailSet: boolean;
   passwordSet: boolean;
 }
 
+/**
+ * Whether the rider's own Wahoo email and password are stored, and whether the last device sign-in refused them. Never the values themselves, nor whether a device session is held.
+ */
+export interface RiderWahooCredentialState {
+  emailSet: boolean;
+  passwordSet: boolean;
+  signInRefused: boolean;
+}
+
 export interface RiderProfile {
   profile: RiderParameters;
   suggestions: RiderSuggestions;
   zwift: RiderCredentialState;
+  wahoo: RiderWahooCredentialState;
 }
 
 /**
  * A save carries only what was typed: a field left out keeps whatever is stored, unlike the rider's parameters below, which a save replaces whole.
  */
 export interface RiderZwiftCredentialsUpdate {
+  email?: string;
+  password?: string;
+}
+
+/**
+ * A save carries only what was typed: a field left out keeps whatever is stored.
+ */
+export interface RiderWahooCredentialsUpdate {
   email?: string;
   password?: string;
 }
@@ -9482,6 +9500,265 @@ export const useDeleteRiderZwiftCredentials = <
   TContext
 > => {
   return useMutation(getDeleteRiderZwiftCredentialsMutationOptions(options), queryClient);
+};
+
+export type setRiderWahooCredentialsResponse204 = {
+  data: NoContentResponse;
+  status: 204;
+};
+
+export type setRiderWahooCredentialsResponse400 = {
+  data: InvalidRequestResponse;
+  status: 400;
+};
+
+export type setRiderWahooCredentialsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type setRiderWahooCredentialsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type setRiderWahooCredentialsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type setRiderWahooCredentialsResponseSuccess = setRiderWahooCredentialsResponse204 & {
+  headers: Headers;
+};
+export type setRiderWahooCredentialsResponseError = (
+  | setRiderWahooCredentialsResponse400
+  | setRiderWahooCredentialsResponse401
+  | setRiderWahooCredentialsResponse403
+  | setRiderWahooCredentialsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getSetRiderWahooCredentialsUrl = () => {
+  return `/v1/settings/rider/credentials/wahoo`;
+};
+
+/**
+ * Writes the caller's own Wahoo email and password, over their own subject alone, and forgets any device session or refusal the previous ones earned. They are used only to sign in the way an ELEMNT does and give each synchronised route the provider_id a device keys it by. A field left out of the body keeps whatever is stored; the value is never returned in any form.
+ */
+export const setRiderWahooCredentials = async (
+  riderWahooCredentialsUpdate: RiderWahooCredentialsUpdate,
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<setRiderWahooCredentialsResponseSuccess> => {
+  const getHeaders = (
+    h?: NonNullable<RequestInit["headers"]>,
+  ): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Array.isArray(h)) return Object.fromEntries(h);
+    return h;
+  };
+  return domestiqueRequest<setRiderWahooCredentialsResponseSuccess>(
+    getSetRiderWahooCredentialsUrl(),
+    {
+      ...options,
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...getHeaders(options?.headers) },
+      body: JSON.stringify(riderWahooCredentialsUpdate),
+    },
+  );
+};
+
+export const getSetRiderWahooCredentialsMutationKey = () => ["setRiderWahooCredentials"] as const;
+
+export const getSetRiderWahooCredentialsMutationOptions = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof setRiderWahooCredentials>>,
+    TError,
+    SetRiderWahooCredentialsMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof setRiderWahooCredentials>>,
+  TError,
+  SetRiderWahooCredentialsMutationVariables,
+  TContext
+> => {
+  const mutationKey = getSetRiderWahooCredentialsMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof setRiderWahooCredentials>>,
+    SetRiderWahooCredentialsMutationVariables
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return setRiderWahooCredentials(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SetRiderWahooCredentialsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof setRiderWahooCredentials>>
+>;
+export type SetRiderWahooCredentialsMutationBody = RiderWahooCredentialsUpdate;
+export type SetRiderWahooCredentialsMutationError = ErrorType<
+  InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+export type SetRiderWahooCredentialsMutationVariables = { data: RiderWahooCredentialsUpdate };
+
+export const useSetRiderWahooCredentials = <
+  TError = ErrorType<
+    InvalidRequestResponse | UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+  >,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof setRiderWahooCredentials>>,
+      TError,
+      SetRiderWahooCredentialsMutationVariables,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof setRiderWahooCredentials>>,
+  TError,
+  SetRiderWahooCredentialsMutationVariables,
+  TContext
+> => {
+  return useMutation(getSetRiderWahooCredentialsMutationOptions(options), queryClient);
+};
+
+export type deleteRiderWahooCredentialsResponse204 = {
+  data: NoContentResponse;
+  status: 204;
+};
+
+export type deleteRiderWahooCredentialsResponse401 = {
+  data: UnauthorizedResponse;
+  status: 401;
+};
+
+export type deleteRiderWahooCredentialsResponse403 = {
+  data: ForbiddenResponse;
+  status: 403;
+};
+
+export type deleteRiderWahooCredentialsResponse503 = {
+  data: UnavailableResponse;
+  status: 503;
+};
+
+export type deleteRiderWahooCredentialsResponseSuccess = deleteRiderWahooCredentialsResponse204 & {
+  headers: Headers;
+};
+export type deleteRiderWahooCredentialsResponseError = (
+  | deleteRiderWahooCredentialsResponse401
+  | deleteRiderWahooCredentialsResponse403
+  | deleteRiderWahooCredentialsResponse503
+) & {
+  headers: Headers;
+};
+
+export const getDeleteRiderWahooCredentialsUrl = () => {
+  return `/v1/settings/rider/credentials/wahoo`;
+};
+
+/**
+ * Removes the caller's own Wahoo email, password and device session, over their own subject alone.
+ */
+export const deleteRiderWahooCredentials = async (
+  options?: Parameters<typeof domestiqueRequest>[1],
+): Promise<deleteRiderWahooCredentialsResponseSuccess> => {
+  return domestiqueRequest<deleteRiderWahooCredentialsResponseSuccess>(
+    getDeleteRiderWahooCredentialsUrl(),
+    {
+      ...options,
+      method: "DELETE",
+    },
+  );
+};
+
+export const getDeleteRiderWahooCredentialsMutationKey = () =>
+  ["deleteRiderWahooCredentials"] as const;
+
+export const getDeleteRiderWahooCredentialsMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteRiderWahooCredentials>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof domestiqueRequest>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteRiderWahooCredentials>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = getDeleteRiderWahooCredentialsMutationKey();
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation && "mutationKey" in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteRiderWahooCredentials>>,
+    void
+  > = () => {
+    return deleteRiderWahooCredentials(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteRiderWahooCredentialsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteRiderWahooCredentials>>
+>;
+
+export type DeleteRiderWahooCredentialsMutationError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | UnavailableResponse
+>;
+
+export const useDeleteRiderWahooCredentials = <
+  TError = ErrorType<UnauthorizedResponse | ForbiddenResponse | UnavailableResponse>,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof deleteRiderWahooCredentials>>,
+      TError,
+      void,
+      TContext
+    >;
+    request?: SecondParameter<typeof domestiqueRequest>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof deleteRiderWahooCredentials>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getDeleteRiderWahooCredentialsMutationOptions(options), queryClient);
 };
 
 export type disconnectWahooResponse204 = {

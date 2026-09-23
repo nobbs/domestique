@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { riderProfileQuery } from "../../api/queries";
 import type { RiderProfile } from "../../api/types";
-import { ZwiftAccountCard } from "./ZwiftAccountCard";
+import { WahooDeviceCard } from "./WahooDeviceCard";
 
-function Seeded({ zwift }: { zwift: RiderProfile["zwift"] }): ReactNode {
+function Seeded({ wahoo }: { wahoo: RiderProfile["wahoo"] }): ReactNode {
   const [client] = useState(() => {
     const next = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -14,8 +14,8 @@ function Seeded({ zwift }: { zwift: RiderProfile["zwift"] }): ReactNode {
     next.setQueryData(riderProfileQuery().queryKey, {
       profile: {},
       suggestions: {},
-      zwift,
-      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+      zwift: { emailSet: false, passwordSet: false },
+      wahoo,
     } satisfies RiderProfile);
 
     return next;
@@ -24,25 +24,29 @@ function Seeded({ zwift }: { zwift: RiderProfile["zwift"] }): ReactNode {
   return (
     <QueryClientProvider client={client}>
       <div className="max-w-2xl p-4">
-        <ZwiftAccountCard />
+        <WahooDeviceCard />
       </div>
     </QueryClientProvider>
   );
 }
 
 const meta = {
-  title: "Settings/ZwiftAccountCard",
-  component: ZwiftAccountCard,
-} satisfies Meta<typeof ZwiftAccountCard>;
+  title: "Settings/WahooDeviceCard",
+  component: WahooDeviceCard,
+} satisfies Meta<typeof WahooDeviceCard>;
 
 export default meta;
 
 type Story = StoryObj<typeof meta>;
 
 export const NotConnected: Story = {
-  render: () => <Seeded zwift={{ emailSet: false, passwordSet: false }} />,
+  render: () => <Seeded wahoo={{ emailSet: false, passwordSet: false, signInRefused: false }} />,
 };
 
 export const Connected: Story = {
-  render: () => <Seeded zwift={{ emailSet: true, passwordSet: true }} />,
+  render: () => <Seeded wahoo={{ emailSet: true, passwordSet: true, signInRefused: false }} />,
+};
+
+export const Refused: Story = {
+  render: () => <Seeded wahoo={{ emailSet: true, passwordSet: true, signInRefused: true }} />,
 };

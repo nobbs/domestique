@@ -50,6 +50,10 @@ type Options struct {
 	// Unread lists the libraries no longer read, whose stored share a full source
 	// read removes. Nil removes nothing.
 	Unread func() []route.Provider
+
+	// Labeler runs after each target's reconciliation, whatever its outcome.
+	// Nil labels nothing.
+	Labeler Labeler
 }
 
 // Service reconciles a complete source inventory to each configured target.
@@ -63,6 +67,7 @@ type Service struct {
 	target                   Target
 	annotator                Annotator
 	predictor                Predictor
+	labeler                  Labeler
 	allowEmptySourceDeletion func() bool
 	targetIDs                func() []string
 	withheld                 func() []route.Provider
@@ -101,6 +106,7 @@ func New(
 		target:                   target,
 		annotator:                annotator,
 		predictor:                predictor,
+		labeler:                  options.Labeler,
 		targetIDs:                options.TargetIDs,
 		allowEmptySourceDeletion: options.AllowEmptySourceDeletion,
 		withheld:                 options.Withheld,
@@ -281,6 +287,7 @@ func (s *Service) RunTargets(ctx context.Context) Result {
 	}
 	for _, targetID := range targetIDs {
 		applied, failure := s.reconcileTarget(ctx, targetID, desired, ordered, withheld)
+		s.label(ctx, targetID)
 		result.Created += applied.created
 		result.Updated += applied.updated
 		result.Deleted += applied.deleted
@@ -335,6 +342,7 @@ func (s *Service) RunTarget(ctx context.Context, targetID string) Result {
 	}
 
 	targetCounts, failure := s.reconcileTarget(ctx, targetID, desired, ordered, withheld)
+	s.label(ctx, targetID)
 
 	return Result{
 		Phase:        PhaseTargets,
@@ -516,6 +524,12 @@ func (s *Service) exportProfiles(ordered []route.Route) []route.Route {
 	}
 
 	return stages
+}
+
+func (s *Service) label(ctx context.Context, targetID string) {
+	if s.labeler != nil {
+		s.labeler.Label(ctx, targetID)
+	}
 }
 
 // reconcileTarget brings one target in line with the stored inventory. The

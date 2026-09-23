@@ -26,6 +26,7 @@ import (
 	syncservice "github.com/nobbs/domestique/internal/sync"
 	"github.com/nobbs/domestique/internal/veloplanner"
 	"github.com/nobbs/domestique/internal/wahoo"
+	"github.com/nobbs/domestique/internal/wahoodevice"
 	"github.com/nobbs/domestique/internal/zwift"
 )
 
@@ -796,6 +797,33 @@ func (f predictorFunc) Predict(ctx context.Context, stages []route.Route) (predi
 
 // zwiftProvider adapts the Zwift client to activity.ZwiftSource. It is the only
 // place that knows both vocabularies, exactly as the Wahoo mapping above is.
+// wahooDeviceProvider adapts the device API client to the sync service's
+// vocabulary, which never names the adapter's own route type.
+type wahooDeviceProvider struct{ client *wahoodevice.Client }
+
+func (p wahooDeviceProvider) SignIn(ctx context.Context, email, password []byte) (string, error) {
+	return p.client.SignIn(ctx, email, password) //nolint:wrapcheck // the adapter names its own failure
+}
+
+func (p wahooDeviceProvider) Routes(ctx context.Context, token string) ([]syncservice.DeviceRoute, error) {
+	listed, err := p.client.Routes(ctx, token)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the adapter names its own failure
+	}
+	routes := make([]syncservice.DeviceRoute, 0, len(listed))
+	for _, one := range listed {
+		routes = append(routes, syncservice.DeviceRoute{ID: one.ID, ExternalID: one.ExternalID, ProviderID: one.ProviderID})
+	}
+
+	return routes, nil
+}
+
+func (p wahooDeviceProvider) SetProviderID(ctx context.Context, token string, routeID int64, value string) error {
+	return p.client.SetProviderID(ctx, token, routeID, value) //nolint:wrapcheck // the adapter names its own failure
+}
+
+func (p wahooDeviceProvider) IsUnauthorized(err error) bool { return p.client.IsUnauthorized(err) }
+
 type zwiftProvider struct{ client *zwift.Client }
 
 // zwiftWorldOf adapts the Zwift adapter's world table to the HTTP surface,

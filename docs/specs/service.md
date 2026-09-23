@@ -1058,6 +1058,15 @@ browser origin described above, and answer 403 without it.
   page rather than only from losing the database. `GET /v1/settings/rider`
   answers a `zwift` object naming only whether each is set.
 
+- `PUT /v1/settings/rider/credentials/wahoo` and
+  `DELETE /v1/settings/rider/credentials/wahoo` are the same terms for the
+  rider's own Wahoo email and password, which only sign in to the device API
+  ([sync-lifecycle.md](sync-lifecycle.md#device-route-identity)). Either one
+  also clears the device session and the refusal the old pair earned, and
+  removing one account's pair leaves the other's stored. `GET
+  /v1/settings/rider` answers a `wahoo` object naming whether each is set and
+  whether the last sign-in refused them, never whether a session is held.
+
   A value the service would have refused at startup is refused here as `400`,
   in a message naming the setting, and what it stores is in force for the next
   request and the next run without a restart. Each changes what the service does
@@ -1141,8 +1150,10 @@ The service has a provider-neutral configuration contract:
   page, and runs nothing. Targets are held in the same database but are not
   among these settings: each is created by its own owning subject connecting,
   not written by an operator. Nor is a rider's own profile or their own Zwift
-  credentials, both of which are that subject's rather than the service's and
-  are read and written per request over the subject that asked.
+  and Wahoo credentials, all of which are that subject's rather than the
+  service's and are read and written per request over the subject that asked;
+  the one exception is the Wahoo device session and refusal, which a target
+  run writes over that target's owner.
 - Two sensitive static values are loaded by Koanf from a Docker-style file or
   the documented direct environment variables: the 32-byte state-encryption
   key and the Auth0 client secret. A third, optional one is the operator's
@@ -1152,7 +1163,9 @@ The service has a provider-neutral configuration contract:
   settings page and encrypted under the state key.
 - Dynamic Wahoo refresh tokens are not static configuration. They are encrypted
   at rest in the local state database with an authenticated cipher and the
-  state-encryption key. Access tokens are held only in memory.
+  state-encryption key. OAuth access tokens are held only in memory. A rider's
+  Wahoo device session is encrypted at rest the same way, because it can be
+  neither refreshed nor revoked.
 - Configuration must not understand `op://`, `env:`, provider URIs, provider
   credentials, fnox, or another provider-specific reference syntax. The service
   stays CGO-free.
@@ -1775,6 +1788,10 @@ secret files remain outside Git.
   plans included, to every configured target as FIT.
 - Edits preserve the route's `external_id`; source deletions remove only owned
   destination routes and respect the deletion guard.
+- A rider who has entered their Wahoo email and password finds every route
+  this service created carrying its own Wahoo route ID as `provider_id`, so an
+  ELEMNT keeps each as its own route; a `provider_id` already set is never
+  changed, and a failed or refused sign-in never fails a run.
 - A failed source inventory cannot cause a destructive Wahoo deletion.
 - Lost state cannot cause deletion of unknown Wahoo routes. Lost state does
   lose every plan, which exists nowhere upstream, and with it the ability to

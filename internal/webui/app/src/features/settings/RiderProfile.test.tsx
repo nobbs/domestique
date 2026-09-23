@@ -33,6 +33,7 @@ describe("RiderProfile", () => {
       },
       suggestions: {},
       zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
     });
 
     expect(screen.getByLabelText("Maximum heart rate (bpm)")).toHaveValue(188);
@@ -49,6 +50,7 @@ describe("RiderProfile", () => {
       profile: {},
       suggestions: { maxHeartRateBpm: 183.4 },
       zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
     });
 
     expect(screen.getByText(/Your rides of the last 90 days suggest 183 bpm/)).toBeInTheDocument();
@@ -61,6 +63,7 @@ describe("RiderProfile", () => {
       profile: { riderMassKg: 74.5, maxHeartRateBpm: 188 },
       suggestions: {},
       zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
     });
     const field = (label: string) => {
       const input = screen.getByLabelText(label);
@@ -81,6 +84,7 @@ describe("RiderProfile", () => {
       profile: {},
       suggestions: { maxHeartRateBpm: 183.4 },
       zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
     });
 
     await userEvent.click(
@@ -100,6 +104,7 @@ describe("RiderProfile", () => {
       profile: { maxHeartRateBpm: 188, bikeMassKg: 8.4 },
       suggestions: {},
       zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
     });
 
     await userEvent.clear(screen.getByLabelText("Bike mass (kg)"));
@@ -158,6 +163,7 @@ describe("RiderProfile", () => {
       profile: { maxHeartRateBpm: 188 },
       suggestions: {},
       zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
     });
 
     await userEvent.click(screen.getByRole("button", { name: "Save rider profile" }));
