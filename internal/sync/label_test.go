@@ -335,9 +335,9 @@ func TestLabelerForgetsAFreshSessionTheListingRejects(t *testing.T) {
 	assert.NotContains(t, state.credentials["rider-a"], rider.CredentialWahooSession)
 }
 
-// A plan push creates routes too, so each target it created one on is labelled;
-// a push that created nothing labels nothing.
-func TestServiceLabelsATargetAPlanPushCreatedARouteOn(t *testing.T) {
+// A plan push creates routes too, so each target it reached is labelled; a
+// target already holding the plan is not reached and not labelled.
+func TestServiceLabelsEachTargetAPlanPushReached(t *testing.T) {
 	pushed := planStage(t, 1, "r1")
 	local := &fakeSource{provider: route.ProviderLocal, stages: []route.Route{pushed}}
 	state := newFakeState("a", "b")
@@ -353,5 +353,5 @@ func TestServiceLabelsATargetAPlanPushCreatedARouteOn(t *testing.T) {
 
 	rewindTokens(state)
 	service.RunPlans(t.Context(), 1)
-	assert.Equal(t, []string{"a", "b"}, labeler.targets, "an unchanged plan creates nothing to label")
+	assert.Equal(t, []string{"a", "b"}, labeler.targets, "an unchanged plan reaches no target")
 }

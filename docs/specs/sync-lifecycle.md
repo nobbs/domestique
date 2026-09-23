@@ -281,8 +281,8 @@ Wahoo has declined to fix this on its side. The one API that can write the
 field is the undocumented one an ELEMNT signs in to, with the rider's own
 Wahoo email and password.
 
-After each target's reconciliation, whatever its outcome, and after a plan
-push that created a route on a target, the service labels that target:
+After each target's reconciliation, whatever its outcome, and after each plan
+push that reached a target, the service labels that target:
 
 1. It resolves the target's owning subject and that rider's own Wahoo
    credentials ([configuration.md](configuration.md#rider-credentials)). A
