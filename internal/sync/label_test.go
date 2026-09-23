@@ -186,13 +186,15 @@ func TestLabelerLeavesTheSessionAloneWhenSignInFailsForAnotherReason(t *testing.
 }
 
 func TestLabelerStopsWhenTheSessionIsRejectedMidway(t *testing.T) {
-	labeler, api, _ := newLabelFixture(t, wahooCredentials("stored"))
+	labeler, api, state := newLabelFixture(t, wahooCredentials("stored"))
 	api.routes = append(api.routes, DeviceRoute{ID: 15, ExternalID: ownedExternalID(t, 3)})
 	api.writeErr = map[int64]error{11: errDeviceUnauthorized}
 
 	labeler.Label(t.Context(), "a")
 
 	assert.Empty(t, api.written, "no write follows a rejected session")
+	assert.NotContains(t, state.credentials["rider-a"], rider.CredentialWahooSession,
+		"the next run signs in afresh rather than reusing the rejected session")
 }
 
 func TestLabelerContinuesPastOneRefusedWrite(t *testing.T) {
@@ -321,4 +323,35 @@ func TestLabelerWritesAtMostTheRunCap(t *testing.T) {
 	labeler.Label(t.Context(), "a")
 
 	assert.Len(t, api.written, maxLabelsPerRun)
+}
+
+func TestLabelerForgetsAFreshSessionTheListingRejects(t *testing.T) {
+	labeler, api, state := newLabelFixture(t, wahooCredentials(""))
+	api.routesErr = map[string]error{"fresh:rider@example.test:secret": errDeviceUnauthorized}
+
+	labeler.Label(t.Context(), "a")
+
+	assert.Empty(t, api.written)
+	assert.NotContains(t, state.credentials["rider-a"], rider.CredentialWahooSession)
+}
+
+// A plan push creates routes too, so each target it created one on is labelled;
+// a push that created nothing labels nothing.
+func TestServiceLabelsATargetAPlanPushCreatedARouteOn(t *testing.T) {
+	pushed := planStage(t, 1, "r1")
+	local := &fakeSource{provider: route.ProviderLocal, stages: []route.Route{pushed}}
+	state := newFakeState("a", "b")
+	target := newFakeTarget()
+	labeler := &recordingLabeler{}
+	options := syncOptions(false, []Source{local}, "a", "b")
+	options.Labeler = labeler
+	service, err := New(options, state, identityProcessor{}, &fakeEncoder{}, target, nil, nil)
+	require.NoError(t, err)
+
+	require.Equal(t, OutcomeSucceeded, service.RunPlans(t.Context(), 1).Outcome)
+	assert.Equal(t, []string{"a", "b"}, labeler.targets)
+
+	rewindTokens(state)
+	service.RunPlans(t.Context(), 1)
+	assert.Equal(t, []string{"a", "b"}, labeler.targets, "an unchanged plan creates nothing to label")
 }

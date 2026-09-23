@@ -281,8 +281,8 @@ Wahoo has declined to fix this on its side. The one API that can write the
 field is the undocumented one an ELEMNT signs in to, with the rider's own
 Wahoo email and password.
 
-After each target's reconciliation, whatever its outcome, the service labels
-that target:
+After each target's reconciliation, whatever its outcome, and after a plan
+push that created a route on a target, the service labels that target:
 
 1. It resolves the target's owning subject and that rider's own Wahoo
    credentials ([configuration.md](configuration.md#rider-credentials)). A
@@ -292,7 +292,10 @@ that target:
 2. It lists the rider's routes with the stored device session. Only when none
    is stored for the current email and password, or Wahoo rejects it with
    `401`, does it sign in again, and it stores the new session encrypted in
-   place of the old. The device API can neither
+   place of the old. A session a listing or a write rejects with `401` is
+   removed, so the next run signs in afresh. A listing whose `provider_id` it
+   cannot read as a string, a number or `null` fails, rather than reading as
+   empty. The device API can neither
    refresh nor end a session, so every sign-in leaves one behind; reusing the
    stored one keeps that to one per credential change or expiry.
 3. A sign-in Wahoo answers `401` removes the stored session and marks the

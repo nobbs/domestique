@@ -160,7 +160,7 @@ func TestClientReportsUnusableResponses(t *testing.T) {
 	for name, body := range map[string]string{
 		"not json":  `{`,
 		"too large": `[` + strings.Repeat(" ", maximumBodyBytes) + `]`,
-		"too many":  `[` + strings.Repeat(`{"id":1},`, maximumRoutes) + `{"id":1}]`,
+		"too many":  `[` + strings.Repeat(`{"id":1,"provider_id":null},`, maximumRoutes) + `{"id":1,"provider_id":null}]`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			client := newTestClient(t, func(writer http.ResponseWriter, _ *http.Request) {
@@ -194,8 +194,21 @@ func TestNewAppliesDefaultsAndRefusesANegativeTimeout(t *testing.T) {
 	require.ErrorContains(t, err, "timeout")
 }
 
-func TestProviderIDReadsNothingFromAnUnexpectedShape(t *testing.T) {
-	assert.Empty(t, providerID([]byte(`{"nested":true}`)))
+func TestClientFailsAListingWhoseProviderIDItCannotRead(t *testing.T) {
+	for name, route := range map[string]string{
+		"absent": `{"id":1,"external_id":"domestique:x"}`,
+		"object": `{"id":1,"external_id":"domestique:x","provider_id":{"nested":true}}`,
+		"false":  `{"id":1,"external_id":"domestique:x","provider_id":false}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := newTestClient(t, func(writer http.ResponseWriter, _ *http.Request) {
+				writeBody(t, writer, "["+route+"]")
+			})
+
+			_, err := client.Routes(t.Context(), "token")
+			assert.ErrorContains(t, err, "unreadable provider_id", "an unknown value must not read as empty")
+		})
+	}
 }
 
 func TestClientFollowsNoRedirect(t *testing.T) {

@@ -150,10 +150,14 @@ func (c *Client) Routes(ctx context.Context, token string) ([]Route, error) {
 		if item.ID <= 0 {
 			continue
 		}
+		provider, known := providerID(item.ProviderID)
+		if !known {
+			return nil, errors.New("wahoodevice: route listing carried an unreadable provider_id")
+		}
 		routes = append(routes, Route{
 			ID:         item.ID,
 			ExternalID: derefString(item.ExternalID),
-			ProviderID: providerID(item.ProviderID),
+			ProviderID: provider,
 		})
 	}
 
@@ -247,17 +251,21 @@ func (c *Client) do(request *http.Request, output any) (err error) {
 }
 
 // providerID reads a provider_id Wahoo sends as a string, a number or null.
-func providerID(raw json.RawMessage) string {
+// Any other shape, an absent field included, is not known to be empty.
+func providerID(raw json.RawMessage) (string, bool) {
+	if string(raw) == "null" {
+		return "", true
+	}
 	var text string
 	if json.Unmarshal(raw, &text) == nil {
-		return text
+		return text, true
 	}
 	var number json.Number
 	if json.Unmarshal(raw, &number) == nil {
-		return number.String()
+		return number.String(), true
 	}
 
-	return ""
+	return "", false
 }
 
 func derefString(value *string) string {

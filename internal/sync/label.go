@@ -108,6 +108,7 @@ func (l *DeviceLabeler) Label(ctx context.Context, targetID string) {
 		if err := l.api.SetProviderID(ctx, token, owned.ID, strconv.FormatInt(owned.ID, 10)); err != nil {
 			failed++
 			if l.api.IsUnauthorized(err) {
+				l.forgetSession(ctx, subject)
 				logLabel(labelled, failed, "session")
 
 				return
@@ -167,10 +168,24 @@ func (l *DeviceLabeler) signedInRoutes(
 
 	listed, err := l.api.Routes(ctx, token)
 	if err != nil {
+		if l.api.IsUnauthorized(err) {
+			l.forgetSession(ctx, subject)
+		}
+
 		return "", nil, "listing"
 	}
 
 	return token, listed, ""
+}
+
+// forgetSession drops a session Wahoo stopped accepting, so the next run signs
+// in afresh rather than reusing it.
+func (l *DeviceLabeler) forgetSession(ctx context.Context, subject string) {
+	if err := l.state.SetRiderCredentials(ctx, subject, map[rider.CredentialName]rider.Credential{
+		rider.CredentialWahooSession: {},
+	}); err != nil {
+		logLabel(0, 0, "state")
+	}
 }
 
 // logLabel is the one place labelling is heard in the log: counts and a
