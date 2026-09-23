@@ -466,6 +466,25 @@ func TestSetRiderWahooCredentialsForgetsTheSessionAndRefusal(t *testing.T) {
 	assert.Equal(t, openapi.RiderWahooCredentialState{EmailSet: true, PasswordSet: true}, view.Wahoo)
 }
 
+func TestRiderWahooCredentialsReportAnUnreadableStoreAndAnUnknownField(t *testing.T) {
+	state := riderState()
+	state.riderCredentialsErr = errors.New("unreadable")
+	handler := riderHandler(t, state, "rider-a")
+
+	for _, request := range []*http.Request{
+		authenticatedRequestWithBody(http.MethodPut, riderWahooCredentialsPath, `{"email": "x"}`),
+		authenticatedRequest(http.MethodDelete, riderWahooCredentialsPath),
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		assert.Equal(t, http.StatusServiceUnavailable, response.Code, request.Method)
+	}
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticatedRequestWithBody(http.MethodPut, riderWahooCredentialsPath, `{"session": "x"}`))
+	assert.Equal(t, http.StatusBadRequest, response.Code, "the session is never written by a request")
+}
+
 const wahooConnectionPath = "/v1/settings/rider/connections/wahoo"
 
 // Only the caller's own target is disconnected, whoever else is connected.

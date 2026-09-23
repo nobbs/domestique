@@ -4,7 +4,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -136,4 +138,58 @@ func TestClientReportsAFailedWriteWithoutItsBody(t *testing.T) {
 func TestNewRefusesAPlaintextBaseURL(t *testing.T) {
 	_, err := New(&Options{BaseURL: "http://www.wahooligan.com"})
 	require.ErrorContains(t, err, "https origin")
+}
+
+func TestClientRefusesMissingInputsWithoutARequest(t *testing.T) {
+	client := newTestClient(t, func(http.ResponseWriter, *http.Request) {
+		t.Error("no request was expected")
+	})
+
+	_, err := client.SignIn(t.Context(), nil, []byte("secret"))
+	require.ErrorContains(t, err, "email and password are required")
+	_, err = client.Routes(t.Context(), "")
+	require.ErrorContains(t, err, "session token is required")
+	require.ErrorContains(t, client.SetProviderID(t.Context(), "token", 0, "0"), "are required")
+}
+
+func TestClientReportsUnusableResponses(t *testing.T) {
+	for name, body := range map[string]string{
+		"not json":  `{`,
+		"too large": `[` + strings.Repeat(" ", maximumBodyBytes) + `]`,
+		"too many":  `[` + strings.Repeat(`{"id":1},`, maximumRoutes) + `{"id":1}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := newTestClient(t, func(writer http.ResponseWriter, _ *http.Request) {
+				writeBody(t, writer, body)
+			})
+
+			_, err := client.Routes(t.Context(), "token")
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestClientReportsAnUnreachableHost(t *testing.T) {
+	server := httptest.NewTLSServer(http.NotFoundHandler())
+	client, err := New(&Options{BaseURL: server.URL, Transport: server.Client().Transport})
+	require.NoError(t, err)
+	server.Close()
+
+	_, err = client.Routes(t.Context(), "token")
+	require.ErrorContains(t, err, "request failed")
+}
+
+func TestNewAppliesDefaultsAndRefusesANegativeTimeout(t *testing.T) {
+	client, err := New(&Options{})
+	require.NoError(t, err)
+	assert.Equal(t, DefaultBaseURL, client.baseURL.String())
+
+	_, err = New(nil)
+	require.Error(t, err)
+	_, err = New(&Options{Timeout: -time.Second})
+	require.ErrorContains(t, err, "timeout")
+}
+
+func TestProviderIDReadsNothingFromAnUnexpectedShape(t *testing.T) {
+	assert.Empty(t, providerID([]byte(`{"nested":true}`)))
 }

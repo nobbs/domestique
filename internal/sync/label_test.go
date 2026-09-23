@@ -58,9 +58,11 @@ func (f *fakeDeviceAPI) SetProviderID(_ context.Context, _ string, routeID int64
 func (f *fakeDeviceAPI) IsUnauthorized(err error) bool { return errors.Is(err, errDeviceUnauthorized) }
 
 type fakeLabelState struct {
-	stateErr    error
-	owners      map[string]string
-	credentials map[string]map[rider.CredentialName]rider.Credential
+	stateErr       error
+	credentialsErr error
+	setErr         error
+	owners         map[string]string
+	credentials    map[string]map[rider.CredentialName]rider.Credential
 }
 
 func (f *fakeLabelState) TargetOwner(_ context.Context, targetID string) (string, error) {
@@ -68,12 +70,15 @@ func (f *fakeLabelState) TargetOwner(_ context.Context, targetID string) (string
 }
 
 func (f *fakeLabelState) RiderCredentials(_ context.Context, subject string) (map[rider.CredentialName]rider.Credential, error) {
-	return f.credentials[subject], f.stateErr
+	return f.credentials[subject], f.credentialsErr
 }
 
 func (f *fakeLabelState) SetRiderCredentials(
 	_ context.Context, subject string, credentials map[rider.CredentialName]rider.Credential,
 ) error {
+	if f.setErr != nil {
+		return f.setErr
+	}
 	for name, credential := range credentials {
 		if credential.IsSet() {
 			f.credentials[subject][name] = credential
@@ -248,4 +253,43 @@ func TestServiceLabelsEachTargetAfterReconcilingItWhateverTheOutcome(t *testing.
 	service.RunTarget(t.Context(), "b")
 
 	assert.Equal(t, []string{"a", "b", "b"}, labeler.targets)
+}
+
+func TestNewDeviceLabelerRequiresItsDependencies(t *testing.T) {
+	_, err := NewDeviceLabeler(nil, nil)
+	require.Error(t, err)
+}
+
+func TestLabelerWritesNothingWhenTheStoreOrListingFails(t *testing.T) {
+	freshToken := "fresh:rider@example.test:secret"
+	for name, arrange := range map[string]func(*fakeDeviceAPI, *fakeLabelState){
+		"credentials unreadable": func(_ *fakeDeviceAPI, state *fakeLabelState) {
+			state.credentialsErr = errors.New("unreadable")
+		},
+		"stored listing fails": func(api *fakeDeviceAPI, _ *fakeLabelState) {
+			api.routesErr = map[string]error{"stored": errors.New("device: HTTP 503")}
+		},
+		"fresh listing fails": func(api *fakeDeviceAPI, _ *fakeLabelState) {
+			api.validTokens = map[string]bool{}
+			api.routesErr = map[string]error{freshToken: errors.New("device: HTTP 503")}
+		},
+		"new session unstorable": func(api *fakeDeviceAPI, state *fakeLabelState) {
+			api.validTokens = map[string]bool{}
+			state.setErr = errors.New("unwritable")
+		},
+		"refusal unstorable": func(api *fakeDeviceAPI, state *fakeLabelState) {
+			api.validTokens = map[string]bool{}
+			api.signInErr = errDeviceUnauthorized
+			state.setErr = errors.New("unwritable")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			labeler, api, state := newLabelFixture(t, wahooCredentials("stored"))
+			arrange(api, state)
+
+			labeler.Label(t.Context(), "a")
+
+			assert.Empty(t, api.written)
+		})
+	}
 }
