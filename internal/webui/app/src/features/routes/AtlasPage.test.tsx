@@ -96,6 +96,7 @@ function renderPage(
     profile: {},
     suggestions: {},
     zwift: { emailSet: false, passwordSet: false },
+    wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
   });
   client.setQueryData(webUIConfigQuery().queryKey, {
     basemaps: [

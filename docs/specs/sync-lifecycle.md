@@ -66,9 +66,10 @@ pruned, whatever its age; that record is what `GET /v1/status` reports for a
 half. Pruning touches nothing else: it never affects the trusted inventory,
 target route mappings, OAuth state, or a deletion gate.
 
-OAuth state is stored as a digest. Refresh tokens are encrypted before being
-written. Access tokens, OAuth authorisation codes, CSRF state values, raw
-upstream bodies, and FIT bytes are never persisted.
+OAuth state is stored as a digest. Refresh tokens, and the Wahoo device
+session [device route identity](#device-route-identity) keeps, are encrypted
+before being written. Access tokens, OAuth authorisation codes, CSRF state
+values, raw upstream bodies, and FIT bytes are never persisted.
 
 The route geometry cache is written during the same transaction that stores the
 trusted inventory, from data the run already holds, and makes no extra source
@@ -270,6 +271,54 @@ is already back. When the wait would exceed what one run holds itself open for,
 the run ends and reports the limit rather than sleeping through it. Each route is
 recorded as its own write succeeds, so the next scheduled run resumes from stored
 state and the library converges over successive runs.
+
+## Device route identity
+
+An ELEMNT keys each cloud route by its `provider_id` and stores it under that
+name. The public Cloud API never writes `provider_id`, so every route this
+service creates arrives with it empty, and a device keeps only one of them.
+Wahoo has declined to fix this on its side. The one API that can write the
+field is the undocumented one an ELEMNT signs in to, with the rider's own
+Wahoo email and password.
+
+After each target's reconciliation, whatever its outcome, and after each plan
+push that reached a target, the service labels that target:
+
+1. It resolves the target's owning subject and that rider's own Wahoo
+   credentials ([configuration.md](configuration.md#rider-credentials)). A
+   target with no owner, a rider with no email or password, and a rider whose
+   last sign-in was refused are skipped without a request: a refused password
+   is not tried again until the rider saves new credentials.
+2. It lists the rider's routes with the stored device session. Only when none
+   is stored for the current email and password, or Wahoo rejects it with
+   `401`, does it sign in again, and it stores the new session encrypted in
+   place of the old. A session a listing or a write rejects with `401` is
+   removed, so the next run signs in afresh. A listing whose `provider_id` it
+   cannot read as a string, a number or `null` fails, rather than reading as
+   empty. The device API can neither
+   refresh nor end a session, so every sign-in leaves one behind; reusing the
+   stored one keeps that to one per credential change or expiry.
+3. A sign-in Wahoo answers `401` removes the stored session and marks the
+   credentials refused, which the rider's settings page reports. Any other
+   failure, a `403` or `422` included, is only logged, so a filter in front of
+   the API cannot lock out a correct password. The session and the refusal are
+   each bound to the email and password they were earned with, so one a run
+   writes after the rider saved or removed that pair is ignored.
+4. Every listed route whose `external_id` this service issued and whose
+   `provider_id` is empty is given its own Wahoo route ID as `provider_id`. A
+   `provider_id` already set is never changed: a device keeps the entry the
+   earlier value made, so a changed value would leave a stale route behind. A
+   later public-API update keeps the value. A run writes at most 50 and is
+   bounded to two minutes; a larger library is labelled over successive runs.
+
+Labelling never fails or changes a target run, and its bounds keep it from
+holding one open for long. A failure is logged as
+counts and a stable reason only (`state`, `sign_in`, `refused`, `listing`,
+`session`, `write`), never a route, an email or a token, and the next run
+tries again. Labelling deletes nothing and changes nothing on the target but
+`provider_id`. It acts on whichever Wahoo account the rider's credentials sign
+in to, which is not checked against the target's own: a rider who enters
+another account's credentials labels that account's routes and not their own.
 
 ## Sync lifecycle
 

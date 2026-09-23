@@ -143,23 +143,6 @@ func TestSetRiderCredentialsRemovesACredentialWrittenWithNoValue(t *testing.T) {
 	assert.NotContains(t, read, rider.CredentialZwiftEmail)
 }
 
-// ClearRiderCredentials removes both names, the deliberate exception a rider's
-// own account gets that a deployment credential does not.
-func TestClearRiderCredentialsRemovesBoth(t *testing.T) {
-	t.Parallel()
-	store := openTestStore(t, testKey(1))
-	require.NoError(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
-		rider.CredentialZwiftEmail:    rider.NewCredential([]byte("rider@example.test")),
-		rider.CredentialZwiftPassword: rider.NewCredential([]byte("opensesame")),
-	}), "SetRiderCredentials()")
-
-	require.NoError(t, store.ClearRiderCredentials(t.Context(), "rider-a"), "ClearRiderCredentials()")
-
-	read, err := store.RiderCredentials(t.Context(), "rider-a")
-	require.NoError(t, err, "RiderCredentials()")
-	assert.Empty(t, read)
-}
-
 // The subject and the name together are the associated data, so a ciphertext
 // moved to another subject fails to open rather than authenticating as that
 // subject's credential.
@@ -190,7 +173,6 @@ func TestRiderCredentialsReportAnUnreadableStore(t *testing.T) {
 	require.ErrorContains(t, store.SetRiderCredentials(t.Context(), "rider-a", map[rider.CredentialName]rider.Credential{
 		rider.CredentialZwiftEmail: rider.NewCredential([]byte("x")),
 	}), "rider credential")
-	require.ErrorContains(t, store.ClearRiderCredentials(t.Context(), "rider-a"), "clearing the rider credentials")
 }
 
 // A row that fails to write or clear mid-transaction is the store's own

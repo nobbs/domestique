@@ -350,13 +350,24 @@ the poll's own schedule alone.
 A credential that belongs to one rider rather than to the deployment is held
 against the subject a session is issued for, encrypted under the state key
 exactly as a deployment credential is, with the subject **and** the name as
-associated data. There are two: `zwift.email` and `zwift.password`. They are
+associated data. They are `zwift.email` and `zwift.password`, and
+`wahoo.email` and `wahoo.password`, which sign in to the Wahoo device API only
+to set each route's `provider_id`
+([sync-lifecycle.md](sync-lifecycle.md#device-route-identity)). They are
 write-only on the same terms as a deployment credential — the endpoint reports
 per credential only whether one is set — and are written and removed over the
 rider's own subject alone: an administrator can neither read nor write another
 rider's. Unlike a deployment credential they can be removed from the page,
 because a rider must be able to revoke their own account without the
-deployment losing its database.
+deployment losing its database. Removing one account's pair leaves the
+other's stored.
+
+Two more names are held beside the Wahoo pair and written by the service
+itself, never by a request: `wahoo.session`, the device session a sign-in
+issued, kept because the device API can neither refresh nor end one; and
+`wahoo.refused`, which marks the pair refused by the last sign-in. Neither is
+ever served, apart from the refusal being reported as a flag, and saving or
+removing the Wahoo pair clears both.
 
 ### Sources
 
@@ -625,7 +636,10 @@ where that computation belongs.
 ## Runtime state
 
 Dynamic Wahoo refresh tokens are not configuration. They are encrypted in
-SQLite using the supplied state key; access tokens remain in memory only. The
+SQLite using the supplied state key; OAuth access tokens remain in memory only.
+A rider's Wahoo device session is kept like a refresh token rather than an
+access token, because it neither expires on a schedule nor can be refreshed or
+revoked. The
 runtime settings above share that database and share its fate: a lost database
 returns every one of them to the seed it started at, which for the settings that
 name an upstream means unconfigured. The credentials among them are encrypted

@@ -161,8 +161,8 @@ statements live in the linked specs.
 - **Geometry is served only by its own endpoint**, only to the gated identity;
   the admin-only plan read, preview and save answers are the sole additions
   ([service.md](docs/specs/service.md)).
-- **Refresh tokens are encrypted at rest**; access tokens in memory only;
-  settings-page credentials are write-only
+- **Refresh tokens and Wahoo device sessions are encrypted at rest**; OAuth
+  access tokens in memory only; settings-page credentials are write-only
   ([configuration.md](docs/specs/configuration.md)).
 - **All non-OAuth HTTP is read-only and identity-gated** to a session issued
   for an allowed subject, apart from the sign-in document, the build artefacts
@@ -175,7 +175,7 @@ statements live in the linked specs.
 ## Testing
 
 - Tests live beside the package, using deterministic in-memory fakes or
-  `httptest`. **No normal test contacts any network service.** Six
+  `httptest`. **No normal test contacts any network service.** Seven
   acceptance checks are invoked separately, behind build tags, never with
   production secrets in CI: the Wahoo sandbox check
   ([wahoo_sandbox_test.go](internal/fit/wahoo_sandbox_test.go), `-tags
@@ -192,7 +192,10 @@ statements live in the linked specs.
   `-tags claude_acceptance`, needs `DOMESTIQUE_CLAUDE_TOKEN`), and the Zwift check
   ([zwift_acceptance_test.go](internal/zwift/zwift_acceptance_test.go), `-tags
   zwift_acceptance`, needs `DOMESTIQUE_ZWIFT_EMAIL` and
-  `DOMESTIQUE_ZWIFT_PASSWORD`). Run the Open-Meteo check after
+  `DOMESTIQUE_ZWIFT_PASSWORD`), and the Wahoo device check
+  ([wahoodevice_acceptance_test.go](internal/wahoodevice/wahoodevice_acceptance_test.go),
+  `-tags wahoodevice_acceptance`, read-only, needs
+  `DOMESTIQUE_WAHOO_DEVICE_EMAIL` and `DOMESTIQUE_WAHOO_DEVICE_PASSWORD`). Run the Open-Meteo check after
   changing what this service asks a weather endpoint for: an `httptest` fixture
   asserts the request this client sends, which it always agrees with, and the
   provider is the only thing that can say whether it accepts it.

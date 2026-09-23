@@ -116,6 +116,11 @@ func (h *Handler) writeRiderProfile(writer http.ResponseWriter, request *http.Re
 			EmailSet:    credentials[rider.CredentialZwiftEmail].IsSet(),
 			PasswordSet: credentials[rider.CredentialZwiftPassword].IsSet(),
 		},
+		Wahoo: openapi.RiderWahooCredentialState{
+			EmailSet:      credentials[rider.CredentialWahooEmail].IsSet(),
+			PasswordSet:   credentials[rider.CredentialWahooPassword].IsSet(),
+			SignInRefused: rider.WahooRefused(credentials),
+		},
 	})
 }
 
@@ -142,7 +147,44 @@ func (h *Handler) SetRiderZwiftCredentials(writer http.ResponseWriter, request *
 // DeleteRiderZwiftCredentials removes both of the caller's own Zwift
 // credentials, so a rider can revoke their own account from the page.
 func (h *Handler) DeleteRiderZwiftCredentials(writer http.ResponseWriter, request *http.Request) {
-	if err := h.state.ClearRiderCredentials(request.Context(), identityOf(request.Context()).Subject); err != nil {
+	h.clearRiderCredentials(writer, request, rider.CredentialZwiftEmail, rider.CredentialZwiftPassword)
+}
+
+// SetRiderWahooCredentials writes only the caller's own Wahoo credentials that
+// were typed, and forgets the device session and refusal the old ones earned.
+func (h *Handler) SetRiderWahooCredentials(writer http.ResponseWriter, request *http.Request) {
+	body, ok := settingsBody[openapi.RiderWahooCredentialsUpdate](h, writer, request)
+	if !ok {
+		return
+	}
+	credentials := riderCredentialsSubmitted(map[rider.CredentialName]*string{
+		rider.CredentialWahooEmail:    body.Email,
+		rider.CredentialWahooPassword: body.Password,
+	})
+	credentials[rider.CredentialWahooSession] = rider.Credential{}
+	credentials[rider.CredentialWahooRefused] = rider.Credential{}
+	if err := h.state.SetRiderCredentials(request.Context(), identityOf(request.Context()).Subject, credentials); err != nil {
+		h.unavailable(writer)
+
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteRiderWahooCredentials removes the caller's own Wahoo credentials and
+// the device session they earned.
+func (h *Handler) DeleteRiderWahooCredentials(writer http.ResponseWriter, request *http.Request) {
+	h.clearRiderCredentials(writer, request, rider.WahooCredentialNames()...)
+}
+
+// clearRiderCredentials removes only the named credentials of the caller, so
+// revoking one account leaves another stored.
+func (h *Handler) clearRiderCredentials(writer http.ResponseWriter, request *http.Request, names ...rider.CredentialName) {
+	credentials := make(map[rider.CredentialName]rider.Credential, len(names))
+	for _, name := range names {
+		credentials[name] = rider.Credential{}
+	}
+	if err := h.state.SetRiderCredentials(request.Context(), identityOf(request.Context()).Subject, credentials); err != nil {
 		h.unavailable(writer)
 
 		return

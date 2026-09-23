@@ -24,14 +24,24 @@ afterEach(() => {
 
 describe("ZwiftAccountCard", () => {
   it("shows set for a credential the rider has entered, unset for the other", () => {
-    show({ profile: {}, suggestions: {}, zwift: { emailSet: true, passwordSet: false } });
+    show({
+      profile: {},
+      suggestions: {},
+      zwift: { emailSet: true, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    });
 
     expect(screen.getByLabelText("Email").getAttribute("placeholder")).toContain("Stored");
     expect(screen.getByLabelText("Password")).toHaveAttribute("placeholder", "Not set");
   });
 
   it("mentions that Zwift's API is unofficial and the rider's own account terms apply", () => {
-    show({ profile: {}, suggestions: {}, zwift: { emailSet: false, passwordSet: false } });
+    show({
+      profile: {},
+      suggestions: {},
+      zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    });
 
     expect(screen.getByText(/unofficial/)).toBeInTheDocument();
   });
@@ -39,7 +49,12 @@ describe("ZwiftAccountCard", () => {
   // A save sends only the fields typed, never a value already stored: none is
   // ever sent back to this page to send.
   it("saves only the fields typed", async () => {
-    const view = { profile: {}, suggestions: {}, zwift: { emailSet: true, passwordSet: true } };
+    const view = {
+      profile: {},
+      suggestions: {},
+      zwift: { emailSet: true, passwordSet: true },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    };
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
       init?.method === "GET" || init?.method === undefined
         ? new Response(JSON.stringify(view), { status: 200 })
@@ -62,7 +77,12 @@ describe("ZwiftAccountCard", () => {
   });
 
   it("disconnects with a DELETE and no body", async () => {
-    const view = { profile: {}, suggestions: {}, zwift: { emailSet: true, passwordSet: true } };
+    const view = {
+      profile: {},
+      suggestions: {},
+      zwift: { emailSet: true, passwordSet: true },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    };
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
       init?.method === "GET" || init?.method === undefined
         ? new Response(JSON.stringify(view), { status: 200 })
@@ -81,7 +101,12 @@ describe("ZwiftAccountCard", () => {
   });
 
   it("clears both fields once a save has taken effect", async () => {
-    const profile = { profile: {}, suggestions: {}, zwift: { emailSet: true, passwordSet: true } };
+    const profile = {
+      profile: {},
+      suggestions: {},
+      zwift: { emailSet: true, passwordSet: true },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    };
     vi.stubGlobal(
       "fetch",
       vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
@@ -90,7 +115,12 @@ describe("ZwiftAccountCard", () => {
           : new Response(JSON.stringify(profile), { status: 200 }),
       ),
     );
-    show({ profile: {}, suggestions: {}, zwift: { emailSet: false, passwordSet: false } });
+    show({
+      profile: {},
+      suggestions: {},
+      zwift: { emailSet: false, passwordSet: false },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    });
 
     await userEvent.type(screen.getByLabelText("Email"), "rider@example.test");
     await userEvent.type(screen.getByLabelText("Password"), "opensesame");
@@ -108,7 +138,12 @@ describe("ZwiftAccountCard", () => {
           new Response("{}", { status: 503 }),
       ),
     );
-    show({ profile: {}, suggestions: {}, zwift: { emailSet: true, passwordSet: true } });
+    show({
+      profile: {},
+      suggestions: {},
+      zwift: { emailSet: true, passwordSet: true },
+      wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
+    });
 
     await userEvent.type(screen.getByLabelText("Email"), "rider@example.test");
     await userEvent.click(screen.getByRole("button", { name: "Save Zwift account" }));

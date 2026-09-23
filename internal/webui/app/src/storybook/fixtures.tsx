@@ -351,6 +351,7 @@ export const riderProfile: RiderProfile = {
     functionalThresholdPowerWatts: 261,
   },
   zwift: { emailSet: false, passwordSet: false },
+  wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
 };
 
 export function StoryProviders({

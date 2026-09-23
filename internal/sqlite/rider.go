@@ -118,18 +118,6 @@ func (s *Store) SetRiderCredentials(
 	})
 }
 
-// ClearRiderCredentials removes every credential a subject has entered, the
-// deliberate exception a rider's own account gets that a deployment
-// credential does not: a rider must be able to revoke their own account
-// without the deployment losing its database.
-func (s *Store) ClearRiderCredentials(ctx context.Context, subject string) error {
-	if err := s.queries.DeleteRiderCredentials(ctx, subject); err != nil {
-		return fmt.Errorf("clearing the rider credentials: %w", err)
-	}
-
-	return nil
-}
-
 // RiderSuggestions reads the best efforts the given targets' recent rides hold,
 // as the numbers those efforts imply. The best is the best across all of them,
 // so a rider with a second connected account is offered their better effort.
@@ -306,8 +294,7 @@ func nullRiderValue(value rider.Value) sql.NullFloat64 {
 }
 
 // RiderZwiftCredentials are one rider's own Zwift email and password, each
-// empty when they have not entered it. The only read of a rider credential
-// outside the poll that spends it.
+// empty when they have not entered it.
 func (s *Store) RiderZwiftCredentials(ctx context.Context, subject string) (email, password []byte, err error) {
 	credentials, err := s.RiderCredentials(ctx, subject)
 	if err != nil {

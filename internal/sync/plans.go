@@ -143,6 +143,7 @@ func (s *Service) runPlans(ctx context.Context, planID int64) (Result, FailureCa
 		if !push.contacted {
 			continue
 		}
+		s.label(ctx, targetID)
 		applied, failure := push.applied, push.failure
 		if !push.attempted && unreached == FailureNone {
 			unreached = failure

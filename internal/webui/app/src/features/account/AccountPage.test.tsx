@@ -71,6 +71,7 @@ function renderPage(path: string, targets: TargetStatus[] = [target()], admin = 
     profile: {},
     suggestions: {},
     zwift: { emailSet: false, passwordSet: false },
+    wahoo: { emailSet: false, passwordSet: false, signInRefused: false },
   });
 
   return render(

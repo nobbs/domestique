@@ -19,6 +19,7 @@ import { type PageTab, PageTabs } from "../../components/PageTabs";
 import { DataSources } from "../settings/DataSources";
 import { RiderProfile } from "../settings/RiderProfile";
 import { WahooAccountCard } from "../settings/WahooAccountCard";
+import { WahooDeviceCard } from "../settings/WahooDeviceCard";
 import { ZwiftAccountCard } from "../settings/ZwiftAccountCard";
 import { BuildLine } from "../sync/BuildLine";
 import { RunNotice } from "../sync/RunNotice";
@@ -69,6 +70,7 @@ const TABS: readonly PageTab[] = [
       <>
         <WahooAccountCard />
         <ZwiftAccountCard />
+        <WahooDeviceCard />
       </>
     ),
   },

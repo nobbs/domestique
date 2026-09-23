@@ -1592,6 +1592,57 @@ paths:
           $ref: '#/components/responses/Forbidden'
         "503":
           $ref: '#/components/responses/Unavailable'
+  /v1/settings/rider/credentials/wahoo:
+    put:
+      tags:
+        - browser-api
+      operationId: setRiderWahooCredentials
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Writes the caller's own Wahoo email and password, over their own
+        subject alone, and forgets any device session or refusal the previous
+        ones earned. They are used only to sign in the way an ELEMNT does and
+        give each synchronised route the provider_id a device keys it by. A
+        field left out of the body keeps whatever is stored; the value is never
+        returned in any form.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderWahooCredentialsUpdate'
+      responses:
+        "204":
+          $ref: '#/components/responses/NoContent'
+        "400":
+          $ref: '#/components/responses/InvalidRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
+    delete:
+      tags:
+        - browser-api
+      operationId: deleteRiderWahooCredentials
+      security:
+        - session: []
+          browserOrigin: []
+      description: >-
+        Removes the caller's own Wahoo email, password and device session, over
+        their own subject alone.
+      responses:
+        "204":
+          $ref: '#/components/responses/NoContent'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "503":
+          $ref: '#/components/responses/Unavailable'
   /v1/settings/rider/connections/wahoo:
     delete:
       tags:
@@ -4159,6 +4210,7 @@ components:
         - profile
         - suggestions
         - zwift
+        - wahoo
       properties:
         profile:
           $ref: '#/components/schemas/RiderParameters'
@@ -4166,6 +4218,8 @@ components:
           $ref: '#/components/schemas/RiderSuggestions'
         zwift:
           $ref: '#/components/schemas/RiderCredentialState'
+        wahoo:
+          $ref: '#/components/schemas/RiderWahooCredentialState'
     RiderCredentialState:
       type: object
       additionalProperties: false
@@ -4173,7 +4227,7 @@ components:
         - emailSet
         - passwordSet
       description: >-
-        Whether the rider's own Zwift email and password are stored. Never the
+        Whether the rider's own email and password are stored. Never the
         values themselves: a credential entered on this page is written and
         never read back, over the rider's own subject alone.
       properties:
@@ -4181,6 +4235,35 @@ components:
           type: boolean
         passwordSet:
           type: boolean
+    RiderWahooCredentialState:
+      type: object
+      additionalProperties: false
+      required:
+        - emailSet
+        - passwordSet
+        - signInRefused
+      description: >-
+        Whether the rider's own Wahoo email and password are stored, and
+        whether the last device sign-in refused them. Never the values
+        themselves, nor whether a device session is held.
+      properties:
+        emailSet:
+          type: boolean
+        passwordSet:
+          type: boolean
+        signInRefused:
+          type: boolean
+    RiderWahooCredentialsUpdate:
+      type: object
+      additionalProperties: false
+      description: >-
+        A save carries only what was typed: a field left out keeps whatever is
+        stored.
+      properties:
+        email:
+          type: string
+        password:
+          type: string
     RiderZwiftCredentialsUpdate:
       type: object
       additionalProperties: false
