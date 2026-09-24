@@ -334,6 +334,8 @@ export const activities: Activity[] = [3, 10, 17, 24, 52, 59, 66, 120].map((days
     indoor: false,
     // The second ride is Zwift's, so a page listing every ride shows the badge.
     provider: index === 1 ? "zwift" : "wahoo",
+    // Two rides were on the library route, so the ride list names it.
+    ...(index === 2 || index === 4 ? { routeMatch } : {}),
   };
 });
 

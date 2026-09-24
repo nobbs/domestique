@@ -47,20 +47,60 @@ const WEATHER = {
   weatherCode: 61,
 };
 
-function show(rides: Activity[] = RIDES) {
+function show(rides: Activity[] = RIDES, routeTitles: ReadonlyMap<string, string> = new Map()) {
   render(
     <MemoryRouter>
-      <RideList rides={rides} zone={ZONE} />
+      <RideList rides={rides} zone={ZONE} routeTitles={routeTitles} />
     </MemoryRouter>,
   );
 }
+
+const MATCH = {
+  provider: "veloplanner",
+  sourceRouteId: 7,
+  stageOrder: 1,
+  routeCoverage: 0.98,
+  rideCoverage: 0.95,
+  direction: "forward",
+} as const;
 
 const rideLinks = () =>
   screen
     .getAllByRole("link")
     .filter((link) => link.getAttribute("href")?.startsWith("/activities/"));
 
+function rideLink(id: number): HTMLElement {
+  const link = rideLinks().find(
+    (candidate) => candidate.getAttribute("href") === `/activities/${id}`,
+  );
+  if (!link) {
+    throw new Error(`no link to ride ${id}`);
+  }
+
+  return link;
+}
+
 describe("the ride list", () => {
+  it("names the library route a matched ride was on, and marks none on an unmatched one", () => {
+    show(
+      [
+        activity(1, "2026-08-19T08:00:00Z", { routeMatch: MATCH }),
+        activity(2, "2026-08-26T08:00:00Z"),
+      ],
+      new Map([["veloplanner/7/1", "Rund um den Flughafen"]]),
+    );
+
+    expect(within(rideLink(1)).getByRole("img", { name: "Route" })).toBeTruthy();
+    expect(within(rideLink(1)).getByText("Rund um den Flughafen")).toBeTruthy();
+    expect(within(rideLink(2)).queryByRole("img", { name: "Route" })).toBeNull();
+  });
+
+  it("marks a matched ride before the library has named its route", () => {
+    show([activity(1, "2026-08-19T08:00:00Z", { routeMatch: MATCH })]);
+
+    expect(within(rideLink(1)).getByRole("img", { name: "Route" })).toBeTruthy();
+  });
+
   it("lists weeks newest first, each ride linking to its own page", () => {
     show();
 
