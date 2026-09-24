@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activitiesQuery, routesQuery, statusQuery, webUIConfigQuery } from "../../api/queries";
-import type { Activity, Status, WebUIConfig } from "../../api/types";
+import type { Activity, Route, Status, WebUIConfig } from "../../api/types";
 import { IDLE_STATUS } from "../../test/status";
 import { ActivitiesPage } from "./ActivitiesPage";
 
@@ -53,14 +53,18 @@ function activity(startedAt: Date, overrides: Partial<Activity> = {}): Activity 
 // empty week since, by month they are one row of two.
 const ACTIVITIES = [activity(new Date(2026, 7, 26, 8)), activity(new Date(2026, 7, 19, 8))];
 
-function show(activities: Activity[] | null = ACTIVITIES, path = "/activities") {
+function show(
+  activities: Activity[] | null = ACTIVITIES,
+  path = "/activities",
+  library: Route[] = [],
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
   });
   client.setQueryData(webUIConfigQuery().queryKey, config());
   client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
   // The bar's own ⌘K jump reads the library wherever it is mounted.
-  client.setQueryData(routesQuery().queryKey, []);
+  client.setQueryData(routesQuery().queryKey, library);
   if (activities) {
     client.setQueryData(activitiesQuery().queryKey, activities);
   }
@@ -297,6 +301,39 @@ describe("the activities page", () => {
 
     expect(screen.getByRole("button", { name: "Rides" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getAllByRole("region", { name: /^Week / })).toHaveLength(2);
+  });
+
+  it("names the library route a listed ride was matched to", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    const route: Route = {
+      provider: "veloplanner",
+      sourceRouteId: 12,
+      stageOrder: 2,
+      title: "Alpine loop — Descent",
+      sourceRouteName: "Alpine loop",
+      routeName: "Descent",
+      sourceRevision: "2026-08-17",
+      contentHash: "hash",
+      distanceMetres: 30_000,
+      ascentMetres: 300,
+      descentMetres: 300,
+      maxGradientPercent: 8,
+      pointCount: 900,
+    };
+    const matched = activity(new Date(2026, 7, 26, 8), {
+      routeMatch: {
+        provider: "veloplanner",
+        sourceRouteId: 12,
+        stageOrder: 2,
+        routeCoverage: 1,
+        rideCoverage: 1,
+        direction: "forward",
+      },
+    });
+    show([matched], "/activities/rides", [route]);
+
+    expect(screen.getByText("Alpine loop — Descent")).toBeInTheDocument();
   });
 
   it("marks indoor days in the calendar whichever ground is picked", async () => {

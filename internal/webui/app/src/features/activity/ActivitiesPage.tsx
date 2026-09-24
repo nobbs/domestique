@@ -18,8 +18,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { Link, useMatch, useNavigate } from "react-router";
-import { activitiesQuery, webUIConfigQuery } from "../../api/queries";
-import type { Activity } from "../../api/types";
+import { activitiesQuery, routesQuery, webUIConfigQuery } from "../../api/queries";
+import { type Activity, routeKey } from "../../api/types";
 import {
   barOpacity,
   ChartLegend,
@@ -110,6 +110,11 @@ export function ActivitiesPage() {
   const [highlight, setHighlight] = useState<string | null>(null);
   const highlightTimer = useRef<number | undefined>(undefined);
   const { data, isPending, isError } = useQuery(activitiesQuery());
+  const library = useQuery(routesQuery());
+  const routeTitles = useMemo(
+    () => new Map((library.data ?? []).map((route) => [routeKey(route), route.title])),
+    [library.data],
+  );
   const recorded = data ?? [];
   const [range, setRange] = useState("365");
   const selected = RANGES.find(({ key }) => key === range) ?? RANGES[3];
@@ -221,7 +226,12 @@ export function ActivitiesPage() {
           </p>
         ) : view === "rides" ? (
           <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
-            <RideList rides={activities} zone={zone} highlight={highlight} />
+            <RideList
+              rides={activities}
+              zone={zone}
+              highlight={highlight}
+              routeTitles={routeTitles}
+            />
             {/* Every ride, whichever ground is picked: the calendar marks both. */}
             <RideCalendar
               rides={recorded}

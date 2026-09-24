@@ -4,10 +4,10 @@
  * weekdays are read in the service's time zone, exactly as the charts read them.
  */
 
-import { IconBike, IconHeartbeat } from "@tabler/icons-react";
+import { IconBike, IconHeartbeat, IconRoute } from "@tabler/icons-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router";
-import type { Activity } from "../../api/types";
+import { type Activity, routeKey } from "../../api/types";
 import { Panel } from "../../components/PanelHeading";
 import { Segmented } from "../../components/Segmented";
 import {
@@ -40,6 +40,23 @@ function Weather({ ride }: { ride: Activity }) {
   );
 }
 
+/** The library route a ride was matched to, named once the library has loaded. */
+function MatchedRoute({ ride, titles }: { ride: Activity; titles: ReadonlyMap<string, string> }) {
+  if (!ride.routeMatch) {
+    return null;
+  }
+  const title = titles.get(routeKey(ride.routeMatch));
+
+  return (
+    <span className="inline-flex min-w-0 items-center gap-0.5 text-[var(--accent)]">
+      <IconRoute size={12} stroke={1.8} role="img" aria-label="Route" />
+      {title ? <span className="max-w-48 truncate">{title}</span> : null}
+    </span>
+  );
+}
+
+const NO_TITLES: ReadonlyMap<string, string> = new Map();
+
 const PERIODS = [
   { key: "week", label: "Week" },
   { key: "month", label: "Month" },
@@ -49,11 +66,14 @@ export function RideList({
   rides,
   zone,
   highlight,
+  routeTitles = NO_TITLES,
 }: {
   rides: Activity[];
   zone: string;
   /** A `YYYY-MM-DD` day in `zone` whose rides are tinted, as the calendar asks. */
   highlight?: string | null;
+  /** Library route titles by `routeKey`, naming the route a matched ride was on. */
+  routeTitles?: ReadonlyMap<string, string>;
 }) {
   const [period, setPeriod] = useState<Granularity>("week");
   const groups = useMemo(
@@ -145,6 +165,7 @@ export function RideList({
                             ) : null}
                             <Weather ride={ride} />
                             {ride.provider === "zwift" ? <span>Zwift</span> : null}
+                            <MatchedRoute ride={ride} titles={routeTitles} />
                           </span>
                         </span>
                         {/* Arrival is start plus elapsed time, stops included. */}
