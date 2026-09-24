@@ -293,6 +293,12 @@ func (c *Client) listRoutes(ctx context.Context) ([]routeSummary, error) {
 		if err := c.getJSONWithRetry(ctx, endpoint, &payload); err != nil {
 			return nil, fmt.Errorf("veloplanner: listing routes: %w", err)
 		}
+		// VeloPlanner answers an empty library with zero pages rather than one; a
+		// missing or null data array is not that answer.
+		if page == 1 && payload.Metadata.Page == 1 && payload.Metadata.TotalPages == 0 &&
+			payload.Metadata.TotalCount == 0 && payload.Data != nil && len(payload.Data) == 0 {
+			return routes, nil
+		}
 		if payload.Metadata.Page != page || payload.Metadata.TotalCount < 0 ||
 			payload.Metadata.TotalPages < page || payload.Metadata.TotalPages > maximumPages ||
 			payload.Metadata.TotalCount > maximumRoutes {
