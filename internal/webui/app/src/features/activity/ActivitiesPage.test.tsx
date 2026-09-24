@@ -56,7 +56,7 @@ const ACTIVITIES = [activity(new Date(2026, 7, 26, 8)), activity(new Date(2026, 
 function show(
   activities: Activity[] | null = ACTIVITIES,
   path = "/activities",
-  library: Route[] = [],
+  library: Route[] | null = [],
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
@@ -64,7 +64,9 @@ function show(
   client.setQueryData(webUIConfigQuery().queryKey, config());
   client.setQueryData(statusQuery().queryKey, IDLE_STATUS);
   // The bar's own ⌘K jump reads the library wherever it is mounted.
-  client.setQueryData(routesQuery().queryKey, library);
+  if (library) {
+    client.setQueryData(routesQuery().queryKey, library);
+  }
   if (activities) {
     client.setQueryData(activitiesQuery().queryKey, activities);
   }
@@ -85,6 +87,7 @@ function Location() {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("the activities page", () => {
@@ -334,6 +337,17 @@ describe("the activities page", () => {
     show([matched], "/activities/rides", [route]);
 
     expect(screen.getByText("Alpine loop — Descent")).toBeInTheDocument();
+  });
+
+  it("asks for no route library on the overview, which names no route", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    const fetched = vi.spyOn(globalThis, "fetch");
+    show(ACTIVITIES, "/activities", null);
+
+    expect(fetched.mock.calls.map(([input]) => String(input))).not.toContainEqual(
+      expect.stringContaining("/v1/routes"),
+    );
   });
 
   it("marks indoor days in the calendar whichever ground is picked", async () => {

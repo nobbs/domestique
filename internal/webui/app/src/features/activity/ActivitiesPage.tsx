@@ -110,7 +110,8 @@ export function ActivitiesPage() {
   const [highlight, setHighlight] = useState<string | null>(null);
   const highlightTimer = useRef<number | undefined>(undefined);
   const { data, isPending, isError } = useQuery(activitiesQuery());
-  const library = useQuery(routesQuery());
+  // Only the rides tab names routes; the overview need not fetch the library.
+  const library = useQuery({ ...routesQuery(), enabled: view === "rides" });
   const routeTitles = useMemo(
     () => new Map((library.data ?? []).map((route) => [routeKey(route), route.title])),
     [library.data],
