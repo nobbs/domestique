@@ -238,7 +238,7 @@ describe("SearchPalette", () => {
     expect(screen.getByRole("dialog", { name: "Search" })).toBeInTheDocument();
   });
 
-  it("opens on ⌘K from a page with no search of its own", async () => {
+  it("opens on ⌘K", async () => {
     show("/activities");
 
     await userEvent.keyboard("{Meta>}k{/Meta}");
@@ -246,12 +246,14 @@ describe("SearchPalette", () => {
     expect(screen.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
   });
 
-  it("does not bind ⌘K on the planner, which has its own search", async () => {
+  it("opens on ⌘K on the planner too, leaving ⌘⇧K to its place search", async () => {
     show("/plan");
 
-    await userEvent.keyboard("{Meta>}k{/Meta}");
+    await userEvent.keyboard("{Meta>}{Shift>}k{/Shift}{/Meta}");
+    expect(screen.queryByRole("searchbox", { name: "Search the route library" })).toBeNull();
 
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await userEvent.keyboard("{Meta>}k{/Meta}");
+    expect(screen.getByRole("searchbox", { name: "Search the route library" })).toBeVisible();
   });
 
   it("narrows the list as the query is typed", async () => {

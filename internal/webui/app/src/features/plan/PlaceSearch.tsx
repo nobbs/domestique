@@ -1,5 +1,5 @@
 /**
- * The planner's way to a place by name: a pill over the map, or ⌘K, opens a
+ * The planner's way to a place by name: a pill over the map, or ⌘⇧K, opens a
  * command panel in the atlas's shape. Enter adds the highlighted place; Shift+
  * Enter or a row's box marks it and keeps searching, so several are added at
  * once. Where each lands in the route is the planner's business, not this.
@@ -32,6 +32,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { formatDistance } from "../../lib/format";
 import { usePrefersReducedMotion } from "../../lib/mediaQuery";
 import { haversineMetres } from "../../lib/profile";
+import { useSearchPalette } from "../../lib/searchPalette";
 
 /** Fewer characters than this match too much to be worth asking; the service refuses them too. */
 const MINIMUM_QUERY = 3;
@@ -99,6 +100,7 @@ export interface PlaceSearchProps {
 export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
   const { current: map } = useMap();
   const reducedMotion = usePrefersReducedMotion();
+  const palette = useSearchPalette();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -142,9 +144,18 @@ export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
   };
 
   useEffect(() => {
+    // Each chord closes the other's panel, so the two never stack.
     const onKey = (event: KeyboardEvent) => {
-      if (!disabled && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") {
+        return;
+      }
+      if (!event.shiftKey) {
+        if (open) {
+          show(false);
+        }
+      } else if (!disabled) {
         event.preventDefault();
+        palette.setOpen(false);
         show(!open);
       }
     };
@@ -243,7 +254,7 @@ export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
         onClick={() => show(true)}
       >
         <span className="flex-1 text-left">Search places</span>
-        <kbd className="rounded-[7px] bg-[var(--muted)] px-1.5 py-0.5 font-sans text-xs">⌘K</kbd>
+        <kbd className="rounded-[7px] bg-[var(--muted)] px-1.5 py-0.5 font-sans text-xs">⌘⇧K</kbd>
       </Button>
       <Dialog open={open} onOpenChange={show}>
         <DialogPortal>

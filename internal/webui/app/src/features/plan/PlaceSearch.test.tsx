@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlaceMatch } from "../../api/types";
+import { SearchPaletteProvider, useSearchPalette } from "../../lib/searchPalette";
 
 const search = vi.hoisted(() => vi.fn());
 const camera = vi.hoisted(() => ({ value: undefined as unknown }));
@@ -74,6 +75,16 @@ function answering(places: Record<string, PlaceMatch[]>) {
   search.mockImplementation(async ({ query }: { query: string }) => ({
     data: { places: places[query.toLowerCase()] ?? [] },
   }));
+}
+
+function PaletteProbe() {
+  const { open, setOpen } = useSearchPalette();
+
+  return (
+    <button type="button" onClick={() => setOpen(true)}>
+      Open palette <span data-testid="palette">{open ? "open" : "closed"}</span>
+    </button>
+  );
 }
 
 function renderSearch(onAdd = vi.fn()) {
@@ -191,16 +202,39 @@ describe("PlaceSearch", () => {
     ).toBeTruthy();
   });
 
-  it("opens with Cmd+K and asks with the trimmed query", async () => {
+  it("opens with Cmd+Shift+K and asks with the trimmed query", async () => {
     answering({ turm: [TURMBERG] });
     renderSearch();
     const user = userEvent.setup();
 
-    await user.keyboard("{Meta>}k{/Meta}");
+    await user.keyboard("{Meta>}{Shift>}k{/Shift}{/Meta}");
     await user.type(screen.getByRole("searchbox", { name: "Search for a place" }), "  turm ");
 
     await screen.findByRole("option", { name: /Turmberg/ }, ANSWERED);
     await waitFor(() => expect(search).toHaveBeenCalledWith({ query: "turm" }), ANSWERED);
+  });
+
+  it("closes the search palette on Cmd+Shift+K, and closes itself on Cmd+K", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <SearchPaletteProvider>
+          <PaletteProbe />
+          <PlaceSearch onAdd={vi.fn()} />
+        </SearchPaletteProvider>
+      </QueryClientProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Open palette/ }));
+
+    await user.keyboard("{Meta>}{Shift>}k{/Shift}{/Meta}");
+    expect(screen.getByTestId("palette")).toHaveTextContent("closed");
+    expect(screen.getByRole("searchbox", { name: "Search for a place" })).toBeVisible();
+
+    await user.keyboard("{Meta>}k{/Meta}");
+    await waitFor(() =>
+      expect(screen.queryByRole("searchbox", { name: "Search for a place" })).toBeNull(),
+    );
   });
 
   it("leans the search towards the map's centre and says how far each place is", async () => {

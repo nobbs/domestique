@@ -23,7 +23,7 @@ import {
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { getGetPlanQueryOptions, getListPlansQueryOptions } from "../../api/generated";
 import { routeGeometryQuery, routesQuery, webUIConfigQuery } from "../../api/queries";
 import type { Position, Route, RouteGeometry } from "../../api/types";
@@ -41,7 +41,7 @@ import { haversineMetres, rangeBounds } from "../../lib/profile";
 import { providerLabel } from "../../lib/provider";
 import { joinQuery, parseQuery, splitQuery, suggest, withoutToken } from "../../lib/query";
 import { sortRoutes } from "../../lib/ranking";
-import { ownsShortcut, useSearchPalette } from "../../lib/searchPalette";
+import { useSearchPalette } from "../../lib/searchPalette";
 import { useStartupLocation } from "../../lib/startupLocation";
 import { resolvesDark, type ThemeChoice } from "../../lib/theme";
 import { LibraryMap } from "../routes/LibraryMap";
@@ -69,10 +69,8 @@ function formatStart(metres: number): string {
 }
 
 export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
-  const { pathname } = useLocation();
   const navigate = useNavigate();
   const { open, setOpen } = useSearchPalette();
-  const shortcut = !ownsShortcut(pathname);
   const [query, setQuery] = useState("");
   // The query text is the one source of truth; every control edits its tokens.
   const parsed = useMemo(() => parseQuery(query), [query]);
@@ -167,11 +165,9 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
   }, [planner, filtersActive, plans.data, library, parsed, filters, order, startOf]);
 
   useEffect(() => {
-    if (!shortcut) {
-      return;
-    }
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      // ⌘⇧K is the planner's place search.
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setOpen((current) => !current);
       }
@@ -179,7 +175,7 @@ export function SearchPalette({ themeChoice }: { themeChoice: ThemeChoice }) {
     window.addEventListener("keydown", onKey);
 
     return () => window.removeEventListener("keydown", onKey);
-  }, [shortcut, setOpen]);
+  }, [setOpen]);
 
   useEffect(() => {
     if (open) {
