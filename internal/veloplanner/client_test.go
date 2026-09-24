@@ -274,6 +274,8 @@ func TestClientInventoryAcceptsZeroPagesOnlyForAnEmptyLibrary(t *testing.T) {
 	}{
 		{name: "empty", listing: `{"data":[],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`},
 		{name: "zero pages with routes", listing: `{"data":[{"id":100}],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`, wantErr: true},
+		{name: "zero pages with null data", listing: `{"data":null,"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`, wantErr: true},
+		{name: "zero pages without data", listing: `{"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":0}}`, wantErr: true},
 		{name: "zero pages with a count", listing: `{"data":[],"metadata":{"page":1,"per_page":20,"total_pages":0,"total_count":3}}`, wantErr: true},
 	}
 	for _, test := range tests {
