@@ -191,12 +191,12 @@ describe("PlaceSearch", () => {
     ).toBeTruthy();
   });
 
-  it("opens with Cmd+K and asks with the trimmed query", async () => {
+  it("opens with Cmd+Shift+K and asks with the trimmed query", async () => {
     answering({ turm: [TURMBERG] });
     renderSearch();
     const user = userEvent.setup();
 
-    await user.keyboard("{Meta>}k{/Meta}");
+    await user.keyboard("{Meta>}{Shift>}k{/Shift}{/Meta}");
     await user.type(screen.getByRole("searchbox", { name: "Search for a place" }), "  turm ");
 
     await screen.findByRole("option", { name: /Turmberg/ }, ANSWERED);

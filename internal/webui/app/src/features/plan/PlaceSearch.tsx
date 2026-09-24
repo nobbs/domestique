@@ -1,5 +1,5 @@
 /**
- * The planner's way to a place by name: a pill over the map, or ⌘K, opens a
+ * The planner's way to a place by name: a pill over the map, or ⌘⇧K, opens a
  * command panel in the atlas's shape. Enter adds the highlighted place; Shift+
  * Enter or a row's box marks it and keeps searching, so several are added at
  * once. Where each lands in the route is the planner's business, not this.
@@ -143,7 +143,12 @@ export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!disabled && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (
+        !disabled &&
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "k"
+      ) {
         event.preventDefault();
         show(!open);
       }
@@ -243,7 +248,7 @@ export function PlaceSearch({ onAdd, disabled = false }: PlaceSearchProps) {
         onClick={() => show(true)}
       >
         <span className="flex-1 text-left">Search places</span>
-        <kbd className="rounded-[7px] bg-[var(--muted)] px-1.5 py-0.5 font-sans text-xs">⌘K</kbd>
+        <kbd className="rounded-[7px] bg-[var(--muted)] px-1.5 py-0.5 font-sans text-xs">⌘⇧K</kbd>
       </Button>
       <Dialog open={open} onOpenChange={show}>
         <DialogPortal>

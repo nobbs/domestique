@@ -27,8 +27,3 @@ export function SearchPaletteProvider({ children }: { children: ReactNode }) {
 export function useSearchPalette(): SearchPaletteState {
   return useContext(SearchPaletteContext);
 }
-
-/** Whether the page at this path answers ⌘K with a search of its own. */
-export function ownsShortcut(pathname: string): boolean {
-  return pathname === "/plan" || pathname.startsWith("/plan/");
-}
