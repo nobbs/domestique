@@ -562,7 +562,8 @@ func activityReanalyseTask(analyser activityAnalyser) task.Definition {
 // activityDeriveTask works out what each of a target's rides says about how
 // hard it was. It follows both readers of recorded samples, so a ride whose
 // FIT has just landed is derived on the same cycle rather than the next one,
-// and it holds the same resource as they do: it reads the rows they write.
+// and it holds the same resource as they do: it reads the rows they write. It
+// follows both library writers too, so a changed library rematches the rides at once.
 //
 // It also runs on its own clock, because the edges alone never reach a stored
 // history: a poll over rides already synced reports unchanged, so nothing
@@ -573,7 +574,7 @@ func activityDeriveTask(
 	return task.Definition{
 		Name:         taskActivityDerive,
 		Enabled:      enabled(taskActivityDerive),
-		Follows:      []string{taskActivityPoll, taskActivityRecord, taskZwiftPoll},
+		Follows:      []string{taskActivityPoll, taskActivityRecord, taskZwiftPoll, taskSyncSource, taskSyncPlan},
 		Schedule:     task.Every(func() time.Duration { return activityDeriveInterval }),
 		InitialDelay: func() time.Duration { return activityDeriveInitialDelay },
 		Resources: func(string) []task.Resource {

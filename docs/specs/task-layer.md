@@ -124,6 +124,8 @@ activity:poll     stored recorded rides   ->  activity:derive
 activity:record   stored one ride's file  ->  activity:derive
 activity:record   stored one ride's file  ->  zwift:poll         (reads Zwift only for a target holding a held ride)
 zwift:poll        stored indoor rides     ->  activity:derive
+sync:source       stored an inventory     ->  activity:derive
+sync:plan         changed stored plans    ->  activity:derive
 activity:derive   derived stored rides    ->  activity:analyse   (only with a token)
 ~~~
 
@@ -474,7 +476,11 @@ index rebuild, and runs after each: either alone leaves stages wanting it.
 reason: a new inventory leaves stages wanting a prediction, and it follows a
 calibration for the same reason again. `activity:derive` follows both readers of recorded samples and holds the same
 resource they do, because it reads exactly the rows they write: a ride whose
-file has just landed is derived on the same cycle rather than the next one. New
+file has just landed is derived on the same cycle rather than the next one. It
+also follows both writers of the library, the read and the plan push, because
+a changed library owes every ride a fresh route match: the rides are rematched
+on the cycle that changed it rather than at the next hourly run. A read that
+changed nothing leaves every match current, so that run matches nothing. New
 samples and a profile edit both start it — the second directly, from the
 settings write, over that rider's own targets — but neither reaches a history
 already stored: a poll over rides that are all synced reports unchanged, so

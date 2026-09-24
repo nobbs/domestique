@@ -1282,7 +1282,8 @@ func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) 
 
 	assert.Equal(t, taskActivityDerive, definition.Name, "name")
 	assert.ElementsMatch(t,
-		[]string{taskActivityPoll, taskActivityRecord, taskZwiftPoll}, definition.Follows, "follows")
+		[]string{taskActivityPoll, taskActivityRecord, taskZwiftPoll, taskSyncSource, taskSyncPlan},
+		definition.Follows, "follows")
 	assert.Equal(t,
 		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
 		definition.Resources(""),
@@ -1411,18 +1412,20 @@ func TestActivityAnalyseTaskFollowsDeriveUnderTheSameResource(t *testing.T) {
 }
 
 // The analysis and its edge are registered together or not at all, and the
-// activity graph resolves either way.
+// activity graph resolves either way beside the library writers it follows.
 func TestTheActivityGraphResolvesWithAndWithoutTheAnalysis(t *testing.T) {
 	t.Parallel()
 
 	activities := func() []task.Definition {
 		poller := &fakePoller{}
-		return []task.Definition{
+		return append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets, true),
+			surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}),
 			activityPollTask(poller, allEnabled, twoTargets),
 			activityRecordTask(poller),
 			zwiftPollTask(poller, allEnabled, twoTargets),
 			activityDeriveTask(&fakeDeriver{}, allEnabled, twoTargets),
-		}
+			rideModelCalibrateTask(&fakeRideCorpus{}, &fakeCoefficients{}, allEnabled, calibrationClock),
+		)
 	}
 	_, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, activities())
 	require.NoError(t, err, "without the analysis")
