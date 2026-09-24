@@ -147,6 +147,7 @@ func TestPlanPushNamesItsPlanOrEveryPlan(t *testing.T) {
 	assert.Equal(t, []int64{42, 0}, synchronizer.pushed, "plans pushed")
 	assert.Equal(t, task.Succeeded, named.Outcome, "outcome")
 	assert.True(t, every.Advances, "a push that changed the stored plans asks for enrichment")
+	assert.True(t, every.Changed, "a push that changed the stored plans changed the library")
 }
 
 // A plan that changed but reached no rider still wants classifying.
@@ -158,7 +159,7 @@ func TestAPlanPushThatReachedNoOneStillAsksForEnrichment(t *testing.T) {
 
 	result := definition.Run.Run(t.Context(), task.Invocation{Task: taskSyncPlan})
 
-	assert.Equal(t, task.Result{Outcome: task.Succeeded, Advances: true}, result, "result")
+	assert.Equal(t, task.Result{Outcome: task.Succeeded, Advances: true, Changed: true}, result, "result")
 }
 
 // A sweep with nothing to push is not news, and asks for no enrichment.
@@ -172,6 +173,7 @@ func TestAPlanPushWithNothingToDoIsUnchanged(t *testing.T) {
 
 	assert.Equal(t, task.Unchanged, result.Outcome, "outcome")
 	assert.False(t, result.Advances, "advances")
+	assert.False(t, result.Changed, "changed")
 }
 
 func TestAPlanPushRefusesAnArgumentNamingNoPlan(t *testing.T) {
@@ -260,6 +262,15 @@ func TestSyncResultCarriesEveryOutcomeAcross(t *testing.T) {
 			assert.Equal(t, task.Detail(syncservice.FailureState), result.Detail, "detail")
 		})
 	}
+}
+
+// A read reports a change only when the library it stored differs, so the
+// rides' rematch does not follow every hourly read.
+func TestSyncResultCarriesWhetherTheLibraryChanged(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, syncResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded, LibraryChanged: true}).Changed)
+	assert.False(t, syncResult(&syncservice.Result{Outcome: syncservice.OutcomeSucceeded}).Changed)
 }
 
 func TestSyncResultTreatsAnUnknownOutcomeAsAFailure(t *testing.T) {
@@ -1283,6 +1294,7 @@ func TestActivityDeriveTaskFollowsBothReadersUnderTheSameResource(t *testing.T) 
 	assert.Equal(t, taskActivityDerive, definition.Name, "name")
 	assert.ElementsMatch(t,
 		[]string{taskActivityPoll, taskActivityRecord, taskZwiftPoll}, definition.Follows, "follows")
+	assert.ElementsMatch(t, []string{taskSyncSource, taskSyncPlan}, definition.FollowsChanges, "follows changes")
 	assert.Equal(t,
 		[]task.Resource{{Name: resourceActivities, Exclusive: true}},
 		definition.Resources(""),
@@ -1411,18 +1423,20 @@ func TestActivityAnalyseTaskFollowsDeriveUnderTheSameResource(t *testing.T) {
 }
 
 // The analysis and its edge are registered together or not at all, and the
-// activity graph resolves either way.
+// activity graph resolves either way beside the library writers it follows.
 func TestTheActivityGraphResolvesWithAndWithoutTheAnalysis(t *testing.T) {
 	t.Parallel()
 
 	activities := func() []task.Definition {
 		poller := &fakePoller{}
-		return []task.Definition{
+		return append(inventoryTasks(&fakeSynchronizer{}, liveSettings(t), allEnabled, twoTargets, true),
+			surfaceIndexTask(&fakeIndexBuilder{}, liveSettings(t), allEnabled, time.Time{}),
 			activityPollTask(poller, allEnabled, twoTargets),
 			activityRecordTask(poller),
 			zwiftPollTask(poller, allEnabled, twoTargets),
 			activityDeriveTask(&fakeDeriver{}, allEnabled, twoTargets),
-		}
+			rideModelCalibrateTask(&fakeRideCorpus{}, &fakeCoefficients{}, allEnabled, calibrationClock),
+		)
 	}
 	_, err := registerTasks(&countingStore{}, &silentNotifier{}, undecided{}, alwaysOn, activities())
 	require.NoError(t, err, "without the analysis")

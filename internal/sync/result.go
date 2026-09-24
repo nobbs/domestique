@@ -97,10 +97,13 @@ type Result struct {
 	// SourceStored reports that this pass refreshed the stored inventory, which
 	// is what makes reading the ground under it worth doing again.
 	SourceStored bool
-	SourceStages int
-	Created      int
-	Updated      int
-	Deleted      int
+	// LibraryChanged reports that the source phase left the stored library
+	// different from what it found; always false for any other phase.
+	LibraryChanged bool
+	SourceStages   int
+	Created        int
+	Updated        int
+	Deleted        int
 }
 
 // AnySourceStored reports whether any configured source stored a fresh

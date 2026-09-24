@@ -117,6 +117,9 @@ type Result struct {
 	// attempt whose failure was partial and still stored something worth
 	// building on. The attempt's own outcome is unaffected.
 	Advances bool
+	// Changed reports that the attempt altered what a successor following it
+	// through FollowsChanges reads; without it those successors do not run.
+	Changed bool
 }
 
 // Trigger names what started an attempt. A task whose scheduled behaviour
@@ -246,6 +249,9 @@ type Definition struct {
 	// at registration rather than found by a depth cap at runtime. Each edge
 	// fires on its own — a task following two of them runs after either one.
 	Follows []string
+	// FollowsChanges are edges like Follows that fire only after an attempt
+	// reporting Changed, for a successor with nothing to do when nothing moved.
+	FollowsChanges []string
 	// Backoff holds this task back from its own schedule while it keeps
 	// faulting. Its zero value is a task that retries on schedule regardless.
 	Backoff Backoff

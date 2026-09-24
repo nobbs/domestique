@@ -408,10 +408,11 @@ func pushPlans(ctx context.Context, reporter synchronizer, argument string) task
 			return task.Result{Outcome: task.Unchanged}
 		}
 
-		return task.Result{Outcome: task.Succeeded, Advances: true}
+		return task.Result{Outcome: task.Succeeded, Advances: true, Changed: true}
 	}
 	converted := syncResult(&result)
 	converted.Advances = result.SourceStored
+	converted.Changed = result.SourceStored
 
 	return converted
 }
@@ -562,7 +563,8 @@ func activityReanalyseTask(analyser activityAnalyser) task.Definition {
 // activityDeriveTask works out what each of a target's rides says about how
 // hard it was. It follows both readers of recorded samples, so a ride whose
 // FIT has just landed is derived on the same cycle rather than the next one,
-// and it holds the same resource as they do: it reads the rows they write.
+// and it holds the same resource as they do: it reads the rows they write. It
+// follows changes of both library writers too, so the rides are rematched at once.
 //
 // It also runs on its own clock, because the edges alone never reach a stored
 // history: a poll over rides already synced reports unchanged, so nothing
@@ -571,11 +573,12 @@ func activityDeriveTask(
 	deriver activityDeriver, enabled func(string) func() bool, targetIDs func() []string,
 ) task.Definition {
 	return task.Definition{
-		Name:         taskActivityDerive,
-		Enabled:      enabled(taskActivityDerive),
-		Follows:      []string{taskActivityPoll, taskActivityRecord, taskZwiftPoll},
-		Schedule:     task.Every(func() time.Duration { return activityDeriveInterval }),
-		InitialDelay: func() time.Duration { return activityDeriveInitialDelay },
+		Name:           taskActivityDerive,
+		Enabled:        enabled(taskActivityDerive),
+		Follows:        []string{taskActivityPoll, taskActivityRecord, taskZwiftPoll},
+		FollowsChanges: []string{taskSyncSource, taskSyncPlan},
+		Schedule:       task.Every(func() time.Duration { return activityDeriveInterval }),
+		InitialDelay:   func() time.Duration { return activityDeriveInitialDelay },
 		Resources: func(string) []task.Resource {
 			return []task.Resource{{Name: resourceActivities, Exclusive: true}}
 		},
@@ -857,6 +860,7 @@ func syncResult(result *syncservice.Result) task.Result {
 		// Worth reconciling and classifying once any provider stored inventory,
 		// even if another provider failed and dragged the aggregate outcome down.
 		Advances: result.AnySourceStored(),
+		Changed:  result.LibraryChanged,
 	}
 }
 

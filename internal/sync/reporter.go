@@ -161,7 +161,7 @@ func (r *Reporter) runPhasesWith(
 	defer r.phase.Store(nil)
 
 	result := Result{Outcome: OutcomeSkipped}
-	sourceStored := false
+	sourceStored, libraryChanged := false, false
 	if source {
 		if runSource == nil {
 			runSource = r.runner.RunSource
@@ -169,6 +169,7 @@ func (r *Reporter) runPhasesWith(
 		r.enter(PhaseSource)
 		result = r.run(ctx, runSource)
 		sourceStored = result.AnySourceStored()
+		libraryChanged = result.LibraryChanged
 	}
 	if targets {
 		if runTargets == nil {
@@ -179,6 +180,7 @@ func (r *Reporter) runPhasesWith(
 	}
 	// Enrichment is decided by whoever started this pass, not by the reporter.
 	result.SourceStored = sourceStored
+	result.LibraryChanged = libraryChanged
 
 	return result
 }
