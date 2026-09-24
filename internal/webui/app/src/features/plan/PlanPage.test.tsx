@@ -357,6 +357,47 @@ describe("PlanPage", () => {
     expect(screen.getByTestId("plan-delivery-trigger")).toBeInTheDocument();
   });
 
+  it("links a published plan back to its route page until it is edited", async () => {
+    vi.useRealTimers();
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          cues: false,
+          published: true,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+          ],
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [8, 49],
+              [8.1, 49.1],
+            ],
+          },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    expect(screen.getByRole("link", { name: "View the route" })).toHaveAttribute(
+      "href",
+      "/routes/local/4/1",
+    );
+
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Renamed" } });
+    expect(screen.queryByRole("link", { name: "View the route" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View the route" })).toBeDisabled();
+  });
+
   it("renders the planner with a mocked map and labels drafts", async () => {
     vi.useRealTimers();
     renderPage();

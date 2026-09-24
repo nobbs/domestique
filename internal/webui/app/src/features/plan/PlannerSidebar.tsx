@@ -3,6 +3,7 @@
 import {
   IconChevronDown,
   IconClock,
+  IconEye,
   IconFlagCheck,
   IconGripVertical,
   IconMountain,
@@ -16,7 +17,7 @@ import {
 import { type ComponentProps, type Dispatch, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { PlanProfile, PlanRoutePreview } from "../../api/types";
-import { Button } from "../../components/Button";
+import { Button, ButtonLink } from "../../components/Button";
 import { Segmented } from "../../components/Segmented";
 import {
   AlertDialog,
@@ -36,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { formatAscent, formatCount, formatDistance, formatDuration } from "../../lib/format";
+import { routePath } from "../../lib/library";
 import { cn } from "../../lib/utils";
 import { PlanDeliveryTrigger } from "./PlanDelivery";
 import { usePlaceName } from "./placeName";
@@ -568,6 +570,25 @@ export function PlannerSidebar({
             />
             <IconPencil aria-hidden="true" size={14} className="shrink-0 text-[var(--ink-2)]" />
           </label>
+          {planId !== null && published ? (
+            edited ? (
+              <Button
+                variant="ghost"
+                icon={<IconEye size={16} stroke={1.8} />}
+                aria-label="View the route"
+                title="Save or undo your changes to view the route"
+                disabled
+              />
+            ) : (
+              <ButtonLink
+                variant="ghost"
+                icon={<IconEye size={16} stroke={1.8} />}
+                aria-label="View the route"
+                title="View the route"
+                to={routePath({ provider: "local", sourceRouteId: planId, stageOrder: 1 })}
+              />
+            )
+          ) : null}
           <PlanDeliveryTrigger planId={planId} published={published} />
         </div>
         <div

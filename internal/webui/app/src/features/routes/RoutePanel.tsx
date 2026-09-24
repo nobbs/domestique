@@ -235,6 +235,16 @@ export function RoutePanel({
               <IconLayoutNavbarCollapse size={16} stroke={2} aria-hidden="true" />
             )}
           </button>
+          {effectiveAdmin && config.data?.planning && route.provider === "local" ? (
+            <Link
+              to={`/plan/${route.sourceRouteId}`}
+              aria-label="Edit in the planner"
+              title="Edit in the planner"
+              className="grid h-7 w-8 place-items-center text-[var(--ink-2)] hover:bg-[var(--rule)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)] border-[var(--rule)] border-l"
+            >
+              <IconPencil size={16} stroke={2} aria-hidden="true" />
+            </Link>
+          ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger
               aria-label="More about this route"
@@ -258,12 +268,6 @@ export function RoutePanel({
                 baseUrl={sourceBaseUrls[route.provider]}
                 sourceRouteId={route.sourceRouteId}
               />
-              {effectiveAdmin && config.data?.planning && route.provider === "local" ? (
-                <DropdownMenuItem render={<Link to={`/plan/${route.sourceRouteId}`} />}>
-                  <IconPencil aria-hidden="true" />
-                  Edit
-                </DropdownMenuItem>
-              ) : null}
               {effectiveAdmin && config.data?.planning && route.provider !== "local" && copySeed ? (
                 <CopyAndEdit seed={copySeed} />
               ) : null}
