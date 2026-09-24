@@ -97,12 +97,12 @@ afterEach(() => window.history.replaceState(null, "", "/"));
 describe("RoutePanel", () => {
   it("offers edit only for a local route when planning is available", async () => {
     renderPanel({ route: route({ provider: "local", sourceRouteId: 44 }) }, true, true, true);
-    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
 
-    expect(await screen.findByRole("menuitem", { name: "Edit" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Edit in the planner" })).toHaveAttribute(
       "href",
       "/plan/44",
     );
+    await userEvent.click(screen.getByRole("button", { name: "More about this route" }));
     expect(screen.queryByRole("menuitem", { name: "Copy and edit" })).toBeNull();
   });
 

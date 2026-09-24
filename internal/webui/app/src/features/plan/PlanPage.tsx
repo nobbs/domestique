@@ -29,7 +29,12 @@ import {
   usePreviewPlanRoute,
   useReplacePlan,
 } from "../../api/generated";
-import { webUIConfigQuery } from "../../api/queries";
+import {
+  routeClimbsQuery,
+  routeGeometryQuery,
+  routesQuery,
+  webUIConfigQuery,
+} from "../../api/queries";
 import { ApiError } from "../../api/request";
 import type {
   BoundingBox,
@@ -1072,6 +1077,14 @@ export function PlanPage() {
       queryClient.setQueryData(getGetPlanQueryKey(planId), response);
       queryClient.invalidateQueries({ queryKey: getListPlansQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetPlanDeliveryQueryKey(planId) });
+      // A published plan is also a route, cached under its own keys by the route page.
+      for (const query of [
+        routesQuery(),
+        routeGeometryQuery("local", planId, 1),
+        routeClimbsQuery("local", planId, 1),
+      ]) {
+        queryClient.invalidateQueries({ queryKey: query.queryKey });
+      }
     } catch (error) {
       setSaveError(errorMessage(error));
     }

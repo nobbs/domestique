@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { routeGeometryQuery } from "../../api/queries";
 import { ApiError } from "../../api/request";
 import { haversineMetres } from "../../lib/profile";
 
@@ -48,7 +49,8 @@ vi.mock("../../api/generated", async (importOriginal) => ({
     select: options.query.select,
   }),
 }));
-vi.mock("../../api/queries", () => ({
+vi.mock("../../api/queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/queries")>()),
   webUIConfigQuery: () => ({ queryKey: ["config"], queryFn: vi.fn() }),
 }));
 vi.mock("../../components/Layout", () => ({
@@ -268,15 +270,18 @@ function renderPage(
     ...config,
   });
 
-  return render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/plan" element={<PlanPage />} />
-          <Route path="/plan/:planId" element={<PlanPage />} />
-        </Routes>
-      </MemoryRouter>
-    </QueryClientProvider>,
+  return Object.assign(
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/plan" element={<PlanPage />} />
+            <Route path="/plan/:planId" element={<PlanPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+    { client },
   );
 }
 
@@ -355,6 +360,47 @@ describe("PlanPage", () => {
     renderPage("/plan/4");
     await act(async () => {});
     expect(screen.getByTestId("plan-delivery-trigger")).toBeInTheDocument();
+  });
+
+  it("links a published plan back to its route page until it is edited", async () => {
+    vi.useRealTimers();
+    openedPlan.value = {
+      data: {
+        data: {
+          id: 4,
+          name: "Stored loop",
+          profile: "trekking",
+          cues: false,
+          published: true,
+          version: 2,
+          waypoints: [
+            { longitude: 8, latitude: 49 },
+            { longitude: 8.1, latitude: 49.1 },
+          ],
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [8, 49],
+              [8.1, 49.1],
+            ],
+          },
+          distanceMetres: 10_000,
+          ascentMetres: 100,
+          createdAt: "2026-09-15T09:00:00Z",
+          updatedAt: "2026-09-15T09:00:00Z",
+        },
+      },
+    };
+    renderPage("/plan/4");
+    await act(async () => {});
+    expect(screen.getByRole("link", { name: "View the route" })).toHaveAttribute(
+      "href",
+      "/routes/local/4/1",
+    );
+
+    fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Renamed" } });
+    expect(screen.queryByRole("link", { name: "View the route" })).toBeNull();
+    expect(screen.getByRole("button", { name: "View the route" })).toBeDisabled();
   });
 
   it("renders the planner with a mocked map and labels drafts", async () => {
@@ -1240,8 +1286,10 @@ describe("PlanPage", () => {
     replace
       .mockResolvedValueOnce({ data: { ...storedPlan, version: 3 } })
       .mockResolvedValueOnce({ data: { ...storedPlan, version: 4, published: true } });
-    renderPage("/plan/4");
+    const { client } = renderPage("/plan/4");
     await act(async () => {});
+    const geometryKey = routeGeometryQuery("local", 4, 1).queryKey;
+    client.setQueryData(geometryKey as readonly unknown[], {});
 
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Plan name"), { target: { value: "Renamed" } });
@@ -1253,6 +1301,7 @@ describe("PlanPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await act(async () => {});
 
+    expect(client.getQueryState(geometryKey)?.isInvalidated).toBe(true);
     expect(replace.mock.calls[0]?.[0]).toMatchObject({ headers: { "If-Match": "2" } });
     expect(replace.mock.calls[1]?.[0]).toMatchObject({
       headers: { "If-Match": "3" },
